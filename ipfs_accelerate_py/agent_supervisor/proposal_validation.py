@@ -35,6 +35,9 @@ PROPOSAL_VALIDATION_REQUEST_SCHEMA = (
 PROPOSAL_VALIDATION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proposal-validation-receipt@1"
 )
+PROPOSAL_GATE_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/proposal-gate-evidence@1"
+)
 PROPOSAL_REJECTION_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proposal-rejection-evidence@1"
 )
@@ -56,6 +59,19 @@ class ProposalGate(str, Enum):
 
 
 ORDERED_PROPOSAL_GATES = tuple(ProposalGate)
+
+# These are the completion-gate terms that proposal admission can actually
+# establish.  Impact-selected test execution, semantic/proof evaluation,
+# merge, and freshness remain downstream responsibilities.
+PROPOSAL_OWNED_GATE_GROUPS: tuple[
+    tuple[str, tuple[ProposalGate, ...]], ...
+] = (
+    ("schema", (ProposalGate.SCHEMA, ProposalGate.STRUCTURE)),
+    ("authority", (ProposalGate.AUTHORITY,)),
+    ("patch", (ProposalGate.PATCH, ProposalGate.CONTENT)),
+    ("path", (ProposalGate.PATH,)),
+    ("ast_interface", (ProposalGate.AST_INTERFACE,)),
+)
 
 
 class ProposalFindingCode(str, Enum):
@@ -1124,10 +1140,13 @@ class ProposalValidationReceipt:
         )
         object.__setattr__(self, "findings", findings)
         trace = tuple(ProposalGate(item) for item in self.gate_trace)
-        expected_prefix = ORDERED_PROPOSAL_GATES[: len(trace)]
-        if not trace or trace != expected_prefix:
-            raise ProposalValidationError("proposal gate trace is incomplete or unordered")
+        if trace != ORDERED_PROPOSAL_GATES:
+            raise ProposalValidationError(
+                "proposal gate trace must cover every ordered proposal gate"
+            )
         object.__setattr__(self, "gate_trace", trace)
+        if not isinstance(self.accepted, bool):
+            raise ProposalValidationError("accepted must be a boolean")
         if bool(self.accepted) == bool(findings):
             raise ProposalValidationError(
                 "accepted proposals have no findings; rejected proposals require findings"
@@ -1198,6 +1217,47 @@ class ProposalValidationReceipt:
     def completion_authoritative(self) -> bool:
         return False
 
+    @property
+    def proposal_gate_evidence(self) -> Mapping[str, Any]:
+        """Project explicit proposal-owned gate results for the parent join.
+
+        The projection is derived exclusively from this content-addressed
+        receipt.  It makes positive gate coverage visible without upgrading
+        proposal admission into semantic-proof or completion authority.
+        """
+
+        gates: dict[str, Any] = {}
+        for name, members in PROPOSAL_OWNED_GATE_GROUPS:
+            codes = _strings(
+                finding.code.value
+                for finding in self.findings
+                if finding.gate in members
+            )
+            gates[name] = {
+                # Findings are intentionally bounded.  A rejected receipt may
+                # therefore have additional failures that are not projected;
+                # only the globally accepted verdict can support a positive
+                # per-gate claim.
+                "passed": self.accepted and not codes,
+                "finding_codes": codes,
+            }
+        payload = {
+            "schema": PROPOSAL_GATE_EVIDENCE_SCHEMA,
+            "proposal_id": self.proposal_id,
+            "policy_id": self.policy_id,
+            "receipt_id": self.receipt_id,
+            "repository_tree_id": self.repository_tree_id,
+            "objective_id": self.objective_id,
+            "diff_digest": self.diff_digest,
+            "gates": gates,
+            "all_owned_gates_passed": all(
+                item["passed"] for item in gates.values()
+            ),
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+        return {**payload, "evidence_id": _identity(payload)}
+
     def _identity_payload(self) -> dict[str, Any]:
         return {
             "schema": PROPOSAL_VALIDATION_RECEIPT_SCHEMA,
@@ -1228,6 +1288,7 @@ class ProposalValidationReceipt:
             "proof_authoritative": False,
             "code_proof_authoritative": False,
             "completion_authoritative": False,
+            "proposal_gate_evidence": self.proposal_gate_evidence,
         }
 
     @classmethod
@@ -1287,6 +1348,13 @@ class ProposalValidationReceipt:
             and claimed_requirements != receipt.proved_requirement_ids
         ):
             raise ProposalValidationError("proposal requirement claims mismatch")
+        claimed_gate_evidence = payload.get("proposal_gate_evidence")
+        if (
+            not isinstance(claimed_gate_evidence, Mapping)
+            or _canonical(claimed_gate_evidence)
+            != _canonical(receipt.proposal_gate_evidence)
+        ):
+            raise ProposalValidationError("proposal gate evidence mismatch")
         return receipt
 
     def with_dispatch_outcome(
@@ -2276,6 +2344,8 @@ __all__ = [
     "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID",
     "ORDERED_PROPOSAL_GATES",
     "ParsedPatchFile",
+    "PROPOSAL_GATE_EVIDENCE_SCHEMA",
+    "PROPOSAL_OWNED_GATE_GROUPS",
     "PROPOSAL_REJECTION_EVIDENCE_SCHEMA",
     "PROPOSAL_VALIDATION_POLICY_SCHEMA",
     "PROPOSAL_VALIDATION_RECEIPT_SCHEMA",

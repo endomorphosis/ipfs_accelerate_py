@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION,
     PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,
     ProofCandidateNonAuthorityEvidence,
+    StrictValidationProofCompletionEvidence,
     compile_candidate_proof_scopes,
     derive_fresh_implementation_obligations,
     prove_proof_candidate_non_authority,
@@ -30,8 +31,18 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
     ConformanceBinding,
     EvidenceCheckStatus,
     FormalCompletionEvidence,
+    STRICT_VALIDATION_ACCEPTANCE_CRITERIA,
+    STRICT_VALIDATION_CHILD_GOAL_IDS,
+    STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION,
+    STRICT_VALIDATION_COMPLETION_CONFIGURATION_REVISION,
+    STRICT_VALIDATION_GATE_KINDS,
+    STRICT_VALIDATION_OBJECTIVE_ID,
+    STRICT_VALIDATION_OBJECTIVE_REVISION,
+    STRICT_VALIDATION_PRODUCING_TASK_IDS,
+    STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS,
     evaluate_completion_admission,
     evaluate_completion_evidence,
+    evaluate_strict_validation_completion,
     evaluate_transitive_impact_admission_closure,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
@@ -913,6 +924,438 @@ def _passing_authority_chain(
         expected_validation_policy_id=dag.policy_id,
     )
     return accepted, dag, obligations
+
+
+def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
+    accepted, _passing_dag, obligations = _passing_authority_chain(tmp_path)
+    proof_witness = prove_proof_candidate_non_authority(
+        _proof_receipt(obligations, authoritative=False),
+        obligations,
+        objective_id=PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
+        proposal_validation=accepted,
+        validation_dag=_passing_dag,
+    )
+    proof_projection = proof_witness.strict_validation_completion_evidence()
+
+    impact_proposal, impact_policy, _entry = _proposal(
+        task_id="ASI-032",
+        objective_id=TRANSITIVE_IMPACT_OBJECTIVE_ID,
+    )
+    impact_accepted = validate_proposal(
+        impact_proposal,
+        policy=impact_policy,
+    )
+    graph = ImpactDependencyGraph(
+        repository_tree_id=impact_proposal.repository_tree_id,
+        dependencies={
+            "pkg/service.py": ("pkg/core.py",),
+            "test/api/test_service.py": ("pkg/service.py",),
+        },
+        validation_targets={VALIDATION_ID: ("test/api/test_service.py",)},
+    )
+    report = ValidationScheduler(runner=_runner).run_validated(
+        impact_accepted,
+        (_service_validation(),),
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        seeded_defect_id="seed:transitive",
+        seeded_defect_path="pkg/core.py",
+        dependency_state="fixture",
+    )
+    impact_dag = ValidationDAGReceipt.from_dict(
+        report["validation_dag_receipt"]
+    )
+    validation_projection = (
+        impact_dag.strict_validation_completion_evidence()
+    )
+
+    now = datetime(2026, 7, 25, 10, 0, tzinfo=timezone.utc)
+    repository_id = accepted.proposal.repository_id
+    repository_tree = accepted.proposal.repository_tree_id
+    validation_command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_proposal_validation.py "
+        "test/api/test_agent_supervisor_validation_dag.py "
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py -q"
+    )
+    completion_evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-089",
+            validation_receipt={
+                "status": "passed",
+                "repository_id": repository_id,
+                "tree_id": repository_tree,
+                "objective_id": STRICT_VALIDATION_OBJECTIVE_ID,
+                "operational_receipt_id": validation_projection.evidence_id,
+                "validation_policy_id": (
+                    validation_projection.validation_policy_id
+                ),
+                "command": validation_command,
+            },
+            validation_passed=True,
+            repository_id=repository_id,
+            repository_tree=repository_tree,
+            freshness={"fresh": True},
+            observed_at=now - timedelta(minutes=2),
+            provenance_cid=f"validation:asi-089:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            STRICT_VALIDATION_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_id": repository_id,
+        "repository_tree": repository_tree,
+        "evaluated_at": (now - timedelta(minutes=1)).isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "proposal_validation.py"
+                        if index == 1
+                        else "formal_plan_conformance.py"
+                    )
+                ),
+                "validation": validation_command,
+                "validation_receipt_ids": [
+                    f"validation:asi-089:{index}"
+                ],
+            }
+            for index, criterion in enumerate(
+                STRICT_VALIDATION_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    children = [
+        {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "completion_gate": {
+                "passed": True,
+                "evaluated_evidence": {
+                    "repository_id": repository_id,
+                    "repository_tree": repository_tree,
+                    "evaluated_at": (
+                        now - timedelta(minutes=3)
+                    ).isoformat(),
+                    "validation_evidence": [
+                        {
+                            "valid": True,
+                            "evidence": {
+                                "repository_id": repository_id,
+                                "repository_tree": repository_tree,
+                            },
+                        }
+                    ],
+                },
+            },
+            "proof_requirements": [
+                {
+                    "repository_tree": repository_tree,
+                    "provenance_id": f"proof:{goal_id}:current",
+                    "required_assurance": "solver_checked",
+                    "authoritative_assurance": "solver_checked",
+                    "assurance_satisfied": True,
+                    "contradicted": False,
+                    "proof_verdict": "proved",
+                    "freshness": "current",
+                    "reason_codes": [],
+                }
+            ],
+        }
+        for goal_id in STRICT_VALIDATION_CHILD_GOAL_IDS
+    ]
+    binding = {
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": STRICT_VALIDATION_OBJECTIVE_ID,
+        "objective_revision": STRICT_VALIDATION_OBJECTIVE_REVISION,
+        "analyzer_version": (
+            STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            STRICT_VALIDATION_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    members = [
+        {
+            "member_id": "asi-089-implementation-validation",
+            "evidence_channel": "implementation-validation",
+            "receipt_cid": "scan:asi-089:implementation-validation",
+            "binding": dict(binding),
+            "scan_mode": "exhaustive",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "finished_at": (now - timedelta(minutes=4)).isoformat(),
+        },
+        {
+            "member_id": "asi-089-independent-replay",
+            "evidence_channel": "independent-replay",
+            "receipt_cid": "scan:asi-089:independent-replay",
+            "binding": dict(binding),
+            "scan_mode": "exhaustive",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "finished_at": (now - timedelta(minutes=3)).isoformat(),
+        },
+    ]
+    return {
+        "repository_id": repository_id,
+        "repository_tree": repository_tree,
+        "producing_tasks": [
+            {"task_id": task_id, "status": "completed"}
+            for task_id in STRICT_VALIDATION_PRODUCING_TASK_IDS
+        ],
+        "child_goals": children,
+        "proposal_validation": accepted,
+        "validation_projection": validation_projection,
+        "proof_projection": proof_projection,
+        "evidence": completion_evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "binding": dict(binding),
+        },
+        "exhaustion_quorum": {
+            "required_members": (
+                STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS
+            ),
+            "member_count": len(members),
+            "satisfied": True,
+            "quorum_met": True,
+            "binding": dict(binding),
+            "members": members,
+        },
+        "now": now,
+        "freshness_seconds": 3600,
+    }
+
+
+def _assert_g040_rejected(packet: dict[str, object]) -> None:
+    decision = evaluate_strict_validation_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **packet,
+    )
+    assert decision.state is not GoalState.VERIFIED_COMPLETE
+    assert decision.verified is False
+    assert decision.reason_codes
+
+
+def test_g040_parent_completion_requires_closed_current_tree_proof_packet(
+    tmp_path: Path,
+) -> None:
+    assert STRICT_VALIDATION_OBJECTIVE_ID == "ASI-G040"
+    assert STRICT_VALIDATION_PRODUCING_TASK_IDS == (
+        "ASI-010",
+        "ASI-011",
+        "ASI-012",
+    )
+    assert STRICT_VALIDATION_CHILD_GOAL_IDS == (
+        "ASI-G100",
+        "ASI-G101",
+        "ASI-G102",
+    )
+    assert STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS == 2
+    assert len(STRICT_VALIDATION_ACCEPTANCE_CRITERIA) == 2
+    assert len(STRICT_VALIDATION_GATE_KINDS) == 9
+
+    packet = _g040_completion_packet(tmp_path)
+    proof_projection = packet["proof_projection"]
+    assert isinstance(
+        proof_projection,
+        StrictValidationProofCompletionEvidence,
+    )
+    assert (
+        StrictValidationProofCompletionEvidence.from_dict(
+            proof_projection.to_dict()
+        )
+        == proof_projection
+    )
+    with pytest.raises(ValueError, match="invalid field population"):
+        StrictValidationProofCompletionEvidence.from_dict(
+            {**proof_projection.to_dict(), "caller_claim": "complete"}
+        )
+
+    provisional = evaluate_strict_validation_completion(
+        current_state=GoalState.ACTIVE,
+        **packet,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.verified is False
+    assert "provisional_transition_required" in provisional.reason_codes
+    assert provisional.gate is not None and provisional.gate.passed
+
+    verified = evaluate_strict_validation_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **packet,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified is True
+    assert verified.gate is not None and verified.gate.passed
+
+    delegated = packet["validation_projection"].evaluate_parent_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            key: value
+            for key, value in packet.items()
+            if key != "validation_projection"
+        },
+    )
+    assert delegated.state is GoalState.VERIFIED_COMPLETE
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        "missing_producer",
+        "duplicate_producer",
+        "active_producer",
+        "missing_child",
+        "duplicate_child",
+        "unverified_child",
+        "stale_child",
+        "proofless_child",
+        "foreign_child_validation",
+        "foreign_child_proof",
+        "bare_scheduler_projection",
+        "bare_proof_projection",
+        "missing_evidence",
+        "failed_extra_evidence",
+        "stale_extra_evidence",
+        "unbound_coverage",
+        "unsafe_analyzer",
+        "under_quorum",
+        "duplicate_quorum",
+        "stale_quorum",
+    ),
+)
+def test_g040_parent_rejects_open_or_unbound_completion_packet(
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    packet = _g040_completion_packet(tmp_path)
+    if failure == "missing_producer":
+        packet["producing_tasks"] = packet["producing_tasks"][:-1]
+    elif failure == "duplicate_producer":
+        packet["producing_tasks"][-1]["task_id"] = (
+            packet["producing_tasks"][0]["task_id"]
+        )
+    elif failure == "active_producer":
+        packet["producing_tasks"][0]["status"] = "active"
+    elif failure == "missing_child":
+        packet["child_goals"] = packet["child_goals"][:-1]
+    elif failure == "duplicate_child":
+        packet["child_goals"][-1]["goal_id"] = (
+            packet["child_goals"][0]["goal_id"]
+        )
+    elif failure == "unverified_child":
+        packet["child_goals"][0]["verified"] = False
+    elif failure == "stale_child":
+        packet["child_goals"][0]["completion_gate"][
+            "evaluated_evidence"
+        ]["evaluated_at"] = (
+            packet["now"] - timedelta(hours=2)
+        ).isoformat()
+    elif failure == "proofless_child":
+        packet["child_goals"][0]["proof_requirements"] = []
+    elif failure == "foreign_child_validation":
+        packet["child_goals"][0]["completion_gate"][
+            "evaluated_evidence"
+        ]["validation_evidence"][0]["evidence"][
+            "repository_tree"
+        ] = "tree:foreign"
+    elif failure == "foreign_child_proof":
+        packet["child_goals"][0]["proof_requirements"][0][
+            "repository_tree"
+        ] = "tree:foreign"
+    elif failure == "bare_scheduler_projection":
+        packet["validation_projection"] = (
+            packet["validation_projection"].to_dict()
+            | {"evidence_id": "forged"}
+        )
+    elif failure == "bare_proof_projection":
+        packet["proof_projection"] = (
+            packet["proof_projection"].to_dict()
+            | {"qualifies": False}
+        )
+    elif failure == "missing_evidence":
+        packet["evidence"] = packet["evidence"][:-1]
+    elif failure in {"failed_extra_evidence", "stale_extra_evidence"}:
+        original = packet["evidence"][0]
+        packet["evidence"] = (
+            *packet["evidence"],
+            replace(
+                original,
+                validation_passed=failure != "failed_extra_evidence",
+                validation_receipt={
+                    **original.validation_receipt,
+                    "status": (
+                        "failed"
+                        if failure == "failed_extra_evidence"
+                        else "passed"
+                    ),
+                },
+                freshness={
+                    "fresh": failure != "stale_extra_evidence"
+                },
+                observed_at=(
+                    packet["now"] - timedelta(hours=2)
+                    if failure == "stale_extra_evidence"
+                    else original.observed_at
+                ),
+                provenance_cid=f"validation:asi-089:{failure}",
+            ),
+        )
+    elif failure == "unbound_coverage":
+        packet["coverage"]["criteria"][0][
+            "validation_receipt_ids"
+        ] = ["validation:foreign"]
+    elif failure == "unsafe_analyzer":
+        packet["analyzer_health"]["safe_for_completion_reasoning"] = False
+    elif failure == "under_quorum":
+        packet["exhaustion_quorum"]["members"].pop()
+        packet["exhaustion_quorum"]["member_count"] = 1
+    elif failure == "duplicate_quorum":
+        packet["exhaustion_quorum"]["members"][1]["receipt_cid"] = (
+            packet["exhaustion_quorum"]["members"][0]["receipt_cid"]
+        )
+    else:
+        packet["exhaustion_quorum"]["members"][0]["finished_at"] = (
+            packet["now"] - timedelta(hours=2)
+        ).isoformat()
+
+    _assert_g040_rejected(packet)
+
+
+def test_g040_parent_rejects_caller_lowered_exhaustive_quorum(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="must equal the configured ASI-G040 count",
+    ):
+        evaluate_strict_validation_completion(
+            required_exhaustive_receipts=1,
+            **_g040_completion_packet(tmp_path),
+        )
 
 
 def test_provider_proof_candidate_never_becomes_code_completion_evidence(

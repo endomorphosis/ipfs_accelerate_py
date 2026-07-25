@@ -32,7 +32,11 @@ from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ImpactValidationDAGReceipt,
     ImpactValidationKind,
     RepositoryValidationPolicy,
+    STRICT_VALIDATION_GATE_KINDS,
+    STRICT_VALIDATION_PARENT_OBJECTIVE_ID,
+    STRICT_VALIDATION_SCHEDULER_GATE_KINDS,
     TRANSITIVE_IMPACT_REQUIREMENT_ID,
+    StrictValidationDAGCompletionEvidence,
     ValidationDAGError,
     ValidationDAGNodeRecord,
     ValidationDAGReceipt,
@@ -295,6 +299,129 @@ def test_transitive_impact_selects_failing_test_and_proves_exact_g101_requiremen
     assert G102_PROOF_CANDIDATE_REQUIREMENT not in receipt.proved_requirement_ids
 
 
+def test_strict_validation_parent_projection_binds_complete_scheduler_gate_surface(
+    tmp_path: Path,
+) -> None:
+    report, _calls = _failing_transitive_report(tmp_path)
+    receipt = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
+
+    evidence = receipt.strict_validation_completion_evidence()
+    restored = StrictValidationDAGCompletionEvidence.from_dict(
+        evidence.to_dict()
+    )
+
+    assert restored.evidence_id == evidence.evidence_id
+    assert restored.validation_dag.receipt_id == receipt.receipt_id
+    assert restored.objective_id == STRICT_VALIDATION_PARENT_OBJECTIVE_ID
+    assert restored.child_objective_id == OBJECTIVE_ID
+    assert restored.requirement_id == G101_TRANSITIVE_IMPACT_REQUIREMENT
+    assert restored.proved_requirement_ids == (
+        G101_TRANSITIVE_IMPACT_REQUIREMENT,
+    )
+    assert restored.repository_tree_id == TREE_ID
+    assert restored.validation_policy_id == receipt.policy_id
+    assert restored.operational_receipt_id == receipt.receipt_id
+    assert restored.gate_kinds == STRICT_VALIDATION_GATE_KINDS == (
+        "schema",
+        "authority",
+        "patch",
+        "path",
+        "ast_interface",
+        "impact_test",
+        "semantic_proof",
+        "merge",
+        "freshness",
+    )
+    assert (
+        restored.scheduler_gate_kinds
+        == STRICT_VALIDATION_SCHEDULER_GATE_KINDS
+        == ("impact_test", "semantic_proof", "merge", "freshness")
+    )
+    assert restored.impact_test_node_ids == tuple(
+        node.node_id
+        for node in receipt.nodes
+        if node.validation_id == VALIDATION_ID
+    )
+    assert callable(restored.evaluate_parent_completion)
+    with pytest.raises(
+        TypeError,
+        match="supplied by the scheduler evidence",
+    ):
+        restored.evaluate_parent_completion(validation_projection={})
+    assert restored.qualifies is True
+    assert restored.completion_authoritative is False
+
+    payload = evidence.to_dict()
+    assert payload["qualifies"] is True
+    assert payload["completion_authoritative"] is False
+    assert payload["gate_kinds"] == STRICT_VALIDATION_GATE_KINDS
+    assert payload["receipt_id"] == payload["operational_receipt_id"]
+    assert payload["proved_requirement_ids"] == (
+        G101_TRANSITIVE_IMPACT_REQUIREMENT,
+    )
+
+
+def test_strict_validation_parent_projection_rejects_tamper_and_non_witness_dag(
+    tmp_path: Path,
+) -> None:
+    report, _calls = _failing_transitive_report(tmp_path)
+    receipt = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
+    payload = receipt.strict_validation_completion_evidence().to_dict()
+
+    payload["gate_kinds"] = tuple(payload["gate_kinds"])[:-1]
+    with pytest.raises(
+        ValidationDAGError,
+        match="completion projection is inconsistent",
+    ):
+        StrictValidationDAGCompletionEvidence.from_dict(payload)
+
+    truncated = receipt.strict_validation_completion_evidence().to_dict()
+    truncated.pop("scheduler_gate_kinds")
+    with pytest.raises(
+        ValidationDAGError,
+        match="completion evidence is incomplete",
+    ):
+        StrictValidationDAGCompletionEvidence.from_dict(truncated)
+
+    unknown = receipt.strict_validation_completion_evidence().to_dict()
+    unknown["caller_authority"] = True
+    with pytest.raises(
+        ValidationDAGError,
+        match="unknown fields: caller_authority",
+    ):
+        StrictValidationDAGCompletionEvidence.from_dict(unknown)
+
+    completion_gate_tamper = deepcopy(
+        receipt.strict_validation_completion_evidence().to_dict()
+    )
+    completion_gate = next(
+        gate
+        for gate in completion_gate_tamper["validation_dag"][
+            "authority_gates"
+        ]
+        if gate["gate"] == "completion"
+    )
+    completion_gate["disposition"] = "pending"
+    with pytest.raises(
+        ValidationDAGError,
+        match="identity mismatch|disposition does not match",
+    ):
+        StrictValidationDAGCompletionEvidence.from_dict(
+            completion_gate_tamper
+        )
+
+    detached = receipt.to_dict()
+    detached["transitive_evidence"] = None
+    detached["proved_requirement_ids"] = []
+    detached.pop("receipt_id", None)
+    without_witness = ValidationDAGReceipt.from_dict(detached)
+    with pytest.raises(
+        ValidationDAGError,
+        match="does not qualify.*parent completion projection",
+    ):
+        without_witness.strict_validation_completion_evidence()
+
+
 def test_passing_all_stage_dag_cannot_claim_code_proof_or_completion_authority(
     tmp_path: Path,
 ) -> None:
@@ -378,6 +505,11 @@ def test_passing_all_stage_dag_cannot_claim_code_proof_or_completion_authority(
     assert report["completion_authoritative"] is False
     assert report["merge_eligible"] is False
     assert G102_PROOF_CANDIDATE_REQUIREMENT not in receipt.proved_requirement_ids
+    with pytest.raises(
+        ValidationDAGError,
+        match="does not qualify.*parent completion projection",
+    ):
+        receipt.strict_validation_completion_evidence()
 
 
 def test_stale_impact_graph_is_rejected_before_runner_dispatch(
