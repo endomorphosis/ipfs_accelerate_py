@@ -57,6 +57,12 @@ CODE_OBLIGATION_CACHE_KEY_SCHEMA = (
 PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-candidate-non-authority-evidence@1"
 )
+STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "strict-validation-proof-completion-evidence@1"
+)
+STRICT_VALIDATION_PARENT_OBJECTIVE_ID = "ASI-G040"
+STRICT_VALIDATION_PROOF_GATE_KINDS = ("semantic_proof",)
 PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID = (
     "006818797857632260116084792540150258746"
 )
@@ -3447,6 +3453,13 @@ class ProofCandidateNonAuthorityEvidence:
             blocked_reason=blocked_reason,
         )
 
+    def strict_validation_completion_evidence(
+        self,
+    ) -> "StrictValidationProofCompletionEvidence":
+        """Project the proof-owned portion of the ASI-G040 parent join."""
+
+        return StrictValidationProofCompletionEvidence(witness=self)
+
     def _identity_payload(self) -> dict[str, Any]:
         return {
             "schema": PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA,
@@ -3539,6 +3552,184 @@ class ProofCandidateNonAuthorityEvidence:
             raise ValueError(
                 "proof-candidate evidence requirement projection is inconsistent"
             )
+        return result
+
+
+@dataclass(frozen=True)
+class StrictValidationProofCompletionEvidence:
+    """Tamper-evident proof-owned input to the ASI-G040 completion join.
+
+    The embedded G102 witness is reconstructed in full, which replays the
+    candidate receipt against its exact fresh implementation obligations and
+    re-derives the closed completion-admission gate.  This projection exposes
+    that semantic/proof boundary to the parent without acquiring completion
+    authority itself.
+    """
+
+    witness: ProofCandidateNonAuthorityEvidence
+    evidence_id: str = ""
+
+    def __post_init__(self) -> None:
+        witness = self.witness
+        if not isinstance(witness, ProofCandidateNonAuthorityEvidence):
+            if not isinstance(witness, Mapping):
+                raise ValueError(
+                    "strict validation proof evidence requires a G102 witness"
+                )
+            witness = ProofCandidateNonAuthorityEvidence.from_dict(witness)
+        object.__setattr__(self, "witness", witness)
+        if (
+            witness.objective_id
+            != PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+            or witness.proved_requirement_ids
+            != (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
+            or witness.binding_result.valid
+            or witness.completion_admission.admitted
+            or witness.code_proof_authoritative
+            or witness.completion_authoritative
+        ):
+            raise ValueError(
+                "G102 witness does not qualify for the strict validation "
+                "proof projection"
+            )
+        claimed = str(self.evidence_id or "").strip()
+        object.__setattr__(self, "evidence_id", "")
+        derived = content_identity(self._identity_payload())
+        if claimed and claimed != derived:
+            raise ValueError(
+                "strict validation proof evidence identity mismatch"
+            )
+        object.__setattr__(self, "evidence_id", derived)
+
+    @property
+    def objective_id(self) -> str:
+        return STRICT_VALIDATION_PARENT_OBJECTIVE_ID
+
+    @property
+    def child_objective_id(self) -> str:
+        return self.witness.objective_id
+
+    @property
+    def repository_id(self) -> str:
+        return self.witness.obligation_set.binding.repository_id
+
+    @property
+    def repository_tree_id(self) -> str:
+        return self.witness.obligation_set.binding.repository_tree_id
+
+    @property
+    def validation_policy_id(self) -> str:
+        return self.witness.validation_dag.policy_id
+
+    @property
+    def operational_receipt_id(self) -> str:
+        return self.witness.evidence_id
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return self.witness.proved_requirement_ids
+
+    @property
+    def gate_kinds(self) -> tuple[str, ...]:
+        return STRICT_VALIDATION_PROOF_GATE_KINDS
+
+    @property
+    def qualifies(self) -> bool:
+        return True
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return False
+
+    @property
+    def proof_authoritative(self) -> bool:
+        return False
+
+    @property
+    def code_proof_authoritative(self) -> bool:
+        return False
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA,
+            "objective_id": self.objective_id,
+            "child_objective_id": self.child_objective_id,
+            "repository_id": self.repository_id,
+            "repository_tree_id": self.repository_tree_id,
+            "validation_policy_id": self.validation_policy_id,
+            "operational_receipt_id": self.operational_receipt_id,
+            "proved_requirement_ids": self.proved_requirement_ids,
+            "gate_kinds": self.gate_kinds,
+            "qualifies": self.qualifies,
+            "proof_authoritative": False,
+            "code_proof_authoritative": False,
+            "completion_authoritative": False,
+            "witness": self.witness.to_dict(),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._identity_payload(), "evidence_id": self.evidence_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "StrictValidationProofCompletionEvidence":
+        required_fields = {
+            "schema",
+            "objective_id",
+            "child_objective_id",
+            "repository_id",
+            "repository_tree_id",
+            "validation_policy_id",
+            "operational_receipt_id",
+            "proved_requirement_ids",
+            "gate_kinds",
+            "qualifies",
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+            "witness",
+            "evidence_id",
+        }
+        supplied_fields = {str(name) for name in payload}
+        if supplied_fields != required_fields:
+            missing = sorted(required_fields - supplied_fields)
+            unknown = sorted(supplied_fields - required_fields)
+            details = []
+            if missing:
+                details.append("missing: " + ", ".join(missing))
+            if unknown:
+                details.append("unknown: " + ", ".join(unknown))
+            raise ValueError(
+                "strict validation proof evidence has an invalid field "
+                "population (" + "; ".join(details) + ")"
+            )
+        if (
+            payload.get("schema")
+            != STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA
+        ):
+            raise ValueError(
+                "unsupported strict validation proof completion schema"
+            )
+        witness_payload = payload.get("witness")
+        if not isinstance(witness_payload, Mapping):
+            raise ValueError(
+                "strict validation proof evidence is missing its witness"
+            )
+        result = cls(
+            witness=ProofCandidateNonAuthorityEvidence.from_dict(
+                witness_payload
+            ),
+            evidence_id=str(payload.get("evidence_id") or ""),
+        )
+        expected = result._identity_payload()
+        for name, value in expected.items():
+            if name == "witness":
+                continue
+            if canonical_json(payload.get(name)) != canonical_json(value):
+                raise ValueError(
+                    "strict validation proof projection is inconsistent"
+                )
         return result
 
 
@@ -3836,6 +4027,9 @@ __all__ = [
     "PROOF_CANDIDATE_COMPLETION_CONFIGURATION_REVISION",
     "PROOF_CANDIDATE_OBJECTIVE_ID",
     "PROOF_CANDIDATE_OBJECTIVE_REVISION",
+    "STRICT_VALIDATION_PARENT_OBJECTIVE_ID",
+    "STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA",
+    "STRICT_VALIDATION_PROOF_GATE_KINDS",
     "CandidateChangeKind",
     "CandidateDiffEntry",
     "CandidateFileDiff",
@@ -3859,6 +4053,7 @@ __all__ = [
     "ImplementationResultEvidence",
     "CodeProofReceiptBindingResult",
     "ProofCandidateNonAuthorityEvidence",
+    "StrictValidationProofCompletionEvidence",
     "PROOF_SCOPE_SCHEMA",
     "PROOF_SCOPE_SET_SCHEMA",
     "ProofScopeCompilationStats",

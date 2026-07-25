@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
     ImplementationProposal,
     NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
     ORDERED_PROPOSAL_GATES,
+    PROPOSAL_GATE_EVIDENCE_SCHEMA,
     ProposalOperation,
     ProposalFindingCode,
     ProposalGate,
@@ -237,6 +238,77 @@ def test_accepts_an_exactly_bound_effectful_proposal() -> None:
     assert result.code_proof_authoritative is False
     assert result.receipt.code_proof_authoritative is False
     assert ProposalValidationResult.from_dict(result.to_dict()) == result
+
+
+def test_receipt_projects_tree_bound_explicit_proposal_gate_evidence() -> None:
+    result = validate_implementation_proposal(_proposal(), policy=_policy())
+
+    evidence = result.receipt.proposal_gate_evidence
+
+    assert evidence["schema"] == PROPOSAL_GATE_EVIDENCE_SCHEMA
+    assert evidence["repository_tree_id"] == TREE_ID
+    assert evidence["objective_id"] == OBJECTIVE_ID
+    assert evidence["proposal_id"] == result.proposal.proposal_id
+    assert evidence["policy_id"] == result.policy.policy_id
+    assert evidence["receipt_id"] == result.receipt.receipt_id
+    assert evidence["diff_digest"] == result.proposal.diff_digest
+    assert evidence["all_owned_gates_passed"] is True
+    assert evidence["proof_authoritative"] is False
+    assert evidence["completion_authoritative"] is False
+    assert set(evidence["gates"]) == {
+        "schema",
+        "authority",
+        "patch",
+        "path",
+        "ast_interface",
+    }
+    assert all(
+        gate == {"passed": True, "finding_codes": ()}
+        for gate in evidence["gates"].values()
+    )
+    restored = ProposalValidationResult.from_dict(result.to_dict())
+    assert restored.receipt.proposal_gate_evidence == evidence
+
+
+def test_receipt_rejects_partial_gate_trace_and_tampered_gate_projection() -> None:
+    result = validate_implementation_proposal(_proposal(), policy=_policy())
+
+    receipt_values = {
+        "proposal_id": result.receipt.proposal_id,
+        "policy_id": result.receipt.policy_id,
+        "repository_tree_id": result.receipt.repository_tree_id,
+        "objective_id": result.receipt.objective_id,
+        "diff_digest": result.receipt.diff_digest,
+        "allowed_paths": result.receipt.allowed_paths,
+        "changed_paths": result.receipt.changed_paths,
+        "accepted": True,
+        "findings": (),
+        "gate_trace": ORDERED_PROPOSAL_GATES[:-1],
+    }
+    with pytest.raises(ProposalValidationError, match="every ordered proposal gate"):
+        ProposalValidationReceipt(**receipt_values)
+
+    payload = deepcopy(result.to_dict())
+    payload["receipt"]["proposal_gate_evidence"]["gates"]["authority"][
+        "passed"
+    ] = False
+    with pytest.raises(ProposalValidationError, match="gate evidence mismatch"):
+        ProposalValidationResult.from_dict(payload)
+
+    payload = deepcopy(result.to_dict())
+    del payload["receipt"]["proposal_gate_evidence"]
+    with pytest.raises(ProposalValidationError, match="gate evidence mismatch"):
+        ProposalValidationResult.from_dict(payload)
+
+
+def test_receipt_schema_rejects_truthy_non_boolean_verdict() -> None:
+    payload = deepcopy(
+        validate_implementation_proposal(_proposal(), policy=_policy()).to_dict()
+    )
+    payload["receipt"]["accepted"] = "true"
+
+    with pytest.raises(ProposalValidationError, match="accepted must be a boolean"):
+        ProposalValidationResult.from_dict(payload)
 
 
 def test_rejects_python_comment_or_format_only_rewrite_as_non_semantic() -> None:

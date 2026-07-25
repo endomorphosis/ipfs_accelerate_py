@@ -80,6 +80,28 @@ TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION = (
 TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION = (
     "strict-transitive-impact-completion@1"
 )
+STRICT_VALIDATION_PARENT_OBJECTIVE_ID = "ASI-G040"
+STRICT_VALIDATION_DAG_COMPLETION_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "strict-validation-dag-completion-evidence@1"
+)
+STRICT_VALIDATION_GATE_KINDS = (
+    "schema",
+    "authority",
+    "patch",
+    "path",
+    "ast_interface",
+    "impact_test",
+    "semantic_proof",
+    "merge",
+    "freshness",
+)
+STRICT_VALIDATION_SCHEDULER_GATE_KINDS = (
+    "impact_test",
+    "semantic_proof",
+    "merge",
+    "freshness",
+)
 TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA = (
     (
         "The validation DAG is derived from the canonical changed-file and "
@@ -3253,6 +3275,21 @@ class ValidationDAGReceipt:
             blocked_reason=blocked_reason,
         )
 
+    def strict_validation_completion_evidence(
+        self,
+    ) -> "StrictValidationDAGCompletionEvidence":
+        """Project the scheduler-owned part of the ASI-G040 proof packet.
+
+        The projection is deliberately narrower than parent completion.  It
+        authenticates impact-test selection and the downstream
+        semantic/proof/merge/freshness authority boundaries, but cannot turn a
+        validation result into completion authority.  The ASI-G040 evaluator
+        must combine it with proposal and code-proof producers plus separate
+        fresh passing completion validations.
+        """
+
+        return StrictValidationDAGCompletionEvidence(validation_dag=self)
+
     def to_dict(self) -> dict[str, object]:
         return {
             **self._identity_payload(),
@@ -3343,6 +3380,276 @@ class ValidationDAGReceipt:
         if claimed and claimed != base.proved_requirement_ids:
             raise ValidationDAGError("validation DAG requirement claims mismatch")
         return base
+
+
+@dataclass(frozen=True)
+class StrictValidationDAGCompletionEvidence:
+    """Tamper-evident scheduler projection for the ASI-G040 parent gate.
+
+    ASI-G101's adversarial witness is intentionally a *failed* validation: the
+    seeded transitive consumer must detect the defect and every downstream
+    authority gate must close.  This record makes that counter-example usable
+    by the parent objective without allowing a caller-authored summary to
+    replace the complete validation population, graph, dependency trace, or
+    authority-gate records.
+    """
+
+    validation_dag: ValidationDAGReceipt
+    evidence_id: str = ""
+
+    def __post_init__(self) -> None:
+        receipt = self.validation_dag
+        if not isinstance(receipt, ValidationDAGReceipt):
+            if not isinstance(receipt, Mapping):
+                raise ValidationDAGError(
+                    "strict validation evidence requires a validation DAG receipt"
+                )
+            receipt = ValidationDAGReceipt.from_dict(receipt)
+        object.__setattr__(self, "validation_dag", receipt)
+
+        transitive = receipt.transitive_evidence
+        gate_by_name = {gate.gate: gate for gate in receipt.authority_gates}
+        impact_nodes = tuple(
+            node
+            for node in receipt.nodes
+            if node.validation_id in receipt.required_validation_ids
+            and node.selected
+            and node.mandatory
+        )
+        if (
+            receipt.objective_id != TRANSITIVE_IMPACT_OBJECTIVE_ID
+            or transitive is None
+            or transitive.requirement_id != TRANSITIVE_IMPACT_REQUIREMENT_ID
+            or receipt.proved_requirement_ids
+            != (TRANSITIVE_IMPACT_REQUIREMENT_ID,)
+            or receipt.passed
+            or not receipt.coverage_complete
+            or receipt.uncovered_impact
+            or not receipt.required_validation_ids
+            or len(impact_nodes) != len(receipt.required_validation_ids)
+            or {node.validation_id for node in impact_nodes}
+            != set(receipt.required_validation_ids)
+            or any(
+                node.disposition is ValidationNodeDisposition.OMITTED
+                for node in impact_nodes
+            )
+            or set(gate_by_name) != set(REQUIRED_AUTHORITY_GATES)
+            or any(
+                gate.disposition
+                is not ValidationAuthorityDisposition.BLOCKED
+                for gate in gate_by_name.values()
+            )
+            or any(
+                gate.depends_on != receipt.selected_node_ids
+                for gate in gate_by_name.values()
+            )
+        ):
+            raise ValidationDAGError(
+                "validation DAG does not qualify for the strict validation "
+                "parent completion projection"
+            )
+
+        claimed = str(self.evidence_id or "").strip()
+        object.__setattr__(self, "evidence_id", "")
+        actual = _sha256_bytes(
+            _canonical_json(self._identity_payload()).encode("utf-8")
+        )
+        if claimed and claimed != actual:
+            raise ValidationDAGError(
+                "strict validation completion evidence identity mismatch"
+            )
+        object.__setattr__(self, "evidence_id", actual)
+
+    @property
+    def parent_objective_id(self) -> str:
+        return STRICT_VALIDATION_PARENT_OBJECTIVE_ID
+
+    @property
+    def objective_id(self) -> str:
+        """The parent objective consuming this scheduler projection."""
+
+        return self.parent_objective_id
+
+    @property
+    def child_objective_id(self) -> str:
+        return self.validation_dag.objective_id
+
+    @property
+    def requirement_id(self) -> str:
+        return TRANSITIVE_IMPACT_REQUIREMENT_ID
+
+    @property
+    def repository_tree_id(self) -> str:
+        return self.validation_dag.repository_tree_id
+
+    @property
+    def policy_id(self) -> str:
+        return self.validation_dag.policy_id
+
+    @property
+    def validation_policy_id(self) -> str:
+        return self.policy_id
+
+    @property
+    def operational_receipt_id(self) -> str:
+        return self.validation_dag.receipt_id
+
+    @property
+    def gate_kinds(self) -> tuple[str, ...]:
+        """Closed ASI-G040 gate vocabulary shared by all three producers."""
+
+        return STRICT_VALIDATION_GATE_KINDS
+
+    @property
+    def scheduler_gate_kinds(self) -> tuple[str, ...]:
+        return STRICT_VALIDATION_SCHEDULER_GATE_KINDS
+
+    @property
+    def qualifies(self) -> bool:
+        """Construction has re-derived every scheduler-owned invariant."""
+
+        return True
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (self.requirement_id,)
+
+    @property
+    def impact_test_node_ids(self) -> tuple[str, ...]:
+        required = set(self.validation_dag.required_validation_ids)
+        return tuple(
+            sorted(
+                node.node_id
+                for node in self.validation_dag.nodes
+                if node.selected
+                and node.mandatory
+                and node.validation_id in required
+            )
+        )
+
+    @property
+    def completion_authoritative(self) -> bool:
+        """The parent evaluator, never this projection, owns completion."""
+
+        return False
+
+    def evaluate_parent_completion(self, **kwargs: Any) -> Any:
+        """Delegate ASI-G040 lifecycle evaluation with this bound projection."""
+
+        if "validation_projection" in kwargs:
+            raise TypeError(
+                "validation_projection is supplied by the scheduler evidence"
+            )
+        from .formal_plan_conformance import (
+            evaluate_strict_validation_completion,
+        )
+
+        return evaluate_strict_validation_completion(
+            validation_projection=self,
+            **kwargs,
+        )
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema": STRICT_VALIDATION_DAG_COMPLETION_EVIDENCE_SCHEMA,
+            "objective_id": self.objective_id,
+            "parent_objective_id": self.parent_objective_id,
+            "child_objective_id": self.child_objective_id,
+            "requirement_id": self.requirement_id,
+            "proved_requirement_ids": self.proved_requirement_ids,
+            "repository_tree_id": self.repository_tree_id,
+            "policy_id": self.policy_id,
+            "validation_policy_id": self.validation_policy_id,
+            "receipt_id": self.operational_receipt_id,
+            "operational_receipt_id": self.operational_receipt_id,
+            "gate_kinds": self.gate_kinds,
+            "scheduler_gate_kinds": self.scheduler_gate_kinds,
+            "impact_test_node_ids": self.impact_test_node_ids,
+            "validation_dag": self.validation_dag.to_dict(),
+            "qualifies": self.qualifies,
+            "completion_authoritative": False,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity_payload(), "evidence_id": self.evidence_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "StrictValidationDAGCompletionEvidence":
+        required_fields = (
+            "schema",
+            "objective_id",
+            "parent_objective_id",
+            "child_objective_id",
+            "requirement_id",
+            "proved_requirement_ids",
+            "repository_tree_id",
+            "policy_id",
+            "validation_policy_id",
+            "receipt_id",
+            "operational_receipt_id",
+            "gate_kinds",
+            "scheduler_gate_kinds",
+            "impact_test_node_ids",
+            "validation_dag",
+            "qualifies",
+            "completion_authoritative",
+            "evidence_id",
+        )
+        missing = tuple(name for name in required_fields if name not in payload)
+        if missing:
+            raise ValidationDAGError(
+                "strict validation completion evidence is incomplete: "
+                + ", ".join(missing)
+            )
+        unknown = tuple(
+            sorted(str(name) for name in payload if name not in required_fields)
+        )
+        if unknown:
+            raise ValidationDAGError(
+                "strict validation completion evidence has unknown fields: "
+                + ", ".join(unknown)
+            )
+        schema = str(payload.get("schema") or "")
+        if schema != STRICT_VALIDATION_DAG_COMPLETION_EVIDENCE_SCHEMA:
+            raise ValidationDAGError(
+                f"unsupported strict validation completion schema: {schema}"
+            )
+        dag_payload = payload.get("validation_dag")
+        if not isinstance(dag_payload, Mapping):
+            raise ValidationDAGError(
+                "strict validation evidence is missing its validation DAG"
+            )
+        evidence = cls(
+            validation_dag=ValidationDAGReceipt.from_dict(dag_payload),
+            evidence_id=str(payload.get("evidence_id") or ""),
+        )
+        expected = evidence._identity_payload()
+        for name in (
+            "objective_id",
+            "parent_objective_id",
+            "child_objective_id",
+            "requirement_id",
+            "proved_requirement_ids",
+            "repository_tree_id",
+            "policy_id",
+            "validation_policy_id",
+            "receipt_id",
+            "operational_receipt_id",
+            "gate_kinds",
+            "scheduler_gate_kinds",
+            "impact_test_node_ids",
+            "qualifies",
+            "completion_authoritative",
+        ):
+            if name in payload and _json_safe(payload[name]) != _json_safe(
+                expected[name]
+            ):
+                raise ValidationDAGError(
+                    "strict validation completion projection is inconsistent"
+                )
+        return evidence
 
 
 def _evaluate_transitive_impact_objective_completion(
