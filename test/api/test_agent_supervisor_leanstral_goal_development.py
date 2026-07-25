@@ -40,10 +40,17 @@ from ipfs_accelerate_py.agent_supervisor.leanstral_goal_development import (
     LeanstralGoalDevelopmentProviderConfig,
     PriorCounterexampleRecord,
     ReusableReceiptRecord,
+    build_leanstral_goal_development_batch_dispatch,
 )
 from ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider import (
     LEANSTRAL_MODEL_RESOURCE_CLASS,
     LEAN_KERNEL_RESOURCE_CLASS,
+)
+from ipfs_accelerate_py.agent_supervisor.provider_batch_scheduler import (
+    ProviderBatchCapacity,
+    ProviderBatchRequest,
+    ProviderBatchScheduler,
+    ProviderBatchSchedulerConfig,
 )
 
 
@@ -554,3 +561,239 @@ def test_context_rejects_source_injection_and_changed_root_before_model_call() -
     with pytest.raises(Exception, match="immutable request root"):
         provider.develop(request, policy=_policy(), context=changed)
     assert calls == []
+
+
+def test_batch_scheduler_collapses_identical_concurrent_goal_development() -> None:
+    invocation = _invocation()
+    capacity_available = threading.Event()
+    both_submitted = threading.Event()
+    submission_lock = threading.Lock()
+    physical_calls: list[tuple[str, ...]] = []
+
+    class ObservedScheduler(ProviderBatchScheduler):
+        submitted = 0
+
+        def submit(self, request):  # type: ignore[no-untyped-def]
+            future = super().submit(request)
+            with submission_lock:
+                self.submitted += 1
+                if self.submitted == 2:
+                    both_submitted.set()
+            return future
+
+    def capacity(provider_id: str) -> ProviderBatchCapacity:
+        return ProviderBatchCapacity(
+            provider_id=provider_id,
+            max_batch_size=8,
+            max_concurrent_batches=1,
+            available_concurrent_batches=int(capacity_available.is_set()),
+        )
+
+    def dispatch(requests):  # type: ignore[no-untyped-def]
+        members = tuple(requests)
+        physical_calls.append(tuple(item.request_id for item in members))
+        return [_output(invocation) for _item in members]
+
+    scheduler = ObservedScheduler(
+        dispatch,
+        config=ProviderBatchSchedulerConfig(
+            max_batch_size=8,
+            batch_window_ms=0,
+            max_parallel_batches=1,
+            admission_retry_ms=1,
+        ),
+        capacity_supplier=capacity,
+    )
+    provider = LeanstralGoalDevelopmentProvider(
+        LeanstralGoalDevelopmentProviderConfig(
+            max_concurrent_requests=2,
+            timeout_seconds=2,
+        ),
+        llm_generate=lambda *_a, **_k: pytest.fail(
+            "injected scheduler must own physical model dispatch"
+        ),
+        batch_scheduler=scheduler,
+    )
+    results: list[GoalDevelopmentProviderResult | None] = [None, None]
+
+    def develop(index: int) -> None:
+        results[index] = provider.develop(invocation)
+
+    workers = [
+        threading.Thread(target=develop, args=(index,))
+        for index in range(len(results))
+    ]
+    try:
+        for worker in workers:
+            worker.start()
+        assert both_submitted.wait(2)
+        capacity_available.set()
+        for worker in workers:
+            worker.join(2)
+        assert all(not worker.is_alive() for worker in workers)
+        metrics = scheduler.metrics()
+    finally:
+        capacity_available.set()
+        scheduler.shutdown(wait=True, cancel_pending=True)
+
+    completed = [result for result in results if result is not None]
+    assert len(completed) == 2
+    assert all(result.status is GoalDevelopmentResultStatus.DRAFT for result in completed)
+    assert all(result.draft is not None for result in completed)
+    assert physical_calls and len(physical_calls) == 1
+    # Identical logical work is represented once in the physical provider call.
+    assert len(physical_calls[0]) == 1
+    assert metrics.provider_calls == 1
+    assert metrics.singleflight_hits == 1
+
+    batch_results = [result.batch_result for result in completed]
+    assert all(item is not None for item in batch_results)
+    assert len({item.request_id for item in batch_results if item is not None}) == 2
+    assert len({item.batch_id for item in batch_results if item is not None}) == 1
+    assert len({item.execution_id for item in batch_results if item is not None}) == 1
+    assert len({item.receipt_id for item in batch_results if item is not None}) == 1
+    assert all(
+        item.singleflight_shared for item in batch_results if item is not None
+    )
+    for result in completed:
+        restored = GoalDevelopmentProviderResult.from_dict(result.to_dict())
+        assert restored.batch_result == result.batch_result
+        assert result.to_dict()["batch_result"] == result.batch_result.to_dict()
+
+
+def test_batch_scheduler_failure_becomes_deterministic_goal_fallback() -> None:
+    invocation = _invocation()
+
+    def fail(_requests):  # type: ignore[no-untyped-def]
+        raise RuntimeError("shared provider route unavailable")
+
+    scheduler = ProviderBatchScheduler(
+        fail,
+        config=ProviderBatchSchedulerConfig(
+            max_batch_size=4,
+            batch_window_ms=0,
+            max_parallel_batches=1,
+            admission_retry_ms=1,
+        ),
+    )
+    provider = LeanstralGoalDevelopmentProvider(
+        LeanstralGoalDevelopmentProviderConfig(timeout_seconds=2),
+        llm_generate=lambda *_a, **_k: pytest.fail(
+            "failed scheduler result must not bypass shared dispatch"
+        ),
+        batch_scheduler=scheduler,
+    )
+    try:
+        result = provider.develop(invocation)
+    finally:
+        scheduler.shutdown(wait=True, cancel_pending=True)
+
+    assert result.status is GoalDevelopmentResultStatus.DETERMINISTIC_FALLBACK
+    assert result.fallback_reason is GoalDevelopmentFallbackReason.UNAVAILABLE
+    assert result.batch_result is not None
+    assert result.batch_result.status.value == "failed"
+    assert result.batch_result.batch_id
+    assert result.batch_result.receipt_id
+    restored = GoalDevelopmentProviderResult.from_dict(result.to_dict())
+    assert restored.to_dict() == result.to_dict()
+
+
+def test_native_batch_dispatch_reuses_one_backend_call_and_largest_budget() -> None:
+    calls = []
+
+    def generate_batch(prompts, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append((tuple(prompts), kwargs))
+        return [f"output:{prompt}" for prompt in prompts]
+
+    config = LeanstralGoalDevelopmentProviderConfig(
+        llm_provider="leanstral_local",
+        model="leanstral-batched",
+        timeout_seconds=20,
+    )
+    dispatch = build_leanstral_goal_development_batch_dispatch(
+        config,
+        llm_generate_batch=generate_batch,
+    )
+    common = {
+        "provider_id": config.llm_provider,
+        "route": LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
+        "model": config.model,
+        "operation": LEANSTRAL_GOAL_DEVELOPMENT_OPERATION,
+        "context_limit": config.max_context_tokens,
+        "policy": {"policy_digest": "same"},
+        "generation_settings": {"temperature": 0},
+    }
+    outputs = dispatch(
+        (
+            ProviderBatchRequest(
+                request_id="native-a",
+                payload="prompt-a",
+                token_budget=128,
+                timeout_ms=2_000,
+                **common,
+            ),
+            ProviderBatchRequest(
+                request_id="native-b",
+                payload="prompt-b",
+                token_budget=512,
+                timeout_ms=5_000,
+                **common,
+            ),
+        )
+    )
+
+    assert outputs == ("output:prompt-a", "output:prompt-b")
+    assert len(calls) == 1
+    assert calls[0][0] == ("prompt-a", "prompt-b")
+    assert calls[0][1]["provider"] == "leanstral_local"
+    assert calls[0][1]["model_name"] == "leanstral-batched"
+    assert calls[0][1]["max_new_tokens"] == 512
+    assert calls[0][1]["timeout"] == 5.0
+    assert calls[0][1]["timeout_s"] == 5.0
+
+
+def test_batch_dispatch_degrades_to_scalar_generator_when_native_batch_is_absent() -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def generate(prompt, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append((prompt, kwargs))
+        return f"scalar:{prompt}"
+
+    config = LeanstralGoalDevelopmentProviderConfig(
+        llm_provider="scalar-provider",
+        model="scalar-model",
+    )
+    dispatch = build_leanstral_goal_development_batch_dispatch(
+        config,
+        llm_generate=generate,
+    )
+    common = {
+        "provider_id": config.llm_provider,
+        "route": LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
+        "model": config.model,
+        "operation": LEANSTRAL_GOAL_DEVELOPMENT_OPERATION,
+        "context_limit": config.max_context_tokens,
+        "policy": {"policy_digest": "same"},
+        "generation_settings": {"temperature": 0},
+        "token_budget": 256,
+        "timeout_ms": 2_000,
+    }
+
+    outputs = dispatch(
+        (
+            ProviderBatchRequest(
+                request_id="scalar-a",
+                payload="prompt-a",
+                **common,
+            ),
+            ProviderBatchRequest(
+                request_id="scalar-b",
+                payload="prompt-b",
+                **common,
+            ),
+        )
+    )
+
+    assert outputs == ("scalar:prompt-a", "scalar:prompt-b")
+    assert [item[0] for item in calls] == ["prompt-a", "prompt-b"]
+    assert all(item[1]["max_new_tokens"] == 256 for item in calls)
