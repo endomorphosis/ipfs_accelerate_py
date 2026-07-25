@@ -1097,10 +1097,10 @@ The IPFS Accelerate SDK is following a phased implementation strategy:
 ## Further Reading
 
 - [API Documentation](API_DOCUMENTATION.md)
-- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md)
+- [Hardware Benchmarking Guide](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)
 - [WebNN/WebGPU Integration Guide](WEBNN_WEBGPU_INTEGRATION_GUIDE.md)
-- [Database Integration Guide](DATABASE_INTEGRATION_GUIDE.md)
-- [P2P Network Optimization Guide](P2P_NETWORK_OPTIMIZATION_GUIDE.md)
+- [Database Integration Guide](WEBNN_WEBGPU_DATABASE_INTEGRATION.md)
+- [P2P Network Optimization Guide](../docs/guides/p2p/P2P_SETUP_GUIDE.md)
 - [Ultra-Low Precision Framework Guide](ULTRA_LOW_PRECISION_IMPLEMENTATION_GUIDE.md)
-- [Benchmark System Documentation](BENCHMARK_TIMING_GUIDE.md)
-- [Implementation Plan](IMPLEMENTATION_PLAN.md)
+- [Benchmark System Documentation](../data/benchmarks/BENCHMARK_TIMING_GUIDE.md)
+- [Implementation Plan](../docs/architecture/IMPLEMENTATION_PLAN.md)
