@@ -2894,9 +2894,18 @@ def _apply_completion_evidence_source_policy(
     return evaluated
 
 
-def _has_persisted_external_completion(goal: ObjectiveGoal) -> bool:
-    """Return whether a goal has durable external-governance provenance."""
+def _requires_external_completion(goal: ObjectiveGoal) -> bool:
+    """Return whether a goal is explicitly or durably external-governed."""
 
+    declared_authority = str(
+        goal.fields.get("completion_authority") or ""
+    ).strip().casefold().replace("-", "_").replace(" ", "_")
+    if declared_authority in {
+        "external",
+        "external_receipt",
+        "typed_external_receipt",
+    }:
+        return True
     if str(
         goal.fields.get("external_completion_authority_cid") or ""
     ).strip():
@@ -3864,7 +3873,7 @@ def reconcile_objective_goal_completion(
     externally_governed_goal_ids = {
         goal.goal_id
         for goal in initial_goals
-        if goal.goal_id and _has_persisted_external_completion(goal)
+        if goal.goal_id and _requires_external_completion(goal)
     }
     for goal_id in externally_governed_goal_ids:
         # Once an operational goal has external provenance, omitting the
@@ -3966,7 +3975,7 @@ def reconcile_objective_goal_completion(
     externally_governed_goal_ids.update(
         goal.goal_id
         for goal in goals
-        if goal.goal_id and _has_persisted_external_completion(goal)
+        if goal.goal_id and _requires_external_completion(goal)
     )
     if external_completion_authority is not None:
         # Migration may rewrite the tracked objective heap. Reinspect after
@@ -4473,7 +4482,24 @@ def reconcile_objective_goal_completion(
         external_completion=(
             external_completion.to_dict()
             if external_completion is not None
-            else {}
+            else {
+                "schema": (
+                    EXTERNAL_COMPLETION_VALIDATION_SCHEMA + "/authority"
+                ),
+                "authority_cid": "",
+                "governed_goal_ids": sorted(
+                    externally_governed_goal_ids
+                ),
+                "valid_receipt_cids": [],
+                "source_inspection": {},
+                "results": [
+                    result
+                    for goal_id in sorted(externally_governed_goal_ids)
+                    for result in decisions.get(goal_id, {})
+                    .get("external_completion", {})
+                    .get("results", [])
+                ],
+            }
         ),
     )
 

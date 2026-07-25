@@ -19,6 +19,16 @@ the objective heap.
 
 ## Trust and lifecycle
 
+Declare every operational objective with:
+
+```text
+- Completion authority: external
+```
+
+That property governs the goal from its first reconciliation, before an
+authority file has ever been supplied. A same-named implementation marker
+therefore cannot bootstrap an operational completion decision.
+
 An authority contains two distinct sets:
 
 - `requirements` are supervisor-selected expected identities for each exact

@@ -104,6 +104,7 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
 - Priority: P0
 - Track: benchmark
 - Evidence: {EVIDENCE_TERM}
+- Completion authority: external
 - Acceptance: Execute the operational protocol outside this repository.
 - Validation: test -f src/implementation.py
 - Gap task: Produce a source-bound external completion receipt.
@@ -250,6 +251,31 @@ def _completion_gate(
             ],
         },
     }
+
+
+def test_declared_external_goal_is_governed_before_first_authority(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_gate_records={
+            "EXT-G001": _completion_gate(repo, objective_path)
+        },
+        now=OBSERVED_AT,
+    )
+
+    assert result.verified_goal_ids == []
+    assert result.external_completion["governed_goal_ids"] == [
+        "EXT-G001"
+    ]
+    decision = result.decisions["EXT-G001"]["external_completion"]
+    assert decision["results"][0]["reason_codes"] == [
+        "external_authority_not_supplied"
+    ]
 
 
 def test_external_completion_is_two_phase_and_marker_text_is_not_authority(
