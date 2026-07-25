@@ -10,7 +10,17 @@ The automated workflow consists of three main jobs:
 2. **Analysis**: Processes the validation results to detect issues, analyze coverage, and generate summaries
 3. **Dashboard**: Builds an interactive dashboard for visualizing the validation results and publishes it to GitHub Pages
 
-![CI/CD Integration Diagram](../../../docs/images/simulation_validation_ci_diagram.png)
+The workflow moves validation data through three jobs:
+
+```mermaid
+flowchart LR
+    A[Code push, pull request, or manual dispatch] --> B[Validation]
+    B -->|Test results and validation output artifacts| C[Analysis]
+    B -->|Validation results| D[Dashboard]
+    C -->|Coverage, metrics, and issue findings| D
+    C --> E[GitHub issues for high-severity problems]
+    D --> F[GitHub Pages dashboard]
+```
 
 ## GitHub Actions Workflow
 
