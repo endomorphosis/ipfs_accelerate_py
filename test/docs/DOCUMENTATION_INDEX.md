@@ -54,8 +54,8 @@ This document serves as the central index for all documentation related to the I
 
 | Document | Description |
 |----------|-------------|
-| [Configuration Validation Guide](CONFIGURATION_VALIDATION_GUIDE.md) | Guide to configuration validation and auto-correction |
-| [Qualcomm Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md) | Guide to Qualcomm AI Engine integration |
+| [Configuration Validation Guide](../CONFIGURATION_VALIDATION_GUIDE.md) | Guide to configuration validation and auto-correction |
+| [Qualcomm Integration Guide](../QUALCOMM_INTEGRATION_GUIDE.md) | Guide to Qualcomm AI Engine integration |
 | [Ultra-Low Precision Implementation Guide](../ULTRA_LOW_PRECISION_IMPLEMENTATION_GUIDE.md) | Guide to 2-bit, 3-bit, and 4-bit quantization |
 | [WebGPU 4-bit Inference Guide](../WEBGPU_4BIT_INFERENCE_README.md) | Detailed guide to 4-bit inference with WebGPU |
 
@@ -63,10 +63,10 @@ This document serves as the central index for all documentation related to the I
 
 | Document | Description |
 |----------|-------------|
-| [Benchmark Database Guide](../BENCHMARK_DATABASE_GUIDE.md) | Guide to the benchmark database architecture |
+| [Benchmark Database Guide](../../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md) | Guide to the benchmark database architecture |
 | [Database Migration Guide](../DATABASE_MIGRATION_GUIDE.md) | Guide to migrating from JSON to DuckDB/Parquet |
-| [Hardware Benchmarking Guide](../HARDWARE_BENCHMARKING_GUIDE.md) | Guide to hardware benchmarking methodology |
-| [Training Benchmarking Guide](../TRAINING_BENCHMARKING_GUIDE.md) | Guide to training benchmarking methodology |
+| [Hardware Benchmarking Guide](../../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md) | Guide to hardware benchmarking methodology |
+| [Training Benchmarking Guide](../../data/benchmarks/TRAINING_BENCHMARKING_GUIDE.md) | Guide to training benchmarking methodology |
 | [Time-Series Performance Guide](TIME_SERIES_PERFORMANCE_GUIDE.md) | Guide to time-series performance tracking |
 
 ## Project Status & Roadmap
@@ -74,9 +74,9 @@ This document serves as the central index for all documentation related to the I
 | Document | Description |
 |----------|-------------|
 | [Next Steps](../NEXT_STEPS.md) | Current status and upcoming development priorities |
-| [Phase 16 Implementation Summary](../PHASE16_IMPLEMENTATION_SUMMARY.md) | Summary of completed Phase 16 implementation |
+| [Phase 16 Implementation Summary](../PHASE16_COMPLETION_SUMMARY.md) | Summary of completed Phase 16 implementation |
 | [Cross-Platform Test Coverage](../CROSS_PLATFORM_TEST_COVERAGE.md) | Status of cross-platform testing coverage |
-| [Implementation Plan](../IMPLEMENTATION_PLAN.md) | Detailed implementation roadmap |
+| [Implementation Plan](../../docs/architecture/IMPLEMENTATION_PLAN.md) | Detailed implementation roadmap |
 
 ## Examples & Demos
 
@@ -91,10 +91,10 @@ This document serves as the central index for all documentation related to the I
 
 | Document | Description |
 |----------|-------------|
-| [Template Inheritance Guide](../TEMPLATE_INHERITANCE_GUIDE.md) | Guide to the template inheritance system |
-| [Template Generator Guide](../TEMPLATE_GENERATOR_README.md) | Guide to the template generation system |
-| [Test Framework Guide](../TEST_FRAMEWORK_README.md) | Guide to the test framework architecture |
-| [CI/CD Integration Guide](CI_CD_INTEGRATION_GUIDE.md) | Guide to continuous integration and deployment |
+| [Template Inheritance Guide](../../scripts/generators/TEMPLATE_INHERITANCE_GUIDE.md) | Guide to the template inheritance system |
+| [Template Generator Guide](../../scripts/generators/TEMPLATE_GENERATOR_README.md) | Guide to the template generation system |
+| [Test Framework Guide](TEST_FRAMEWORK_GUIDE.md) | Guide to the test framework architecture |
+| [CI/CD Integration Guide](../distributed_testing/docs/CI_CD_INTEGRATION_GUIDE.md) | Guide to continuous integration and deployment |
 
 ## Visualization and Dashboard
 
@@ -112,8 +112,8 @@ This document serves as the central index for all documentation related to the I
 |----------|-------------|
 | [Common Issues & Solutions](TROUBLESHOOTING.md) | Solutions to common problems |
 | [Error Code Reference](ERROR_CODE_REFERENCE.md) | Comprehensive reference of error codes |
-| [Browser-Specific Troubleshooting](browser_troubleshooting.md) | Troubleshooting for specific browsers |
-| [Hardware-Specific Troubleshooting](hardware_troubleshooting.md) | Troubleshooting for specific hardware platforms |
+| [Browser-Specific Troubleshooting](WEBGPU_BROWSER_COMPATIBILITY.md) | Troubleshooting for specific browsers |
+| [Hardware-Specific Troubleshooting](../HARDWARE_SELECTION_GUIDE.md) | Troubleshooting for specific hardware platforms |
 
 ## How to Use This Documentation
 
@@ -127,7 +127,7 @@ This document serves as the central index for all documentation related to the I
 
 - **Web Application Development**: [Developer Tutorial](DEVELOPER_TUTORIAL.md), [WebGPU Implementation Guide](WEBGPU_IMPLEMENTATION_GUIDE.md)
 - **Performance Optimization**: [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRECOMPILATION.md), [Browser-Specific Optimizations](browser_specific_optimizations.md)
-- **Mobile/Edge Deployment**: [Qualcomm Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md), [Ultra-Low Precision Implementation Guide](../ULTRA_LOW_PRECISION_IMPLEMENTATION_GUIDE.md)
+- **Mobile/Edge Deployment**: [Qualcomm Integration Guide](../QUALCOMM_INTEGRATION_GUIDE.md), [Ultra-Low Precision Implementation Guide](../ULTRA_LOW_PRECISION_IMPLEMENTATION_GUIDE.md)
 - **Hardware Selection**: [Hardware Selection Guide](../HARDWARE_SELECTION_GUIDE.md), [Compatibility Matrix Guide](COMPATIBILITY_MATRIX_GUIDE.md)
 
 ## Document Conventions
