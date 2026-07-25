@@ -149,8 +149,11 @@ The refinery has four modes:
   dataset artifacts as the objective daemon.
 - Codebase scan: scans tracked files across the repo and nested worktrees for
   small actionable findings such as unfenced TODO/FIXME annotations, swallowed
-  exception paths, and placeholder runtime paths. Findings become parseable todo
-  tasks with discovery evidence.
+  exception paths, and placeholder runtime paths. The scan inventory is
+  objective-agnostic and is retained unchanged. A separate refill-admission
+  stage may turn a finding into a task only when it maps to one specific
+  schedulable goal or subgoal declared by `--objective-path`; the task records
+  that goal and its real ancestor chain.
 - Retry budget: reads daemon events and blocks source tasks that repeatedly fail
   implementation setup/runtime, validation, or merge reconciliation, then
   appends a follow-up task with the relevant logs, failed command, and
@@ -168,6 +171,30 @@ available modes. `--objective-scan`, `--codebase-scan`, `--retry-budget`, and
 `--discovery-output-path`, `--objective-summary-prefix`, `--task-prefix`, and
 `--task-header-prefix` when embedding the refinery in another package's todo
 format.
+
+Codebase task creation is fail-closed when no schedulable objective heap is
+available. `--allow-unscoped-codebase-refill` is an unsafe compatibility
+opt-out for explicitly unscoped legacy maintenance boards and is rejected when
+an objective heap is configured; it does not change what the scanner observes.
+Admission validates explicit goal status, existing parents, and acyclic
+lineage. A top-level output directory requires at least two distinctive
+semantic terms from the finding itself, excluding its path. Admission
+rejections such as `no_goal_lineage`, `invalid_goal_record`,
+`dangling_goal_parent`, `cyclic_goal_lineage`, and `admission_limit` are
+preserved in the scan-details artifact instead of being silently discarded.
+Completion-gate refill uses stable goal/criterion/producer-channel families.
+Only explicit workspace-relative implementation, affected-document, or
+validator-source files become edit targets; absolute paths, traversal, NUL
+bytes, directory scopes, and symlink escapes fail closed. Receipt and report
+paths remain read-only diagnostics. A legacy decision without a precise safe
+file becomes a blocked, non-executable manual review instead of inheriting a
+broad goal output. A reviewer must authorize exact repository-relative edit
+targets before the implementation daemon can select it.
+
+The configured objective `max_findings` also caps bounded generated work for
+that supervisor pass. A changed diagnostic updates the unresolved family's
+latest observation but cannot spend a retry by itself; a retry or the single
+manual-review escalation requires a new completed or blocked board outcome.
 
 ## Implementation Worktrees
 
@@ -190,7 +217,10 @@ task count is at or below `--codebase-scan-min-open-tasks`. When the count is
 zero, the scan mode becomes `drained_exhaustive`, which walks the root checkout
 and discovered git worktrees/submodules even if the normal cooldown has not
 elapsed. The scan writes discovery reports and daemon-parseable follow-up tasks
-for code annotations, swallowed exceptions, and placeholder runtime paths.
+for code annotations, swallowed exceptions, and placeholder runtime paths only
+after the separate admission stage binds each task to a declared goal/subgoal.
+Changing the objective heap invalidates the prior refill cooldown context while
+leaving scanner configuration and independent audit identity unchanged.
 
 Enable `--objective-refill-scan` when the supervisor should also maintain the
 durable goal graph. In that mode, a low or drained backlog causes the supervisor

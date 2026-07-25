@@ -20,7 +20,7 @@ import re
 import shlex
 import subprocess
 import time
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
@@ -50,6 +50,7 @@ from .objective_graph import (
     OBJECTIVE_SCAN_ANALYZER_VERSION,
     SUCCESSFUL_MERGE_RECEIPT_STATUSES,
     ObjectiveWorkProposal,
+    ObjectiveGoal,
     bundle_path,
     generate_objective_todos_result,
     parse_goal_heap,
@@ -262,6 +263,7 @@ class CodebaseFinding:
     snippet: str
     summary: str
     validation: str
+    objective_goal_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -376,6 +378,7 @@ class CodebaseScanInventory:
         *,
         appended_tasks: int,
         late_deduplicated_candidates: int = 0,
+        additional_rejected_candidates: int = 0,
     ) -> dict[str, Any]:
         """Return all counters required by fail-closed health evaluation."""
 
@@ -387,7 +390,10 @@ class CodebaseScanInventory:
             "deduplicated_candidates": (
                 self.deduplicated_candidate_count + late_deduplicated_candidates
             ),
-            "rejected_candidates": self.rejected_candidate_count,
+            "rejected_candidates": (
+                self.rejected_candidate_count
+                + max(0, int(additional_rejected_candidates))
+            ),
             "appended_tasks": appended_tasks,
             "coverage_complete": self.complete,
         }
@@ -429,6 +435,58 @@ class CodebaseScanInventory:
                 "rejected_candidates": self.rejected_candidate_count,
             },
             "coverage_complete": self.complete,
+        }
+
+
+@dataclass(frozen=True)
+class CodebaseRefillAdmission:
+    """Goal-scoped disposition of an objective-agnostic scan inventory."""
+
+    findings: tuple[CodebaseFinding, ...] = ()
+    rejections: tuple[Mapping[str, Any], ...] = ()
+    policy_errors: tuple[Mapping[str, str], ...] = ()
+    allow_unscoped: bool = False
+    max_findings: int | None = None
+
+    @property
+    def policy_valid(self) -> bool:
+        return not self.policy_errors
+
+    @property
+    def rejected_candidate_count(self) -> int:
+        return len(self.rejections)
+
+    @property
+    def admission_rejections(self) -> tuple[Mapping[str, Any], ...]:
+        """Compatibility name used by early callers of the admission stage."""
+
+        return self.rejections
+
+    def reason_summaries(self) -> list[dict[str, Any]]:
+        grouped: dict[str, list[str]] = {}
+        for record in self.rejections:
+            reason_code = str(record.get("reason_code") or "no_goal_lineage")
+            grouped.setdefault(reason_code, []).append(str(record.get("path") or ""))
+        return [
+            {
+                "reason_code": reason_code,
+                "count": len(paths),
+                "representative_paths": [
+                    path for path in paths if path
+                ][:CODEBASE_SCAN_REASON_SAMPLE_LIMIT],
+            }
+            for reason_code, paths in sorted(grouped.items())
+        ]
+
+    def details_dict(self) -> dict[str, Any]:
+        return {
+            "allow_unscoped": self.allow_unscoped,
+            "max_findings": self.max_findings,
+            "policy_valid": self.policy_valid,
+            "policy_errors": [dict(item) for item in self.policy_errors],
+            "admitted_candidate_count": len(self.findings),
+            "rejected_candidate_count": self.rejected_candidate_count,
+            "rejections": [dict(record) for record in self.rejections],
         }
 
 
@@ -2421,11 +2479,15 @@ def file_is_scan_candidate(
     *,
     repo_root: Path,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
 ) -> bool:
     return not codebase_scan_file_exclusion_reason(
         path,
         repo_root=repo_root,
         skip_prefixes=skip_prefixes,
+        include_prefixes=include_prefixes,
+        allowed_tracks=allowed_tracks,
     )
 
 
@@ -2434,6 +2496,8 @@ def codebase_scan_file_exclusion_reason(
     *,
     repo_root: Path,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
 ) -> str:
     """Return a stable, bounded reason code when ``path`` is ineligible."""
 
@@ -2443,6 +2507,17 @@ def codebase_scan_file_exclusion_reason(
         relative = path.as_posix()
     if any(relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in skip_prefixes):
         return "excluded_prefix"
+    normalized_prefixes = tuple(
+        str(prefix).strip().strip("/") for prefix in include_prefixes if str(prefix).strip().strip("/")
+    )
+    if normalized_prefixes and not any(
+        relative == prefix or relative.startswith(f"{prefix}/")
+        for prefix in normalized_prefixes
+    ):
+        return "outside_scope_prefix"
+    normalized_tracks = {str(track).strip().lower() for track in allowed_tracks if str(track).strip()}
+    if normalized_tracks and scan_track_for_path(relative) not in normalized_tracks:
+        return "outside_scope_track"
     if any(part in CODEBASE_SCAN_SKIP_PARTS for part in path.parts):
         return "excluded_directory"
     if "-codebase-scan-" in path.name or "retry-budget" in path.name:
@@ -2496,10 +2571,264 @@ def scan_validation_for_path(root_relative: str) -> str:
     return f"test -f {quoted}"
 
 
+GOAL_ALIGNMENT_STOPWORDS = frozenset(
+    {
+        "and",
+        "code",
+        "current",
+        "data",
+        "file",
+        "for",
+        "from",
+        "goal",
+        "implementation",
+        "project",
+        "repository",
+        "state",
+        "task",
+        "test",
+        "the",
+        "with",
+    }
+)
+
+
+def objective_goals_for_codebase_refill(objective_path: Path | None) -> list[ObjectiveGoal]:
+    """Load objective nodes used for schedulable targets and their ancestry."""
+
+    if objective_path is None or not objective_path.is_file():
+        return []
+    return parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+
+
+def codebase_refill_goal_graph_errors(
+    goals: Sequence[ObjectiveGoal],
+) -> tuple[Mapping[str, str], ...]:
+    """Return structural defects that make objective lineage unsafe to emit."""
+
+    errors: list[dict[str, str]] = []
+
+    def add(reason_code: str, message: str) -> None:
+        record = {"reason_code": reason_code, "message": message}
+        if record not in errors:
+            errors.append(record)
+
+    goal_ids = [str(goal.goal_id).strip() for goal in goals]
+    duplicates = sorted(
+        goal_id
+        for goal_id in set(goal_ids)
+        if goal_id and goal_ids.count(goal_id) > 1
+    )
+    if duplicates:
+        add(
+            "invalid_goal_record",
+            "duplicate objective goal ids: " + ", ".join(duplicates),
+        )
+
+    nodes: dict[str, ObjectiveGoal] = {}
+    for goal in goals:
+        goal_id = str(goal.goal_id).strip()
+        if not goal_id or not str(goal.title).strip():
+            add("invalid_goal_record", "objective goal records require an id and title")
+            continue
+        if not str(goal.fields.get("status") or "").strip():
+            add(
+                "invalid_goal_record",
+                f"objective record {goal_id} has no explicit status",
+            )
+        else:
+            try:
+                goal.lifecycle_state
+            except (TypeError, ValueError) as exc:
+                add(
+                    "invalid_goal_record",
+                    f"objective record {goal_id} has invalid status: {exc}",
+                )
+        nodes.setdefault(goal_id, goal)
+
+    missing_edges = sorted(
+        {
+            f"{goal.goal_id}->{parent_id}"
+            for goal in goals
+            for parent_id in goal.parent_goal_ids
+            if parent_id and parent_id not in nodes
+        }
+    )
+    if missing_edges:
+        add(
+            "dangling_goal_parent",
+            "objective goal parents do not exist: " + ", ".join(missing_edges),
+        )
+
+    state: dict[str, int] = {}
+    stack: list[str] = []
+
+    def visit(goal_id: str) -> None:
+        current = state.get(goal_id, 0)
+        if current == 2:
+            return
+        if current == 1:
+            try:
+                cycle_start = stack.index(goal_id)
+            except ValueError:
+                cycle_start = 0
+            cycle = stack[cycle_start:] + [goal_id]
+            add(
+                "cyclic_goal_lineage",
+                "objective goal parent cycle: " + " -> ".join(cycle),
+            )
+            return
+        state[goal_id] = 1
+        stack.append(goal_id)
+        for parent_id in nodes[goal_id].parent_goal_ids:
+            if parent_id in nodes:
+                visit(parent_id)
+        stack.pop()
+        state[goal_id] = 2
+
+    for goal_id in sorted(nodes):
+        visit(goal_id)
+    return tuple(errors)
+
+
+def _goal_scope_path_matches(candidate_path: str, scope_path: str) -> bool:
+    candidate = str(candidate_path).strip().strip("/")
+    scope = str(scope_path).strip().strip("/").rstrip("*").rstrip("/")
+    if not candidate or not scope:
+        return False
+    if candidate == scope:
+        return True
+    return candidate.startswith(f"{scope}/")
+
+
+def _alignment_tokens(value: str) -> set[str]:
+    aliases = {
+        "doc": "documentation",
+        "docs": "documentation",
+        "documents": "documentation",
+    }
+    return {
+        aliases.get(token, token)
+        for token in re.findall(r"[a-z0-9][a-z0-9_+-]*", str(value).lower())
+        if len(token) > 2 and token not in GOAL_ALIGNMENT_STOPWORDS
+    }
+
+
+def align_codebase_finding_to_goals(
+    finding: CodebaseFinding,
+    goals: Sequence[ObjectiveGoal],
+    *,
+    mission_terms: Sequence[str] = (),
+) -> CodebaseFinding | None:
+    """Bind a candidate to existing goals or reject it as scope creep.
+
+    Declared goal outputs are authoritative.  Semantic matching is a fallback
+    for goals without output paths and requires multiple distinctive terms, so
+    a generic TODO/FIXME marker cannot create its own scope.  ``mission_terms``
+    is retained for API compatibility but never expands a goal's lineage.
+    """
+
+    del mission_terms
+    if codebase_refill_goal_graph_errors(goals):
+        return None
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+
+    def lineage(goal: ObjectiveGoal) -> tuple[str, ...]:
+        ordered = [goal.goal_id]
+        seen = {goal.goal_id}
+        pending = list(goal.parent_goal_ids)
+        while pending:
+            parent_id = pending.pop(0)
+            if parent_id in seen:
+                continue
+            seen.add(parent_id)
+            ordered.append(parent_id)
+            parent = goals_by_id.get(parent_id)
+            if parent is not None:
+                pending.extend(parent.parent_goal_ids)
+        return tuple(ordered)
+
+    def graph_depth(goal: ObjectiveGoal) -> int:
+        return max(0, len(lineage(goal)) - 1)
+
+    direct_matches: list[tuple[tuple[int, int, int, int, int], ObjectiveGoal]] = []
+    semantic_matches: list[tuple[tuple[int, int], ObjectiveGoal]] = []
+    candidate_tokens = _alignment_tokens(
+        " ".join((finding.summary, finding.snippet))
+    )
+    for goal in goals:
+        if not goal.is_schedulable:
+            continue
+        scope_paths = [*goal.predicted_files, *goal.required_evidence]
+        matching_paths = [
+            str(scope_path).strip().strip("/").rstrip("*").rstrip("/")
+            for scope_path in scope_paths
+            if _goal_scope_path_matches(finding.root_relative_path, scope_path)
+        ]
+        goal_text = " ".join(
+            (
+                goal.title,
+                goal.fields.get("goal", ""),
+                goal.fields.get("gap_task", ""),
+                goal.fields.get("embedding_query", ""),
+                goal.fields.get("ast_query", ""),
+                goal.fields.get("acceptance", ""),
+                goal.fields.get("acceptance_criteria", ""),
+            )
+        )
+        token_overlap = len(candidate_tokens & _alignment_tokens(goal_text))
+        if matching_paths:
+            best_scope = max(
+                matching_paths,
+                key=lambda path: (len(Path(path).parts), len(path)),
+            )
+            broad_directory_scope = (
+                len(Path(best_scope).parts) == 1
+                and not Path(best_scope).suffix
+            )
+            if broad_directory_scope and token_overlap < 2:
+                # A top-level directory such as ``scripts`` is an inventory
+                # boundary, not proof that every file advances this goal.
+                # Path tokens do not count: the finding itself must share at
+                # least two distinctive terms with the declared goal.
+                continue
+            direct_matches.append(
+                (
+                    (
+                        int(finding.root_relative_path.strip("/") == best_scope),
+                        len(Path(best_scope).parts),
+                        len(best_scope),
+                        graph_depth(goal),
+                        token_overlap,
+                    ),
+                    goal,
+                )
+            )
+            continue
+        if scope_paths:
+            continue
+        if token_overlap >= 3:
+            semantic_matches.append(((token_overlap, graph_depth(goal)), goal))
+
+    ranked: Sequence[tuple[tuple[int, ...], ObjectiveGoal]]
+    ranked = direct_matches if direct_matches else semantic_matches
+    if not ranked:
+        return None
+    best_score = max(score for score, _goal in ranked)
+    best_goals = [goal for score, goal in ranked if score == best_score]
+    if len(best_goals) != 1:
+        # Ambiguous sibling scopes fail closed instead of inventing lineage.
+        return None
+    return replace(finding, objective_goal_ids=lineage(best_goals[0]))
+
+
 def annotation_scan_text(line: str) -> str:
     """Remove path-like tokens that should not count as TODO annotations."""
 
-    return re.sub(r"(?i)[A-Za-z0-9_./-]*\.todo\.md\b", "", line)
+    text = re.sub(r"(?i)[A-Za-z0-9_./-]*\.todo\.md\b", "", line)
+    # Long CLI option names such as ``--todo-path`` are configuration
+    # identifiers, not SQL-style ``-- TODO:`` comments.
+    return re.sub(r"(?i)(?<![A-Za-z0-9_-])--[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b", "", text)
 
 
 def _position_in_simple_quoted_string(text: str, index: int) -> bool:
@@ -2641,6 +2970,8 @@ def scan_codebase_findings(
     seen_fingerprints: Iterable[str] = (),
     exhaustive: bool = False,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
     return_inventory: bool = False,
 ) -> list[CodebaseFinding] | CodebaseScanInventory:
     """Scan tracked files for candidates, optionally returning full accounting.
@@ -2702,6 +3033,8 @@ def scan_codebase_findings(
                 path,
                 repo_root=repo_root,
                 skip_prefixes=skip_prefixes,
+                include_prefixes=include_prefixes,
+                allowed_tracks=allowed_tracks,
             )
             if reason:
                 inventory.excluded_files.append(
@@ -2735,6 +3068,99 @@ def scan_codebase_findings(
                 inventory.complete = False
                 return inventory if return_inventory else inventory.findings
     return inventory if return_inventory else inventory.findings
+
+
+def admit_codebase_refill_candidates(
+    inventory: CodebaseScanInventory,
+    *,
+    objective_goals: Sequence[ObjectiveGoal],
+    mission_terms: Sequence[str] = (),
+    max_findings: int | None,
+    allow_unscoped: bool = False,
+    objective_scope_configured: bool = False,
+) -> CodebaseRefillAdmission:
+    """Apply goal policy after scanning and before any taskboard mutation.
+
+    The scanner remains objective-agnostic.  This admission stage either binds
+    each candidate to existing goal lineage or records why it was not allowed
+    to become a task.  ``allow_unscoped`` exists only for explicit legacy
+    maintenance boards without an objective heap.
+    """
+
+    admitted_findings: list[CodebaseFinding] = []
+    rejections: list[Mapping[str, Any]] = []
+    policy_errors = list(codebase_refill_goal_graph_errors(objective_goals))
+    if allow_unscoped and (objective_scope_configured or objective_goals):
+        policy_errors.insert(
+            0,
+            {
+                "reason_code": "incompatible_unscoped_refill",
+                "message": (
+                    "allow_unscoped is only valid when no objective heap is "
+                    "configured"
+                ),
+            },
+        )
+    if (
+        not policy_errors
+        and not allow_unscoped
+        and not any(goal.is_schedulable for goal in objective_goals)
+    ):
+        policy_errors.append(
+            {
+                "reason_code": "no_schedulable_goal",
+                "message": "objective heap has no schedulable goal or subgoal",
+            }
+        )
+
+    def rejection(finding: CodebaseFinding, reason_code: str) -> dict[str, Any]:
+        finding_payload = finding.to_dict()
+        finding_payload["objective_goal_ids"] = list(finding.objective_goal_ids)
+        return {
+            "path": finding.root_relative_path,
+            "reason_code": reason_code,
+            "fingerprint": finding.fingerprint,
+            "summary": finding.summary,
+            "finding": finding_payload,
+        }
+
+    if policy_errors:
+        reason_code = str(policy_errors[0]["reason_code"])
+        rejections.extend(
+            rejection(finding, reason_code)
+            for finding in inventory.findings
+        )
+        return CodebaseRefillAdmission(
+            findings=(),
+            rejections=tuple(rejections),
+            policy_errors=tuple(policy_errors),
+            allow_unscoped=allow_unscoped,
+            max_findings=max_findings,
+        )
+
+    for finding in inventory.findings:
+        admitted = align_codebase_finding_to_goals(
+            finding,
+            objective_goals,
+            mission_terms=mission_terms,
+        )
+        if admitted is None:
+            if allow_unscoped:
+                admitted = finding
+            else:
+                rejections.append(rejection(finding, "no_goal_lineage"))
+                continue
+        if max_findings is not None and len(admitted_findings) >= max_findings:
+            rejections.append(rejection(admitted, "admission_limit"))
+            continue
+        admitted_findings.append(admitted)
+    return CodebaseRefillAdmission(
+        findings=tuple(admitted_findings),
+        rejections=tuple(rejections),
+        policy_errors=(),
+        allow_unscoped=allow_unscoped,
+        max_findings=max_findings,
+    )
 
 
 def codebase_source_tree_identity(
@@ -2793,6 +3219,8 @@ def codebase_source_tree_identity(
 def codebase_exhaustion_configuration(
     *,
     skip_prefixes: Sequence[str],
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
     health_thresholds: AnalyzerHealthThresholds,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -2804,6 +3232,8 @@ def codebase_exhaustion_configuration(
         "max_file_bytes": CODEBASE_SCAN_MAX_FILE_BYTES,
         "suffixes": sorted(CODEBASE_SCAN_SUFFIXES),
         "skip_prefixes": sorted(str(item) for item in skip_prefixes),
+        "include_prefixes": sorted(str(item) for item in include_prefixes),
+        "allowed_tracks": sorted(str(item).strip().lower() for item in allowed_tracks),
         "health_thresholds": health_thresholds.to_dict(),
         "exhaustive": True,
         "extra": dict(extra or {}),
@@ -2827,6 +3257,7 @@ Kind: {finding.kind}
 Source: {finding.root_relative_path}:{finding.line_number}
 Priority: {finding.priority}
 Track: {finding.track}
+Objective goals: {", ".join(finding.objective_goal_ids)}
 
 ## Evidence
 
@@ -2836,10 +3267,10 @@ Track: {finding.track}
 
 ## Suggested Handling
 
-Review the finding in context, decide whether it represents a bug, missing test,
-maintenance risk, or false positive, and land a small fix with validation. If the
-finding is a false positive, document why in the changed code or discovery notes
-so the supervisor does not keep re-adding the same work.
+Resolve only the work needed to advance the existing objective lineage shown
+above. Do not broaden the task to adjacent cleanup. If the finding is a false
+positive or does not actually support that lineage, record that disposition in
+the discovery evidence so the supervisor does not keep re-adding it.
 """
     path.write_text(content, encoding="utf-8")
     return path
@@ -2876,64 +3307,56 @@ def codebase_scan_task_block(
 ) -> str:
     outputs = [discovery_output_path, finding.root_relative_path]
     identity = codebase_finding_task_identity(finding)
-    planning_lines: list[str] = []
+    lineage = list(finding.objective_goal_ids)
+    goal_id = lineage[0] if lineage else ""
+    parent_goal_ids = lineage[1:]
+    planning_lines: list[str] = [
+        *(
+            [
+                f"- Graph parents: {', '.join(parent_goal_ids) or 'none'}",
+                f"- Graph depth: {len(parent_goal_ids)}",
+                f"- Goal id: {goal_id}",
+                f"- Goal lineage: {', '.join(lineage)}",
+                "- Goal registration: existing",
+            ]
+            if goal_id
+            else ["- Goal registration: unscoped_legacy"]
+        ),
+        f"- Canonical task key: {identity.canonical_task_key}",
+        f"- Canonical task CID: {identity.canonical_task_cid}",
+        f"- Semantic identity: {identity.semantic_fingerprint}",
+        f"- Acceptance subset: Resolve {finding.kind} at {finding.root_relative_path}:{finding.line_number}",
+        f"- Preconditions: {finding.root_relative_path} exists and the scan evidence remains applicable",
+        f"- Effects: resolve {finding.kind} in {finding.root_relative_path} and pass focused validation",
+        f"- Evidence subset: {finding.root_relative_path}:{finding.line_number}, {discovery_path}",
+        "- Resource class: cpu-small",
+        "- Token class: small",
+        "- Resources: python, focused validation runner",
+        f"- Merge fate: {finding.root_relative_path}",
+        "- Rejection reasons: none",
+        f"- Missing evidence: {finding.summary}",
+        "- Candidate kind: codebase_scan",
+        f"- Todo vector key: {finding.fingerprint[:16]}",
+    ]
     if bundle_key:
-        parent_goal = "/".join(bundle_key.split("/")[:2])
-        planning_lines = [
+        planning_lines.extend(
+        [
             f"- Bundle: {bundle_key}",
             f"- Bundle shard: {bundle_shard}",
             "- Bundle strategy: codebase_file_ast",
-            f"- Graph parents: {parent_goal}",
-            "- Graph depth: 1",
             f"- Parallel lane: {bundle_key}",
             "- Conflict policy: serialize findings for the same file; allow independent file bundles to run concurrently",
             f"- Predicted files: {finding.root_relative_path}",
             f"- AST symbols: {', '.join(ast_symbols)}",
             "- AST symbol scope: file",
-            f"- Goal id: {bundle_key}",
-            f"- Canonical task key: {identity.canonical_task_key}",
-            f"- Canonical task CID: {identity.canonical_task_cid}",
-            f"- Semantic identity: {identity.semantic_fingerprint}",
-            f"- Acceptance subset: Resolve {finding.kind} at {finding.root_relative_path}:{finding.line_number}",
-            f"- Preconditions: {finding.root_relative_path} exists and the scan evidence remains applicable",
-            f"- Effects: resolve {finding.kind} in {finding.root_relative_path} and pass focused validation",
-            f"- Evidence subset: {finding.root_relative_path}:{finding.line_number}, {discovery_path}",
-            "- Resource class: cpu-small",
-            "- Token class: small",
-            "- Resources: python, focused validation runner",
-            f"- Merge fate: {finding.root_relative_path}",
-            "- Rejection reasons: none",
-            f"- Missing evidence: {finding.summary}",
             f"- Merge key: {bundle_key}",
             f"- Merge family: {finding.root_relative_path}",
             "- Merge role: codebase_scan",
             "- Work item count: 1",
             "- Work scope: codebase_file_ast",
-            "- Candidate kind: codebase_scan",
-            "- Goal registration: dynamic",
-            f"- Todo vector key: {finding.fingerprint[:16]}",
         ]
-    planning = ("\n" + "\n".join(planning_lines)) if planning_lines else ""
-    if not planning_lines:
-        planning = "\n" + "\n".join(
-            [
-                f"- Canonical task key: {identity.canonical_task_key}",
-                f"- Canonical task CID: {identity.canonical_task_cid}",
-                f"- Semantic identity: {identity.semantic_fingerprint}",
-                f"- Acceptance subset: Resolve {finding.kind} at {finding.root_relative_path}:{finding.line_number}",
-                f"- Preconditions: {finding.root_relative_path} exists and the scan evidence remains applicable",
-                f"- Effects: resolve {finding.kind} in {finding.root_relative_path} and pass focused validation",
-                f"- Evidence subset: {finding.root_relative_path}:{finding.line_number}, {discovery_path}",
-                "- Resource class: cpu-small",
-                "- Token class: small",
-                "- Resources: python, focused validation runner",
-                f"- Merge fate: {finding.root_relative_path}",
-                "- Rejection reasons: none",
-                "- Candidate kind: codebase_scan",
-                "- Goal registration: dynamic",
-                f"- Todo vector key: {finding.fingerprint[:16]}",
-            ]
         )
+    planning = "\n" + "\n".join(planning_lines)
     return f"""## {task_id} {finding.summary}
 
 - Status: todo
@@ -2943,7 +3366,7 @@ def codebase_scan_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {finding.validation}{planning}
-- Acceptance: Codebase scan filed this finding from {finding.root_relative_path}:{finding.line_number}. Use evidence in {discovery_path}, fix the bug or improvement, add or update focused validation when appropriate, and keep the supervisor-fed backlog parseable.
+- Acceptance: Goal-scoped refill admitted this finding from {finding.root_relative_path}:{finding.line_number} for {goal_id or "an explicitly unscoped legacy board"}. Use evidence in {discovery_path}, make only the smallest change required by that goal lineage, add or update focused validation when appropriate, and do not expand into adjacent cleanup.
 """
 
 
@@ -5470,6 +5893,7 @@ def retire_duplicate_codebase_scan_tasks(
 def persist_codebase_scan_inventory(
     inventory: CodebaseScanInventory,
     *,
+    admission: CodebaseRefillAdmission | None = None,
     repo_root: Path,
     discovery_dir: Path,
     dataset_dir: Path | None,
@@ -5491,14 +5915,28 @@ def persist_codebase_scan_inventory(
     ] + [
         {"detail_kind": "parser_failure", **record}
         for record in inventory.parser_failures
+    ] + [
+        {"detail_kind": "admission_rejection", **record}
+        for record in (admission.rejections if admission is not None else ())
     ]
     final_deduplicated = inventory.deduplicated_candidate_count + late_deduplicated_candidates
+    admission_rejected = (
+        admission.rejected_candidate_count if admission is not None else 0
+    )
     candidate_accounting = {
         "raw_candidates": inventory.raw_candidate_count,
         "seen_candidates": inventory.seen_candidate_count,
         "deduplicated_candidates": final_deduplicated,
-        "rejected_candidates": inventory.rejected_candidate_count,
+        "rejected_candidates": (
+            inventory.rejected_candidate_count + admission_rejected
+        ),
         "appended_tasks": appended_tasks,
+    }
+    reason_summaries = {
+        **inventory.reason_summaries(),
+        "admission_rejections": (
+            admission.reason_summaries() if admission is not None else []
+        ),
     }
     artifact = ObjectiveDatasetStore(dataset_dir or discovery_dir).persist_scan_details(
         scan_id=scan_id,
@@ -5512,8 +5950,11 @@ def persist_codebase_scan_inventory(
             "expected_git_roots": list(inventory.expected_git_roots),
             "expected_git_root_count": len(inventory.expected_git_roots),
             "coverage_complete": inventory.complete,
-            "reason_summaries": inventory.reason_summaries(),
+            "reason_summaries": reason_summaries,
             "candidate_accounting": candidate_accounting,
+            "admission": (
+                admission.details_dict() if admission is not None else {}
+            ),
         },
     )
     return artifact.to_dict()
@@ -5522,6 +5963,7 @@ def persist_codebase_scan_inventory(
 def codebase_scan_accounting_metadata(
     inventory: CodebaseScanInventory,
     *,
+    admission: CodebaseRefillAdmission | None = None,
     appended_tasks: int,
     late_deduplicated_candidates: int = 0,
     details_artifact: Mapping[str, Any] | None = None,
@@ -5529,11 +5971,16 @@ def codebase_scan_accounting_metadata(
     """Return the stable JSON projection used by receipts and artifacts."""
 
     deduplicated = inventory.deduplicated_candidate_count + late_deduplicated_candidates
+    admission_rejected = (
+        admission.rejected_candidate_count if admission is not None else 0
+    )
     candidates = {
         "raw_candidates": inventory.raw_candidate_count,
         "seen_candidates": inventory.seen_candidate_count,
         "deduplicated_candidates": deduplicated,
-        "rejected_candidates": inventory.rejected_candidate_count,
+        "rejected_candidates": (
+            inventory.rejected_candidate_count + admission_rejected
+        ),
         "appended_tasks": appended_tasks,
     }
     accounted = sum(
@@ -5551,11 +5998,18 @@ def codebase_scan_accounting_metadata(
             f"raw={inventory.raw_candidate_count}, accounted={accounted}"
         )
     coverage = inventory.coverage_dict()
+    reason_summaries = {
+        **inventory.reason_summaries(),
+        "admission_rejections": (
+            admission.reason_summaries() if admission is not None else []
+        ),
+    }
     return {
         "coverage": coverage,
         "candidate_accounting": candidates,
-        "reason_summaries": inventory.reason_summaries(),
+        "reason_summaries": reason_summaries,
         "details_artifact": dict(details_artifact or {}),
+        "admission": admission.details_dict() if admission is not None else {},
         "coverage_complete": inventory.complete,
         "expected_git_root_count": len(inventory.expected_git_roots),
         "expected_git_roots": list(inventory.expected_git_roots),
@@ -5569,6 +6023,7 @@ def codebase_scan_accounting_metadata(
 def safe_codebase_scan_accounting_metadata(
     inventory: CodebaseScanInventory,
     *,
+    admission: CodebaseRefillAdmission | None = None,
     appended_tasks: int,
     late_deduplicated_candidates: int = 0,
     details_artifact: Mapping[str, Any] | None = None,
@@ -5583,6 +6038,7 @@ def safe_codebase_scan_accounting_metadata(
     try:
         return codebase_scan_accounting_metadata(
             inventory,
+            admission=admission,
             appended_tasks=appended_tasks,
             late_deduplicated_candidates=late_deduplicated_candidates,
             details_artifact=details_artifact,
@@ -5592,6 +6048,11 @@ def safe_codebase_scan_accounting_metadata(
             "invalid_scan_accounting": inventory.health_inventory_dict(
                 appended_tasks=appended_tasks,
                 late_deduplicated_candidates=late_deduplicated_candidates,
+                additional_rejected_candidates=(
+                    admission.rejected_candidate_count
+                    if admission is not None
+                    else 0
+                ),
             ),
             "invalid_scan_accounting_error": f"{type(exc).__name__}: {exc}",
             "scan_details_artifact": dict(details_artifact or {}),
@@ -5616,6 +6077,7 @@ def typed_codebase_scan_accounting(metadata: Mapping[str, Any]) -> ScanAccountin
 def classify_codebase_scan_health(
     inventory: CodebaseScanInventory,
     *,
+    admission: CodebaseRefillAdmission | None = None,
     appended_tasks: int,
     late_deduplicated_candidates: int = 0,
     canaries: AnalyzerCanaryReport | Mapping[str, Any] | None = None,
@@ -5627,6 +6089,11 @@ def classify_codebase_scan_health(
         inventory.health_inventory_dict(
             appended_tasks=appended_tasks,
             late_deduplicated_candidates=late_deduplicated_candidates,
+            additional_rejected_candidates=(
+                admission.rejected_candidate_count
+                if admission is not None
+                else 0
+            ),
         ),
         canaries=canaries,
         thresholds=thresholds,
@@ -5688,6 +6155,11 @@ def record_codebase_scan_findings(
     force: bool = False,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
+    objective_path: Path | None = None,
+    mission_terms: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
     exhaustion_quorum_size: int = DEFAULT_EXHAUSTION_QUORUM_SIZE,
     objective_revision: str = "",
@@ -5724,6 +6196,26 @@ def record_codebase_scan_findings(
     )
     todo_text = todo_path.read_text(encoding="utf-8")
     strategy = load_strategy(strategy_path)
+    objective_source = (
+        objective_path.read_text(encoding="utf-8")
+        if objective_path is not None and objective_path.is_file()
+        else ""
+    )
+    objective_id = (
+        objective_revision
+        or canonical_objective_revision(objective_source)
+    )
+    gate_strategy: Mapping[str, Any] = strategy
+    if (
+        objective_path is not None
+        and str(strategy.get("last_codebase_scan_objective_revision") or "")
+        != objective_id
+    ):
+        gate_strategy = {
+            **strategy,
+            "last_codebase_scan_at": "",
+            "last_drained_codebase_scan_task_count": -1,
+        }
     strategy_seen = {
         str(item)
         for item in strategy.get("codebase_scan_seen_fingerprints", [])
@@ -5756,7 +6248,7 @@ def record_codebase_scan_findings(
     should_scan, mode, current_open, task_count = should_refill_backlog(
         todo_text=todo_text,
         state_path=state_path,
-        strategy=strategy,
+        strategy=gate_strategy,
         last_scan_key="last_codebase_scan_at",
         last_drained_scan_task_count_key="last_drained_codebase_scan_task_count",
         task_prefix=task_prefix,
@@ -5785,8 +6277,11 @@ def record_codebase_scan_findings(
                 "task_count": task_count,
             },
         )
+    capacity_open_count = (
+        0 if mode.startswith("runnable_drained") else current_open
+    )
     refill_capacity = refill_open_task_capacity(
-        current_open=current_open,
+        current_open=capacity_open_count,
         min_open_tasks=min_open_tasks,
         max_findings=max_findings,
     )
@@ -5814,17 +6309,28 @@ def record_codebase_scan_findings(
         canaries=canaries,
     )
     try:
+        objective_goals = objective_goals_for_codebase_refill(objective_path)
         inventory = scan_codebase_findings(
             repo_root,
-            max_findings=refill_capacity,
+            max_findings=None,
             seen_fingerprints=seen,
-            exhaustive=mode.endswith("drained_exhaustive"),
+            exhaustive=True,
             skip_prefixes=skip_prefixes,
+            include_prefixes=include_prefixes,
+            allowed_tracks=allowed_tracks,
             return_inventory=True,
         )
         if not isinstance(inventory, CodebaseScanInventory):  # pragma: no cover - defensive
             raise TypeError("instrumented codebase scan did not return inventory")
-        findings = inventory.findings
+        admission = admit_codebase_refill_candidates(
+            inventory,
+            objective_goals=objective_goals,
+            mission_terms=mission_terms,
+            max_findings=max_findings,
+            allow_unscoped=allow_unscoped_codebase_refill,
+            objective_scope_configured=objective_path is not None,
+        )
+        findings = list(admission.findings)
     except TimeoutError as exc:
         return build_scan_result(
             ScanTerminalReason.TIMED_OUT,
@@ -5846,12 +6352,73 @@ def record_codebase_scan_findings(
             error=f"{type(exc).__name__}: {exc}",
             metadata={**scan_metadata, **empty_codebase_scan_accounting_metadata()},
         )
+    if not admission.policy_valid:
+        details_artifact = persist_codebase_scan_inventory(
+            inventory,
+            admission=admission,
+            repo_root=repo_root,
+            discovery_dir=discovery_dir,
+            dataset_dir=dataset_dir,
+            started_at=started_at,
+            appended_tasks=0,
+            late_deduplicated_candidates=0,
+        )
+        source_identity = RepositoryTreeIdentity(
+            initial_identity.repository_id,
+            codebase_source_tree_identity(repo_root, inventory),
+        )
+        policy_error = "; ".join(
+            str(item.get("message") or item.get("reason_code") or "")
+            for item in admission.policy_errors
+        )
+        return build_scan_result(
+            ScanTerminalReason.FAILED,
+            mode,
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            safe_for_completion_reasoning=False,
+            error=f"codebase refill admission policy failed: {policy_error}",
+            metadata={
+                **scan_metadata,
+                **safe_codebase_scan_accounting_metadata(
+                    inventory,
+                    admission=admission,
+                    appended_tasks=0,
+                    details_artifact=details_artifact,
+                ),
+                "objective_revision": objective_id,
+                "admission_policy_errors": [
+                    dict(item) for item in admission.policy_errors
+                ],
+            },
+            identity=source_identity,
+        )
     strategy["last_codebase_scan_at"] = utc_now()
     strategy["last_codebase_scan_mode"] = mode
+    strategy["last_codebase_scan_objective_revision"] = objective_id
+    strategy["last_codebase_scan_scope"] = {
+        "include_prefixes": sorted(
+            str(prefix).strip().strip("/")
+            for prefix in include_prefixes
+            if str(prefix).strip().strip("/")
+        ),
+        "allowed_tracks": sorted(
+            str(track).strip().lower()
+            for track in allowed_tracks
+            if str(track).strip()
+        ),
+        "allow_unscoped_codebase_refill": bool(allow_unscoped_codebase_refill),
+        "objective_path": str(objective_path or ""),
+        "objective_goal_ids": [
+            goal.goal_id for goal in objective_goals if goal.is_schedulable
+        ],
+    }
     strategy["codebase_scan_seen_fingerprints"] = sorted(seen | {finding.fingerprint for finding in findings})
     if not findings:
         details_artifact = persist_codebase_scan_inventory(
             inventory,
+            admission=admission,
             repo_root=repo_root,
             discovery_dir=discovery_dir,
             dataset_dir=dataset_dir,
@@ -5861,11 +6428,12 @@ def record_codebase_scan_findings(
         )
         nominal_reason = (
             ScanTerminalReason.DUPLICATE_ONLY
-            if inventory.raw_candidate_count
+            if inventory.seen_candidate_count or inventory.deduplicated_candidate_count
             else ScanTerminalReason.EXHAUSTED
         )
         health = classify_codebase_scan_health(
             inventory,
+            admission=admission,
             appended_tasks=0,
             canaries=canaries,
             thresholds=health_policy,
@@ -5880,10 +6448,11 @@ def record_codebase_scan_findings(
             initial_identity.repository_id,
             codebase_source_tree_identity(repo_root, inventory),
         )
-        objective_id = objective_revision or canonical_objective_revision("")
         configuration_id = scan_configuration_revision(
             codebase_exhaustion_configuration(
                 skip_prefixes=skip_prefixes,
+                include_prefixes=include_prefixes,
+                allowed_tracks=allowed_tracks,
                 health_thresholds=health_policy,
             )
         )
@@ -5902,6 +6471,7 @@ def record_codebase_scan_findings(
             ),
             **safe_codebase_scan_accounting_metadata(
                 inventory,
+                admission=admission,
                 appended_tasks=0,
                 details_artifact=details_artifact,
             ),
@@ -6051,10 +6621,13 @@ def record_codebase_scan_findings(
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
                 "semantic_identity": identity.semantic_fingerprint,
+                "objective_goal_ids": list(finding.objective_goal_ids),
             }
             if bundle_key:
                 finding_record.update({"bundle_key": bundle_key, "bundle_shard": bundle_shard})
-                parent_goal = "/".join(bundle_key.split("/")[:2])
+                lineage = list(finding.objective_goal_ids)
+                goal_id = lineage[0] if lineage else ""
+                parent_goal_ids = lineage[1:]
                 bundle_records.append(
                     {
                         "task_id": follow_up_task_id,
@@ -6069,11 +6642,13 @@ def record_codebase_scan_findings(
                             "title": finding.summary,
                             "priority": finding.priority,
                             "track": finding.track,
-                            "goal_id": bundle_key,
-                            "parent_goal_id": parent_goal,
-                            "subgoal_id": bundle_key,
-                            "parent_goal_ids": [parent_goal],
-                            "graph_depth": 1,
+                            "goal_id": goal_id,
+                            "parent_goal_id": (
+                                parent_goal_ids[0] if parent_goal_ids else ""
+                            ),
+                            "subgoal_id": goal_id if parent_goal_ids else "",
+                            "parent_goal_ids": parent_goal_ids,
+                            "graph_depth": len(parent_goal_ids),
                             "rationale": finding.summary,
                             "preconditions": [
                                 f"{finding.root_relative_path} exists",
@@ -6105,14 +6680,16 @@ def record_codebase_scan_findings(
                             "generated_artifacts": [repo_relative_path(repo_root, discovery_path)],
                             "depends_on": list(depends_on),
                             "bundle_strategy": "codebase_file_ast",
-                            "surplus_group": parent_goal,
+                            "surplus_group": goal_id,
                             "merge_key": bundle_key,
                             "merge_family": finding.root_relative_path,
                             "merge_role": "codebase_scan",
                             "work_item_count": 1,
                             "work_scope": "codebase_file_ast",
                             "candidate_kind": "codebase_scan",
-                            "goal_registration": "dynamic",
+                            "goal_registration": (
+                                "existing" if goal_id else "unscoped_legacy"
+                            ),
                             "todo_vector_key": finding.fingerprint[:16],
                             "discovery_path": repo_relative_path(repo_root, discovery_path),
                         },
@@ -6133,6 +6710,7 @@ def record_codebase_scan_findings(
     late_deduplicated_candidates = detected_count - len(appended)
     details_artifact = persist_codebase_scan_inventory(
         inventory,
+        admission=admission,
         repo_root=repo_root,
         discovery_dir=discovery_dir,
         dataset_dir=dataset_dir,
@@ -6159,6 +6737,7 @@ def record_codebase_scan_findings(
     )
     health = classify_codebase_scan_health(
         inventory,
+        admission=admission,
         appended_tasks=len(appended),
         late_deduplicated_candidates=late_deduplicated_candidates,
         canaries=canaries,
@@ -6189,6 +6768,7 @@ def record_codebase_scan_findings(
             ),
             **safe_codebase_scan_accounting_metadata(
                 inventory,
+                admission=admission,
                 appended_tasks=len(appended),
                 late_deduplicated_candidates=late_deduplicated_candidates,
                 details_artifact=details_artifact,
@@ -6312,8 +6892,11 @@ def record_objective_backlog_findings(
             started_at,
             metadata={"open_task_count": current_open, "task_count": task_count},
         )
+    capacity_open_count = (
+        0 if mode.startswith("runnable_drained") else current_open
+    )
     refill_capacity = refill_open_task_capacity(
-        current_open=current_open,
+        current_open=capacity_open_count,
         min_open_tasks=min_open_tasks,
         max_findings=max_findings,
     )
@@ -6580,6 +7163,11 @@ def record_configured_codebase_scan_findings(
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
+    objective_path: Path | None = None,
+    mission_terms: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record codebase scan backlog findings",
@@ -6611,6 +7199,11 @@ def record_configured_codebase_scan_findings(
         discovery_output_path=discovery_output_path
         or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
         skip_prefixes=skip_prefixes,
+        include_prefixes=include_prefixes,
+        allowed_tracks=allowed_tracks,
+        objective_path=objective_path,
+        mission_terms=mission_terms,
+        allow_unscoped_codebase_refill=allow_unscoped_codebase_refill,
         health_thresholds=health_thresholds,
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
@@ -6771,6 +7364,11 @@ class ConfiguredCodebaseScanRecorder:
     discovery_output_path: str | None = None
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES
+    include_prefixes: Sequence[str] = ()
+    allowed_tracks: Sequence[str] = ()
+    objective_path: Path | None = None
+    mission_terms: Sequence[str] = ()
+    allow_unscoped_codebase_refill: bool = False
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None
     commit_outputs: bool = False
     commit_subject: str = "Agent: record codebase scan backlog findings"
@@ -7037,6 +7635,11 @@ def build_namespace_codebase_scan_recorder(
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
+    objective_path: Path | str | None = None,
+    mission_terms: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record codebase scan backlog findings",
@@ -7061,6 +7664,11 @@ def build_namespace_codebase_scan_recorder(
         discovery_output_path=discovery_output_path,
         discovery_output_path_default=discovery_output_path_default,
         skip_prefixes=tuple(skip_prefixes),
+        include_prefixes=tuple(include_prefixes),
+        allowed_tracks=tuple(allowed_tracks),
+        objective_path=Path(objective_path) if objective_path is not None else None,
+        mission_terms=tuple(mission_terms),
+        allow_unscoped_codebase_refill=allow_unscoped_codebase_refill,
         health_thresholds=health_thresholds,
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
@@ -7131,6 +7739,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-prefix", action="append", default=[])
     parser.add_argument("--objective-scan", action="store_true")
     parser.add_argument("--codebase-scan", action="store_true")
+    parser.add_argument(
+        "--allow-unscoped-codebase-refill",
+        action="store_true",
+        help=(
+            "Allow codebase findings without objective lineage to become tasks. "
+            "Unsafe for goal-backed boards."
+        ),
+    )
     parser.add_argument("--retry-budget", action="store_true")
     parser.add_argument("--dependency-guardrail", action="store_true")
     parser.add_argument("--force", action="store_true")
@@ -7273,6 +7889,8 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             force=args.force,
             discovery_output_path=args.discovery_output_path,
             skip_prefixes=skip_prefixes,
+            objective_path=args.objective_path.resolve() if args.objective_path else None,
+            allow_unscoped_codebase_refill=args.allow_unscoped_codebase_refill,
             health_thresholds=health_thresholds,
             commit_outputs=args.commit_generated_outputs,
         )

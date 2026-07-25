@@ -33,6 +33,8 @@ GOAL_COMPLETION_SCHEMA_VERSION = 1
 GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION = 1
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS = 3600.0
 DEFAULT_CLOCK_SKEW_SECONDS = 300.0
+CHANNEL_PROOF_REVISION_NAMESPACE = "documentation-semantic-channel-proof"
+CHANNEL_EVIDENCE_PROVENANCE_NAMESPACE = "documentation-completion-receipt"
 
 
 class GoalState(str, Enum):
@@ -213,6 +215,29 @@ def _canonical_json(value: Any) -> str:
         ensure_ascii=False,
         default=str,
     )
+
+
+def _namespaced_sha256_revision(value: Any, namespace: str) -> str:
+    """Return the canonical namespaced revision used by channel producers.
+
+    Unlike the more permissive internal fingerprint helper, completion
+    evidence is an externally persisted authorization artifact.  Its digest
+    therefore uses the producer contract's exact JSON encoding and rejects
+    non-JSON values instead of stringifying them.
+    """
+
+    canonical = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    digest = sha256()
+    digest.update(str(namespace).encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(canonical)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _stable_fingerprint(prefix: str, value: Any) -> str:
@@ -1002,8 +1027,13 @@ class CompletionEvidence:
     provenance_cid: str = ""
     producer_id: str = ""
     producer_kind: str = "task"
+    producer_channel: str = ""
+    channel_proof_revision: str = ""
     repository_id: str = ""
     tree_id: str = ""
+    objective_revision: str = ""
+    analyzer_version: str = ""
+    configuration_revision: str = ""
     observed_at: datetime | str | None = None
     fresh_until: datetime | str | None = None
     validation_passed: bool | None = None
@@ -1026,10 +1056,27 @@ class CompletionEvidence:
         object.__setattr__(self, "producing_task_or_scan", producer)
         object.__setattr__(self, "producer_id", str(self.producer_id or producer).strip())
         object.__setattr__(self, "producer_kind", str(self.producer_kind or "task").strip().lower())
+        object.__setattr__(
+            self,
+            "producer_channel",
+            str(self.producer_channel or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "channel_proof_revision",
+            str(self.channel_proof_revision or "").strip(),
+        )
         tree = str(self.repository_tree or self.tree_id or "").strip()
         object.__setattr__(self, "repository_tree", tree)
         object.__setattr__(self, "tree_id", str(self.tree_id or tree).strip())
         object.__setattr__(self, "repository_id", str(self.repository_id or "").strip())
+        object.__setattr__(self, "objective_revision", str(self.objective_revision or "").strip())
+        object.__setattr__(self, "analyzer_version", str(self.analyzer_version or "").strip())
+        object.__setattr__(
+            self,
+            "configuration_revision",
+            str(self.configuration_revision or "").strip(),
+        )
         object.__setattr__(self, "provenance_cid", str(self.provenance_cid or "").strip())
         object.__setattr__(self, "observed_at", _utc_datetime(self.observed_at, field_name="observed_at"))
         object.__setattr__(self, "fresh_until", _utc_datetime(self.fresh_until, field_name="fresh_until"))
@@ -1165,10 +1212,15 @@ class CompletionEvidence:
             "producing_task_or_scan": self.producing_task_or_scan,
             "producer_id": self.producer_id,
             "producer_kind": self.producer_kind,
+            "producer_channel": self.producer_channel,
+            "channel_proof_revision": self.channel_proof_revision,
             "validation_receipt": _json_value(self.validation_receipt),
             "repository_id": self.repository_id,
             "repository_tree": self.repository_tree,
             "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "analyzer_version": self.analyzer_version,
+            "configuration_revision": self.configuration_revision,
             "freshness": _json_value(self.freshness),
             "observed_at": _json_value(self.observed_at),
             "fresh_until": _json_value(self.fresh_until),
@@ -1210,6 +1262,26 @@ class CompletionEvidence:
         values.setdefault(
             "repository_tree",
             values.get("tree_id", values.get("tree_identity", values.get("repository_tree_id", ""))),
+        )
+        binding = values.get("binding")
+        binding = binding if isinstance(binding, Mapping) else {}
+        values.setdefault(
+            "objective_revision",
+            values.get("objective_id", binding.get("objective_revision", "")),
+        )
+        values.setdefault(
+            "analyzer_version",
+            values.get(
+                "analyzer_revision",
+                values.get("analyzer_id", binding.get("analyzer_version", "")),
+            ),
+        )
+        values.setdefault(
+            "configuration_revision",
+            values.get(
+                "configuration_id",
+                binding.get("configuration_revision", binding.get("configuration_id", "")),
+            ),
         )
         values.setdefault("provenance_cid", values.get("receipt_cid", values.get("cid", "")))
         values.setdefault("validation_receipt", values.get("validation", values.get("receipt", None)))
@@ -1516,6 +1588,10 @@ def validate_completion_evidence(
     *,
     repository_tree: str = "",
     repository_id: str = "",
+    objective_revision: str = "",
+    analyzer_version: str = "",
+    configuration_revision: str = "",
+    require_artifact_binding: bool = False,
     now: datetime | str | None = None,
     freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
@@ -1548,10 +1624,58 @@ def validate_completion_evidence(
         reject(code, "Run the criterion validation successfully and attach a passing receipt.")
     if not evidence.repository_tree:
         reject("missing_repository_tree", "Bind the evidence to the repository tree that was validated.")
+    elif evidence.tree_id and evidence.tree_id != evidence.repository_tree:
+        reject(
+            "repository_tree_alias_mismatch",
+            "Use one canonical repository tree value throughout the evidence record.",
+        )
     elif repository_tree and evidence.repository_tree != str(repository_tree):
         reject("repository_tree_mismatch", "Regenerate evidence against the current repository tree.")
-    if repository_id and evidence.repository_id and evidence.repository_id != str(repository_id):
+    if require_artifact_binding and not evidence.repository_id:
+        reject(
+            "missing_repository_id",
+            "Bind completion evidence to the repository that was validated.",
+        )
+    elif (
+        repository_id
+        and evidence.repository_id
+        and evidence.repository_id != str(repository_id)
+    ):
         reject("repository_mismatch", "Use evidence produced by the current repository.")
+    if require_artifact_binding:
+        if not evidence.objective_revision:
+            reject(
+                "missing_objective_revision",
+                "Bind completion evidence to the canonical semantic objective revision.",
+            )
+        elif objective_revision and evidence.objective_revision != str(objective_revision):
+            reject(
+                "objective_revision_mismatch",
+                "Regenerate completion evidence after the goal or its acceptance policy changed.",
+            )
+        if not evidence.analyzer_version:
+            reject(
+                "missing_analyzer_version",
+                "Bind completion evidence to the analyzer version that produced it.",
+            )
+        elif analyzer_version and evidence.analyzer_version != str(analyzer_version):
+            reject(
+                "analyzer_version_mismatch",
+                "Regenerate completion evidence with the analyzer version bound by the completion gate.",
+            )
+        if not evidence.configuration_revision:
+            reject(
+                "missing_configuration_revision",
+                "Bind completion evidence to the analyzer configuration revision.",
+            )
+        elif (
+            configuration_revision
+            and evidence.configuration_revision != str(configuration_revision)
+        ):
+            reject(
+                "configuration_revision_mismatch",
+                "Regenerate completion evidence with the configuration bound by the completion gate.",
+            )
     if not evidence.provenance_cid:
         reject("missing_provenance_cid", "Persist the evidence and attach its provenance CID.")
     source_policy = evidence.metadata.get("evidence_source_policy")
@@ -1588,6 +1712,164 @@ def validate_completion_evidence(
                     f"evidence_source_{normalized_reason}",
                     f"Repair the evidence source policy violation: {normalized_reason}.",
                 )
+
+    receipt = (
+        evidence.validation_receipt
+        if isinstance(evidence.validation_receipt, Mapping)
+        else {}
+    )
+    receipt_channel = str(receipt.get("producer_channel") or "").strip()
+    receipt_channel_revision = str(
+        receipt.get("channel_proof_revision") or ""
+    ).strip()
+    channel_proof = receipt.get("channel_proof")
+    metadata_channel = str(
+        evidence.metadata.get("producer_channel") or ""
+    ).strip()
+    metadata_channel_revision = str(
+        evidence.metadata.get("channel_proof_revision") or ""
+    ).strip()
+    channel_binding_claimed = bool(
+        evidence.producer_channel
+        or evidence.channel_proof_revision
+        or receipt_channel
+        or receipt_channel_revision
+        or channel_proof
+        or metadata_channel
+        or metadata_channel_revision
+    )
+    channel_binding_required = bool(
+        require_artifact_binding or channel_binding_claimed
+    )
+    if channel_binding_required:
+        if not evidence.producer_channel:
+            reject(
+                "missing_producer_channel",
+                "Bind completion evidence to the producer channel required by its acceptance criterion.",
+            )
+        if not evidence.channel_proof_revision:
+            reject(
+                "missing_channel_proof_revision",
+                "Bind completion evidence to the canonical revision of its channel proof.",
+            )
+        if not isinstance(evidence.validation_receipt, Mapping):
+            reject(
+                "missing_channel_proof",
+                "Embed the channel proof in a structured validation receipt.",
+            )
+        else:
+            if not receipt_channel:
+                reject(
+                    "missing_receipt_producer_channel",
+                    "Record the producer channel in the validation receipt wrapper.",
+                )
+            elif (
+                evidence.producer_channel
+                and receipt_channel != evidence.producer_channel
+            ):
+                reject(
+                    "producer_channel_mismatch",
+                    "Use one producer channel throughout the evidence record and validation receipt.",
+                )
+            if not receipt_channel_revision:
+                reject(
+                    "missing_receipt_channel_proof_revision",
+                    "Record the canonical channel proof revision in the validation receipt wrapper.",
+                )
+            elif (
+                evidence.channel_proof_revision
+                and receipt_channel_revision != evidence.channel_proof_revision
+            ):
+                reject(
+                    "channel_proof_revision_mismatch",
+                    "Use one channel proof revision throughout the evidence record and validation receipt.",
+                )
+            if not isinstance(channel_proof, Mapping):
+                reject(
+                    "missing_channel_proof",
+                    "Embed the structured proof produced by the declared channel.",
+                )
+            else:
+                proof_channel = str(channel_proof.get("channel") or "").strip()
+                if not proof_channel:
+                    reject(
+                        "missing_channel_proof_channel",
+                        "Bind the embedded channel proof to its producer channel.",
+                    )
+                elif (
+                    evidence.producer_channel
+                    and proof_channel != evidence.producer_channel
+                ):
+                    reject(
+                        "producer_channel_mismatch",
+                        "Use a channel proof produced by the evidence record's declared channel.",
+                    )
+                try:
+                    derived_channel_revision = _namespaced_sha256_revision(
+                        dict(channel_proof),
+                        CHANNEL_PROOF_REVISION_NAMESPACE,
+                    )
+                except (TypeError, ValueError):
+                    reject(
+                        "invalid_channel_proof",
+                        "Regenerate the channel proof with canonical JSON values.",
+                    )
+                else:
+                    if (
+                        evidence.channel_proof_revision
+                        and evidence.channel_proof_revision
+                        != derived_channel_revision
+                    ):
+                        reject(
+                            "channel_proof_revision_mismatch",
+                            "Regenerate the channel proof revision from the embedded canonical proof.",
+                        )
+                    if (
+                        receipt_channel_revision
+                        and receipt_channel_revision != derived_channel_revision
+                    ):
+                        reject(
+                            "channel_proof_revision_mismatch",
+                            "Regenerate the validation receipt from the embedded canonical channel proof.",
+                        )
+            try:
+                derived_provenance = _namespaced_sha256_revision(
+                    {
+                        key: value
+                        for key, value in evidence.validation_receipt.items()
+                        if key != "executed_at"
+                    },
+                    CHANNEL_EVIDENCE_PROVENANCE_NAMESPACE,
+                )
+            except (TypeError, ValueError):
+                reject(
+                    "invalid_channel_receipt",
+                    "Regenerate the validation receipt with canonical JSON values.",
+                )
+            else:
+                if evidence.provenance_cid != derived_provenance:
+                    reject(
+                        "provenance_cid_mismatch",
+                        "Regenerate provenance from the canonical validation receipt wrapper.",
+                    )
+        if (
+            metadata_channel
+            and evidence.producer_channel
+            and metadata_channel != evidence.producer_channel
+        ):
+            reject(
+                "producer_channel_mismatch",
+                "Use one producer channel throughout evidence metadata and the typed record.",
+            )
+        if (
+            metadata_channel_revision
+            and evidence.channel_proof_revision
+            and metadata_channel_revision != evidence.channel_proof_revision
+        ):
+            reject(
+                "channel_proof_revision_mismatch",
+                "Use one channel proof revision throughout evidence metadata and the typed record.",
+            )
 
     required = _assurance_level(evidence.required_assurance)
     declared_assurance = _assurance_level(evidence.authoritative_assurance)
@@ -2644,9 +2926,13 @@ def evaluate_completion_gate(
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
     child_goals: Sequence[Any] = (),
+    required_child_goal_ids: Sequence[str] = (),
     analysis_result: Any = None,
     repository_tree: str = "",
     repository_id: str = "",
+    objective_revision: str = "",
+    completion_binding: Any = None,
+    require_artifact_binding: bool = False,
     now: datetime | str | None = None,
     freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
@@ -2666,6 +2952,13 @@ def evaluate_completion_gate(
     health_payload = _mapping_value(analyzer_health)
     quorum_payload = _mapping_value(exhaustion_quorum)
     analysis_payload = _mapping_value(analysis_result)
+    binding_payload = _mapping_value(completion_binding)
+    bound_analyzer_version = str(binding_payload.get("analyzer_version") or "")
+    bound_configuration_revision = str(
+        binding_payload.get("configuration_revision")
+        or binding_payload.get("configuration_id")
+        or ""
+    )
     child_payloads = [_mapping_value(item) for item in child_goals]
     raw_result_payloads = [_mapping_value(item) for item in evidence_results]
     normalized_results: list[EvidenceValidationResult] = []
@@ -2681,6 +2974,10 @@ def evaluate_completion_gate(
                     record,
                     repository_tree=repository_tree,
                     repository_id=repository_id,
+                    objective_revision=objective_revision,
+                    analyzer_version=bound_analyzer_version,
+                    configuration_revision=bound_configuration_revision,
+                    require_artifact_binding=require_artifact_binding,
                     now=current,
                     freshness_seconds=freshness_seconds,
                     clock_skew_seconds=clock_skew_seconds,
@@ -2724,6 +3021,80 @@ def evaluate_completion_gate(
             )
         )
 
+    if require_artifact_binding:
+        binding_errors: list[str] = []
+        required_binding_fields = {
+            "repository_id": repository_id,
+            "tree_id": repository_tree,
+            "objective_revision": objective_revision,
+            "analyzer_version": bound_analyzer_version,
+            "configuration_revision": bound_configuration_revision,
+        }
+        for field_name, expected in required_binding_fields.items():
+            key = (
+                "configuration_revision"
+                if field_name == "configuration_revision"
+                else field_name
+            )
+            actual = binding_payload.get(key)
+            if field_name == "configuration_revision" and not actual:
+                actual = binding_payload.get("configuration_id")
+            if not str(actual or "").strip():
+                binding_errors.append(f"missing_{field_name}")
+            elif expected and str(actual) != str(expected):
+                binding_errors.append(f"{field_name}_mismatch")
+
+        bound_surfaces = {
+            "coverage": coverage_payload,
+            "analyzer_health": health_payload,
+            "exhaustion_quorum": (
+                quorum_payload.get("binding")
+                if isinstance(quorum_payload.get("binding"), Mapping)
+                else {}
+            ),
+        }
+        for surface_name, surface in bound_surfaces.items():
+            surface_binding = (
+                surface.get("binding")
+                if isinstance(surface, Mapping)
+                and isinstance(surface.get("binding"), Mapping)
+                else surface
+            )
+            if not isinstance(surface_binding, Mapping):
+                binding_errors.append(f"{surface_name}_binding_missing")
+                continue
+            for field_name in (
+                "repository_id",
+                "tree_id",
+                "objective_revision",
+                "analyzer_version",
+                "configuration_revision",
+            ):
+                expected = required_binding_fields[field_name]
+                actual = surface_binding.get(field_name)
+                if field_name == "configuration_revision" and not actual:
+                    actual = surface_binding.get("configuration_id")
+                if not str(actual or "").strip():
+                    binding_errors.append(f"{surface_name}_missing_{field_name}")
+                elif expected and str(actual) != str(expected):
+                    binding_errors.append(f"{surface_name}_{field_name}_mismatch")
+        add_check(
+            "artifact_binding",
+            not binding_errors,
+            "completion_artifact_binding_invalid",
+            (
+                "Regenerate gate and evidence artifacts against the current semantic "
+                "objective, analyzer, configuration, repository, and tree."
+            ),
+            {
+                "binding": binding_payload,
+                "expected_objective_revision": objective_revision,
+                "errors": binding_errors,
+            },
+            "completion_artifact_binding_verified",
+            "Completion artifacts are bound to the current objective and analyzer policy.",
+        )
+
     coverage_rows = coverage_payload.get("criteria")
     if not isinstance(coverage_rows, list):
         coverage_rows = []
@@ -2741,6 +3112,118 @@ def evaluate_completion_gate(
         key = _criterion_key(criterion_text)
         if key:
             by_criterion.setdefault(key, []).append(row)
+    channel_binding_applicable = bool(
+        require_artifact_binding
+        or any(
+            str(
+                row.get("required_producer_channel")
+                or row.get("channel_proof_revision")
+                or ""
+            ).strip()
+            for rows in by_criterion.values()
+            for row in rows
+        )
+    )
+    channel_binding_errors: list[dict[str, Any]] = []
+    criterion_channel_matches: dict[str, bool] = {}
+    for criterion in criteria:
+        criterion_key = _criterion_key(criterion)
+        rows = by_criterion.get(criterion_key, ())
+        valid_candidates = [
+            item
+            for item in evidence_results
+            if item.valid
+            and _criterion_key(item.evidence.acceptance_criterion)
+            == criterion_key
+        ]
+        criterion_matches = bool(valid_candidates)
+        for row_index, row in enumerate(rows):
+            required_channel = str(
+                row.get("required_producer_channel") or ""
+            ).strip()
+            required_channel_revision = str(
+                row.get("channel_proof_revision") or ""
+            ).strip()
+            row_evidence = {
+                "criterion": criterion,
+                "coverage_row_index": row_index,
+                "required_producer_channel": required_channel,
+                "required_channel_proof_revision": required_channel_revision,
+                "observed_producer_channels": sorted(
+                    {
+                        item.evidence.producer_channel
+                        for item in valid_candidates
+                        if item.evidence.producer_channel
+                    }
+                ),
+                "observed_channel_proof_revisions": sorted(
+                    {
+                        item.evidence.channel_proof_revision
+                        for item in valid_candidates
+                        if item.evidence.channel_proof_revision
+                    }
+                ),
+            }
+            if not required_channel:
+                if required_channel_revision:
+                    criterion_matches = False
+                    channel_binding_errors.append(
+                        {
+                            **row_evidence,
+                            "code": "required_producer_channel_missing",
+                        }
+                    )
+                elif require_artifact_binding:
+                    criterion_matches = False
+                    channel_binding_errors.append(
+                        {
+                            **row_evidence,
+                            "code": "required_producer_channel_missing",
+                        }
+                    )
+                continue
+            if require_artifact_binding and not required_channel_revision:
+                criterion_matches = False
+                channel_binding_errors.append(
+                    {
+                        **row_evidence,
+                        "code": "required_channel_proof_revision_missing",
+                    }
+                )
+            channel_candidates = [
+                item
+                for item in valid_candidates
+                if item.evidence.producer_channel == required_channel
+            ]
+            if not channel_candidates:
+                criterion_matches = False
+                channel_binding_errors.append(
+                    {
+                        **row_evidence,
+                        "code": (
+                            "missing_producer_channel"
+                            if not row_evidence["observed_producer_channels"]
+                            else "producer_channel_mismatch"
+                        ),
+                    }
+                )
+                continue
+            if (
+                required_channel_revision
+                and not any(
+                    item.evidence.channel_proof_revision
+                    == required_channel_revision
+                    for item in channel_candidates
+                )
+            ):
+                criterion_matches = False
+                channel_binding_errors.append(
+                    {
+                        **row_evidence,
+                        "code": "channel_proof_revision_mismatch",
+                    }
+                )
+        criterion_channel_matches[criterion_key] = criterion_matches
     missing_coverage = [criterion for criterion in criteria if _criterion_key(criterion) not in by_criterion]
     unverified_coverage = [
         criterion
@@ -2810,9 +3293,36 @@ def evaluate_completion_gate(
         "Every mandatory acceptance criterion has fresh, verified coverage.",
     )
 
+    if channel_binding_applicable:
+        channel_binding_ok = bool(criteria) and not channel_binding_errors
+        channel_binding_code = (
+            str(channel_binding_errors[0].get("code") or "")
+            if channel_binding_errors
+            else "producer_channel_binding_incomplete"
+        )
+        add_check(
+            "producer_channel_binding",
+            channel_binding_ok,
+            channel_binding_code,
+            (
+                "Produce fresh validation evidence from each coverage row's "
+                "required producer channel and channel proof revision."
+            ),
+            {
+                "require_artifact_binding": require_artifact_binding,
+                "errors": channel_binding_errors,
+            },
+            "producer_channel_binding_verified",
+            "Every mandatory criterion is proven by its required producer channel.",
+        )
+
     each_criterion_valid = bool(criteria) and all(
-        any(
-            item.valid and _criterion_key(item.evidence.acceptance_criterion) == _criterion_key(criterion)
+        criterion_channel_matches.get(_criterion_key(criterion), False)
+        if channel_binding_applicable
+        else any(
+            item.valid
+            and _criterion_key(item.evidence.acceptance_criterion)
+            == _criterion_key(criterion)
             for item in evidence_results
         )
         for criterion in criteria
@@ -2843,13 +3353,40 @@ def evaluate_completion_gate(
         if "safe_for_completion_reasoning" in health_payload
         else None
     )
+    health_exhaustive = (
+        _bool_value(health_payload.get("exhaustive"))
+        if "exhaustive" in health_payload
+        else None
+    )
+    health_reason_codes = health_payload.get("reason_codes")
+    health_reason_codes = (
+        list(health_reason_codes)
+        if isinstance(health_reason_codes, (list, tuple))
+        else []
+    )
+    health_failure_flags = [
+        field_name
+        for field_name in (
+            "partial",
+            "skipped",
+            "failed",
+            "timed_out",
+            "unsupported",
+            "duplicate_only",
+            "inconclusive",
+        )
+        if _bool_value(health_payload.get(field_name)) is True
+    ]
+    health_contradictions = health_payload.get("contradictions")
     health_ok = (
         health_status == "healthy"
         and ("healthy" not in health_payload or health_declared is True)
-        and (
-            "safe_for_completion_reasoning" not in health_payload
-            or health_safe is True
-        )
+        and health_safe is True
+        and health_exhaustive is True
+        and not health_reason_codes
+        and not health_failure_flags
+        and not health_payload.get("error")
+        and not health_contradictions
     )
     if not health_status:
         health_code = "analyzer_health_missing"
@@ -2872,7 +3409,6 @@ def evaluate_completion_gate(
         for key in ("satisfied", "quorum_met")
         if key in quorum_payload
     ]
-    declared_quorum = bool(declared_values) and all(item is True for item in declared_values)
     binding = quorum_payload.get("binding") if isinstance(quorum_payload.get("binding"), Mapping) else {}
     binding_mismatch: list[str] = []
     if quorum_payload and repository_tree and str(binding.get("tree_id") or "") != repository_tree:
@@ -2899,19 +3435,37 @@ def evaluate_completion_gate(
     if required_members is not None and member_count is not None and member_count < required_members:
         quorum_inconsistencies.append("insufficient_members")
     member_ids: list[str] = []
-    channels: list[str] = []
+    receipt_cids: list[str] = []
+    independence_keys: list[tuple[str, str]] = []
+    eligible_member_ids: list[str] = []
+    producer_ids: list[str] = []
+    implementation_keys: list[str] = []
+    child_receipt_sha256s: list[str] = []
     stale_members: list[str] = []
     for index, member in enumerate(members):
         if not isinstance(member, Mapping):
             quorum_inconsistencies.append(f"invalid_member:{index}")
             continue
-        member_id = str(member.get("member_id") or "").strip()
-        channel = str(member.get("evidence_channel") or member.get("independence_key") or "").strip()
-        receipt_cid = str(member.get("receipt_cid") or "").strip()
-        if not member_id or not channel or not receipt_cid:
+        raw_receipt = (
+            member.get("receipt")
+            if isinstance(member.get("receipt"), Mapping)
+            else member
+        )
+        member_id = str(
+            member.get("member_id")
+            or raw_receipt.get("producer_id")
+            or ""
+        ).strip()
+        receipt_cid = str(
+            member.get("receipt_cid")
+            or raw_receipt.get("child_receipt_sha256")
+            or raw_receipt.get("source_receipt_sha256")
+            or ""
+        ).strip()
+        if not member_id or not receipt_cid:
             quorum_inconsistencies.append(f"incomplete_member:{index}")
         member_ids.append(member_id)
-        channels.append(channel)
+        receipt_cids.append(receipt_cid)
         member_binding = member.get("binding") if isinstance(member.get("binding"), Mapping) else {}
         if not member_binding:
             quorum_inconsistencies.append(f"missing_member_binding:{index}")
@@ -2921,29 +3475,341 @@ def evaluate_completion_gate(
             if binding.get(key)
         ):
             quorum_inconsistencies.append(f"member_binding_mismatch:{index}")
-        finished_value = member.get("finished_at")
+        finished_value = (
+            member.get("finished_at")
+            or member.get("executed_at")
+            or member.get("generated_at")
+            or raw_receipt.get("finished_at")
+            or raw_receipt.get("executed_at")
+            or raw_receipt.get("generated_at")
+        )
         finished_at = _gate_datetime(finished_value)
         if finished_value is None or finished_value == "" or finished_at is None:
             stale_members.append(member_id or str(index))
         elif finished_at > current + clock_skew or current - finished_at > max_age:
             stale_members.append(member_id or str(index))
+
+        # Eligibility is derived from exact receipt facts.  Neither a
+        # top-level ``satisfied`` boolean nor arbitrary member/channel labels
+        # can manufacture an independent completion vote.
+        metadata = (
+            raw_receipt.get("metadata")
+            if isinstance(raw_receipt.get("metadata"), Mapping)
+            else {}
+        )
+        raw_health = raw_receipt.get("analyzer_health")
+        if not isinstance(raw_health, Mapping):
+            raw_health = metadata.get("analyzer_health")
+        raw_health = raw_health if isinstance(raw_health, Mapping) else {}
+        raw_health_status = str(
+            raw_health.get("status")
+            or raw_receipt.get("health")
+            or metadata.get("health")
+            or (
+                "healthy"
+                if raw_receipt.get("healthy") is True
+                else ""
+            )
+            or ""
+        ).strip().lower()
+        raw_healthy = _bool_value(
+            raw_health.get(
+                "healthy",
+                raw_receipt.get("healthy"),
+            )
+        )
+        raw_passed = raw_receipt.get(
+            "passed",
+            raw_receipt.get("validation_passed"),
+        )
+        member_passed = _bool_value(raw_passed)
+        if member_passed is None:
+            member_passed = (
+                str(raw_receipt.get("status") or "").strip().lower()
+                in {"passed", "pass", "success", "succeeded", "verified", "ok"}
+            )
+        member_safe = _bool_value(
+            raw_receipt.get(
+                "safe_for_completion_reasoning",
+                raw_health.get(
+                    "safe_for_completion_reasoning",
+                    metadata.get("safe_for_completion_reasoning"),
+                ),
+            )
+        )
+        member_exhaustive = _bool_value(
+            raw_receipt.get(
+                "exhaustive",
+                raw_health.get("exhaustive", metadata.get("exhaustive")),
+            )
+        )
+        member_conclusive = _bool_value(raw_receipt.get("conclusive"))
+        if member_conclusive is None:
+            member_conclusive = (
+                str(raw_receipt.get("outcome") or "").strip().lower()
+                == "conclusive"
+            )
+        contradiction_value = raw_receipt.get(
+            "contradicted",
+            raw_receipt.get("contradictory"),
+        )
+        explicit_uncontradicted = _bool_value(
+            raw_receipt.get("uncontradicted")
+        )
+        member_uncontradicted = (
+            contradiction_value is False
+            and explicit_uncontradicted is not False
+        ) or (
+            contradiction_value is None
+            and explicit_uncontradicted is True
+        )
+        contradictions = raw_receipt.get(
+            "contradictions",
+            raw_receipt.get("contradiction_receipts", ()),
+        )
+        if contradictions:
+            member_uncontradicted = False
+        scan_mode = str(
+            raw_receipt.get("scan_mode")
+            or member.get("scan_mode")
+            or ""
+        ).strip().lower().replace("-", "_")
+        if scan_mode == "audit" or scan_mode.endswith("_audit"):
+            derived_channel = "audit"
+        elif "exhaustive" in scan_mode:
+            derived_channel = "exhaustive"
+        else:
+            derived_channel = ""
+        analyzer_version = str(
+            raw_receipt.get("analyzer_version")
+            or member_binding.get("analyzer_version")
+            or ""
+        ).strip()
+        producer_id = str(
+            raw_receipt.get("producer_id")
+            or member.get("producer_id")
+            or ""
+        ).strip()
+        implementation = raw_receipt.get(
+            "implementation",
+            member.get("implementation"),
+        )
+        if isinstance(implementation, str):
+            normalized_implementation: Any = " ".join(implementation.split())
+            has_implementation = bool(normalized_implementation)
+        elif isinstance(implementation, Mapping):
+            normalized_implementation = _json_value(dict(implementation))
+            has_implementation = bool(implementation)
+        elif isinstance(implementation, (list, tuple)):
+            normalized_implementation = [
+                " ".join(item.split())
+                for item in implementation
+                if isinstance(item, str)
+            ]
+            has_implementation = bool(implementation) and (
+                len(normalized_implementation) == len(implementation)
+                and all(normalized_implementation)
+            )
+        else:
+            normalized_implementation = None
+            has_implementation = False
+        raw_child_receipt_binding = raw_receipt.get(
+            "child_receipt_binding",
+            raw_receipt.get(
+                "child_tree_binding",
+                raw_receipt.get(
+                    "source_tree_binding",
+                    member.get("child_receipt_binding", ""),
+                ),
+            ),
+        )
+        child_receipt_binding = str(
+            raw_child_receipt_binding
+            or ""
+        ).strip()
+        child_receipt_sha256 = str(
+            raw_receipt.get(
+                "child_receipt_sha256",
+                raw_receipt.get(
+                    "source_receipt_sha256",
+                    member.get(
+                        "child_receipt_sha256",
+                        member.get("source_receipt_sha256", ""),
+                    ),
+                ),
+            )
+            or ""
+        ).strip()
+        child_receipt_sha256_digest = child_receipt_sha256.lower()
+        if child_receipt_sha256_digest.startswith("sha256:"):
+            child_receipt_sha256_digest = child_receipt_sha256_digest[7:]
+        try:
+            child_sha_is_valid = (
+                len(child_receipt_sha256_digest) == 64
+                and int(child_receipt_sha256_digest, 16) >= 0
+            )
+        except ValueError:
+            child_sha_is_valid = False
+        canonical_child_sha = (
+            f"sha256:{child_receipt_sha256_digest}"
+            if child_sha_is_valid
+            else ""
+        )
+        aggregate_tree_binding = str(
+            raw_receipt.get(
+                "aggregate_tree_binding",
+                raw_receipt.get(
+                    "tree_binding",
+                    member.get("aggregate_tree_binding", ""),
+                ),
+            )
+            or ""
+        ).strip()
+        implementation_identity = (
+            _stable_fingerprint(
+                "completion-quorum-implementation",
+                normalized_implementation,
+            )
+            if has_implementation
+            else ""
+        )
+        if producer_id and has_implementation:
+            producer_ids.append(producer_id)
+            implementation_keys.append(implementation_identity)
+            if canonical_child_sha:
+                child_receipt_sha256s.append(canonical_child_sha)
+            derived_channel = "producer:" + _stable_fingerprint(
+                "completion-quorum-producer",
+                {
+                    "producer_id": producer_id,
+                    "implementation": normalized_implementation,
+                },
+            )
+        eligibility_errors: list[str] = []
+        if member_passed is not True:
+            eligibility_errors.append("not_passing")
+        member_status = str(raw_receipt.get("status") or "").strip().lower()
+        if member_status and member_status not in {
+            "passed",
+            "pass",
+            "success",
+            "succeeded",
+            "verified",
+            "ok",
+        }:
+            eligibility_errors.append("contradictory_status")
+        healthy_was_declared = (
+            "healthy" in raw_health or "healthy" in raw_receipt
+        )
+        if raw_health_status != "healthy" or (
+            healthy_was_declared and raw_healthy is not True
+        ):
+            eligibility_errors.append("not_healthy")
+        if member_exhaustive is not True:
+            eligibility_errors.append("not_exhaustive")
+        if member_safe is not True:
+            eligibility_errors.append("not_completion_safe")
+        if member_conclusive is not True:
+            eligibility_errors.append("not_conclusive")
+        if not member_uncontradicted:
+            eligibility_errors.append("not_explicitly_uncontradicted")
+        member_reason_codes = [
+            str(item)
+            for source in (
+                raw_receipt.get("reason_codes"),
+                raw_health.get("reason_codes"),
+            )
+            if isinstance(source, (list, tuple))
+            for item in source
+            if str(item)
+        ]
+        member_failure_flags = [
+            field_name
+            for field_name in (
+                "partial",
+                "skipped",
+                "failed",
+                "timed_out",
+                "unsupported",
+                "duplicate_only",
+                "inconclusive",
+            )
+            if (
+                _bool_value(raw_receipt.get(field_name)) is True
+                or _bool_value(raw_health.get(field_name)) is True
+            )
+        ]
+        if member_reason_codes or member_failure_flags or raw_receipt.get("error"):
+            eligibility_errors.append("contradictory_failure_evidence")
+        if not derived_channel:
+            eligibility_errors.append("independence_channel_not_derivable")
+        if producer_id or has_implementation:
+            if not producer_id or not has_implementation:
+                eligibility_errors.append("producer_identity_incomplete")
+            if not child_receipt_binding:
+                eligibility_errors.append("child_receipt_binding_missing")
+            if not child_receipt_sha256:
+                eligibility_errors.append("child_receipt_sha256_missing")
+            elif not child_sha_is_valid:
+                eligibility_errors.append("child_receipt_sha256_invalid")
+            if not aggregate_tree_binding:
+                eligibility_errors.append("aggregate_tree_binding_missing")
+            elif (
+                binding
+                and str(binding.get("tree_id") or "")
+                and aggregate_tree_binding != str(binding.get("tree_id"))
+            ):
+                eligibility_errors.append("aggregate_tree_binding_mismatch")
+        if not analyzer_version:
+            eligibility_errors.append("analyzer_version_missing")
+        if eligibility_errors:
+            quorum_inconsistencies.append(
+                f"ineligible_member:{index}:{','.join(eligibility_errors)}"
+            )
+        else:
+            independence_keys.append((derived_channel, analyzer_version))
+            eligible_member_ids.append(member_id or str(index))
     if len(set(member_ids)) != len(member_ids):
         quorum_inconsistencies.append("duplicate_member_id")
-    if len(set(channels)) != len(channels):
-        quorum_inconsistencies.append("duplicate_evidence_channel")
+    if len(set(receipt_cids)) != len(receipt_cids):
+        quorum_inconsistencies.append("duplicate_receipt_cid")
+    if len(set(producer_ids)) != len(producer_ids):
+        quorum_inconsistencies.append("duplicate_producer_id")
+    if len(set(implementation_keys)) != len(implementation_keys):
+        quorum_inconsistencies.append("duplicate_producer_implementation")
+    if len(set(child_receipt_sha256s)) != len(child_receipt_sha256s):
+        quorum_inconsistencies.append("duplicate_child_receipt_sha256")
+    if len(set(independence_keys)) != len(independence_keys):
+        quorum_inconsistencies.append("duplicate_derived_independence_channel")
     if stale_members:
         quorum_inconsistencies.append("stale_quorum_members")
+    derived_member_count = len(set(independence_keys))
+    derived_quorum = bool(
+        required_members is not None
+        and required_members > 0
+        and derived_member_count >= required_members
+    )
+    if declared_member_count is not None and declared_member_count != derived_member_count:
+        quorum_inconsistencies.append("derived_member_count_mismatch")
+    if declared_values and any(value is not derived_quorum for value in declared_values):
+        quorum_inconsistencies.append("declared_quorum_mismatch")
     quorum_ok = bool(
         quorum_payload
-        and declared_quorum
+        and derived_quorum
         and not binding_mismatch
         and not quorum_inconsistencies
     )
     if not quorum_payload:
         quorum_code = "exhaustion_quorum_missing"
-    elif declared_quorum and binding_mismatch:
+    elif derived_quorum and binding_mismatch:
         quorum_code = "exhaustion_quorum_binding_mismatch"
-    elif declared_quorum and quorum_inconsistencies:
+    elif (
+        not derived_quorum
+        and declared_values
+        and all(value is False for value in declared_values)
+    ):
+        quorum_code = "exhaustion_quorum_unsatisfied"
+    elif quorum_inconsistencies:
         quorum_code = "exhaustion_quorum_inconsistent"
     else:
         quorum_code = "exhaustion_quorum_unsatisfied"
@@ -2956,6 +3822,8 @@ def evaluate_completion_gate(
             "binding_mismatch": binding_mismatch,
             "inconsistencies": quorum_inconsistencies,
             "stale_members": stale_members,
+            "eligible_member_ids": eligible_member_ids,
+            "derived_member_count": derived_member_count,
             "quorum": quorum_payload,
         },
         "exhaustion_quorum_satisfied",
@@ -2997,6 +3865,36 @@ def evaluate_completion_gate(
                 collect_descendants([_mapping_value(item) for item in nested])
 
     collect_descendants(child_payloads)
+    required_child_ids = tuple(
+        dict.fromkeys(
+            str(goal_id).strip()
+            for goal_id in required_child_goal_ids
+            if str(goal_id).strip()
+        )
+    )
+    observed_child_ids = [
+        str(child.get("goal_id") or "").strip() for child in descendants
+    ]
+    missing_child_ids = sorted(set(required_child_ids) - set(observed_child_ids))
+    unexpected_child_ids = sorted(
+        set(observed_child_ids) - set(required_child_ids)
+    ) if required_child_ids else []
+    duplicate_child_ids = sorted(
+        {
+            goal_id
+            for goal_id in observed_child_ids
+            if goal_id and observed_child_ids.count(goal_id) > 1
+        }
+    )
+    child_set_mismatch = bool(
+        required_child_ids
+        and (
+            missing_child_ids
+            or unexpected_child_ids
+            or duplicate_child_ids
+            or any(not goal_id for goal_id in observed_child_ids)
+        )
+    )
     descendant_proof_requirements: list[dict[str, Any]] = []
     seen_proof_requirements: set[str] = set()
 
@@ -3155,9 +4053,15 @@ def evaluate_completion_gate(
         verified = child.get("verified") is True and state == GoalState.VERIFIED_COMPLETE.value
         if not verified or gate_value.get("passed") is False:
             bad_children.append(child)
-    child_ok = not bad_children and not unsatisfied_proof_requirements
+    child_ok = (
+        not child_set_mismatch
+        and not bad_children
+        and not unsatisfied_proof_requirements
+    )
     child_code = ""
-    if proof_failure_codes:
+    if child_set_mismatch:
+        child_code = "child_goal_set_mismatch"
+    elif proof_failure_codes:
         for candidate in (
             "child_proof_contradicted",
             "child_proof_unsupported",
@@ -3182,6 +4086,11 @@ def evaluate_completion_gate(
         {
             "children": child_payloads,
             "descendants": descendants,
+            "required_child_goal_ids": list(required_child_ids),
+            "observed_child_goal_ids": observed_child_ids,
+            "missing_child_goal_ids": missing_child_ids,
+            "unexpected_child_goal_ids": unexpected_child_ids,
+            "duplicate_child_goal_ids": duplicate_child_ids,
             "unverified_children": bad_children,
             "proof_requirements": descendant_proof_requirements,
             "unsatisfied_proof_requirements": unsatisfied_proof_requirements,
@@ -3198,6 +4107,7 @@ def evaluate_completion_gate(
         "exhaustion_quorum": quorum_payload,
         "analysis_result": analysis_payload,
         "child_goals": child_payloads,
+        "required_child_goal_ids": list(required_child_ids),
         "proof_requirements": descendant_proof_requirements,
         "repository_tree": repository_tree,
         "repository_id": repository_id,
@@ -3235,6 +4145,9 @@ def evaluate_goal_completion(
     tasks_complete: bool = False,
     repository_tree: str = "",
     repository_id: str = "",
+    objective_revision: str = "",
+    completion_binding: Any = None,
+    require_artifact_binding: bool = False,
     now: datetime | str | None = None,
     freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
@@ -3244,6 +4157,7 @@ def evaluate_goal_completion(
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
     child_goals: Sequence[Any] = (),
+    required_child_goal_ids: Sequence[str] = (),
     analysis_result: Any = None,
     require_completion_gate: bool = True,
 ) -> GoalCompletionDecision:
@@ -3259,11 +4173,22 @@ def evaluate_goal_completion(
     criteria = _acceptance_criteria(acceptance_criteria)
     if acceptance_criteria is None and records:
         criteria = _acceptance_criteria([item.acceptance_criterion for item in records])
+    binding_payload = _mapping_value(completion_binding)
+    bound_analyzer_version = str(binding_payload.get("analyzer_version") or "")
+    bound_configuration_revision = str(
+        binding_payload.get("configuration_revision")
+        or binding_payload.get("configuration_id")
+        or ""
+    )
     results = tuple(
         validate_completion_evidence(
             item,
             repository_tree=repository_tree,
             repository_id=repository_id,
+            objective_revision=objective_revision,
+            analyzer_version=bound_analyzer_version,
+            configuration_revision=bound_configuration_revision,
+            require_artifact_binding=require_artifact_binding,
             now=now,
             freshness_seconds=freshness_seconds,
             clock_skew_seconds=clock_skew_seconds,
@@ -3314,9 +4239,13 @@ def evaluate_goal_completion(
         analyzer_health=analyzer_health,
         exhaustion_quorum=exhaustion_quorum,
         child_goals=child_goals,
+        required_child_goal_ids=required_child_goal_ids,
         analysis_result=analysis_result,
         repository_tree=repository_tree,
         repository_id=repository_id,
+        objective_revision=objective_revision,
+        completion_binding=binding_payload,
+        require_artifact_binding=require_artifact_binding,
         now=now,
         freshness_seconds=freshness_seconds,
         clock_skew_seconds=clock_skew_seconds,
@@ -3326,7 +4255,15 @@ def evaluate_goal_completion(
             if not check.passed and check.reason_code:
                 add_reason(check.reason_code, check.reason)
     all_valid = bool(criteria) and not missing and not invalid and (gate is None or gate.passed)
-    verified = bool(tasks_complete and all_valid and previous is GoalState.PROVISIONALLY_COMPLETE)
+    verified = bool(
+        tasks_complete
+        and all_valid
+        and previous
+        in {
+            GoalState.PROVISIONALLY_COMPLETE,
+            GoalState.VERIFIED_COMPLETE,
+        }
+    )
 
     if blocked_reason:
         next_state = GoalState.REOPENED if previous is GoalState.VERIFIED_COMPLETE else GoalState.BLOCKED
@@ -3431,6 +4368,9 @@ def migrate_legacy_goal_completion(
     analysis_inconclusive: bool = False,
     repository_tree: str = "",
     repository_id: str = "",
+    objective_revision: str = "",
+    completion_binding: Any = None,
+    require_artifact_binding: bool = False,
     now: datetime | str | None = None,
     freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
@@ -3458,6 +4398,9 @@ def migrate_legacy_goal_completion(
         tasks_complete=tasks_complete,
         repository_tree=repository_tree,
         repository_id=repository_id,
+        objective_revision=objective_revision,
+        completion_binding=completion_binding,
+        require_artifact_binding=require_artifact_binding,
         now=now,
         freshness_seconds=freshness_seconds,
         clock_skew_seconds=clock_skew_seconds,

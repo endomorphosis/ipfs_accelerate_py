@@ -37,6 +37,7 @@ from .objective_graph import (
     task_generation_evidence_producer_bindings,
     text_embedding,
 )
+from .task_identity import canonical_task_identity
 from .validation_commands import split_validation_commands
 
 
@@ -108,6 +109,7 @@ class TodoIndexRecord:
     ast_symbols: list[str] = field(default_factory=list)
     related_task_ids: list[str] = field(default_factory=list)
     canonical_task_key: str = ""
+    canonical_task_cid: str = ""
     task_cid: str = ""
     semantic_identity: str = ""
     completion_goal_bindings: dict[str, list[str]] = field(default_factory=dict)
@@ -754,6 +756,17 @@ def parse_todo_vector_records(
         vector_key = str(fields.get("todo_vector_key") or "").strip() or sha1(
             f"{task_id}\0{merge_key}".encode("utf-8")
         ).hexdigest()[:16]
+        task_identity = canonical_task_identity(
+            {
+                "task_id": task_id,
+                "title": title,
+                "outputs": outputs,
+                "acceptance": acceptance,
+                "metadata": fields,
+            },
+            board_namespace=str(fields.get("board_namespace") or "").strip() or todo_path.name,
+            source_path=todo_path,
+        )
         base_record = TodoIndexRecord(
             task_id=task_id,
             title=title,
@@ -850,8 +863,9 @@ def parse_todo_vector_records(
             ast_symbols=sorted_unique(
                 [*split_csv(fields.get("ast_symbols", "")), *collect_output_symbols(repo_root, outputs)]
             ),
-            canonical_task_key=str(fields.get("canonical_task_key") or "").strip(),
-            task_cid=str(fields.get("canonical_task_cid") or fields.get("task_cid") or "").strip(),
+            canonical_task_key=task_identity.canonical_task_key,
+            canonical_task_cid=task_identity.canonical_task_cid,
+            task_cid=task_identity.canonical_task_cid,
             semantic_identity=str(
                 fields.get("canonical_semantic_identity")
                 or fields.get("semantic_identity")
@@ -2596,6 +2610,10 @@ def update_bundle_index_with_todo_vectors(
             task["changed_paths"] = record.changed_paths
             task["acceptance_criteria"] = record.acceptance_criteria
             task["effects"] = record.effects
+            record_conflict_key = conflict_key(record)
+            task["conflict_surface"] = compact_conflict_surface(
+                graph_surfaces.get(record_conflict_key) or record.conflict_surface
+            )
             task.pop("task_work_contract", None)
             task.pop("work_contract", None)
             task.pop("work_contract_id", None)
@@ -2618,10 +2636,6 @@ def update_bundle_index_with_todo_vectors(
             task["submodules"] = record.submodules
             task["generated_artifacts"] = record.generated_artifacts
             task["allow_concurrent_with"] = record.allow_concurrent_with
-            record_conflict_key = conflict_key(record)
-            task["conflict_surface"] = compact_conflict_surface(
-                graph_surfaces.get(record_conflict_key) or record.conflict_surface
-            )
             task["conflict_assignment"] = assignment_by_task.get(record_conflict_key, {})
             task["conflict_decision_count"] = sum(
                 1

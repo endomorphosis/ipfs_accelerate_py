@@ -453,8 +453,26 @@ ipfs-accelerate-agent-backlog-refinery \
 With no mode flag, all available sources run. Findings are content-identified,
 deduplicated, cooled down, and bounded by configured open-work and finding
 limits. Refill does not prove completion and does not authorize implementation.
+The raw codebase inventory remains objective-agnostic and unchanged by refill
+policy. Rejected admission candidates remain in the durable details artifact.
+Use `--allow-unscoped-codebase-refill` only for an explicitly unscoped legacy
+board; it is rejected when an objective heap is configured and is an unsafe
+compatibility opt-out, not a scanner-scope flag. Goal-backed admission also
+requires explicit statuses, existing parents, acyclic ancestry, and semantic
+evidence beyond a path token for broad top-level directory outputs.
 
-The implementation supervisor can run objective refill after a drained pass:
+## Supervisor self-improvement program
+
+The maintained self-improvement program has separate intent and execution
+artifacts:
+
+- [objective heap](../architecture/agent_supervisor_self_improvement.objectives.md);
+- [executable task board](../architecture/agent_supervisor_self_improvement.todo.md);
+  and
+- [architecture and rollout plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md).
+
+Use task prefix `ASI-` when a daemon reads the board. The implementation
+supervisor can refill it from the objective heap as the initial work drains:
 
 ```bash
 ipfs-accelerate-agent-implementation-supervisor \

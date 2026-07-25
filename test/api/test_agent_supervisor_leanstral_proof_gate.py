@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -329,3 +330,128 @@ def test_patch_must_pass_git_apply_check_and_configured_validation(
     assert apply_result.reason_codes == ("git_apply_check_failed",)
     assert validation_result.reason_codes == ("configured_validation_failed",)
     assert validation_result.validation_results[0]["returncode"] == 7
+
+
+def test_patch_string_validation_scrubs_bash_env_and_uses_guarded_python(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, patch = _patch_repo(tmp_path)
+    marker = tmp_path / "bash-env-ran"
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(marker))}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BASH_ENV", str(bash_env))
+
+    result = check_leanstral_patch_proposal(
+        patch,
+        model_artifact_id="leanstral-patch-safe-runtime",
+        repo_root=repo,
+        task_declared_paths=("allowed.txt",),
+        validation_commands=(
+            "python -c 'import sys; assert sys.executable'",
+        ),
+    )
+
+    assert result.accepted
+    assert result.validation_results[0]["command"][:4] == [
+        "/bin/bash",
+        "--noprofile",
+        "--norc",
+        "-c",
+    ]
+    assert not marker.exists()
+
+
+def test_patch_argv_validation_normalizes_explicit_login_shell(
+    tmp_path: Path,
+) -> None:
+    repo, patch = _patch_repo(tmp_path)
+    calls: list[tuple[str, ...]] = []
+
+    def runner(command, **_kwargs):
+        calls.append(tuple(command))
+        return {"returncode": 0, "stdout": "", "stderr": ""}
+
+    result = check_leanstral_patch_proposal(
+        patch,
+        model_artifact_id="leanstral-patch-normalized-shell",
+        repo_root=repo,
+        task_declared_paths=("allowed.txt",),
+        validation_commands=(
+            ("/bin/bash", "-lc", "python -c 'raise SystemExit(0)'"),
+        ),
+        command_runner=runner,
+    )
+
+    assert result.accepted
+    assert calls[-1][:4] == (
+        "/bin/bash",
+        "--noprofile",
+        "--norc",
+        "-c",
+    )
+
+
+def test_patch_custom_runner_receives_only_sanitized_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, patch = _patch_repo(tmp_path)
+    marker = tmp_path / "inherited-bash-env-ran"
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(marker))}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BASH_ENV", str(bash_env))
+    monkeypatch.setenv("LEANSTRAL_RUNNER_SECRET", "must-not-leak")
+    observed_environments: list[dict[str, str]] = []
+
+    def runner(
+        command,
+        *,
+        cwd,
+        timeout_seconds=None,
+        timeout=None,
+        input_text=None,
+        stdin=None,
+        environment=None,
+    ):
+        assert environment is not None
+        child_environment = {
+            str(key): str(value) for key, value in environment.items()
+        }
+        observed_environments.append(child_environment)
+        return subprocess.run(
+            list(command),
+            cwd=cwd,
+            env=child_environment,
+            input=input_text if input_text is not None else stdin,
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds if timeout_seconds is not None else timeout,
+            check=False,
+        )
+
+    result = check_leanstral_patch_proposal(
+        patch,
+        model_artifact_id="leanstral-patch-custom-runner-environment",
+        repo_root=repo,
+        task_declared_paths=("allowed.txt",),
+        validation_commands=(
+            "test -z \"${LEANSTRAL_RUNNER_SECRET-}\" && python -c 'raise SystemExit(0)'",
+        ),
+        command_runner=runner,
+    )
+
+    assert result.accepted
+    assert observed_environments
+    assert all("BASH_ENV" not in item for item in observed_environments)
+    assert all(
+        "LEANSTRAL_RUNNER_SECRET" not in item
+        for item in observed_environments
+    )
+    assert not marker.exists()

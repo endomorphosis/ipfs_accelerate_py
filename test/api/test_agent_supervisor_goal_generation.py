@@ -20,10 +20,17 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     parse_goal_heap,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+    _objective_generation_board_state,
+    active_objective_generation_work,
+    blocked_review_objective_generation_families,
+    completion_evidence_records_from_gate_records,
     load_objective_admission_records,
+    load_goal_completion_gate_records,
     load_objective_generation_work,
     materialize_admitted_objective_work,
     materialize_objective_generation_cycle,
+    objective_generation_proposals,
+    objective_generation_task_findings,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     ObjectiveMaterializationTransactionState,
@@ -299,6 +306,1275 @@ def test_daemon_generation_ledger_prevents_cross_cycle_regeneration(tmp_path) ->
         second_artifact["generated_work"]
     )
     assert json.loads(artifact.read_text(encoding="utf-8"))["cycle_count"] == 2
+
+
+def _documentation_goal_heap(*, outputs: str = "Mcp-Plus-Plus/docs") -> str:
+    return f"""# Objective Heap
+
+## DCS-G030 MCP++ documentation
+
+- Status: provisionally_complete
+- Parent: DCS-G000
+- Goal: Keep MCP++ documentation aligned with executable conformance.
+- Acceptance: Runtime claims pass conformance; status boundaries are explicit; the repository receipt passes.
+- Evidence: Mcp-Plus-Plus/docs/DOCUMENTATION_INDEX.md, Mcp-Plus-Plus/test-results/documentation-current-state.json
+- Outputs: {outputs}
+- Validation: python Mcp-Plus-Plus/scripts/validate_documentation_current_state.py
+"""
+
+
+def _documentation_completion_gate(*, receipt_sha256: str = "receipt-refresh-a"):
+    binding = {
+        "repository_id": "repo",
+        "tree_id": "tree-refresh-only",
+        "objective_revision": "objective-v1",
+        "analyzer_version": "documentation-adapter-v2",
+        "configuration_revision": "documentation-policy-v3",
+    }
+    criteria = [
+        {
+            "criterion": "Every normative MCP++ claim passes executable conformance.",
+            "status": "unverified",
+            "verified": False,
+            "reason_codes": [
+                "semantic_verifier_missing",
+                "missing_producer_channel:mcplusplus-runtime-conformance-verifier",
+            ],
+            "required_producer_channel": "mcplusplus-runtime-conformance-verifier",
+            "implementation_paths": [
+                "Mcp-Plus-Plus/docs/protocol/runtime.md",
+            ],
+        },
+        {
+            "criterion": "Experimental and implemented behavior have explicit status boundaries.",
+            "status": "unverified",
+            "verified": False,
+            "reason_codes": [
+                "semantic_verifier_missing",
+                "missing_producer_channel:mcplusplus-status-boundary-verifier",
+            ],
+            "required_producer_channel": "mcplusplus-status-boundary-verifier",
+            "affected_document_paths": [
+                "Mcp-Plus-Plus/docs/protocol/status-boundaries.md",
+            ],
+        },
+        {
+            "criterion": "The repository documentation validator passes.",
+            "status": "unverified",
+            "verified": False,
+            "reason_codes": ["receipt_failed", "validation_command_failed"],
+            "required_producer_channel": "repository-validator:DCS-G030",
+            "analyzer_implementation_paths": [
+                "Mcp-Plus-Plus/scripts/validate_documentation_current_state.py",
+            ],
+        },
+    ]
+    return {
+        "binding": binding,
+        "reason_codes": [
+            "receipt_failed",
+            "semantic_verifier_missing",
+            "independent_evidence_quorum_unsatisfied",
+        ],
+        "missing_producer_channels": [
+            "mcplusplus-runtime-conformance-verifier",
+            "mcplusplus-status-boundary-verifier",
+            "repository-validator:DCS-G030",
+        ],
+        "coverage": {
+            "binding": binding,
+            "verified": False,
+            "criteria": criteria,
+        },
+        "rejected_receipts": [
+            {
+                "path": "Mcp-Plus-Plus/test-results/documentation-current-state.json",
+                "sha256": receipt_sha256,
+                "status": "failed",
+                "reason_codes": ["receipt_failed", "validation_command_failed"],
+                "errors": [
+                    "runtime conformance command typescript-vectors did not pass: exit code 1",
+                    "runtime conformance command go-vectors did not pass: exit code 1",
+                ],
+                "validation_returncode": 1,
+                "validation_command": [
+                    "python",
+                    "Mcp-Plus-Plus/scripts/validate_documentation_current_state.py",
+                ],
+            }
+        ],
+        # Rejected receipts remain diagnostics. They are deliberately not
+        # projected into completion_evidence_records.
+        "completion_evidence_records": [],
+    }
+
+
+def test_documentation_gate_emits_focused_direct_channel_tasks(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    gate = _documentation_completion_gate()
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": gate},
+        completion_decisions={
+            "DCS-G030": {
+                "verified": False,
+                "actionable_reasons": ["Produce completion evidence."],
+            }
+        },
+    )
+
+    typed = [item for item in proposals if item.source == "completion_gate_gap"]
+    assert len(typed) == 3
+    assert {item.parent_goal_id for item in typed} == {"DCS-G030"}
+    assert all(item.kind is ObjectiveWorkKind.TASK for item in typed)
+    assert all(item.family_key.startswith("objective-family/v1/") for item in typed)
+    assert all(item.instance_key.startswith("objective-instance/v1/") for item in typed)
+    assert not [item for item in proposals if item.source == "completion_gate"]
+    titles = "\n".join(item.title for item in typed)
+    assert "mcplusplus-runtime-conformance-verifier" in titles
+    assert "mcplusplus-status-boundary-verifier" in titles
+    assert "repository-validator:DCS-G030" in titles
+    flattened_diagnostics = "\n".join(
+        value
+        for item in typed
+        for value in (*item.expected_evidence_delta, item.rationale)
+    )
+    assert "typescript-vectors" in flattened_diagnostics
+    assert "go-vectors" in flattened_diagnostics
+    assert gate["completion_evidence_records"] == []
+    assert not completion_evidence_records_from_gate_records(
+        {"DCS-G030": gate}
+    ).get("DCS-G030")
+
+
+def test_documentation_gap_prefers_scoped_row_validation_over_receipt_and_goal(
+    tmp_path,
+) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    validator = tmp_path / "scripts/probe_runtime.py"
+    validator.parent.mkdir(parents=True)
+    validator.write_text("# scoped probe\n", encoding="utf-8")
+    gate = _documentation_completion_gate()
+    runtime_row = gate["coverage"]["criteria"][0]
+    runtime_row["implementation_paths"] = ["scripts/probe_runtime.py"]
+    runtime_row["validation_commands"] = [
+        "python scripts/probe_runtime.py --check-channel runtime"
+    ]
+    gate["rejected_receipts"][0].update(
+        {
+            "producer_channel": "mcplusplus-runtime-conformance-verifier",
+            "validation_command": ["python", "scripts/broad_validator.py", "--write"],
+        }
+    )
+
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        repo_root=tmp_path,
+        completion_gate_records={"DCS-G030": gate},
+        default_validation=("git diff --check",),
+    )
+    runtime = next(
+        item
+        for item in proposals
+        if "mcplusplus-runtime-conformance-verifier" in item.predicted_symbols
+    )
+
+    assert set(runtime.validation_commands) == {
+        "python scripts/probe_runtime.py --check-channel runtime",
+        "git diff --check",
+    }
+    assert not any("--write" in command for command in runtime.validation_commands)
+    assert not any(
+        "validate_documentation_current_state.py" in command
+        for command in runtime.validation_commands
+    )
+    assert runtime.predicted_files == ("scripts/probe_runtime.py",)
+
+
+def test_documentation_gap_prefers_explicit_files_and_alignment_diagnostics(
+    tmp_path,
+) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    gate = _documentation_completion_gate()
+    runtime_row = gate["coverage"]["criteria"][0]
+    runtime_row.update(
+        {
+            "affected_document_paths": [
+                "Mcp-Plus-Plus/docs/protocol/runtime.md",
+            ],
+            "evidence_paths": [
+                "Mcp-Plus-Plus/test-results/runtime-conformance.json",
+            ],
+            "probe_outcome": {
+                "status": "failed",
+                "probe": "typescript-vectors",
+                "generated_at": "refresh-a",
+            },
+            "documentation_alignment": {
+                "claim": "TypeScript runtime conformance",
+                "state": "drifted",
+            },
+            "debt_path": "Mcp-Plus-Plus/docs/debt/runtime.md",
+        }
+    )
+    gate["rejected_receipts"][0].update(
+        {
+            "affected_document_paths": [
+                "Mcp-Plus-Plus/docs/DOCUMENTATION_INDEX.md",
+            ],
+            "evidence_paths": [
+                "Mcp-Plus-Plus/test-results/documentation-current-state.json",
+            ],
+            "probe_outcome": "validator failed",
+        }
+    )
+
+    first = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": gate},
+    )
+    runtime = next(
+        item
+        for item in first
+        if "mcplusplus-runtime-conformance-verifier"
+        in item.predicted_symbols
+    )
+    repository = next(
+        item
+        for item in first
+        if "repository-validator:DCS-G030" in item.predicted_symbols
+    )
+
+    assert runtime.predicted_files == (
+        "Mcp-Plus-Plus/docs/protocol/runtime.md",
+    )
+    assert set(repository.predicted_files) == {
+        "Mcp-Plus-Plus/scripts/validate_documentation_current_state.py",
+        "Mcp-Plus-Plus/docs/DOCUMENTATION_INDEX.md",
+    }
+    assert "Mcp-Plus-Plus/test-results/runtime-conformance.json" not in (
+        runtime.predicted_files
+    )
+    assert all(
+        "Mcp-Plus-Plus/docs" not in item.predicted_files
+        for item in first
+    )
+    assert all(
+        item.title.startswith("Align documentation evidence")
+        for item in first
+    )
+    assert "Probe outcome" in runtime.rationale
+    assert "Documentation alignment" in runtime.rationale
+    assert "Documentation debt path" in runtime.rationale
+    assert "Evidence path (read-only)" in runtime.rationale
+
+    refresh_only = json.loads(json.dumps(gate))
+    refresh_only["coverage"]["criteria"][0]["probe_outcome"][
+        "generated_at"
+    ] = "refresh-b"
+    refreshed = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": refresh_only},
+    )
+    refreshed_runtime = next(
+        item
+        for item in refreshed
+        if "mcplusplus-runtime-conformance-verifier"
+        in item.predicted_symbols
+    )
+    assert refreshed_runtime.instance_key == runtime.instance_key
+
+    meaningful_change = json.loads(json.dumps(refresh_only))
+    meaningful_change["coverage"]["criteria"][0]["probe_outcome"][
+        "status"
+    ] = "passed-but-documentation-still-drifted"
+    changed = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": meaningful_change},
+    )
+    changed_runtime = next(
+        item
+        for item in changed
+        if "mcplusplus-runtime-conformance-verifier"
+        in item.predicted_symbols
+    )
+    assert changed_runtime.family_key == runtime.family_key
+    assert changed_runtime.instance_key != runtime.instance_key
+
+
+def test_missing_channels_without_coverage_still_emit_typed_tasks(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    gate = _documentation_completion_gate()
+    gate.pop("coverage")
+
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": gate},
+    )
+
+    assert len(proposals) == 3
+    assert {item.source for item in proposals} == {
+        "completion_gate_gap_manual_review"
+    }
+    assert all(not item.predicted_files for item in proposals)
+
+
+def test_rejected_receipt_without_coverage_remains_an_actionable_gap(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    gate = _documentation_completion_gate()
+    gate.pop("coverage")
+    gate.pop("missing_producer_channels")
+    gate["rejected_receipts"][0]["producer_channel"] = (
+        "repository-validator:DCS-G030"
+    )
+
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": gate},
+    )
+
+    assert len(proposals) == 1
+    assert proposals[0].source == "completion_gate_gap_manual_review"
+    assert not proposals[0].predicted_files
+    assert "typescript-vectors" in proposals[0].rationale
+    assert "Receipt/report path (read-only)" in proposals[0].rationale
+    assert not completion_evidence_records_from_gate_records(
+        {"DCS-G030": gate}
+    ).get("DCS-G030")
+
+
+def test_gate_coverage_without_channel_never_reuses_raw_goal_outputs(
+    tmp_path,
+) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    gate = {
+        "coverage": {
+            "verified": False,
+            "criteria": [
+                {
+                    "goal_id": "DCS-G030",
+                    "criterion_id": "legacy-uncovered-criterion",
+                    "criterion": "Current behavior has executable proof.",
+                    "status": "uncovered",
+                }
+            ],
+        }
+    }
+
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        repo_root=tmp_path,
+        completion_gate_records={"DCS-G030": gate},
+    )
+
+    assert len(proposals) == 1
+    assert proposals[0].source == "completion_gate_gap_manual_review"
+    assert proposals[0].predicted_files == ()
+    assert proposals[0].family_key
+    assert proposals[0].instance_key
+    assert "Mcp-Plus-Plus/docs" not in proposals[0].predicted_files
+    assert not [item for item in proposals if item.source == "coverage_rule"]
+
+
+def test_unverified_decision_without_typed_gate_uses_stable_manual_review_family(
+    tmp_path,
+) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(
+        _documentation_goal_heap(outputs="Mcp-Plus-Plus/README.md"),
+        encoding="utf-8",
+    )
+    decision = {
+        "verified": False,
+        "state": "provisionally_complete",
+        "actionable_reasons": ["independent_evidence_quorum_unsatisfied"],
+    }
+
+    first = objective_generation_proposals(
+        objective_path=objective,
+        repo_root=tmp_path,
+        completion_decisions={"DCS-G030": decision},
+    )
+    objective.write_text(
+        _documentation_goal_heap(outputs="Mcp-Plus-Plus/docs"),
+        encoding="utf-8",
+    )
+    second = objective_generation_proposals(
+        objective_path=objective,
+        repo_root=tmp_path,
+        completion_decisions={"DCS-G030": decision},
+    )
+
+    assert len(first) == 1
+    assert first[0].source == "completion_gate_gap_manual_review"
+    assert first[0].predicted_files == ()
+    assert first[0].family_key.startswith("objective-family/v1/")
+    assert first[0].instance_key.startswith("objective-instance/v1/")
+    assert second[0].family_key == first[0].family_key
+    assert second[0].instance_key == first[0].instance_key
+    assert not [item for item in (*first, *second) if item.source == "completion_gate"]
+
+
+def test_unverified_decision_uses_only_explicit_safe_edit_targets(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        repo_root=tmp_path,
+        completion_decisions={
+            "DCS-G030": {
+                "verified": False,
+                "actionable_reasons": ["validator_diagnostic_missing"],
+                "implementation_paths": [
+                    "Mcp-Plus-Plus/scripts/validate_documentation_current_state.py"
+                ],
+            }
+        },
+    )
+
+    assert len(proposals) == 1
+    assert proposals[0].source == "completion_gate_gap"
+    assert proposals[0].predicted_files == (
+        "Mcp-Plus-Plus/scripts/validate_documentation_current_state.py",
+    )
+    assert proposals[0].family_key
+    assert proposals[0].instance_key
+
+
+@pytest.mark.parametrize(
+    "required_child_goal_ids",
+    (
+        "DCS-G030.1",
+        ["DCS-G030.1", " DCS-G030.1 "],
+        [""],
+        [42],
+    ),
+)
+def test_gate_loader_rejects_malformed_required_child_goal_ids(
+    tmp_path,
+    required_child_goal_ids,
+) -> None:
+    artifact = tmp_path / "completion-gate.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "goals": {
+                    "DCS-G030": {
+                        "required_child_goal_ids": required_child_goal_ids,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="required_child_goal_ids"):
+        load_goal_completion_gate_records(artifact)
+
+
+def test_gate_loader_normalizes_unique_required_child_goal_ids(tmp_path) -> None:
+    artifact = tmp_path / "completion-gate.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "goals": {
+                    "DCS-G030": {
+                        "required_child_goal_ids": [
+                            " DCS-G030.1 ",
+                            "DCS-G030.2",
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    records = load_goal_completion_gate_records(artifact)
+
+    assert records["DCS-G030"]["required_child_goal_ids"] == [
+        "DCS-G030.1",
+        "DCS-G030.2",
+    ]
+
+
+@pytest.mark.parametrize(
+    "validation_commands",
+    (
+        {"command": "pytest -q"},
+        ["pytest -q", 42],
+        [""],
+        ["x" * 513],
+        ["pytest -q"] * 9,
+    ),
+)
+def test_gate_loader_rejects_malformed_scoped_validation_commands(
+    tmp_path,
+    validation_commands,
+) -> None:
+    artifact = tmp_path / "completion-gate.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "goals": {
+                    "DCS-G030": {
+                        "coverage": {
+                            "criteria": [
+                                {
+                                    "criterion": "Documentation is aligned.",
+                                    "validation_commands": validation_commands,
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="validation_commands"):
+        load_goal_completion_gate_records(artifact)
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    (
+        "/tmp/outside.md",
+        "../outside.md",
+        "Mcp-Plus-Plus/docs/../../outside.md",
+        "C:/outside.md",
+        "//server/share.md",
+        "unsafe\x00name.md",
+        "Mcp-Plus-Plus/docs/",
+    ),
+)
+def test_gate_loader_rejects_nested_unsafe_edit_targets(
+    tmp_path,
+    unsafe_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    artifact = repo / "completion-gate.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "goals": {
+                    "DCS-G030": {
+                        "coverage": {
+                            "criteria": [
+                                {
+                                    "criterion": "Documentation is aligned.",
+                                    "implementation_paths": [unsafe_path],
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsafe or imprecise edit target"):
+        load_goal_completion_gate_records(artifact, repo_root=repo)
+
+
+def test_gate_loader_rejects_symlink_edit_target_escaping_repo(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / "escape").symlink_to(outside, target_is_directory=True)
+    artifact = repo / "completion-gate.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "goals": {
+                    "DCS-G030": {
+                        "rejected_receipts": [
+                            {
+                                "validator_source_path": "escape/validator.py",
+                            }
+                        ]
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsafe or imprecise edit target"):
+        load_goal_completion_gate_records(artifact, repo_root=repo)
+
+
+def test_gate_loader_rejects_existing_directory_with_file_like_name(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "docs.md").mkdir()
+    artifact = repo / "completion-gate.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "goals": {
+                    "DCS-G030": {
+                        "implementation_paths": ["docs.md"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsafe or imprecise edit target"):
+        load_goal_completion_gate_records(artifact, repo_root=repo)
+
+
+def test_gate_loader_requires_repo_root_for_nested_edit_targets(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    artifact = repo / "completion-gate.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "goals": {
+                    "DCS-G030": {
+                        "coverage": {
+                            "criteria": [
+                                {
+                                    "validator_source_path": (
+                                        "Mcp-Plus-Plus/scripts/validator.py"
+                                    ),
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="repo_root is required"):
+        load_goal_completion_gate_records(artifact)
+
+    records = load_goal_completion_gate_records(artifact, repo_root=repo)
+    assert records["DCS-G030"]["coverage"]["criteria"][0][
+        "validator_source_path"
+    ] == "Mcp-Plus-Plus/scripts/validator.py"
+
+
+def test_in_memory_gate_rejects_symlink_edit_target_escaping_repo(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / "escape").symlink_to(outside, target_is_directory=True)
+    objective = repo / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    gate = _documentation_completion_gate()
+    gate["coverage"]["criteria"][0]["implementation_paths"] = [
+        "escape/runtime.md"
+    ]
+
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        repo_root=repo,
+        completion_gate_records={"DCS-G030": gate},
+    )
+    runtime = next(
+        item
+        for item in proposals
+        if "mcplusplus-runtime-conformance-verifier" in item.predicted_symbols
+    )
+
+    assert runtime.source == "completion_gate_gap_manual_review"
+    assert runtime.predicted_files == ()
+
+
+def test_documentation_gap_family_ignores_refresh_sha_and_mutable_goal_surfaces(
+    tmp_path,
+) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(outputs="Mcp-Plus-Plus/docs"), encoding="utf-8")
+    first = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={
+            "DCS-G030": _documentation_completion_gate(
+                receipt_sha256="receipt-generated-at-a"
+            )
+        },
+    )
+    objective.write_text(
+        _documentation_goal_heap(
+            outputs="Mcp-Plus-Plus/docs, Mcp-Plus-Plus/README.md, mutable-extra.md"
+        ).replace("MCP++ documentation", "MCP++ documentation wording changed"),
+        encoding="utf-8",
+    )
+    second = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={
+            "DCS-G030": _documentation_completion_gate(
+                receipt_sha256="receipt-generated-at-b"
+            )
+        },
+    )
+
+    first_typed = {item.family_key: item for item in first if item.family_key}
+    second_typed = {item.family_key: item for item in second if item.family_key}
+    assert set(first_typed) == set(second_typed)
+    assert {
+        key: item.instance_key for key, item in first_typed.items()
+    } == {
+        key: item.instance_key for key, item in second_typed.items()
+    }
+
+
+def test_active_typed_gap_bootstraps_missing_family_state_for_terminal_retry(
+    tmp_path,
+) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    artifact = tmp_path / "state" / "objective-generation.json"
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": _documentation_completion_gate()},
+    )
+    validator = next(
+        item
+        for item in proposals
+        if "repository-validator:DCS-G030" in item.predicted_symbols
+    )
+
+    active, active_payload = materialize_objective_generation_cycle(
+        [validator],
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        active_family_keys=(validator.family_key,),
+    )
+    retry, retry_payload = materialize_objective_generation_cycle(
+        [validator],
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        active_family_keys=(),
+        terminal_family_counts={validator.family_key: 1},
+    )
+
+    assert not active.accepted
+    active_state = active_payload["gap_family_states"][validator.family_key]
+    assert active_state["active"] is True
+    assert active_state["attempt_count"] == 1
+    assert active_state["completed_task_count"] == 0
+    assert len(retry.accepted) == 1
+    assert retry.accepted[0].source == "completion_gate_gap_retry"
+    retry_state = retry_payload["gap_family_states"][validator.family_key]
+    assert retry_state["attempt_count"] == 2
+    assert retry_state["completed_task_count"] == 1
+
+
+def test_typed_gap_lifecycle_dedupes_active_and_allows_reappearance(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    artifact = tmp_path / "state" / "objective-generation.json"
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": _documentation_completion_gate()},
+    )
+
+    first, first_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={},
+    )
+    families = tuple(item.family_key for item in first.accepted)
+    second, second_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=families,
+        terminal_family_counts={},
+    )
+    retry, retry_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={family: 1 for family in families},
+    )
+    repeated_retry, _repeated_retry_artifact = (
+        materialize_objective_generation_cycle(
+            proposals,
+            artifact_path=artifact,
+            limits=ObjectiveGenerationLimits(max_retries=1),
+            current_open_work=0,
+            active_family_keys=(),
+            terminal_family_counts={family: 1 for family in families},
+        )
+    )
+    active_retry, _active_retry_artifact = (
+        materialize_objective_generation_cycle(
+            proposals,
+            artifact_path=artifact,
+            limits=ObjectiveGenerationLimits(max_retries=1),
+            current_open_work=0,
+            active_family_keys=families,
+            terminal_family_counts={family: 1 for family in families},
+        )
+    )
+    review, review_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={family: 2 for family in families},
+    )
+    repeated_review, _repeated_review_artifact = (
+        materialize_objective_generation_cycle(
+            proposals,
+            artifact_path=artifact,
+            limits=ObjectiveGenerationLimits(max_retries=1),
+            current_open_work=0,
+            active_family_keys=(),
+            terminal_family_counts={family: 2 for family in families},
+        )
+    )
+    blocked, blocked_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={family: 3 for family in families},
+    )
+    repeated_blocked, _repeated_blocked_artifact = (
+        materialize_objective_generation_cycle(
+            proposals,
+            artifact_path=artifact,
+            limits=ObjectiveGenerationLimits(max_retries=1),
+            current_open_work=0,
+            active_family_keys=(),
+            terminal_family_counts={family: 3 for family in families},
+        )
+    )
+    resolved, resolved_artifact = materialize_objective_generation_cycle(
+        (),
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={family: 3 for family in families},
+        observed_gap_goal_ids=("DCS-G030",),
+    )
+    reappeared, reappeared_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={family: 3 for family in families},
+    )
+
+    assert len(first.accepted) == 3
+    assert not second.accepted
+    assert len(retry.accepted) == 3
+    assert {item.source for item in retry.accepted} == {
+        "completion_gate_gap_retry"
+    }
+    assert {item.retry_count for item in retry.accepted} == {1}
+    assert not repeated_retry.accepted
+    assert not active_retry.accepted
+    assert len(review.accepted) == 3
+    assert {item.source for item in review.accepted} == {
+        "completion_gate_gap_review"
+    }
+    assert not repeated_review.accepted
+    assert not blocked.accepted
+    assert not repeated_blocked.accepted
+    assert all(
+        state["outcome"] == "retry" and state["attempt_count"] == 2
+        for state in retry_artifact["gap_family_states"].values()
+    )
+    assert all(
+        state["outcome"] == "review_required" and state["review_emitted"]
+        for state in review_artifact["gap_family_states"].values()
+    )
+    assert all(
+        state["outcome"] == "blocked_review"
+        for state in blocked_artifact["gap_family_states"].values()
+    )
+    assert not resolved.accepted
+    assert all(
+        state["resolved"]
+        for state in resolved_artifact["gap_family_states"].values()
+    )
+    assert len(reappeared.accepted) == 3
+    assert all(
+        state["occurrence"] == 2
+        for state in reappeared_artifact["gap_family_states"].values()
+    )
+    assert first_artifact["generated_work_count"] == 3
+    assert second_artifact["generated_work_count"] == 3
+
+
+def test_blocked_gap_bypasses_retries_for_one_visible_review(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    artifact = tmp_path / "state" / "objective-generation.json"
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": _documentation_completion_gate()},
+    )
+    first, _first_payload = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=2),
+        active_family_keys=(),
+    )
+    families = tuple(item.family_key for item in first.accepted)
+
+    review, review_payload = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=2),
+        active_family_keys=(),
+        blocked_family_counts={family: 1 for family in families},
+    )
+    repeated, _repeated_payload = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=2),
+        active_family_keys=(),
+        blocked_family_counts={family: 1 for family in families},
+    )
+    findings = objective_generation_task_findings(
+        review_payload["generated_work"],
+        repo_root=tmp_path,
+        objective_path=objective,
+        generation_path=artifact,
+        gap_family_states=review_payload["gap_family_states"],
+    )
+    blocked, blocked_payload = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=2),
+        active_family_keys=(),
+        blocked_family_counts={family: 2 for family in families},
+    )
+
+    assert len(review.accepted) == 3
+    assert {item.source for item in review.accepted} == {
+        "completion_gate_gap_review"
+    }
+    assert {item.retry_count for item in review.accepted} == {0}
+    assert len(findings) == 3
+    assert all("manual review" in item.gap_task for item in findings)
+    assert not repeated.accepted
+    assert not blocked.accepted
+    assert all(
+        state["attempt_count"] == 1
+        and state["outcome"] == "blocked_review"
+        for state in blocked_payload["gap_family_states"].values()
+    )
+    assert blocked_review_objective_generation_families(
+        blocked_payload["gap_family_states"]
+    ) == tuple(sorted(families))
+
+
+def test_unresolved_diagnostic_changes_do_not_reset_family_retry_budget(
+    tmp_path,
+) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    artifact = tmp_path / "state" / "objective-generation.json"
+    first_proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": _documentation_completion_gate()},
+    )
+    first, first_payload = materialize_objective_generation_cycle(
+        first_proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        active_family_keys=(),
+    )
+    validator = next(
+        item
+        for item in first.accepted
+        if "repository-validator:DCS-G030" in item.predicted_symbols
+    )
+
+    changed_gate = _documentation_completion_gate()
+    changed_gate["rejected_receipts"][0]["errors"][0] = (
+        "typescript-vectors failed with diagnostic revision two"
+    )
+    changed_proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": changed_gate},
+    )
+    retry, retry_payload = materialize_objective_generation_cycle(
+        changed_proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        active_family_keys=(),
+        terminal_family_counts={validator.family_key: 1},
+    )
+
+    changed_again_gate = json.loads(json.dumps(changed_gate))
+    changed_again_gate["rejected_receipts"][0]["errors"][0] = (
+        "typescript-vectors failed with diagnostic revision three"
+    )
+    changed_again = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": changed_again_gate},
+    )
+    diagnostic_refresh, diagnostic_refresh_payload = (
+        materialize_objective_generation_cycle(
+            changed_again,
+            artifact_path=artifact,
+            limits=ObjectiveGenerationLimits(max_retries=1),
+            active_family_keys=(),
+            terminal_family_counts={validator.family_key: 1},
+        )
+    )
+    review, review_payload = materialize_objective_generation_cycle(
+        changed_again,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        active_family_keys=(),
+        terminal_family_counts={validator.family_key: 2},
+    )
+
+    assert len(first.accepted) == 3
+    assert len(retry.accepted) == 1
+    assert retry.accepted[0].source == "completion_gate_gap_retry"
+    assert not diagnostic_refresh.accepted
+    assert len(review.accepted) == 1
+    assert review.accepted[0].source == "completion_gate_gap_review"
+    retry_state = retry_payload["gap_family_states"][validator.family_key]
+    diagnostic_refresh_state = diagnostic_refresh_payload[
+        "gap_family_states"
+    ][validator.family_key]
+    review_state = review_payload["gap_family_states"][validator.family_key]
+    assert retry_state["attempt_count"] == 2
+    assert retry_state["occurrence"] == 1
+    assert diagnostic_refresh_state["attempt_count"] == 2
+    assert diagnostic_refresh_state["review_emitted"] is False
+    assert review_state["attempt_count"] == 2
+    assert review_state["occurrence"] == 1
+    assert review_state["review_emitted"] is True
+    assert first_payload["gap_family_states"][validator.family_key][
+        "attempt_count"
+    ] == 1
+
+
+def test_board_state_distinguishes_completed_and_blocked_families() -> None:
+    board = """# Board
+
+## DCS-001 Completed generated work
+
+- Status: completed
+- Merge key: objective-family/v1/completed
+
+## DCS-002 Blocked generated work
+
+- Status: blocked
+- Merge key: objective-family/v1/blocked
+
+## DCS-003 Active generated work
+
+- Status: in_progress
+- Merge key: objective-family/v1/active
+"""
+
+    active, completed, blocked = _objective_generation_board_state(
+        board,
+        task_prefix="DCS-",
+    )
+
+    assert active == {"objective-family/v1/active"}
+    assert completed == {"objective-family/v1/completed": 1}
+    assert blocked == {"objective-family/v1/blocked": 1}
+
+
+def test_changed_failed_diagnostics_wait_for_terminal_task_before_retry(
+    tmp_path,
+) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    artifact = tmp_path / "state" / "objective-generation.json"
+    first_proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": _documentation_completion_gate()},
+    )
+    materialize_objective_generation_cycle(
+        first_proposals,
+        artifact_path=artifact,
+        active_family_keys=(),
+    )
+    changed_gate = _documentation_completion_gate(
+        receipt_sha256="receipt-refresh-only-change"
+    )
+    changed_gate["rejected_receipts"][0]["errors"][0] = (
+        "runtime conformance command typescript-vectors did not pass: exit code 2"
+    )
+    changed_proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": changed_gate},
+    )
+
+    result, payload = materialize_objective_generation_cycle(
+        changed_proposals,
+        artifact_path=artifact,
+        active_family_keys=(),
+    )
+    changed_validator = next(
+        item
+        for item in changed_proposals
+        if "repository-validator:DCS-G030" in item.predicted_symbols
+    )
+    retry, retry_payload = materialize_objective_generation_cycle(
+        changed_proposals,
+        artifact_path=artifact,
+        active_family_keys=(),
+        terminal_family_counts={changed_validator.family_key: 1},
+    )
+
+    assert not result.accepted
+    state = payload["gap_family_states"][changed_validator.family_key]
+    assert state["attempt_count"] == 1
+    assert state["completed_task_count"] == 0
+    assert state["review_emitted"] is False
+    assert state["latest_instance_key"] == changed_validator.instance_key
+    assert len(retry.accepted) == 1
+    assert retry.accepted[0].family_key == changed_validator.family_key
+    assert retry.accepted[0].source == "completion_gate_gap_retry"
+    assert "exit code 2" in retry.accepted[0].rationale
+    assert retry_payload["gap_family_states"][changed_validator.family_key][
+        "attempt_count"
+    ] == 2
+
+
+def test_completed_legacy_generic_work_does_not_suppress_typed_gap(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    artifact = tmp_path / "state" / "objective-generation.json"
+    generic = _proposal(
+        title="Produce completion evidence for MCP++ documentation",
+        parent_goal_id="DCS-G030",
+        parent_objective_terms=("Mcp-Plus-Plus/docs/DOCUMENTATION_INDEX.md",),
+        expected_evidence_delta=("Produce completion evidence.",),
+        predicted_files=("Mcp-Plus-Plus/docs",),
+        predicted_symbols=("Mcp-Plus-Plus/docs/DOCUMENTATION_INDEX.md",),
+        validation_commands=("test -s Mcp-Plus-Plus/docs/DOCUMENTATION_INDEX.md",),
+        source="completion_gate",
+    )
+    materialize_objective_generation_cycle([generic], artifact_path=artifact)
+    typed = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": _documentation_completion_gate()},
+    )
+
+    result, _payload = materialize_objective_generation_cycle(
+        typed,
+        artifact_path=artifact,
+        current_open_work=0,
+        active_family_keys=(),
+    )
+
+    assert len(result.accepted) == 3
+    assert {item.source for item in result.accepted} == {"completion_gate_gap"}
+
+
+def test_only_active_board_generated_work_consumes_open_capacity(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": _documentation_completion_gate()},
+    )
+    work = [item.to_dict() for item in proposals]
+    active_family = proposals[0].family_key
+    board = f"""# Board
+
+## DCS-001 Active typed task
+
+- Status: todo
+- Merge key: {active_family}
+
+## DCS-002 Completed typed task
+
+- Status: completed
+- Merge key: {proposals[1].family_key}
+"""
+
+    active = active_objective_generation_work(
+        board,
+        work,
+        task_prefix="DCS-",
+    )
+
+    assert [item["family_key"] for item in active] == [active_family]
+
+
+def test_task_fingerprint_uses_gap_occurrence_not_per_refresh_receipt(tmp_path) -> None:
+    objective = tmp_path / "objective.md"
+    objective.write_text(_documentation_goal_heap(), encoding="utf-8")
+    generation = tmp_path / "state" / "objective-generation.json"
+    proposals = objective_generation_proposals(
+        objective_path=objective,
+        completion_gate_records={"DCS-G030": _documentation_completion_gate()},
+    )
+    _result, payload = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=generation,
+        active_family_keys=(),
+    )
+    first = objective_generation_task_findings(
+        payload["generated_work"],
+        repo_root=tmp_path,
+        objective_path=objective,
+        generation_path=generation,
+        gap_family_states=payload["gap_family_states"],
+    )
+
+    materialize_objective_generation_cycle(
+        (),
+        artifact_path=generation,
+        active_family_keys=(),
+    )
+    _result, payload = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=generation,
+        active_family_keys=(),
+    )
+    second = objective_generation_task_findings(
+        payload["generated_work"],
+        repo_root=tmp_path,
+        objective_path=objective,
+        generation_path=generation,
+        gap_family_states=payload["gap_family_states"],
+        seen_fingerprints=[item.fingerprint for item in first],
+    )
+
+    assert len(first) == 3
+    assert len(second) == 3
+    assert {item.fingerprint for item in first}.isdisjoint(
+        item.fingerprint for item in second
+    )
 
 
 def _objective_heap() -> str:

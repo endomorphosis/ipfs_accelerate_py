@@ -49,8 +49,12 @@ from .objective_graph import (
 )
 from .validation_commands import split_validation_commands
 from .formal_verification_contracts import content_identity
+from .validation_runtime import (
+    build_validation_environment,
+    validation_shell_command,
+)
 from .scan_receipts import RepositoryTreeIdentity, scan_identity
-from .task_identity import canonical_content_cid
+from .task_identity import canonical_content_cid, normalize_identity_text
 
 
 DEFAULT_ULTIMATE_GOAL = (
@@ -2134,6 +2138,26 @@ def open_goal_ids_from_todo_board(todo_path: Path, task_header_prefix: str = "")
     return {goal_id for goal_id in open_goal_ids if goal_id}
 
 
+def directly_open_goal_ids_from_todo_board(
+    todo_path: Path,
+    task_header_prefix: str = "",
+) -> set[str]:
+    """Return goals directly bound to open tasks, excluding ancestor lineage."""
+
+    if not todo_path.exists():
+        return set()
+
+    from .todo_daemon.implementation_daemon import TASK_HEADER_PREFIX, parse_task_file
+
+    goal_ids: set[str] = set()
+    for task in parse_task_file(todo_path, task_header_prefix or TASK_HEADER_PREFIX):
+        if task.status not in OPEN_TASK_STATUSES_FOR_GOAL_COMPLETION:
+            continue
+        for key in ("goal id", "goal ids", "goal packet goals"):
+            goal_ids.update(split_terms(task.metadata.get(key, "")))
+    return {goal_id for goal_id in goal_ids if goal_id}
+
+
 def open_implementation_goal_ids_from_todo_board(
     todo_path: Path,
     task_header_prefix: str = "",
@@ -2265,17 +2289,19 @@ def run_goal_validation(
         return payload
     results: list[dict[str, Any]] = []
     failure: dict[str, Any] = {}
+    validation_environment = build_validation_environment()
     for command in commands:
         command_started_at = utc_now()
         try:
             completed = subprocess.run(
-                ["/bin/bash", "-lc", command],
+                validation_shell_command(command),
                 cwd=repo_root,
                 text=True,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 timeout=timeout_seconds,
                 check=False,
+                env=validation_environment,
             )
         except subprocess.TimeoutExpired as exc:
             result = {
@@ -2339,10 +2365,132 @@ def _git_output(repo_root: Path, *arguments: str, binary: bool = False) -> str |
     return completed.stdout if binary else str(completed.stdout).strip()
 
 
+def _gitlink_paths(repo_root: Path) -> tuple[str, ...]:
+    """Return index-backed submodule paths without trusting ``.gitmodules``."""
+
+    raw_entries = _git_output(
+        repo_root,
+        "ls-files",
+        "--stage",
+        "-z",
+        binary=True,
+    )
+    if not isinstance(raw_entries, bytes):
+        return ()
+    paths: list[str] = []
+    for raw_entry in raw_entries.split(b"\0"):
+        if not raw_entry:
+            continue
+        metadata, separator, raw_path = raw_entry.partition(b"\t")
+        if not separator or not metadata.startswith(b"160000 "):
+            continue
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        candidate = Path(path)
+        if (
+            not path
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or path in paths
+        ):
+            continue
+        paths.append(path)
+    return tuple(sorted(paths))
+
+
+def _bind_submodule_worktree_identities(
+    repo_root: Path,
+    identity: RepositoryTreeIdentity,
+    *,
+    excluded_paths: Sequence[Path],
+    visited_repositories: frozenset[Path],
+    status_snapshot: bytes | None = None,
+) -> RepositoryTreeIdentity:
+    """Fold initialized submodule worktree bytes into a parent identity.
+
+    Git's parent status records only that a submodule is dirty.  Two different
+    dirty byte states can therefore have identical parent ``status`` and
+    ``diff`` output.  Completion evidence needs the recursively computed child
+    identity as well as the gitlink commit already present in the parent tree.
+    """
+
+    root = repo_root.resolve()
+    gitlinks = _gitlink_paths(root)
+    if not gitlinks:
+        return identity
+    if status_snapshot is None:
+        raw_status = _git_output(
+            root,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--ignore-submodules=none",
+            binary=True,
+        )
+        status_snapshot = raw_status if isinstance(raw_status, bytes) else b""
+    dirty_paths = {
+        entry[3:]
+        for entry in status_snapshot.split(b"\0")
+        if len(entry) >= 4
+    }
+    dirty_gitlinks = tuple(
+        relative
+        for relative in gitlinks
+        if relative.encode("utf-8", errors="surrogateescape") in dirty_paths
+    )
+    if not dirty_gitlinks:
+        # Clean submodule bytes are already content-addressed by the gitlink in
+        # the parent manifest.  Inspect only dirty/mismatched worktrees; this
+        # keeps completion identity bounded even in repositories with many
+        # initialized submodules.
+        return identity
+
+    digest = sha256()
+    digest.update(b"completion-source-tree-with-submodules-v1\0")
+    digest.update(identity.tree_id.encode("utf-8", errors="surrogateescape"))
+    next_visited = frozenset((*visited_repositories, root))
+    for relative in dirty_gitlinks:
+        raw_relative = relative.encode("utf-8", errors="surrogateescape")
+        child = (root / relative).resolve()
+        digest.update(b"\0submodule\0")
+        digest.update(raw_relative)
+        if child in next_visited:
+            digest.update(b"\0cycle\0")
+            continue
+        child_top = str(_git_output(child, "rev-parse", "--show-toplevel") or "")
+        if not child_top or Path(child_top).resolve() != child:
+            # The gitlink commit remains bound by the parent manifest.  This
+            # marker additionally distinguishes an absent/uninitialized child
+            # from the initialized worktree that validators inspect.
+            digest.update(b"\0uninitialized\0")
+            continue
+        child_controls: list[Path] = []
+        for control in excluded_paths:
+            try:
+                control.resolve().relative_to(child)
+            except ValueError:
+                continue
+            child_controls.append(control)
+        child_identity = _control_tree_identity(
+            child,
+            excluded_paths=child_controls,
+            _visited_repositories=next_visited,
+        )
+        digest.update(b"\0tree\0")
+        digest.update(
+            child_identity.tree_id.encode("utf-8", errors="surrogateescape")
+        )
+    return RepositoryTreeIdentity(
+        repository_id=identity.repository_id,
+        tree_id=f"sha256:{digest.hexdigest()}",
+    )
+
+
 def _control_tree_identity(
     repo_root: Path,
     *,
     excluded_paths: Sequence[Path],
+    _visited_repositories: frozenset[Path] = frozenset(),
 ) -> RepositoryTreeIdentity:
     """Return source-tree identity while excluding supervisor control files."""
 
@@ -2416,11 +2564,46 @@ def _control_tree_identity(
         if relative and relative not in relatives:
             relatives.append(relative)
     if not relatives:
-        return scan_identity(root)
+        return _bind_submodule_worktree_identities(
+            root,
+            scan_identity(root),
+            excluded_paths=excluded_paths,
+            visited_repositories=_visited_repositories,
+        )
     base = scan_identity(root)
     head_tree = str(_git_output(root, "rev-parse", "HEAD^{tree}") or "")
     if not head_tree:
         return base
+    # Hash the tracked manifest after removing control paths.  Starting from
+    # ``HEAD^{tree}`` would still include the last committed bytes of an
+    # excluded artifact, so committing a regenerated proof would make that
+    # proof part of the source identity it is trying to attest to.
+    raw_head_entries = _git_output(
+        top,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--full-tree",
+        "HEAD",
+        binary=True,
+    )
+    assert isinstance(raw_head_entries, bytes)
+    excluded_bytes = tuple(relative.encode("utf-8") for relative in relatives)
+    digest = sha256()
+    digest.update(b"completion-source-tree-v1\0")
+    for entry in raw_head_entries.split(b"\0"):
+        if not entry:
+            continue
+        separator = entry.find(b"\t")
+        entry_path = entry[separator + 1 :] if separator >= 0 else b""
+        if entry_path and any(
+            entry_path == excluded
+            or entry_path.startswith(excluded + b"/")
+            for excluded in excluded_bytes
+        ):
+            continue
+        digest.update(entry)
+        digest.update(b"\0")
     pathspec = ("--", ".", *(f":(exclude){relative}" for relative in relatives))
     status = _git_output(
         top,
@@ -2428,14 +2611,22 @@ def _control_tree_identity(
         "--porcelain=v1",
         "-z",
         "--untracked-files=all",
+        "--ignore-submodules=none",
         *pathspec,
         binary=True,
     )
     assert isinstance(status, bytes)
     if not status:
-        return RepositoryTreeIdentity(repository_id=base.repository_id, tree_id=head_tree)
-    digest = sha256()
-    digest.update(head_tree.encode("ascii", errors="replace"))
+        return _bind_submodule_worktree_identities(
+            root,
+            RepositoryTreeIdentity(
+                repository_id=base.repository_id,
+                tree_id=f"sha256:{digest.hexdigest()}",
+            ),
+            excluded_paths=excluded_paths,
+            visited_repositories=_visited_repositories,
+            status_snapshot=status,
+        )
     digest.update(b"\0status\0")
     digest.update(status)
     digest.update(b"\0diff\0")
@@ -2473,25 +2664,114 @@ def _control_tree_identity(
                         digest.update(chunk)
         except OSError:
             continue
-    return RepositoryTreeIdentity(
-        repository_id=base.repository_id,
-        tree_id=f"sha256:{digest.hexdigest()}",
+    return _bind_submodule_worktree_identities(
+        root,
+        RepositoryTreeIdentity(
+            repository_id=base.repository_id,
+            tree_id=f"sha256:{digest.hexdigest()}",
+        ),
+        excluded_paths=excluded_paths,
+        visited_repositories=_visited_repositories,
+        status_snapshot=status,
     )
 
 
-def completion_tree_identity(repo_root: Path, *, objective_path: Path) -> RepositoryTreeIdentity:
+def _objective_goal_completion_policy(goal: ObjectiveGoal) -> dict[str, Any]:
+    fields = goal.fields
+    acceptance = str(
+        fields.get("acceptance_criteria")
+        or fields.get("acceptance")
+        or fields.get("acceptance_criterion")
+        or ""
+    )
+    return {
+        "goal_id": str(goal.goal_id),
+        "title": normalize_identity_text(goal.title),
+        "goal": normalize_identity_text(fields.get("goal", "")),
+        "conflict_policy": normalize_identity_text(
+            fields.get("conflict_policy", "")
+        ),
+        "parents": sorted(str(item) for item in goal.parent_goal_ids),
+        "acceptance": normalize_identity_text(acceptance),
+        "required_evidence": sorted(
+            normalize_identity_text(item) for item in goal.required_evidence
+        ),
+        "dependencies": sorted(str(item) for item in goal.dependencies),
+        "outputs": sorted(str(item) for item in goal.predicted_files),
+        "predicted_symbols": sorted(
+            normalize_identity_text(item) for item in goal.predicted_symbols
+        ),
+        "validation": [
+            normalize_identity_text(item) for item in goal.validation_commands
+        ],
+    }
+
+
+def objective_goal_completion_revision(goal: ObjectiveGoal) -> str:
+    """Return the canonical lifecycle-independent policy revision for one goal."""
+
+    return canonical_content_cid(
+        {
+            "schema": "ipfs_accelerate_py/agent-supervisor/objective-goal-completion-policy@1",
+            "goal": _objective_goal_completion_policy(goal),
+        }
+    )
+
+
+def objective_completion_revision(
+    objective_path: Path | None = None,
+    *,
+    goals: Sequence[ObjectiveGoal] | None = None,
+) -> str:
+    """Return a lifecycle-independent revision of the full completion policy.
+
+    The objective markdown is mutable control state and is excluded from the
+    repository-tree fence.  Completion proof therefore binds this separate
+    semantic revision so changing a goal, its hierarchy, acceptance criteria,
+    evidence surface, outputs, or validation policy invalidates prior proof,
+    while status/diagnostic rewrites do not.
+    """
+
+    if goals is None:
+        if objective_path is None or not Path(objective_path).exists():
+            parsed_goals: Sequence[ObjectiveGoal] = ()
+        else:
+            parsed_goals = parse_goal_heap(
+                Path(objective_path).read_text(encoding="utf-8", errors="replace")
+            )
+    else:
+        parsed_goals = goals
+    semantic_goals = [
+        _objective_goal_completion_policy(goal)
+        for goal in sorted(parsed_goals, key=lambda item: item.goal_id)
+    ]
+    return canonical_content_cid(
+        {
+            "schema": "ipfs_accelerate_py/agent-supervisor/objective-completion-policy@1",
+            "goals": semantic_goals,
+        }
+    )
+
+
+def completion_tree_identity(
+    repo_root: Path,
+    *,
+    objective_path: Path,
+    control_paths: Sequence[Path] = (),
+) -> RepositoryTreeIdentity:
     """Return source-tree identity without self-invalidating tracker writes.
 
     The objective document is mutable supervisor state.  Persisting a
     lifecycle transition must not immediately make otherwise-current evidence
     stale.  This calculation is byte-for-byte compatible with ``scan_identity``
-    while excluding only that control document; every code, test, task-board,
-    configuration, tracked, and untracked change remains in the digest.
+    while excluding that document and explicit completion-control artifacts;
+    every code, test, task-board, configuration, tracked, and untracked change
+    remains in the digest.
     """
 
     return _control_tree_identity(
         repo_root,
-        excluded_paths=(objective_path,),
+        excluded_paths=(objective_path, *(Path(path) for path in control_paths)),
     )
 
 
@@ -3323,6 +3603,8 @@ def migrate_legacy_objective_goals(
         str, Sequence[CompletionEvidence | Mapping[str, Any]]
     ] | None = None,
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
+    completion_control_paths: Sequence[Path] = (),
+    require_artifact_binding: bool = False,
     goal_ids: Iterable[str] | None = None,
     preview: bool = False,
     max_goals: int | None = None,
@@ -3363,7 +3645,11 @@ def migrate_legacy_objective_goals(
         boards.append((todo_path, task_header_prefix))
     boards.extend(todo_boards or ())
     open_goals = open_goal_ids_from_todo_boards(boards)
-    identity = completion_tree_identity(repo_root, objective_path=objective_path)
+    identity = completion_tree_identity(
+        repo_root,
+        objective_path=objective_path,
+        control_paths=completion_control_paths,
+    )
     hierarchy = goal_graph(goals)
     goals_by_id = {goal.goal_id: goal for goal in goals}
     updates: dict[str, dict[str, str]] = {}
@@ -3397,11 +3683,22 @@ def migrate_legacy_objective_goals(
         return result
 
     for goal in batch:
+        if require_artifact_binding:
+            evidence = [
+                item
+                if isinstance(item, CompletionEvidence)
+                else CompletionEvidence.from_dict(item)
+                for item in supplied_records.get(goal.goal_id, ())
+            ]
+            supplied_gate = gate_records.get(goal.goal_id)
+            gate = dict(supplied_gate) if isinstance(supplied_gate, Mapping) else {}
+        else:
+            evidence = _goal_completion_records(goal, supplied_records)
+            gate = _goal_completion_gate_record(goal, gate_records)
         evidence = _apply_completion_evidence_source_policy(
-            _goal_completion_records(goal, supplied_records),
+            evidence,
             repository_tree=identity.tree_id,
         )
-        gate = _goal_completion_gate_record(goal, gate_records)
         criteria = str(
             goal.fields.get("acceptance_criteria")
             or goal.fields.get("acceptance")
@@ -3421,6 +3718,9 @@ def migrate_legacy_objective_goals(
             analysis_inconclusive=bool(gate.get("analysis_inconclusive", False)),
             repository_tree=identity.tree_id,
             repository_id=identity.repository_id,
+            objective_revision=objective_goal_completion_revision(goal),
+            completion_binding=gate.get("binding"),
+            require_artifact_binding=require_artifact_binding,
             now=now,
             freshness_seconds=evidence_freshness_seconds,
         )
@@ -3480,6 +3780,8 @@ def reconcile_objective_goal_completion(
         str, Sequence[CompletionEvidence | Mapping[str, Any]]
     ] | None = None,
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
+    completion_control_paths: Sequence[Path] = (),
+    require_artifact_binding: bool = False,
     now: str | None = None,
     evidence_freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
 ) -> ObjectiveCompletionResult:
@@ -3511,19 +3813,86 @@ def reconcile_objective_goal_completion(
         todo_boards=todo_boards,
         completion_evidence_records=supplied_records,
         completion_gate_records=supplied_gate_records,
+        completion_control_paths=completion_control_paths,
+        require_artifact_binding=require_artifact_binding,
         now=now,
         evidence_freshness_seconds=evidence_freshness_seconds,
     )
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
+    if require_artifact_binding:
+        goal_ids = [goal.goal_id for goal in goals]
+        duplicate_goal_ids = sorted(
+            {
+                goal_id
+                for goal_id in goal_ids
+                if goal_id and goal_ids.count(goal_id) > 1
+            }
+        )
+        if duplicate_goal_ids:
+            raise ValueError(
+                "objective completion graph contains duplicate goal ids: "
+                + ", ".join(duplicate_goal_ids)
+            )
+        known_goal_ids = {goal_id for goal_id in goal_ids if goal_id}
+        unknown_parents = sorted(
+            {
+                parent
+                for goal in goals
+                for parent in goal.parent_goal_ids
+                if parent and parent not in known_goal_ids
+            }
+        )
+        if unknown_parents:
+            raise ValueError(
+                "objective completion graph contains unknown parent ids: "
+                + ", ".join(unknown_parents)
+            )
+        parents_by_goal = {
+            goal.goal_id: tuple(
+                parent for parent in goal.parent_goal_ids if parent
+            )
+            for goal in goals
+            if goal.goal_id
+        }
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def verify_acyclic(goal_id: str) -> None:
+            if goal_id in visited:
+                return
+            if goal_id in visiting:
+                raise ValueError(
+                    "objective completion graph contains a parent cycle at "
+                    f"{goal_id}"
+                )
+            visiting.add(goal_id)
+            for parent_id in parents_by_goal.get(goal_id, ()):
+                verify_acyclic(parent_id)
+            visiting.remove(goal_id)
+            visited.add(goal_id)
+
+        for goal_id in sorted(parents_by_goal):
+            verify_acyclic(goal_id)
     repository_identity = completion_tree_identity(
-        repo_root, objective_path=objective_path
+        repo_root,
+        objective_path=objective_path,
+        control_paths=completion_control_paths,
     )
     candidate_goals = []
     persisted_records: dict[str, list[CompletionEvidence]] = {}
     for goal in goals:
+        if require_artifact_binding:
+            records = [
+                item
+                if isinstance(item, CompletionEvidence)
+                else CompletionEvidence.from_dict(item)
+                for item in supplied_records.get(goal.goal_id, ())
+            ]
+        else:
+            records = _goal_completion_records(goal, supplied_records)
         records = _apply_completion_evidence_source_policy(
-            _goal_completion_records(goal, supplied_records),
+            records,
             repository_tree=repository_identity.tree_id,
         )
         persisted_records[goal.goal_id] = records
@@ -3533,7 +3902,10 @@ def reconcile_objective_goal_completion(
             GoalState.REOPENED,
             GoalState.PROVISIONALLY_COMPLETE,
             GoalState.ANALYSIS_INCONCLUSIVE,
-        } or (goal.status == GoalState.VERIFIED_COMPLETE.value and records):
+        } or (
+            goal.status == GoalState.VERIFIED_COMPLETE.value
+            and (records or require_artifact_binding)
+        ):
             candidate_goals.append(goal)
 
     terms: list[str] = []
@@ -3566,6 +3938,33 @@ def reconcile_objective_goal_completion(
     referenced_goal_ids = referenced_goal_ids_from_todo_boards(completion_boards)
     hierarchy = goal_graph(goals)
     goals_by_id = {item.goal_id: item for item in goals if item.goal_id}
+    effective_states = {
+        goal_id: normalize_goal_state(goal.status)
+        for goal_id, goal in goals_by_id.items()
+    }
+    candidate_by_id = {goal.goal_id: goal for goal in candidate_goals}
+    evaluation_goal_ids: list[str] = []
+    visited_goal_ids: set[str] = set()
+    visiting_goal_ids: set[str] = set()
+
+    def visit_descendants_first(goal_id: str) -> None:
+        if goal_id in visited_goal_ids:
+            return
+        if goal_id in visiting_goal_ids:
+            return
+        visiting_goal_ids.add(goal_id)
+        for child_id in hierarchy.get("children", {}).get(goal_id, ()):
+            normalized_child_id = str(child_id)
+            if normalized_child_id in candidate_by_id:
+                visit_descendants_first(normalized_child_id)
+        visiting_goal_ids.remove(goal_id)
+        visited_goal_ids.add(goal_id)
+        if goal_id in candidate_by_id:
+            evaluation_goal_ids.append(goal_id)
+
+    for candidate in candidate_goals:
+        visit_descendants_first(candidate.goal_id)
+    evaluation_goals = [candidate_by_id[goal_id] for goal_id in evaluation_goal_ids]
 
     def descendant_states(goal_id: str) -> list[dict[str, Any]]:
         pending = list(hierarchy.get("children", {}).get(goal_id, ()))
@@ -3578,7 +3977,7 @@ def reconcile_objective_goal_completion(
             seen.add(child_id)
             child = goals_by_id.get(child_id)
             if child is not None:
-                state = child.lifecycle_state_value
+                state = effective_states[child_id].value
                 descendants.append({
                     "goal_id": child_id,
                     "state": state,
@@ -3587,7 +3986,7 @@ def reconcile_objective_goal_completion(
             pending.extend(hierarchy.get("children", {}).get(child_id, ()))
         return descendants
 
-    for goal in candidate_goals:
+    for goal in evaluation_goals:
         current_state = normalize_goal_state(goal.status)
         records = persisted_records.get(goal.goal_id, [])
         source_evidence_complete = bool(goal.required_evidence) and all(
@@ -3605,7 +4004,18 @@ def reconcile_objective_goal_completion(
                 )
             )
         )
-        gate_record = _goal_completion_gate_record(goal, supplied_gate_records)
+        if require_artifact_binding:
+            supplied_gate = supplied_gate_records.get(goal.goal_id)
+            gate_record = (
+                dict(supplied_gate)
+                if isinstance(supplied_gate, Mapping)
+                else {}
+            )
+        else:
+            gate_record = _goal_completion_gate_record(
+                goal,
+                supplied_gate_records,
+            )
         criteria_text = str(
             goal.fields.get("acceptance_criteria")
             or goal.fields.get("acceptance")
@@ -3638,18 +4048,24 @@ def reconcile_objective_goal_completion(
                 goal=goal,
                 repository_identity=repository_identity,
             )
-            records = [
-                CompletionEvidence.from_dict(
-                    {
-                        **record.to_dict(),
-                        "validation_receipt": validation_results[goal.goal_id],
-                        "validation_passed": bool(
-                            validation_results[goal.goal_id].get("passed", False)
-                        ),
-                    }
+            reconciled_records: list[CompletionEvidence] = []
+            for record in records:
+                payload = record.to_dict()
+                metadata = dict(payload.get("metadata") or {})
+                # The producer receipt and its provenance CID are immutable.
+                # A current validation rerun is a separate, content-addressed
+                # reconciliation receipt; overwriting the producer receipt
+                # would leave provenance_cid referring to bytes no longer
+                # present in the evidence record.
+                metadata["reconciliation_validation_receipt"] = (
+                    validation_results[goal.goal_id]
                 )
-                for record in records
-            ]
+                payload["metadata"] = metadata
+                payload["validation_passed"] = bool(
+                    validation_results[goal.goal_id].get("passed", False)
+                )
+                reconciled_records.append(CompletionEvidence.from_dict(payload))
+            records = reconciled_records
 
         decision = evaluate_goal_completion(
             current_state=current_state,
@@ -3658,6 +4074,9 @@ def reconcile_objective_goal_completion(
             tasks_complete=tasks_complete,
             repository_tree=repository_identity.tree_id,
             repository_id=repository_identity.repository_id,
+            objective_revision=objective_goal_completion_revision(goal),
+            completion_binding=gate_record.get("binding"),
+            require_artifact_binding=require_artifact_binding,
             now=now,
             freshness_seconds=evidence_freshness_seconds,
             coverage=gate_record.get("coverage"),
@@ -3667,12 +4086,16 @@ def reconcile_objective_goal_completion(
                 *descendant_states(goal.goal_id),
                 *gate_record.get("child_goals", ()),
             ],
+            required_child_goal_ids=gate_record.get(
+                "required_child_goal_ids", ()
+            ),
             analysis_result=gate_record.get("analysis_result"),
             analysis_inconclusive=bool(
                 gate_record.get("analysis_inconclusive", False)
             ),
         )
         decisions[goal.goal_id] = decision.to_dict()
+        effective_states[goal.goal_id] = decision.state
         diagnostics = decisions[goal.goal_id]["diagnostics"]
         goal_evidence = {
             term: list(discovered_evidence.get(term, []))
@@ -3722,6 +4145,29 @@ def reconcile_objective_goal_completion(
         elif decision.state is GoalState.BLOCKED:
             blocked_goal_ids.append(goal.goal_id)
         updates[goal.goal_id] = goal_updates
+
+    goal_position = {goal.goal_id: index for index, goal in enumerate(goals)}
+    for transitioned_goal_ids in (
+        completed_goal_ids,
+        provisional_goal_ids,
+        reopened_goal_ids,
+        analysis_inconclusive_goal_ids,
+        blocked_goal_ids,
+    ):
+        transitioned_goal_ids.sort(
+            key=lambda goal_id: goal_position.get(goal_id, len(goal_position))
+        )
+
+    final_repository_identity = completion_tree_identity(
+        repo_root,
+        objective_path=objective_path,
+        control_paths=completion_control_paths,
+    )
+    if final_repository_identity != repository_identity:
+        raise RuntimeError(
+            "repository tree changed while live goal validation commands were "
+            "running; completion reconciliation was aborted"
+        )
 
     if updates:
         rewritten = rewrite_goal_fields(text, updates)

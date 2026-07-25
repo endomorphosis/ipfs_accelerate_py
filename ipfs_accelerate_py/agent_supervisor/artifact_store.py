@@ -2498,29 +2498,123 @@ def write_code_evidence_graph_artifact(
     )
 
 
+def _stable_file_identity(path: Path) -> tuple[os.stat_result, str] | None:
+    """Return a stable stat/digest pair, or ``None`` during replacement."""
+
+    try:
+        with path.open("rb") as handle:
+            before = os.fstat(handle.fileno())
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+            after = os.fstat(handle.fileno())
+    except OSError:
+        return None
+    if (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    ) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    ):
+        return None
+    return after, digest.hexdigest()
+
+
+def _bundle_tables_match_source(
+    connection: Any,
+    payload: Mapping[str, Any],
+) -> bool:
+    """Prove scheduler-consumed bundle/task rows equal the paired JSON."""
+
+    raw_bundles = payload.get("bundles")
+    if not isinstance(raw_bundles, Mapping):
+        return False
+    expected: dict[str, dict[str, Any]] = {}
+    for bundle_key, raw_bundle in raw_bundles.items():
+        if not isinstance(raw_bundle, Mapping):
+            return False
+        bundle = dict(raw_bundle)
+        tasks = bundle.pop("tasks", [])
+        if not isinstance(tasks, list) or not all(
+            isinstance(task, Mapping) for task in tasks
+        ):
+            return False
+        bundle["tasks"] = [dict(task) for task in tasks]
+        expected[str(bundle_key)] = bundle
+    try:
+        bundle_rows = connection.execute(
+            "SELECT bundle_key, payload_json FROM bundles ORDER BY bundle_key"
+        ).fetchall()
+        task_rows = connection.execute(
+            "SELECT bundle_key, payload_json "
+            "FROM bundle_tasks ORDER BY bundle_key, task_ordinal"
+        ).fetchall()
+    except Exception:
+        return False
+    observed = {
+        str(bundle_key): {
+            **_json_value(str(payload_json)),
+            "tasks": [],
+        }
+        for bundle_key, payload_json in bundle_rows
+    }
+    for bundle_key, payload_json in task_rows:
+        bundle = observed.get(str(bundle_key))
+        if bundle is None:
+            return False
+        bundle["tasks"].append(_json_value(str(payload_json)))
+    return observed == expected
+
+
 def _database_fresh(database_path: Path, source_path: Path, kind: str | None) -> bool:
     if not database_path.exists() or not source_path.exists():
         return False
+    source_identity = _stable_file_identity(source_path)
+    if source_identity is None:
+        return False
+    source_stat, source_sha256 = source_identity
     duckdb = _duckdb_module()
     try:
         connection = duckdb.connect(str(database_path), read_only=True)
         try:
             row = connection.execute(
-                "SELECT artifact_kind, schema_version, source_size, source_mtime_ns "
+                "SELECT artifact_kind, schema_version, source_sha256, "
+                "source_size, source_mtime_ns "
                 "FROM artifact_catalog LIMIT 1"
             ).fetchone()
+            basic_match = bool(
+                row
+                and (kind is None or str(row[0]) == kind)
+                and str(row[1]) == QUERY_SCHEMA
+                and str(row[2]) == source_sha256
+                and int(row[3]) == source_stat.st_size
+                and int(row[4]) == source_stat.st_mtime_ns
+            )
+            if basic_match and str(row[0]) == BUNDLE_INDEX_KIND:
+                source_payload, verified_stat, verified_sha256 = (
+                    _read_stable_json(source_path)
+                )
+                basic_match = bool(
+                    verified_sha256 == source_sha256
+                    and verified_stat.st_size == source_stat.st_size
+                    and verified_stat.st_mtime_ns == source_stat.st_mtime_ns
+                    and _bundle_tables_match_source(
+                        connection,
+                        source_payload,
+                    )
+                )
         finally:
             connection.close()
     except Exception:
         return False
-    stat = source_path.stat()
-    return bool(
-        row
-        and (kind is None or str(row[0]) == kind)
-        and str(row[1]) == QUERY_SCHEMA
-        and int(row[2]) == stat.st_size
-        and int(row[3]) == stat.st_mtime_ns
-    )
+    return basic_match
 
 
 def _read_stable_json(
@@ -2562,8 +2656,33 @@ def ensure_query_database(path: Path | str, *, kind: str | None = None) -> Path:
         connection = duckdb.connect(str(requested), read_only=True)
         try:
             row = connection.execute(
-                "SELECT artifact_kind, schema_version FROM artifact_catalog LIMIT 1"
+                "SELECT artifact_kind, schema_version, source_sha256, "
+                "source_size FROM artifact_catalog LIMIT 1"
             ).fetchone()
+            if row and paths.json_path.exists():
+                source_payload, source_stat, source_sha256 = _read_stable_json(
+                    paths.json_path
+                )
+                if (
+                    str(row[2]) != source_sha256
+                    or int(row[3]) != source_stat.st_size
+                ):
+                    raise ValueError(
+                        "paired JSON/DuckDB source digest mismatch: "
+                        f"{requested}"
+                    )
+                observed_kind = str(row[0])
+                if (
+                    observed_kind == BUNDLE_INDEX_KIND
+                    and not _bundle_tables_match_source(
+                        connection,
+                        source_payload,
+                    )
+                ):
+                    raise ValueError(
+                        "paired JSON/DuckDB bundle projection mismatch: "
+                        f"{requested}"
+                    )
         finally:
             connection.close()
         if (

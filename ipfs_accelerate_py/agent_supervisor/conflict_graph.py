@@ -730,13 +730,17 @@ class TaskWorkContract:
             ("predicted_paths", "predicted_files", "outputs"),
         )
         predicted_paths = tuple(
-            path.casefold()
-            for path in _normalized_paths(
+            sorted(
+                {
+                    path.casefold()
+                    for path in _normalized_paths(
                     declared_paths
                     if has_declared_paths
                     else _field_items(sources, ("files",)),
                     None,
                 )
+                }
+            )
         )
         has_declared_symbols = any(
             "predicted_symbols" in source for source in sources
@@ -759,14 +763,18 @@ class TaskWorkContract:
             )
         )
         context_paths = tuple(
-            path.casefold()
-            for path in _normalized_paths(
+            sorted(
+                {
+                    path.casefold()
+                    for path in _normalized_paths(
                     _field_items(
                         sources,
                         ("context_paths", "context_keys", "context_files"),
                     ),
                     None,
                 )
+                }
+            )
         )
         context_tokens = _contract_integer(
             sources,

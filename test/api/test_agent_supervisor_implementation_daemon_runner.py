@@ -881,6 +881,7 @@ def test_build_daemon_context_refill_callbacks(tmp_path: Path):
     codebase_hook = build_daemon_codebase_scan_refill_callback(
         recorder("codebase"),
         discovery_dir=tmp_path / "discovery",
+        objective_path=tmp_path / "objective.md",
         repo_root=tmp_path,
     )
     retry_hook = build_daemon_retry_budget_refill_callback(
@@ -895,6 +896,7 @@ def test_build_daemon_context_refill_callbacks(tmp_path: Path):
     assert captured["objective"]["state_path"] == tmp_path / "state.json"
     assert captured["objective"]["repo_root"] == tmp_path
     assert captured["codebase"]["strategy_path"] == tmp_path / "strategy.json"
+    assert captured["codebase"]["objective_path"] == tmp_path / "objective.md"
     assert captured["retry"]["events_path"] == tmp_path / "events.jsonl"
     assert captured["retry"]["task_header_prefix"] == "## EX-"
 
@@ -946,6 +948,7 @@ def test_build_daemon_refill_hooks_from_recorders(tmp_path: Path):
     assert captured["objective"]["objective_path"] == tmp_path / "objective.md"
     assert captured["objective"]["repo_root"] == tmp_path
     assert captured["codebase"]["repo_root"] == tmp_path
+    assert captured["codebase"]["objective_path"] == tmp_path / "objective.md"
     assert captured["retry"]["discovery_output_path"] == "data/discovery"
 
 
@@ -1004,4 +1007,5 @@ def test_build_daemon_refill_hooks_factory_from_recorders(tmp_path: Path):
     assert captured["objective"]["objective_path"] == paths["objective_path"]
     assert captured["objective"]["repo_root"] == tmp_path
     assert captured["codebase"]["discovery_dir"] == paths["discovery_dir"]
+    assert captured["codebase"]["objective_path"] == paths["objective_path"]
     assert captured["retry"]["discovery_output_path"] == "data/discovery"

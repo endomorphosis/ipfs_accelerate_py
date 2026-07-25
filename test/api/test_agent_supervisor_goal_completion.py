@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
+import json
 import subprocess
 
 import pytest
@@ -20,11 +22,16 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     migrate_legacy_goal_completion,
     reconcile_goal_reopenings,
     reopen_goal_for_contradictions,
+    validate_completion_evidence,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     completion_tree_identity,
     migrate_legacy_objective_goals,
+    objective_completion_revision,
     reconcile_objective_goal_completion,
+)
+from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+    completion_gate_receipts_from_decisions,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
@@ -52,6 +59,77 @@ def _complete_evidence(**overrides: object) -> CompletionEvidence:
     return CompletionEvidence(**values)
 
 
+def _channel_revision(value: object, namespace: str) -> str:
+    digest = hashlib.sha256()
+    digest.update(namespace.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    )
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _channel_bound_evidence(
+    *,
+    channel: str = "repository-validator:G1",
+    channel_proof_overrides: dict[str, object] | None = None,
+    receipt_overrides: dict[str, object] | None = None,
+    evidence_overrides: dict[str, object] | None = None,
+) -> CompletionEvidence:
+    channel_proof: dict[str, object] = {
+        "kind": "accepted-source-report",
+        "channel": channel,
+        "status": "passed",
+        "healthy": True,
+        "exhaustive": True,
+        "safe_for_completion_reasoning": True,
+    }
+    channel_proof.update(channel_proof_overrides or {})
+    channel_proof_revision = _channel_revision(
+        channel_proof,
+        "documentation-semantic-channel-proof",
+    )
+    receipt: dict[str, object] = {
+        "attempted": True,
+        "passed": True,
+        "status": "passed",
+        "executed_at": NOW.isoformat(),
+        "acceptance_criterion": "The public API returns a verified result.",
+        "producer_channel": channel,
+        "channel_proof": channel_proof,
+        "channel_proof_revision": channel_proof_revision,
+    }
+    receipt.update(receipt_overrides or {})
+    provenance_cid = _channel_revision(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "executed_at"
+        },
+        "documentation-completion-receipt",
+    )
+    values: dict[str, object] = {
+        "producing_task_or_scan": channel,
+        "producer_id": channel,
+        "producer_channel": channel,
+        "channel_proof_revision": channel_proof_revision,
+        "validation_receipt": receipt,
+        "provenance_cid": provenance_cid,
+        "metadata": {
+            "producer_channel": channel,
+            "channel_proof_revision": channel_proof_revision,
+        },
+    }
+    values.update(evidence_overrides or {})
+    return _complete_evidence(**values)
+
+
 def _evaluate(
     evidence: list[CompletionEvidence],
     *,
@@ -69,7 +147,12 @@ def _evaluate(
                 "status": "verified",
             }]
         },
-        "analyzer_health": {"status": "healthy"},
+        "analyzer_health": {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "exhaustive": True,
+        },
         "exhaustion_quorum": {
             "satisfied": True,
             "required_members": 2,
@@ -81,6 +164,13 @@ def _evaluate(
                     "evidence_channel": "exhaustive",
                     "receipt_cid": "bafy-normal-scan",
                     "scan_mode": "exhaustive",
+                    "analyzer_version": "completion-analyzer/v1",
+                    "passed": True,
+                    "analyzer_health": {"status": "healthy", "healthy": True},
+                    "exhaustive": True,
+                    "safe_for_completion_reasoning": True,
+                    "conclusive": True,
+                    "contradicted": False,
                     "finished_at": (NOW - timedelta(minutes=3)).isoformat(),
                     "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
                 },
@@ -89,6 +179,13 @@ def _evaluate(
                     "evidence_channel": "audit",
                     "receipt_cid": "bafy-audit-scan",
                     "scan_mode": "audit",
+                    "analyzer_version": "completion-analyzer/v1",
+                    "passed": True,
+                    "analyzer_health": {"status": "healthy", "healthy": True},
+                    "exhaustive": True,
+                    "safe_for_completion_reasoning": True,
+                    "conclusive": True,
+                    "contradicted": False,
                     "finished_at": (NOW - timedelta(minutes=2)).isoformat(),
                     "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
                 },
@@ -121,7 +218,12 @@ def _tracker_gate(identity, criterion: str = "criterion one") -> dict[str, objec
             "evaluated_at": evaluated_at.isoformat(),
             "criteria": [{"criterion": criterion, "status": "verified"}],
         },
-        "analyzer_health": {"status": "healthy"},
+        "analyzer_health": {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "exhaustive": True,
+        },
         "exhaustion_quorum": {
             "satisfied": True,
             "required_members": 2,
@@ -132,6 +234,14 @@ def _tracker_gate(identity, criterion: str = "criterion one") -> dict[str, objec
                     "member_id": "normal-member",
                     "evidence_channel": "exhaustive",
                     "receipt_cid": "bafy-normal-scan",
+                    "scan_mode": "exhaustive",
+                    "analyzer_version": "completion-analyzer/v1",
+                    "passed": True,
+                    "analyzer_health": {"status": "healthy", "healthy": True},
+                    "exhaustive": True,
+                    "safe_for_completion_reasoning": True,
+                    "conclusive": True,
+                    "contradicted": False,
                     "finished_at": evaluated_at.isoformat(),
                     "binding": binding,
                 },
@@ -139,6 +249,14 @@ def _tracker_gate(identity, criterion: str = "criterion one") -> dict[str, objec
                     "member_id": "audit-member",
                     "evidence_channel": "audit",
                     "receipt_cid": "bafy-audit-scan",
+                    "scan_mode": "audit",
+                    "analyzer_version": "completion-analyzer/v1",
+                    "passed": True,
+                    "analyzer_health": {"status": "healthy", "healthy": True},
+                    "exhaustive": True,
+                    "safe_for_completion_reasoning": True,
+                    "conclusive": True,
+                    "contradicted": False,
                     "finished_at": evaluated_at.isoformat(),
                     "binding": binding,
                 },
@@ -265,6 +383,171 @@ def test_fresh_complete_evidence_verifies_after_provisional_transition() -> None
     assert decision.evidence_results[0].evidence == evidence
 
 
+def test_channel_bound_evidence_round_trips_and_satisfies_exact_coverage_binding() -> None:
+    evidence = _channel_bound_evidence()
+    serialized = evidence.to_dict()
+
+    assert serialized["producer_channel"] == "repository-validator:G1"
+    assert serialized["channel_proof_revision"].startswith("sha256:")
+    assert CompletionEvidence.from_dict(serialized) == evidence
+    assert validate_completion_evidence(
+        evidence,
+        repository_tree=CURRENT_TREE,
+        now=NOW,
+    ).valid
+    operational_timestamp_change = evidence.to_dict()
+    operational_timestamp_change["validation_receipt"]["executed_at"] = (
+        NOW + timedelta(minutes=1)
+    ).isoformat()
+    assert validate_completion_evidence(
+        CompletionEvidence.from_dict(operational_timestamp_change),
+        repository_tree=CURRENT_TREE,
+        now=NOW,
+    ).valid
+
+    decision = _evaluate(
+        [evidence],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "coverage": {
+                "verified": True,
+                "repository_tree": CURRENT_TREE,
+                "evaluated_at": NOW.isoformat(),
+                "criteria": [
+                    {
+                        "criterion": evidence.acceptance_criterion,
+                        "status": "verified",
+                        "required_producer_channel": evidence.producer_channel,
+                        "channel_proof_revision": evidence.channel_proof_revision,
+                    }
+                ],
+            }
+        },
+    )
+
+    assert decision.verified is True
+    channel_check = next(
+        check
+        for check in decision.gate.checks
+        if check.name == "producer_channel_binding"
+    )
+    assert channel_check.passed is True
+
+
+@pytest.mark.parametrize(
+    ("coverage_binding", "expected_code"),
+    [
+        (
+            {"required_producer_channel": "different-validator:G1"},
+            "producer_channel_mismatch",
+        ),
+        (
+            {
+                "required_producer_channel": "repository-validator:G1",
+                "channel_proof_revision": "sha256:stale-channel-proof",
+            },
+            "channel_proof_revision_mismatch",
+        ),
+    ],
+)
+def test_completion_gate_rejects_wrong_criterion_producer_channel_binding(
+    coverage_binding: dict[str, str],
+    expected_code: str,
+) -> None:
+    evidence = _channel_bound_evidence()
+    decision = _evaluate(
+        [evidence],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "coverage": {
+                "verified": True,
+                "repository_tree": CURRENT_TREE,
+                "evaluated_at": NOW.isoformat(),
+                "criteria": [
+                    {
+                        "criterion": evidence.acceptance_criterion,
+                        "status": "verified",
+                        **coverage_binding,
+                    }
+                ],
+            }
+        },
+    )
+
+    assert decision.verified is False
+    assert expected_code in decision.reason_codes
+    assert "validation_evidence_incomplete" in decision.reason_codes
+
+
+@pytest.mark.parametrize(
+    ("tamper", "expected_code"),
+    [
+        ("producer_channel", "producer_channel_mismatch"),
+        ("channel_proof_revision", "channel_proof_revision_mismatch"),
+        ("embedded_channel_proof", "channel_proof_revision_mismatch"),
+        ("provenance_cid", "provenance_cid_mismatch"),
+    ],
+)
+def test_channel_bound_evidence_rejects_tampered_proof_or_wrapper(
+    tamper: str,
+    expected_code: str,
+) -> None:
+    payload = _channel_bound_evidence().to_dict()
+    if tamper == "producer_channel":
+        payload["producer_channel"] = "different-validator:G1"
+    elif tamper == "channel_proof_revision":
+        payload["channel_proof_revision"] = "sha256:forged-channel-proof"
+    elif tamper == "embedded_channel_proof":
+        payload["validation_receipt"]["channel_proof"]["status"] = "forged"
+    else:
+        payload["provenance_cid"] = "sha256:forged-provenance"
+
+    result = validate_completion_evidence(
+        CompletionEvidence.from_dict(payload),
+        repository_tree=CURRENT_TREE,
+        now=NOW,
+    )
+
+    assert result.valid is False
+    assert expected_code in result.reason_codes
+
+
+def test_strict_artifact_binding_requires_typed_channel_proof() -> None:
+    result = validate_completion_evidence(
+        _complete_evidence(
+            repository_id="repo-id",
+            objective_revision="sha256:objective",
+            analyzer_version="completion-analyzer/v1",
+            configuration_revision="sha256:configuration",
+        ),
+        repository_id="repo-id",
+        repository_tree=CURRENT_TREE,
+        objective_revision="sha256:objective",
+        analyzer_version="completion-analyzer/v1",
+        configuration_revision="sha256:configuration",
+        require_artifact_binding=True,
+        now=NOW,
+    )
+
+    assert result.valid is False
+    assert "missing_producer_channel" in result.reason_codes
+    assert "missing_channel_proof_revision" in result.reason_codes
+
+
+def test_stable_verified_completion_remains_truthful_in_projected_receipt() -> None:
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.VERIFIED_COMPLETE,
+    )
+
+    assert decision.state is GoalState.VERIFIED_COMPLETE
+    assert decision.verified is True
+    receipt = completion_gate_receipts_from_decisions({"G1": decision.to_dict()})["G1"]
+    assert receipt["passed"] is True
+    assert receipt["state"] == GoalState.VERIFIED_COMPLETE.value
+    assert receipt["reason_codes"] == []
+
+
 @pytest.mark.parametrize(
     ("gate_overrides", "reason_code"),
     [
@@ -304,6 +587,215 @@ def test_completion_gate_rejects_healthy_but_explicitly_unsafe_analyzer() -> Non
 
     assert decision.verified is False
     assert "analyzer_completion_unsafe" in decision.reason_codes
+
+
+@pytest.mark.parametrize(
+    "health",
+    [
+        {"status": "healthy", "healthy": True, "exhaustive": True},
+        {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+        },
+        {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "exhaustive": True,
+            "timed_out": True,
+        },
+    ],
+)
+def test_completion_gate_requires_explicit_safe_exhaustive_analyzer_health(
+    health: dict[str, object],
+) -> None:
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={"analyzer_health": health},
+    )
+
+    assert decision.verified is False
+    assert "analyzer_completion_unsafe" in decision.reason_codes
+
+
+def _qualifying_raw_quorum_member(
+    *,
+    member_id: str,
+    receipt_cid: str,
+    scan_mode: str,
+    evidence_channel: str,
+) -> dict[str, object]:
+    return {
+        "member_id": member_id,
+        "receipt_cid": receipt_cid,
+        "evidence_channel": evidence_channel,
+        "scan_mode": scan_mode,
+        "analyzer_version": "completion-analyzer/v1",
+        "passed": True,
+        "analyzer_health": {"status": "healthy", "healthy": True},
+        "exhaustive": True,
+        "safe_for_completion_reasoning": True,
+        "conclusive": True,
+        "contradicted": False,
+        "finished_at": NOW.isoformat(),
+        "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+    }
+
+
+def test_quorum_derives_independence_and_rejects_arbitrary_distinct_labels() -> None:
+    members = [
+        _qualifying_raw_quorum_member(
+            member_id="claimed-one",
+            receipt_cid="bafy-one",
+            scan_mode="exhaustive",
+            evidence_channel="claimed-independent-one",
+        ),
+        _qualifying_raw_quorum_member(
+            member_id="claimed-two",
+            receipt_cid="bafy-two",
+            scan_mode="exhaustive",
+            evidence_channel="claimed-independent-two",
+        ),
+    ]
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "exhaustion_quorum": {
+                "satisfied": True,
+                "required_members": 2,
+                "member_count": 2,
+                "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+                "members": members,
+            }
+        },
+    )
+
+    assert decision.verified is False
+    assert "exhaustion_quorum_inconsistent" in decision.reason_codes
+    quorum_check = next(
+        check
+        for check in decision.gate.checks
+        if check.name == "exhaustion_quorum"
+    )
+    assert "duplicate_derived_independence_channel" in quorum_check.evidence[
+        "inconsistencies"
+    ]
+
+
+def test_quorum_accepts_raw_aggregate_receipts_and_rejects_relabelled_producer() -> None:
+    def aggregate_member(producer_id: str, child_sha: str) -> dict[str, object]:
+        return {
+            "producer_id": producer_id,
+            "implementation": f"validators/{producer_id}.py",
+            "status": "passed",
+            "healthy": True,
+            "analyzer_health": {
+                "status": "healthy",
+                "exhaustive": True,
+                "safe_for_completion_reasoning": True,
+            },
+            "conclusive": True,
+            "uncontradicted": True,
+            "executed_at": NOW.isoformat(),
+            "analyzer_version": f"{producer_id}/v1",
+            "child_receipt_binding": f"sha256:{producer_id}-tree",
+            "child_receipt_sha256": child_sha,
+            "aggregate_tree_binding": CURRENT_TREE,
+            "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+        }
+
+    members = [
+        aggregate_member("producer-one", "sha256:" + "1" * 64),
+        aggregate_member("producer-two", "sha256:" + "2" * 64),
+    ]
+    gate = {
+        "satisfied": True,
+        "required_members": 2,
+        "member_count": 2,
+        "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+        "members": members,
+    }
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={"exhaustion_quorum": gate},
+    )
+    assert decision.verified is True
+
+    members[1]["producer_id"] = "producer-one"
+    members[1]["implementation"] = "validators/producer-one.py"
+    replayed = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={"exhaustion_quorum": gate},
+    )
+    assert replayed.verified is False
+    quorum_check = next(
+        check
+        for check in replayed.gate.checks
+        if check.name == "exhaustion_quorum"
+    )
+    assert "duplicate_producer_id" in quorum_check.evidence["inconsistencies"]
+
+    members[1]["producer_id"] = "producer-two"
+    members[1]["implementation"] = "validators/producer-two.py"
+    members[1]["child_receipt_sha256"] = "sha256:" + "1" * 64
+    duplicate_child = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={"exhaustion_quorum": gate},
+    )
+    duplicate_child_check = next(
+        check
+        for check in duplicate_child.gate.checks
+        if check.name == "exhaustion_quorum"
+    )
+    assert duplicate_child.verified is False
+    assert "duplicate_child_receipt_sha256" in duplicate_child_check.evidence[
+        "inconsistencies"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("passed", False),
+        ("exhaustive", False),
+        ("safe_for_completion_reasoning", False),
+        ("conclusive", False),
+        ("contradicted", True),
+    ],
+)
+def test_quorum_rejects_member_without_every_completion_eligibility_fact(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    member = _qualifying_raw_quorum_member(
+        member_id="audit-member",
+        receipt_cid="bafy-audit",
+        scan_mode="audit",
+        evidence_channel="audit",
+    )
+    member[field_name] = bad_value
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "exhaustion_quorum": {
+                "satisfied": True,
+                "required_members": 1,
+                "member_count": 1,
+                "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+                "members": [member],
+            }
+        },
+    )
+
+    assert decision.verified is False
+    assert "exhaustion_quorum_inconsistent" in decision.reason_codes
 
 
 @pytest.mark.parametrize(
@@ -453,6 +945,60 @@ def test_parent_gate_recursively_rejects_hidden_reopened_descendant() -> None:
         check for check in decision.gate.checks if check.name == "child_goals"
     )
     assert children_check.evidence["unverified_children"][0]["goal_id"] == "G1.S1.S1"
+
+
+def test_parent_gate_requires_exact_declared_descendant_set() -> None:
+    missing = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "required_child_goal_ids": ["G1.S1"],
+            "child_goals": [],
+        },
+    )
+    assert missing.verified is False
+    assert "child_goal_set_mismatch" in missing.reason_codes
+
+    exact = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "required_child_goal_ids": ["G1.S1"],
+            "child_goals": [
+                {
+                    "goal_id": "G1.S1",
+                    "state": "verified_complete",
+                    "verified": True,
+                }
+            ],
+        },
+    )
+    assert exact.verified is True
+
+    unexpected = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "required_child_goal_ids": ["G1.S1"],
+            "child_goals": [
+                {
+                    "goal_id": "G1.S1",
+                    "state": "verified_complete",
+                    "verified": True,
+                },
+                {
+                    "goal_id": "G1.S2",
+                    "state": "verified_complete",
+                    "verified": True,
+                },
+            ],
+        },
+    )
+    assert unexpected.verified is False
+    children_check = next(
+        check for check in unexpected.gate.checks if check.name == "child_goals"
+    )
+    assert children_check.evidence["unexpected_child_goal_ids"] == ["G1.S2"]
 
 
 @pytest.mark.parametrize("child_state", [GoalState.ANALYSIS_INCONCLUSIVE, GoalState.REOPENED])
@@ -1011,6 +1557,63 @@ def _git(repo, *arguments: str) -> None:
     assert completed.returncode == 0, completed.stderr or completed.stdout
 
 
+@pytest.mark.parametrize(
+    ("objective_text", "error_match"),
+    [
+        (
+            """## G1 First
+
+- Status: active
+
+## G1 Duplicate
+
+- Status: active
+""",
+            "duplicate goal ids",
+        ),
+        (
+            """## G1 Child
+
+- Status: active
+- Parent: G-missing
+""",
+            "unknown parent ids",
+        ),
+        (
+            """## G1 First
+
+- Status: active
+- Parent: G2
+
+## G2 Second
+
+- Status: active
+- Parent: G1
+""",
+            "parent cycle",
+        ),
+    ],
+)
+def test_bound_completion_rejects_malformed_objective_graph(
+    tmp_path,
+    objective_text: str,
+    error_match: str,
+) -> None:
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(objective_text, encoding="utf-8")
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text("# Closed\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=error_match):
+        reconcile_objective_goal_completion(
+            repo_root=tmp_path,
+            objective_path=objective_path,
+            todo_path=todo_path,
+            completion_gate_records={},
+            require_artifact_binding=True,
+        )
+
+
 def test_objective_tracker_persists_provisional_then_verified_state(tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1064,7 +1667,330 @@ def test_objective_tracker_persists_provisional_then_verified_state(tmp_path) ->
     assert verified.verified_goal_ids == ["G10.S3"]
     assert verified.completed_goal_ids == ["G10.S3"]
     assert verified.validation_results["G10.S3"]["receipt_cid"].startswith("b")
-    assert "- Status: verified_complete" in objective_path.read_text(encoding="utf-8")
+    verified_text = objective_path.read_text(encoding="utf-8")
+    assert "- Status: verified_complete" in verified_text
+    assert '"validation_receipt":"bafy-validation-receipt"' in verified_text
+    assert '"reconciliation_validation_receipt"' in verified_text
+
+
+def test_objective_tracker_aborts_when_validation_mutates_repository_tree(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G10.S3 Mutation fence
+
+- Status: provisionally_complete
+- Acceptance: criterion one
+- Validation: python -c "from pathlib import Path; Path('source.py').write_text('VALUE = 2\\n', encoding='utf-8')"
+""",
+        encoding="utf-8",
+    )
+    (repo / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    original_objective = objective_path.read_text(encoding="utf-8")
+    identity = completion_tree_identity(repo, objective_path=objective_path)
+    evidence = _complete_evidence(
+        acceptance_criterion="criterion one",
+        repository_tree=identity.tree_id,
+        observed_at=datetime.now(timezone.utc),
+    )
+
+    with pytest.raises(RuntimeError, match="repository tree changed"):
+        reconcile_objective_goal_completion(
+            repo_root=repo,
+            objective_path=objective_path,
+            completion_evidence_records={"G10.S3": [evidence]},
+            completion_gate_records={
+                "G10.S3": _tracker_gate(identity, "criterion one")
+            },
+        )
+
+    assert (repo / "source.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+    assert objective_path.read_text(encoding="utf-8") == original_objective
+    assert "- Status: provisionally_complete" in original_objective
+
+
+def test_completion_control_artifact_writes_do_not_self_invalidate_tree(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    gate_path = repo / "state" / "completion-gate.json"
+    evidence_path = repo / "state" / "completion-evidence.json"
+    objective_path.write_text(
+        "## G1 Goal\n\n- Status: active\n- Acceptance: criterion one\n",
+        encoding="utf-8",
+    )
+    (repo / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    control_paths = (gate_path, evidence_path)
+
+    before = completion_tree_identity(
+        repo,
+        objective_path=objective_path,
+        control_paths=control_paths,
+    )
+    gate_path.parent.mkdir()
+    gate_path.write_text('{"tree_id":"first"}\n', encoding="utf-8")
+    evidence_path.write_text('{"tree_id":"first"}\n', encoding="utf-8")
+    after_first_write = completion_tree_identity(
+        repo,
+        objective_path=objective_path,
+        control_paths=control_paths,
+    )
+    gate_path.write_text('{"tree_id":"second"}\n', encoding="utf-8")
+    evidence_path.write_text('{"tree_id":"second"}\n', encoding="utf-8")
+    after_rewrite = completion_tree_identity(
+        repo,
+        objective_path=objective_path,
+        control_paths=control_paths,
+    )
+
+    assert before == after_first_write == after_rewrite
+    semantic_before = objective_completion_revision(objective_path)
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8").replace(
+            "criterion one",
+            "criterion one and example output",
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective.md", "state/completion-gate.json", "state/completion-evidence.json")
+    _git(repo, "commit", "-m", "update completion controls")
+    after_control_commit = completion_tree_identity(
+        repo,
+        objective_path=objective_path,
+        control_paths=control_paths,
+    )
+    assert after_control_commit == before
+    assert objective_completion_revision(objective_path) != semantic_before
+
+    (repo / "source.py").write_text("VALUE = 2\n", encoding="utf-8")
+    assert (
+        completion_tree_identity(
+            repo,
+            objective_path=objective_path,
+            control_paths=control_paths,
+        ).tree_id
+        != before.tree_id
+    )
+
+
+def test_completion_tree_identity_binds_dirty_submodule_bytes(tmp_path) -> None:
+    child_source = tmp_path / "child-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    _git(child_source, "config", "user.name", "Test User")
+    _git(child_source, "config", "user.email", "test@example.invalid")
+    (child_source / "guide.md").write_text("current state\n", encoding="utf-8")
+    _git(child_source, "add", ".")
+    _git(child_source, "commit", "-m", "seed child")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        "## G1 Documentation\n\n- Status: active\n- Acceptance: current docs\n",
+        encoding="utf-8",
+    )
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "vendor/child",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed parent")
+
+    child_guide = repo / "vendor/child/guide.md"
+    child_guide.write_text("first dirty state\n", encoding="utf-8")
+    first_status = subprocess.run(
+        ["git", "status", "--porcelain=v1"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    first = completion_tree_identity(repo, objective_path=objective_path)
+
+    child_guide.write_text("second dirty state\n", encoding="utf-8")
+    second_status = subprocess.run(
+        ["git", "status", "--porcelain=v1"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    second = completion_tree_identity(repo, objective_path=objective_path)
+
+    assert first_status == second_status
+    assert "vendor/child" in first_status
+    assert first.tree_id != second.tree_id
+
+
+def test_semantic_objective_revision_ignores_lifecycle_but_tracks_acceptance(
+    tmp_path,
+) -> None:
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        """## G1 Goal
+
+- Status: active
+- Goal: Keep documentation accurate.
+- Conflict policy: Document degraded behavior instead of inventing support.
+- Acceptance: documented command succeeds
+- Evidence: command receipt
+- Validation: python verify.py
+""",
+        encoding="utf-8",
+    )
+    initial = objective_completion_revision(objective_path)
+
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8")
+        .replace("- Status: active", "- Status: provisionally_complete")
+        + "- Completion confidence: 0.5\n",
+        encoding="utf-8",
+    )
+    assert objective_completion_revision(objective_path) == initial
+
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8").replace(
+            "Document degraded behavior instead of inventing support.",
+            "Repair product behavior before documenting support.",
+        ),
+        encoding="utf-8",
+    )
+    assert objective_completion_revision(objective_path) != initial
+
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8").replace(
+            "Repair product behavior before documenting support.",
+            "Document degraded behavior instead of inventing support.",
+        ),
+        encoding="utf-8",
+    )
+    assert objective_completion_revision(objective_path) == initial
+
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8").replace(
+            "documented command succeeds",
+            "documented command and example both succeed",
+        ),
+        encoding="utf-8",
+    )
+    assert objective_completion_revision(objective_path) != initial
+
+
+def test_strict_external_artifact_binding_rejects_stale_objective_evidence() -> None:
+    binding = {
+        "repository_id": "repo-id",
+        "tree_id": CURRENT_TREE,
+        "objective_revision": "bafy-current-objective",
+        "analyzer_version": "completion-analyzer/v1",
+        "configuration_revision": "sha256:config",
+    }
+    members = [
+        _qualifying_raw_quorum_member(
+            member_id="normal",
+            receipt_cid="bafy-normal",
+            scan_mode="exhaustive",
+            evidence_channel="exhaustive",
+        ),
+        _qualifying_raw_quorum_member(
+            member_id="audit",
+            receipt_cid="bafy-audit",
+            scan_mode="audit",
+            evidence_channel="audit",
+        ),
+    ]
+    for member in members:
+        member["binding"] = dict(binding)
+    evidence = _complete_evidence(
+        repository_id="repo-id",
+        objective_revision="bafy-stale-objective",
+        analyzer_version="completion-analyzer/v1",
+        configuration_revision="sha256:config",
+    )
+    decision = evaluate_goal_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        acceptance_criteria=[evidence.acceptance_criterion],
+        evidence=[evidence],
+        tasks_complete=True,
+        repository_id="repo-id",
+        repository_tree=CURRENT_TREE,
+        objective_revision="bafy-current-objective",
+        completion_binding=binding,
+        require_artifact_binding=True,
+        now=NOW,
+        coverage={
+            "verified": True,
+            "repository_tree": CURRENT_TREE,
+            "evaluated_at": NOW.isoformat(),
+            "criteria": [
+                {
+                    "criterion": evidence.acceptance_criterion,
+                    "status": "verified",
+                }
+            ],
+            "binding": binding,
+        },
+        analyzer_health={
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "exhaustive": True,
+            "binding": binding,
+        },
+        exhaustion_quorum={
+            "satisfied": True,
+            "required_members": 2,
+            "member_count": 2,
+            "binding": binding,
+            "members": members,
+        },
+    )
+
+    assert decision.verified is False
+    assert "objective_revision_mismatch" in decision.reason_codes
+
+
+def test_strict_external_evidence_requires_repository_identity() -> None:
+    result = validate_completion_evidence(
+        _complete_evidence(
+            objective_revision="bafy-objective",
+            analyzer_version="completion-analyzer/v1",
+            configuration_revision="sha256:config",
+        ),
+        repository_id="repo-id",
+        repository_tree=CURRENT_TREE,
+        objective_revision="bafy-objective",
+        analyzer_version="completion-analyzer/v1",
+        configuration_revision="sha256:config",
+        require_artifact_binding=True,
+        now=NOW,
+    )
+
+    assert result.valid is False
+    assert "missing_repository_id" in result.reason_codes
 
 
 def test_objective_tracker_never_verifies_task_drain_without_evidence(tmp_path) -> None:
@@ -1209,10 +2135,77 @@ def test_objective_tracker_automatically_aggregates_descendant_state(tmp_path) -
 
     parent = result.decisions["G1"]
     assert parent["verified"] is False
+    assert "child_unverified" in parent["reason_codes"]
+    assert parent["completion_gate"]["evaluated_evidence"]["child_goals"] == [
+        {
+            "goal_id": "G1.S1",
+            "state": "provisionally_complete",
+            "verified": False,
+        }
+    ]
+
+
+def test_objective_tracker_reopens_parent_with_child_in_same_reconciliation(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G1 Parent
+
+- Status: verified_complete
+- Acceptance: parent criterion
+- Validation: true
+
+## G1.S1 Child
+
+- Status: verified_complete
+- Parents: G1
+- Acceptance: child criterion
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    identity = completion_tree_identity(repo, objective_path=objective_path)
+    observed_at = datetime.now(timezone.utc)
+    parent_evidence = _complete_evidence(
+        acceptance_criterion="parent criterion",
+        repository_tree=identity.tree_id,
+        observed_at=observed_at,
+    )
+    child_evidence = _complete_evidence(
+        acceptance_criterion="child criterion",
+        repository_tree=identity.tree_id,
+        observed_at=observed_at,
+        contradictory=True,
+    )
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        completion_evidence_records={
+            "G1": [parent_evidence],
+            "G1.S1": [child_evidence],
+        },
+        completion_gate_records={
+            "G1": _tracker_gate(identity, "parent criterion"),
+            "G1.S1": _tracker_gate(identity, "child criterion"),
+        },
+    )
+
+    assert set(result.reopened_goal_ids) == {"G1", "G1.S1"}
+    assert result.decisions["G1.S1"]["state"] == GoalState.REOPENED.value
+    parent = result.decisions["G1"]
+    assert parent["state"] == GoalState.REOPENED.value
     assert "child_reopened" in parent["reason_codes"]
     assert parent["completion_gate"]["evaluated_evidence"]["child_goals"] == [
         {"goal_id": "G1.S1", "state": "reopened", "verified": False}
     ]
+    rewritten = objective_path.read_text(encoding="utf-8")
+    assert rewritten.count("- Status: reopened") == 2
 
 
 def test_legacy_completed_goal_migration_fails_closed_and_is_replay_stable() -> None:
@@ -1274,7 +2267,12 @@ def test_legacy_completed_goal_only_migrates_verified_with_full_gate() -> None:
                 "status": "verified",
             }],
         },
-        analyzer_health={"status": "healthy"},
+        analyzer_health={
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "exhaustive": True,
+        },
         exhaustion_quorum={
             "satisfied": True,
             "required_members": 2,
@@ -1285,6 +2283,14 @@ def test_legacy_completed_goal_only_migrates_verified_with_full_gate() -> None:
                     "member_id": "normal",
                     "evidence_channel": "exhaustive",
                     "receipt_cid": "bafy-normal",
+                    "scan_mode": "exhaustive",
+                    "analyzer_version": "completion-analyzer/v1",
+                    "passed": True,
+                    "analyzer_health": {"status": "healthy", "healthy": True},
+                    "exhaustive": True,
+                    "safe_for_completion_reasoning": True,
+                    "conclusive": True,
+                    "contradicted": False,
                     "finished_at": NOW.isoformat(),
                     "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
                 },
@@ -1292,6 +2298,14 @@ def test_legacy_completed_goal_only_migrates_verified_with_full_gate() -> None:
                     "member_id": "audit",
                     "evidence_channel": "audit",
                     "receipt_cid": "bafy-audit",
+                    "scan_mode": "audit",
+                    "analyzer_version": "completion-analyzer/v1",
+                    "passed": True,
+                    "analyzer_health": {"status": "healthy", "healthy": True},
+                    "exhaustive": True,
+                    "safe_for_completion_reasoning": True,
+                    "conclusive": True,
+                    "contradicted": False,
                     "finished_at": NOW.isoformat(),
                     "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
                 },

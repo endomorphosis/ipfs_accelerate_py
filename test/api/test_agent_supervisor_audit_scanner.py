@@ -110,6 +110,59 @@ def test_audit_ignores_normal_seen_set_and_persists_deduplicated_baseline(tmp_pa
     assert second.quorum.count == 1
 
 
+def test_goal_scoped_audit_preserves_raw_inventory_but_classifies_only_admitted_findings(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path, "# TODO: unrelated runtime cleanup\n")
+    objective_path = repo / "objectives.md"
+    objective_path.write_text(
+        """# Objective heap
+
+## DOC-G000 Documentation
+
+- Status: active
+- Goal: Keep documentation synchronized.
+- Outputs: docs/guide.md
+""",
+        encoding="utf-8",
+    )
+    document = repo / "docs" / "guide.md"
+    document.parent.mkdir()
+    document.write_text("- TODO: synchronize documentation guide\n", encoding="utf-8")
+    _git(repo, "add", "objectives.md", "docs/guide.md")
+    _git(repo, "commit", "-m", "seed objective-scoped audit")
+    store = ObjectiveDatasetStore(repo / "datasets")
+
+    first = audit_codebase_findings(
+        repo,
+        dataset_store=store,
+        objective_path=objective_path,
+    )
+    second = audit_codebase_findings(
+        repo,
+        dataset_store=store,
+        objective_path=objective_path,
+    )
+
+    assert first.inventory.raw_candidate_count == 2
+    assert first.receipt.metadata["audit_admission"] == {
+        "admitted_candidate_count": 1,
+        "rejected_candidate_count": 1,
+        "policy_valid": True,
+        "policy_errors": [],
+        "reason_summaries": [
+            {
+                "reason_code": "no_goal_lineage",
+                "count": 1,
+                "representative_paths": ["source.py"],
+            }
+        ],
+    }
+    assert first.counts == {"known": 0, "stale": 0, "changed": 0, "novel": 1}
+    assert second.counts == {"known": 1, "stale": 0, "changed": 0, "novel": 0}
+    assert second.receipt.terminal_reason is ScanTerminalReason.EXHAUSTED
+
+
 def _receipt(binding: ExhaustionBinding, channel: str, *, offset: int = 0) -> RefillScanResult[object]:
     started = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=offset)
     return RefillScanResult(
@@ -192,6 +245,7 @@ def test_normal_and_independent_audit_channels_form_completion_quorum(tmp_path: 
         repo_root=repo,
         max_findings=5,
         health_thresholds=thresholds,
+        allow_unscoped_codebase_refill=True,
     )
     assert normal.terminal_reason is ScanTerminalReason.EXHAUSTED
     assert normal.metadata["exhaustion_quorum"]["member_count"] == 2
