@@ -1,5 +1,11 @@
 """Autonomous agent supervisor helpers for objective-driven todo execution."""
 
+# These two modules define the reviewed, transport-neutral public control API.
+# They are deliberately provider-free: importing the package exposes the same
+# contracts and service used by Python, CLI, and MCP without loading optional
+# proof, model, or dataset providers.
+from . import control_contracts as _control_contracts
+from . import control_plane as _control_plane
 from .formal_verification_capabilities import (
     DEFAULT_CAPABILITY_CACHE_TTL_SECONDS,
     DEFAULT_CAPABILITY_PROBE_MAX_CHECKS,
@@ -2366,6 +2372,70 @@ __all__ = [
     "generate_proof_context_capsule",
 ]
 
+# Publish the complete reviewed control surfaces at the package root.  The
+# source modules own their public lists, which prevents the convenience API
+# from silently drifting behind a newly reviewed contract or service symbol.
+# Refuse an ambiguous alias if a future export collides with an unrelated
+# package export; silently choosing one would make the public API import-order
+# dependent.
+_CONTROL_PUBLIC_MODULES = (_control_contracts, _control_plane)
+_missing_control_export = object()
+for _control_module in _CONTROL_PUBLIC_MODULES:
+    for _control_name in _control_module.__all__:
+        _control_value = getattr(_control_module, _control_name)
+        _existing_control_value = globals().get(
+            _control_name, _missing_control_export
+        )
+        if (
+            _existing_control_value is not _missing_control_export
+            and _existing_control_value is not _control_value
+        ):
+            raise RuntimeError(
+                "ambiguous agent_supervisor public export: "
+                f"{_control_name}"
+            )
+        globals()[_control_name] = _control_value
+    __all__.extend(_control_module.__all__)
+del (
+    _CONTROL_PUBLIC_MODULES,
+    _control_module,
+    _control_name,
+    _control_value,
+    _existing_control_value,
+    _missing_control_export,
+)
+
+# Stable rollout contracts are kept off the cold-import path.  They are pure
+# records and evaluation helpers, but loading them only when requested keeps
+# basic control discovery independent from rollout storage and policy code.
+_LAZY_STABLE_EXPORTS = {
+    "self_improvement_rollout": (
+        "MAX_CANDIDATE_ARTIFACT_BYTES",
+        "MAX_CANDIDATE_ARTIFACT_COUNT",
+        "MAX_PAIRED_ROLLOUT_REPORT_BYTES",
+        "MIN_INDEPENDENT_LANE_THROUGHPUT_BPS",
+        "MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS",
+        "MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS",
+        "PAIRED_ROLLOUT_FIXTURE_SCHEMA",
+        "PAIRED_ROLLOUT_POLICY_SCHEMA",
+        "PAIRED_ROLLOUT_REPORT_SCHEMA",
+        "PairedFixtureKind",
+        "PairedRolloutFixture",
+        "PairedRolloutPolicy",
+        "PairedRolloutReport",
+        "PairedRolloutReportStore",
+        "PairedRolloutValidationError",
+        "REPEATED_FIXTURE_KINDS",
+        "REQUIRED_PAIRED_FIXTURE_KINDS",
+        "RolloutBehaviorMeasurement",
+        "SelfImprovementRolloutMode",
+        "evaluate_paired_self_improvement_rollout",
+    ),
+}
+for _stable_export_names in _LAZY_STABLE_EXPORTS.values():
+    __all__.extend(_stable_export_names)
+del _stable_export_names
+
 
 # Provider-backed planning modules are intentionally absent from the package's
 # cold-import path.  Their public package exports remain available on first use.
@@ -2611,6 +2681,14 @@ _LAZY_PROVIDER_EXPORT_ALIASES = {
 
 
 def __getattr__(name: str):
+    for module_name, export_names in _LAZY_STABLE_EXPORTS.items():
+        if name in export_names:
+            from importlib import import_module
+
+            module = import_module(f".{module_name}", __name__)
+            value = getattr(module, name)
+            globals()[name] = value
+            return value
     for module_name, export_names in _LAZY_PROVIDER_EXPORTS.items():
         if name in export_names:
             from importlib import import_module

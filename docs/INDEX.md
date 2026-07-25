@@ -10,8 +10,9 @@ context of earlier implementations and are not normative API references.
 - [Getting started](guides/getting-started/README.md): install the package and
   run a first inference or MCP server.
 - [Quick start](guides/QUICKSTART.md): short command-line and Python examples.
-- [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md): objective heaps,
-  bundle lanes, implementation daemons, evidence, and Leanstral boundaries.
+- [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md): operate the
+  stable Python, CLI, and MCP interfaces; choose a resource and rollout
+  profile; migrate standalone scripts; and recover failed work.
 - [API reference](api/overview.md): current Python exports and supported entry
   points.
 - [Architecture overview](architecture/overview.md): current runtime layers
@@ -38,13 +39,18 @@ context of earlier implementations and are not normative API references.
 - [Canonical MCP server README](../ipfs_accelerate_py/mcp_server/README.md)
 - [MCP++ records](../mcpplusplus/README.md)
 
-## Agent supervisor architecture
+## Agent supervisor
 
-- [Architecture and assurance model](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
+Use the operator guide for supported entry points and day-to-day workflows,
+the architecture document for control-plane contracts and trust boundaries,
+and the self-improvement plan for the rollout roadmap and acceptance evidence.
+
+- [Operator guide, profiles, and migration](guides/AGENT_SUPERVISOR_GUIDE.md)
+- [Architecture, contracts, and assurance model](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
+- [Self-improvement rollout plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md)
 - [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
 - [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)
 - [Leanstral goal development and benchmark](architecture/AGENT_SUPERVISOR_LEANSTRAL_GOAL_DEVELOPMENT.md)
-- [Supervisor self-improvement plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md)
 - [Supervisor self-improvement objective heap](architecture/agent_supervisor_self_improvement.objectives.md)
 - [Supervisor self-improvement task board](architecture/agent_supervisor_self_improvement.todo.md)
 - [Objective graph implementation notes](agent_supervisor_objective_graph.md)
@@ -77,11 +83,13 @@ planned work. Use the current guides and source code for present behavior.
 | Install or verify the package | [Installation](guides/getting-started/installation.md) |
 | Run inference | [Quick start](guides/QUICKSTART.md) |
 | Start MCP | [MCP setup](guides/MCP_SETUP_GUIDE.md) |
-| Operate objective-driven agent lanes | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
+| Operate or migrate agent-supervisor workflows | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
+| Understand supervisor services, contracts, and trust boundaries | [Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) |
+| Follow the supervisor rollout and self-improvement roadmap | [Self-Improvement Plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md) |
 | Understand assurance and provers | [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md) |
 | Run tests | [Testing](development/testing.md) |
 | Audit documentation drift | [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md) |
 | Troubleshoot | [FAQ](guides/troubleshooting/faq.md) |
 
-**Documentation baseline:** 2026-07-24. Update this page when a maintained
+**Documentation baseline:** 2026-07-25. Update this page when a maintained
 entry point or canonical architecture document changes.

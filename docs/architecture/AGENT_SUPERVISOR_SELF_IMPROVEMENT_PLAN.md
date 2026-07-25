@@ -518,3 +518,151 @@ the affected capability back to shadow. The paired end-to-end gate also forces
 the effective mode to `shadow` whenever its fixture population is incomplete
 or either gate fails; a requested `assist` or `automatic` mode never survives
 that decision.
+
+## Operator adoption and operating profiles
+
+ASI-024 publishes the reviewed control and rollout boundary for operators
+without turning optional analysis, model, or proof providers into import-time
+dependencies. Stable package exports cover the control service and client,
+canonical request/result and authorization contracts, side-effect-free
+capability and discovery checks, and the paired-rollout contracts. Importing
+the package or inspecting capabilities must neither load an optional provider
+nor start a process. Provider-specific implementations remain behind their
+explicit capability handshakes and are loaded only after policy and resource
+admission select them.
+
+The Python, unified CLI, and MCP surfaces are adapters over the same
+`SupervisorControlService` operation vocabulary and canonical contracts.
+`ipfs-accelerate agent capabilities` is the first operator check; equivalent
+Python and MCP discovery must report the same supported operation set, bounds,
+authority class, dry-run support, and contract versions. The discovery report
+also records whether optional providers were loaded or processes were started,
+so discovery-side effects are observable contract failures rather than hidden
+behavior. Operators must check support instead of inferring it from an import,
+an installed extra, a tool name, or a provider configuration file.
+
+The operating profiles below are normative configuration recipes, not new
+global constructors or implicit environment selection. They use existing
+`context_contracts.ContextBudget`, `analysis_cache.AnalysisCache`,
+`ResourcePolicy`, control bounds, and rollout contracts. Library defaults
+remain conservative: a one-lane, non-adaptive scheduler; explicit repository
+and state allowlists; required provider telemetry; bounded control results; and
+no automatic mutation merely because a provider is available.
+
+| Setting | Production recipe | Deterministic smoke recipe |
+| --- | --- | --- |
+| Purpose | Sustained operation on a reviewed host after paired-gate promotion | Fast, repeatable contract, migration, and recovery checks |
+| Rollout | Begin in `shadow`; request `assist` or `automatic` only from a passing, current paired report | `shadow` only |
+| Context | `context_contracts.ContextBudget` defaults: 8,192 input tokens, 2,048 output reserve, 512 tool reserve, 128 items, and 256 KiB serialized | 2,048 input tokens, 512 output reserve, 128 tool reserve, 32 items, and 64 KiB serialized |
+| Cache | 512 entries, 32 MiB total, 128 KiB per entry, 96 KiB per receipt, 5-minute negative TTL | 64 entries, 4 MiB total, 64 KiB per entry, 48 KiB per receipt, 60-second negative TTL |
+| Resources | Four-lane ceiling, adaptive admission disabled initially, provider telemetry required; stage ceilings of four analysis, one inference, two proof, two validation, one merge, and one persistence lane. Enable adaptive admission only after its paired parallel gate passes | One lane, adaptive admission disabled, one process and one lane for every stage |
+| Providers | Enable only individually discovered, policy-allowed providers with recorded quota, latency, token, memory, and GPU bounds; preserve deterministic local fallback | Do not load optional providers; capability discovery must still run and explicitly report them unavailable |
+| State | Durable, access-controlled state/cache roots with independent artifact quotas and restart checks | Fresh temporary state/cache roots, frozen fixture IDs and inputs, fixed observation time, and no network/provider dependence |
+| Refill | Enabled only after authorization and a current benchmark population; at most the policy-bounded admitted successor set | Evaluate replay and healthy exhaustion, but do not materialize successor work |
+
+The production lane count is an upper bound, not a target. Admission still
+reduces it for CPU, RAM, GPU memory, disk pressure, provider capacity, queue
+shape, or merge pressure. Deployments with smaller measured capacity lower the
+ceiling. The smoke profile deliberately fixes concurrency at one and disables
+adaptive/provider variability; it does not weaken schemas, authorization,
+evidence freshness, the closed paired fixture population, or any rollout
+threshold.
+
+### Promotion, authorization, and control operation
+
+The rollout report never promotes itself. An operator or deployment policy
+chooses a desired mode and binds it to a current report:
+
+1. `shadow` evaluates the complete paired population and may persist bounded
+   reports, metrics, diagnostics, and candidate receipts, but grants no
+   canonical mutation authority.
+2. `assist` exposes proposals for explicit approval. It is effective only when
+   the same non-negotiable and paired gates required for automatic operation
+   pass.
+3. `automatic` permits only the operations already allowed by control policy
+   and only while the complete gate passes. It does not bypass per-request
+   authorization, leases, validation, or completion evidence.
+
+Any missing fixture or failed gate makes `shadow` the effective mode regardless
+of the desired mode. A passing report is restart-safe rollout evidence, not
+goal, proof, merge, or completion evidence. Promotion also requires an
+operator-reviewed profile revision and capability snapshot; a changed tree,
+policy, provider capability, or profile makes the prior operational decision
+stale and triggers reevaluation.
+
+Read and proposal operations use their declared read/proposal authority. Every
+real mutation, including objective refinement or reconciliation, backlog
+refill, lifecycle changes, retry, cancel, quarantine, and validation replay,
+requires all of the following:
+
+- an exact permit decision bound to the operation, repository and state roots,
+  repository/tree and objective revisions, policy revision, and caller;
+- declared expected effects within the authorization and root allowlists;
+- a caller-scoped idempotency key; and
+- a live lease identity and fencing epoch checked before dispatch.
+
+Dry-run mutation requests remain proposal-authority operations and never call a
+mutating backend. MCP uses server-configured allowlists and the same service
+boundary; it must not derive authority from tool arguments. CLI and Python
+callers likewise cannot treat possession of a path, package import, rollout
+mode, or capability report as authorization.
+
+For adoption, operators first run capabilities, health, status, and metrics;
+then use objective preview and plan; then exercise refine, reconcile, and
+refill as dry runs. Only after reviewing expected effects should they submit an
+authorized real mutation. The corresponding task-board views and lifecycle
+commands use the same target binding and audit receipts. This replaces direct
+composition of standalone objective, refinery, implementation-daemon, and
+artifact-query scripts while leaving those scripts available as migration
+references until the shared surface has equivalent capability.
+
+### Metrics, recovery, and epoch operation
+
+Production monitoring combines control-plane status, health, metrics, events,
+and audit receipts with the paired rollout report. Alert and roll back on any
+non-zero false completion, authority violation, stale authoritative cache hit,
+escaped defect, duplicate execution, or unauthorized mutation; an unstable
+restart; incomplete fixture coverage; an artifact bound violation; or a
+regression in terminal outcome, accepted work, evidence coverage, quality,
+defect detection, false rejection, or merge conflicts. Track the explicit
+token-reduction, repeated-cache-reuse, and independent-lane-throughput basis
+points rather than a composite score, and retain the report reason codes for
+diagnosis.
+
+Recovery is fail-closed and typed:
+
+- an unavailable or unhealthy optional provider selects deterministic local
+  fallback, degradation, or rejection and never claims provider authority;
+- a stale tree, authorization, lease, or fencing epoch rejects before mutation
+  and requires a fresh target binding rather than an in-place retry;
+- an idempotent replay returns its durable result, while a key reused for
+  different effects is a conflict;
+- a stale or corrupt cache entry is invalidated and recomputed and cannot count
+  as authoritative evidence;
+- a validation, authority, population, or paired regression returns the
+  affected behavior to shadow and produces a bounded diagnostic;
+- restart recovery reloads canonical state and append-only rollout reports,
+  recomputes report decisions from fixture evidence, and verifies stable state
+  digests before resuming; and
+- ambiguous or unrepaired work is paused, drained, or quarantined with durable
+  events and receipts rather than silently retried.
+
+A self-refill epoch begins only when the effective task board is drained. Its
+content identity binds the repository and tree, objective and task-board
+revisions, self-improvement policy, capability snapshot, observation window,
+and operator revision. The ledger replay check happens before benchmark or
+proposal callbacks, so the same binding is idempotent across retries and
+restart. The benchmark population covers cache, control, efficiency, planning,
+safety, throughput, and validation through at least two independent evidence
+channels. Failed or partial analysis is an analyzer-health failure and cannot
+authorize successor work.
+
+Only fresh, complete, actionable observations can nominate proposals.
+Proposals must pass the policy's confidence, novelty, quality, refinement,
+depth, breadth, open-goal, and successor-count bounds before one transactional
+objective/task-board materialization. If no proposal survives, the epoch
+persists healthy-exhaustion evidence and waits. Another epoch requires a
+meaningful trigger: a changed repository tree, capability snapshot or policy;
+an operator objective revision; a regression or stale evidence; or a scheduled
+observation window. Queue exhaustion alone never loops, manufactures work, or
+proves the parent goal complete.
