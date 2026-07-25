@@ -923,6 +923,6 @@ By following this deployment guide, you can set up a resilient coordinator clust
 
 - [Distributed Testing Framework Documentation](../README.md)
 - [Raft Consensus Algorithm Paper](https://raft.github.io/raft.pdf)
-- [Coordinator API Reference](api_reference.md)
-- [Troubleshooting Guide](troubleshooting.md)
-- [Performance Tuning Guide](performance_tuning.md)
+- [Coordinator API Reference](STANDARDIZED_API_GUIDE.md)
+- [Troubleshooting Guide](#troubleshooting)
+- [Performance Tuning Guide](#performance-tuning)
