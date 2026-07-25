@@ -70,9 +70,52 @@ _REQUIREMENT_GOAL_IDS: Final = {
     PAIRED_EFFICIENCY_REQUIREMENT_ID: PAIRED_EFFICIENCY_GOAL_ID,
 }
 
+# ASI-G090 is a parent assurance boundary, not another rollout measurement.
+# These populations are deliberately closed so a completion caller cannot
+# narrow the producing work, descendant proofs, acceptance clauses, analyzer
+# configuration, or independent exhaustion quorum.
+PAIRED_ROLLOUT_OBJECTIVE_ID: Final = "ASI-G090"
+PAIRED_ROLLOUT_OBJECTIVE_REVISION: Final = "ASI-G090@asi-090"
+PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION: Final = (
+    "paired-rollout-completion@1"
+)
+PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION: Final = (
+    "paired-rollout-completion-policy@1"
+)
+PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
+PAIRED_ROLLOUT_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
+    "ASI-023",
+    "ASI-024",
+)
+PAIRED_ROLLOUT_CHILD_GOAL_IDS: Final[tuple[str, ...]] = (
+    "ASI-G112",
+    "ASI-G113",
+    "ASI-G114",
+)
+PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "Paired cold/warm, failure, adversarial, parallel, restart, and refill "
+    "fixtures satisfy every non-negotiable safety gate and the documented "
+    "token/cache/planning/throughput gates",
+    "optional integrations degrade correctly",
+    "stable exports remain lazy",
+    "operators have verified smoke and production profiles",
+    "failed gates retain shadow mode and produce bounded diagnostics.",
+)
+
 _CONTENT_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 _NON_AUTHORITY_OUTCOMES = frozenset({"degraded", "fallback", "rejected"})
 _REJECTING_OUTCOMES = frozenset({"blocked", "rejected"})
+_SUCCESSFUL_TASK_STATES = frozenset(
+    {
+        "complete",
+        "completed",
+        "passed",
+        "success",
+        "succeeded",
+        "verified",
+        "verified_complete",
+    }
+)
 
 
 class PairedRolloutValidationError(ValueError):
@@ -942,6 +985,60 @@ class PairedRolloutReport(Mapping[str, Any]):
             metrics=metrics,
         )
 
+    def evaluate_objective_completion(
+        self,
+        *,
+        repository_id: str,
+        repository_tree: str,
+        requirement_evidence: Sequence[
+            PairedRolloutRequirementEvidence | Mapping[str, Any]
+        ] = (),
+        producing_tasks: Sequence[Any] = (),
+        child_goals: Sequence[Any] = (),
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = (
+            PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        ),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate the closed ASI-G090 completion contract.
+
+        A passing rollout report is a required operational witness, but it is
+        never promoted into criterion validation, coverage, analyzer health,
+        or an exhaustion vote.  Those independent proof classes must be
+        supplied explicitly and remain subject to the two-phase lifecycle.
+        """
+
+        return evaluate_paired_rollout_completion(
+            self,
+            repository_id=repository_id,
+            repository_tree=repository_tree,
+            requirement_evidence=requirement_evidence,
+            producing_tasks=producing_tasks,
+            child_goals=child_goals,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            required_exhaustive_receipts=required_exhaustive_receipts,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return json.loads(_canonical_json(self.payload))
 
@@ -1422,6 +1519,506 @@ def evaluate_paired_self_improvement_rollout(
     return PairedRolloutReport(material)
 
 
+def _completion_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    converter = getattr(value, "to_dict", None)
+    if callable(converter):
+        converted = converter()
+        if isinstance(converted, Mapping):
+            return dict(converted)
+    return {}
+
+
+def _completion_normalized(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _completion_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        result = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            result = datetime.fromisoformat(
+                value.strip().replace("Z", "+00:00")
+            )
+        except ValueError:
+            return None
+    else:
+        return None
+    if result.tzinfo is None:
+        result = result.replace(tzinfo=timezone.utc)
+    return result.astimezone(timezone.utc)
+
+
+def _completion_fresh(
+    value: Any,
+    *,
+    current: datetime,
+    freshness_seconds: float,
+    clock_skew_seconds: float,
+) -> bool:
+    from datetime import timedelta
+
+    observed = _completion_datetime(value)
+    if observed is None:
+        return False
+    return bool(
+        observed
+        <= current + timedelta(seconds=max(0.0, clock_skew_seconds))
+        and current - observed
+        <= timedelta(seconds=max(0.0, freshness_seconds))
+    )
+
+
+def _rollout_child_is_current(
+    child: Mapping[str, Any],
+    *,
+    repository_id: str,
+    repository_tree: str,
+    current: datetime,
+    freshness_seconds: float,
+    clock_skew_seconds: float,
+) -> bool:
+    gate_value = child.get("completion_gate", child.get("gate"))
+    gate = gate_value if isinstance(gate_value, Mapping) else {}
+    evaluated_value = gate.get("evaluated_evidence")
+    evaluated = (
+        evaluated_value if isinstance(evaluated_value, Mapping) else {}
+    )
+    validations = evaluated.get("validation_evidence")
+    proof_requirements = child.get(
+        "proof_requirements",
+        evaluated.get("proof_requirements", ()),
+    )
+    if isinstance(proof_requirements, Mapping):
+        proof_requirements = (proof_requirements,)
+    validation_records_current = bool(
+        isinstance(validations, list)
+        and validations
+        and all(
+            isinstance(item, Mapping)
+            and item.get("valid") is True
+            and isinstance(item.get("evidence"), Mapping)
+            and item["evidence"].get("repository_tree") == repository_tree
+            and item["evidence"].get("repository_id") == repository_id
+            and str(item["evidence"].get("provenance_cid") or "").strip()
+            for item in validations
+        )
+    )
+    proof_requirements_bound = bool(
+        isinstance(proof_requirements, (list, tuple))
+        and proof_requirements
+        and all(
+            isinstance(item, Mapping)
+            and item.get("repository_tree") == repository_tree
+            and str(item.get("provenance_id") or "").strip()
+            and item.get("assurance_satisfied") is True
+            and item.get("contradicted") is False
+            and _completion_normalized(item.get("proof_verdict")) == "proved"
+            and _completion_normalized(item.get("freshness")) == "current"
+            and not item.get("reason_codes")
+            for item in proof_requirements
+        )
+    )
+    return bool(
+        _completion_normalized(
+            child.get("state", child.get("next_state", ""))
+        )
+        == "verified_complete"
+        and child.get("verified") is True
+        and gate.get("passed") is True
+        and evaluated.get("repository_tree") == repository_tree
+        and evaluated.get("repository_id") == repository_id
+        and _completion_fresh(
+            evaluated.get("evaluated_at"),
+            current=current,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+        )
+        and validation_records_current
+        and proof_requirements_bound
+    )
+
+
+def evaluate_paired_rollout_completion(
+    report: PairedRolloutReport | Mapping[str, Any],
+    *,
+    repository_id: str,
+    repository_tree: str,
+    requirement_evidence: Sequence[
+        PairedRolloutRequirementEvidence | Mapping[str, Any]
+    ] = (),
+    producing_tasks: Sequence[Any] = (),
+    child_goals: Sequence[Any] = (),
+    current_state: Any = "active",
+    evidence: Sequence[Any] = (),
+    tasks_complete: bool = False,
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    required_exhaustive_receipts: int = (
+        PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ),
+    now: Any = None,
+    freshness_seconds: float | None = None,
+    clock_skew_seconds: float | None = None,
+    analysis_inconclusive: bool = False,
+    blocked_reason: str = "",
+) -> Any:
+    """Evaluate ASI-G090 against fixed producing and proof populations.
+
+    The operational report is recomputed from its complete fixture population.
+    Completion additionally requires its two report-backed requirement
+    projections, both direct child goals plus the lazy-export child, every
+    producing task, one fresh validation for each literal criterion, exact
+    coverage bindings, explicit analyzer health, and the configured independent
+    exhaustive quorum.  No caller-supplied analysis result is accepted.
+    """
+
+    from .goal_completion import (
+        DEFAULT_CLOCK_SKEW_SECONDS,
+        DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+        evaluate_goal_completion,
+    )
+
+    if (
+        isinstance(required_exhaustive_receipts, bool)
+        or not isinstance(required_exhaustive_receipts, int)
+        or required_exhaustive_receipts
+        != PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ):
+        raise ValueError(
+            "required_exhaustive_receipts must equal the configured ASI-G090 "
+            f"count {PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+        )
+    repository_id = _text(repository_id, "repository_id")
+    repository_tree = _text(repository_tree, "repository_tree")
+    if not isinstance(report, PairedRolloutReport):
+        report = PairedRolloutReport.from_dict(report)
+    else:
+        report = PairedRolloutReport.from_dict(report.to_dict())
+
+    current = _completion_datetime(now) or datetime.now(timezone.utc)
+    max_age = (
+        DEFAULT_EVIDENCE_FRESHNESS_SECONDS
+        if freshness_seconds is None
+        else float(freshness_seconds)
+    )
+    skew = (
+        DEFAULT_CLOCK_SKEW_SECONDS
+        if clock_skew_seconds is None
+        else float(clock_skew_seconds)
+    )
+
+    report_operationally_complete = bool(
+        report["fixture_count"]
+        == report["required_fixture_count"]
+        == len(REQUIRED_PAIRED_FIXTURE_KINDS)
+        and report["gate_passed"]
+        and report["nonnegotiable_gate_passed"]
+        and report["paired_gate_passed"]
+        and report["token_gate_passed"]
+        and report["cache_gate_passed"]
+        and report["planning_gate_passed"]
+        and report["throughput_gate_passed"]
+        and _completion_fresh(
+            report["evaluated_at"],
+            current=current,
+            freshness_seconds=max_age,
+            clock_skew_seconds=skew,
+        )
+    )
+
+    expected_requirements = {
+        SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
+        PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    }
+    restored_requirements: list[PairedRolloutRequirementEvidence] = []
+    requirement_packet_valid = len(requirement_evidence) == len(
+        expected_requirements
+    )
+    try:
+        for item in requirement_evidence:
+            if isinstance(item, PairedRolloutRequirementEvidence):
+                restored = PairedRolloutRequirementEvidence.from_dict(
+                    item.to_dict(), report=report
+                )
+            else:
+                restored = PairedRolloutRequirementEvidence.from_dict(
+                    item, report=report
+                )
+            restored_requirements.append(restored)
+    except (PairedRolloutValidationError, TypeError, ValueError):
+        requirement_packet_valid = False
+    requirement_ids = [item.requirement_id for item in restored_requirements]
+    requirement_packet_valid = bool(
+        requirement_packet_valid
+        and len(requirement_ids) == len(set(requirement_ids))
+        and set(requirement_ids) == expected_requirements
+        and all(
+            item.repository_id == repository_id
+            and item.repository_tree == repository_tree
+            and item.report_id == report.report_id
+            and item.requirement_satisfied
+            and _completion_fresh(
+                item.evaluated_at,
+                current=current,
+                freshness_seconds=max_age,
+                clock_skew_seconds=skew,
+            )
+            for item in restored_requirements
+        )
+    )
+
+    task_values = [_completion_payload(item) for item in producing_tasks]
+    task_ids = [
+        str(item.get("task_id", item.get("id", "")) or "").strip()
+        for item in task_values
+    ]
+    producer_population_complete = bool(
+        len(task_ids) == len(set(task_ids))
+        and tuple(sorted(task_ids))
+        == tuple(sorted(PAIRED_ROLLOUT_PRODUCING_TASK_IDS))
+        and all(
+            _completion_normalized(item.get("status", item.get("state", "")))
+            in _SUCCESSFUL_TASK_STATES
+            for item in task_values
+        )
+    )
+
+    child_values = [_completion_payload(item) for item in child_goals]
+    child_ids = [
+        str(item.get("goal_id", item.get("id", "")) or "").strip()
+        for item in child_values
+    ]
+    child_population_complete = bool(
+        len(child_ids) == len(set(child_ids))
+        and tuple(sorted(child_ids))
+        == tuple(sorted(PAIRED_ROLLOUT_CHILD_GOAL_IDS))
+        and all(
+            _rollout_child_is_current(
+                item,
+                repository_id=repository_id,
+                repository_tree=repository_tree,
+                current=current,
+                freshness_seconds=max_age,
+                clock_skew_seconds=skew,
+            )
+            for item in child_values
+        )
+    )
+    if not child_population_complete:
+        child_values.append(
+            {
+                "goal_id": "ASI-G090-required-descendant-population",
+                "state": "active",
+                "verified": False,
+                "completion_gate": {
+                    "passed": False,
+                    "reason_code": (
+                        "required_descendant_population_or_binding_incomplete"
+                    ),
+                },
+            }
+        )
+
+    evidence_values = [_completion_payload(item) for item in evidence]
+    evidence_criteria = [
+        _completion_normalized(item.get("acceptance_criterion"))
+        for item in evidence_values
+    ]
+    expected_criteria = {
+        _completion_normalized(item)
+        for item in PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA
+    }
+    exact_evidence_population = bool(
+        len(evidence_criteria) == len(expected_criteria)
+        and len(evidence_criteria) == len(set(evidence_criteria))
+        and set(evidence_criteria) == expected_criteria
+    )
+
+    evidence_ids: dict[str, str] = {}
+    for item in evidence_values:
+        criterion = _completion_normalized(item.get("acceptance_criterion"))
+        receipt_id = str(
+            item.get(
+                "provenance_cid",
+                item.get("receipt_id", item.get("evidence_id", "")),
+            )
+            or ""
+        ).strip()
+        if criterion and receipt_id:
+            evidence_ids[criterion] = receipt_id
+
+    coverage_value = _completion_payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+    row_criteria = [
+        _completion_normalized(
+            row.get("criterion", row.get("acceptance_criterion", ""))
+        )
+        for row in rows
+        if isinstance(row, Mapping)
+    ]
+    coverage_bound = bool(
+        len(row_criteria) == len(expected_criteria)
+        and len(row_criteria) == len(set(row_criteria))
+        and set(row_criteria) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and bool(row.get("implementation"))
+            and str(
+                row.get(
+                    "validation_receipt_id",
+                    row.get("validation_receipt", ""),
+                )
+                or ""
+            ).strip()
+            == evidence_ids.get(
+                _completion_normalized(
+                    row.get(
+                        "criterion",
+                        row.get("acceptance_criterion", ""),
+                    )
+                ),
+                "",
+            )
+            for row in rows
+        )
+    )
+    if not (coverage_bound and exact_evidence_population):
+        reasons = coverage_value.get("reason_codes")
+        reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "reason_codes": list(
+                dict.fromkeys(
+                    [
+                        *reasons,
+                        "coverage_validation_receipt_unbound",
+                    ]
+                )
+            ),
+        }
+
+    expected_binding = {
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": PAIRED_ROLLOUT_OBJECTIVE_ID,
+        "objective_revision": PAIRED_ROLLOUT_OBJECTIVE_REVISION,
+        "analyzer_version": PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION,
+        "configuration_revision": (
+            PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    health_value = _completion_payload(analyzer_health)
+    health_binding_value = health_value.get("binding")
+    health_binding = (
+        dict(health_binding_value)
+        if isinstance(health_binding_value, Mapping)
+        else {}
+    )
+    health_valid = bool(
+        _completion_normalized(health_value.get("status")) == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+        and health_binding == expected_binding
+    )
+    if not health_valid:
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    quorum_value = _completion_payload(exhaustion_quorum)
+    members_value = quorum_value.get("members")
+    members = members_value if isinstance(members_value, list) else []
+    quorum_binding_value = quorum_value.get("binding")
+    quorum_binding = (
+        dict(quorum_binding_value)
+        if isinstance(quorum_binding_value, Mapping)
+        else {}
+    )
+
+    def independent_member_field(name: str) -> bool:
+        values = [
+            str(member.get(name) or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        return bool(
+            len(values) == len(members)
+            and all(values)
+            and len(values) == len(set(values))
+        )
+
+    quorum_valid = bool(
+        quorum_value.get("required_members")
+        == PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("member_count") == len(members)
+        and len(members) == PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("satisfied") is True
+        and quorum_binding == expected_binding
+        and independent_member_field("member_id")
+        and independent_member_field("evidence_channel")
+        and independent_member_field("receipt_cid")
+        and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and _completion_normalized(member.get("scan_mode"))
+            == "exhaustive"
+            and isinstance(member.get("binding"), Mapping)
+            and dict(member["binding"]) == expected_binding
+            and _completion_fresh(
+                member.get("finished_at"),
+                current=current,
+                freshness_seconds=max_age,
+                clock_skew_seconds=skew,
+            )
+            for member in members
+        )
+    )
+    if not quorum_valid:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    values: dict[str, Any] = {
+        "current_state": current_state,
+        "acceptance_criteria": PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA,
+        "evidence": evidence,
+        "tasks_complete": bool(
+            tasks_complete
+            and report_operationally_complete
+            and requirement_packet_valid
+            and producer_population_complete
+            and child_population_complete
+        ),
+        "repository_tree": repository_tree,
+        "repository_id": repository_id,
+        "now": current,
+        "analysis_inconclusive": analysis_inconclusive,
+        "blocked_reason": blocked_reason,
+        "coverage": coverage_value,
+        "analyzer_health": health_value,
+        "exhaustion_quorum": quorum_value,
+        "child_goals": child_values,
+        "analysis_result": None,
+        "require_completion_gate": True,
+    }
+    if freshness_seconds is not None:
+        values["freshness_seconds"] = freshness_seconds
+    if clock_skew_seconds is not None:
+        values["clock_skew_seconds"] = clock_skew_seconds
+    return evaluate_goal_completion(**values)
+
+
 class PairedRolloutReportStore:
     """Append-only, restart-safe store for bounded rollout decisions."""
 
@@ -1524,12 +2121,20 @@ __all__ = [
     "MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS",
     "PAIRED_EFFICIENCY_GOAL_ID",
     "PAIRED_EFFICIENCY_REQUIREMENT_ID",
+    "PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA",
+    "PAIRED_ROLLOUT_CHILD_GOAL_IDS",
+    "PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION",
+    "PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION",
     "PAIRED_ROLLOUT_FIXTURE_SCHEMA",
     "PAIRED_ROLLOUT_POLICY_SCHEMA",
     "PAIRED_ROLLOUT_REPORT_SCHEMA",
     "PAIRED_ROLLOUT_REPORT_VERSION",
     "PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA",
     "PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION",
+    "PAIRED_ROLLOUT_OBJECTIVE_ID",
+    "PAIRED_ROLLOUT_OBJECTIVE_REVISION",
+    "PAIRED_ROLLOUT_PRODUCING_TASK_IDS",
+    "PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "PairedFixtureKind",
     "PairedRolloutFixture",
     "PairedRolloutPolicy",
@@ -1543,5 +2148,6 @@ __all__ = [
     "SHADOW_FALSE_COMPLETION_GOAL_ID",
     "SHADOW_FALSE_COMPLETION_REQUIREMENT_ID",
     "SelfImprovementRolloutMode",
+    "evaluate_paired_rollout_completion",
     "evaluate_paired_self_improvement_rollout",
 ]

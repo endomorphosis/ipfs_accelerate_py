@@ -27,6 +27,14 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_completion import (
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
     PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA,
+    PAIRED_ROLLOUT_CHILD_GOAL_IDS,
+    PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION,
+    PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION,
+    PAIRED_ROLLOUT_OBJECTIVE_ID,
+    PAIRED_ROLLOUT_OBJECTIVE_REVISION,
+    PAIRED_ROLLOUT_PRODUCING_TASK_IDS,
+    PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS,
     SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
     PairedFixtureKind,
     PairedRolloutFixture,
@@ -37,6 +45,7 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
     REQUIRED_PAIRED_FIXTURE_KINDS,
     RolloutBehaviorMeasurement,
     SelfImprovementRolloutMode,
+    evaluate_paired_rollout_completion,
     evaluate_paired_self_improvement_rollout,
 )
 
@@ -947,6 +956,408 @@ def test_rollout_requirement_evidence_restoration_rejects_tampering() -> None:
             evidence.to_dict(),
             report=detached,
         )
+
+
+def _g090_binding() -> dict[str, str]:
+    return {
+        "repository_id": REPOSITORY_ID,
+        "tree_id": ROLLOUT_EVIDENCE_TREE,
+        "objective_id": PAIRED_ROLLOUT_OBJECTIVE_ID,
+        "objective_revision": PAIRED_ROLLOUT_OBJECTIVE_REVISION,
+        "analyzer_version": PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION,
+        "configuration_revision": (
+            PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+
+
+def _g090_completion_evidence() -> list[CompletionEvidence]:
+    return [
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan=f"test:asi-090:{index}",
+            validation_receipt=f"bafy-g090-validation-{index}",
+            repository_id=REPOSITORY_ID,
+            repository_tree=ROLLOUT_EVIDENCE_TREE,
+            freshness=True,
+            provenance_cid=f"bafy-g090-criterion-{index}",
+            validation_passed=True,
+            observed_at=NOW - timedelta(minutes=5),
+            contradictory=False,
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "reason_codes": [],
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    ]
+
+
+def _g090_coverage(
+    evidence: list[CompletionEvidence],
+) -> dict[str, object]:
+    receipts = {
+        item.acceptance_criterion: item.provenance_cid for item in evidence
+    }
+    return {
+        "verified": True,
+        "repository_tree": ROLLOUT_EVIDENCE_TREE,
+        "evaluated_at": (NOW - timedelta(minutes=2)).isoformat(),
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "implementation": [
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "self_improvement_rollout.py",
+                    "ipfs_accelerate_py/agent_supervisor/__init__.py",
+                    "docs/guides/AGENT_SUPERVISOR_GUIDE.md",
+                ],
+                "validation_receipt_id": receipts[criterion],
+            }
+            for criterion in PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA
+        ],
+    }
+
+
+def _g090_children() -> list[dict[str, object]]:
+    return [
+        {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "proof_requirements": [
+                {
+                    "goal_id": goal_id,
+                    "acceptance_criterion": f"{goal_id} remains proved",
+                    "obligation_id": f"obligation:{goal_id}",
+                    "proof_receipt_id": f"proof:{goal_id}",
+                    "required_assurance": "candidate",
+                    "authoritative_assurance": "candidate",
+                    "proof_verdict": "proved",
+                    "freshness": "current",
+                    "repository_tree": ROLLOUT_EVIDENCE_TREE,
+                    "provenance_id": f"bafy-g090-proof-{goal_id}",
+                    "assurance_satisfied": True,
+                    "contradicted": False,
+                    "reason_codes": [],
+                }
+            ],
+            "completion_gate": {
+                "passed": True,
+                "evaluated_evidence": {
+                    "repository_id": REPOSITORY_ID,
+                    "repository_tree": ROLLOUT_EVIDENCE_TREE,
+                    "evaluated_at": (
+                        NOW - timedelta(minutes=6)
+                    ).isoformat(),
+                    "validation_evidence": [
+                        {
+                            "valid": True,
+                            "reason_codes": [],
+                            "evidence": {
+                                "repository_id": REPOSITORY_ID,
+                                "repository_tree": ROLLOUT_EVIDENCE_TREE,
+                                "provenance_cid": (
+                                    f"bafy-g090-child-{goal_id}"
+                                ),
+                            },
+                        }
+                    ],
+                },
+            },
+        }
+        for goal_id in PAIRED_ROLLOUT_CHILD_GOAL_IDS
+    ]
+
+
+def _g090_quorum() -> dict[str, object]:
+    binding = _g090_binding()
+    return {
+        "satisfied": True,
+        "required_members": PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS,
+        "member_count": PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "g090-objective-scan",
+                "evidence_channel": "paired-rollout",
+                "receipt_cid": "bafy-g090-objective-scan",
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": (NOW - timedelta(minutes=4)).isoformat(),
+                "binding": binding,
+            },
+            {
+                "member_id": "g090-backlog-audit",
+                "evidence_channel": "stable-export-adoption",
+                "receipt_cid": "bafy-g090-backlog-audit",
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": (NOW - timedelta(minutes=3)).isoformat(),
+                "binding": binding,
+            },
+        ],
+    }
+
+
+def _g090_inputs(report: PairedRolloutReport) -> dict[str, object]:
+    evidence = _g090_completion_evidence()
+    return {
+        "repository_id": REPOSITORY_ID,
+        "repository_tree": ROLLOUT_EVIDENCE_TREE,
+        "requirement_evidence": [
+            _rollout_evidence(
+                report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+            ),
+            _rollout_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID),
+        ],
+        "producing_tasks": [
+            {"task_id": task_id, "status": "completed"}
+            for task_id in PAIRED_ROLLOUT_PRODUCING_TASK_IDS
+        ],
+        "child_goals": _g090_children(),
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": _g090_coverage(evidence),
+        "analyzer_health": {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "binding": _g090_binding(),
+        },
+        "exhaustion_quorum": _g090_quorum(),
+        "now": NOW,
+        "freshness_seconds": 3600,
+    }
+
+
+def test_g090_completion_requires_closed_current_tree_packet_and_two_phases() -> None:
+    report = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures(),
+        evaluated_at=NOW,
+    )
+    values = _g090_inputs(report)
+
+    assert PAIRED_ROLLOUT_OBJECTIVE_ID == "ASI-G090"
+    assert PAIRED_ROLLOUT_PRODUCING_TASK_IDS == ("ASI-023", "ASI-024")
+    assert PAIRED_ROLLOUT_CHILD_GOAL_IDS == (
+        "ASI-G112",
+        "ASI-G113",
+        "ASI-G114",
+    )
+    assert len(PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA) == 5
+    assert PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS == 2
+    assert (
+        supervisor_api.evaluate_paired_rollout_completion
+        is evaluate_paired_rollout_completion
+    )
+
+    provisional = report.evaluate_objective_completion(**values)
+    assert provisional.gate.passed
+    assert provisional.next_state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert "provisional_transition_required" in provisional.reason_codes
+
+    verified = evaluate_paired_rollout_completion(
+        report,
+        **values,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    assert verified.gate.passed
+    assert verified.next_state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+
+@pytest.mark.parametrize(
+    ("field", "mutate"),
+    [
+        (
+            "producer",
+            lambda values: values["producing_tasks"].pop(),
+        ),
+        (
+            "child",
+            lambda values: values["child_goals"][0].update(
+                state="active"
+            ),
+        ),
+        (
+            "criterion",
+            lambda values: values["evidence"].pop(),
+        ),
+        (
+            "failed criterion receipt",
+            lambda values: values["evidence"].__setitem__(
+                0,
+                replace(
+                    values["evidence"][0],
+                    validation_passed=False,
+                ),
+            ),
+        ),
+        (
+            "stale criterion receipt",
+            lambda values: values["evidence"].__setitem__(
+                0,
+                replace(
+                    values["evidence"][0],
+                    observed_at=NOW - timedelta(hours=2),
+                ),
+            ),
+        ),
+        (
+            "foreign-tree criterion receipt",
+            lambda values: values["evidence"].__setitem__(
+                0,
+                replace(
+                    values["evidence"][0],
+                    repository_tree="sha256:" + "f" * 64,
+                ),
+            ),
+        ),
+        (
+            "coverage",
+            lambda values: values["coverage"]["criteria"][0].update(
+                validation_receipt_id="bafy-detached"
+            ),
+        ),
+        (
+            "analyzer",
+            lambda values: values["analyzer_health"].update(
+                safe_for_completion_reasoning=False
+            ),
+        ),
+        (
+            "analyzer binding",
+            lambda values: values["analyzer_health"]["binding"].update(
+                tree_id="sha256:" + "f" * 64
+            ),
+        ),
+        (
+            "quorum",
+            lambda values: values["exhaustion_quorum"]["members"][1].update(
+                receipt_cid="bafy-g090-objective-scan"
+            ),
+        ),
+        (
+            "stale quorum receipt",
+            lambda values: values["exhaustion_quorum"]["members"][1].update(
+                finished_at=(NOW - timedelta(hours=2)).isoformat()
+            ),
+        ),
+        (
+            "non-exhaustive quorum receipt",
+            lambda values: values["exhaustion_quorum"]["members"][1].update(
+                scan_mode="sampled"
+            ),
+        ),
+        (
+            "requirement",
+            lambda values: values["requirement_evidence"].pop(),
+        ),
+    ],
+)
+def test_g090_rejects_open_or_unbound_completion_packet(
+    field: str,
+    mutate,
+) -> None:
+    report = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures(),
+        evaluated_at=NOW,
+    )
+    values = _g090_inputs(report)
+    mutate(values)
+
+    decision = report.evaluate_objective_completion(
+        **values,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+
+    assert not decision.verified, field
+    assert decision.next_state is not GoalState.VERIFIED_COMPLETE, field
+
+
+def test_g090_rejects_failed_or_stale_rollout_and_lowered_quorum() -> None:
+    failed = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures()[:-1],
+        evaluated_at=NOW,
+    )
+    failed_decision = failed.evaluate_objective_completion(
+        **_g090_inputs(failed),
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    assert not failed_decision.verified
+    assert failed_decision.next_state is not GoalState.VERIFIED_COMPLETE
+
+    report = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures(),
+        evaluated_at=NOW - timedelta(hours=2),
+    )
+    stale_values = _g090_inputs(report)
+    stale_values["requirement_evidence"] = [
+        _rollout_evidence(
+            report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+        ),
+        _rollout_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID),
+    ]
+    stale_decision = report.evaluate_objective_completion(
+        **stale_values,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    assert not stale_decision.verified
+
+    fresh = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures(),
+        evaluated_at=NOW,
+    )
+    with pytest.raises(ValueError, match="configured ASI-G090 count"):
+        fresh.evaluate_objective_completion(
+            **_g090_inputs(fresh),
+            required_exhaustive_receipts=1,
+        )
+
+
+def test_operator_profiles_document_the_g090_completion_contract() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    guide = (
+        repo_root / "docs/guides/AGENT_SUPERVISOR_GUIDE.md"
+    ).read_text(encoding="utf-8")
+    architecture = (
+        repo_root / "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md"
+    ).read_text(encoding="utf-8")
+    plan = (
+        repo_root
+        / "docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md"
+    ).read_text(encoding="utf-8")
+    discovery = (
+        repo_root
+        / "data/agent_supervisor/discovery/"
+        "2026-07-25-asi-090-completion-gate-evidence.md"
+    ).read_text(encoding="utf-8")
+
+    assert "### Requesting ASI-G090 completion" in guide
+    assert "test_agent_supervisor_self_improvement_e2e.py" in guide
+    assert "test_agent_supervisor_self_improvement_benchmark.py" in guide
+    assert "`safe_for_completion_reasoning: true`" in guide
+    assert "`paired-rollout-completion@1`" in guide
+    assert "exactly two fresh members" in guide
+    assert "separate later evaluation" in guide
+    assert "Completion authority remains separate." in architecture
+    assert "### ASI-G090 parent completion gate" in plan
+    assert "- Producing tasks: ASI-023, ASI-024" in discovery
+    assert "- Child goals: ASI-G112, ASI-G113, ASI-G114" in discovery
+    assert (
+        "This file is an audit and provenance index, not a completion receipt."
+        in discovery
+    )
 
 
 def test_stable_rollout_exports_remain_lazy_without_optional_providers() -> None:

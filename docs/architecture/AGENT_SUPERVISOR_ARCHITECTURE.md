@@ -307,6 +307,21 @@ retain the two report evidence projections with the current tree, objective,
 policy, capability, and profile identities, and return to shadow when any
 package, manifest, provider, or report binding changes.
 
+Completion authority remains separate. The ASI-G090 adapter fixes terminal
+producers ASI-023/ASI-024, verified direct descendants
+ASI-G112/ASI-G113/ASI-G114, the five literal rollout/adoption criteria, and a
+two-receipt exhaustive quorum. It recomputes a fresh complete paired report and
+restores both current-tree report projections as operational prerequisites,
+but never treats them, the import preflight, documentation, or analyzer output
+as passing criterion validation. Every criterion has one fresh passing receipt
+bound by exact implementation coverage; the analyzer is explicitly healthy,
+completion-safe, and fully bound; and two fresh healthy exhaustive members are
+independent by member, channel, and receipt identity. Missing or invalid
+producers, descendants, validations, coverage, health, or quorum keep the goal
+actionable. Even a fully closed pass moves `active` only to
+`provisionally_complete`; a later evaluation must revalidate the entire packet
+before `verified_complete`.
+
 Other subsystems use related but deliberately distinct vocabularies. Formal
 planning has `shadow`, `canary`, and `enforcement`; Leanstral goal development
 has `off`, `shadow`, `assist`, `repair_only`, and `auto_safe`. A top-level

@@ -536,6 +536,30 @@ report, profile, capability, repository tree, objective, and policy identities.
 A stale or missing import, package, manifest, provider, or report binding
 returns operation to shadow and requires the applicable fresh evaluation.
 
+### ASI-G090 parent completion gate
+
+Rollout promotion and objective completion are separate decisions. The closed
+`evaluate_paired_rollout_completion` adapter fixes ASI-G090 revision
+`ASI-G090@asi-090`, producing tasks ASI-023 and ASI-024, direct children
+ASI-G112, ASI-G113, and ASI-G114, all five literal parent criteria, and two
+independent exhaustive receipts. The operational report must be fresh,
+recomputed, complete, and passing, and its G112/G113 projections must be
+satisfied on the current repository tree. Neither those artifacts nor the
+G114 import preflight substitute for parent criterion validations.
+
+Each criterion requires exactly one fresh passing current-tree receipt and a
+coverage row naming concrete implementation plus that exact receipt identity.
+Analyzer health must explicitly be healthy and safe for completion reasoning,
+with repository, tree, goal, objective revision, analyzer version, and
+configuration revision bindings. Both quorum members must be fresh, healthy,
+completion-safe, exhaustive, identically bound, and independent by member,
+channel, and receipt identity. The exact producers must be terminal and every
+exact child must remain freshly verified with conclusive current-tree proof
+requirements. Any failed or stale submitted validation, incomplete population,
+reopened child, unsafe analyzer, or non-independent vote keeps G090 actionable.
+A first passing evaluation advances only to provisional completion; a separate
+later evaluation is required for verified completion.
+
 ## Delivery order
 
 The task board uses five dependency tranches:
