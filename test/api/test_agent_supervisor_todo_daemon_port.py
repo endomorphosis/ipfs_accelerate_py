@@ -9625,6 +9625,7 @@ def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
         codebase_scan_min_open_tasks=0,
         codebase_scan_max_findings=1,
         codebase_scan_cooldown_seconds=21600,
+        allow_unscoped_codebase_refill=True,
     )
 
     result = TodoImplementationSupervisor(config).run_once()
@@ -9712,6 +9713,7 @@ def test_implementation_supervisor_refills_no_ready_completed_queue(tmp_path):
         codebase_scan_min_open_tasks=0,
         codebase_scan_max_findings=1,
         codebase_scan_cooldown_seconds=21600,
+        allow_unscoped_codebase_refill=True,
     )
 
     result = TodoImplementationSupervisor(config).run_once()

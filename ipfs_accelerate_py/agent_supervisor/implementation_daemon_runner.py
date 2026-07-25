@@ -792,6 +792,7 @@ def build_daemon_codebase_scan_refill_callback(
     callback: DaemonRefillRecordCallback,
     *,
     discovery_dir: Path,
+    objective_path: Path | None = None,
     repo_root: Path | None = None,
     extra_kwargs: dict[str, Any] | None = None,
 ) -> DaemonLoopHookCallback:
@@ -807,6 +808,9 @@ def build_daemon_codebase_scan_refill_callback(
         }
         if repo_root is not None:
             kwargs["repo_root"] = repo_root
+        resolved_objective_path = getattr(ctx.parsed, "objective_path", None) or objective_path
+        if resolved_objective_path is not None:
+            kwargs["objective_path"] = resolved_objective_path
         bundle_dir = getattr(ctx.parsed, "objective_bundle_dir", None)
         if bundle_dir is not None:
             kwargs["bundle_dir"] = bundle_dir
@@ -888,6 +892,7 @@ def build_daemon_refill_hooks_from_recorders(
                 build_daemon_codebase_scan_refill_callback(
                     codebase_scan_recorder,
                     discovery_dir=discovery_dir,
+                    objective_path=objective_path,
                     repo_root=repo_root,
                     extra_kwargs=codebase_scan_extra_kwargs,
                 ),

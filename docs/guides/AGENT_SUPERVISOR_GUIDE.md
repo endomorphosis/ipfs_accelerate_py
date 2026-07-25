@@ -201,7 +201,9 @@ ipfs-accelerate-agent-backlog-refinery \
 The four modes have different evidence sources:
 
 - `--objective-scan` finds missing objective evidence;
-- `--codebase-scan` finds bounded static findings in tracked code and worktrees;
+- `--codebase-scan` inventories bounded static findings in tracked code and
+  worktrees, then admits only findings mapped to a specific schedulable
+  goal/subgoal from `--objective-path`;
 - `--retry-budget` converts repeated implementation, validation, or merge
   failures into repair tasks;
 - `--dependency-guardrail` repairs missing, self-referential, or cyclic task
@@ -209,6 +211,13 @@ The four modes have different evidence sources:
 
 When no mode flag is supplied, the refinery runs all available modes. Generated
 tasks are deduplicated by canonical identity and discovery fingerprint.
+The raw codebase inventory remains objective-agnostic and unchanged by refill
+policy. Rejected admission candidates remain in the durable details artifact.
+Use `--allow-unscoped-codebase-refill` only for an explicitly unscoped legacy
+board; it is rejected when an objective heap is configured and is an unsafe
+compatibility opt-out, not a scanner-scope flag. Goal-backed admission also
+requires explicit statuses, existing parents, acyclic ancestry, and semantic
+evidence beyond a path token for broad top-level directory outputs.
 
 ## Supervisor self-improvement program
 

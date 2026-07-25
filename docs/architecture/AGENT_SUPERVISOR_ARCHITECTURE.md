@@ -460,8 +460,13 @@ finding.
    stale receipts, unhealthy analyzers, or unsatisfied exhaustion quorum remains
    open, blocked, or inconclusive.
 8. Inspect event logs and metrics before starting another pass. A drained queue
-   may trigger bounded objective/codebase refill, but refill must not create
-   unbounded duplicate work.
+   may trigger bounded objective/codebase refill. Codebase scanning remains a
+   general evidence operation; a separate fail-closed admission stage can
+   materialize a task only under one specific existing goal/subgoal and records
+   its validated ancestor lineage. Goal records with missing status, dangling
+   parents, or cycles fail closed, and a broad directory name alone is not
+   semantic evidence. Refill must not create unbounded duplicate or out-of-scope
+   work.
 
 ## The theory behind the design
 

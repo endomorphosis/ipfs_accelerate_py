@@ -155,7 +155,7 @@ class ScanMode(str, Enum):
 
 
 class ScanSkipReason(str, Enum):
-    """Bounded reason codes for file exclusions and parser failures.
+    """Bounded reason codes for scan exclusions, failures, and admission.
 
     Detailed exception messages belong in the referenced scan-details
     artifact, never in ``reason_code``.  Keeping this vocabulary bounded makes
@@ -169,6 +169,8 @@ class ScanSkipReason(str, Enum):
     GENERATED_ARTIFACT = "generated_artifact"
     TODO_BOARD = "todo_board"
     UNSUPPORTED_SUFFIX = "unsupported_suffix"
+    OUTSIDE_SCOPE_PREFIX = "outside_scope_prefix"
+    OUTSIDE_SCOPE_TRACK = "outside_scope_track"
     STAT_FAILED = "stat_failed"
     NOT_REGULAR_FILE = "not_regular_file"
     FILE_TOO_LARGE = "file_too_large"
@@ -182,6 +184,14 @@ class ScanSkipReason(str, Enum):
     PARSER_UNAVAILABLE = "parser_unavailable"
     PARSER_TIMED_OUT = "parser_timed_out"
     PARSER_FAILED = "parser_failed"
+    # Post-scan refill admission rejections.
+    NO_GOAL_LINEAGE = "no_goal_lineage"
+    ADMISSION_LIMIT = "admission_limit"
+    INVALID_GOAL_RECORD = "invalid_goal_record"
+    DANGLING_GOAL_PARENT = "dangling_goal_parent"
+    CYCLIC_GOAL_LINEAGE = "cyclic_goal_lineage"
+    NO_SCHEDULABLE_GOAL = "no_schedulable_goal"
+    INCOMPATIBLE_UNSCOPED_REFILL = "incompatible_unscoped_refill"
 
     @property
     def is_parser_failure(self) -> bool:
@@ -189,7 +199,11 @@ class ScanSkipReason(str, Enum):
 
     @property
     def is_exclusion(self) -> bool:
-        return not self.is_parser_failure
+        return not self.is_parser_failure and not self.is_admission_rejection
+
+    @property
+    def is_admission_rejection(self) -> bool:
+        return self in _ADMISSION_REJECTION_REASONS
 
 
 _PARSER_FAILURE_REASONS = frozenset(
@@ -201,6 +215,18 @@ _PARSER_FAILURE_REASONS = frozenset(
         ScanSkipReason.PARSER_UNAVAILABLE,
         ScanSkipReason.PARSER_TIMED_OUT,
         ScanSkipReason.PARSER_FAILED,
+    }
+)
+
+_ADMISSION_REJECTION_REASONS = frozenset(
+    {
+        ScanSkipReason.NO_GOAL_LINEAGE,
+        ScanSkipReason.ADMISSION_LIMIT,
+        ScanSkipReason.INVALID_GOAL_RECORD,
+        ScanSkipReason.DANGLING_GOAL_PARENT,
+        ScanSkipReason.CYCLIC_GOAL_LINEAGE,
+        ScanSkipReason.NO_SCHEDULABLE_GOAL,
+        ScanSkipReason.INCOMPATIBLE_UNSCOPED_REFILL,
     }
 )
 
@@ -486,6 +512,7 @@ class ScanAccounting:
     candidates: CandidateAccounting = field(default_factory=CandidateAccounting)
     exclusions: tuple[ScanReasonSummary, ...] = ()
     parser_failure_reasons: tuple[ScanReasonSummary, ...] = ()
+    admission_rejections: tuple[ScanReasonSummary, ...] = ()
     details_artifact: ScanDetailsArtifact | None = None
 
     def __post_init__(self) -> None:
@@ -507,26 +534,56 @@ class ScanAccounting:
             item if isinstance(item, ScanReasonSummary) else ScanReasonSummary.from_dict(item)
             for item in self.parser_failure_reasons
         )
+        admission_rejections = tuple(
+            item if isinstance(item, ScanReasonSummary) else ScanReasonSummary.from_dict(item)
+            for item in self.admission_rejections
+        )
         artifact = self.details_artifact
         if artifact is not None and not isinstance(artifact, ScanDetailsArtifact):
             artifact = ScanDetailsArtifact.from_dict(artifact)
-        if any(item.reason_code.is_parser_failure for item in exclusions):
-            raise ValueError("exclusions contain a parser-failure reason code")
+        if any(not item.reason_code.is_exclusion for item in exclusions):
+            raise ValueError("exclusions contain a non-exclusion reason code")
         if any(not item.reason_code.is_parser_failure for item in failures):
             raise ValueError("parser_failure_reasons contain an exclusion reason code")
+        if any(
+            not item.reason_code.is_admission_rejection
+            for item in admission_rejections
+        ):
+            raise ValueError(
+                "admission_rejections contain a non-admission reason code"
+            )
         if sum(item.count for item in exclusions) != coverage.excluded_files:
             raise ValueError("exclusion reason counts do not match excluded_files")
         if sum(item.count for item in failures) != coverage.parser_failures:
             raise ValueError("parser failure reason counts do not match parser_failures")
-        issue_count = coverage.excluded_files + coverage.parser_failures
+        summarized_rejections = sum(item.count for item in admission_rejections)
+        if (
+            admission_rejections
+            and summarized_rejections != candidates.rejected_candidates
+        ):
+            raise ValueError(
+                "admission rejection reason counts do not match rejected_candidates"
+            )
+        issue_count = (
+            coverage.excluded_files
+            + coverage.parser_failures
+            + summarized_rejections
+        )
         if issue_count and artifact is None:
-            raise ValueError("excluded files and parser failures require a details artifact")
+            raise ValueError(
+                "excluded files, parser failures, and admission rejections "
+                "require a details artifact"
+            )
         if artifact is not None and artifact.detail_count < issue_count:
-            raise ValueError("details artifact does not contain every exclusion and parser failure")
+            raise ValueError(
+                "details artifact does not contain every exclusion, parser "
+                "failure, and admission rejection"
+            )
         object.__setattr__(self, "coverage", coverage)
         object.__setattr__(self, "candidates", candidates)
         object.__setattr__(self, "exclusions", exclusions)
         object.__setattr__(self, "parser_failure_reasons", failures)
+        object.__setattr__(self, "admission_rejections", admission_rejections)
         object.__setattr__(self, "details_artifact", artifact)
 
     @property
@@ -540,6 +597,9 @@ class ScanAccounting:
             "reason_summaries": {
                 "exclusions": [item.to_dict() for item in self.exclusions],
                 "parser_failures": [item.to_dict() for item in self.parser_failure_reasons],
+                "admission_rejections": [
+                    item.to_dict() for item in self.admission_rejections
+                ],
             },
             "details_artifact": (
                 self.details_artifact.to_dict() if self.details_artifact is not None else None
@@ -556,6 +616,11 @@ class ScanAccounting:
             parser_failure_reasons=tuple(
                 summaries.get("parser_failures")
                 or payload.get("parser_failure_reasons")
+                or ()
+            ),
+            admission_rejections=tuple(
+                summaries.get("admission_rejections")
+                or payload.get("admission_rejections")
                 or ()
             ),
             details_artifact=(payload.get("details_artifact") or None),
@@ -1200,10 +1265,15 @@ class RefillScanResult(Generic[T]):
     @property
     def reason_summaries(self) -> Mapping[str, tuple[ScanReasonSummary, ...]]:
         if self.accounting is None:
-            return {"exclusions": (), "parser_failures": ()}
+            return {
+                "exclusions": (),
+                "parser_failures": (),
+                "admission_rejections": (),
+            }
         return {
             "exclusions": self.accounting.exclusions,
             "parser_failures": self.accounting.parser_failure_reasons,
+            "admission_rejections": self.accounting.admission_rejections,
         }
 
     @property

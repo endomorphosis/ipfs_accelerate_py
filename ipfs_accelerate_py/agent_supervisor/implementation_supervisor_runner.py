@@ -1179,6 +1179,7 @@ class CodebaseRefillDefaults:
     codebase_scan_cooldown_seconds: int | None = None
     codebase_refill_timeout_seconds: int | None = None
     codebase_scan_skip_prefixes: Sequence[str] = ()
+    allow_unscoped_codebase_refill: bool = False
     refill_scan: bool = True
 
 
@@ -1277,6 +1278,7 @@ def build_codebase_refill_defaults_from_paths(
     codebase_scan_cooldown_seconds: int | None = None,
     codebase_refill_timeout_seconds: int | None = None,
     codebase_scan_skip_prefixes: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     refill_scan: bool = True,
 ) -> CodebaseRefillDefaults:
     """Build reusable codebase-refill defaults from resolved wrapper paths."""
@@ -1293,6 +1295,7 @@ def build_codebase_refill_defaults_from_paths(
         codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
         codebase_refill_timeout_seconds=codebase_refill_timeout_seconds,
         codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
+        allow_unscoped_codebase_refill=allow_unscoped_codebase_refill,
         refill_scan=refill_scan,
     )
 
@@ -1409,6 +1412,7 @@ def build_codebase_refill_defaults_factory(
     codebase_scan_cooldown_seconds: int | None = None,
     codebase_refill_timeout_seconds: int | None = None,
     codebase_scan_skip_prefixes: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     refill_scan: bool = True,
 ) -> SupervisorBootstrapFactory:
     """Build a reusable bootstrap factory for codebase-refill defaults."""
@@ -1428,6 +1432,7 @@ def build_codebase_refill_defaults_factory(
             codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
             codebase_refill_timeout_seconds=codebase_refill_timeout_seconds,
             codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
+            allow_unscoped_codebase_refill=allow_unscoped_codebase_refill,
             refill_scan=refill_scan,
         )
 
@@ -1516,6 +1521,7 @@ def build_namespace_codebase_refill_defaults_factory(
     codebase_scan_cooldown_seconds: int | None = None,
     codebase_refill_timeout_seconds: int | None = None,
     codebase_scan_skip_prefixes: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     refill_scan: bool = True,
 ) -> SupervisorBootstrapFactory:
     """Build codebase-refill defaults from a standard namespace path bundle."""
@@ -1530,6 +1536,7 @@ def build_namespace_codebase_refill_defaults_factory(
         codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
         codebase_refill_timeout_seconds=codebase_refill_timeout_seconds,
         codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
+        allow_unscoped_codebase_refill=allow_unscoped_codebase_refill,
         refill_scan=refill_scan,
     )
 
@@ -1712,6 +1719,8 @@ def apply_portal_implementation_supervisor_defaults(
                 "--codebase-scan-skip-prefix",
                 codebase.codebase_scan_skip_prefixes,
             )
+        if codebase.allow_unscoped_codebase_refill:
+            args = with_flag_default(args, "--allow-unscoped-codebase-refill")
     return args
 
 
@@ -1892,6 +1901,7 @@ def build_supervisor_codebase_scan_refill_callback(
     callback: SupervisorRefillRecordCallback,
     *,
     discovery_dir: Path,
+    objective_path: Path | None = None,
     repo_root: Path | None = None,
     extra_kwargs: dict[str, Any] | None = None,
 ) -> SupervisorRunHookCallback:
@@ -1907,6 +1917,7 @@ def build_supervisor_codebase_scan_refill_callback(
         }
         _set_present(
             kwargs,
+            objective_path=getattr(ctx.parsed, "objective_path", None) or objective_path,
             repo_root=repo_root,
             bundle_dir=getattr(ctx.parsed, "objective_bundle_dir", None),
             min_open_tasks=getattr(ctx.parsed, "codebase_scan_min_open_tasks", None),
@@ -1983,6 +1994,7 @@ def build_supervisor_refill_hooks_from_recorders(
                 build_supervisor_codebase_scan_refill_callback(
                     codebase_scan_recorder,
                     discovery_dir=discovery_dir,
+                    objective_path=objective_path,
                     repo_root=repo_root,
                     extra_kwargs=codebase_scan_extra_kwargs,
                 ),

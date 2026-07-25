@@ -278,6 +278,7 @@ class PortalSupervisorConfig:
     codebase_refill_timeout_seconds: float = 0.0
     codebase_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
     codebase_scan_skip_prefixes: tuple[str, ...] = field(default_factory=tuple)
+    allow_unscoped_codebase_refill: bool = False
     codebase_defer_when_objective_refills: bool = True
     codebase_scan_commit_outputs: bool = False
     codebase_scan_commit_subject: str = "Agent: record supervisor codebase scan findings"
@@ -4946,6 +4947,9 @@ class PortalImplementationSupervisor:
                 cooldown_seconds=self.config.codebase_scan_cooldown_seconds,
                 discovery_output_path=discovery_output_path,
                 skip_prefixes=self.config.codebase_scan_skip_prefixes or CODEBASE_SCAN_SKIP_PREFIXES,
+                objective_path=self.config.objective_path,
+                mission_terms=self.config.objective_task_janitor_mission_terms,
+                allow_unscoped_codebase_refill=self.config.allow_unscoped_codebase_refill,
                 commit_outputs=self.config.codebase_scan_commit_outputs,
                 commit_subject=self.config.codebase_scan_commit_subject,
             )
@@ -6126,6 +6130,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Repo-relative path prefix to skip during codebase scans. May be repeated.",
     )
     parser.add_argument(
+        "--allow-unscoped-codebase-refill",
+        action="store_true",
+        help=(
+            "Allow codebase findings without goal/subgoal lineage to become tasks. "
+            "This compatibility escape hatch is unsafe for goal-backed boards."
+        ),
+    )
+    parser.add_argument(
         "--codebase-scan-commit-outputs",
         action="store_true",
         help="Commit generated todo/discovery outputs after a supervisor codebase scan.",
@@ -6428,6 +6440,7 @@ def supervisor_config_from_args(
         codebase_refill_timeout_seconds=args.codebase_refill_timeout_seconds,
         codebase_scan_depends_on=split_csv_values(args.codebase_scan_depends_on),
         codebase_scan_skip_prefixes=tuple(args.codebase_scan_skip_prefix),
+        allow_unscoped_codebase_refill=args.allow_unscoped_codebase_refill,
         codebase_defer_when_objective_refills=args.codebase_defer_when_objective_refills,
         codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
         codebase_scan_commit_subject=args.codebase_scan_commit_subject,

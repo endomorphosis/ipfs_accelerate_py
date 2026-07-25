@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -17,17 +18,22 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     ConfiguredCodebaseScanRecorder,
     ConfiguredObjectiveBacklogRecorder,
     ConfiguredRetryBudgetRecorder,
+    CodebaseFinding,
+    CodebaseScanInventory,
+    align_codebase_finding_to_goals,
     build_configured_backlog_recorder_bundle,
     build_namespace_codebase_scan_recorder,
     build_namespace_objective_backlog_recorder,
     build_namespace_retry_budget_recorder,
     build_task_blocks_ensurer,
     commit_generated_dirty_outputs,
+    admit_codebase_refill_candidates,
     iter_jsonl,
     ensure_task_blocks_present,
     load_strategy,
+    objective_goals_for_codebase_refill,
     release_completed_guardrail_blocks,
-    record_codebase_scan_findings,
+    record_codebase_scan_findings as _record_codebase_scan_findings,
     record_configured_retry_budget_findings,
     record_dependency_guardrail_findings,
     record_objective_backlog_findings,
@@ -35,6 +41,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     scan_codebase_findings,
     write_reconciliation_guardrail_discovery_path,
 )
+from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
 from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
@@ -61,6 +68,13 @@ def _git(cwd: Path, *args: str) -> str:
     )
     assert result.returncode == 0, result.stderr or result.stdout
     return result.stdout.strip()
+
+
+def record_codebase_scan_findings(**kwargs):
+    """Exercise the explicit legacy-board opt-out in pre-objective fixtures."""
+
+    kwargs.setdefault("allow_unscoped_codebase_refill", True)
+    return _record_codebase_scan_findings(**kwargs)
 
 
 def _seed_repo(tmp_path: Path) -> Path:
@@ -439,6 +453,7 @@ def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
         todo_path=tmp_path / "todo.md",
         strategy_path=tmp_path / "state" / "strategy.json",
         state_path=tmp_path / "state" / "state.json",
+        objective_path=tmp_path / "objective.md",
         task_header_prefix_value="## EX-",
         depends_on_if_present=("EX-002",),
         min_open_tasks=1,
@@ -479,6 +494,7 @@ def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
 
     assert isinstance(codebase_recorder, ConfiguredCodebaseScanRecorder)
     assert codebase_recorder.discovery_dir == namespace_paths.discovery_dir
+    assert codebase_recorder.objective_path == tmp_path / "objective.md"
     assert codebase_recorder.default_bundle_dir == namespace_paths.objective_bundle_dir
     assert codebase_recorder.skip_prefixes == ("data/agent_supervisor/state/",)
     assert codebase_recorder.depends_on_if_present == ("EX-002",)
@@ -822,7 +838,7 @@ def test_codebase_scan_receipt_accounts_inventory_candidates_and_durable_details
         force=True,
     )
 
-    assert limited.terminal_reason is ScanTerminalReason.PARTIAL
+    assert limited.terminal_reason is ScanTerminalReason.GENERATED
     assert limited.coverage.to_dict() == {
         "git_roots": 1,
         "tracked_files": 4,
@@ -848,12 +864,18 @@ def test_codebase_scan_receipt_accounts_inventory_candidates_and_durable_details
     assert set(summaries) == {"todo_board", "unsupported_suffix"}
     assert summaries["todo_board"].representative_paths == ("todo.md",)
     assert summaries["unsupported_suffix"].representative_paths == ("asset.bin",)
+    admission_summaries = {
+        summary.reason_code.value: summary
+        for summary in limited.reason_summaries["admission_rejections"]
+    }
+    assert set(admission_summaries) == {"admission_limit"}
     details = ObjectiveDatasetStore(dataset_dir).load_scan_details(
         limited.details_artifact.to_dict()
     )
     assert {(row["path"], row["reason_code"]) for row in details} == {
         ("asset.bin", "unsupported_suffix"),
         ("todo.md", "todo_board"),
+        ("second.py", "admission_limit"),
     }
     assert RefillScanResult.from_dict(limited.to_dict()) == limited
 
@@ -980,7 +1002,7 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     member = index["bundles"]["codebase/runtime/src-runtime"]["tasks"][0]
     assert member["candidate_kind"] == "codebase_scan"
-    assert member["goal_registration"] == "dynamic"
+    assert member["goal_registration"] == "unscoped_legacy"
     assert member["paths"] == ["src/runtime.py"]
     assert "route_request" in member["ast_symbols"]
     assert member["ast_symbol_scope"] == "file"
@@ -1221,6 +1243,486 @@ def test_backlog_refinery_annotation_scan_ignores_literal_status_strings(tmp_pat
     assert [(finding.root_relative_path, finding.line_number) for finding in findings] == [
         ("src/runtime.py", 6)
     ]
+
+
+def test_backlog_refinery_annotation_scan_ignores_long_cli_option_names(tmp_path):
+    repo = _seed_repo(tmp_path)
+    source = repo / "docs" / "runbook.md"
+    source.parent.mkdir()
+    source.write_text(
+        """# Supervisor runbook
+
+Keep the same `--todo-path`, `--task-prefix`, and `--state-prefix` values.
+
+- TODO: verify the documented restart procedure
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "docs/runbook.md")
+    _git(repo, "commit", "-m", "seed runbook")
+
+    findings = scan_codebase_findings(repo, max_findings=5)
+
+    assert [(finding.root_relative_path, finding.line_number) for finding in findings] == [
+        ("docs/runbook.md", 5)
+    ]
+
+
+def test_backlog_refinery_codebase_scan_can_be_restricted_to_mission_tracks_and_prefixes(tmp_path):
+    repo = _seed_repo(tmp_path)
+    files = {
+        "docs/current-state.md": "# Current state\n\n- TODO: refresh supported surfaces\n",
+        "src/runtime.py": "# TODO: repair runtime behavior\n",
+        "tests/test_runtime.py": "# TODO: strengthen runtime coverage\n",
+        "archive/old.md": "# Old report\n\n- TODO: historical follow-up\n",
+    }
+    for relative, content in files.items():
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    _git(repo, "add", *files)
+    _git(repo, "commit", "-m", "seed scoped scan targets")
+
+    findings = scan_codebase_findings(
+        repo,
+        max_findings=10,
+        include_prefixes=("docs", "src"),
+        allowed_tracks=("docs",),
+    )
+
+    assert [(finding.root_relative_path, finding.track) for finding in findings] == [
+        ("docs/current-state.md", "docs")
+    ]
+
+
+def test_backlog_refinery_goal_alignment_uses_declared_goal_outputs_and_records_lineage(tmp_path):
+    repo = _seed_repo(tmp_path)
+    objective_path = repo / "objectives.md"
+    objective_path.write_text(
+        """# Objective heap
+
+## DOC-G000 Maintain user documentation
+
+- Status: active
+- Goal: Keep user-facing documentation synchronized with behavior.
+- Outputs: docs/current-state.md, README.md
+
+## API-G000 Maintain runtime API
+
+- Status: active
+- Goal: Keep the public runtime API compatible.
+- Outputs: src/api
+""",
+        encoding="utf-8",
+    )
+    files = {
+        "docs/current-state.md": "# Current state\n\n- TODO: refresh supported surfaces\n",
+        "src/runtime.py": "# TODO: unrelated generic cleanup\n",
+        "src/api/router.py": "# TODO: preserve the public API contract\n",
+    }
+    for relative, content in files.items():
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    _git(repo, "add", "objectives.md", *files)
+    _git(repo, "commit", "-m", "seed goal-aligned scan targets")
+
+    inventory = scan_codebase_findings(
+        repo,
+        max_findings=None,
+        return_inventory=True,
+    )
+    raw_findings = tuple(inventory.findings)
+    admitted = admit_codebase_refill_candidates(
+        inventory,
+        objective_goals=objective_goals_for_codebase_refill(objective_path),
+        max_findings=10,
+    )
+
+    assert [
+        (finding.root_relative_path, finding.objective_goal_ids)
+        for finding in admitted.findings
+    ] == [
+        ("docs/current-state.md", ("DOC-G000",)),
+        ("src/api/router.py", ("API-G000",)),
+    ]
+    assert len(admitted.admission_rejections) == 1
+    assert admitted.admission_rejections[0]["path"] == "src/runtime.py"
+    assert admitted.admission_rejections[0]["reason_code"] == "no_goal_lineage"
+    assert tuple(inventory.findings) == raw_findings
+    assert inventory.rejected_candidate_count == 0
+    assert inventory.complete is True
+
+
+def test_goal_alignment_selects_specific_subgoal_and_rejects_ambiguous_siblings():
+    goals = parse_goal_heap(
+        """# Objective heap
+
+## DOC-ROOT Documentation outcome
+
+- Status: verified_complete
+- Outputs: docs
+
+## DOC-SWISS SwissKnife documentation
+
+- Status: active
+- Parent: DOC-ROOT
+- Goal: Keep SwissKnife guides synchronized.
+- Outputs: docs/swissknife
+
+## DOC-OTHER Other documentation
+
+- Status: active
+- Parent: DOC-ROOT
+- Outputs: docs/other
+
+## DOC-SHARED-A First shared surface
+
+- Status: active
+- Parent: DOC-ROOT
+- Outputs: docs/shared
+
+## DOC-SHARED-B Second shared surface
+
+- Status: active
+- Parent: DOC-ROOT
+- Outputs: docs/shared
+
+## RELEASE Release signing
+
+- Status: active
+- Goal: Maintain release signing certificates and provenance.
+
+## AUTOMATION Documentation drift automation
+
+- Status: active
+- Goal: Detect documentation drift and replenish documentation tasks.
+- Outputs: scripts
+"""
+    )
+    specific = CodebaseFinding(
+        fingerprint="a" * 40,
+        kind="annotated_followup",
+        priority="P3",
+        track="docs",
+        root_relative_path="docs/swissknife/guide.md",
+        line_number=2,
+        snippet="- TODO: synchronize the SwissKnife guide",
+        summary="Synchronize SwissKnife guide",
+        validation="test -f docs/swissknife/guide.md",
+    )
+    ambiguous = replace(
+        specific,
+        fingerprint="b" * 40,
+        root_relative_path="docs/shared/guide.md",
+        snippet="- TODO: refresh this guide",
+        summary="Refresh shared guide",
+    )
+    mission_only = replace(
+        specific,
+        fingerprint="c" * 40,
+        root_relative_path="misc/notes.md",
+        snippet="- TODO: documentation current refresh",
+        summary="Documentation current refresh",
+    )
+    broad_but_unrelated = replace(
+        specific,
+        fingerprint="d" * 40,
+        root_relative_path="scripts/inotify_doctor.sh",
+        snippet="except OSError:",
+        summary="Review swallowed exception path",
+        track="runtime",
+    )
+
+    aligned = align_codebase_finding_to_goals(
+        specific,
+        goals,
+        mission_terms=("documentation", "current", "refresh"),
+    )
+
+    assert aligned is not None
+    assert aligned.objective_goal_ids == ("DOC-SWISS", "DOC-ROOT")
+    assert align_codebase_finding_to_goals(ambiguous, goals) is None
+    assert (
+        align_codebase_finding_to_goals(
+            mission_only,
+            goals,
+            mission_terms=("documentation", "current", "refresh"),
+        )
+        is None
+    )
+    assert align_codebase_finding_to_goals(broad_but_unrelated, goals) is None
+
+
+def test_goal_alignment_rejects_invalid_goal_records_and_ancestry():
+    finding = CodebaseFinding(
+        fingerprint="e" * 40,
+        kind="annotated_followup",
+        priority="P3",
+        track="docs",
+        root_relative_path="docs/guide.md",
+        line_number=3,
+        snippet="- TODO: synchronize documentation guidance",
+        summary="Synchronize documentation guidance",
+        validation="test -f docs/guide.md",
+    )
+    invalid_heaps = (
+        (
+            """# Objective heap
+
+## Appendix Reference material
+
+- Outputs: docs
+""",
+            "invalid_goal_record",
+        ),
+        (
+            """# Objective heap
+
+## DOC-CHILD Documentation child
+
+- Status: active
+- Parent: DOC-MISSING
+- Goal: Synchronize documentation guidance.
+- Outputs: docs
+""",
+            "dangling_goal_parent",
+        ),
+        (
+            """# Objective heap
+
+## DOC-A Documentation A
+
+- Status: active
+- Parent: DOC-B
+- Goal: Synchronize documentation guidance.
+- Outputs: docs
+
+## DOC-B Documentation B
+
+- Status: active
+- Parent: DOC-A
+- Goal: Synchronize documentation guidance.
+- Outputs: docs
+""",
+            "cyclic_goal_lineage",
+        ),
+    )
+
+    for heap_text, expected_reason in invalid_heaps:
+        inventory = CodebaseScanInventory(
+            findings=[finding],
+            raw_candidate_count=1,
+        )
+        raw_findings = tuple(inventory.findings)
+        admission = admit_codebase_refill_candidates(
+            inventory,
+            objective_goals=parse_goal_heap(heap_text),
+            max_findings=5,
+            objective_scope_configured=True,
+        )
+
+        assert admission.findings == ()
+        assert admission.policy_valid is False
+        assert admission.policy_errors[0]["reason_code"] == expected_reason
+        assert admission.rejections[0]["reason_code"] == expected_reason
+        assert tuple(inventory.findings) == raw_findings
+
+
+def test_goal_alignment_rejects_unrelated_finding_under_broad_docs_scope():
+    goals = parse_goal_heap(
+        """# Objective heap
+
+## DOC-G000 Documentation maintenance
+
+- Status: active
+- Goal: Keep documentation accurate and synchronized.
+- Outputs: docs
+"""
+    )
+    unrelated = CodebaseFinding(
+        fingerprint="f" * 40,
+        kind="swallowed_exception",
+        priority="P2",
+        track="runtime",
+        root_relative_path="docs/runtime.py",
+        line_number=9,
+        snippet="except OSError: pass",
+        summary="Review swallowed exception path",
+        validation="python3 -m py_compile docs/runtime.py",
+    )
+
+    assert align_codebase_finding_to_goals(unrelated, goals) is None
+
+
+def test_objective_backed_refill_emits_existing_goal_lineage_in_board_and_bundle(tmp_path):
+    repo = _seed_repo(tmp_path)
+    objective_path = repo / "objectives.md"
+    objective_path.write_text(
+        """# Objective heap
+
+## DOC-ROOT Documentation outcome
+
+- Status: active
+- Outputs: docs
+
+## DOC-SWISS SwissKnife documentation
+
+- Status: active
+- Parent: DOC-ROOT
+- Goal: Keep SwissKnife guides synchronized.
+- Outputs: docs/swissknife
+""",
+        encoding="utf-8",
+    )
+    source = repo / "docs" / "swissknife" / "guide.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("- TODO: synchronize the SwissKnife guide\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    _write_todo(todo_path)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed objective-backed refill")
+    bundle_dir = repo / "bundles"
+
+    receipt = _record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=repo / "state" / "strategy.json",
+        discovery_dir=repo / "discovery",
+        bundle_dir=bundle_dir,
+        repo_root=repo,
+        objective_path=objective_path,
+        max_findings=1,
+        force=True,
+    )
+
+    assert receipt.terminal_reason is ScanTerminalReason.GENERATED
+    board = todo_path.read_text(encoding="utf-8")
+    assert "- Goal id: DOC-SWISS" in board
+    assert "- Goal lineage: DOC-SWISS, DOC-ROOT" in board
+    assert "- Graph parents: DOC-ROOT" in board
+    assert "- Goal registration: existing" in board
+    index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
+    member = next(iter(index["bundles"].values()))["tasks"][0]
+    assert member["goal_id"] == "DOC-SWISS"
+    assert member["parent_goal_ids"] == ["DOC-ROOT"]
+    assert member["goal_registration"] == "existing"
+
+
+def test_objective_revision_invalidates_codebase_refill_cooldown(tmp_path):
+    repo = _seed_repo(tmp_path)
+    objective_path = repo / "objectives.md"
+    objective_path.write_text(
+        """# Objective heap
+
+## DOC-G000 Documentation
+
+- Status: active
+- Outputs: docs
+""",
+        encoding="utf-8",
+    )
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text("# TODO: repair objective-scoped runtime\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    _write_todo(todo_path)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed changing objective scope")
+    kwargs = {
+        "todo_path": todo_path,
+        "state_path": None,
+        "strategy_path": repo / "state" / "strategy.json",
+        "discovery_dir": repo / "discovery",
+        "repo_root": repo,
+        "objective_path": objective_path,
+        "max_findings": 1,
+        "cooldown_seconds": 3600,
+    }
+
+    first = _record_codebase_scan_findings(**kwargs)
+    objective_path.write_text(
+            objective_path.read_text(encoding="utf-8").replace(
+                "- Outputs: docs",
+                "- Outputs: src/runtime.py",
+            ),
+        encoding="utf-8",
+    )
+    second = _record_codebase_scan_findings(**kwargs)
+
+    assert first.terminal_reason is ScanTerminalReason.EXHAUSTED
+    assert second.terminal_reason is ScanTerminalReason.GENERATED
+    assert second.items[0]["objective_goal_ids"] == ["DOC-G000"]
+
+
+def test_backlog_refill_fails_closed_without_objective_scope_by_default(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text("# TODO: generic maintenance\n", encoding="utf-8")
+    _write_todo(todo_path)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed unscoped refill")
+
+    receipt = _record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=repo / "state" / "strategy.json",
+        discovery_dir=repo / "discovery",
+        repo_root=repo,
+        max_findings=1,
+        force=True,
+    )
+
+    assert receipt.terminal_reason is ScanTerminalReason.FAILED
+    assert "no schedulable goal or subgoal" in str(receipt.error)
+    assert "## AUTO-002" not in todo_path.read_text(encoding="utf-8")
+
+
+def test_objective_backed_refill_rejects_unscoped_escape_hatch(tmp_path):
+    repo = _seed_repo(tmp_path)
+    objective_path = repo / "objectives.md"
+    objective_path.write_text(
+        """# Objective heap
+
+## DOC-G000 Documentation maintenance
+
+- Status: active
+- Goal: Keep documentation accurate and synchronized.
+- Outputs: docs
+""",
+        encoding="utf-8",
+    )
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text("# TODO: generic runtime maintenance\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    _write_todo(todo_path)
+    original_board = todo_path.read_text(encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed objective-backed opt-out rejection")
+
+    receipt = _record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=repo / "state" / "strategy.json",
+        discovery_dir=repo / "discovery",
+        repo_root=repo,
+        objective_path=objective_path,
+        allow_unscoped_codebase_refill=True,
+        max_findings=1,
+        force=True,
+    )
+
+    assert receipt.terminal_reason is ScanTerminalReason.FAILED
+    assert "only valid when no objective heap is configured" in str(receipt.error)
+    assert receipt.items == ()
+    assert [
+        item.reason_code.value
+        for item in receipt.accounting.admission_rejections
+    ] == ["incompatible_unscoped_refill"]
+    assert todo_path.read_text(encoding="utf-8") == original_board
 
 
 def test_backlog_refinery_codebase_scan_skips_vanished_git_roots(tmp_path, monkeypatch):

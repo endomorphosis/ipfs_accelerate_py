@@ -30,9 +30,12 @@ from .backlog_refinery import (
     CODEBASE_AUDIT_SCANNER_VERSION,
     CODEBASE_SCAN_SKIP_PREFIXES,
     CodebaseFinding,
+    CodebaseRefillAdmission,
     CodebaseScanInventory,
+    admit_codebase_refill_candidates,
     codebase_exhaustion_configuration,
     codebase_source_tree_identity,
+    objective_goals_for_codebase_refill,
     run_codebase_analyzer_canaries,
     scan_codebase_findings,
 )
@@ -245,8 +248,16 @@ def _finding_mapping(value: CodebaseFinding | Mapping[str, Any]) -> dict[str, An
     fields = CodebaseFinding.__dataclass_fields__
     payload = {name: value.get(name) for name in fields}
     payload["line_number"] = int(payload.get("line_number") or 0)
+    raw_goal_ids = payload.get("objective_goal_ids") or ()
+    if isinstance(raw_goal_ids, (str, bytes, bytearray)):
+        raw_goal_ids = (raw_goal_ids,) if str(raw_goal_ids).strip() else ()
+    payload["objective_goal_ids"] = tuple(
+        str(goal_id).strip()
+        for goal_id in raw_goal_ids
+        if str(goal_id).strip()
+    )
     for name in fields:
-        if name != "line_number":
+        if name not in {"line_number", "objective_goal_ids"}:
             payload[name] = str(payload.get(name) or "")
     return payload
 
@@ -642,9 +653,13 @@ def _audit_gate_reason(code: str) -> str:
     return _AUDIT_GATE_REASON_MESSAGES.get(code, "The audit evidence cannot prove completion.")
 
 
-def _audit_scope_id(repository_id: str) -> str:
+def _audit_scope_id(repository_id: str, objective_revision: str = "") -> str:
     return canonical_revision(
-        {"repository_id": repository_id, "analyzer": CODEBASE_SCAN_ANALYZER_VERSION},
+        {
+            "repository_id": repository_id,
+            "analyzer": CODEBASE_SCAN_ANALYZER_VERSION,
+            "objective_revision": objective_revision,
+        },
         namespace="codebase-audit-scope",
     )
 
@@ -1239,7 +1254,18 @@ def run_audit_scan(
     root = Path(repo_root).resolve()
     generic_identity = scan_identity(root)
     store = dataset_store or (ObjectiveDatasetStore(dataset_dir) if dataset_dir is not None else None)
-    scope_id = _audit_scope_id(generic_identity.repository_id)
+    objective_source = objective
+    if objective_path is not None:
+        objective_source = (
+            objective_path.read_text(encoding="utf-8")
+            if objective_path.is_file()
+            else ""
+        )
+    objective_id = (
+        objective_revision
+        or canonical_objective_revision(objective_source)
+    )
+    scope_id = _audit_scope_id(generic_identity.repository_id, objective_id)
     if baseline_findings is not None and known_findings is not None:
         raise ValueError("provide baseline_findings or known_findings, not both")
     explicit_baseline = baseline_findings if baseline_findings is not None else known_findings
@@ -1248,8 +1274,6 @@ def run_audit_scan(
     else:
         baseline_rows = list(explicit_baseline)
 
-    if objective_path is not None and not objective_revision:
-        objective = objective_path
     policy = AnalyzerHealthThresholds.from_value(health_thresholds)
     canaries = run_codebase_analyzer_canaries()
     try:
@@ -1263,6 +1287,19 @@ def run_audit_scan(
         )
         if not isinstance(inventory, CodebaseScanInventory):  # pragma: no cover
             raise TypeError("instrumented audit did not return inventory")
+        if objective_path is not None:
+            objective_goals = objective_goals_for_codebase_refill(objective_path)
+            admission = admit_codebase_refill_candidates(
+                inventory,
+                objective_goals=objective_goals,
+                max_findings=None,
+                objective_scope_configured=True,
+            )
+        else:
+            admission = CodebaseRefillAdmission(
+                findings=tuple(inventory.findings),
+                allow_unscoped=True,
+            )
     except TimeoutError as exc:
         empty = CodebaseScanInventory(complete=False)
         binding = ExhaustionBinding(
@@ -1270,7 +1307,7 @@ def run_audit_scan(
             generic_identity.tree_id,
             analyzer_version,
             scan_configuration_revision(configuration or {}),
-            objective_revision or canonical_objective_revision(objective),
+            objective_id,
         )
         receipt = build_scan_result(
             ScanTerminalReason.TIMED_OUT, ScanMode.AUDIT, analyzer_version, root, started_at,
@@ -1285,7 +1322,7 @@ def run_audit_scan(
             generic_identity.tree_id,
             analyzer_version,
             scan_configuration_revision(configuration or {}),
-            objective_revision or canonical_objective_revision(objective),
+            objective_id,
         )
         receipt = build_scan_result(
             ScanTerminalReason.FAILED, ScanMode.AUDIT, analyzer_version, root, started_at,
@@ -1294,7 +1331,7 @@ def run_audit_scan(
         quorum = evaluate_exhaustion_quorum([*prior_receipts, receipt], binding=binding, required_members=quorum_size or required_quorum)
         return AuditScanResult(receipt, (), empty, binding, quorum)
 
-    records = classify_audit_findings(inventory.findings, baseline_rows)
+    records = classify_audit_findings(admission.findings, baseline_rows)
     counts = {status.value: sum(item.status is status for item in records) for status in AuditFindingStatus}
     health_inventory = inventory.health_inventory_dict(appended_tasks=0)
     # Audited observations are intentionally not materialized. Account for
@@ -1319,10 +1356,16 @@ def run_audit_scan(
         tree_id=source_tree_id,
         analyzer_version=analyzer_version,
         configuration_revision=scan_configuration_revision(config_material),
-        objective_revision=objective_revision or canonical_objective_revision(objective),
+        objective_revision=objective_id,
     )
     actionable = counts[AuditFindingStatus.NOVEL.value] + counts[AuditFindingStatus.CHANGED.value]
-    if health.status is AnalyzerHealthStatus.UNHEALTHY:
+    if not admission.policy_valid:
+        terminal_reason = ScanTerminalReason.FAILED
+        error = "goal-scoped audit admission policy failed: " + "; ".join(
+            str(item.get("message") or item.get("reason_code") or "")
+            for item in admission.policy_errors
+        )
+    elif health.status is AnalyzerHealthStatus.UNHEALTHY:
         terminal_reason = ScanTerminalReason.FAILED
         error = "unhealthy audit scan: " + ", ".join(health.reasons)
     elif health.status is AnalyzerHealthStatus.PARTIAL or not inventory.complete:
@@ -1351,7 +1394,14 @@ def run_audit_scan(
         "audit_scanner_version": AUDIT_SCANNER_VERSION,
         "audit_summary": counts,
         "audit_baseline_count": len(baseline_rows),
-        "audit_current_count": len(inventory.findings),
+        "audit_current_count": len(admission.findings),
+        "audit_admission": {
+            "admitted_candidate_count": len(admission.findings),
+            "rejected_candidate_count": admission.rejected_candidate_count,
+            "reason_summaries": admission.reason_summaries(),
+            "policy_valid": admission.policy_valid,
+            "policy_errors": [dict(item) for item in admission.policy_errors],
+        },
         "audit_scope_id": scope_id,
         "analyzer_health": health.to_dict(),
         "analyzer_canaries": canaries.to_dict(),
@@ -1409,10 +1459,10 @@ def run_audit_scan(
         )
 
     snapshot_artifact: DatasetAuditSnapshotArtifact | None = None
-    if store is not None and persist:
+    if store is not None and persist and admission.policy_valid:
         snapshot_artifact = store.persist_audit_snapshot(
             scope_id=scope_id,
-            findings=(audit_snapshot_record(item) for item in inventory.findings),
+            findings=(audit_snapshot_record(item) for item in admission.findings),
             metadata={
                 "binding": binding.to_dict(),
                 "counts": counts,
