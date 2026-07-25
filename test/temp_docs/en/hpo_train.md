@@ -26,7 +26,7 @@ pip install optuna/sigopt/wandb/ray[tune]
 To use [`~Trainer.hyperparameter_search`], you need to create a `model_init` function. This function includes basic model information (arguments and configuration) because it needs to be reinitialized for each search trial in the run.
 
 > [!WARNING]
-> The `model_init` function is incompatible with the [optimizers](./main_classes/trainer#transformers.Trainer.optimizers) parameter. Subclass [`Trainer`] and override the [`~Trainer.create_optimizer_and_scheduler`] method to create a custom optimizer and scheduler.
+> The `model_init` function is incompatible with the [optimizers](./main_classes/trainer.md#transformers.Trainer.optimizers) parameter. Subclass [`Trainer`] and override the [`~Trainer.create_optimizer_and_scheduler`] method to create a custom optimizer and scheduler.
 
 An example `model_init` function is shown below.
 
@@ -44,10 +44,10 @@ def model_init(trial):
 
 Pass `model_init` to [`Trainer`] along with everything else you need for training. Then you can call [`~Trainer.hyperparameter_search`] to start the search.
 
-[`~Trainer.hyperparameter_search`] accepts a [direction](./main_classes/trainer#transformers.Trainer.hyperparameter_search.direction) parameter to specify whether to minimize, maximize, or minimize and maximize multiple objectives. You'll also need to set the [backend](./main_classes/trainer#transformers.Trainer.hyperparameter_search.backend) you're using, an [object](./main_classes/trainer#transformers.Trainer.hyperparameter_search.hp_space) containing the hyperparameters to optimize for, the [number of trials](./main_classes/trainer#transformers.Trainer.hyperparameter_search.n_trials) to run, and a [compute_objective](./main_classes/trainer#transformers.Trainer.hyperparameter_search.compute_objective) to return the objective values.
+[`~Trainer.hyperparameter_search`] accepts a [direction](./main_classes/trainer.md#transformers.Trainer.hyperparameter_search.direction) parameter to specify whether to minimize, maximize, or minimize and maximize multiple objectives. You'll also need to set the [backend](./main_classes/trainer.md#transformers.Trainer.hyperparameter_search.backend) you're using, an [object](./main_classes/trainer.md#transformers.Trainer.hyperparameter_search.hp_space) containing the hyperparameters to optimize for, the [number of trials](./main_classes/trainer.md#transformers.Trainer.hyperparameter_search.n_trials) to run, and a [compute_objective](./main_classes/trainer.md#transformers.Trainer.hyperparameter_search.compute_objective) to return the objective values.
 
 > [!TIP]
-> If [compute_objective](./main_classes/trainer#transformers.Trainer.hyperparameter_search.compute_objective) isn't defined, the default [compute_objective](./main_classes/trainer#transformers.Trainer.hyperparameter_search.compute_objective) is called which is the sum of an evaluation metric like F1.
+> If [compute_objective](./main_classes/trainer.md#transformers.Trainer.hyperparameter_search.compute_objective) isn't defined, the default [compute_objective](./main_classes/trainer.md#transformers.Trainer.hyperparameter_search.compute_objective) is called which is the sum of an evaluation metric like F1.
 
 ```py
 from transformers import Trainer
