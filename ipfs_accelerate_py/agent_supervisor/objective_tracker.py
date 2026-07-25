@@ -4055,14 +4055,11 @@ def reconcile_objective_goal_completion(
             GoalState.REOPENED,
             GoalState.PROVISIONALLY_COMPLETE,
             GoalState.ANALYSIS_INCONCLUSIVE,
-        } or (
-            goal.status == GoalState.VERIFIED_COMPLETE.value
-            and (
-                records
-                or require_artifact_binding
-                or goal.goal_id in externally_governed_goal_ids
-            )
-        ):
+            # A status label is not completion authority. Re-evaluate every
+            # verified goal so a manually asserted label without durable,
+            # current evidence fails closed into the reopened lifecycle.
+            GoalState.VERIFIED_COMPLETE,
+        }:
             candidate_goals.append(goal)
 
     terms: list[str] = []
