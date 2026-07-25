@@ -4386,6 +4386,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                         {},
                     ),
                 )
+                remaining_findings = max(0, int(args.max_findings) - len(records))
+                generated_findings = generated_findings[:remaining_findings]
                 if generated_findings:
                     objective_generation_materialized_records = generate_objective_todos(
                         repo_root=repo_root,

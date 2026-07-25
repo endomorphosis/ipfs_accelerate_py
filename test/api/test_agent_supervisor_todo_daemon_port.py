@@ -11101,6 +11101,7 @@ def test_objective_daemon_packs_sibling_subgoals_for_vector_bundling(tmp_path):
             "2",
             "--surplus-findings-per-goal",
             "1",
+            "--no-reconcile-goal-completion",
             "--no-persist-ast-dataset",
         ]
     )
@@ -11208,6 +11209,7 @@ def test_objective_daemon_adds_goal_packet_aggregate_when_capacity_allows(tmp_pa
             "3",
             "--surplus-findings-per-goal",
             "1",
+            "--no-reconcile-goal-completion",
             "--no-persist-ast-dataset",
         ]
     )
