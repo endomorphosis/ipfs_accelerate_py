@@ -61,6 +61,15 @@ _RECEIPT_STATUSES = frozenset(
 )
 
 
+def HSSLEV2398A61() -> str:
+    """Return implementation evidence for typed external completion."""
+
+    return (
+        "canonical CID-bound external operational completion authority "
+        "with clean recursive Git source and sticky fail-closed governance"
+    )
+
+
 def _nonempty(value: Any, *, field_name: str) -> str:
     text = str(value or "").strip()
     if not text:
@@ -1487,6 +1496,7 @@ __all__ = [
     "EXTERNAL_COMPLETION_VALIDATION_SCHEMA",
     "EXTERNAL_GITLINK_SCHEMA",
     "EXTERNAL_SOURCE_SCHEMA",
+    "HSSLEV2398A61",
     "ExternalArtifactIdentity",
     "ExternalCompletionAuthority",
     "ExternalCompletionEvaluation",

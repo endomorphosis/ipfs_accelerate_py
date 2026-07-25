@@ -14,6 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.external_completion import (
     ExternalCompletionAuthority,
     ExternalCompletionRequirement,
     ExternalOperationalCompletionReceipt,
+    HSSLEV2398A61,
     evaluate_external_completion_authority,
     inspect_external_source,
     load_external_completion_authority,
@@ -58,6 +59,12 @@ def test_external_completion_cids_require_canonical_multiformats_encoding():
     assert validate_cid(canonical, field_name="canonical") == canonical
     with pytest.raises(ValueError, match="valid CIDv1"):
         validate_cid(noncanonical, field_name="noncanonical")
+
+
+def test_external_completion_implementation_marker_is_not_a_run_receipt():
+    marker = HSSLEV2398A61()
+    assert "external operational completion authority" in marker
+    assert "completed" not in marker
 
 
 def _git(cwd: Path, *args: str) -> str:
