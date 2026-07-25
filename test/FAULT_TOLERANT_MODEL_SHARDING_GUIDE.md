@@ -28,7 +28,21 @@ The Fault-Tolerant Cross-Browser Model Sharding system consists of several core 
 4. **ResourcePoolBridgeRecovery**: Handles recovery from failures
 5. **WebSocketBridge**: Manages communication with browser instances
 
-![Architecture Diagram](fault_tolerant_model_sharding_architecture.png)
+```mermaid
+flowchart LR
+    Client[Application] --> Manager[ModelShardingManager]
+    Manager --> Allocator[Shard allocation]
+    Manager --> Executor[Sharded inference]
+    Allocator --> Browsers[Browser instances]
+    Executor --> Browsers
+    Browsers --> Components[ShardedModelComponent instances]
+    Components --> WebSocket[WebSocketBridge]
+    WebSocket --> Recovery[ResourcePoolBridgeRecovery]
+    Recovery -->|retry, reroute, or redistribute| Allocator
+    Components --> History[PerformanceHistoryTracker]
+    History --> Database[(DuckDB performance history)]
+    History --> Allocator
+```
 
 ## Usage
 
