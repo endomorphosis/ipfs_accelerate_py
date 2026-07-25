@@ -187,7 +187,7 @@ platform = UnifiedWebPlatform(
 
 #### Qualcomm-Specific Considerations
 
-- Use weight clustering quantization for optimal performance (see [Advanced Quantization Guide](../QUALCOMM_IMPLEMENTATION_GUIDE.md))
+- Use weight clustering quantization for optimal performance (see [Advanced Quantization Guide](../../QUALCOMM_ADVANCED_QUANTIZATION_GUIDE.md))
 - Use smaller variants for generative models (<1B parameters)
 - Enable Hexagon DSP for maximum performance
 - Set power_mode to "efficient" for mobile devices or "performance" for edge devices
@@ -370,7 +370,7 @@ For optimal streaming text generation:
 
 ## Related Documentation
 
-- [WebGPU Streaming Documentation](../WEBGPU_STREAMING_DOCUMENTATION.md)
-- [WebGPUStreamingInference API Reference](../api_reference/webgpu_streaming_inference.md)
-- [Qualcomm Implementation Guide](../QUALCOMM_IMPLEMENTATION_GUIDE.md)
-- [Hardware Selection Guide](../HARDWARE_SELECTION_GUIDE.md)
+- [WebGPU Streaming Documentation](../../WEBGPU_STREAMING_DOCUMENTATION.md)
+- [WebGPUStreamingInference API Reference](../../docs/api_reference/webgpu_streaming_inference.md)
+- [Qualcomm Implementation Guide](../../QUALCOMM_INTEGRATION_GUIDE.md)
+- [Hardware Selection Guide](../../HARDWARE_SELECTION_GUIDE.md)
