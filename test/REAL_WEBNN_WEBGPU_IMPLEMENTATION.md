@@ -393,7 +393,7 @@ The resource pool bridge provides a seamless interface for applications to use t
 For additional information, see the related documentation in:
 - [WEB_PLATFORM_INTEGRATION_GUIDE.md](WEB_PLATFORM_INTEGRATION_GUIDE.md)
 - [WEBNN_WEBGPU_GUIDE.md](WEBNN_WEBGPU_GUIDE.md)
-- [MODEL_COMPATIBILITY_MATRIX.md](MODEL_COMPATIBILITY_MATRIX.md)
+- [MODEL_COMPATIBILITY_MATRIX.md](WEBNN_WEBGPU_COMPATIBILITY_MATRIX.md)
 
 ## Key Resources and References
 
