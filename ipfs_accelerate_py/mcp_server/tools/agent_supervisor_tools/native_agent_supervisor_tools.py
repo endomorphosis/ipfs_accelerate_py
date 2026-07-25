@@ -211,6 +211,24 @@ def register_native_agent_supervisor_tools(manager: Any) -> None:
     """Register all closed-vocabulary operations without resolving a service."""
 
     for operation, tool in AGENT_SUPERVISOR_OPERATION_TOOLS.items():
+        tags = [
+            "native",
+            "agent-supervisor",
+            operation.authority.value,
+            "policy-controlled",
+            "bounded",
+            "redacted",
+        ]
+        if operation.mutating:
+            tags.extend(
+                [
+                    "authorization-required",
+                    "audit-receipt",
+                    "dry-run",
+                    "idempotent",
+                    "lease-fenced",
+                ]
+            )
         manager.register_tool(
             category=AGENT_SUPERVISOR_MCP_CATEGORY,
             name=operation.value,
@@ -221,12 +239,7 @@ def register_native_agent_supervisor_tools(manager: Any) -> None:
             ),
             input_schema=_tool_input_schema(operation),
             runtime="fastapi",
-            tags=[
-                "native",
-                "agent-supervisor",
-                operation.authority.value,
-                "policy-controlled",
-            ],
+            tags=tags,
         )
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import builtins
 import json
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     READ_OPERATIONS,
 )
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
+    CONTROL_REDACTION_MARKER,
     BackendResponse,
     InMemoryControlStateStore,
     SupervisorControlService,
@@ -258,6 +260,17 @@ def test_registration_covers_every_operation_with_shared_schema() -> None:
         assert result_schema["properties"]["operation"]["const"] == operation.value
         assert "request" in definition["input_schema"]["required"]
         assert operation.authority.value in definition["tags"]
+        assert {"bounded", "policy-controlled", "redacted"}.issubset(
+            definition["tags"]
+        )
+        if operation.mutating:
+            assert {
+                "authorization-required",
+                "audit-receipt",
+                "dry-run",
+                "idempotent",
+                "lease-fenced",
+            }.issubset(definition["tags"])
 
 
 def test_discovery_and_registration_do_not_resolve_a_service() -> None:
@@ -645,3 +658,261 @@ async def test_python_cli_mcp_matrix_emits_typed_parity_evidence(
         no_independent_completion_proof.gate is not None
         and not no_independent_completion_proof.gate.passed
     )
+
+
+@pytest.mark.asyncio
+async def test_mcp_read_pagination_and_allowlists_are_enforced(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    other_root = tmp_path / "other"
+    repo_root.mkdir()
+    state_root.mkdir()
+    other_root.mkdir()
+    events = state_root / "events.jsonl"
+    events.write_text(
+        "".join(
+            json.dumps({"event_id": f"event:{index}"}) + "\n"
+            for index in range(3)
+        ),
+        encoding="utf-8",
+    )
+    service = SupervisorControlService(
+        repository_allowlist=(repo_root,),
+        state_allowlist=(state_root,),
+        state_store=InMemoryControlStateStore(),
+        max_query_items=2,
+        clock_ms=lambda: 1_000,
+    )
+    configure_agent_supervisor_control(service=service)
+
+    request = OperationRequest(
+        operation=Operation.EVENTS,
+        **_binding(repo_root, state_root),
+        parameters={"events_path": "events.jsonl", "limit": 1, "offset": 1},
+        bounds=ControlBounds(max_items=16, max_paths=16, max_effects=16),
+    )
+    page = await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.EVENTS](
+        request=request.to_record()
+    )
+
+    assert page["status"] == "succeeded"
+    assert page["data"] == {
+        "count": 1,
+        "items": [{"event_id": "event:1"}],
+        "limit": 1,
+        "offset": 1,
+        "truncated": True,
+    }
+
+    oversized = replace(
+        request,
+        parameters={"events_path": "events.jsonl", "limit": 3},
+    )
+    oversized_result = await AGENT_SUPERVISOR_OPERATION_TOOLS[
+        Operation.EVENTS
+    ](request=oversized.to_record())
+    assert oversized_result["status"] == "failed"
+    assert oversized_result["error"]["code"] == "bounds_exceeded"
+
+    outside = OperationRequest(
+        operation=Operation.STATUS,
+        **_binding(other_root, state_root),
+        parameters={"status_path": "status.json"},
+    )
+    outside_result = await AGENT_SUPERVISOR_OPERATION_TOOLS[
+        Operation.STATUS
+    ](request=outside.to_record())
+    assert outside_result["status"] == "denied"
+    assert outside_result["error"]["code"] == "forbidden"
+
+
+@pytest.mark.asyncio
+async def test_mcp_dry_run_is_proposal_only_and_skips_backend_and_lease(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    proposal = _matrix_requests(repo_root, state_root)[1][1]
+    backend_calls = 0
+    lease_calls = 0
+
+    def forbidden_backend(_request: OperationRequest) -> BackendResponse:
+        nonlocal backend_calls
+        backend_calls += 1
+        raise AssertionError("dry-run invoked the mutation backend")
+
+    def forbidden_lease(_request: OperationRequest) -> bool:
+        nonlocal lease_calls
+        lease_calls += 1
+        raise AssertionError("dry-run invoked live lease validation")
+
+    service = SupervisorControlService(
+        repository_allowlist=(repo_root,),
+        state_allowlist=(state_root,),
+        handlers={Operation.PAUSE: forbidden_backend},
+        state_store=InMemoryControlStateStore(),
+        lease_validator=forbidden_lease,
+        clock_ms=lambda: 1_000,
+    )
+    configure_agent_supervisor_control(service=service)
+
+    record = await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.PAUSE](
+        request=proposal.to_record()
+    )
+
+    assert record["status"] == "succeeded"
+    assert record["authority"] == "proposal"
+    assert record["data"] == {"dry_run": True, "would_change": True}
+    assert record["effects"] == []
+    assert record["preview"]["would_change"] is True
+    assert record["audit_receipt_id"]
+    assert backend_calls == lease_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_mcp_mutation_is_fenced_idempotent_and_audited(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    mutation = _matrix_requests(repo_root, state_root)[-1][1]
+    backend_calls = 0
+    lease_calls = 0
+
+    def backend(request: OperationRequest) -> BackendResponse:
+        nonlocal backend_calls
+        backend_calls += 1
+        return BackendResponse(
+            data={"state": "paused"},
+            changed=True,
+            applied_effect_ids=tuple(
+                effect.effect_id for effect in request.expected_effects
+            ),
+        )
+
+    def lease(_request: OperationRequest) -> bool:
+        nonlocal lease_calls
+        lease_calls += 1
+        return True
+
+    service = SupervisorControlService(
+        repository_allowlist=(repo_root,),
+        state_allowlist=(state_root,),
+        handlers={Operation.PAUSE: backend},
+        state_store=InMemoryControlStateStore(),
+        lease_validator=lease,
+        clock_ms=lambda: 1_000,
+    )
+    configure_agent_supervisor_control(service=service)
+    tool = AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.PAUSE]
+
+    first = await tool(request=mutation.to_record())
+    replay = await tool(request=mutation.to_record())
+
+    assert replay == first
+    assert backend_calls == lease_calls == 1
+    assert first["status"] == "succeeded"
+    assert first["audit_receipt_id"]
+    assert len(first["effects"]) == 1
+    assert first["effects"][0]["applied"] is True
+    assert first["effects"][0]["receipt_id"] == first["audit_receipt_id"]
+
+    receipt_request = OperationRequest(
+        operation=Operation.RECEIPTS,
+        **_binding(repo_root, state_root),
+        parameters={"limit": 10},
+    )
+    receipts = await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.RECEIPTS](
+        request=receipt_request.to_record()
+    )
+    assert receipts["status"] == "succeeded"
+    assert receipts["data"]["count"] == 1
+    assert receipts["data"]["items"][0]["operation"] == "pause"
+    assert (
+        receipts["data"]["items"][0]["receipt_id"]
+        == first["audit_receipt_id"]
+    )
+
+    conflict = replace(
+        mutation,
+        parameters={
+            **dict(mutation.parameters),
+            "reason": "conflicting reuse of the same idempotency key",
+        },
+    )
+    conflict_result = await tool(request=conflict.to_record())
+    assert conflict_result["status"] == "conflict"
+    assert conflict_result["error"]["code"] == "idempotency_conflict"
+    assert backend_calls == lease_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_shared_redaction_preserves_python_cli_mcp_result_parity(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    secret = "super-secret-control-token"
+
+    def handler(_request: OperationRequest) -> BackendResponse:
+        return BackendResponse(
+            data={
+                "api-key": secret,
+                "nested": {
+                    "password": secret,
+                    "safe": "visible",
+                    "message": f"authorization=Bearer-{secret}",
+                },
+                "tokens": [{"refresh_token": secret}],
+            },
+        )
+
+    service = SupervisorControlService(
+        repository_allowlist=(repo_root,),
+        state_allowlist=(state_root,),
+        handlers={Operation.STATUS: handler},
+        state_store=InMemoryControlStateStore(),
+        clock_ms=lambda: 1_000,
+    )
+    configure_agent_supervisor_control(service=service)
+    request = _request(repo_root, state_root)
+
+    python_record = service.execute(request).to_record()
+    exit_code = cli.main(
+        [
+            "agent",
+            "status",
+            "--request-json",
+            request.to_json(),
+            "--output-json",
+        ],
+        agent_control_service=service,
+    )
+    captured = capsys.readouterr()
+    cli_record = json.loads(captured.out)
+    mcp_record = await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.STATUS](
+        request=request.to_record()
+    )
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert python_record == cli_record == mcp_record
+    assert secret not in json.dumps(mcp_record, sort_keys=True)
+    assert mcp_record["data"]["api-key"] == CONTROL_REDACTION_MARKER
+    assert mcp_record["data"]["nested"] == {
+        "message": f"authorization={CONTROL_REDACTION_MARKER}",
+        "password": CONTROL_REDACTION_MARKER,
+        "safe": "visible",
+    }
+    assert mcp_record["data"]["tokens"] == [
+        {"refresh_token": CONTROL_REDACTION_MARKER}
+    ]
