@@ -187,7 +187,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G050 High-quality task generation and conflict-aware bundling
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G000
 - Depends on: ASI-G030, ASI-G040
 - Fib priority: 5
@@ -215,6 +215,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-25T01:18:28.865401+00:00
+- State transition reason: Produce completion evidence for: Tasks bind one coherent acceptance/effect subset with predicted scope and costs; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-25T01:18:28.865401+00:00
 
 ## ASI-G060 Adaptive parallel execution and acceptance throughput
 
@@ -876,7 +879,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G106 Prove 127990245919649912156052660092678945998 for High-quality task generation and conflict-aware bundling
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G050
 - Fib priority: 5000
 - Track: task-generation
@@ -903,10 +906,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-25T01:18:28.865401+00:00
+- State transition reason: Produce completion evidence for: 127990245919649912156052660092678945998; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-25T01:18:28.865401+00:00
 
 ## ASI-G107 Prove 061582446926920746660485801841658333166 for High-quality task generation and conflict-aware bundling
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G050
 - Fib priority: 5001
 - Track: task-generation
@@ -933,6 +939,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-25T01:18:28.865401+00:00
+- State transition reason: Produce completion evidence for: 061582446926920746660485801841658333166; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-25T01:18:28.865401+00:00
 
 ## ASI-G108 Prove 187052702852200236079602798955260586139 for High-quality task generation and conflict-aware bundling
 
