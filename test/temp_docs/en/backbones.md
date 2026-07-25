@@ -39,14 +39,14 @@ There are two backbone classes.
 - [`~transformers.utils.BackboneMixin`] allows you to load a backbone and includes functions for extracting the feature maps and indices.
 - [`~transformers.utils.BackboneConfigMixin`] allows you to set the feature map and indices of a backbone configuration.
 
-Refer to the [Backbone](./main_classes/backbones) API documentation to check which models support a backbone.
+Refer to the [Backbone](./main_classes/backbones.md) API documentation to check which models support a backbone.
 
 There are two ways to load a Transformers backbone, [`AutoBackbone`] and a model-specific backbone class.
 
 <hfoptions id="backbone-classes">
 <hfoption id="AutoBackbone">
 
-The [AutoClass](./model_doc/auto) API automatically loads a pretrained vision model with [`~PretrainedConfig.from_pretrained`] as a backbone if it's supported.
+The [AutoClass](./model_doc/auto.md) API automatically loads a pretrained vision model with [`~PretrainedConfig.from_pretrained`] as a backbone if it's supported.
 
 Set the `out_indices` parameter to the layer you'd like to get the feature map from. If you know the name of the layer, you could also use `out_features`. These parameters can be used interchangeably, but if you use both, make sure they refer to the same layer.
 
@@ -67,7 +67,7 @@ model = AutoBackbone.from_pretrained("microsoft/swin-tiny-patch4-window7-224", o
 
 When you know a model supports a backbone, you can load the backbone and neck directly into the models configuration. Pass the configuration to the model to initialize it for a task.
 
-The example below loads a [ResNet](./model_doc/resnet) backbone and neck for use in a [MaskFormer](./model_doc/maskformer) instance segmentation head.
+The example below loads a [ResNet](./model_doc/resnet.md) backbone and neck for use in a [MaskFormer](./model_doc/maskformer.md) instance segmentation head.
 
 Set `backbone` to a pretrained model and  `use_pretrained_backbone=True` to use pretrained weights instead of randomly initialized weights.
 
