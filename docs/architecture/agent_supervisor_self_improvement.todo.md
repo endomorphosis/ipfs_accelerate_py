@@ -1062,7 +1062,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-041 Close objective gap: Prove 146189916032404266364029134505159070240 for Paired rollout, stable exports, and operator adoption
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P2
 - Track: rollout
