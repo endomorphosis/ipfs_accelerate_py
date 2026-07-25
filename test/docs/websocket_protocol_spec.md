@@ -557,4 +557,4 @@ This specification is versioned. Future versions will maintain backward compatib
 - [WebGPUStreamingInference API Reference](api_reference/webgpu_streaming_inference.md)
 - [Unified Framework API Reference](unified_framework_api.md)
 - [Error Handling Guide](ERROR_HANDLING_GUIDE.md)
-- [WebGPU Streaming Documentation](WEBGPU_STREAMING_DOCUMENTATION.md)
+- [WebGPU Streaming Documentation](../WEBGPU_STREAMING_DOCUMENTATION.md)
