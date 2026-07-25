@@ -35,6 +35,10 @@ from .analyzer_health import (
     run_analyzer_canaries,
 )
 from .event_log import read_jsonl_events
+from .goal_completion import (
+    DEFAULT_CLOCK_SKEW_SECONDS,
+    DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+)
 from .objective_graph import (
     DEFAULT_DISCOVERY_OUTPUT_PATH,
     DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
@@ -134,6 +138,11 @@ def align_completion_gate_force_goal_ids(
     force_goal_ids: Sequence[str] = (),
     *,
     completion_gate_decisions: Mapping[str, Any] | None = None,
+    repository_id: str = "",
+    repository_tree: str = "",
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
 ) -> tuple[str, ...]:
     """Keep proof-incomplete objective parents in the supervisor refill heap.
 
@@ -154,7 +163,15 @@ def align_completion_gate_force_goal_ids(
         key=lambda item: str(item[0]),
     ):
         aligned.update(
-            completion_gate_actionable_goal_ids(str(goal_id), decision)
+            completion_gate_actionable_goal_ids(
+                str(goal_id),
+                decision,
+                repository_id=repository_id,
+                repository_tree=repository_tree,
+                now=now,
+                freshness_seconds=freshness_seconds,
+                clock_skew_seconds=clock_skew_seconds,
+            )
         )
     return tuple(sorted(aligned))
 
@@ -6470,6 +6487,11 @@ def record_configured_objective_backlog_findings(
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     force_goal_ids: Sequence[str] = (),
     completion_gate_decisions: Mapping[str, Any] | None = None,
+    completion_gate_now: datetime | str | None = None,
+    completion_gate_freshness_seconds: float = (
+        DEFAULT_EVIDENCE_FRESHNESS_SECONDS
+    ),
+    completion_gate_clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
 ) -> RefillScanResult[dict[str, Any]]:
@@ -6481,6 +6503,14 @@ def record_configured_objective_backlog_findings(
         or repo_root / "data" / "agent_supervisor" / "objective_bundles"
     )
     resolved_dataset_dir = dataset_dir if dataset_dir is not None else default_dataset_dir
+    completion_identity = None
+    if completion_gate_decisions:
+        from .objective_tracker import completion_tree_identity
+
+        completion_identity = completion_tree_identity(
+            repo_root,
+            objective_path=objective_path,
+        )
     return record_objective_backlog_findings(
         repo_root=repo_root,
         objective_path=objective_path,
@@ -6511,6 +6541,19 @@ def record_configured_objective_backlog_findings(
         force_goal_ids=align_completion_gate_force_goal_ids(
             force_goal_ids,
             completion_gate_decisions=completion_gate_decisions,
+            repository_id=(
+                completion_identity.repository_id
+                if completion_identity is not None
+                else ""
+            ),
+            repository_tree=(
+                completion_identity.tree_id
+                if completion_identity is not None
+                else ""
+            ),
+            now=completion_gate_now,
+            freshness_seconds=completion_gate_freshness_seconds,
+            clock_skew_seconds=completion_gate_clock_skew_seconds,
         ),
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
@@ -6690,6 +6733,11 @@ class ConfiguredObjectiveBacklogRecorder:
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
     force_goal_ids: Sequence[str] = ()
     completion_gate_decisions: Mapping[str, Any] | None = None
+    completion_gate_now: datetime | str | None = None
+    completion_gate_freshness_seconds: float = (
+        DEFAULT_EVIDENCE_FRESHNESS_SECONDS
+    )
+    completion_gate_clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS
     commit_outputs: bool = False
     commit_subject: str = "Agent: record objective backlog findings"
     prepare_environment: Callable[[], None] | None = None
@@ -6924,6 +6972,11 @@ def build_namespace_objective_backlog_recorder(
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     force_goal_ids: Sequence[str] = (),
     completion_gate_decisions: Mapping[str, Any] | None = None,
+    completion_gate_now: datetime | str | None = None,
+    completion_gate_freshness_seconds: float = (
+        DEFAULT_EVIDENCE_FRESHNESS_SECONDS
+    ),
+    completion_gate_clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
     prepare_environment: Callable[[], None] | None = None,
@@ -6955,6 +7008,13 @@ def build_namespace_objective_backlog_recorder(
         discovery_output_path_default=discovery_output_path_default,
         force_goal_ids=tuple(force_goal_ids),
         completion_gate_decisions=completion_gate_decisions,
+        completion_gate_now=completion_gate_now,
+        completion_gate_freshness_seconds=(
+            completion_gate_freshness_seconds
+        ),
+        completion_gate_clock_skew_seconds=(
+            completion_gate_clock_skew_seconds
+        ),
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
         prepare_environment=prepare_environment,

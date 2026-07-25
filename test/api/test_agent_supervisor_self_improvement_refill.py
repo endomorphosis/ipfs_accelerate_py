@@ -8,11 +8,18 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor import (
+    backlog_refinery as backlog_refinery_module,
+)
+from ipfs_accelerate_py.agent_supervisor import (
+    objective_tracker as objective_tracker_module,
+)
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY,
     align_completion_gate_force_goal_ids,
     filter_self_improvement_successor_candidates,
     load_strategy,
+    record_configured_objective_backlog_findings,
     record_self_improvement_successor_admission,
     self_improvement_epoch_wait_active,
 )
@@ -31,6 +38,9 @@ from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     SelfImprovementGoalEvidenceReconciliation,
     reconcile_self_improvement_goal_evidence,
     resolve_objective_evidence_projection,
+)
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    RepositoryTreeIdentity,
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement import (
     DEFAULT_BENCHMARK_DIMENSIONS,
@@ -1635,6 +1645,16 @@ def test_g080_parent_completion_requires_closed_current_tree_proof_packet() -> N
     assert not provisional.verified
     assert provisional.gate is not None and provisional.gate.passed
     assert "provisional_transition_required" in provisional.reason_codes
+    assert provisional.gate.evaluated_evidence["coverage"][
+        "producing_task_closure"
+    ] == {
+        "required_task_ids": ["ASI-022"],
+        "submitted_task_ids": ["ASI-022"],
+        "submitted_task_statuses": ["completed"],
+        "population_complete": True,
+        "caller_tasks_complete": True,
+        "satisfied": True,
+    }
 
     verified = evaluate_self_improvement_completion(
         **packet,
@@ -1644,11 +1664,159 @@ def test_g080_parent_completion_requires_closed_current_tree_proof_packet() -> N
     assert verified.verified
     assert verified.gate is not None and verified.gate.passed
     assert align_completion_gate_force_goal_ids(
-        completion_gate_decisions={"ASI-G080": provisional}
+        completion_gate_decisions={"ASI-G080": provisional},
+        repository_id=COMPLETION_REPOSITORY_ID,
+        repository_tree=COMPLETION_REPOSITORY_TREE,
+        now=NOW,
     ) == ("ASI-G080",)
     assert align_completion_gate_force_goal_ids(
-        completion_gate_decisions={"ASI-G080": verified}
+        completion_gate_decisions={"ASI-G080": verified},
+        repository_id=COMPLETION_REPOSITORY_ID,
+        repository_tree=COMPLETION_REPOSITORY_TREE,
+        now=NOW,
     ) == ()
+
+
+def test_g080_verified_completion_reopens_and_requeues_on_stale_proof() -> None:
+    packet = _completion_packet()
+    verified = evaluate_self_improvement_completion(
+        **packet,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    assert verified.verified
+
+    records = list(packet["evidence"])
+    stale = records[0].to_dict()
+    stale["observed_at"] = (NOW - timedelta(hours=2)).isoformat()
+    records[0] = CompletionEvidence.from_dict(stale)
+    packet["evidence"] = tuple(records)
+    reopened = evaluate_self_improvement_completion(
+        **packet,
+        current_state=GoalState.VERIFIED_COMPLETE,
+    )
+
+    assert reopened.state is GoalState.REOPENED
+    assert not reopened.verified
+    assert "verification_invalidated" in reopened.reason_codes
+    assert "stale_evidence" in reopened.reason_codes
+    assert align_completion_gate_force_goal_ids(
+        completion_gate_decisions={"ASI-G080": reopened.to_dict()},
+        repository_id=COMPLETION_REPOSITORY_ID,
+        repository_tree=COMPLETION_REPOSITORY_TREE,
+        now=NOW,
+    ) == ("ASI-G080",)
+
+
+def test_g080_durable_backlog_projection_requires_canonical_fresh_decision() -> None:
+    packet = _completion_packet()
+    verified = evaluate_self_improvement_completion(
+        **packet,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    ).to_dict()
+    alignment = {
+        "repository_id": COMPLETION_REPOSITORY_ID,
+        "repository_tree": COMPLETION_REPOSITORY_TREE,
+        "now": NOW,
+    }
+    assert align_completion_gate_force_goal_ids(
+        ("ASI-G999", "ASI-G999"),
+        completion_gate_decisions={"ASI-G080": verified},
+        **alignment,
+    ) == ("ASI-G999",)
+
+    skeletal = {
+        "state": "verified_complete",
+        "verified": True,
+        "completion_gate": {"passed": True},
+        "actionable_reasons": [],
+    }
+    assert align_completion_gate_force_goal_ids(
+        completion_gate_decisions={"ASI-G080": skeletal},
+        **alignment,
+    ) == ("ASI-G080",)
+
+    stale = copy.deepcopy(verified)
+    stale["completion_gate"]["evaluated_evidence"]["evaluated_at"] = (
+        NOW - timedelta(hours=2)
+    ).isoformat()
+    assert align_completion_gate_force_goal_ids(
+        completion_gate_decisions={"ASI-G080": stale},
+        **alignment,
+    ) == ("ASI-G080",)
+
+    assert align_completion_gate_force_goal_ids(
+        completion_gate_decisions={"ASI-G080": verified},
+        repository_id=COMPLETION_REPOSITORY_ID,
+        repository_tree="tree:sha256:new-current-tree",
+        now=NOW,
+    ) == ("ASI-G080",)
+
+    incomplete = copy.deepcopy(verified)
+    incomplete["completion_gate"]["checks"][0]["passed"] = False
+    assert align_completion_gate_force_goal_ids(
+        completion_gate_decisions={"ASI-G080": incomplete},
+        **alignment,
+    ) == ("ASI-G080",)
+
+    detached = copy.deepcopy(verified)
+    detached["completion_gate"]["evaluated_evidence"]["coverage"] = {}
+    assert align_completion_gate_force_goal_ids(
+        completion_gate_decisions={"ASI-G080": detached},
+        **alignment,
+    ) == ("ASI-G080",)
+
+
+def test_configured_refill_receives_current_completion_alignment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    packet = _completion_packet()
+    provisional = evaluate_self_improvement_completion(**packet)
+    verified = evaluate_self_improvement_completion(
+        **packet,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    captured: list[dict[str, object]] = []
+
+    def fake_record(**kwargs):
+        captured.append(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(
+        backlog_refinery_module,
+        "record_objective_backlog_findings",
+        fake_record,
+    )
+    monkeypatch.setattr(
+        objective_tracker_module,
+        "completion_tree_identity",
+        lambda *_args, **_kwargs: RepositoryTreeIdentity(
+            repository_id=COMPLETION_REPOSITORY_ID,
+            tree_id=COMPLETION_REPOSITORY_TREE,
+        ),
+    )
+    common = {
+        "repo_root": tmp_path,
+        "objective_path": tmp_path / "objectives.md",
+        "todo_path": tmp_path / "todo.md",
+        "discovery_dir": tmp_path / "discovery",
+        "strategy_path": tmp_path / "strategy.json",
+        "completion_gate_now": NOW,
+        "persist_ast_dataset": False,
+        "write_todo_vector_index": False,
+    }
+
+    record_configured_objective_backlog_findings(
+        **common,
+        completion_gate_decisions={"ASI-G080": provisional.to_dict()},
+    )
+    assert captured[-1]["force_goal_ids"] == ("ASI-G080",)
+
+    record_configured_objective_backlog_findings(
+        **common,
+        completion_gate_decisions={"ASI-G080": verified.to_dict()},
+    )
+    assert captured[-1]["force_goal_ids"] == ()
 
 
 @pytest.mark.parametrize(
@@ -1670,13 +1838,14 @@ def test_g080_parent_rejects_incomplete_wrong_or_duplicate_producers(
     mutation(tasks)
     _assert_parent_completion_rejected(packet)
 
-    packet = _completion_packet()
-    packet["tasks_complete"] = False
-    decision = evaluate_self_improvement_completion(
-        **packet,
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-    )
-    assert "tasks_incomplete" in decision.reason_codes
+    for closure_claim in (False, 1):
+        packet = _completion_packet()
+        packet["tasks_complete"] = closure_claim
+        decision = evaluate_self_improvement_completion(
+            **packet,
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+        )
+        assert "tasks_incomplete" in decision.reason_codes
 
 
 @pytest.mark.parametrize(
