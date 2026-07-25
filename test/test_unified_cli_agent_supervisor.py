@@ -8,6 +8,7 @@ import pytest
 
 from ipfs_accelerate_py import cli
 from ipfs_accelerate_py.agent_supervisor.control_cli import (
+    AGENT_CLI_EXIT_FAILED,
     AGENT_CLI_EXIT_INVALID,
     COMMAND_OPERATIONS,
     agent_cli_discovery_manifest,
@@ -296,6 +297,75 @@ def test_cli_proposal_and_dry_run_use_the_same_result_envelope(
     assert pause_record["effects"] == []
 
 
+def test_cli_direct_mutation_flags_preserve_python_parity_and_idempotency(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    request = _authorized_mutation_request(repo_root, state_root)
+    direct_dispatches: list[str] = []
+    cli_dispatches: list[str] = []
+
+    def handler(dispatches: list[str]):
+        def execute(operation_request: OperationRequest) -> dict[str, Any]:
+            dispatches.append(operation_request.request_id)
+            return {"state": "paused", "target_id": "supervisor:fixture"}
+
+        return execute
+
+    direct_service = SupervisorControlService(
+        repository_allowlist=(repo_root,),
+        state_allowlist=(state_root,),
+        handlers={Operation.PAUSE: handler(direct_dispatches)},
+        lease_validator=lambda _request: True,
+        state_store=InMemoryControlStateStore(),
+        clock_ms=lambda: 1_000,
+    )
+    cli_service = SupervisorControlService(
+        repository_allowlist=(repo_root,),
+        state_allowlist=(state_root,),
+        handlers={Operation.PAUSE: handler(cli_dispatches)},
+        lease_validator=lambda _request: True,
+        state_store=InMemoryControlStateStore(),
+        clock_ms=lambda: 1_000,
+    )
+    expected = direct_service.execute(request).to_record()
+
+    argv = ["agent", "pause"]
+    for name, value in _binding(repo_root, state_root).items():
+        argv.extend(["--" + name.replace("_", "-"), value])
+    argv.extend(
+        [
+            "--parameters-json",
+            json.dumps(dict(request.parameters)),
+            "--expected-effects-json",
+            json.dumps(
+                [effect.to_record() for effect in request.expected_effects]
+            ),
+            "--idempotency-key",
+            request.idempotency_key,
+            "--authorization-json",
+            request.authorization.to_json(),
+            "--lease-id",
+            request.lease_id,
+            "--fencing-epoch",
+            str(request.fencing_epoch),
+            "--output-json",
+        ]
+    )
+
+    assert cli.main(argv, agent_control_service=cli_service) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert cli.main(argv, agent_control_service=cli_service) == 0
+    replay = json.loads(capsys.readouterr().out)
+
+    assert first == replay == expected
+    assert direct_dispatches == [request.request_id]
+    assert cli_dispatches == [request.request_id]
+
+
 def test_cli_rejects_ambiguous_roots_and_non_dry_run_mutation(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -315,6 +385,44 @@ def test_cli_rejects_ambiguous_roots_and_non_dry_run_mutation(
 
     assert code == AGENT_CLI_EXIT_INVALID
     assert "real mutations require a complete" in unsafe.err
+
+
+def test_cli_rejects_canonical_request_overlays_before_service_resolution(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    request = _request(repo_root, state_root, Operation.STATUS)
+    factory_calls = 0
+
+    def forbidden_factory(_request: OperationRequest) -> SupervisorControlService:
+        nonlocal factory_calls
+        factory_calls += 1
+        raise AssertionError("ambiguous request resolved a service")
+
+    code = cli.main(
+        [
+            "agent",
+            "status",
+            "--request-json",
+            request.to_json(),
+            "--target-id",
+            "ignored-target",
+            "--max-items",
+            str(ControlBounds().max_items),
+        ],
+        agent_service_factory=forbidden_factory,
+    )
+    captured = capsys.readouterr()
+
+    assert code == AGENT_CLI_EXIT_INVALID
+    assert captured.out == ""
+    assert "cannot be combined" in captured.err
+    assert "--target-id" in captured.err
+    assert "--max-items" in captured.err
+    assert factory_calls == 0
 
 
 @pytest.mark.parametrize(
@@ -390,7 +498,6 @@ def test_cli_watch_is_bounded_and_emits_one_canonical_record_per_line(
             request.to_json(),
             "--watch-count",
             "2",
-            "--output-json",
         ],
         agent_control_service=service,
     )
@@ -401,6 +508,33 @@ def test_cli_watch_is_bounded_and_emits_one_canonical_record_per_line(
     assert len(records) == 2
     assert records[0] == records[1]
     assert all(record["schema"].endswith("operation-result@1") for record in records)
+
+
+def test_global_output_json_is_not_overwritten_by_agent_subparser(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    service = _service(repo_root, state_root)
+    request = _request(repo_root, state_root, Operation.STATUS)
+
+    code = cli.main(
+        [
+            "--output-json",
+            "agent",
+            "status",
+            "--request-json",
+            request.to_json(),
+        ],
+        agent_control_service=service,
+    )
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert len(captured.out.splitlines()) == 1
+    assert json.loads(captured.out)["status"] == "succeeded"
 
 
 def test_cli_rejects_unbounded_watch_before_dispatch(
@@ -429,3 +563,73 @@ def test_cli_rejects_unbounded_watch_before_dispatch(
     assert code == AGENT_CLI_EXIT_INVALID
     assert captured.out == ""
     assert "watch-count" in captured.err
+
+
+def test_cli_rejects_meaningless_watch_interval_before_service_resolution(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    request = _request(repo_root, state_root, Operation.STATUS)
+    factory_calls = 0
+
+    def forbidden_factory(_request: OperationRequest) -> SupervisorControlService:
+        nonlocal factory_calls
+        factory_calls += 1
+        raise AssertionError("invalid watch resolved a service")
+
+    code = cli.main(
+        [
+            "agent",
+            "status",
+            "--request-json",
+            request.to_json(),
+            "--watch-interval-ms",
+            "1",
+        ],
+        agent_service_factory=forbidden_factory,
+    )
+    captured = capsys.readouterr()
+
+    assert code == AGENT_CLI_EXIT_INVALID
+    assert captured.out == ""
+    assert "requires --watch-count greater than 1" in captured.err
+    assert factory_calls == 0
+
+
+def test_cli_emits_stable_json_for_unexpected_service_failures(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    request = _request(repo_root, state_root, Operation.STATUS)
+
+    class FailingService:
+        def execute(self, _request: OperationRequest) -> OperationResult:
+            raise RuntimeError("backend credential must not be exposed")
+
+    code = cli.main(
+        [
+            "agent",
+            "status",
+            "--request-json",
+            request.to_json(),
+            "--output-json",
+        ],
+        agent_control_service=FailingService(),
+    )
+    captured = capsys.readouterr()
+
+    assert code == AGENT_CLI_EXIT_FAILED
+    assert captured.out == ""
+    error = json.loads(captured.err)
+    assert error == {
+        "message": "agent control operation failed",
+        "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
+        "status": "internal_error",
+    }
+    assert "credential" not in captured.err

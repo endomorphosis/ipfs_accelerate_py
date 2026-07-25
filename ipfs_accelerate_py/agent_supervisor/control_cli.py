@@ -19,10 +19,12 @@ from typing import Any, TextIO
 
 from .control_contracts import (
     MUTATION_OPERATIONS,
+    AuthorizationDecision,
     ControlBounds,
     ControlContractError,
     ControlDiscoveryManifest,
     ControlSurface,
+    IdempotencyKey,
     Operation,
     OperationRequest,
     OperationResult,
@@ -81,6 +83,16 @@ _IDENTITY_ARGUMENTS = (
     "caller",
 )
 
+_DIRECT_PARAMETER_ARGUMENTS = (
+    "path",
+    "limit",
+    "offset",
+    "task_header_prefix",
+    "target_id",
+    "reason",
+    "requested_state",
+)
+
 
 class AgentCLIError(ValueError):
     """A safe, user-correctable CLI request error."""
@@ -120,7 +132,6 @@ def _add_request_arguments(
     _add_target_arguments(parser)
     parser.add_argument(
         "--parameters-json",
-        default="{}",
         help="Operation parameters as a JSON object (default: {}).",
     )
     parser.add_argument("--path", help="Explicit root-relative data path.")
@@ -137,8 +148,33 @@ def _add_request_arguments(
     )
     parser.add_argument(
         "--expected-effects-json",
-        default="[]",
         help="ExpectedEffect records as a JSON array.",
+    )
+    parser.add_argument(
+        "--idempotency-key",
+        help=(
+            "Caller-chosen replay key. Its operation, caller, repository, and "
+            "objective scope are derived from the explicit target binding."
+        ),
+    )
+    authorization = parser.add_mutually_exclusive_group()
+    authorization.add_argument(
+        "--authorization-json",
+        help="Canonical AuthorizationDecision JSON object.",
+    )
+    authorization.add_argument(
+        "--authorization-file",
+        type=Path,
+        help="File containing a canonical AuthorizationDecision.",
+    )
+    parser.add_argument(
+        "--lease-id",
+        help="Lease identity bound by the authorization decision.",
+    )
+    parser.add_argument(
+        "--fencing-epoch",
+        type=int,
+        help="Non-negative fencing epoch bound by the authorization decision.",
     )
     parser.add_argument(
         "--dry-run",
@@ -148,25 +184,21 @@ def _add_request_arguments(
     parser.add_argument(
         "--max-items",
         type=int,
-        default=ControlBounds().max_items,
         help="Maximum result/parameter item count.",
     )
     parser.add_argument(
         "--max-bytes",
         type=int,
-        default=ControlBounds().max_serialized_bytes,
         help="Maximum serialized request/result bytes.",
     )
     parser.add_argument(
         "--max-text-bytes",
         type=int,
-        default=ControlBounds().max_text_bytes,
         help="Maximum bytes in one text value/JSONL record.",
     )
     parser.add_argument(
         "--timeout-ms",
         type=int,
-        default=ControlBounds().timeout_ms,
         help="Operation timeout bound in milliseconds.",
     )
     parser.add_argument(
@@ -186,6 +218,7 @@ def _add_request_arguments(
     parser.add_argument(
         "--output-json",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Emit compact canonical JSON (agent output is always JSON).",
     )
     parser.set_defaults(agent_operation=operation.value)
@@ -201,8 +234,8 @@ def register_agent_cli(
         help="Inspect and control the agent supervisor through typed contracts.",
         description=(
             "All commands use the shared OperationRequest/OperationResult "
-            "contract. Real mutations require --request-json/--request-file "
-            "with authorization, idempotency, lease, fencing, and effects."
+            "contract. Real mutations require either a complete request or "
+            "direct authorization, idempotency, lease, fencing, and effects."
         ),
     )
     commands = agent.add_subparsers(
@@ -258,12 +291,69 @@ def _request_payload(args: argparse.Namespace) -> Mapping[str, Any] | None:
     return value
 
 
+def _json_file_value(path: Path, *, noun: str) -> Any:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise AgentCLIError(f"{noun} file is not readable") from exc
+    return _json_value(raw, noun=noun)
+
+
+def _authorization(args: argparse.Namespace) -> AuthorizationDecision | None:
+    raw = getattr(args, "authorization_json", None)
+    path = getattr(args, "authorization_file", None)
+    if path is not None:
+        value = _json_file_value(path, noun="authorization")
+    elif raw is not None:
+        value = _json_value(raw, noun="authorization")
+    else:
+        return None
+    if not isinstance(value, Mapping):
+        raise AgentCLIError("authorization JSON must contain an object")
+    return AuthorizationDecision.from_dict(value)
+
+
+def _request_overlay_arguments(args: argparse.Namespace) -> tuple[str, ...]:
+    """Return request-building flags that cannot overlay a canonical request."""
+
+    names: list[str] = []
+    for name in _IDENTITY_ARGUMENTS + _DIRECT_PARAMETER_ARGUMENTS:
+        if getattr(args, name, None) is not None:
+            names.append("--" + name.replace("_", "-"))
+    for name in (
+        "idempotency_key",
+        "authorization_json",
+        "authorization_file",
+        "lease_id",
+        "fencing_epoch",
+    ):
+        if getattr(args, name, None) is not None:
+            names.append("--" + name.replace("_", "-"))
+    if bool(getattr(args, "dry_run", False)):
+        names.append("--dry-run")
+    if getattr(args, "parameters_json", None) is not None:
+        names.append("--parameters-json")
+    if getattr(args, "expected_effects_json", None) is not None:
+        names.append("--expected-effects-json")
+
+    for name in ("max_items", "max_bytes", "max_text_bytes", "timeout_ms"):
+        if getattr(args, name, None) is not None:
+            names.append("--" + name.replace("_", "-"))
+    return tuple(names)
+
+
 def build_agent_request(args: argparse.Namespace) -> OperationRequest:
     """Build the one canonical request accepted by every control surface."""
 
     operation = Operation(str(args.agent_operation))
     payload = _request_payload(args)
     if payload is not None:
+        overlays = _request_overlay_arguments(args)
+        if overlays:
+            raise AgentCLIError(
+                "--request-json/--request-file cannot be combined with "
+                "request-building options: " + ", ".join(overlays)
+            )
         # Canonical decoding happens before the caller-supplied service or
         # factory is resolved, so malformed real mutations cannot dispatch.
         request = decode_operation_request(payload)
@@ -288,24 +378,17 @@ def build_agent_request(args: argparse.Namespace) -> OperationRequest:
             raise AgentCLIError(
                 "--" + name.replace("_", "-") + " must be absolute"
             )
-    if operation in MUTATION_OPERATIONS and not bool(args.dry_run):
-        raise AgentCLIError(
-            "real mutations require a complete --request-json or --request-file"
-        )
-
-    parameters = _json_value(args.parameters_json, noun="parameters")
+    parameters = _json_value(
+        args.parameters_json
+        if args.parameters_json is not None
+        else "{}",
+        noun="parameters",
+    )
     if not isinstance(parameters, Mapping):
         raise AgentCLIError("parameters JSON must contain an object")
     parameters = dict(parameters)
-    for argument, key in (
-        ("path", "path"),
-        ("limit", "limit"),
-        ("offset", "offset"),
-        ("task_header_prefix", "task_header_prefix"),
-        ("target_id", "target_id"),
-        ("reason", "reason"),
-        ("requested_state", "requested_state"),
-    ):
+    for argument in _DIRECT_PARAMETER_ARGUMENTS:
+        key = argument
         value = getattr(args, argument, None)
         if value is not None:
             if key in parameters:
@@ -313,19 +396,69 @@ def build_agent_request(args: argparse.Namespace) -> OperationRequest:
                     f"{key} was supplied both directly and in --parameters-json"
                 )
             parameters[key] = value
-    effects = _json_value(args.expected_effects_json, noun="expected effects")
+    effects = _json_value(
+        args.expected_effects_json
+        if args.expected_effects_json is not None
+        else "[]",
+        noun="expected effects",
+    )
     if not isinstance(effects, list):
         raise AgentCLIError("expected effects JSON must contain an array")
 
+    idempotency = None
+    if args.idempotency_key is not None:
+        idempotency = IdempotencyKey(
+            key=args.idempotency_key,
+            operation=operation,
+            caller=args.caller,
+            repository_id=args.repository_id,
+            objective_id=args.objective_id,
+        )
+    authorization = _authorization(args)
+    if operation in MUTATION_OPERATIONS and not bool(args.dry_run):
+        direct_guard_arguments = (
+            idempotency,
+            authorization,
+            args.lease_id,
+            args.fencing_epoch,
+            effects,
+        )
+        if not any(
+            value is not None and value != []
+            for value in direct_guard_arguments
+        ):
+            raise AgentCLIError(
+                "real mutations require a complete --request-json/"
+                "--request-file or complete direct authorization, "
+                "idempotency, lease, fencing, and expected effects"
+            )
+
     defaults = ControlBounds()
+    max_items = (
+        args.max_items
+        if args.max_items is not None
+        else defaults.max_items
+    )
     bounds = ControlBounds(
-        max_items=args.max_items,
-        max_serialized_bytes=args.max_bytes,
+        max_items=max_items,
+        max_serialized_bytes=(
+            args.max_bytes
+            if args.max_bytes is not None
+            else defaults.max_serialized_bytes
+        ),
         max_depth=defaults.max_depth,
-        max_text_bytes=args.max_text_bytes,
-        max_paths=min(defaults.max_paths, args.max_items),
-        max_effects=min(defaults.max_effects, args.max_items),
-        timeout_ms=args.timeout_ms,
+        max_text_bytes=(
+            args.max_text_bytes
+            if args.max_text_bytes is not None
+            else defaults.max_text_bytes
+        ),
+        max_paths=min(defaults.max_paths, max_items),
+        max_effects=min(defaults.max_effects, max_items),
+        timeout_ms=(
+            args.timeout_ms
+            if args.timeout_ms is not None
+            else defaults.timeout_ms
+        ),
     )
     return OperationRequest(
         operation=operation,
@@ -333,6 +466,10 @@ def build_agent_request(args: argparse.Namespace) -> OperationRequest:
         parameters=parameters,
         expected_effects=tuple(effects),
         dry_run=bool(args.dry_run),
+        idempotency=idempotency,
+        authorization=authorization,
+        lease_id=args.lease_id or "",
+        fencing_epoch=args.fencing_epoch,
         bounds=bounds,
     )
 
@@ -393,6 +530,10 @@ def run_agent_cli(
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
     try:
+        if service is not None and service_factory is not None:
+            raise AgentCLIError(
+                "service and service_factory are mutually exclusive"
+            )
         request = build_agent_request(args)
         count = int(args.watch_count)
         interval_ms = int(args.watch_interval_ms)
@@ -404,6 +545,10 @@ def run_agent_cli(
             raise AgentCLIError(
                 "--watch-interval-ms must be between 0 and "
                 f"{MAX_WATCH_INTERVAL_MS}"
+            )
+        if count == 1 and interval_ms:
+            raise AgentCLIError(
+                "--watch-interval-ms requires --watch-count greater than 1"
             )
         if count > 1 and request.operation not in {
             Operation.STATUS,
@@ -418,18 +563,30 @@ def run_agent_cli(
             service_factory or default_agent_control_service
         )(request)
         result: OperationResult | None = None
+        exit_code = AGENT_CLI_EXIT_SUCCESS
         for index in range(count):
             result = selected_service.execute(request)
+            if not isinstance(result, OperationResult):
+                raise TypeError(
+                    "agent control service returned a non-OperationResult value"
+                )
             _write_record(
                 stdout,
                 result.to_record(),
-                compact=bool(getattr(args, "output_json", False)),
+                compact=count > 1
+                or bool(getattr(args, "output_json", False)),
             )
+            result_exit_code = exit_code_for_result(result)
+            if (
+                exit_code == AGENT_CLI_EXIT_SUCCESS
+                and result_exit_code != AGENT_CLI_EXIT_SUCCESS
+            ):
+                exit_code = result_exit_code
             if index + 1 < count and interval_ms:
                 time.sleep(interval_ms / 1000)
         assert result is not None
-        return exit_code_for_result(result)
-    except (AgentCLIError, ControlContractError, OSError, ValueError) as exc:
+        return exit_code
+    except (AgentCLIError, ControlContractError) as exc:
         payload = {
             "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
             "status": "invalid_request",
@@ -437,6 +594,14 @@ def run_agent_cli(
         }
         _write_record(stderr, payload, compact=True)
         return AGENT_CLI_EXIT_INVALID
+    except Exception:
+        payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
+            "status": "internal_error",
+            "message": "agent control operation failed",
+        }
+        _write_record(stderr, payload, compact=True)
+        return AGENT_CLI_EXIT_FAILED
 
 
 __all__ = [

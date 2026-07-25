@@ -2612,6 +2612,9 @@ def main(argv=None, *, agent_control_service=None, agent_service_factory=None):
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
+  ipfs-accelerate agent capabilities --request-file request.json --output-json
+  ipfs-accelerate agent status --request-file request.json --watch-count 5
+  ipfs-accelerate agent pause --request-file authorized-pause.json --output-json
   ipfs-accelerate mcp start --dashboard --open-browser
   ipfs-accelerate mcp status
   ipfs-accelerate inference generate --prompt "Hello world"
