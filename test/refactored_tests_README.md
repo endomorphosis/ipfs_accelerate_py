@@ -64,7 +64,7 @@ python test/run_refactored_tests.py -v
 
 ## Migrating Tests
 
-For information on migrating existing tests to the refactored structure, see the [REFACTORED_TEST_MIGRATION_GUIDE.md](REFACTORED_TEST_MIGRATION_GUIDE.md).
+For information on migrating existing tests to the refactored structure, see the [migration guide](docs/MIGRATION_GUIDE.md).
 
 ## Documentation
 
