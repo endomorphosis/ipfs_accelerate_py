@@ -3238,7 +3238,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-090 Produce completion evidence for Paired rollout, stable exports, and operator adoption
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P2
 - Track: rollout
