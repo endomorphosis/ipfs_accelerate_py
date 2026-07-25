@@ -24,7 +24,9 @@ from typing import Any, Final
 from .conflict_graph import (
     ConflictEdge,
     ConflictWaveProjection,
+    TaskWorkContract,
     TaskConflictGraph,
+    build_task_work_contract,
     materialize_task_conflict_graph,
     project_conflict_free_wave,
 )
@@ -179,6 +181,8 @@ class _CanonicalTask:
     merge_family: str
     merge_fate: str
     context_paths: tuple[str, ...]
+    acceptance_subset: tuple[str, ...]
+    effect_subset: tuple[str, ...]
     evidence_keys: tuple[str, ...]
     validation_commands: tuple[str, ...]
     outputs: tuple[str, ...]
@@ -189,9 +193,12 @@ class _CanonicalTask:
     resource_class: str
     provider_batch_key: str
     estimated_context_tokens: int
+    estimated_tokens: int
+    estimated_validation_seconds: int
     work_item_count: int
     status: str
     completion_task_bindings: tuple[str, ...]
+    work_contract: TaskWorkContract
     payload: Mapping[str, Any] = field(compare=False, repr=False)
 
     @classmethod
@@ -207,14 +214,31 @@ class _CanonicalTask:
                 "bundle optimization requires canonical_task_key and "
                 "canonical_task_cid from task admission"
             )
-        try:
-            context_tokens = int(
-                _value(payload, "estimated context tokens", default=0) or 0
-            )
-        except (TypeError, ValueError) as exc:
-            raise ValueError("estimated_context_tokens must be an integer") from exc
-        if context_tokens < 0:
-            raise ValueError("estimated_context_tokens must be non-negative")
+        costs: dict[str, int] = {}
+        for field_name, aliases in {
+            "estimated_context_tokens": ("estimated context tokens",),
+            "estimated_tokens": ("estimated tokens", "token cost"),
+            "estimated_validation_seconds": (
+                "estimated validation seconds",
+                "validation seconds",
+                "validation cost",
+            ),
+        }.items():
+            raw_cost = _value(payload, *aliases, default=0) or 0
+            if isinstance(raw_cost, bool):
+                raise ValueError(f"{field_name} must be a non-negative integer")
+            try:
+                parsed_cost = int(raw_cost)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"{field_name} must be a non-negative integer"
+                ) from exc
+            if parsed_cost < 0 or str(raw_cost).strip() not in {
+                str(parsed_cost),
+                f"{parsed_cost}.0",
+            }:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+            costs[field_name] = parsed_cost
         try:
             # Objective ``graph_depth`` describes goal hierarchy, not task-DAG
             # readiness.  Only the explicit scheduling field is accepted here.
@@ -244,8 +268,16 @@ class _CanonicalTask:
                 "task_cid": task_cid,
                 "outputs": list(outputs),
                 "predicted_paths": list(predicted_paths),
+                "estimated_context_tokens": costs[
+                    "estimated_context_tokens"
+                ],
+                "estimated_tokens": costs["estimated_tokens"],
+                "estimated_validation_seconds": costs[
+                    "estimated_validation_seconds"
+                ],
             }
         )
+        work_contract = build_task_work_contract(normalized_payload)
         return cls(
             task_id=task_id,
             canonical_task_key=task_key,
@@ -267,6 +299,8 @@ class _CanonicalTask:
             context_paths=_paths(
                 _value(payload, "context paths", "context keys", "context files")
             ),
+            acceptance_subset=work_contract.acceptance_subset,
+            effect_subset=work_contract.effect_subset,
             evidence_keys=_strings(
                 _value(
                     payload,
@@ -280,10 +314,8 @@ class _CanonicalTask:
                 _value(payload, "validation commands", "validation")
             ),
             outputs=outputs,
-            predicted_paths=predicted_paths,
-            predicted_symbols=_strings(
-                _value(payload, "predicted symbols", "ast symbols")
-            ),
+            predicted_paths=work_contract.predicted_paths,
+            predicted_symbols=work_contract.predicted_symbols,
             dependencies=_strings(
                 _value(
                     payload,
@@ -295,12 +327,17 @@ class _CanonicalTask:
             conflict_keys=_strings(_value(payload, "conflicts", "conflict keys")),
             resource_class=str(_value(payload, "resource class") or "").strip(),
             provider_batch_key=_provider_batch_key(payload),
-            estimated_context_tokens=context_tokens,
+            estimated_context_tokens=work_contract.estimated_context_tokens,
+            estimated_tokens=work_contract.estimated_tokens,
+            estimated_validation_seconds=(
+                work_contract.estimated_validation_seconds
+            ),
             work_item_count=work_item_count,
             status=str(_value(payload, "status") or "").strip().casefold(),
             completion_task_bindings=_strings(
                 _value(payload, "completion task bindings")
             ),
+            work_contract=work_contract,
             payload=normalized_payload,
         )
 
@@ -631,6 +668,12 @@ class OptimizedTaskBundle:
     shared_validation_commands: tuple[str, ...]
     context_paths: tuple[str, ...]
     shared_context_paths: tuple[str, ...]
+    acceptance_subsets: tuple[str, ...]
+    effect_subsets: tuple[str, ...]
+    predicted_paths: tuple[str, ...]
+    predicted_symbols: tuple[str, ...]
+    task_work_contracts: tuple[Mapping[str, Any], ...]
+    work_contract_ids: tuple[str, ...]
     evidence_keys: tuple[str, ...]
     shared_evidence_keys: tuple[str, ...]
     resource_classes: tuple[str, ...]
@@ -641,6 +684,8 @@ class OptimizedTaskBundle:
     dependency_task_cids: tuple[str, ...]
     conflict_weight: int
     estimated_context_tokens: int
+    estimated_tokens: int
+    estimated_validation_seconds: int
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -653,6 +698,12 @@ class OptimizedTaskBundle:
             "shared_validation_commands",
             "context_paths",
             "shared_context_paths",
+            "acceptance_subsets",
+            "effect_subsets",
+            "predicted_paths",
+            "predicted_symbols",
+            "task_work_contracts",
+            "work_contract_ids",
             "evidence_keys",
             "shared_evidence_keys",
             "resource_classes",
@@ -931,6 +982,13 @@ def _plan_metrics(
             if bundle_count
             else 0
         ),
+        "estimated_context_tokens": sum(
+            task.estimated_context_tokens for task in tasks
+        ),
+        "estimated_tokens": sum(task.estimated_tokens for task in tasks),
+        "estimated_validation_seconds": sum(
+            task.estimated_validation_seconds for task in tasks
+        ),
     }
 
 
@@ -1135,6 +1193,9 @@ def optimize_task_bundles(
             "policy_id": selected.policy_id,
             "execution_wave": wave,
             "task_cids": list(task_cids),
+            "task_work_contract_ids": [
+                item.work_contract.contract_id for item in group
+            ],
         }
         bundles.append(
             OptimizedTaskBundle(
@@ -1158,6 +1219,48 @@ def optimize_task_bundles(
                 shared_validation_commands=shared_validations,
                 context_paths=contexts,
                 shared_context_paths=shared_contexts,
+                acceptance_subsets=tuple(
+                    sorted(
+                        {
+                            criterion
+                            for item in group
+                            for criterion in item.acceptance_subset
+                        }
+                    )
+                ),
+                effect_subsets=tuple(
+                    sorted(
+                        {
+                            effect
+                            for item in group
+                            for effect in item.effect_subset
+                        }
+                    )
+                ),
+                predicted_paths=tuple(
+                    sorted(
+                        {
+                            path
+                            for item in group
+                            for path in item.predicted_paths
+                        }
+                    )
+                ),
+                predicted_symbols=tuple(
+                    sorted(
+                        {
+                            symbol
+                            for item in group
+                            for symbol in item.predicted_symbols
+                        }
+                    )
+                ),
+                task_work_contracts=tuple(
+                    item.work_contract.to_dict() for item in group
+                ),
+                work_contract_ids=tuple(
+                    item.work_contract.contract_id for item in group
+                ),
                 evidence_keys=evidence,
                 shared_evidence_keys=shared_evidence,
                 resource_classes=tuple(
@@ -1204,6 +1307,10 @@ def optimize_task_bundles(
                 conflict_weight=conflict_weight,
                 estimated_context_tokens=sum(
                     item.estimated_context_tokens for item in group
+                ),
+                estimated_tokens=sum(item.estimated_tokens for item in group),
+                estimated_validation_seconds=sum(
+                    item.estimated_validation_seconds for item in group
                 ),
             )
         )
