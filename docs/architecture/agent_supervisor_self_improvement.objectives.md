@@ -256,7 +256,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G070 Unified Python, CLI, and MCP supervisor control
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G000
 - Fib priority: 3
 - Track: control
@@ -282,6 +282,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-25T02:06:52.150456+00:00
+- State transition reason: Produce completion evidence for: Shared operations have schema and behavior parity across Python, CLI, and MCP; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-25T02:06:52.150456+00:00
 
 ## ASI-G080 Benchmark-driven bounded self-refill
 
