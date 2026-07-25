@@ -194,6 +194,31 @@ class ServerConfig:
         )
 
 
+def _build_p2p_service_metadata(
+    *,
+    config: ServerConfig,
+    node: Any,
+    served_models: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build an unambiguous service record without performing inference."""
+
+    node_status = node.to_dict() if callable(getattr(node, "to_dict", None)) else {}
+    return {
+        # ``http_port`` is control-plane HTTP.  ``p2p_port`` is the libp2p
+        # listener advertised in each multiaddr; never alias one as the other.
+        "http_port": config.port,
+        "p2p_port": getattr(node, "listen_port", None),
+        "server": config.name,
+        "node_ownership": "process_singleton",
+        "p2p_protocol": node_status.get("protocol"),
+        "p2p_capabilities": node_status.get("capabilities", {}),
+        "models": [
+            model.get("id") for model in served_models if model.get("id")
+        ],
+        "served_models": served_models,
+    }
+
+
 class TrioMCPServer:
     """Trio-native MCP server for P2P operations.
 
@@ -1265,14 +1290,11 @@ class TrioMCPServer:
                             peer_id=node.peer_id or "",
                             multiaddrs=node.multiaddrs or [],
                             tools=tools_list,
-                            metadata={
-                                "port": self.config.port,
-                                "server": self.config.name,
-                                "models": [
-                                    model.get("id") for model in served_models if model.get("id")
-                                ],
-                                "served_models": served_models,
-                            },
+                            metadata=_build_p2p_service_metadata(
+                                config=self.config,
+                                node=node,
+                                served_models=served_models,
+                            ),
                         ))
                         # Start service advertise loop
                         self._nursery.start_soon(registry.advertise_loop, node, self._nursery)

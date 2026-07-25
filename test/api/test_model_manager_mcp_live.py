@@ -132,9 +132,12 @@ def _assert_pinned_identity(
     *,
     require_service_metadata: bool = True,
 ) -> None:
-    assert model["id"] == PINNED_MODEL
-    assert model["model_id"] == PINNED_MODEL
+    assert model["id"] == PINNED_ROUTING_PROVIDER
+    assert model["model_id"] == PINNED_ROUTING_PROVIDER
+    assert model["logical_model_id"] == PINNED_ROUTING_PROVIDER
+    assert model["transport_model_id"] == PINNED_MODEL
     assert model["provider"] == PINNED_TRANSPORT_PROVIDER
+    assert model["transport"] == PINNED_TRANSPORT_PROVIDER
     assert model["provider"] != PINNED_ROUTING_PROVIDER
     assert _identity_token(model["provider"]) == _identity_token(
         PINNED_SERVER_BUILD
@@ -190,7 +193,7 @@ def test_model_manager_exact_lookup_and_alias_retain_served_identity(
     manager: ModelManager,
     served_model_transport: list[tuple[urllib.request.Request | str, float]],
 ) -> None:
-    """Exact and compatibility lookups may not rewrite the effective model."""
+    """Transport and logical lookups resolve to the same explicit identities."""
     exact = manager.get_served_model(
         PINNED_MODEL,
         endpoint_url=PINNED_ENDPOINT,
@@ -207,7 +210,7 @@ def test_model_manager_exact_lookup_and_alias_retain_served_identity(
     _assert_pinned_identity(exact)
     _assert_pinned_identity(routed)
     assert "requested_alias" not in exact
-    assert routed["requested_alias"] == PINNED_ROUTING_PROVIDER
+    assert "requested_alias" not in routed
     assert routed["provider"] == PINNED_TRANSPORT_PROVIDER
     assert len(served_model_transport) == 2
 
@@ -304,10 +307,7 @@ def test_mcp_client_lists_and_gets_the_same_pinned_leanstral_identity(
     assert "error" not in get_response, get_response
     assert get_response["result"]["status"] == "success"
     _assert_pinned_identity(get_response["result"]["model"])
-    assert (
-        get_response["result"]["model"]["requested_alias"]
-        == PINNED_ROUTING_PROVIDER
-    )
+    assert "requested_alias" not in get_response["result"]["model"]
     assert [timeout for _request, timeout in served_model_transport] == [0.3, 0.3]
 
 
@@ -333,7 +333,7 @@ def test_supervisor_owned_leanstral_model_list_live(tmp_path) -> None:
 
     assert model is not None
     _assert_pinned_identity(model, require_service_metadata=False)
-    assert model["requested_alias"] == PINNED_ROUTING_PROVIDER
+    assert "requested_alias" not in model
     # llama.cpp does not advertise the supervisor's logical service alias in
     # /v1/models.  That alias and exact service/build pair are lock-bound above;
     # this live read proves that the pinned model is served by the truthful
