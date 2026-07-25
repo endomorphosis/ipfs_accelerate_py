@@ -14,7 +14,7 @@ This document serves as a central index to all documentation for the IPFS Accele
 - [HARDWARE_OPTIMIZATION_GUIDE.md](HARDWARE_OPTIMIZATION_GUIDE.md): Guide to hardware-specific optimizations
 - [OPTIMIZATION_EXPORTER_README.md](OPTIMIZATION_EXPORTER_README.md): Documentation for the Hardware Optimization Exporter
 - [ENHANCED_VISUALIZATION_EXPORT_GUIDE.md](ENHANCED_VISUALIZATION_EXPORT_GUIDE.md): Guide to the Enhanced Visualization UI for exports
-- [DuckDB Simulation Validation](../duckdb_api/simulation_validation/README.md): Documentation for the simulation validation module
+- [DuckDB Simulation Validation](duckdb_api/simulation_validation/README.md): Documentation for the simulation validation module
 - [API Metrics Validation Guide](API_METRICS_VALIDATION_GUIDE.md): Comprehensive guide to API metrics validation
 - [API Metrics Validation Tool](run_api_metrics_validation.py): CLI tool for validating API metrics
 - [Calibration DuckDB Integration Guide](CALIBRATION_DUCKDB_INTEGRATION_GUIDE.md): Guide to using DuckDB with simulation calibration
@@ -111,7 +111,7 @@ This document serves as a central index to all documentation for the IPFS Accele
 
 ### Fault Tolerance and High Availability
 
-- [HARDWARE_FAULT_TOLERANCE_GUIDE.md](HARDWARE_FAULT_TOLERANCE_GUIDE.md) - Fault tolerance implementation
+- [HARDWARE_FAULT_TOLERANCE_GUIDE.md](duckdb_api/distributed_testing/HARDWARE_FAULT_TOLERANCE_GUIDE.md) - Fault tolerance implementation
 - [REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md](REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md) - Performance monitoring
 - [DYNAMIC_RESOURCE_MANAGEMENT.md](DYNAMIC_RESOURCE_MANAGEMENT.md) - Resource management
 
@@ -125,7 +125,7 @@ This document serves as a central index to all documentation for the IPFS Accele
 ### Cross-Browser Features
 
 - [CROSS_BROWSER_MODEL_SHARDING_TESTING_GUIDE.md](CROSS_BROWSER_MODEL_SHARDING_TESTING_GUIDE.md) - Model sharding implementation
-- [WEB_RESOURCE_POOL_FAULT_TOLERANCE_README.md](WEB_RESOURCE_POOL_FAULT_TOLERANCE_README.md) - Resource pool fault tolerance
+- [RESOURCE_POOL_FAULT_TOLERANCE_README.md](RESOURCE_POOL_FAULT_TOLERANCE_README.md) - Resource pool fault tolerance
 - [IPFS_CROSS_MODEL_TENSOR_SHARING_GUIDE.md](IPFS_CROSS_MODEL_TENSOR_SHARING_GUIDE.md) - Tensor sharing
 
 ## Guides
