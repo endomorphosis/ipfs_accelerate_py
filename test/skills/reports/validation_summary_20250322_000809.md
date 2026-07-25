@@ -2,7 +2,7 @@
 Generated: Sat Mar 22 12:08:09 AM PDT 2025
 
 ## Syntax and Structure Validation
-❌ Some tests failed syntax validation. See detailed report: [Validation Report](validation_report_20250322_000809.md)
+❌ Some tests failed syntax validation. See detailed report: `validation_report_20250322_000809.md` (not included in this repository).
 
 ## Missing Models Analysis
 📊 Missing models report generated: [Missing Models Report](missing_models_20250322_000809.md)
@@ -21,12 +21,12 @@ Template consistency analysis:
 - Multimodal models: 2
 
 ## Test Generator Validation
-❌ Test generator encountered errors. See log: [Generator Log](../validation_logs/test_generator_validation_20250322_000809.log)
+❌ Test generator encountered errors. See log: `test_generator_validation_20250322_000809.log` (not included in this repository).
 
 ## Summary
 ❌ **Validation completed with errors!**
 - Total test files: 112
-- Log file: [Validation Log](../validation_logs/validation_20250322_000809.log)
+- Log file: `validation_20250322_000809.log` (not included in this repository).
 
 ## Action Items
 1. Fix syntax and structure issues in failing tests
