@@ -101,7 +101,7 @@ Each template corresponds to a specific model architecture and includes:
 For more information, see:
 - [Test Generator System Summary](TEST_GENERATOR_SYSTEM_SUMMARY.md)
 - [TODO List](TEST_GENERATOR_TODO.md)
-- [HuggingFace Test Files Guide](HF_TEST_IMPLEMENTATION_CHECKLIST.md)
+- [HuggingFace Test Files Guide](skills/HF_TEST_IMPLEMENTATION_CHECKLIST.md)
 
 ## Development
 
