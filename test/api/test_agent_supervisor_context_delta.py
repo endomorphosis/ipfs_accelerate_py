@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from dataclasses import replace
+from statistics import median
 
 import pytest
 
@@ -9,11 +12,19 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     ContextCompiler,
     ContextDeltaError,
     ContextDeltaReceipt,
+    ChangedTreeContextError,
+    ContentAddressedContextStore,
+    ContextExpansionCancelled,
     DeltaRetryContextEvidence,
     ExclusionReason,
     InclusionReason,
+    MissingContextReferenceError,
+    RetryContextCapsule,
+    compile_retry_context,
     compile_context_delta,
     expand_context,
+    expand_context_references,
+    render_retry_context,
     reconstruct_context,
 )
 from ipfs_accelerate_py.agent_supervisor.context_contracts import (
@@ -23,6 +34,11 @@ from ipfs_accelerate_py.agent_supervisor.context_contracts import (
     ContextDeltaCapsule,
     ContextReference,
     ContextTier,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    ImplementationRetryDeferred,
+    PortalImplementationDaemon,
+    PortalTask,
 )
 
 
@@ -531,3 +547,281 @@ def test_top_level_delta_wrapper_binds_the_same_contract() -> None:
 
     assert result.receipt.parent_capsule_id == parent.capsule_id
     assert result.receipt.delta_capsule_id == result.delta_capsule.capsule_id
+
+
+def test_content_addressed_expansion_resolves_exact_bytes_and_fails_closed() -> None:
+    compiler = _compiler()
+    store = ContentAddressedContextStore()
+    body = ("Focused diagnostic evidence.\n" * 20).strip()
+    target = store.put(body)
+    required = _reference("required", "required", 50, required=True)
+    candidate = ContextReference(
+        reference_id="expand-me",
+        kind="diagnostic",
+        tier=ContextTier.EVIDENCE,
+        referenced_content_id=target,
+        repository_id=BINDING["repository_id"],
+        tree_id=BINDING["tree_id"],
+        summary=body,
+        byte_count=len(body.encode()),
+        token_count=700,
+    )
+    parent = compiler.compile(
+        **BINDING,
+        **CORE,
+        evidence=(required, candidate),
+    ).capsule
+    assert tuple(
+        item.reference_id for item in parent.expansion_references
+    ) == ("expand-me",)
+
+    result = expand_context_references(
+        compiler,
+        parent,
+        ("expand-me",),
+        store,
+        repository_id=parent.repository_id,
+        tree_id=parent.tree_id,
+    )
+
+    assert reconstruct_context(parent, result.delta_capsule) == (
+        result.reconstructed_capsule
+    )
+    expanded = {
+        item.reference_id: item for item in result.reconstructed_capsule.evidence
+    }["expand-me"]
+    assert expanded.summary == body
+    assert expanded.referenced_content_id == target
+
+    with pytest.raises(MissingContextReferenceError, match="not present"):
+        expand_context_references(
+            compiler, parent, ("absent",), store
+        )
+    empty_store = ContentAddressedContextStore()
+    with pytest.raises(MissingContextReferenceError, match="unavailable"):
+        expand_context_references(
+            compiler, parent, ("expand-me",), empty_store
+        )
+    with pytest.raises(ChangedTreeContextError, match="tree changed"):
+        expand_context_references(
+            compiler,
+            parent,
+            ("expand-me",),
+            store,
+            tree_id="tree:new",
+        )
+    with pytest.raises(ContextExpansionCancelled, match="cancelled"):
+        expand_context_references(
+            compiler,
+            parent,
+            ("expand-me",),
+            store,
+            cancelled=True,
+        )
+
+
+def test_semantic_retry_capsule_carries_only_delta_repair_context() -> None:
+    compiler, parent, required, optional = _parent()
+    failure = _reference("failure:new", "failure-v2", 12)
+
+    result = compile_retry_context(
+        compiler,
+        parent,
+        prior_decision_id="decision:previous",
+        diagnostic_receipt_id="diagnostic:stable",
+        evidence=(required, optional, failure),
+        failure_evidence_ids=("failure:new",),
+        changed_files=("src/context.py",),
+        changed_symbols=("ContextCompiler.compile_delta",),
+        unresolved_requirement_ids=("requirement:coverage",),
+        repair_round=2,
+        max_repair_rounds=3,
+    )
+
+    assert RetryContextCapsule.from_json(
+        result.capsule.to_json()
+    ) == result.capsule
+    assert reconstruct_context(
+        parent, result.capsule.delta_capsule
+    ) == result.reconstructed_capsule
+    wire = render_retry_context(result.capsule)
+    assert result.capsule.prior_decision_id == "decision:previous"
+    assert result.capsule.diagnostic_receipt_id == "diagnostic:stable"
+    assert result.capsule.changed_files == ("src/context.py",)
+    assert result.capsule.changed_symbols == (
+        "ContextCompiler.compile_delta",
+    )
+    assert result.capsule.unresolved_requirement_ids == (
+        "requirement:coverage",
+    )
+    assert all(
+        field not in wire
+        for field in ('"goal":', '"authority":', '"scope":', '"acceptance":')
+    )
+
+    with pytest.raises(ChangedTreeContextError, match="invalidated"):
+        compile_retry_context(
+            compiler,
+            parent,
+            prior_decision_id="decision:previous",
+            diagnostic_receipt_id="diagnostic:stable",
+            evidence=(required, optional, failure),
+            failure_evidence_ids=("failure:new",),
+            tree_id="tree:new",
+        )
+    with pytest.raises(ContextDeltaError, match="round exceeds"):
+        replace(result.capsule, repair_round=4)
+
+
+def test_paired_semantic_retries_reduce_median_tokens_by_at_least_35_percent() -> None:
+    retry_tokens: list[int] = []
+    replay_tokens: list[int] = []
+    for index in range(7):
+        compiler = _compiler()
+        core = {
+            **CORE,
+            "goal": {
+                "id": "ASI-G092",
+                "summary": ("invariant implementation objective " * 160)
+                + str(index),
+            },
+        }
+        required = _reference(
+            f"required-{index}", f"required-{index}", 25, required=True
+        )
+        parent = compiler.compile(
+            **BINDING, **core, evidence=(required,)
+        ).capsule
+        failure = _reference(
+            f"failure-{index}", f"failure-{index}", 5
+        )
+        result = compile_retry_context(
+            compiler,
+            parent,
+            prior_decision_id=f"decision:{index}",
+            diagnostic_receipt_id=f"diagnostic:{index}",
+            evidence=(required, failure),
+            failure_evidence_ids=(failure.reference_id,),
+            unresolved_requirement_ids=(f"coverage:{required.reference_id}",),
+        )
+        retry_tokens.append(
+            compiler.estimator.estimate(result.capsule.to_record())
+        )
+        replay_tokens.append(result.receipt.full_replay_tokens)
+        assert set(parent.evidence_coverage_ids).issubset(
+            result.reconstructed_capsule.evidence_coverage_ids
+        )
+        assert result.capsule.unresolved_requirement_ids
+
+    assert median(retry_tokens) <= median(replay_tokens) * 0.65
+
+
+def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Context Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    task = PortalTask(
+        task_id="ASI-006",
+        title="Add delta retry contexts",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="token-efficiency",
+        outputs=["src/context.py"],
+        validation=["pytest test_context.py"],
+        acceptance="Retry evidence remains complete.",
+        metadata={"ast symbols": "ContextCompiler, FormalReplanner"},
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implementation_log_dir=state_dir / "logs",
+        implementation_context_budget=ContextBudget(
+            max_input_tokens=2_000,
+            reserved_output_tokens=100,
+            reserved_tool_tokens=20,
+            max_items=64,
+        ),
+        implementation_context_tokenizer=_tokenizer,
+        implementation_provider_context_window=2_200,
+    )
+
+    full_prompt = daemon._build_implementation_prompt(task, attempt=1)
+    daemon._persist_implementation_context_receipt(task, attempt=1)
+    diagnostic = daemon.record_implementation_failure_context(
+        task,
+        {
+            "kind": "validation_failure",
+            "returncode": 1,
+            "reason_codes": ["assertion"],
+        },
+        changed_files=("src/context.py",),
+        changed_symbols=("ContextCompiler.compile_delta",),
+        unresolved_requirements=("requirement:test",),
+    )
+    restarted = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "restarted-state.json",
+        strategy_path=state_dir / "restarted-strategy.json",
+        events_path=state_dir / "restarted-events.jsonl",
+        repo_root=repo,
+        implementation_log_dir=state_dir / "logs",
+        implementation_context_budget=ContextBudget(
+            max_input_tokens=2_000,
+            reserved_output_tokens=100,
+            reserved_tool_tokens=20,
+            max_items=64,
+        ),
+        implementation_context_tokenizer=_tokenizer,
+        implementation_provider_context_window=2_200,
+    )
+    retry_prompt = restarted._build_implementation_prompt(task, attempt=2)
+
+    wire = json.loads(retry_prompt)
+    assert wire["schema"].endswith("retry-context-capsule@1")
+    assert wire["diagnostic_receipt_id"] == diagnostic.receipt_id
+    assert wire["changed_files"] == ["src/context.py"]
+    assert wire["changed_symbols"] == ["ContextCompiler.compile_delta"]
+    assert wire["unresolved_requirement_ids"] == ["requirement:test"]
+    assert "Retry evidence remains complete." in full_prompt
+    assert "Retry evidence remains complete." not in retry_prompt
+    assert restarted._last_implementation_retry is not None
+    assert reconstruct_context(
+        restarted._last_implementation_retry.delta_result.parent_capsule,
+        restarted._last_implementation_retry.capsule.delta_capsule,
+    ) == restarted._last_implementation_retry.reconstructed_capsule
+
+    repeated = restarted.record_implementation_failure_context(
+        task,
+        {
+            "reason_codes": ["assertion"],
+            "returncode": 1,
+            "kind": "validation_failure",
+        },
+        changed_files=("src/context.py",),
+        changed_symbols=("ContextCompiler.compile_delta",),
+        unresolved_requirements=("requirement:test",),
+    )
+    assert repeated.receipt_id == diagnostic.receipt_id
+    with pytest.raises(ImplementationRetryDeferred, match="backoff"):
+        restarted._build_implementation_prompt(task, attempt=3)

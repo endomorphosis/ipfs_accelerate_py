@@ -19,7 +19,7 @@ import copy
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 from .formal_counterexamples import (
     CounterexampleContextCapsule,
@@ -39,7 +39,11 @@ from .formal_plan_validator import (
     PlanValidationResult,
     PlanValidationStatus,
 )
-from .formal_verification_contracts import canonical_json, content_identity
+from .formal_verification_contracts import (
+    CanonicalContract,
+    canonical_json,
+    content_identity,
+)
 
 
 FORMAL_REPLANNER_VERSION: Final = 1
@@ -57,6 +61,9 @@ CODEX_REPAIR_PACKET_SCHEMA: Final = (
 )
 RESPONSIVE_REPLAN_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/responsive-replan-decision@1"
+)
+DIAGNOSTIC_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/retry-diagnostic-receipt@1"
 )
 # Objective-heap evidence identity for one bounded changed-evidence refinement.
 BOUNDED_REFINEMENT_EVIDENCE_ID: Final = (
@@ -91,6 +98,25 @@ RESPONSIVE_REPLAN_SIGNAL_KINDS: Final[frozenset[str]] = frozenset(
 
 class ReplannerValidationError(ValueError):
     """Raised when a repair request violates the replanner contract."""
+
+
+class ReplanCancelled(ReplannerValidationError):
+    """A cooperative cancellation stopped repair before admission."""
+
+
+def _cancelled(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if callable(value):
+        return bool(value())
+    checker = getattr(value, "is_set", None)
+    if callable(checker):
+        return bool(checker())
+    raise ReplannerValidationError(
+        "cancelled must be a boolean, predicate, event, or None"
+    )
 
 
 class RepairRuleKind(str, Enum):
@@ -131,6 +157,8 @@ class ReplanStopReason(str, Enum):
     COUNTEREXAMPLE_PLAN_MISMATCH = "counterexample_plan_mismatch"
     ORIGINAL_PLAN_INVALID = "original_plan_invalid"
     UNCHANGED_COUNTEREXAMPLE_BACKOFF = "unchanged_counterexample_backoff"
+    IDENTICAL_FAILURE_ESCALATED = "identical_failure_escalated"
+    CANCELLED = "cancelled"
 
 
 def _positive(value: Any, name: str, *, minimum: int = 1) -> int:
@@ -660,6 +688,93 @@ class ReplanResult:
 
 
 @dataclass(frozen=True)
+class DiagnosticReceipt(CanonicalContract):
+    """Stable identity for one semantic failure diagnosis.
+
+    Volatile timestamps, log paths, and retry counters are intentionally
+    absent, so an identical counterexample/trigger pair reuses this receipt
+    across repair rounds and process restarts.
+    """
+
+    SCHEMA: ClassVar[str] = DIAGNOSTIC_RECEIPT_SCHEMA
+
+    prior_decision_id: str
+    counterexample_id: str
+    trigger_evidence_id: str
+    trigger_signal_kind: str
+    repository_tree_id: str = "tree:unspecified"
+
+    def __post_init__(self) -> None:
+        for name in (
+            "prior_decision_id",
+            "counterexample_id",
+            "trigger_evidence_id",
+            "repository_tree_id",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise ReplannerValidationError(f"{name} is required")
+            object.__setattr__(self, name, value)
+        kind = str(self.trigger_signal_kind or "").strip()
+        if kind not in RESPONSIVE_REPLAN_SIGNAL_KINDS:
+            raise ReplannerValidationError("trigger_signal_kind is unsupported")
+        object.__setattr__(self, "trigger_signal_kind", kind)
+
+    @property
+    def receipt_id(self) -> str:
+        return self.content_id
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "replanner_version": FORMAL_REPLANNER_VERSION,
+            "prior_decision_id": self.prior_decision_id,
+            "counterexample_id": self.counterexample_id,
+            "trigger_evidence_id": self.trigger_evidence_id,
+            "trigger_signal_kind": self.trigger_signal_kind,
+            "repository_tree_id": self.repository_tree_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DiagnosticReceipt":
+        allowed = {
+            "schema",
+            "content_id",
+            "replanner_version",
+            "prior_decision_id",
+            "counterexample_id",
+            "trigger_evidence_id",
+            "trigger_signal_kind",
+            "repository_tree_id",
+        }
+        if not isinstance(payload, Mapping) or set(payload).difference(allowed):
+            raise ReplannerValidationError(
+                "diagnostic receipt contains unsupported fields"
+            )
+        if payload.get("schema") not in (None, "", cls.SCHEMA):
+            raise ReplannerValidationError("diagnostic receipt schema is unsupported")
+        if payload.get("replanner_version") not in (
+            None,
+            FORMAL_REPLANNER_VERSION,
+        ):
+            raise ReplannerValidationError(
+                "diagnostic receipt replanner version is unsupported"
+            )
+        result = cls(
+            prior_decision_id=str(payload.get("prior_decision_id") or ""),
+            counterexample_id=str(payload.get("counterexample_id") or ""),
+            trigger_evidence_id=str(payload.get("trigger_evidence_id") or ""),
+            trigger_signal_kind=str(payload.get("trigger_signal_kind") or ""),
+            repository_tree_id=str(payload.get("repository_tree_id") or ""),
+        )
+        claimed = payload.get("content_id")
+        if claimed not in (None, "", result.content_id):
+            raise ReplannerValidationError(
+                "diagnostic receipt identity does not match payload"
+            )
+        return result
+
+
+@dataclass(frozen=True)
 class ResponsiveReplanDecision:
     """Typed boundary decision for evidence-responsive refinement.
 
@@ -680,6 +795,8 @@ class ResponsiveReplanDecision:
     trigger_evidence_id: str = ""
     previous_trigger_evidence_id: str = ""
     trigger_signal_kind: str = "counterexample"
+    diagnostic_receipt: DiagnosticReceipt | None = None
+    diagnostic_reused: bool = False
 
     def __post_init__(self) -> None:
         current = str(self.counterexample_id or "").strip()
@@ -702,6 +819,28 @@ class ResponsiveReplanDecision:
         if trigger_kind not in RESPONSIVE_REPLAN_SIGNAL_KINDS:
             raise ReplannerValidationError("trigger_signal_kind is unsupported")
         object.__setattr__(self, "trigger_signal_kind", trigger_kind)
+        receipt = self.diagnostic_receipt
+        if receipt is not None and not isinstance(receipt, DiagnosticReceipt):
+            if not isinstance(receipt, Mapping):
+                raise ReplannerValidationError(
+                    "diagnostic_receipt must be a DiagnosticReceipt"
+                )
+            receipt = DiagnosticReceipt.from_dict(receipt)
+        if receipt is not None and (
+            receipt.counterexample_id != current
+            or receipt.trigger_evidence_id != trigger
+            or receipt.trigger_signal_kind != trigger_kind
+        ):
+            raise ReplannerValidationError(
+                "diagnostic receipt is not bound to the responsive trigger"
+            )
+        object.__setattr__(self, "diagnostic_receipt", receipt)
+        if not isinstance(self.diagnostic_reused, bool):
+            raise ReplannerValidationError("diagnostic_reused must be boolean")
+        if self.diagnostic_reused and receipt is None:
+            raise ReplannerValidationError(
+                "diagnostic reuse requires the reused receipt"
+            )
         if not isinstance(self.changed, bool):
             raise ReplannerValidationError("changed must be boolean")
         object.__setattr__(self, "stop_reason", ReplanStopReason(self.stop_reason))
@@ -717,7 +856,17 @@ class ResponsiveReplanDecision:
             or self.backoff_seconds < 0
         ):
             raise ReplannerValidationError("backoff_seconds must be non-negative")
-        if self.changed:
+        if self.stop_reason is ReplanStopReason.CANCELLED:
+            if self.result is not None or self.backoff_seconds:
+                raise ReplannerValidationError(
+                    "cancelled evidence cannot carry a result or backoff"
+                )
+        elif self.stop_reason is ReplanStopReason.IDENTICAL_FAILURE_ESCALATED:
+            if self.changed or self.result is not None or self.backoff_seconds:
+                raise ReplannerValidationError(
+                    "identical failure escalation cannot replan or back off"
+                )
+        elif self.changed:
             if self.result is None:
                 raise ReplannerValidationError(
                     "changed evidence requires one replanning result"
@@ -755,6 +904,22 @@ class ResponsiveReplanDecision:
         )
 
     @property
+    def cancelled(self) -> bool:
+        return self.stop_reason is ReplanStopReason.CANCELLED
+
+    @property
+    def escalated(self) -> bool:
+        return self.stop_reason is ReplanStopReason.IDENTICAL_FAILURE_ESCALATED
+
+    @property
+    def diagnostic_receipt_id(self) -> str:
+        return (
+            self.diagnostic_receipt.receipt_id
+            if self.diagnostic_receipt is not None
+            else ""
+        )
+
+    @property
     def evidence_ids(self) -> tuple[str, ...]:
         """Return no objective evidence outside the bound receipt producer.
 
@@ -773,6 +938,8 @@ class ResponsiveReplanDecision:
     def requirement_ids(self) -> tuple[str, ...]:
         """Route to the bound producer without claiming evidence authority."""
 
+        if self.cancelled:
+            return ()
         if self.changed and self.trigger_signal_kind == "counterexample":
             return (BOUNDED_REFINEMENT_EVIDENCE_ID,)
         if not self.changed and self.trigger_signal_kind in {
@@ -810,8 +977,17 @@ class ResponsiveReplanDecision:
             "trigger_evidence_id": self.trigger_evidence_id,
             "previous_trigger_evidence_id": self.previous_trigger_evidence_id,
             "trigger_signal_kind": self.trigger_signal_kind,
+            "diagnostic_receipt": (
+                self.diagnostic_receipt.to_record()
+                if self.diagnostic_receipt is not None
+                else None
+            ),
+            "diagnostic_receipt_id": self.diagnostic_receipt_id,
+            "diagnostic_reused": self.diagnostic_reused,
             "changed": self.changed,
             "refined": self.refined,
+            "cancelled": self.cancelled,
+            "escalated": self.escalated,
             "model_call_required": self.model_call_required,
             "stop_reason": self.stop_reason.value,
             "backoff_attempt": self.backoff_attempt,
@@ -1043,6 +1219,11 @@ class FormalReplanner:
         trigger_evidence_id: str | None = None,
         previous_trigger_evidence_id: str | None = None,
         trigger_signal_kind: str = "counterexample",
+        prior_decision_id: str | None = None,
+        repository_tree_id: str | None = None,
+        previous_diagnostic_receipt_id: str | None = None,
+        max_identical_failures: int = 8,
+        cancelled: Any = None,
     ) -> ResponsiveReplanDecision:
         """Replan changed evidence once; back off unchanged evidence pre-compile.
 
@@ -1065,6 +1246,14 @@ class FormalReplanner:
             raise ReplannerValidationError("trigger_evidence_id is required")
         if trigger_kind not in RESPONSIVE_REPLAN_SIGNAL_KINDS:
             raise ReplannerValidationError("trigger_signal_kind is unsupported")
+        if (
+            isinstance(max_identical_failures, bool)
+            or not isinstance(max_identical_failures, int)
+            or max_identical_failures < 1
+        ):
+            raise ReplannerValidationError(
+                "max_identical_failures must be a positive integer"
+            )
         for name, item, minimum in (
             ("backoff_attempt", backoff_attempt, 0),
             ("base_backoff_seconds", base_backoff_seconds, 1),
@@ -1078,12 +1267,76 @@ class FormalReplanner:
             raise ReplannerValidationError(
                 "base_backoff_seconds cannot exceed max_backoff_seconds"
             )
-        if (
+        default_decision_id = (
+            value.bindings.plan_ids[0]
+            if value.bindings.plan_ids
+            else value.semantic_id
+        )
+        diagnostic = DiagnosticReceipt(
+            prior_decision_id=str(prior_decision_id or default_decision_id),
+            counterexample_id=value.semantic_id,
+            trigger_evidence_id=trigger,
+            trigger_signal_kind=trigger_kind,
+            repository_tree_id=str(
+                repository_tree_id
+                or source.get("repository_tree_id")
+                or source.get("tree_id")
+                or "tree:unspecified"
+            ),
+        )
+        same_failure = (
             previous
             and previous == value.semantic_id
             and previous_trigger
             and previous_trigger == trigger
+        )
+        supplied_diagnostic_id = str(
+            previous_diagnostic_receipt_id or ""
+        ).strip()
+        if (
+            same_failure
+            and supplied_diagnostic_id
+            and supplied_diagnostic_id != diagnostic.receipt_id
         ):
+            raise ReplannerValidationError(
+                "previous diagnostic receipt does not match identical failure"
+            )
+        diagnostic_reused = bool(
+            same_failure
+            and supplied_diagnostic_id in ("", diagnostic.receipt_id)
+        )
+        if _cancelled(cancelled):
+            return ResponsiveReplanDecision(
+                counterexample_id=value.semantic_id,
+                previous_counterexample_id=previous,
+                changed=not bool(same_failure),
+                stop_reason=ReplanStopReason.CANCELLED,
+                result=None,
+                backoff_attempt=backoff_attempt,
+                backoff_seconds=0,
+                trigger_evidence_id=trigger,
+                previous_trigger_evidence_id=previous_trigger,
+                trigger_signal_kind=trigger_kind,
+                diagnostic_receipt=diagnostic,
+                diagnostic_reused=diagnostic_reused,
+            )
+        if same_failure:
+            next_attempt = backoff_attempt + 1
+            if next_attempt >= max_identical_failures:
+                return ResponsiveReplanDecision(
+                    counterexample_id=value.semantic_id,
+                    previous_counterexample_id=previous,
+                    changed=False,
+                    stop_reason=ReplanStopReason.IDENTICAL_FAILURE_ESCALATED,
+                    result=None,
+                    backoff_attempt=next_attempt,
+                    backoff_seconds=0,
+                    trigger_evidence_id=trigger,
+                    previous_trigger_evidence_id=previous_trigger,
+                    trigger_signal_kind=trigger_kind,
+                    diagnostic_receipt=diagnostic,
+                    diagnostic_reused=diagnostic_reused,
+                )
             exponent = min(backoff_attempt, 30)
             seconds = min(
                 max_backoff_seconds,
@@ -1100,16 +1353,35 @@ class FormalReplanner:
                 trigger_evidence_id=trigger,
                 previous_trigger_evidence_id=previous_trigger,
                 trigger_signal_kind=trigger_kind,
+                diagnostic_receipt=diagnostic,
+                diagnostic_reused=diagnostic_reused,
             )
 
-        result = self.replan(
-            source,
-            value,
-            candidate_repairs=candidate_repairs,
-            prior_semantic_ids=prior_semantic_ids,
-            retry_attempt=retry_attempt,
-            refinement_depth=refinement_depth,
-        )
+        try:
+            result = self.replan(
+                source,
+                value,
+                candidate_repairs=candidate_repairs,
+                prior_semantic_ids=prior_semantic_ids,
+                retry_attempt=retry_attempt,
+                refinement_depth=refinement_depth,
+                cancelled=cancelled,
+            )
+        except ReplanCancelled:
+            return ResponsiveReplanDecision(
+                counterexample_id=value.semantic_id,
+                previous_counterexample_id=previous,
+                changed=True,
+                stop_reason=ReplanStopReason.CANCELLED,
+                result=None,
+                backoff_attempt=backoff_attempt,
+                backoff_seconds=0,
+                trigger_evidence_id=trigger,
+                previous_trigger_evidence_id=previous_trigger,
+                trigger_signal_kind=trigger_kind,
+                diagnostic_receipt=diagnostic,
+                diagnostic_reused=False,
+            )
         return ResponsiveReplanDecision(
             counterexample_id=value.semantic_id,
             previous_counterexample_id=previous,
@@ -1121,6 +1393,8 @@ class FormalReplanner:
             trigger_evidence_id=trigger,
             previous_trigger_evidence_id=previous_trigger,
             trigger_signal_kind=trigger_kind,
+            diagnostic_receipt=diagnostic,
+            diagnostic_reused=False,
         )
 
     def replan_for_signal(
@@ -1139,6 +1413,11 @@ class FormalReplanner:
         backoff_attempt: int = 0,
         base_backoff_seconds: int = 1,
         max_backoff_seconds: int = 300,
+        prior_decision_id: str | None = None,
+        repository_tree_id: str | None = None,
+        previous_diagnostic_receipt_id: str | None = None,
+        max_identical_failures: int = 8,
+        cancelled: Any = None,
     ) -> ResponsiveReplanDecision:
         """Route one reviewed runtime signal into bounded formal replanning.
 
@@ -1169,6 +1448,11 @@ class FormalReplanner:
             trigger_evidence_id=signal.evidence_id,
             previous_trigger_evidence_id=previous_signal_id,
             trigger_signal_kind=signal.kind.value,
+            prior_decision_id=prior_decision_id,
+            repository_tree_id=repository_tree_id,
+            previous_diagnostic_receipt_id=previous_diagnostic_receipt_id,
+            max_identical_failures=max_identical_failures,
+            cancelled=cancelled,
         )
 
     def generate_repairs(
@@ -1210,11 +1494,16 @@ class FormalReplanner:
         prior_semantic_ids: Iterable[str] = (),
         retry_attempt: int | None = None,
         refinement_depth: int = 0,
+        cancelled: Any = None,
     ) -> ReplanResult:
         """Run one bounded refinement and admit at most one selected transition."""
 
+        if _cancelled(cancelled):
+            raise ReplanCancelled("formal replanning was cancelled")
         value = _counterexample(counterexample)
         bundle = _source_bundle(source)
+        if _cancelled(cancelled):
+            raise ReplanCancelled("formal replanning was cancelled")
         compilation = self.compiler.compile(bundle)
         if compilation.status is not CompilationStatus.COMPILED or compilation.plan is None:
             return ReplanResult(
@@ -1226,6 +1515,8 @@ class FormalReplanner:
         original_validation = self.validator.validate(
             compilation.plan, compilation.formulas
         )
+        if _cancelled(cancelled):
+            raise ReplanCancelled("formal replanning was cancelled")
         if retry_attempt is None:
             retry_attempt = self._attempts.get(value.semantic_id, 0)
         if isinstance(retry_attempt, bool) or not isinstance(retry_attempt, int) or retry_attempt < 0:
@@ -1278,6 +1569,8 @@ class FormalReplanner:
         } | self._seen_semantic_ids
         candidates: list[RepairCandidate] = []
         for operation in operations:
+            if _cancelled(cancelled):
+                raise ReplanCancelled("formal replanning was cancelled")
             candidate = self._evaluate(
                 bundle,
                 compilation,
@@ -1300,9 +1593,13 @@ class FormalReplanner:
             # written to the taskboard and leave Codex without its bounded
             # context.
             try:
+                if _cancelled(cancelled):
+                    raise ReplanCancelled("formal replanning was cancelled")
                 prospective_packet = self._codex_packet(
                     selected.transition, value
                 )
+            except ReplanCancelled:
+                raise
             except (ReplannerValidationError, CounterexampleValidationError) as exc:
                 selected = replace(
                     selected,
@@ -1319,11 +1616,15 @@ class FormalReplanner:
                 prospective_packet = None
             admitted = prospective_packet is not None
             if admitted and self.admission_callback is not None:
+                if _cancelled(cancelled):
+                    raise ReplanCancelled("formal replanning was cancelled")
                 try:
                     response = self.admission_callback(selected.transition)
                     admitted = response is not False
                 except Exception:
                     admitted = False
+            if _cancelled(cancelled):
+                raise ReplanCancelled("formal replanning was cancelled")
             selected_status = (
                 RepairCandidateStatus.ADMITTED
                 if admitted
@@ -1946,6 +2247,7 @@ def generate_plan_repairs(
     prior_semantic_ids: Iterable[str] = (),
     retry_attempt: int | None = None,
     refinement_depth: int = 0,
+    cancelled: Any = None,
 ) -> ReplanResult:
     """Convenience entry point for one complete bounded replanning pass."""
 
@@ -1959,6 +2261,7 @@ def generate_plan_repairs(
         prior_semantic_ids=prior_semantic_ids,
         retry_attempt=retry_attempt,
         refinement_depth=refinement_depth,
+        cancelled=cancelled,
     )
 
 
@@ -1982,6 +2285,11 @@ def replan_if_changed(
     trigger_evidence_id: str | None = None,
     previous_trigger_evidence_id: str | None = None,
     trigger_signal_kind: str = "counterexample",
+    prior_decision_id: str | None = None,
+    repository_tree_id: str | None = None,
+    previous_diagnostic_receipt_id: str | None = None,
+    max_identical_failures: int = 8,
+    cancelled: Any = None,
 ) -> ResponsiveReplanDecision:
     """Stateless convenience entry point for responsive bounded replanning."""
 
@@ -2002,6 +2310,11 @@ def replan_if_changed(
         trigger_evidence_id=trigger_evidence_id,
         previous_trigger_evidence_id=previous_trigger_evidence_id,
         trigger_signal_kind=trigger_signal_kind,
+        prior_decision_id=prior_decision_id,
+        repository_tree_id=repository_tree_id,
+        previous_diagnostic_receipt_id=previous_diagnostic_receipt_id,
+        max_identical_failures=max_identical_failures,
+        cancelled=cancelled,
     )
 
 
@@ -2022,6 +2335,11 @@ def replan_for_signal(
     backoff_attempt: int = 0,
     base_backoff_seconds: int = 1,
     max_backoff_seconds: int = 300,
+    prior_decision_id: str | None = None,
+    repository_tree_id: str | None = None,
+    previous_diagnostic_receipt_id: str | None = None,
+    max_identical_failures: int = 8,
+    cancelled: Any = None,
 ) -> ResponsiveReplanDecision:
     """Stateless typed-signal entry point for bounded formal replanning."""
 
@@ -2041,6 +2359,11 @@ def replan_for_signal(
         backoff_attempt=backoff_attempt,
         base_backoff_seconds=base_backoff_seconds,
         max_backoff_seconds=max_backoff_seconds,
+        prior_decision_id=prior_decision_id,
+        repository_tree_id=repository_tree_id,
+        previous_diagnostic_receipt_id=previous_diagnostic_receipt_id,
+        max_identical_failures=max_identical_failures,
+        cancelled=cancelled,
     )
 
 
@@ -2048,6 +2371,7 @@ __all__ = [
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
+    "DIAGNOSTIC_RECEIPT_SCHEMA",
     "FORMAL_REPLANNER_VERSION",
     "OBJECTIVE_COMPLETION_EVIDENCE_ROLES",
     "REPAIR_CANDIDATE_SCHEMA",
@@ -2056,6 +2380,7 @@ __all__ = [
     "RESPONSIVE_REPLAN_DECISION_SCHEMA",
     "RESPONSIVE_REPLAN_SIGNAL_KINDS",
     "CodexRepairPacket",
+    "DiagnosticReceipt",
     "FormalPlanReplanner",
     "FormalReplanner",
     "RepairCandidate",
@@ -2067,6 +2392,7 @@ __all__ = [
     "RepairRuleKind",
     "RepairTransition",
     "ReplanBudget",
+    "ReplanCancelled",
     "ReplanLimits",
     "ReplanResult",
     "ReplanStopReason",
