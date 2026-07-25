@@ -4583,10 +4583,7 @@ class ValidationScheduler:
             repository_policy=repository_policy,
         )
         workspace = Path(workspace_path)
-        environment_source = os.environ if environment is None else environment
-        execution_environment = {
-            str(key): str(value) for key, value in environment_source.items()
-        }
+        execution_environment = build_validation_environment(environment)
         dependencies = (
             collect_dependency_state(
                 workspace, changed_files=plan.impact.affected_paths
@@ -5185,10 +5182,7 @@ class ValidationScheduler:
             if dependency_state is None
             else dependency_state
         )
-        environment_source = os.environ if environment is None else environment
-        execution_environment = {
-            str(key): str(value) for key, value in environment_source.items()
-        }
+        execution_environment = build_validation_environment(environment)
         command_runner = runner or self.runner
         results: list[dict[str, object]] = []
         stages: list[dict[str, object]] = []

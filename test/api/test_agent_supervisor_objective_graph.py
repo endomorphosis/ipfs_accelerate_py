@@ -148,6 +148,131 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
 
 
+def test_objective_scanner_excludes_sensitive_root_without_reading_it(
+    tmp_path,
+    monkeypatch,
+):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    excluded_root = repo / "private_inputs"
+    excluded_source = excluded_root / "answer.py"
+    excluded_root.mkdir()
+    excluded_source.write_text(
+        "def HSSLEV_PRIVATE_INPUT():\n    return 'hidden evidence'\n",
+        encoding="utf-8",
+    )
+    outside_source = tmp_path / "outside_answer.py"
+    outside_source.write_text(
+        "def HSSLEV_PRIVATE_INPUT():\n    return 'linked hidden evidence'\n",
+        encoding="utf-8",
+    )
+    excluded_link = excluded_root / "linked_answer.py"
+    excluded_link.symlink_to(outside_source)
+    objective_path.write_text(
+        """# Objective Heap
+
+## TEST-G001 Require independently visible evidence
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: test
+- Priority: P0
+- Bundle: objective/test/exclusions
+- Goal: Keep excluded evidence unavailable to the objective scanner.
+- Evidence: HSSLEV_PRIVATE_INPUT
+- Outputs: src
+- Validation: true
+- Gap task: Produce public evidence.
+""",
+        encoding="utf-8",
+    )
+    _git(
+        repo,
+        "add",
+        "objective-heap.md",
+        "private_inputs/answer.py",
+        "private_inputs/linked_answer.py",
+    )
+    _git(repo, "commit", "-m", "seed private objective evidence")
+
+    assert scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        embedding_min_score=2.0,
+    ) == []
+
+    original_read_text = Path.read_text
+    original_read_bytes = Path.read_bytes
+    excluded_resolved = {
+        excluded_source.resolve(),
+        excluded_link.resolve(),
+    }
+
+    def guarded_read_text(path, *args, **kwargs):
+        assert path.resolve() not in excluded_resolved
+        return original_read_text(path, *args, **kwargs)
+
+    def guarded_read_bytes(path, *args, **kwargs):
+        assert path.resolve() not in excluded_resolved
+        return original_read_bytes(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+
+    direct_stats = {}
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        embedding_min_score=2.0,
+        scan_exclude_paths=[excluded_root],
+        scan_stats=direct_stats,
+    )
+
+    assert [finding.goal_id for finding in findings] == ["TEST-G001"]
+    assert direct_stats["scan_exclude_paths"] == ["private_inputs"]
+    assert direct_stats["scan_exclude_path_count"] == 1
+
+    dataset_dir = tmp_path / "objective-dataset"
+    dataset_stats = {}
+    dataset_findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        embedding_min_score=2.0,
+        dataset_dir=dataset_dir,
+        dataset_id="excluded-root-test",
+        scan_exclude_paths=["private_inputs"],
+        scan_stats=dataset_stats,
+    )
+
+    assert [finding.goal_id for finding in dataset_findings] == ["TEST-G001"]
+    assert dataset_stats["scan_exclude_paths"] == ["private_inputs"]
+    dataset_rows = (
+        dataset_dir / "excluded-root-test.jsonl"
+    ).read_text(encoding="utf-8")
+    assert "private_inputs/answer.py" not in dataset_rows
+
+    stale_cached_evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=["HSSLEV_PRIVATE_INPUT"],
+        embedding_min_score=2.0,
+        records=[
+            {
+                "root_relative_path": "private_inputs/answer.py",
+                "evidence_text": "def HSSLEV_PRIVATE_INPUT(): pass",
+                "symbols_json": json.dumps(["HSSLEV_PRIVATE_INPUT"]),
+                "document_tokens_json": "[]",
+                "document_embedding_json": "[]",
+            }
+        ],
+        scan_exclude_paths=["private_inputs"],
+    )
+    assert stale_cached_evidence == {"HSSLEV_PRIVATE_INPUT": []}
+
+
 def test_hsslev0097b20_empty_symbol_normalizations_are_not_ast_evidence(tmp_path):
     repo, objective_path, _todo_path = _seed_repo(tmp_path)
     records = [

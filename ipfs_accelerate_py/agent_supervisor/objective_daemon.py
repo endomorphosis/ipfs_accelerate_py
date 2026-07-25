@@ -20,6 +20,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .goal_completion import CompletionEvidence
+from .external_completion import (
+    ExternalCompletionAuthority,
+    load_external_completion_authority,
+)
 from .objective_graph import (
     DEFAULT_DISCOVERY_OUTPUT_PATH,
     DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
@@ -32,6 +36,8 @@ from .objective_graph import (
     generate_objective_todos,
     parse_goal_heap,
     repo_relative_path,
+    resolve_scan_exclude_paths,
+    scan_exclude_path_metadata,
     scan_objective_gaps,
     submit_bundle_tasks,
 )
@@ -3701,6 +3707,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bundle-dir", type=Path, default=None)
     parser.add_argument("--dataset-dir", type=Path, default=None)
     parser.add_argument("--graph-path", type=Path, default=None)
+    parser.add_argument(
+        "--scan-exclude-path",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "Repo-relative or absolute subtree inside --repo-root that the "
+            "objective evidence and AST scanners must not read. Repeat for "
+            "multiple sensitive roots."
+        ),
+    )
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
     parser.add_argument("--objective-summary-prefix", default=DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX)
     parser.add_argument("--discovery-output-path", default=DEFAULT_DISCOVERY_OUTPUT_PATH)
@@ -3767,6 +3784,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "Canonical JSON artifact containing tree- and policy-bound "
             "CompletionEvidence records per goal."
+        ),
+    )
+    parser.add_argument(
+        "--objective-external-completion-receipt-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit identity-only JSON authority for externally executed "
+            "operational goals. The file is validated against the current "
+            "clean commit, tree, and recursive gitlinks."
         ),
     )
     parser.add_argument(
@@ -3898,6 +3925,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = args.repo_root.resolve()
+    scan_exclude_paths = resolve_scan_exclude_paths(
+        repo_root,
+        getattr(args, "scan_exclude_path", ()) or (),
+    )
+    scan_exclude_metadata = scan_exclude_path_metadata(
+        repo_root,
+        scan_exclude_paths,
+    )
     objective_path = (args.objective_path or default_objective_path(repo_root)).resolve()
     todo_path = (args.todo_path or default_todo_path(repo_root)).resolve()
     state_root = default_state_root(repo_root)
@@ -3905,6 +3940,18 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     bundle_dir = (args.bundle_dir or state_root / "objective_bundles").resolve()
     dataset_dir = (args.dataset_dir or state_root / "objective_datasets").resolve()
     graph_path = (getattr(args, "graph_path", None) or state_root / "objective_graph.json").resolve()
+    external_completion_path = getattr(
+        args,
+        "objective_external_completion_receipt_path",
+        None,
+    )
+    if external_completion_path is not None and not external_completion_path.is_absolute():
+        external_completion_path = (repo_root / external_completion_path).resolve()
+    external_completion_authority: ExternalCompletionAuthority | None = None
+    if external_completion_path is not None:
+        external_completion_authority = load_external_completion_authority(
+            external_completion_path
+        )
 
     seen_fingerprints = set(split_csv(args.seen_fingerprint))
     if not args.repeat_existing:
@@ -3956,6 +4003,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     objective_completion_validation_results: dict[str, Any] = {}
     objective_completion_decisions: dict[str, Any] = {}
     evidence_repository_tree = ""
+    external_completion_results: dict[str, Any] = {}
     completion_gate_path = getattr(args, "objective_goal_completion_gate_path", None)
     if completion_gate_path is not None and not completion_gate_path.is_absolute():
         completion_gate_path = (repo_root / completion_gate_path).resolve()
@@ -4010,6 +4058,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             completion_gate_records=completion_gate_records,
             completion_control_paths=completion_control_paths,
             require_artifact_binding=require_artifact_binding,
+            external_completion_authority=external_completion_authority,
+            scan_exclude_paths=scan_exclude_paths,
         )
         completed_goal_ids = completion.completed_goal_ids
         objective_completed_goal_count = completion.completed_goal_count
@@ -4018,7 +4068,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         evidence_repository_tree = completion_tree_identity(
             repo_root,
             objective_path=objective_path,
+            scan_exclude_paths=scan_exclude_paths,
         ).tree_id
+        external_completion_results = completion.external_completion
 
     refined_goal_ids: list[str] = []
     if getattr(args, "refine_objective_heap", False) and objective_path.exists():
@@ -4028,6 +4080,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             max_findings=args.max_findings,
             seen_fingerprints=seen_fingerprints,
             evidence_repository_tree=evidence_repository_tree,
+            scan_exclude_paths=scan_exclude_paths,
         )
         refinement = append_refinement_goals(
             objective_path,
@@ -4066,6 +4119,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         summary_prefix=getattr(args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX),
         discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
         evidence_repository_tree=evidence_repository_tree,
+        scan_exclude_paths=scan_exclude_paths,
     )
     plan_evaluation_path = (
         getattr(args, "plan_evaluation_path", None) or state_root / "plan_evaluations.json"
@@ -4395,6 +4449,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "dataset_dir": repo_relative_path(repo_root, dataset_dir),
         "graph_path": repo_relative_path(repo_root, graph_path),
+        "scan_exclude_paths": scan_exclude_metadata,
+        "scan_exclude_path_count": len(scan_exclude_metadata),
         "plan_evaluation_path": repo_relative_path(repo_root, plan_evaluation_path),
         "plan_evaluation_count": len(plan_decisions),
         "plan_router_branch_count": max(1, int(getattr(args, "plan_branch_count", 3))),
@@ -4455,6 +4511,17 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         },
         "objective_completion_gate_receipts": completion_gate_receipts_from_decisions(
             objective_completion_decisions
+        ),
+        "objective_external_completion": external_completion_results,
+        "objective_external_completion_authority_cid": (
+            external_completion_authority.authority_cid
+            if external_completion_authority is not None
+            else ""
+        ),
+        "objective_external_completion_governed_goal_ids": (
+            list(external_completion_authority.governed_goal_ids)
+            if external_completion_authority is not None
+            else []
         ),
         "objective_goal_completion_gate_path": (
             repo_relative_path(repo_root, completion_gate_path) if completion_gate_path else ""

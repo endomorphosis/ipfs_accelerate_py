@@ -10825,6 +10825,91 @@ def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
     assert discovery_fingerprints(discovery_dir)
 
 
+def test_objective_daemon_repeats_validated_scan_exclusions_and_reports_them(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    private_source = repo / "private_inputs" / "reviewed.py"
+    private_source.parent.mkdir()
+    private_source.write_text(
+        "missing_gesture_policy = 'must not satisfy public evidence'\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "private_inputs/reviewed.py")
+    _git(repo, "commit", "-m", "seed excluded objective evidence")
+
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--discovery-dir",
+            str(repo / "discovery"),
+            "--bundle-dir",
+            str(repo / "bundles"),
+            "--dataset-dir",
+            str(repo / "datasets"),
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "1",
+            "--scan-exclude-path",
+            "private_inputs",
+            "--scan-exclude-path",
+            str(repo / "private_labels"),
+            "--no-persist-ast-dataset",
+            "--no-generate-bounded-work",
+            "--no-reconcile-goal-completion",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["generated_count"] == 1
+    assert payload["scan_exclude_paths"] == [
+        "private_inputs",
+        "private_labels",
+    ]
+    assert payload["scan_exclude_path_count"] == 2
+    assert "Missing evidence: missing_gesture_policy" in todo_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_objective_daemon_rejects_scan_exclusion_outside_repo(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    unsafe_exclusions = [str(outside)]
+    escape = repo / "escape"
+    try:
+        escape.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pass
+    else:
+        unsafe_exclusions.append("escape")
+
+    for unsafe_exclusion in unsafe_exclusions:
+        args = build_arg_parser().parse_args(
+            [
+                "--repo-root",
+                str(repo),
+                "--objective-path",
+                str(objective_path),
+                "--todo-path",
+                str(todo_path),
+                "--scan-exclude-path",
+                unsafe_exclusion,
+            ]
+        )
+
+        with pytest.raises(ValueError, match="must be inside repo_root"):
+            run_objective_daemon(args)
+
+
 def test_objective_daemon_generates_surplus_vector_indexed_todos(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

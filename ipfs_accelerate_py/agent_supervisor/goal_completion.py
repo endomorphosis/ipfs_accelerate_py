@@ -2050,6 +2050,18 @@ def validate_completion_evidence(
                 )
 
     receipt = evidence.validation_receipt
+    reconciliation_receipt = evidence.metadata.get(
+        "reconciliation_validation_receipt"
+    )
+    if (
+        evidence.metadata.get("external_operational_completion") is True
+        and isinstance(reconciliation_receipt, Mapping)
+    ):
+        # The external producer receipt remains immutable and bound to the
+        # committed source tree inspected by the external authority.  A local
+        # reconciliation rerun is a distinct receipt that binds that verified
+        # external result to the supervisor's control-file-excluding tree.
+        receipt = reconciliation_receipt
     if isinstance(receipt, Mapping):
         receipt_tree = str(receipt.get("tree_id", receipt.get("tree_identity", "")) or "")
         if receipt_tree and evidence.repository_tree and receipt_tree != evidence.repository_tree:

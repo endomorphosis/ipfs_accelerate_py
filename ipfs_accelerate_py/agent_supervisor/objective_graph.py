@@ -4454,6 +4454,67 @@ def repo_relative_path_safe(relative: str) -> bool:
     return ".." not in Path(relative).parts
 
 
+def resolve_scan_exclude_paths(
+    repo_root: Path,
+    paths: Iterable[str | Path] = (),
+) -> tuple[Path, ...]:
+    """Resolve repeatable scanner exclusions inside ``repo_root``.
+
+    Existing symlinks are resolved before the containment check so an
+    apparently repository-relative path cannot redirect the scanner outside
+    the configured repository.  The repository root itself is rejected: the
+    option is intended to fence sensitive subtrees, not silently disable the
+    complete evidence scan.
+    """
+
+    root = Path(repo_root).resolve()
+    resolved: dict[str, Path] = {}
+    for raw_path in paths:
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        candidate = candidate.resolve()
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(
+                f"scan exclude path must be inside repo_root {root}: {raw_path}"
+            ) from exc
+        if not relative.parts:
+            raise ValueError("scan exclude path cannot be repo_root itself")
+        resolved[relative.as_posix()] = candidate
+    return tuple(resolved[key] for key in sorted(resolved))
+
+
+def scan_exclude_path_metadata(
+    repo_root: Path,
+    paths: Iterable[str | Path] = (),
+) -> list[str]:
+    """Return validated scanner exclusions as stable repository paths."""
+
+    root = Path(repo_root).resolve()
+    return [
+        path.relative_to(root).as_posix()
+        for path in resolve_scan_exclude_paths(root, paths)
+    ]
+
+
+def _path_is_scan_excluded(path: Path, excluded_roots: Iterable[Path]) -> bool:
+    lexical_path = Path(os.path.abspath(path))
+    resolved = path.resolve()
+    for root in excluded_roots:
+        lexical_root = Path(os.path.abspath(root))
+        resolved_root = root.resolve()
+        if (
+            lexical_path == lexical_root
+            or lexical_root in lexical_path.parents
+            or resolved == resolved_root
+            or resolved_root in resolved.parents
+        ):
+            return True
+    return False
+
+
 def symbol_terms(path: Path, text: str) -> set[str]:
     """Extract AST/schema-ish terms from code and structured files."""
 
@@ -4575,10 +4636,19 @@ def collect_ast_dataset_records(
     previous_records: Sequence[Mapping[str, Any]] = (),
     scan_stats: dict[str, Any] | None = None,
     excluded_roots: Iterable[Path] = (),
+    scan_exclude_paths: Iterable[str | Path] = (),
 ) -> list[dict[str, Any]]:
     """Collect a complete snapshot while reusing unchanged source blobs."""
 
     started = time.monotonic()
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
+    scan_exclude_metadata = scan_exclude_path_metadata(
+        repo_root,
+        resolved_scan_excludes,
+    )
     rows: list[dict[str, Any]] = []
     prior_rows = [dict(row) for row in previous_records if isinstance(row, Mapping)]
     prior_by_blob: dict[str, list[dict[str, Any]]] = {}
@@ -4602,8 +4672,15 @@ def collect_ast_dataset_records(
     reused_count = 0
     parse_elapsed = 0.0
     saved_parse_seconds = 0.0
-    excluded = tuple(root.resolve() for root in excluded_roots)
-    for path in objective_candidate_files(repo_root, objective_path=objective_path):
+    excluded = (
+        *tuple(root.resolve() for root in excluded_roots),
+        *resolved_scan_excludes,
+    )
+    for path in objective_candidate_files(
+        repo_root,
+        objective_path=objective_path,
+        scan_exclude_paths=resolved_scan_excludes,
+    ):
         resolved_path = path.resolve()
         if any(resolved_path == root or root in resolved_path.parents for root in excluded):
             continue
@@ -4710,6 +4787,8 @@ def collect_ast_dataset_records(
                 "parse_elapsed_seconds": parse_elapsed,
                 "saved_parse_seconds": saved_parse_seconds,
                 "deleted_paths": deleted_paths,
+                "scan_exclude_paths": scan_exclude_metadata,
+                "scan_exclude_path_count": len(scan_exclude_metadata),
             }
         )
     return rows
@@ -4767,6 +4846,7 @@ def persist_objective_ast_dataset(
     objective_path: Path,
     dataset_dir: Path,
     dataset_id: str = "objective-ast",
+    scan_exclude_paths: Iterable[str | Path] = (),
 ) -> DatasetArtifact:
     """Persist scan AST/symbol records with the optional ipfs_datasets backend."""
 
@@ -4778,6 +4858,7 @@ def persist_objective_ast_dataset(
         previous_records=store.load_records(dataset_id),
         scan_stats=stats,
         excluded_roots=(dataset_dir,),
+        scan_exclude_paths=scan_exclude_paths,
     )
     return store.persist_records(
         dataset_id=dataset_id,
@@ -4876,7 +4957,13 @@ def tracked_files(git_root: Path) -> list[Path]:
     return files
 
 
-def scan_candidate(path: Path, *, repo_root: Path, objective_path: Path) -> bool:
+def scan_candidate(
+    path: Path,
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    scan_exclude_paths: Iterable[Path] = (),
+) -> bool:
     resolved_root = repo_root.resolve()
     resolved_path = path.resolve()
     try:
@@ -4887,6 +4974,8 @@ def scan_candidate(path: Path, *, repo_root: Path, objective_path: Path) -> bool
         # host files that are not part of the Git tree being scanned.
         return False
     if resolved_path == objective_path.resolve():
+        return False
+    if _path_is_scan_excluded(path, scan_exclude_paths):
         return False
     root_relative = repo_relative_path(repo_root, path)
     parts = set(Path(root_relative).parts)
@@ -4906,11 +4995,25 @@ def scan_candidate(path: Path, *, repo_root: Path, objective_path: Path) -> bool
         return False
 
 
-def objective_candidate_files(repo_root: Path, *, objective_path: Path) -> list[Path]:
+def objective_candidate_files(
+    repo_root: Path,
+    *,
+    objective_path: Path,
+    scan_exclude_paths: Iterable[str | Path] = (),
+) -> list[Path]:
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
     files: list[Path] = []
     for git_root in discover_git_worktrees(repo_root):
         for path in tracked_files(git_root):
-            if scan_candidate(path, repo_root=repo_root, objective_path=objective_path):
+            if scan_candidate(
+                path,
+                repo_root=repo_root,
+                objective_path=objective_path,
+                scan_exclude_paths=resolved_scan_excludes,
+            ):
                 files.append(path)
     return sorted(dict.fromkeys(files), key=lambda path: repo_relative_path(repo_root, path))
 
@@ -4972,7 +5075,12 @@ def evidence_index(
     repository_tree: str = "",
     policy_id: str = "",
     return_metadata: bool = False,
+    scan_exclude_paths: Iterable[str | Path] = (),
 ) -> dict[str, list[str]] | ObjectiveEvidenceIndex:
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
     normalized_terms = [term for term in dict.fromkeys(str(term).strip() for term in terms) if term]
     evidence = {term: [] for term in normalized_terms}
     selected_policy = source_policy or EvidenceSourcePolicy()
@@ -5078,7 +5186,10 @@ def evidence_index(
         if not repo_relative_path_safe(term):
             continue
         candidate = repo_root / term
-        if candidate.exists():
+        if (
+            not _path_is_scan_excluded(candidate, resolved_scan_excludes)
+            and candidate.exists()
+        ):
             reference = f"{Path(term).as_posix()} (path)"
             consider(
                 term,
@@ -5094,6 +5205,9 @@ def evidence_index(
         for row in sorted(cached_records, key=lambda item: str(item.get("root_relative_path") or "")):
             root_relative = str(row.get("root_relative_path") or "")
             if not root_relative:
+                continue
+            candidate = repo_root / root_relative
+            if _path_is_scan_excluded(candidate, resolved_scan_excludes):
                 continue
             text = str(row.get("evidence_text") or "")
             symbols = set(_record_symbols(row))
@@ -5115,7 +5229,11 @@ def evidence_index(
                 document_tokens = set(objective_tokens(document_text))
             candidates.append((root_relative, text, symbols, document_tokens, document_embedding))
     else:
-        for path in objective_candidate_files(repo_root, objective_path=objective_path):
+        for path in objective_candidate_files(
+            repo_root,
+            objective_path=objective_path,
+            scan_exclude_paths=resolved_scan_excludes,
+        ):
             root_relative = repo_relative_path(repo_root, path)
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")
@@ -7708,6 +7826,7 @@ def scan_objective_gaps(
     evidence_source_policy: EvidenceSourcePolicy | None = None,
     evidence_repository_tree: str = "",
     evidence_policy_id: str = "",
+    scan_exclude_paths: Iterable[str | Path] = (),
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
@@ -7715,6 +7834,22 @@ def scan_objective_gaps(
     forced_goal_ids = {
         str(item).strip() for item in force_goal_ids if str(item).strip()
     }
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
+    scan_exclude_metadata = scan_exclude_path_metadata(
+        repo_root,
+        resolved_scan_excludes,
+    )
+    if scan_stats is not None:
+        scan_stats.clear()
+        scan_stats.update(
+            {
+                "scan_exclude_paths": scan_exclude_metadata,
+                "scan_exclude_path_count": len(scan_exclude_metadata),
+            }
+        )
     goals = [
         goal
         for goal in all_goals
@@ -7763,11 +7898,18 @@ def scan_objective_gaps(
             objective_path=objective_path,
             dataset_dir=dataset_dir,
             dataset_id=dataset_id,
+            scan_exclude_paths=resolved_scan_excludes,
         )
         cached_records = ObjectiveDatasetStore(dataset_dir).load_records(dataset_id)
         if scan_stats is not None:
             scan_stats.clear()
             scan_stats.update(artifact.to_dict())
+            scan_stats.update(
+                {
+                    "scan_exclude_paths": scan_exclude_metadata,
+                    "scan_exclude_path_count": len(scan_exclude_metadata),
+                }
+            )
     pipeline_diagnostics: dict[str, Any] = {}
     if dataset_dir is not None or analysis_pipeline is not None:
         try:
@@ -7917,6 +8059,7 @@ def scan_objective_gaps(
         source_policy=evidence_source_policy,
         repository_tree=evidence_repository_tree,
         policy_id=evidence_policy_id,
+        scan_exclude_paths=resolved_scan_excludes,
     )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
     findings: list[ObjectiveFinding] = []
@@ -9115,6 +9258,7 @@ def generate_objective_todos(
     surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    scan_exclude_paths: Iterable[str | Path] = (),
     precomputed_findings: Sequence[ObjectiveFinding] | None = None,
     typed_evidence_receipts: Sequence[Mapping[str, Any] | Any] = (),
     evidence_source_policy: EvidenceSourcePolicy | None = None,
@@ -9144,6 +9288,7 @@ def generate_objective_todos(
             evidence_source_policy=evidence_source_policy,
             evidence_repository_tree=evidence_repository_tree,
             evidence_policy_id=evidence_policy_id,
+            scan_exclude_paths=scan_exclude_paths,
         )
     else:
         findings = list(precomputed_findings)
@@ -9422,6 +9567,7 @@ def generate_objective_todos_result(
                     evidence_policy_id=str(
                         kwargs.get("evidence_policy_id") or ""
                     ),
+                    scan_exclude_paths=kwargs.get("scan_exclude_paths") or (),
                 )
             except TimeoutError as exc:
                 return build_scan_result(
@@ -9458,6 +9604,10 @@ def generate_objective_todos_result(
         metadata={
             "candidate_count": len(records),
             "duplicate_candidate_count": duplicate_candidate_count,
+            "scan_exclude_paths": scan_exclude_path_metadata(
+                repo_root,
+                kwargs.get("scan_exclude_paths") or (),
+            ),
         },
     )
 
