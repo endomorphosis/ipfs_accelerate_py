@@ -625,6 +625,113 @@ def test_completed_bundle_remains_plannable_for_settlement_but_cannot_launch(
     assert result[0]["error"] == "lane has no execution task ids"
 
 
+@pytest.mark.parametrize("authority_location", ["bundle", "task"])
+def test_external_authority_bundle_is_rejected_before_coordination_creation(
+    tmp_path: Path,
+    authority_location: str,
+) -> None:
+    lane = _lane(
+        tmp_path,
+        {
+            "bundle_key": "worldcoin-human-aid/zkp-toolchain-bootstrap",
+            "tasks": [
+                {
+                    "task_id": "WORLDCOIN-G039",
+                    "goal": "operator-owned offline smoke",
+                }
+            ],
+        },
+    )
+    queue_payload = dict(lane.queue_payload)
+    if authority_location == "bundle":
+        queue_payload["execution_authority"] = "operator-gate-first/v1"
+    else:
+        tasks = [dict(item) for item in queue_payload["tasks"]]
+        tasks[0]["execution_authority"] = "operator-gate-first/v1"
+        queue_payload["tasks"] = tasks
+    lane = replace(lane, queue_payload=queue_payload)
+    coordination_path = tmp_path / "must-not-exist.duckdb"
+
+    result = launch_bundle_lanes(
+        [lane],
+        repo_root=tmp_path,
+        coordination_path=coordination_path,
+    )
+
+    assert result == [
+        {
+            "bundle_key": lane.bundle_key,
+            "accepted": False,
+            "error": (
+                "bundle requires external execution authority "
+                "'operator-gate-first/v1'"
+                if authority_location == "bundle"
+                else "execution slice requires external execution authority "
+                "'operator-gate-first/v1'"
+            ),
+            "code": "G_EXECUTION_POLICY_DENIED",
+        }
+    ]
+    assert not coordination_path.exists()
+
+
+def test_planner_preserves_external_execution_authority_for_launch_policy(
+    tmp_path: Path,
+) -> None:
+    todo_path = tmp_path / "g039.todo.md"
+    todo_path.write_text(
+        "## WORLDCOIN-G039 Native smoke\n\n- Status: reopened\n",
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "g038-g040.index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": str(todo_path),
+                "bundles": {
+                    "worldcoin-human-aid/zkp-toolchain-bootstrap": {
+                        "shard_path": str(todo_path),
+                        "execution_authority": "operator-gate-first/v1",
+                        "is_schedulable": True,
+                        "review_only": False,
+                        "tasks": [
+                            {
+                                "task_id": "WORLDCOIN-G039",
+                                "task_cid": "cid-g039",
+                                "status": "reopened",
+                                "is_schedulable": True,
+                                "review_only": False,
+                                "execution_authority": "operator-gate-first/v1",
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+    assert len(lanes) == 1
+    assert (
+        lanes[0].queue_payload["execution_authority"]
+        == "operator-gate-first/v1"
+    )
+    coordination_path = tmp_path / "must-not-exist.duckdb"
+    result = launch_bundle_lanes(
+        lanes,
+        repo_root=tmp_path,
+        coordination_path=coordination_path,
+    )
+    assert result[0]["code"] == "G_EXECUTION_POLICY_DENIED"
+    assert not coordination_path.exists()
+
+
 def test_bundle_launcher_surfaces_dependency_evidence_and_unblocks_after_successful_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

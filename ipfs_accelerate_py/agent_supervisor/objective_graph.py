@@ -6574,6 +6574,9 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             "todo_path": info.get("shard_path", ""),
             "parallel_lane": info.get("parallel_lane", key),
             "conflict_policy": info.get("conflict_policy", ""),
+            "execution_authority": str(
+                info.get("execution_authority") or "agent-supervisor/v1"
+            ),
             "is_schedulable": (
                 _task_record_flag(info, "is_schedulable", True)
                 if "is_schedulable" in info

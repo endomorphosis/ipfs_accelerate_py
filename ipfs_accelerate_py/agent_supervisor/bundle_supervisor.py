@@ -57,6 +57,7 @@ SCHEDULER_GC_INTERVAL_CYCLES = 10
 BUNDLE_TASKBOARD_INPUT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1"
 )
+INTERNAL_EXECUTION_AUTHORITY = "agent-supervisor/v1"
 
 _MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
     {
@@ -1294,6 +1295,14 @@ def _lane_launch_policy_error(lane: BundleLaneSpec) -> str:
     payload = lane.queue_payload
     if not isinstance(payload, dict):
         return "missing queue payload"
+    execution_authority = str(
+        payload.get("execution_authority") or INTERNAL_EXECUTION_AUTHORITY
+    ).strip()
+    if execution_authority != INTERNAL_EXECUTION_AUTHORITY:
+        return (
+            "bundle requires external execution authority "
+            f"{execution_authority!r}"
+        )
     if payload.get("is_schedulable") is not True:
         return "bundle is not schedulable"
     if payload.get("review_only") is not False:
@@ -1324,6 +1333,14 @@ def _lane_launch_policy_error(lane: BundleLaneSpec) -> str:
     if not set(lane.task_ids).issubset(execution_task_ids):
         return "lane task ids are outside the authorized execution slice"
     for task in execution_tasks:
+        task_execution_authority = str(
+            task.get("execution_authority") or INTERNAL_EXECUTION_AUTHORITY
+        ).strip()
+        if task_execution_authority != INTERNAL_EXECUTION_AUTHORITY:
+            return (
+                "execution slice requires external execution authority "
+                f"{task_execution_authority!r}"
+            )
         if not _schedule_bool(task, "is_schedulable", True):
             return "execution slice contains a non-schedulable task"
         if _schedule_bool(task, "review_only", False):
@@ -1357,12 +1374,27 @@ def launch_bundle_lanes(
 ) -> list[dict[str, Any]]:
     """Claim and launch lane supervisors under accepted, fenced leases."""
 
+    policy_errors = {
+        id(lane): _lane_launch_policy_error(lane)
+        for lane in lanes
+    }
+    if lanes and all(policy_errors[id(lane)] for lane in lanes):
+        return [
+            {
+                "bundle_key": lane.bundle_key,
+                "accepted": False,
+                "error": policy_errors[id(lane)],
+                "code": "G_EXECUTION_POLICY_DENIED",
+            }
+            for lane in lanes
+        ]
+
     results: list[dict[str, Any]] = []
     active_lanes: list[BundleLaneSpec] = []
     path = coordination_path or default_state_root(repo_root) / "coordination.duckdb"
     with LeaseCoordinator(path) as coordinator:
         for lane in lanes:
-            policy_error = _lane_launch_policy_error(lane)
+            policy_error = policy_errors[id(lane)]
             if policy_error:
                 results.append(
                     {
