@@ -284,7 +284,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-016 Add shared inference batching and single-flight provider work
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: parallelism
