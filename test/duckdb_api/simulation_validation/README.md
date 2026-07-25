@@ -92,9 +92,7 @@ python -m duckdb_api.simulation_validation.ui.app --debug
 
 ### Web UI Screenshots
 
-![Dashboard Screenshot](ui/screenshots/dashboard.png)
-![Validation Results Screenshot](ui/screenshots/validation_results.png)
-![Job Management Screenshot](ui/screenshots/jobs.png)
+Screenshots are not currently included in this repository. Use the running Web UI to view the dashboard, validation results, and job management screens.
 
 ## CI/CD Integration
 
