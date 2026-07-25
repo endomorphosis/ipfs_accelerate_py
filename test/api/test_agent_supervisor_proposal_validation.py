@@ -364,6 +364,9 @@ def test_admitted_binding_can_require_the_complete_proposal_authority() -> None:
         "accepted": True,
         "proof_authoritative": False,
         "completion_authoritative": False,
+        "merge_eligible": False,
+        "authoritative": False,
+        "freshness_authoritative": False,
     }
     with pytest.raises(ProposalValidationError, match="objective_id"):
         result.require_admitted_binding(objective_id="ASI-G999")
@@ -431,6 +434,16 @@ def test_noop_and_out_of_scope_rejections_are_typed_fail_fast_evidence(
         "semantic",
         "targeted-tests",
     )
+    assert evidence.task_id == dispatched.proposal.task_id
+    assert evidence.repository_id == dispatched.proposal.repository_id
+    assert evidence.baseline_id == dispatched.proposal.baseline_id
+    assert evidence.diff_digest == dispatched.proposal.diff_digest
+    assert evidence.allowed_paths == dispatched.policy.allowed_paths
+    assert evidence.task_owned_paths == dispatched.policy.task_owned_paths
+    assert evidence.changed_paths == dispatched.proposal.changed_paths
+    assert evidence.gate_trace == tuple(
+        gate.value for gate in ORDERED_PROPOSAL_GATES
+    )
     assert ProposalValidationResult.from_dict(dispatched.to_dict()) == dispatched
 
 
@@ -477,6 +490,47 @@ def test_findings_are_deterministic_and_bounded_by_policy() -> None:
             for finding in first.findings
         )
     )
+
+
+def test_policy_allowance_cannot_widen_immutable_task_owned_scope() -> None:
+    proposal = _proposal(
+        _entry("docs/outside-task.md", before="before\n", after="after\n")
+    )
+    result = validate_implementation_proposal(
+        proposal,
+        policy=_policy(
+            allowed_paths=(
+                "ipfs_accelerate_py/agent_supervisor/",
+                "test/api/",
+                "docs/",
+            ),
+            task_owned_paths=(
+                "ipfs_accelerate_py/agent_supervisor/",
+                "test/api/",
+            ),
+        ),
+    )
+
+    assert not result.accepted
+    assert any(
+        finding.code is ProposalFindingCode.PATH_OUTSIDE_SCOPE
+        and "immutable task-owned scope" in finding.message
+        for finding in result.findings
+    )
+
+
+def test_lossy_unsafe_rename_path_cannot_disappear_during_normalization() -> None:
+    entry = _entry(
+        change_kind=DiffChangeKind.RENAME,
+        old_path="../outside.py",
+        new_path="ipfs_accelerate_py/agent_supervisor/proposal_validation.py",
+    )
+    assert entry.old_path == ""
+
+    result = validate_implementation_proposal(_proposal(entry), policy=_policy())
+
+    assert not result.accepted
+    assert ProposalFindingCode.UNSAFE_PATH in _finding_codes(result)
 
 
 def test_syntax_and_every_frozen_authority_dimension_fail_closed() -> None:
@@ -547,7 +601,26 @@ def test_serialized_result_rejects_tampered_identity_authority_and_verdict(
         ProposalValidationResult.from_dict(payload)
 
 
-def test_rejection_receipt_rejects_detached_or_mutated_evidence() -> None:
+@pytest.mark.parametrize(
+    ("field_name", "forged_value"),
+    [
+        ("task_id", "ASI-999"),
+        ("repository_id", "repo:foreign"),
+        ("baseline_id", "baseline:foreign"),
+        ("diff_digest", "sha256:foreign"),
+        ("allowed_paths", ["forged/"]),
+        ("task_owned_paths", ["forged/"]),
+        ("changed_paths", ["forged.py"]),
+        ("gate_trace", list(reversed([gate.value for gate in ORDERED_PROPOSAL_GATES]))),
+        ("rejection_codes", [ProposalFindingCode.UNSAFE_PATH.value]),
+        ("expensive_node_ids", ["foreign-node"]),
+        ("expensive_checks_started", 1),
+    ],
+)
+def test_rejection_receipt_rejects_detached_or_mutated_evidence(
+    field_name: str,
+    forged_value: object,
+) -> None:
     rejected = validate_implementation_proposal(
         _proposal(declared_paths=(), candidate_diff=()),
         policy=_policy(),
@@ -555,12 +628,16 @@ def test_rejection_receipt_rejects_detached_or_mutated_evidence() -> None:
         expensive_node_ids=("semantic", "proof"),
         expensive_checks_started=0,
     )
-    payload = deepcopy(rejected.receipt.to_dict())
-    assert payload["rejection_evidence"] is not None
-    payload["rejection_evidence"]["expensive_checks_started"] = 1
+    payload = deepcopy(rejected.to_dict())
+    evidence = payload["receipt"]["rejection_evidence"]
+    assert evidence is not None
+    evidence[field_name] = forged_value
+    # Recanonicalizing the nested record must not make a detached binding
+    # admissible through the complete result.
+    evidence.pop("evidence_id")
 
     with pytest.raises(ProposalValidationError):
-        ProposalValidationReceipt.from_dict(payload)
+        ProposalValidationResult.from_dict(payload)
 
 
 def test_rejection_requirement_projection_cannot_be_erased() -> None:
@@ -1014,6 +1091,11 @@ def test_test_deletion_requires_explicit_policy_authority() -> None:
         "proof_authoritative",
         "code_proof_authoritative",
         "completion_authoritative",
+        "merge_eligible",
+        "merge_authoritative",
+        "freshness_authoritative",
+        "authoritative",
+        "authority",
     ],
 )
 def test_v2_rejects_forged_proof_and_completion_authority(

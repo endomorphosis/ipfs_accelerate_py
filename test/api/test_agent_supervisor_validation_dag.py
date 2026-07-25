@@ -168,9 +168,33 @@ def test_rejected_proposal_closes_dispatch_and_proves_exact_g100_requirement(
     evidence = receipt["rejection_evidence"]
     assert receipt["expensive_checks_started"] == 0
     assert evidence["expensive_checks_started"] == 0
+    assert evidence["task_id"] == proposal.task_id
+    assert evidence["repository_id"] == proposal.repository_id
+    assert evidence["repository_tree_id"] == proposal.repository_tree_id
+    assert evidence["baseline_id"] == proposal.baseline_id
+    assert evidence["diff_digest"] == proposal.diff_digest
+    assert tuple(evidence["allowed_paths"]) == validation.policy.allowed_paths
+    assert (
+        tuple(evidence["task_owned_paths"])
+        == validation.policy.task_owned_paths
+    )
+    assert tuple(evidence["changed_paths"]) == proposal.changed_paths
+    assert tuple(evidence["gate_trace"]) == tuple(
+        gate.value for gate in validation.receipt.gate_trace
+    )
     assert tuple(report["proved_requirement_ids"]) == (G100_FAIL_FAST_REQUIREMENT,)
     assert tuple(receipt["proved_requirement_ids"]) == (G100_FAIL_FAST_REQUIREMENT,)
     assert evidence["requirement_id"] == G100_FAIL_FAST_REQUIREMENT
+    for non_authority_field in (
+        "proof_authoritative",
+        "code_proof_authoritative",
+        "completion_authoritative",
+        "freshness_authoritative",
+        "authoritative",
+        "merge_eligible",
+    ):
+        assert report[non_authority_field] is False
+        assert report["proposal_validation"][non_authority_field] is False
     assert (
         NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID
         == G100_FAIL_FAST_REQUIREMENT
@@ -1167,6 +1191,42 @@ def _changed_public_symbol() -> ChangedASTSymbol:
         path="pkg/source.py",
         interface_changed=True,
     )
+
+
+def test_rejected_proposal_closes_every_proposal_bound_scheduler_entrypoint(
+    tmp_path: Path,
+) -> None:
+    validation = validate_implementation_proposal(
+        _proposal((), declared_paths=()),
+        policy=_policy(),
+    )
+    calls: list[str] = []
+
+    report = ValidationScheduler().run_impact_selected(
+        _impact_checks(),
+        workspace_path=tmp_path,
+        impact_index=_ast_impact_index(),
+        proposal_validation=validation,
+        dependency_state="fixture",
+        runner=lambda *, spec, **_kwargs: calls.append(spec.command),
+    )
+
+    assert calls == []
+    assert report["error"] == "proposal_validation_failed"
+    assert tuple(report["proved_requirement_ids"]) == (
+        NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
+    )
+    assert report["impact_validation_receipt"] is None
+    assert {node["disposition"] for node in report["nodes"]} == {"blocked"}
+    for non_authority_field in (
+        "proof_authoritative",
+        "code_proof_authoritative",
+        "completion_authoritative",
+        "freshness_authoritative",
+        "authoritative",
+        "merge_eligible",
+    ):
+        assert report[non_authority_field] is False
 
 
 def test_ast_impact_index_selects_transitive_consumer_outside_changed_path() -> None:

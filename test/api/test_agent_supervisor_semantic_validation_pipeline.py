@@ -57,6 +57,12 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
 )
 from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
     ImplementationProposal,
+    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA,
+    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION,
+    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_CONFIGURATION_REVISION,
+    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID,
+    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION,
+    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
     ProposalValidationPolicy,
     ProposalValidationResult,
     validate_proposal,
@@ -193,6 +199,292 @@ def test_rejected_output_cannot_create_semantic_or_code_proof_obligations() -> N
         "proposal_validation_rejected",
         "validation_dag_missing",
     }.issubset(admission.reason_codes)
+
+
+def _g100_completion_packet(tmp_path: Path) -> tuple[
+    ProposalValidationResult,
+    tuple[dict[str, str], ...],
+    dict[str, object],
+]:
+    proposal, policy, _entry = _proposal(
+        after=BEFORE,
+        task_id="ASI-031",
+        objective_id=NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID,
+    )
+    attempted_commands: list[str] = []
+    report = ValidationScheduler().run_validated(
+        validate_proposal(proposal, policy=policy),
+        (_service_validation(),),
+        workspace_path=tmp_path,
+        dependency_state="g100-fixture",
+        runner=lambda *, spec, **_kwargs: attempted_commands.append(
+            spec.command
+        ),
+    )
+    assert attempted_commands == []
+    witness = ProposalValidationResult.from_dict(
+        report["proposal_validation"]
+    )
+    assert not witness.accepted
+    assert witness.receipt.rejection_evidence is not None
+    now = datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc)
+    rejection = witness.receipt.rejection_evidence
+    validation_binding = {
+        "status": "passed",
+        "repository_id": proposal.repository_id,
+        "tree_id": proposal.repository_tree_id,
+        "requirement_id": NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
+        "objective_id": NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID,
+        "validation_policy_id": policy.policy_id,
+        "operational_receipt_id": rejection.evidence_id,
+        "command": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_proposal_validation.py "
+            "test/api/test_agent_supervisor_validation_dag.py "
+            "test/api/test_agent_supervisor_semantic_validation_pipeline.py -q"
+        ),
+    }
+    completion_evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-091",
+            validation_receipt=validation_binding,
+            validation_passed=True,
+            repository_tree=proposal.repository_tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-091:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"g100-{index}",
+                goal_id=NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID,
+                criterion=item.acceptance_criterion,
+                status=CoverageStatus.VERIFIED,
+                task_ids=["ASI-031", "ASI-091"],
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "proposal_validation.py"
+                ],
+                validation_receipt_ids=[item.provenance_cid],
+                provenance_cids=[item.provenance_cid],
+            )
+            for index, item in enumerate(completion_evidence, start=1)
+        ],
+        edges=[],
+        receipts=[
+            ValidationReceiptCoverage(
+                receipt_id=item.provenance_cid,
+                task_id="ASI-091",
+                criterion=item.acceptance_criterion,
+                command=validation_binding["command"],
+                status=CoverageStatus.VERIFIED,
+                passed=True,
+                repository_tree=proposal.repository_tree_id,
+                observed_at=now.isoformat(),
+                provenance_cid=item.provenance_cid,
+                explanation="Fresh ASI-G100 validation passed.",
+                outcome="passed",
+                reason_code="validation_passed",
+                fresh=True,
+            )
+            for item in completion_evidence
+        ],
+        finding_assignments=[],
+        registered_goal_ids=[
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
+        ],
+        evaluated_at=now.isoformat(),
+        repository_tree=proposal.repository_tree_id,
+    )
+    analyzer_binding = {
+        "repository_id": proposal.repository_id,
+        "tree_id": proposal.repository_tree_id,
+        "objective_revision": (
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION
+        ),
+        "analyzer_version": (
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "binding": analyzer_binding,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": analyzer_binding,
+        "members": [
+            {
+                "member_id": "asi-091-implementation",
+                "evidence_channel": "implementation-validation",
+                "receipt_cid": "scan:asi-091:implementation",
+                "binding": analyzer_binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-091-replay",
+                "evidence_channel": "independent-receipt-replay",
+                "receipt_cid": "scan:asi-091:replay",
+                "binding": analyzer_binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    values: dict[str, object] = {
+        "evidence": completion_evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+    return witness, ({"task_id": "ASI-031", "status": "completed"},), values
+
+
+def test_g100_completion_requires_exact_current_tree_evidence_population(
+    tmp_path: Path,
+) -> None:
+    witness, producing_tasks, values = _g100_completion_packet(tmp_path)
+
+    provisional = witness.evaluate_objective_completion(
+        producing_tasks=producing_tasks,
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.gate is not None and provisional.gate.passed
+    assert not provisional.verified
+
+    verified = witness.evaluate_objective_completion(
+        producing_tasks=producing_tasks,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    for invalid_producers in (
+        (),
+        ({"task_id": "ASI-031", "status": "active"},),
+        ({"task_id": "ASI-091", "status": "completed"},),
+        (
+            {"task_id": "ASI-031", "status": "completed"},
+            {"task_id": "ASI-031", "status": "completed"},
+        ),
+    ):
+        rejected = witness.evaluate_objective_completion(
+            producing_tasks=invalid_producers,
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **values,
+        )
+        assert rejected.state is GoalState.REOPENED
+        assert not rejected.verified
+        assert "tasks_incomplete" in rejected.reason_codes
+
+
+def test_g100_completion_rejects_detached_unsafe_or_nonindependent_proof(
+    tmp_path: Path,
+) -> None:
+    witness, producing_tasks, values = _g100_completion_packet(tmp_path)
+    evidence = values["evidence"]
+    assert isinstance(evidence, tuple)
+    first = evidence[0]
+    assert isinstance(first, CompletionEvidence)
+
+    detached_evidence = (
+        CompletionEvidence.from_dict(
+            {
+                **first.to_dict(),
+                "validation_receipt": {
+                    **first.validation_receipt,
+                    "operational_receipt_id": "evidence:foreign",
+                },
+            }
+        ),
+        *evidence[1:],
+    )
+    cases: list[dict[str, object]] = [
+        {**values, "evidence": detached_evidence},
+        {**values, "evidence": evidence[:-1]},
+        {
+            **values,
+            "analyzer_health": {
+                **values["analyzer_health"],
+                "safe_for_completion_reasoning": False,
+            },
+        },
+    ]
+    duplicate_quorum = deepcopy(values["exhaustion_quorum"])
+    duplicate_quorum["members"][1]["receipt_cid"] = (
+        duplicate_quorum["members"][0]["receipt_cid"]
+    )
+    cases.append({**values, "exhaustion_quorum": duplicate_quorum})
+    stale_quorum = deepcopy(values["exhaustion_quorum"])
+    stale_quorum["members"][1]["finished_at"] = (
+        values["now"] - timedelta(hours=1)
+    ).isoformat()
+    cases.append({**values, "exhaustion_quorum": stale_quorum})
+    non_exhaustive_quorum = deepcopy(values["exhaustion_quorum"])
+    non_exhaustive_quorum["members"][1]["scan_mode"] = "audit"
+    cases.append({**values, "exhaustion_quorum": non_exhaustive_quorum})
+    implicit_health_quorum = deepcopy(values["exhaustion_quorum"])
+    del implicit_health_quorum["members"][1]["healthy"]
+    cases.append({**values, "exhaustion_quorum": implicit_health_quorum})
+    typed_coverage = values["coverage"]
+    assert isinstance(typed_coverage, GoalCoverageMap)
+    unbound_coverage = typed_coverage.completion_gate_evidence(
+        NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
+    )
+    unbound_coverage["criteria"][0]["validation_receipt_ids"] = [
+        "validation:foreign"
+    ]
+    cases.append({**values, "coverage": unbound_coverage})
+
+    for invalid_values in cases:
+        rejected = witness.evaluate_objective_completion(
+            producing_tasks=producing_tasks,
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **invalid_values,
+        )
+        assert rejected.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not rejected.verified
+        assert rejected.gate is not None and not rejected.gate.passed
+
+    with pytest.raises(ValueError, match="configured ASI-G100 count 2"):
+        witness.evaluate_objective_completion(
+            producing_tasks=producing_tasks,
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            required_exhaustive_receipts=1,
+            **values,
+        )
 
 
 def test_accepted_proposal_is_bound_into_fresh_code_obligations() -> None:

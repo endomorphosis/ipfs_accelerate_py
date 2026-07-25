@@ -16,6 +16,7 @@ import json
 import re
 import shlex
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
@@ -25,6 +26,38 @@ from .code_proof_obligations import CandidateDiffEntry, DiffChangeKind
 
 NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID = (
     "314133036252270790078901745919131980427"
+)
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID = "ASI-G100"
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION = "ASI-G100@asi-091"
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION = (
+    "asi-g100-objective-validation@1"
+)
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_CONFIGURATION_REVISION = (
+    "strict-proposal-fail-fast-completion@1"
+)
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS = 2
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_PRODUCING_TASK_IDS = ("ASI-031",)
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA = (
+    (
+        "Proposal admission deterministically checks schema, authority, "
+        "baseline and candidate identity, non-empty effective change, "
+        "normalized path safety, and task-owned scope before any expensive "
+        "validation. Empty or effectless diffs and every out-of-scope path "
+        "fail closed with bounded typed diagnostics"
+    ),
+    "policy cannot widen task scope",
+    (
+        "rejected output cannot claim proof, completion, merge eligibility, "
+        "or authority"
+    ),
+    (
+        "the scheduler cannot be reached through the validated pipeline after "
+        "preflight rejection. The exact requirement ID is emitted only by a "
+        "tamper-evident receipt that binds the current tree, objective, policy, "
+        "proposal, baseline, scope, normalized diff, complete ordered gate "
+        "trace, failure result, proof that expensive dispatch remained closed, "
+        "and content digest"
+    ),
 )
 PROPOSAL_VALIDATION_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proposal-validation-policy@1"
@@ -638,13 +671,18 @@ class ProposalValidationPolicy:
     max_findings: int = 32
     policy_version: str = "strict-proposal-v1"
     policy_id: str = ""
+    # This is the immutable scope assigned by the task authority.  The policy
+    # may narrow it through ``allowed_paths`` but can never widen it.
+    task_owned_paths: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         allowed = _strings(self.allowed_paths)
         forbidden = _strings(self.forbidden_paths)
         if not allowed:
             raise ProposalValidationError("allowed_paths must not be empty")
+        task_owned = _strings(self.task_owned_paths) or allowed
         object.__setattr__(self, "allowed_paths", allowed)
+        object.__setattr__(self, "task_owned_paths", task_owned)
         object.__setattr__(self, "forbidden_paths", forbidden)
         for name in (
             "consumed_proposal_ids",
@@ -717,6 +755,7 @@ class ProposalValidationPolicy:
         return {
             "schema": PROPOSAL_VALIDATION_POLICY_SCHEMA,
             "allowed_paths": self.allowed_paths,
+            "task_owned_paths": self.task_owned_paths,
             "forbidden_paths": self.forbidden_paths,
             "expected_task_id": self.expected_task_id,
             "expected_plan_id": self.expected_plan_id,
@@ -761,6 +800,11 @@ class ProposalValidationPolicy:
             raise ProposalValidationError(f"unsupported proposal policy schema: {schema}")
         return cls(
             allowed_paths=tuple(payload.get("allowed_paths") or ()),
+            task_owned_paths=tuple(
+                payload.get("task_owned_paths")
+                or payload.get("allowed_paths")
+                or ()
+            ),
             forbidden_paths=tuple(payload.get("forbidden_paths") or ()),
             expected_task_id=str(payload.get("expected_task_id") or ""),
             expected_plan_id=str(payload.get("expected_plan_id") or ""),
@@ -1007,11 +1051,19 @@ ProposalValidationRequest = ImplementationProposal
 @dataclass(frozen=True)
 class ProposalRejectionEvidence:
     requirement_id: str
+    task_id: str
+    repository_id: str
     proposal_id: str
     receipt_id: str
     repository_tree_id: str
     objective_id: str
+    baseline_id: str
     policy_id: str
+    diff_digest: str
+    allowed_paths: tuple[str, ...]
+    task_owned_paths: tuple[str, ...]
+    changed_paths: tuple[str, ...]
+    gate_trace: tuple[str, ...]
     rejection_codes: tuple[str, ...]
     expensive_node_ids: tuple[str, ...]
     expensive_checks_started: int = 0
@@ -1020,11 +1072,15 @@ class ProposalRejectionEvidence:
     def __post_init__(self) -> None:
         for name in (
             "requirement_id",
+            "task_id",
+            "repository_id",
             "proposal_id",
             "receipt_id",
             "repository_tree_id",
             "objective_id",
+            "baseline_id",
             "policy_id",
+            "diff_digest",
         ):
             object.__setattr__(self, name, str(getattr(self, name) or "").strip())
         if self.requirement_id != NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID:
@@ -1033,12 +1089,31 @@ class ProposalRejectionEvidence:
             (
                 self.proposal_id,
                 self.receipt_id,
+                self.task_id,
+                self.repository_id,
                 self.repository_tree_id,
                 self.objective_id,
+                self.baseline_id,
                 self.policy_id,
+                self.diff_digest,
             )
         ):
             raise ProposalValidationError("rejection evidence binding is incomplete")
+        object.__setattr__(self, "allowed_paths", _strings(self.allowed_paths))
+        object.__setattr__(
+            self, "task_owned_paths", _strings(self.task_owned_paths)
+        )
+        object.__setattr__(self, "changed_paths", _strings(self.changed_paths))
+        trace = tuple(str(item or "").strip() for item in self.gate_trace)
+        if trace != tuple(gate.value for gate in ORDERED_PROPOSAL_GATES):
+            raise ProposalValidationError(
+                "rejection evidence requires the complete ordered gate trace"
+            )
+        object.__setattr__(self, "gate_trace", trace)
+        if not self.allowed_paths or not self.task_owned_paths:
+            raise ProposalValidationError(
+                "rejection evidence requires policy and task-owned scope"
+            )
         codes = _strings(self.rejection_codes)
         if not set(codes).intersection(code.value for code in QUALIFYING_FAIL_FAST_CODES):
             raise ProposalValidationError(
@@ -1068,11 +1143,19 @@ class ProposalRejectionEvidence:
         return {
             "schema": PROPOSAL_REJECTION_EVIDENCE_SCHEMA,
             "requirement_id": self.requirement_id,
+            "task_id": self.task_id,
+            "repository_id": self.repository_id,
             "proposal_id": self.proposal_id,
             "receipt_id": self.receipt_id,
             "repository_tree_id": self.repository_tree_id,
             "objective_id": self.objective_id,
+            "baseline_id": self.baseline_id,
             "policy_id": self.policy_id,
+            "diff_digest": self.diff_digest,
+            "allowed_paths": self.allowed_paths,
+            "task_owned_paths": self.task_owned_paths,
+            "changed_paths": self.changed_paths,
+            "gate_trace": self.gate_trace,
             "rejection_codes": self.rejection_codes,
             "expensive_node_ids": self.expensive_node_ids,
             "expensive_checks_started": self.expensive_checks_started,
@@ -1090,11 +1173,19 @@ class ProposalRejectionEvidence:
             )
         return cls(
             requirement_id=str(payload.get("requirement_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
+            repository_id=str(payload.get("repository_id") or ""),
             proposal_id=str(payload.get("proposal_id") or ""),
             receipt_id=str(payload.get("receipt_id") or ""),
             repository_tree_id=str(payload.get("repository_tree_id") or ""),
             objective_id=str(payload.get("objective_id") or ""),
+            baseline_id=str(payload.get("baseline_id") or ""),
             policy_id=str(payload.get("policy_id") or ""),
+            diff_digest=str(payload.get("diff_digest") or ""),
+            allowed_paths=tuple(payload.get("allowed_paths") or ()),
+            task_owned_paths=tuple(payload.get("task_owned_paths") or ()),
+            changed_paths=tuple(payload.get("changed_paths") or ()),
+            gate_trace=tuple(payload.get("gate_trace") or ()),
             rejection_codes=tuple(payload.get("rejection_codes") or ()),
             expensive_node_ids=tuple(payload.get("expensive_node_ids") or ()),
             expensive_checks_started=payload.get("expensive_checks_started", -1),
@@ -1180,6 +1271,11 @@ class ProposalValidationReceipt:
                 or evidence.repository_tree_id != self.repository_tree_id
                 or evidence.objective_id != self.objective_id
                 or evidence.policy_id != self.policy_id
+                or evidence.diff_digest != self.diff_digest
+                or evidence.allowed_paths != self.allowed_paths
+                or evidence.changed_paths != self.changed_paths
+                or evidence.gate_trace
+                != tuple(gate.value for gate in self.gate_trace)
                 or evidence.expensive_node_ids != self.expensive_node_ids
                 or evidence.expensive_checks_started != self.expensive_checks_started
                 or not set(evidence.rejection_codes).issubset(
@@ -1215,6 +1311,18 @@ class ProposalValidationReceipt:
 
     @property
     def completion_authoritative(self) -> bool:
+        return False
+
+    @property
+    def merge_eligible(self) -> bool:
+        return False
+
+    @property
+    def authoritative(self) -> bool:
+        return False
+
+    @property
+    def freshness_authoritative(self) -> bool:
         return False
 
     @property
@@ -1288,6 +1396,9 @@ class ProposalValidationReceipt:
             "proof_authoritative": False,
             "code_proof_authoritative": False,
             "completion_authoritative": False,
+            "merge_eligible": False,
+            "authoritative": False,
+            "freshness_authoritative": False,
             "proposal_gate_evidence": self.proposal_gate_evidence,
         }
 
@@ -1300,6 +1411,9 @@ class ProposalValidationReceipt:
             "proof_authoritative",
             "code_proof_authoritative",
             "completion_authoritative",
+            "merge_eligible",
+            "authoritative",
+            "freshness_authoritative",
         ):
             if payload.get(field_name) not in (None, False):
                 raise ProposalValidationError(
@@ -1362,6 +1476,10 @@ class ProposalValidationReceipt:
         *,
         expensive_node_ids: Iterable[str],
         expensive_checks_started: int,
+        task_id: str = "",
+        repository_id: str = "",
+        baseline_id: str = "",
+        task_owned_paths: Iterable[str] = (),
     ) -> "ProposalValidationReceipt":
         """Bind the scheduler-owned dispatch outcome and derive evidence."""
 
@@ -1371,7 +1489,15 @@ class ProposalValidationReceipt:
         if self.accepted:
             return self
         node_ids = _strings(expensive_node_ids)
-        started = int(expensive_checks_started)
+        if (
+            isinstance(expensive_checks_started, bool)
+            or not isinstance(expensive_checks_started, int)
+            or expensive_checks_started < 0
+        ):
+            raise ProposalValidationError(
+                "expensive_checks_started must be a non-negative integer"
+            )
+        started = expensive_checks_started
         base = ProposalValidationReceipt(
             proposal_id=self.proposal_id,
             policy_id=self.policy_id,
@@ -1389,6 +1515,10 @@ class ProposalValidationReceipt:
         qualifying = (
             not base.accepted
             and started == 0
+            and bool(str(task_id or "").strip())
+            and bool(str(repository_id or "").strip())
+            and bool(str(baseline_id or "").strip())
+            and bool(_strings(task_owned_paths))
             and set(base.rejection_codes).intersection(
                 code.value for code in QUALIFYING_FAIL_FAST_CODES
             )
@@ -1397,11 +1527,19 @@ class ProposalValidationReceipt:
             return base
         evidence = ProposalRejectionEvidence(
             requirement_id=NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
+            task_id=task_id,
+            repository_id=repository_id,
             proposal_id=base.proposal_id,
             receipt_id=base.receipt_id,
             repository_tree_id=base.repository_tree_id,
             objective_id=base.objective_id,
+            baseline_id=baseline_id,
             policy_id=base.policy_id,
+            diff_digest=base.diff_digest,
+            allowed_paths=base.allowed_paths,
+            task_owned_paths=_strings(task_owned_paths),
+            changed_paths=base.changed_paths,
+            gate_trace=tuple(gate.value for gate in base.gate_trace),
             rejection_codes=base.rejection_codes,
             expensive_node_ids=base.expensive_node_ids,
             expensive_checks_started=0,
@@ -1453,6 +1591,16 @@ class ProposalValidationResult:
             or self.receipt.changed_paths != self.proposal.changed_paths
         ):
             raise ProposalValidationError("proposal result binding mismatch")
+        rejection = self.receipt.rejection_evidence
+        if rejection is not None and (
+            rejection.task_id != self.proposal.task_id
+            or rejection.repository_id != self.proposal.repository_id
+            or rejection.baseline_id != self.proposal.baseline_id
+            or rejection.task_owned_paths != self.policy.task_owned_paths
+        ):
+            raise ProposalValidationError(
+                "rejection evidence is detached from proposal authority"
+            )
 
     @property
     def accepted(self) -> bool:
@@ -1487,6 +1635,18 @@ class ProposalValidationResult:
         return False
 
     @property
+    def merge_eligible(self) -> bool:
+        return False
+
+    @property
+    def authoritative(self) -> bool:
+        return False
+
+    @property
+    def freshness_authoritative(self) -> bool:
+        return False
+
+    @property
     def admission_binding(self) -> Mapping[str, object]:
         """Project the complete accepted authority consumed downstream.
 
@@ -1513,6 +1673,9 @@ class ProposalValidationResult:
             "accepted": True,
             "proof_authoritative": False,
             "completion_authoritative": False,
+            "merge_eligible": False,
+            "authoritative": False,
+            "freshness_authoritative": False,
         }
 
     def require_admitted_binding(
@@ -1588,6 +1751,9 @@ class ProposalValidationResult:
             "proof_authoritative": False,
             "code_proof_authoritative": False,
             "completion_authoritative": False,
+            "merge_eligible": False,
+            "authoritative": False,
+            "freshness_authoritative": False,
         }
 
     @classmethod
@@ -1596,6 +1762,9 @@ class ProposalValidationResult:
             "proof_authoritative",
             "code_proof_authoritative",
             "completion_authoritative",
+            "merge_eligible",
+            "authoritative",
+            "freshness_authoritative",
         ):
             if payload.get(field_name) not in (None, False):
                 raise ProposalValidationError(
@@ -1630,8 +1799,504 @@ class ProposalValidationResult:
             receipt=self.receipt.with_dispatch_outcome(
                 expensive_node_ids=expensive_node_ids,
                 expensive_checks_started=expensive_checks_started,
+                task_id=self.proposal.task_id,
+                repository_id=self.proposal.repository_id,
+                baseline_id=self.proposal.baseline_id,
+                task_owned_paths=self.policy.task_owned_paths,
             ),
         )
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        producing_tasks: Sequence[Any] = (),
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = (
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS
+        ),
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float = 3600.0,
+        clock_skew_seconds: float = 300.0,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G100 through its closed current-tree completion gate.
+
+        A fail-fast rejection is operational evidence, not a passing
+        completion validation.  This second phase fixes the producer and
+        criterion populations and requires independently fresh validation,
+        analyzer-health, and exhaustion records before the shared lifecycle
+        may advance.
+        """
+
+        return _evaluate_fail_fast_objective_completion(
+            self,
+            producing_tasks=producing_tasks,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            required_exhaustive_receipts=required_exhaustive_receipts,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+
+def _evaluate_fail_fast_objective_completion(
+    result: ProposalValidationResult,
+    *,
+    producing_tasks: Sequence[Any],
+    current_state: Any,
+    evidence: Sequence[Any],
+    tasks_complete: bool,
+    coverage: Any,
+    analyzer_health: Any,
+    exhaustion_quorum: Any,
+    required_exhaustive_receipts: int,
+    child_goals: Sequence[Any],
+    now: Any,
+    freshness_seconds: float,
+    clock_skew_seconds: float,
+    analysis_inconclusive: bool,
+    blocked_reason: str,
+) -> Any:
+    """Join the G100 operational rejection with independent completion proof."""
+
+    from .goal_completion import evaluate_goal_completion
+
+    if (
+        isinstance(required_exhaustive_receipts, bool)
+        or not isinstance(required_exhaustive_receipts, int)
+        or required_exhaustive_receipts
+        != NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ):
+        raise ValueError(
+            "required_exhaustive_receipts must equal the configured ASI-G100 "
+            f"count {NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+        )
+    if not isinstance(tasks_complete, bool):
+        raise ValueError("tasks_complete must be a boolean")
+    if not isinstance(analysis_inconclusive, bool):
+        raise ValueError("analysis_inconclusive must be a boolean")
+    for name, value in (
+        ("freshness_seconds", freshness_seconds),
+        ("clock_skew_seconds", clock_skew_seconds),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or float(value) < 0
+        ):
+            raise ValueError(f"{name} must be a non-negative number")
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    def normalized(value: Any) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    def parsed_datetime(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            parsed = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                parsed = datetime.fromisoformat(
+                    value.strip().replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    current = parsed_datetime(now) or datetime.now(timezone.utc)
+    max_age = timedelta(seconds=float(freshness_seconds))
+    clock_skew = timedelta(seconds=float(clock_skew_seconds))
+
+    def fresh(value: Any) -> bool:
+        observed = parsed_datetime(value)
+        return bool(
+            observed is not None
+            and observed <= current + clock_skew
+            and current - observed <= max_age
+        )
+
+    proposal = result.proposal
+    policy = result.policy
+    receipt = result.receipt
+    rejection = receipt.rejection_evidence
+    qualifying_codes = {code.value for code in QUALIFYING_FAIL_FAST_CODES}
+    operational_complete = bool(
+        proposal.objective_id == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
+        and policy.expected_objective_id
+        == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
+        and not result.accepted
+        and rejection is not None
+        and result.proved_requirement_ids
+        == (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,)
+        and receipt.expensive_checks_started == 0
+        and rejection.expensive_checks_started == 0
+        and set(rejection.rejection_codes).intersection(qualifying_codes)
+        and receipt.gate_trace == ORDERED_PROPOSAL_GATES
+        and rejection.gate_trace
+        == tuple(gate.value for gate in ORDERED_PROPOSAL_GATES)
+        and rejection.task_id == proposal.task_id
+        and rejection.repository_id == proposal.repository_id
+        and rejection.proposal_id == proposal.proposal_id
+        and rejection.receipt_id == receipt.receipt_id
+        and rejection.repository_tree_id == proposal.repository_tree_id
+        and rejection.objective_id == proposal.objective_id
+        and rejection.baseline_id == proposal.baseline_id
+        and rejection.policy_id == policy.policy_id
+        and rejection.diff_digest == proposal.diff_digest
+        and rejection.allowed_paths == policy.allowed_paths
+        and rejection.task_owned_paths == policy.task_owned_paths
+        and rejection.changed_paths == proposal.changed_paths
+        and result.proof_authoritative is False
+        and result.code_proof_authoritative is False
+        and result.completion_authoritative is False
+        and result.merge_eligible is False
+        and result.authoritative is False
+        and result.freshness_authoritative is False
+    )
+
+    terminal_states = {
+        "complete",
+        "completed",
+        "passed",
+        "success",
+        "succeeded",
+        "verified",
+        "verified_complete",
+    }
+    producer_values = [payload(item) for item in producing_tasks]
+    producer_ids = [
+        str(item.get("task_id", item.get("id", "")) or "").strip()
+        for item in producer_values
+    ]
+    producer_population_complete = bool(
+        len(producer_ids)
+        == len(NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_PRODUCING_TASK_IDS)
+        and len(producer_ids) == len(set(producer_ids))
+        and set(producer_ids)
+        == set(NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_PRODUCING_TASK_IDS)
+        and all(
+            normalized(item.get("status", item.get("state", "")))
+            in terminal_states
+            for item in producer_values
+        )
+    )
+
+    expected_criteria = {
+        normalized(item)
+        for item in NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA
+    }
+    evidence_values: list[dict[str, Any]] = []
+    receipt_ids_by_criterion: dict[str, set[str]] = {}
+    evidence_criteria: list[str] = []
+    evidence_bound = True
+    for item in evidence:
+        record = payload(item)
+        source_value = record.get("evidence", record)
+        source = (
+            dict(source_value)
+            if isinstance(source_value, Mapping)
+            else record
+        )
+        evidence_values.append(source)
+        criterion = normalized(
+            source.get(
+                "acceptance_criterion",
+                source.get("criterion", source.get("acceptance", "")),
+            )
+        )
+        evidence_criteria.append(criterion)
+        receipt_id = str(
+            source.get(
+                "provenance_cid",
+                source.get(
+                    "receipt_id",
+                    source.get("evidence_id", source.get("receipt_cid", "")),
+                ),
+            )
+            or ""
+        ).strip()
+        if criterion and receipt_id:
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(
+                receipt_id
+            )
+        validation = source.get("validation_receipt")
+        validation = validation if isinstance(validation, Mapping) else {}
+        evidence_bound = bool(
+            evidence_bound
+            and source.get("validation_passed") is True
+            and source.get("repository_tree")
+            == proposal.repository_tree_id
+            and normalized(validation.get("status")) in {"passed", "verified"}
+            and validation.get("requirement_id")
+            == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID
+            and validation.get("objective_id")
+            == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
+            and validation.get("repository_id") == proposal.repository_id
+            and validation.get("tree_id") == proposal.repository_tree_id
+            and validation.get("validation_policy_id") == policy.policy_id
+            and validation.get("operational_receipt_id")
+            == (rejection.evidence_id if rejection is not None else "")
+        )
+    evidence_population_complete = bool(
+        operational_complete
+        and evidence_bound
+        and len(evidence_values) == len(expected_criteria)
+        and len(evidence_criteria) == len(set(evidence_criteria))
+        and set(evidence_criteria) == expected_criteria
+        and all(
+            len(receipt_ids_by_criterion.get(criterion, set())) == 1
+            for criterion in expected_criteria
+        )
+    )
+
+    coverage_projection = getattr(coverage, "completion_gate_evidence", None)
+    if callable(coverage_projection):
+        try:
+            projected = coverage_projection(
+                NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
+            )
+        except (TypeError, ValueError):
+            projected = {}
+        coverage_value = dict(projected) if isinstance(projected, Mapping) else {}
+    else:
+        coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+
+    def row_criterion(row: Mapping[str, Any]) -> str:
+        return normalized(
+            row.get(
+                "criterion",
+                row.get(
+                    "acceptance_criterion",
+                    row.get("acceptance", ""),
+                ),
+            )
+        )
+
+    def implementation_bound(row: Mapping[str, Any]) -> bool:
+        for name in (
+            "implementation",
+            "implementation_binding",
+            "changed_files",
+            "predicted_files",
+            "ast_symbols",
+            "interfaces",
+        ):
+            value = row.get(name)
+            if isinstance(value, str) and value.strip():
+                return True
+            if (
+                isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+                and any(str(item or "").strip() for item in value)
+            ):
+                return True
+        return False
+
+    def validation_ids(row: Mapping[str, Any]) -> set[str]:
+        raw = row.get(
+            "validation_receipt_ids",
+            row.get("validation_receipt_id", ()),
+        )
+        if isinstance(raw, str):
+            raw = (raw,)
+        if not (
+            isinstance(raw, Sequence)
+            and not isinstance(raw, (str, bytes, bytearray))
+        ):
+            return set()
+        return {
+            str(item or "").strip()
+            for item in raw
+            if str(item or "").strip()
+        }
+
+    row_keys = [
+        row_criterion(row) for row in rows if isinstance(row, Mapping)
+    ]
+    coverage_bound = bool(
+        evidence_population_complete
+        and coverage_value.get("verified") is True
+        and coverage_value.get("repository_tree")
+        == proposal.repository_tree_id
+        and coverage_value.get(
+            "repository_id", proposal.repository_id
+        )
+        == proposal.repository_id
+        and len(row_keys) == len(set(row_keys)) == len(expected_criteria)
+        and set(row_keys) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and implementation_bound(row)
+            and len(validation_ids(row)) == 1
+            and validation_ids(row)
+            == receipt_ids_by_criterion.get(row_criterion(row), set())
+            for row in rows
+        )
+    )
+    if not coverage_bound:
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "passed": False,
+            "reason_codes": [
+                (
+                    "validation_evidence_population_incomplete"
+                    if not evidence_population_complete
+                    else "coverage_validation_receipt_unbound"
+                )
+            ],
+        }
+
+    expected_binding = {
+        "repository_id": proposal.repository_id,
+        "tree_id": proposal.repository_tree_id,
+        "analyzer_version": (
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_CONFIGURATION_REVISION
+        ),
+        "objective_revision": (
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION
+        ),
+    }
+    health_value = payload(analyzer_health)
+    health_binding_value = health_value.get("binding")
+    health_binding = (
+        {
+            key: health_binding_value.get(key)
+            for key in expected_binding
+        }
+        if isinstance(health_binding_value, Mapping)
+        else {}
+    )
+    health_valid = bool(
+        health_binding == expected_binding
+        and normalized(health_value.get("status")) == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+    )
+    if not health_valid:
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    quorum_value = payload(exhaustion_quorum)
+    quorum_binding_value = quorum_value.get("binding")
+    quorum_binding = (
+        {
+            key: quorum_binding_value.get(key)
+            for key in expected_binding
+        }
+        if isinstance(quorum_binding_value, Mapping)
+        else {}
+    )
+    members_value = quorum_value.get("members")
+    members = members_value if isinstance(members_value, list) else []
+
+    def independent_member_field(name: str) -> bool:
+        values = [
+            str(member.get(name) or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        return bool(
+            len(values) == len(members)
+            and all(values)
+            and len(values) == len(set(values))
+        )
+
+    quorum_valid = bool(
+        quorum_value.get("required_members")
+        == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("member_count", len(members)) == len(members)
+        and len(members)
+        == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("satisfied") is True
+        and quorum_value.get("quorum_met", quorum_value.get("satisfied")) is True
+        and health_valid
+        and quorum_binding == expected_binding == health_binding
+        and independent_member_field("member_id")
+        and independent_member_field("evidence_channel")
+        and independent_member_field("receipt_cid")
+        and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and normalized(member.get("scan_mode")) == "exhaustive"
+            and fresh(member.get("finished_at"))
+            and isinstance(member.get("binding"), Mapping)
+            and {
+                key: member["binding"].get(key)
+                for key in expected_binding
+            }
+            == expected_binding
+            for member in members
+        )
+    )
+    if not quorum_valid:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    return evaluate_goal_completion(
+        current_state=current_state,
+        acceptance_criteria=(
+            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA
+        ),
+        evidence=evidence,
+        tasks_complete=bool(
+            tasks_complete
+            and producer_population_complete
+            and operational_complete
+            and not child_goals
+        ),
+        repository_tree=proposal.repository_tree_id,
+        repository_id=proposal.repository_id,
+        now=current,
+        freshness_seconds=float(freshness_seconds),
+        clock_skew_seconds=float(clock_skew_seconds),
+        coverage=coverage_value,
+        analyzer_health=health_value,
+        exhaustion_quorum=quorum_value,
+        child_goals=(),
+        analysis_inconclusive=analysis_inconclusive,
+        blocked_reason=blocked_reason,
+        require_completion_gate=True,
+    )
 
 
 _SHELL_META_RE = re.compile(r"(?:[;&|<>`]|[$]\(|\r|\n)")
@@ -2016,6 +2681,11 @@ class ProposalValidator:
             "proof_authoritative",
             "code_proof_authoritative",
             "completion_authoritative",
+            "merge_eligible",
+            "merge_authoritative",
+            "freshness_authoritative",
+            "authoritative",
+            "authority",
             "completed",
             "proof_complete",
         ):
@@ -2056,6 +2726,41 @@ class ProposalValidator:
                 ProposalGate.PATCH,
                 "candidate diff has no observable content or path change",
             )
+        for entry in entries:
+            old_required = entry.change_kind in {
+                DiffChangeKind.MODIFY,
+                DiffChangeKind.DELETE,
+                DiffChangeKind.RENAME,
+                DiffChangeKind.COPY,
+                DiffChangeKind.TYPE_CHANGE,
+            }
+            new_required = entry.change_kind in {
+                DiffChangeKind.ADD,
+                DiffChangeKind.MODIFY,
+                DiffChangeKind.RENAME,
+                DiffChangeKind.COPY,
+                DiffChangeKind.TYPE_CHANGE,
+            }
+            old_forbidden = entry.change_kind is DiffChangeKind.ADD
+            new_forbidden = entry.change_kind is DiffChangeKind.DELETE
+            malformed_shape = bool(
+                entry.change_kind is DiffChangeKind.UNKNOWN
+                or (old_required and not entry.old_path)
+                or (new_required and not entry.new_path)
+                or (old_forbidden and entry.old_path)
+                or (new_forbidden and entry.new_path)
+                or (
+                    entry.change_kind is DiffChangeKind.RENAME
+                    and entry.old_path == entry.new_path
+                )
+            )
+            if malformed_shape:
+                add(
+                    ProposalFindingCode.UNSAFE_PATH,
+                    ProposalGate.PATH,
+                    "candidate operation has an unsafe or incomplete path shape",
+                    entry.new_path or entry.old_path,
+                )
 
         if proposal.operations:
             unmatched = list(entries)
@@ -2185,6 +2890,16 @@ class ProposalValidator:
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
                         "candidate path is outside the task-owned scope",
+                        path,
+                    )
+                if not any(
+                    _path_matches(path, owned)
+                    for owned in policy.task_owned_paths
+                ):
+                    add(
+                        ProposalFindingCode.PATH_OUTSIDE_SCOPE,
+                        ProposalGate.PATH,
+                        "candidate path is outside the immutable task-owned scope",
                         path,
                     )
             if entry.binary and not policy.allow_binary:
@@ -2341,7 +3056,14 @@ StrictProposalValidator = ProposalValidator
 
 __all__ = [
     "ImplementationProposal",
+    "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA",
+    "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION",
+    "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_CONFIGURATION_REVISION",
+    "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID",
+    "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION",
+    "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_PRODUCING_TASK_IDS",
     "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID",
+    "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "ORDERED_PROPOSAL_GATES",
     "ParsedPatchFile",
     "PROPOSAL_GATE_EVIDENCE_SCHEMA",
