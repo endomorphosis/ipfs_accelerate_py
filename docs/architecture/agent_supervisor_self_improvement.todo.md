@@ -266,7 +266,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-015 Make resource admission adaptive across supervisor stages
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: parallelism
