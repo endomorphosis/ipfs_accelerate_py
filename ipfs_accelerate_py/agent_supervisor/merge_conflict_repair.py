@@ -180,7 +180,7 @@ def resolve_submodule_gitlink_conflicts(
 
         # Attempt to sync the submodule to its resolved commit
         update = _run_git(repo_root, [
-            "submodule", "update", "--init", "--recursive", "--", relative,
+            "submodule", "update", "--init", "--", relative,
         ])
         results.append({
             "path": relative,

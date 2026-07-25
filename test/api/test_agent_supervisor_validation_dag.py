@@ -201,6 +201,46 @@ def test_rejected_proposal_closes_dispatch_and_proves_exact_g100_requirement(
     )
 
 
+def test_accepted_proposal_default_runner_uses_validation_python(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE",
+        raising=False,
+    )
+    validation = validate_implementation_proposal(
+        _proposal((_source_change(),)),
+        policy=_policy(),
+    )
+    validation_id = "strict-python-runtime"
+    command = ValidationCommand(
+        command="python -m pytest --version",
+        stage=ValidationStage.TARGETED,
+        impact_paths=("pkg/source.py",),
+        validation_id=validation_id,
+        cacheable=False,
+    )
+    graph = ImpactDependencyGraph(
+        repository_tree_id=TREE_ID,
+        dependencies={"pkg/source.py": ()},
+        validation_targets={validation_id: ("pkg/source.py",)},
+    )
+
+    report = ValidationScheduler(max_workers=1).run_validated(
+        validation,
+        (command,),
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        dependency_state="fixture",
+    )
+
+    assert validation.accepted is True
+    assert report["passed"] is True, report
+    assert report["results"][0]["returncode"] == 0
+    assert "pytest " in report["results"][0]["output"]
+
+
 def _failing_transitive_report(
     tmp_path: Path,
 ) -> tuple[dict[str, object], list[str]]:
@@ -1227,6 +1267,39 @@ def test_rejected_proposal_closes_every_proposal_bound_scheduler_entrypoint(
         "merge_eligible",
     ):
         assert report[non_authority_field] is False
+
+
+def test_impact_selected_runner_receives_sanitized_validation_environment(
+    tmp_path: Path,
+) -> None:
+    environments: list[dict[str, str]] = []
+
+    def runner(
+        *,
+        environment: dict[str, str],
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        environments.append(dict(environment))
+        return {"returncode": 0, "output": "passed"}
+
+    report = ValidationScheduler(max_workers=1).run_impact_selected(
+        _impact_checks(),
+        workspace_path=tmp_path,
+        impact_index=_ast_impact_index(),
+        changed_symbols=(_changed_public_symbol(),),
+        acceptance_criteria=(ACCEPTANCE_CRITERION,),
+        environment={"UNSAFE_PARENT_SECRET": "must-not-propagate"},
+        dependency_state="fixture",
+        runner=runner,
+    )
+
+    assert report["passed"] is True, report
+    assert environments
+    assert all(
+        environment.get("IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE")
+        and "UNSAFE_PARENT_SECRET" not in environment
+        for environment in environments
+    )
 
 
 def test_ast_impact_index_selects_transitive_consumer_outside_changed_path() -> None:

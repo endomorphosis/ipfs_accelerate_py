@@ -6043,6 +6043,11 @@ class PortalImplementationDaemon:
 
     def _initialize_worktree_submodules(self, worktree_path: Path, *, branch_name: str = "") -> None:
         init_failures: list[dict[str, Any]] = []
+        # A removed task worktree can leave a shared submodule gitdir's
+        # ``core.worktree`` pointing at the deleted checkout. Repair those
+        # pointers before deciding that the canonical local checkout is
+        # unavailable and falling back to a network-backed submodule update.
+        self._repair_stale_submodule_worktree_configs(self.repo_root)
         for relative in self.worktree_submodule_paths:
             if self._create_local_submodule_worktree(worktree_path, relative, branch_name=branch_name):
                 target = worktree_path / relative
@@ -6057,9 +6062,17 @@ class PortalImplementationDaemon:
                     if not validation.get("valid"):
                         init_failures.append(validation)
                 continue
+            target = worktree_path / relative
+            if self._is_git_worktree(target):
+                validation = self._validate_submodule_init(target, relative)
+                if not validation.get("valid"):
+                    init_failures.append(validation)
+                continue
             if self._worktree_declares_submodule(worktree_path, relative):
-                result = self._run_git(["submodule", "update", "--init", "--recursive", "--", relative], cwd=worktree_path)
-                target = worktree_path / relative
+                # Initialize exactly the configured dependency. Recursing here
+                # can follow repository cycles (datasets -> kit -> accelerate
+                # -> datasets) and fail on unrelated, deeply nested gitlinks.
+                result = self._run_git(["submodule", "update", "--init", "--", relative], cwd=worktree_path)
                 if self._is_git_worktree(target):
                     self._initialize_nested_worktree_submodules(
                         target,

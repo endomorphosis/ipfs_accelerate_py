@@ -16760,6 +16760,96 @@ def test_implementation_daemon_repairs_stale_submodule_worktree_config(tmp_path)
     assert _git(submodule, "status", "--short") == ""
 
 
+def test_implementation_daemon_repairs_stale_submodule_source_before_setup(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/stale-submodule-source"
+    worktree = repo / "worktrees" / "stale-submodule-source"
+    _git(repo, "worktree", "add", "-b", branch_name, str(worktree), "main")
+    submodule_git_dir = Path(_git(submodule, "rev-parse", "--absolute-git-dir"))
+    stale_worktree = "../../../../../missing/worktree/libs/child"
+    _git(
+        repo,
+        "config",
+        "--file",
+        str(submodule_git_dir / "config"),
+        "core.worktree",
+        stale_worktree,
+    )
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    calls: list[list[str]] = []
+    original_run_git = daemon._run_git
+
+    def tracking_run_git(args: list[str], *, cwd: Path):
+        calls.append(list(args))
+        return original_run_git(args, cwd=cwd)
+
+    daemon._run_git = tracking_run_git  # type: ignore[method-assign]
+    daemon._initialize_worktree_submodules(
+        worktree,
+        branch_name=branch_name,
+    )
+
+    target = worktree / "libs" / "child"
+    assert daemon._is_git_worktree(target)
+    assert _git(submodule, "status", "--short") == ""
+    assert not any(
+        command[:2] == ["submodule", "update"] for command in calls
+    )
+
+
+def test_implementation_daemon_fallback_initializes_only_configured_submodule(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    worktree = tmp_path / "worktree"
+    repo.mkdir()
+    worktree.mkdir()
+    (worktree / ".gitmodules").write_text(
+        (
+            '[submodule "external/dependency"]\n'
+            "    path = external/dependency\n"
+            "    url = ../dependency\n"
+        ),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["external/dependency"],
+    )
+    calls: list[list[str]] = []
+
+    def fake_run_git(args: list[str], *, cwd: Path):
+        calls.append(list(args))
+        return subprocess.CompletedProcess(["git", *args], 0, "", "")
+
+    daemon._run_git = fake_run_git  # type: ignore[method-assign]
+    daemon._initialize_worktree_submodules(worktree)
+
+    assert calls == [
+        [
+            "submodule",
+            "update",
+            "--init",
+            "--",
+            "external/dependency",
+        ]
+    ]
+
+
 def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
