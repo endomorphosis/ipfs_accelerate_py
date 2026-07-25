@@ -13,6 +13,7 @@ import sys
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -39,12 +40,15 @@ from .scheduler_metrics import (
     write_scheduler_snapshot,
 )
 from .resource_scheduler import (
+    ADAPTIVE_STAGES,
     AdmissionDecision,
     HostResourceSnapshot,
     LaneResourceRequirements,
+    ResourceAdmissionLease,
     ResourcePolicy,
     ResourceScheduleSnapshot,
     ResourceScheduler,
+    normalize_adaptive_stage,
     sample_host_resources,
 )
 from .todo_daemon.supervisor import active_codex_exec_workers
@@ -344,11 +348,16 @@ class BundleLaneSpec:
     conflict_decisions: list[dict[str, Any]] = field(default_factory=list)
     conflict_surface: dict[str, Any] = field(default_factory=dict)
     resource_class: str = "cpu-small"
+    resource_stage: str = "analysis"
     required_capabilities: list[str] = field(default_factory=list)
     llm_provider: str = ""
     required_context_tokens: int = 0
     token_budget: int = 0
     max_provider_latency_ms: int = 0
+    memory_bytes: int = 0
+    gpu_memory_bytes: int = 0
+    disk_bytes: int = 0
+    process_slots: int = 1
     optimizer_bundle_cid: str = ""
     optimizer_policy_id: str = ""
     optimizer_execution_wave: int = 0
@@ -447,6 +456,12 @@ class RunningBundleLane:
     grant: Any
     handle: Any
     started_at: str
+    resource_lease: ResourceAdmissionLease | None = None
+    resource_stage_started_at: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.resource_stage_started_at:
+            self.resource_stage_started_at = self.started_at
 
     @property
     def pid(self) -> int | None:
@@ -460,7 +475,21 @@ class RunningBundleLane:
                 "state": "running",
                 "pid": self.pid,
                 "started_at": self.started_at,
+                "resource_stage_started_at": self.resource_stage_started_at,
                 "lease": self.grant.to_dict(),
+                "resource_lease": (
+                    {
+                        "lease_id": self.resource_lease.lease_id,
+                        "lane_id": self.resource_lease.lane_id,
+                        "stage": self.resource_lease.requirement.stage,
+                        "resource_class": self.resource_lease.resource_class,
+                        "resource_pool": self.resource_lease.resource_pool,
+                        "provider_id": self.resource_lease.provider_id,
+                        "acquired_at_ms": self.resource_lease.acquired_at_ms,
+                    }
+                    if self.resource_lease is not None
+                    else None
+                ),
             }
         )
         return payload
@@ -472,7 +501,13 @@ class RunningBundleLane:
                 "state": "running",
                 "pid": self.pid,
                 "started_at": self.started_at,
+                "resource_stage_started_at": self.resource_stage_started_at,
                 "lease": self.grant.to_dict(),
+                "resource_lease": (
+                    self.resource_lease.to_dict()
+                    if self.resource_lease is not None
+                    else None
+                ),
             }
         )
         return payload
@@ -592,6 +627,16 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
         return max(values, default=0)
 
     return {
+        "resource_stage": str(
+            _first_nonempty(
+                sources,
+                "resource_stage",
+                "supervisor_stage",
+                "stage",
+                "active_phase",
+            )
+            or "analysis"
+        ),
         "resource_class": str(
             _first_nonempty(sources, "resource_class", "worker_resource_class") or "cpu-small"
         ),
@@ -623,6 +668,26 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
             "max_provider_latency_ms",
             "max_latency_ms",
             "latency_budget_ms",
+        ),
+        "memory_bytes": maximum(
+            "memory_bytes",
+            "required_memory_bytes",
+            "estimated_memory_bytes",
+        ),
+        "gpu_memory_bytes": maximum(
+            "gpu_memory_bytes",
+            "required_gpu_memory_bytes",
+            "vram_bytes",
+            "required_vram_bytes",
+        ),
+        "disk_bytes": maximum(
+            "disk_bytes",
+            "required_disk_bytes",
+            "estimated_disk_bytes",
+        ),
+        "process_slots": max(
+            1,
+            maximum("process_slots", "required_process_slots", "worker_slots"),
         ),
     }
 
@@ -1933,11 +1998,15 @@ class DynamicBundleScheduler:
             policy_values = dict(resource_policy or {}) if isinstance(resource_policy, dict) else None
             if policy_values is not None:
                 policy_values["max_lanes"] = self.max_lanes
+                policy_values.setdefault("adaptive_enabled", True)
                 policy = ResourcePolicy.from_mapping(policy_values)
             elif isinstance(resource_policy, ResourcePolicy):
                 policy = replace(resource_policy, max_lanes=self.max_lanes)
             else:
-                policy = ResourcePolicy(max_lanes=self.max_lanes)
+                policy = ResourcePolicy(
+                    max_lanes=self.max_lanes,
+                    adaptive_enabled=True,
+                )
             self.resource_scheduler = ResourceScheduler(policy)
         self._host_resource_source = host_resource_source or sample_host_resources
         self._provider_capacity_source = provider_capacity_source
@@ -2026,12 +2095,101 @@ class DynamicBundleScheduler:
         payload.update(
             {
                 "lane_id": lane.task_cid or lane.bundle_key,
+                "stage": lane.resource_stage,
                 "provider_id": lane.llm_provider,
                 "context_tokens": lane.required_context_tokens,
                 "max_provider_latency_ms": lane.max_provider_latency_ms,
+                "memory_bytes": lane.memory_bytes,
+                "gpu_memory_bytes": lane.gpu_memory_bytes,
+                "disk_bytes": lane.disk_bytes,
+                "process_slots": lane.process_slots,
+                "critical_path_length": lane.critical_path_length,
+                "downstream_unlock_value": lane.downstream_unlock_value,
+                "queue_age_ms": max(0, lane.age_seconds) * 1_000,
+                "merge_age_ms": (
+                    max(0, lane.age_seconds) * 1_000
+                    if normalize_adaptive_stage(lane.resource_stage) == "merge"
+                    else 0
+                ),
+                "priority": lane.objective_priority,
             }
         )
         return LaneResourceRequirements.from_mapping(payload)
+
+    @staticmethod
+    def _resource_stage_for_phase(phase: Any) -> str:
+        """Translate durable daemon phases into adaptive resource pools.
+
+        The implementation daemon predates the resource scheduler and uses
+        operational gerunds and queue names in its heartbeat.  Keep that
+        compatibility translation at this boundary so the scheduler only
+        receives canonical pool identities.  Empty, idle, and unknown phases
+        intentionally return an empty string: they must not silently move a
+        live lease out of its last observed working stage.
+        """
+
+        raw = str(phase or "").strip().lower()
+        raw = raw.replace(" ", "_").replace("-", "_")
+        aliases = {
+            "implementing": "inference",
+            "implementation": "inference",
+            "validating": "validation",
+            "merge_queue": "merge",
+            "merge_reconciliation": "merge",
+            "reconciliation": "merge",
+            "merge_resolver": "inference",
+            "resolving": "inference",
+            "cleanup": "persistence",
+            "objective_refill": "analysis",
+            "codebase_refill": "analysis",
+        }
+        normalized = normalize_adaptive_stage(aliases.get(raw, raw))
+        return normalized if normalized in set(ADAPTIVE_STAGES) - {"execution"} else ""
+
+    def _transition_running_resource_stages(
+        self,
+        *,
+        host: HostResourceSnapshot | Mapping[str, Any],
+        providers: Any,
+    ) -> None:
+        """Atomically follow durable child-stage heartbeat transitions.
+
+        A running bundle owns one process slot throughout its lifetime, but
+        provider/GPU/disk and per-stage capacity must follow the work it is
+        actually performing. Failed transitions retain the prior reservation
+        and are retried on the next reconciliation cycle.
+        """
+
+        canonical_stages = set(ADAPTIVE_STAGES)
+        for task_cid, running in list(self._running.items()):
+            lease = running.resource_lease
+            if lease is None:
+                continue
+            event = self._lane_phase_event(running.spec)
+            observed = self._resource_stage_for_phase(event.get("phase"))
+            if observed not in canonical_stages:
+                continue
+            if observed == lease.requirement.stage:
+                continue
+            next_spec = replace(running.spec, resource_stage=observed)
+            next_requirement = self._lane_resource_requirement(next_spec)
+            decision, next_lease = self.resource_scheduler.transition(
+                lease,
+                next_requirement,
+                host=host,
+                providers=providers,
+                path=self.state_root,
+            )
+            if not decision.admitted or next_lease is None:
+                continue
+            self.resource_scheduler.record_stage_completion(
+                lease.requirement.stage,
+                duration_ms=self._running_stage_duration_ms(running),
+                accepted=False,
+            )
+            running.spec = next_spec
+            running.resource_lease = next_lease
+            running.resource_stage_started_at = utc_now()
 
     def _plan_source_revision(self, paths: Sequence[Path]) -> tuple[tuple[str, int, int], ...]:
         """Return the cheap source revision that makes a lane plan reusable."""
@@ -2443,6 +2601,26 @@ class DynamicBundleScheduler:
                 failure_class="blocked",
             )
 
+    @staticmethod
+    def _running_stage_duration_ms(running: RunningBundleLane) -> int:
+        """Return a non-negative duration for the lane's current resource stage."""
+
+        try:
+            started = datetime.fromisoformat(
+                (
+                    running.resource_stage_started_at
+                    or running.started_at
+                ).strip().replace("Z", "+00:00")
+            )
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+        except (AttributeError, TypeError, ValueError):
+            return 0
+        return max(
+            0,
+            int((datetime.now(timezone.utc) - started.astimezone(timezone.utc)).total_seconds() * 1_000),
+        )
+
     def _reconcile_untracked_terminal_leases(
         self,
         coordinator: LeaseCoordinator,
@@ -2620,6 +2798,14 @@ class DynamicBundleScheduler:
                     coordinator.release(running.grant, reason="worker drained or exited")
             except LeaseError:
                 pass
+            if running.resource_lease is not None:
+                self.resource_scheduler.release(running.resource_lease)
+                self.resource_scheduler.record_stage_completion(
+                    running.resource_lease.requirement.stage,
+                    duration_ms=self._running_stage_duration_ms(running),
+                    accepted=disposition == "completed",
+                    cancelled=not bool(disposition),
+                )
             del self._running[task_cid]
             reaped.append(task_cid)
         return reaped
@@ -2761,6 +2947,14 @@ class DynamicBundleScheduler:
                 }
             )
             events.append(lane_event)
+        if self._last_resource_snapshot is not None:
+            events.append(
+                {
+                    "type": "resource_schedule_observed",
+                    "timestamp": projection_timestamp,
+                    "resource_schedule": self._last_resource_snapshot.to_dict(),
+                }
+            )
         return scheduler_snapshot(events, now=projection_timestamp)
 
     def _write_live_manifest(
@@ -3071,13 +3265,48 @@ class DynamicBundleScheduler:
                 except Exception:
                     logger.exception("Provider capacity sampling failed")
                     provider_capacities = ()
+                self._transition_running_resource_stages(
+                    host=host_resources,
+                    providers=provider_capacities,
+                )
                 resource_requirements = {
                     lane.task_cid: self._lane_resource_requirement(lane)
                     for lane in resource_candidates
                 }
+                # Evaluate the complete ready set once. Adaptive fairness may
+                # reorder decisions, so all consumers address decisions by
+                # canonical lane identity rather than positional coincidence.
+                candidate_schedule = self.resource_scheduler.schedule(
+                    resource_requirements.values(),
+                    host=host_resources,
+                    providers=provider_capacities,
+                    path=self.state_root,
+                    active_workers=len(self._running),
+                )
                 confirmed_requirements: list[LaneResourceRequirements] = []
                 resource_cycle_decisions: list[AdmissionDecision] = []
-                for lane in registered:
+                admission_slot_reopened = False
+                candidate_rank = {
+                    decision.lane_id: index
+                    for index, decision in enumerate(candidate_schedule.decisions)
+                }
+                ordered_registered = [
+                    lane
+                    for _index, lane in sorted(
+                        enumerate(registered),
+                        key=lambda item: (
+                            (
+                                0,
+                                candidate_rank[
+                                    resource_requirements[item[1].task_cid].lane_id
+                                ],
+                            )
+                            if item[1].task_cid in resource_requirements
+                            else (1, item[0])
+                        ),
+                    )
+                ]
+                for lane in ordered_registered:
                     if lane.task_cid in self._running:
                         decisions.append({
                             "task_cid": lane.task_cid,
@@ -3142,18 +3371,34 @@ class DynamicBundleScheduler:
                         })
                         continue
                     requirement = resource_requirements.get(lane.task_cid)
-                    if requirement is None:
-                        admission = None
-                    else:
-                        candidate_schedule = self.resource_scheduler.schedule(
-                            [*confirmed_requirements, requirement],
+                    admission = (
+                        candidate_schedule.decision_for(requirement.lane_id)
+                        if requirement is not None
+                        else None
+                    )
+                    resource_decision_index = len(resource_cycle_decisions)
+                    if admission is not None:
+                        resource_cycle_decisions.append(admission)
+                    resource_lease: ResourceAdmissionLease | None = None
+                    if (
+                        requirement is not None
+                        and admission_slot_reopened
+                        and (admission is None or not admission.admitted)
+                    ):
+                        # A coordination lease race after the batch preview
+                        # returns its resource slot immediately. Recheck later
+                        # candidates so a single lost claim cannot leave the
+                        # pool idle until the next polling cycle.
+                        admission, resource_lease = self.resource_scheduler.acquire(
+                            requirement,
                             host=host_resources,
                             providers=provider_capacities,
                             path=self.state_root,
-                            active_workers=len(self._running),
                         )
-                        admission = candidate_schedule.decisions[-1]
-                        resource_cycle_decisions.append(admission)
+                        if resource_decision_index == len(resource_cycle_decisions):
+                            resource_cycle_decisions.append(admission)
+                        else:
+                            resource_cycle_decisions[resource_decision_index] = admission
                     if admission is None or not admission.admitted:
                         evidence = admission.to_dict() if admission is not None else {}
                         reasons = list(admission.reasons) if admission is not None else ["resource_capacity"]
@@ -3167,12 +3412,39 @@ class DynamicBundleScheduler:
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
                         continue
+                    # A schedule is an explainable preview; acquire is the
+                    # atomic reservation boundary. It rechecks live active
+                    # leases so concurrent supervisor stages cannot over-admit.
+                    if resource_lease is None:
+                        live_admission, resource_lease = self.resource_scheduler.acquire(
+                            requirement,
+                            host=host_resources,
+                            providers=provider_capacities,
+                            path=self.state_root,
+                        )
+                        if resource_lease is None:
+                            admission_slot_reopened = True
+                            resource_cycle_decisions[-1] = live_admission
+                            decisions.append({
+                                "task_cid": lane.task_cid,
+                                "bundle_key": lane.bundle_key,
+                                "decision": "deferred",
+                                "reason": live_admission.reason or "resource_capacity",
+                                "backpressure_reasons": list(live_admission.reasons),
+                                "resource_admission": live_admission.to_dict(),
+                                "snapshot_id": decision_snapshot.snapshot_id,
+                            })
+                            continue
+                        admission = live_admission
+                        resource_cycle_decisions[-1] = admission
                     grant = coordinator.claim_ready(
                         self.claimant_did,
                         requested_lease_ms=self.lease_ms,
                         eligible_task_cids=(lane.task_cid,),
                     )
                     if grant is None:
+                        self.resource_scheduler.release(resource_lease)
+                        admission_slot_reopened = True
                         resource_cycle_decisions[-1] = replace(
                             admission,
                             admitted=False,
@@ -3194,6 +3466,8 @@ class DynamicBundleScheduler:
                     try:
                         handle = self._launcher(lane, grant)
                     except Exception:
+                        self.resource_scheduler.release(resource_lease)
+                        admission_slot_reopened = True
                         try:
                             coordinator.release(grant, reason="launch failed")
                         except LeaseError:
@@ -3220,6 +3494,7 @@ class DynamicBundleScheduler:
                         grant=grant,
                         handle=handle,
                         started_at=utc_now(),
+                        resource_lease=resource_lease,
                     )
                     confirmed_requirements.append(requirement)
                     launched.append(lane.task_cid)
@@ -3232,13 +3507,6 @@ class DynamicBundleScheduler:
                         "snapshot_id": decision_snapshot.snapshot_id,
                     })
 
-                resource_snapshot = self.resource_scheduler.schedule(
-                    confirmed_requirements,
-                    host=host_resources,
-                    providers=provider_capacities,
-                    path=self.state_root,
-                    active_workers=len(self._running) - len(confirmed_requirements),
-                )
                 resource_backpressure = tuple(
                     dict.fromkeys(
                         reason
@@ -3247,11 +3515,24 @@ class DynamicBundleScheduler:
                         for reason in decision.reasons
                     )
                 )
+                resource_backpressure_counts = {
+                    reason: sum(
+                        1
+                        for decision in resource_cycle_decisions
+                        if not decision.admitted and reason in decision.reasons
+                    )
+                    for reason in resource_backpressure
+                }
                 self._last_resource_snapshot = replace(
-                    resource_snapshot,
+                    candidate_schedule,
                     decisions=tuple(resource_cycle_decisions),
                     admitted_count=len(confirmed_requirements),
                     backpressure_reasons=resource_backpressure,
+                    adaptive_metrics=self.resource_scheduler.metrics_snapshot(
+                        observed_at_ms=candidate_schedule.observed_at_ms,
+                    ),
+                    active_lease_count=len(self.resource_scheduler.active_leases),
+                    backpressure_counts=resource_backpressure_counts,
                 )
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
@@ -3344,6 +3625,11 @@ class DynamicBundleScheduler:
                         coordinator.release(running.grant, reason="scheduler stopped")
                 except LeaseError:
                     pass
+                if running.resource_lease is not None:
+                    self.resource_scheduler.cancel(
+                        running.resource_lease,
+                        reason="scheduler_stopped",
+                    )
             self._running.clear()
             projection = coordinator.list_tasks()
         try:

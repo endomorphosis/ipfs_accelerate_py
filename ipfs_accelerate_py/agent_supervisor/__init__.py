@@ -1135,6 +1135,11 @@ from .adaptive_goal_refiner import (
 )
 
 __all__ = [
+    "RESOURCE_ADMISSION_EVENT_TYPES",
+    "RESOURCE_ADMISSION_METRICS_SCHEMA",
+    "RESOURCE_ADMISSION_METRICS_SCHEMA_VERSION",
+    "RESOURCE_ADMISSION_STAGES",
+    "project_resource_admission_metrics",
     "RESOURCE_CLASSES",
     "TASK_QUALITY_EVALUATOR_VERSION",
     "TASK_QUALITY_SCHEMA",
@@ -1940,13 +1945,17 @@ __all__ = [
     "normalize_prover_resource_class",
     "AdmissionDecision",
     "ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID",
+    "ADAPTIVE_STAGE_PROFILES",
+    "ADAPTIVE_STAGES",
     "ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA",
     "AdaptiveResourceMetrics",
     "AdaptiveStageCapacity",
     "AdaptiveStageMetrics",
+    "AdaptiveStageProfile",
     "AdaptiveThroughputBenchmarkReceipt",
     "AdaptiveThroughputRun",
     "ChildResourceLimits",
+    "CANONICAL_ADAPTIVE_STAGES",
     "DEFAULT_RESOURCE_CLASSES",
     "FormalVerificationResourceScheduler",
     "GoalRuntimeResourceScheduler",
@@ -1972,6 +1981,9 @@ __all__ = [
     "ScheduledProofWorkRequest",
     "ScheduledProofWorkResult",
     "SupervisorResourceLeaseBudget",
+    "STAGE_RESOURCE_PROFILES",
+    "StageResourceProfile",
+    "adaptive_stage_profile",
     "normalize_proof_work_kind",
     "normalize_resource_class",
     "resource_class_for_work_kind",
@@ -2506,6 +2518,16 @@ __all__ = [
 
 def __getattr__(name: str):
     if name in {
+        "RESOURCE_ADMISSION_EVENT_TYPES",
+        "RESOURCE_ADMISSION_METRICS_SCHEMA",
+        "RESOURCE_ADMISSION_METRICS_SCHEMA_VERSION",
+        "RESOURCE_ADMISSION_STAGES",
+        "project_resource_admission_metrics",
+    }:
+        from . import scheduler_metrics
+
+        return getattr(scheduler_metrics, name)
+    if name in {
         "BUNDLE_INDEX_KIND",
         "PROOF_ATTESTATION_KIND",
         "PROOF_ATTESTATION_STORE_SCHEMA",
@@ -2778,13 +2800,17 @@ def __getattr__(name: str):
     if name in {
         "AdmissionDecision",
         "ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID",
+        "ADAPTIVE_STAGE_PROFILES",
+        "ADAPTIVE_STAGES",
         "ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA",
         "AdaptiveResourceMetrics",
         "AdaptiveStageCapacity",
         "AdaptiveStageMetrics",
+        "AdaptiveStageProfile",
         "AdaptiveThroughputBenchmarkReceipt",
         "AdaptiveThroughputRun",
         "ChildResourceLimits",
+        "CANONICAL_ADAPTIVE_STAGES",
         "DEFAULT_RESOURCE_CLASSES",
         "FormalVerificationResourceScheduler",
         "GoalRuntimeResourceScheduler",
@@ -2810,6 +2836,9 @@ def __getattr__(name: str):
         "ScheduledProofWorkRequest",
         "ScheduledProofWorkResult",
         "SupervisorResourceLeaseBudget",
+        "STAGE_RESOURCE_PROFILES",
+        "StageResourceProfile",
+        "adaptive_stage_profile",
         "normalize_provider_capacities",
         "normalize_provider_capacity",
         "normalize_proof_work_kind",
