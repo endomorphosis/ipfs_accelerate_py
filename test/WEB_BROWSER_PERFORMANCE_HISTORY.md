@@ -327,4 +327,4 @@ The Browser Performance History system represents a significant advancement in t
 For additional information, see:
 - [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md) - Main resource pool integration guide
 - [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - Overview of May 2025 enhancements
-- [BROWSER_PERFORMANCE_COMPARISON.md](BROWSER_PERFORMANCE_COMPARISON.md) - Detailed browser performance comparison
+- [Performance-aware browser selection and comparison](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md#2-performance-aware-browser-selection) - Detailed browser performance comparison
