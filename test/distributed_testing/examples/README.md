@@ -81,5 +81,5 @@ For more information, refer to:
 - [CI Integration Summary](../CI_INTEGRATION_SUMMARY.md): Detailed implementation summary for CI integration
 - [Hardware Monitoring Guide](../README_HARDWARE_MONITORING.md): Guide to the hardware monitoring system
 - [Test Suite Guide](../TEST_SUITE_GUIDE.md): Guide for the hardware monitoring test suite
-- [Distributed Testing Design](../DISTRIBUTED_TESTING_DESIGN.md): Overview of the framework architecture
+- [Distributed Testing Design](../../DISTRIBUTED_TESTING_DESIGN.md): Overview of the framework architecture
 - [Integration Plugins README](../integration/README.md): Description of available integration plugins
