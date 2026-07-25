@@ -362,11 +362,11 @@ As part of this phase, we've created comprehensive documentation:
 
 3. **Integration Guides**:
    - [RESOURCE_POOL_INTEGRATION.md](../docs/RESOURCE_POOL_INTEGRATION.md): Resource pool integration
-   - [WEB_RESOURCE_POOL_INTEGRATION.md](../WEB_RESOURCE_POOL_INTEGRATION.md): Web resource pool
+   - [WEB_RESOURCE_POOL_INTEGRATION.md](../../WEB_RESOURCE_POOL_INTEGRATION.md): Web resource pool
 
 4. **Implementation Status**:
    - [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md): Overall implementation status
-   - [NEXT_STEPS.md](../NEXT_STEPS.md): Roadmap and next steps
+   - [NEXT_STEPS.md](../../NEXT_STEPS.md): Roadmap and next steps
 
 ## Future Work
 
