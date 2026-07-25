@@ -74,6 +74,56 @@ CONTROL_BACKEND_RESPONSE_SCHEMA: Final[str] = (
 DEFAULT_QUERY_LIMIT: Final[int] = 50
 DEFAULT_MAX_QUERY_ITEMS: Final[int] = 256
 DEFAULT_MAX_OFFSET: Final[int] = 1_000_000
+CONTROL_REDACTION_MARKER: Final[str] = "[REDACTED]"
+CONTROL_SENSITIVE_FIELD_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "authorization",
+        "client_secret",
+        "cookie",
+        "credential",
+        "credentials",
+        "password",
+        "passwd",
+        "private_key",
+        "refresh_token",
+        "secret",
+        "session_token",
+        "set_cookie",
+        "ssh_key",
+        "token",
+    }
+)
+_CONTROL_SENSITIVE_FIELD_SUFFIXES: Final[tuple[str, ...]] = (
+    "_api_key",
+    "_credential",
+    "_credentials",
+    "_password",
+    "_private_key",
+    "_secret",
+    "_token",
+)
+_CONTROL_SENSITIVE_ASSIGNMENT_RE: Final[re.Pattern[str]] = re.compile(
+    r"""(?ix)
+    (
+        \b(?:access[_-]?token|api[_-]?key|authorization|client[_-]?secret|
+        cookie|credentials?|password|passwd|private[_-]?key|refresh[_-]?token|
+        secret|session[_-]?token|set[_-]?cookie|ssh[_-]?key|token)\b
+        \s*[:=]\s*
+    )
+    (?:
+        "(?:\\.|[^"\\])*"
+        |
+        '(?:\\.|[^'\\])*'
+        |
+        [^\s,;]+
+    )
+    """
+)
+_CONTROL_BEARER_CREDENTIAL_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"
+)
 CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES: Final[tuple[str, ...]] = (
     "ipfs_datasets_py",
     "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_",
@@ -238,6 +288,65 @@ def _canonical_json_value(value: Any) -> Any:
     raise ValueError(
         f"backend data contains unsupported value type {type(value).__name__}"
     )
+
+
+def _normalized_control_field_name(value: Any) -> str:
+    """Normalize a structured result field for conservative secret matching."""
+
+    return re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
+
+
+def _is_sensitive_control_field(value: Any) -> bool:
+    normalized = _normalized_control_field_name(value)
+    return normalized in CONTROL_SENSITIVE_FIELD_NAMES or normalized.endswith(
+        _CONTROL_SENSITIVE_FIELD_SUFFIXES
+    )
+
+
+def redact_control_text(value: str) -> str:
+    """Redact common credential assignments in untrusted backend text.
+
+    Free-form values cannot be classified perfectly, so the control boundary
+    redacts only explicit credential assignments. Structured result fields
+    receive the stronger key-based treatment in :func:`redact_control_data`.
+    """
+
+    if not isinstance(value, str):
+        raise TypeError("control text must be a string")
+    value = _CONTROL_BEARER_CREDENTIAL_RE.sub(
+        f"Bearer {CONTROL_REDACTION_MARKER}",
+        value,
+    )
+    return _CONTROL_SENSITIVE_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}{CONTROL_REDACTION_MARKER}",
+        value,
+    )
+
+
+def redact_control_data(value: Any) -> Any:
+    """Return a recursively redacted JSON-compatible control result.
+
+    This function runs after backend values have been projected to canonical
+    JSON types. It preserves collection shape and non-sensitive values so the
+    normal request bounds and canonical result identity remain authoritative.
+    """
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): (
+                CONTROL_REDACTION_MARKER
+                if _is_sensitive_control_field(key)
+                else redact_control_data(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_control_data(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(redact_control_data(item) for item in value)
+    if isinstance(value, str):
+        return redact_control_text(value)
+    return value
 
 
 def _content_id(payload: Mapping[str, Any]) -> str:
@@ -1372,12 +1481,13 @@ class SupervisorControlService:
             raise ControlContractError(
                 "backend cannot apply effects while reporting no change"
             )
+        canonical_data = _canonical_json_value(response.data)
         return BackendResponse(
-            data=_canonical_json_value(response.data),
+            data=redact_control_data(canonical_data),
             changed=response.changed,
             applied_effect_ids=response.applied_effect_ids,
-            warnings=response.warnings,
-            checks=response.checks,
+            warnings=tuple(redact_control_text(item) for item in response.warnings),
+            checks=tuple(redact_control_text(item) for item in response.checks),
         )
 
     def _dispatch(self, request: OperationRequest) -> BackendResponse:
@@ -1478,6 +1588,7 @@ class SupervisorControlService:
         else:
             code = ErrorCode.INTERNAL_ERROR
             message = "control operation failed"
+        message = redact_control_text(message)
         return OperationError(
             code=code,
             message=message[:2048],
@@ -2036,6 +2147,8 @@ __all__ = [
     "CONTROL_AUDIT_RECEIPT_SCHEMA",
     "CONTROL_BACKEND_RESPONSE_SCHEMA",
     "CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES",
+    "CONTROL_REDACTION_MARKER",
+    "CONTROL_SENSITIVE_FIELD_NAMES",
     "CONTROL_SERVICE_VERSION",
     "BackendCancelledError",
     "BackendConflictError",
@@ -2065,4 +2178,6 @@ __all__ = [
     "TargetNotAllowedError",
     "TargetIdentityValidator",
     "capture_control_discovery_runtime_state",
+    "redact_control_data",
+    "redact_control_text",
 ]
