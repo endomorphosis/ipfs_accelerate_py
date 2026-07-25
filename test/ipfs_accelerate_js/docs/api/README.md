@@ -352,7 +352,7 @@ interface WebNNFeatures {
 
 For practical examples of using the API, see:
 
-- [Basic Tensor Example](../../examples/tensor_matrix_example.ts)
-- [Tensor Sharing Example](../../examples/tensor_sharing_example.ts)
-- [WebGPU Example](../../examples/webgpu_tensor_example.ts)
-- [WebNN Example](../../examples/webnn_tensor_example.ts)
+- [Basic Tensor Example](../../src/examples/tensor_matrix_example.ts)
+- [Tensor Sharing Example](../../src/examples/tensor_sharing_example.ts)
+- [WebGPU Example](../../src/examples/webgpu_tensor_example.ts)
+- [WebNN Example](../../src/examples/webnn_tensor_example.ts)
