@@ -466,12 +466,37 @@ Promotion requires both gates below:
   tokens are at least 35 percent below the paired baseline median; candidate
   cache reuse across repeated fixtures is at least 70 percent; and accepted
   work throughput on the independent fixture is at least twice baseline.
+  Planning must also improve by either at least 1,000 basis points in median
+  evidence coverage or at least 2,000 basis points in aggregate
+  invalid-plan-branch reduction.
 
 Threshold configuration may make these requirements stricter but cannot lower
 the token, cache, or throughput minimums, raise artifact bounds, or narrow the
 fixture population. There are no waivers for the non-negotiable gate.
 Performance improvements cannot compensate for a safety, authority, quality,
 validation, restart, merge, or population failure.
+
+The report carries two stable runtime evidence terms. Term
+`109590900757783560279417463762322084165` is the safety/shadow proof: the
+complete seeded population has zero candidate false completions, while any
+seeded false completion fails the non-negotiable gate and forces the effective
+mode to `shadow`. Term
+`146189916032404266364029134505159070240` is affirmative only when the token,
+repeated-cache, planning, and independent-throughput gates all pass.
+`report.evidence_for(requirement_id, repository_id=...,
+repository_tree=...)` returns the bounded typed criterion projection for these
+bindings and derives canonical ASI-G112/ASI-G113 internally. A failed
+supported term returns a negative diagnostic witness; an unsupported term is
+rejected. Serialized evidence is accepted only through
+`PairedRolloutRequirementEvidence.from_dict(payload, report=report)`, which
+re-derives the complete claim and rejects changed or detached content. The
+projection is diagnostic rollout evidence, not completion, proof, merge, or
+mutation authority.
+
+Report version 2 carries the explicit invalid-plan-branch counter and component
+gate projections. Version-1 reports remain readable and are re-derived for
+audit, but cannot affirm the efficiency requirement because they lack the
+planning measurement; operators must rerun the current shadow population.
 
 The resulting report is canonical JSON with a stable SHA-256 identity that
 excludes only its observation timestamp. Deserialization recomputes the full
@@ -480,6 +505,16 @@ summary fields. The append-only report store uses exclusive creation, file and
 directory synchronization, symlink rejection, a 2 MiB hard report bound, and
 idempotent replay. This makes a recovered decision stable across a supervisor
 restart without turning the report into completion evidence.
+
+The paired contracts, evidence identifiers, evaluator, and report store are
+stable lazy exports from `ipfs_accelerate_py.agent_supervisor`. Import and
+capability discovery remain provider-free and process-free; accessing these
+exports loads only the rollout contract module. The deterministic smoke recipe
+uses fixed bindings to seed every forced-shadow path and retain bounded reason
+codes. The production recipe persists both criterion projections with the
+report, profile, capability, repository tree, objective, and policy identities;
+a stale or missing binding returns operation to shadow and requires a fresh
+paired evaluation.
 
 ## Delivery order
 

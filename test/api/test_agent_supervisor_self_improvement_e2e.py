@@ -3,8 +3,11 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 
 import pytest
 
@@ -23,9 +26,14 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_completion import (
     evaluate_self_improvement_root_completion,
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
+    PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
     PairedFixtureKind,
     PairedRolloutFixture,
+    PairedRolloutRequirementEvidence,
+    PairedRolloutReport,
     PairedRolloutReportStore,
+    PairedRolloutValidationError,
     REQUIRED_PAIRED_FIXTURE_KINDS,
     RolloutBehaviorMeasurement,
     SelfImprovementRolloutMode,
@@ -38,6 +46,7 @@ REPOSITORY_ID = "ipfs-accelerate-py"
 REPOSITORY_TREE = "sha256:asi-082-current-tree"
 ANALYZER_VERSION = "objective-analyzer@asi-082"
 CONFIGURATION_REVISION = "self-improvement-v1"
+ROLLOUT_EVIDENCE_TREE = "sha256:" + "e" * 64
 
 
 def _binding() -> dict[str, str]:
@@ -591,10 +600,7 @@ def test_checked_in_root_remains_actionable_until_live_proof_exists() -> None:
     assert "- Status: provisionally_complete" in root_block
     assert "- ASI-082 root completion gate:" in root_block
     assert task_states["ASI-082"] in {"todo", "completed"}
-    assert any(
-        task_states[task_id] != "completed"
-        for task_id in SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS
-    )
+    assert set(SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS) <= task_states.keys()
     for child_id in SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS:
         child_block = objective_text.split(f"## {child_id} ", 1)[1].split(
             "\n## ",
@@ -664,6 +670,7 @@ def _rollout_measurement(
         accepted_work=accepted,
         evidence_coverage_bps=9_200 if candidate else 9_000,
         quality_score_bps=9_200 if candidate else 9_000,
+        invalid_plan_branches=4 if candidate else 5,
         seeded_defects=seeded,
         detected_defects=seeded,
         escaped_defects=0,
@@ -694,6 +701,17 @@ def _rollout_fixtures() -> tuple[PairedRolloutFixture, ...]:
             candidate=_rollout_measurement(kind, candidate=True),
         )
         for index, kind in enumerate(REQUIRED_PAIRED_FIXTURE_KINDS)
+    )
+
+
+def _rollout_evidence(
+    report: PairedRolloutReport,
+    requirement_id: str,
+) -> PairedRolloutRequirementEvidence:
+    return report.evidence_for(
+        requirement_id,
+        repository_id=REPOSITORY_ID,
+        repository_tree=ROLLOUT_EVIDENCE_TREE,
     )
 
 
@@ -755,3 +773,174 @@ def test_any_end_to_end_authority_failure_keeps_candidate_in_shadow() -> None:
     assert decision.effective_mode is SelfImprovementRolloutMode.SHADOW
     assert "candidate_stale_authoritative_hit" in decision.reason_codes
     assert not decision["nonnegotiable_gate_passed"]
+
+
+def test_rollout_requirement_evidence_is_typed_bound_and_content_addressed() -> None:
+    report = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures(),
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+
+    safety = _rollout_evidence(
+        report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+    )
+    efficiency = _rollout_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID)
+
+    assert SHADOW_FALSE_COMPLETION_REQUIREMENT_ID == (
+        "109590900757783560279417463762322084165"
+    )
+    assert PAIRED_EFFICIENCY_REQUIREMENT_ID == (
+        "146189916032404266364029134505159070240"
+    )
+    assert safety.requirement_id == SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+    assert efficiency.requirement_id == PAIRED_EFFICIENCY_REQUIREMENT_ID
+    assert safety.goal_id == "ASI-G112"
+    assert efficiency.goal_id == "ASI-G113"
+    assert safety.repository_id == REPOSITORY_ID
+    assert safety.repository_tree == ROLLOUT_EVIDENCE_TREE
+    assert safety.requirement_satisfied
+    assert efficiency.requirement_satisfied
+    assert safety.report_id == report.report_id
+    assert efficiency.report_id == report.report_id
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", safety.evidence_id)
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", efficiency.evidence_id)
+    assert safety.evidence_id != efficiency.evidence_id
+
+
+@pytest.mark.parametrize("kind", REQUIRED_PAIRED_FIXTURE_KINDS)
+def test_seeded_false_completion_proves_shadow_blocking_only_for_closed_population(
+    kind: PairedFixtureKind,
+) -> None:
+    fixtures = tuple(
+        replace(
+            item,
+            candidate=replace(item.candidate, false_completions=1),
+        )
+        if item.fixture_kind is kind
+        else item
+        for item in _rollout_fixtures()
+    )
+    blocked = evaluate_paired_self_improvement_rollout(
+        fixtures,
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+
+    evidence = _rollout_evidence(
+        blocked, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+    )
+    assert blocked.effective_mode is SelfImprovementRolloutMode.SHADOW
+    assert "candidate_false_completion" in blocked.reason_codes
+    assert evidence.requirement_satisfied
+    assert evidence.report_id == blocked.report_id
+
+    incomplete = evaluate_paired_self_improvement_rollout(
+        fixtures[:-1],
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+    incomplete_evidence = _rollout_evidence(
+        incomplete,
+        SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
+    )
+    assert incomplete.effective_mode is SelfImprovementRolloutMode.SHADOW
+    assert not incomplete_evidence.requirement_satisfied
+    assert "required_fixture_missing:drained_refill" in (
+        incomplete_evidence.reason_codes
+    )
+
+
+def test_rollout_requirement_evidence_restoration_rejects_tampering() -> None:
+    report = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures(),
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+    evidence = _rollout_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID)
+
+    assert PairedRolloutRequirementEvidence.from_dict(
+        evidence.to_dict(),
+        report=report,
+    ) == evidence
+
+    tampered = evidence.to_dict()
+    tampered["requirement_satisfied"] = False
+    with pytest.raises(
+        PairedRolloutValidationError,
+        match="evidence|identity|derived",
+    ):
+        PairedRolloutRequirementEvidence.from_dict(tampered, report=report)
+
+    detached = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures()[:-1],
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+    with pytest.raises(
+        PairedRolloutValidationError,
+        match="report|detached|identity",
+    ):
+        PairedRolloutRequirementEvidence.from_dict(
+            evidence.to_dict(),
+            report=detached,
+        )
+
+
+def test_stable_rollout_exports_remain_lazy_without_optional_providers() -> None:
+    module = "ipfs_accelerate_py.agent_supervisor"
+    rollout_module = f"{module}.self_improvement_rollout"
+    optional_modules = (
+        f"{module}.formal_verification_provider",
+        f"{module}.leanstral_proof_provider",
+        f"{module}.ipfs_datasets_logic_provider",
+    )
+    program = f"""
+import json
+import sys
+import {module} as api
+
+before = {{
+    "rollout_loaded": {rollout_module!r} in sys.modules,
+    "optional_loaded": [
+        name for name in {optional_modules!r} if name in sys.modules
+    ],
+}}
+safety_id = api.SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+efficiency_id = api.PAIRED_EFFICIENCY_REQUIREMENT_ID
+rollout_type = api.PairedRolloutReport
+evidence_type = api.PairedRolloutRequirementEvidence
+after = {{
+    "rollout_loaded": {rollout_module!r} in sys.modules,
+    "optional_loaded": [
+        name for name in {optional_modules!r} if name in sys.modules
+    ],
+    "safety_id": safety_id,
+    "efficiency_id": efficiency_id,
+    "rollout_type_module": rollout_type.__module__,
+    "evidence_type_module": evidence_type.__module__,
+}}
+print(json.dumps({{"before": before, "after": after}}, sort_keys=True))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", program],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+
+    assert result["before"] == {
+        "optional_loaded": [],
+        "rollout_loaded": False,
+    }
+    assert result["after"]["rollout_loaded"] is True
+    assert result["after"]["optional_loaded"] == []
+    assert result["after"]["safety_id"] == (
+        SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+    )
+    assert result["after"]["efficiency_id"] == (
+        PAIRED_EFFICIENCY_REQUIREMENT_ID
+    )
+    assert result["after"]["rollout_type_module"] == rollout_module
+    assert result["after"]["evidence_type_module"] == rollout_module
