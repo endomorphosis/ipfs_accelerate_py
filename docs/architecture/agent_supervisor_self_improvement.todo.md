@@ -302,7 +302,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-017 Parallelize validation and merge flow without weakening gates
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: parallelism
