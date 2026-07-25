@@ -2968,7 +2968,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-084 Produce completion evidence for High-quality task generation and conflict-aware bundling
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: task-generation
