@@ -1695,6 +1695,8 @@ class AdmissionDecision:
     critical_path_length: int = 0
     queue_age_ms: int = 0
     hysteresis_state: str = "stable"
+    fairness_key: str = ""
+    admission_rank: int = 0
 
     @property
     def allowed(self) -> bool:
@@ -1710,6 +1712,63 @@ class AdmissionDecision:
         payload["allowed"] = self.allowed
         payload["reason"] = self.reason
         return payload
+
+
+@dataclass(frozen=True)
+class ResourcePoolAdmissionSnapshot:
+    """Expose fair evaluation and backpressure for one bounded pool."""
+
+    resource_pool: str
+    scheduled_count: int
+    admitted_count: int
+    backpressured_count: int
+    fairness_order: tuple[str, ...] = ()
+    fairness_keys: tuple[str, ...] = ()
+    admitted_lane_ids: tuple[str, ...] = ()
+    backpressure_counts: Mapping[str, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        counts = (
+            self.scheduled_count,
+            self.admitted_count,
+            self.backpressured_count,
+        )
+        if any(isinstance(value, bool) or int(value) < 0 for value in counts):
+            raise ValueError("resource pool admission counts must be non-negative")
+        if self.admitted_count + self.backpressured_count != self.scheduled_count:
+            raise ValueError(
+                "resource pool admitted and backpressured counts must cover "
+                "every scheduled lane"
+            )
+        if len(self.fairness_order) != self.scheduled_count:
+            raise ValueError(
+                "resource pool fairness order must identify every scheduled lane"
+            )
+        if len(self.fairness_keys) != self.scheduled_count:
+            raise ValueError(
+                "resource pool fairness keys must identify every scheduled lane"
+            )
+        if len(self.admitted_lane_ids) != self.admitted_count:
+            raise ValueError(
+                "resource pool admitted lane identities must match admitted_count"
+            )
+        if any(int(value) <= 0 for value in self.backpressure_counts.values()):
+            raise ValueError("resource pool backpressure counts must be positive")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "resource_pool": self.resource_pool,
+            "scheduled_count": self.scheduled_count,
+            "admitted_count": self.admitted_count,
+            "backpressured_count": self.backpressured_count,
+            "fairness_order": list(self.fairness_order),
+            "fairness_keys": list(self.fairness_keys),
+            "admitted_lane_ids": list(self.admitted_lane_ids),
+            "backpressure_counts": {
+                str(name): int(value)
+                for name, value in sorted(self.backpressure_counts.items())
+            },
+        }
 
 
 @dataclass(frozen=True)
@@ -1729,6 +1788,7 @@ class ResourceScheduleSnapshot:
     active_lease_count: int = 0
     backpressure_counts: Mapping[str, int] = field(default_factory=dict)
     signals: Mapping[str, Any] = field(default_factory=dict)
+    pool_admissions: tuple[ResourcePoolAdmissionSnapshot, ...] = ()
 
     @property
     def admitted_lane_ids(self) -> tuple[str, ...]:
@@ -1767,6 +1827,9 @@ class ResourceScheduleSnapshot:
                 str(name): int(value)
                 for name, value in sorted(self.backpressure_counts.items())
             },
+            "pool_admissions": [
+                item.to_dict() for item in self.pool_admissions
+            ],
             "signals": json.loads(
                 json.dumps(dict(self.signals), sort_keys=True)
             ),
@@ -2377,6 +2440,7 @@ class ResourceScheduler:
             "active_leases": active_lease_count,
             "critical_path_length": req.critical_path_length,
             "queue_age_ms": req.queue_age_ms,
+            "fairness_key": req.fairness_key,
         }
         if cancellation_reason:
             return AdmissionDecision(
@@ -3278,7 +3342,7 @@ class ResourceScheduler:
                     return _integer(value, default, minimum=0)
             return default
 
-        for requirement in requirements:
+        for admission_rank, requirement in enumerate(requirements, start=1):
             decision = self.evaluate(
                 requirement,
                 host=host_snapshot,
@@ -3299,6 +3363,7 @@ class ResourceScheduler:
                     ),
                 ),
             )
+            decision = replace(decision, admission_rank=admission_rank)
             decisions.append(decision)
             if not decision.admitted:
                 continue
@@ -3393,6 +3458,46 @@ class ResourceScheduler:
             )
             for reason in backpressure
         }
+        pool_admissions: list[ResourcePoolAdmissionSnapshot] = []
+        for pool_name in sorted({item.resource_pool for item in requirements}):
+            pool_items = [
+                (requirement, decision)
+                for requirement, decision in zip(requirements, decisions)
+                if requirement.resource_pool == pool_name
+            ]
+            pool_backpressure: dict[str, int] = {}
+            for _requirement, decision in pool_items:
+                if decision.admitted:
+                    continue
+                for reason in decision.reasons:
+                    pool_backpressure[reason] = (
+                        pool_backpressure.get(reason, 0) + 1
+                    )
+            admitted_pool_lane_ids = tuple(
+                decision.lane_id
+                for _requirement, decision in pool_items
+                if decision.admitted
+            )
+            pool_admissions.append(
+                ResourcePoolAdmissionSnapshot(
+                    resource_pool=pool_name,
+                    scheduled_count=len(pool_items),
+                    admitted_count=len(admitted_pool_lane_ids),
+                    backpressured_count=(
+                        len(pool_items) - len(admitted_pool_lane_ids)
+                    ),
+                    fairness_order=tuple(
+                        decision.lane_id
+                        for _requirement, decision in pool_items
+                    ),
+                    fairness_keys=tuple(
+                        requirement.fairness_key
+                        for requirement, _decision in pool_items
+                    ),
+                    admitted_lane_ids=admitted_pool_lane_ids,
+                    backpressure_counts=pool_backpressure,
+                )
+            )
         active_by_stage: dict[str, int] = {}
         active_lease_by_stage: dict[str, int] = {}
         for item in baseline_active:
@@ -3508,6 +3613,7 @@ class ResourceScheduler:
             active_lease_count=len(leases),
             backpressure_counts=backpressure_counts,
             signals=signal_payload,
+            pool_admissions=tuple(pool_admissions),
         )
 
     # Descriptive aliases used by scheduler integrations and callers.
@@ -4644,6 +4750,7 @@ __all__ = [
     "ResourceAdmissionLease",
     "ResourceLeaseBudget",
     "ResourcePolicy",
+    "ResourcePoolAdmissionSnapshot",
     "ResourceScheduleSnapshot",
     "ResourceScheduler",
     "RouteAwareResourceScheduler",

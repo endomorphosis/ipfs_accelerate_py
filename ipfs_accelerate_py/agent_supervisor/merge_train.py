@@ -28,11 +28,13 @@ import tempfile
 import threading
 import time
 import uuid
+from collections import deque
 from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Final, Iterator, Mapping, Sequence
 
 from .formal_verification_policy import (
     ChangedScope,
@@ -58,9 +60,35 @@ PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA = (
 PARALLEL_ACCEPTANCE_EVIDENCE_ID = (
     "185033715568272291470322170325431455647"
 )
+PARALLEL_EXECUTION_OBJECTIVE_ID: Final = "ASI-G060"
+PARALLEL_EXECUTION_OBJECTIVE_REVISION: Final = "ASI-G060@asi-083"
+PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION: Final = (
+    "parallel-execution-completion@1"
+)
+PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION: Final = (
+    "parallel-execution-completion-policy@1"
+)
+PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
+PARALLEL_EXECUTION_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
+    "ASI-015",
+    "ASI-016",
+    "ASI-017",
+)
+PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "Resource pools expose backpressure and fair admission",
+    "compatible provider work shares model capacity",
+    "independent validation and merge preflight run concurrently",
+    "target-branch mutation remains fenced and serialized",
+    (
+        "paired independent fixtures achieve at least twice single-lane "
+        "throughput without duplicate execution, stale acceptance, resource "
+        "overcommit, or merge-conflict regression"
+    ),
+)
 PARALLEL_GATE_CACHE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/parallel-gate-cache@1"
 )
+_PARALLEL_ACCEPTANCE_RECEIPT_SEAL: Final = object()
 
 
 @dataclass(frozen=True)
@@ -88,6 +116,11 @@ class ParallelAcceptanceReceipt:
     validation_receipt_ids: tuple[str, ...] = ()
     requirement_id: str = PARALLEL_ACCEPTANCE_EVIDENCE_ID
     schema: str = PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA
+    _producer_seal: object | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
     def _content(self) -> dict[str, Any]:
         return {
@@ -126,6 +159,550 @@ class ParallelAcceptanceReceipt:
 
     def to_dict(self) -> dict[str, Any]:
         return {"receipt_id": self.receipt_id, **self._content()}
+
+    def verify_integrity(self) -> bool:
+        """Re-derive all authority-bearing fields of this receipt."""
+
+        validation = self.post_merge_validation
+        validated_commit = str(
+            validation.get("validated_commit")
+            or validation.get("target_commit")
+            or ""
+        )
+        return bool(
+            self._producer_seal is _PARALLEL_ACCEPTANCE_RECEIPT_SEAL
+            and self.schema == PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA
+            and self.requirement_id == PARALLEL_ACCEPTANCE_EVIDENCE_ID
+            and self.request_id
+            and self.canonical_task_id
+            and self.candidate_commit
+            and self.target_commit
+            and self.accepted
+            and validation.get("passed") is True
+            and validated_commit == self.target_commit
+            and self.mutation_fence_owner
+            and self.mutation_fence_generation > 0
+            and self.mutation_fence_token_digest.startswith("sha256:")
+            and len(self.mutation_fence_token_digest) == len("sha256:") + 64
+        )
+
+    def proved_requirement_ids_for(
+        self, repository_tree: str
+    ) -> tuple[str, ...]:
+        """Expose authority only for the exact accepted repository tree."""
+
+        if (
+            self.verify_integrity()
+            and self.target_commit == str(repository_tree or "").strip()
+        ):
+            return (self.requirement_id,)
+        return ()
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "ParallelAcceptanceReceipt":
+        """Restore a diagnostic projection and reject identity tampering.
+
+        Restored projections deliberately lack the private producer seal and
+        therefore cannot expose completion authority through
+        :meth:`proved_requirement_ids_for`.
+        """
+
+        if not isinstance(value, Mapping):
+            raise TypeError("parallel acceptance receipt must be a mapping")
+        sequence = value.get("sequence")
+        expected_sequence = (
+            "parallel_preflight",
+            "synthesized_merged_tree",
+            "post_merge_validation",
+            "serialized_target_mutation",
+            "queue_completion_authorized",
+        )
+        if sequence not in (expected_sequence, list(expected_sequence)):
+            raise ValueError("parallel acceptance receipt sequence mismatch")
+        receipt = cls(
+            request_id=str(value.get("request_id") or ""),
+            canonical_task_id=str(value.get("canonical_task_id") or ""),
+            candidate_commit=str(value.get("candidate_commit") or ""),
+            target_commit=str(value.get("target_commit") or ""),
+            preflight=(
+                dict(value["preflight"])
+                if isinstance(value.get("preflight"), Mapping)
+                else {}
+            ),
+            integration=(
+                dict(value["integration"])
+                if isinstance(value.get("integration"), Mapping)
+                else {}
+            ),
+            post_merge_validation=(
+                dict(value["post_merge_validation"])
+                if isinstance(value.get("post_merge_validation"), Mapping)
+                else {}
+            ),
+            validation_receipt_ids=tuple(
+                str(item)
+                for item in value.get("validation_receipt_ids", ())
+            ),
+            mutation_fence_owner=str(
+                value.get("mutation_fence_owner") or ""
+            ),
+            mutation_fence_generation=int(
+                value.get("mutation_fence_generation") or 0
+            ),
+            mutation_fence_token_digest=str(
+                value.get("mutation_fence_token_digest") or ""
+            ),
+            accepted=value.get("accepted") is True,
+            requirement_id=str(value.get("requirement_id") or ""),
+            schema=str(value.get("schema") or ""),
+        )
+        if str(value.get("receipt_id") or "") != receipt.receipt_id:
+            raise ValueError("parallel acceptance receipt identity mismatch")
+        return receipt
+
+
+def evaluate_parallel_execution_completion(
+    *,
+    repository_id: str,
+    repository_tree: str,
+    resource_policy: Any,
+    operational_evidence: Sequence[Any] = (),
+    producing_tasks: Sequence[Any] = (),
+    current_state: Any = "active",
+    evidence: Sequence[Any] = (),
+    tasks_complete: bool = False,
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    required_exhaustive_receipts: int = (
+        PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ),
+    now: Any = None,
+    freshness_seconds: float = 3600.0,
+    clock_skew_seconds: float = 300.0,
+    analysis_inconclusive: bool = False,
+    blocked_reason: str = "",
+) -> Any:
+    """Evaluate the closed ASI-G060 completion boundary.
+
+    Runtime counters and task status are deliberately insufficient.  The
+    immutable parent criteria require all three live typed lane receipts, the
+    exact successful producer population, one fresh passing current-tree
+    validation per criterion, concrete coverage bound to those validation
+    identities, an explicitly healthy completion-safe analyzer, and exactly
+    the configured independent exhaustive quorum.
+    """
+
+    from .goal_completion import evaluate_goal_completion
+    from .provider_batch_scheduler import (
+        PARTIAL_CANCELLATION_REQUIREMENT_ID,
+        ProviderBatchEvidenceReceipt,
+    )
+    from .resource_scheduler import (
+        ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,
+        AdaptiveThroughputBenchmarkReceipt,
+    )
+
+    if (
+        isinstance(required_exhaustive_receipts, bool)
+        or not isinstance(required_exhaustive_receipts, int)
+        or required_exhaustive_receipts
+        != PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ):
+        raise ValueError(
+            "required_exhaustive_receipts must equal the configured "
+            f"ASI-G060 count "
+            f"{PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+        )
+    for name, value in (
+        ("freshness_seconds", freshness_seconds),
+        ("clock_skew_seconds", clock_skew_seconds),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or float(value) < 0
+        ):
+            raise ValueError(f"{name} must be a non-negative number")
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    def normalized(value: Any) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    def parsed_datetime(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            result = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                result = datetime.fromisoformat(
+                    value.strip().replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if result.tzinfo is None:
+            result = result.replace(tzinfo=timezone.utc)
+        return result.astimezone(timezone.utc)
+
+    current = parsed_datetime(now) or datetime.now(timezone.utc)
+    max_age = timedelta(seconds=float(freshness_seconds))
+    clock_skew = timedelta(seconds=float(clock_skew_seconds))
+
+    def fresh(value: Any) -> bool:
+        observed = parsed_datetime(value)
+        return bool(
+            observed is not None
+            and observed <= current + clock_skew
+            and current - observed <= max_age
+        )
+
+    repository_id = str(repository_id or "").strip()
+    repository_tree = str(repository_tree or "").strip()
+    expected_binding = {
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": PARALLEL_EXECUTION_OBJECTIVE_ID,
+        "objective_revision": PARALLEL_EXECUTION_OBJECTIVE_REVISION,
+        "analyzer_version": (
+            PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+
+    lane_receipts = tuple(operational_evidence)
+    adaptive_receipts = tuple(
+        item
+        for item in lane_receipts
+        if type(item) is AdaptiveThroughputBenchmarkReceipt
+    )
+    provider_receipts = tuple(
+        item
+        for item in lane_receipts
+        if type(item) is ProviderBatchEvidenceReceipt
+    )
+    acceptance_receipts = tuple(
+        item
+        for item in lane_receipts
+        if type(item) is ParallelAcceptanceReceipt
+    )
+    try:
+        operational_complete = bool(
+            len(lane_receipts) == 3
+            and len(adaptive_receipts) == 1
+            and len(provider_receipts) == 1
+            and len(acceptance_receipts) == 1
+            and adaptive_receipts[0].proved_requirement_ids_for(
+                policy=resource_policy,
+                repository_tree_id=repository_tree,
+            )
+            == (ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,)
+            and provider_receipts[0].proved_requirement_ids
+            == (PARTIAL_CANCELLATION_REQUIREMENT_ID,)
+            and acceptance_receipts[0].proved_requirement_ids_for(
+                repository_tree
+            )
+            == (PARALLEL_ACCEPTANCE_EVIDENCE_ID,)
+        )
+    except (AttributeError, TypeError, ValueError):
+        # Operational inputs are untrusted persisted evidence.  Malformed
+        # policy/receipt data closes completion but does not crash evaluation.
+        operational_complete = False
+
+    successful_states = frozenset(
+        {
+            "complete",
+            "completed",
+            "passed",
+            "success",
+            "succeeded",
+            "verified",
+            "verified_complete",
+        }
+    )
+    task_values = [payload(item) for item in producing_tasks]
+    task_ids = [
+        str(item.get("task_id", item.get("id", "")) or "").strip()
+        for item in task_values
+    ]
+    producer_population_complete = bool(
+        repository_id
+        and repository_tree
+        and len(task_ids) == len(set(task_ids))
+        and tuple(sorted(task_ids))
+        == tuple(sorted(PARALLEL_EXECUTION_PRODUCING_TASK_IDS))
+        and all(
+            normalized(item.get("status", item.get("state", "")))
+            in successful_states
+            for item in task_values
+        )
+    )
+
+    expected_criteria = {
+        normalized(item) for item in PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA
+    }
+    receipt_ids_by_criterion: dict[str, set[str]] = {}
+    evidence_criteria: list[str] = []
+    for item in evidence:
+        record = payload(item)
+        source_value = record.get("evidence", record)
+        source = (
+            dict(source_value)
+            if isinstance(source_value, Mapping)
+            else record
+        )
+        criterion = normalized(
+            source.get(
+                "acceptance_criterion",
+                source.get("criterion", source.get("acceptance", "")),
+            )
+        )
+        evidence_criteria.append(criterion)
+        receipt_id = str(
+            source.get(
+                "provenance_cid",
+                source.get(
+                    "receipt_id",
+                    source.get(
+                        "evidence_id", source.get("receipt_cid", "")
+                    ),
+                ),
+            )
+            or ""
+        ).strip()
+        if criterion and receipt_id:
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(
+                receipt_id
+            )
+    evidence_population_complete = bool(
+        len(evidence_criteria) == len(expected_criteria)
+        and len(evidence_criteria) == len(set(evidence_criteria))
+        and set(evidence_criteria) == expected_criteria
+        and all(
+            len(receipt_ids_by_criterion.get(criterion, set())) == 1
+            for criterion in expected_criteria
+        )
+    )
+
+    coverage_projection = getattr(coverage, "completion_gate_evidence", None)
+    if callable(coverage_projection):
+        try:
+            projected = coverage_projection(PARALLEL_EXECUTION_OBJECTIVE_ID)
+        except (TypeError, ValueError):
+            projected = {}
+        coverage_value = (
+            dict(projected) if isinstance(projected, Mapping) else {}
+        )
+    else:
+        coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+
+    def criterion_of(row: Mapping[str, Any]) -> str:
+        return normalized(
+            row.get(
+                "criterion",
+                row.get(
+                    "acceptance_criterion",
+                    row.get("acceptance", ""),
+                ),
+            )
+        )
+
+    def implementation_bound(row: Mapping[str, Any]) -> bool:
+        for name in (
+            "implementation",
+            "implementation_binding",
+            "changed_files",
+            "predicted_files",
+            "ast_symbols",
+            "interfaces",
+        ):
+            value = row.get(name)
+            if isinstance(value, str) and value.strip():
+                return True
+            if (
+                isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+                and any(str(item or "").strip() for item in value)
+            ):
+                return True
+        return False
+
+    def validation_ids(row: Mapping[str, Any]) -> set[str]:
+        raw = row.get(
+            "validation_receipt_ids",
+            row.get("validation_receipt_id", ()),
+        )
+        if isinstance(raw, str):
+            raw = (raw,)
+        if not (
+            isinstance(raw, Sequence)
+            and not isinstance(raw, (str, bytes, bytearray))
+        ):
+            return set()
+        return {
+            str(item or "").strip()
+            for item in raw
+            if str(item or "").strip()
+        }
+
+    row_keys = [
+        criterion_of(row) for row in rows if isinstance(row, Mapping)
+    ]
+    coverage_bound = bool(
+        evidence_population_complete
+        and coverage_value.get("verified") is True
+        and coverage_value.get("repository_id") == repository_id
+        and coverage_value.get("repository_tree") == repository_tree
+        and len(row_keys) == len(expected_criteria)
+        and len(row_keys) == len(set(row_keys))
+        and set(row_keys) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and implementation_bound(row)
+            and len(validation_ids(row)) == 1
+            and validation_ids(row)
+            == receipt_ids_by_criterion.get(criterion_of(row), set())
+            for row in rows
+        )
+    )
+    if not coverage_bound:
+        raw_reason_codes = coverage_value.get("reason_codes")
+        prior_reason_codes = (
+            list(raw_reason_codes)
+            if isinstance(raw_reason_codes, (list, tuple))
+            else []
+        )
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "passed": False,
+            "reason_codes": [
+                *prior_reason_codes,
+                (
+                    "validation_evidence_population_incomplete"
+                    if not evidence_population_complete
+                    else "coverage_validation_receipt_unbound"
+                ),
+            ],
+        }
+
+    health_value = payload(analyzer_health)
+    health_binding_value = health_value.get("binding")
+    health_binding = (
+        dict(health_binding_value)
+        if isinstance(health_binding_value, Mapping)
+        else {}
+    )
+    health_valid = bool(
+        all(expected_binding.values())
+        and health_binding == expected_binding
+        and normalized(health_value.get("status")) == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+    )
+    if not health_valid:
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    quorum_value = payload(exhaustion_quorum)
+    members_value = quorum_value.get("members")
+    members = (
+        list(members_value)
+        if isinstance(members_value, Sequence)
+        and not isinstance(members_value, (str, bytes, bytearray))
+        else []
+    )
+    quorum_binding_value = quorum_value.get("binding")
+    quorum_binding = (
+        dict(quorum_binding_value)
+        if isinstance(quorum_binding_value, Mapping)
+        else {}
+    )
+
+    def independent_member_field(name: str) -> bool:
+        values = [
+            str(member.get(name) or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        return bool(
+            len(values) == len(members)
+            and all(values)
+            and len(values) == len(set(values))
+        )
+
+    quorum_valid = bool(
+        quorum_value.get("required_members")
+        == PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("member_count") == len(members)
+        and len(members)
+        == PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("satisfied") is True
+        and quorum_value.get("quorum_met") is True
+        and health_valid
+        and quorum_binding == expected_binding
+        and independent_member_field("member_id")
+        and independent_member_field("evidence_channel")
+        and independent_member_field("receipt_cid")
+        and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and normalized(member.get("scan_mode")) == "exhaustive"
+            and fresh(member.get("finished_at"))
+            and isinstance(member.get("binding"), Mapping)
+            and dict(member["binding"]) == expected_binding
+            for member in members
+        )
+    )
+    if not quorum_valid:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    return evaluate_goal_completion(
+        current_state=current_state,
+        acceptance_criteria=PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA,
+        evidence=evidence,
+        tasks_complete=bool(
+            tasks_complete
+            and producer_population_complete
+            and operational_complete
+        ),
+        repository_tree=repository_tree,
+        repository_id=repository_id,
+        now=current,
+        freshness_seconds=freshness_seconds,
+        clock_skew_seconds=clock_skew_seconds,
+        coverage=coverage_value,
+        analyzer_health=health_value,
+        exhaustion_quorum=quorum_value,
+        child_goals=(),
+        analysis_result=None,
+        analysis_inconclusive=analysis_inconclusive,
+        blocked_reason=blocked_reason,
+        require_completion_gate=True,
+    )
 
 
 def _request_value(request: MergeRequest, name: str, *metadata_names: str) -> str:
@@ -298,6 +875,9 @@ class MergeTrain:
             "accepted_per_second": 0.0,
             "peak_preflight_parallelism": 0,
         }
+        self._acceptance_evidence: deque[ParallelAcceptanceReceipt] = deque(
+            maxlen=256
+        )
         if (
             proof_gate is not None
             and proof_gate_callback is not None
@@ -1019,6 +1599,7 @@ class MergeTrain:
             ),
             accepted=bool(validation.get("passed")) and claim_current,
             validation_receipt_ids=self._validation_receipt_ids(validation),
+            _producer_seal=_PARALLEL_ACCEPTANCE_RECEIPT_SEAL,
         )
         receipt_payload = receipt.to_dict()
         self._write_acceptance_receipt(receipt_payload)
@@ -1100,6 +1681,11 @@ class MergeTrain:
         self._write_receipt(
             self._dedupe_key(canonical, candidate), integration
         )
+        # The live typed object retains producer authority in a bounded
+        # in-memory ledger.  Its JSON projection is durable and
+        # content-addressed, but restoration remains diagnostic so a caller
+        # cannot manufacture completion authority from lookalike JSON.
+        self._acceptance_evidence.append(receipt)
         return integration
 
     def _write_acceptance_receipt(
@@ -1110,6 +1696,13 @@ class MergeTrain:
         path = self.receipt_dir / f"acceptance-{digest}.json"
         self._atomic_json(path, payload)
         return path
+
+    def acceptance_evidence_receipts(
+        self,
+    ) -> tuple[ParallelAcceptanceReceipt, ...]:
+        """Return live producer-sealed receipts retained by this train."""
+
+        return tuple(self._acceptance_evidence)
 
     def _recover_abandoned_claims(self) -> int:
         recover = getattr(self.queue, "recover_abandoned_train_claims", None)
@@ -2855,8 +3448,16 @@ __all__ = [
     "PARALLEL_ACCEPTANCE_EVIDENCE_ID",
     "PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA",
     "PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA",
+    "PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA",
+    "PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION",
+    "PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION",
+    "PARALLEL_EXECUTION_OBJECTIVE_ID",
+    "PARALLEL_EXECUTION_OBJECTIVE_REVISION",
+    "PARALLEL_EXECUTION_PRODUCING_TASK_IDS",
+    "PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "ParallelAcceptanceReceipt",
     "PostMergeValidationCallback",
     "PreflightCallback",
     "conflict_fingerprint",
+    "evaluate_parallel_execution_completion",
 ]
