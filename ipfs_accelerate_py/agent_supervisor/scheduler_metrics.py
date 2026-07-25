@@ -37,6 +37,30 @@ PROOF_ROLLOUT_QUERY_SCHEMA_VERSION = 1
 PROOF_ROLLOUT_QUERY_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.proof-rollout-query@1"
 )
+RESOURCE_ADMISSION_METRICS_SCHEMA_VERSION = 1
+RESOURCE_ADMISSION_METRICS_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.resource-admission-metrics@1"
+)
+RESOURCE_ADMISSION_EVENT_TYPES = frozenset(
+    {
+        "adaptive_resource_snapshot",
+        "adaptive_resources_observed",
+        "resource_admission_observed",
+        "resource_admission_snapshot",
+        "resource_schedule_observed",
+        "resource_schedule_snapshot",
+        "scheduler_resource_snapshot",
+    }
+)
+RESOURCE_ADMISSION_STAGES = (
+    "analysis",
+    "inference",
+    "proof",
+    "validation",
+    "merge",
+    "persistence",
+    "execution",
+)
 MAX_PROOF_ROLLOUT_QUERY_ROWS = 128
 SCHEDULER_PHASES = (
     "ready",
@@ -135,6 +159,564 @@ _RESOLVER_EVENTS = frozenset(
 _COMPLETION_EVENTS = frozenset(
     {"task_completed", "task_succeeded", "completed", "merge_completed"}
 )
+
+_RESOURCE_PROJECTION_KEYS = (
+    "resource_admission",
+    "adaptive_resources",
+    "resource_schedule",
+    "resource_schedule_snapshot",
+)
+_RESOURCE_CAPACITY_INTEGER_FIELDS = (
+    "configured_limit",
+    "effective_limit",
+    "active",
+    "queued",
+    "available",
+    "pressure_percent",
+    "queue_depth",
+    "merge_age_ms",
+    "provider_available_slots",
+    "active_leases",
+    "recovery_samples",
+    "observed_at_ms",
+)
+_RESOURCE_METRIC_INTEGER_FIELDS = (
+    "scheduled",
+    "admitted",
+    "backpressured",
+    "completed",
+    "accepted",
+    "cancelled",
+    "leases_acquired",
+    "leases_released",
+    "lease_transitions",
+    "recovery_events",
+    "contraction_events",
+    "active_leases",
+    "total_duration_ms",
+    "admission_ratio_millionths",
+    "acceptance_throughput_per_million_ms",
+)
+
+
+def _resource_stage(value: Any) -> str:
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace("/", "_").replace(" ", "_").replace("-", "_")
+    aliases = {
+        "analyze": "analysis",
+        "analysis_pipeline": "analysis",
+        "model": "inference",
+        "llm": "inference",
+        "provider": "inference",
+        "solve": "proof",
+        "solver": "proof",
+        "validate": "validation",
+        "acceptance": "validation",
+        "git": "merge",
+        "git_merge": "merge",
+        "merging": "merge",
+        "persist": "persistence",
+        "artifact": "persistence",
+        "scheduler": "execution",
+    }
+    return aliases.get(raw, raw) if raw else "execution"
+
+
+def _resource_integer(value: Any, default: int = 0) -> int:
+    """Return one non-negative integer without leaking floats into artifacts."""
+
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text and (text.isdigit() or (text.startswith("+") and text[1:].isdigit())):
+            return max(0, int(text))
+    return default
+
+
+def _resource_reason(value: Any) -> str:
+    return str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def _resource_reasons(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        values: Iterable[Any] = (value,)
+    elif isinstance(value, Iterable) and not isinstance(value, Mapping):
+        values = value
+    else:
+        values = ()
+    return tuple(sorted({_resource_reason(item) for item in values if _resource_reason(item)}))
+
+
+def _resource_reason_counts(value: Any) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        reason: count
+        for reason, count in sorted(
+            (
+                (_resource_reason(raw_reason), _resource_integer(raw_count))
+                for raw_reason, raw_count in value.items()
+            )
+        )
+        if reason and count
+    }
+
+
+def _resource_mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _resource_rows(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, Mapping):
+        rows: list[Mapping[str, Any]] = []
+        for stage, raw in value.items():
+            if isinstance(raw, Mapping):
+                rows.append({"stage": stage, **dict(raw)})
+        return rows
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [item for item in value if isinstance(item, Mapping)]
+    return []
+
+
+def _declares_resource_admission(value: Mapping[str, Any]) -> bool:
+    kind = _event_type(value)
+    resource_metric_shape = (
+        "stages" in value
+        and any(
+            key in value
+            for key in (
+                "active_lease_count",
+                "backpressure_reasons",
+                "backpressure_reason_counts",
+                "leases_acquired",
+                "leases_released",
+            )
+        )
+    )
+    return (
+        kind in RESOURCE_ADMISSION_EVENT_TYPES
+        or value.get("schema") == RESOURCE_ADMISSION_METRICS_SCHEMA
+        or any(key in value for key in _RESOURCE_PROJECTION_KEYS)
+        or resource_metric_shape
+        or any(
+            key in value
+            for key in (
+                "effective_slots",
+                "stage_capacities",
+                "stage_metrics",
+                "adaptive_metrics",
+                "backpressure_reason_counts",
+            )
+        )
+    )
+
+
+def _resource_payload(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    for key in _RESOURCE_PROJECTION_KEYS:
+        nested = value.get(key)
+        if isinstance(nested, Mapping):
+            return nested
+    return value
+
+
+def _resource_signal(
+    payload: Mapping[str, Any],
+    host: Mapping[str, Any],
+    signals: Mapping[str, Any],
+    names: Sequence[str],
+    *,
+    default: int = 0,
+) -> int:
+    for source in (signals, payload, host):
+        for name in names:
+            if name in source:
+                return _resource_integer(source.get(name), default)
+    return default
+
+
+def _resource_admission_projection(
+    value: Mapping[str, Any] | None,
+    *,
+    occurred: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Validate and canonicalize one operator-facing resource observation."""
+
+    if not isinstance(value, Mapping):
+        return None
+    payload = _resource_payload(value)
+    if not isinstance(payload, Mapping):
+        return None
+    # A declared wrapper must carry at least one schedule/resource field. This
+    # avoids accepting a type-only event as authoritative zero-capacity data.
+    meaningful = {
+        "observed_at_ms",
+        "configured_max_lanes",
+        "effective_slots",
+        "available_slots",
+        "admitted_count",
+        "backpressured_count",
+        "active_lease_count",
+        "host",
+        "providers",
+        "decisions",
+        "stage_capacities",
+        "stage_metrics",
+        "stages",
+        "adaptive_metrics",
+        "signals",
+        "backpressure_reasons",
+        "backpressure_reason_counts",
+    }
+    if not meaningful.intersection(payload):
+        return None
+
+    host = _resource_mapping(payload.get("host"))
+    signals_input = _resource_mapping(payload.get("signals"))
+    providers = _resource_rows(payload.get("providers"))
+    decisions = _resource_rows(payload.get("decisions"))
+
+    observed_at_ms = _resource_integer(payload.get("observed_at_ms"))
+    if not observed_at_ms:
+        observed_at_ms = _resource_integer(signals_input.get("observed_at_ms"))
+    if not observed_at_ms and occurred is not None:
+        observed_at_ms = max(0, int(occurred.timestamp() * 1000))
+
+    capacity_rows = _resource_rows(
+        payload.get("stage_capacities")
+        or payload.get("capacities_by_stage")
+    )
+    raw_adaptive_metrics = _resource_mapping(payload.get("adaptive_metrics"))
+    metric_rows = _resource_rows(
+        payload.get("stage_metrics")
+        or payload.get("stages")
+        or raw_adaptive_metrics.get("stages")
+        or payload.get("metrics_by_stage")
+    )
+
+    capacities_by_stage: dict[str, dict[str, Any]] = {}
+    for row in capacity_rows:
+        stage = _resource_stage(row.get("stage"))
+        normalized = {
+            "stage": stage,
+            **{
+                name: _resource_integer(row.get(name))
+                for name in _RESOURCE_CAPACITY_INTEGER_FIELDS
+            },
+        }
+        reason = _resource_reason(row.get("reason"))
+        if reason:
+            normalized["reason"] = reason
+        hysteresis_state = _resource_reason(row.get("hysteresis_state"))
+        if hysteresis_state:
+            normalized["hysteresis_state"] = hysteresis_state
+        signal_limits = {
+            str(name): _resource_integer(limit)
+            for name, limit in sorted(
+                _resource_mapping(row.get("signal_limits")).items()
+            )
+        }
+        if signal_limits:
+            normalized["signal_limits"] = signal_limits
+        reason_counts = _resource_reason_counts(
+            row.get("backpressure_reason_counts")
+            or (
+                row.get("backpressure_reasons")
+                if isinstance(row.get("backpressure_reasons"), Mapping)
+                else None
+            )
+            or row.get("reason_counts")
+        )
+        if reason_counts:
+            normalized["backpressure_reason_counts"] = reason_counts
+        capacities_by_stage[stage] = normalized
+
+    metrics_by_stage: dict[str, dict[str, Any]] = {}
+    for row in metric_rows:
+        stage = _resource_stage(row.get("stage"))
+        normalized = {
+            "stage": stage,
+            **{
+                name: _resource_integer(row.get(name))
+                for name in _RESOURCE_METRIC_INTEGER_FIELDS
+            },
+        }
+        reason_counts = _resource_reason_counts(
+            row.get("backpressure_reason_counts")
+            or (
+                row.get("backpressure_reasons")
+                if isinstance(row.get("backpressure_reasons"), Mapping)
+                else None
+            )
+            or row.get("reason_counts")
+        )
+        if reason_counts:
+            normalized["backpressure_reason_counts"] = reason_counts
+        metrics_by_stage[stage] = normalized
+
+    # Canonical persisted projections carry a combined lookup in addition to
+    # the two ordered row collections. Retain its per-stage reason histogram
+    # when validating a read-back so write/read is lossless.
+    for row in _resource_rows(payload.get("by_stage")):
+        stage = _resource_stage(row.get("stage"))
+        reason_counts = _resource_reason_counts(
+            row.get("backpressure_reason_counts") or row.get("reason_counts")
+        )
+        if not reason_counts:
+            continue
+        if stage in capacities_by_stage:
+            capacities_by_stage[stage]["backpressure_reason_counts"] = reason_counts
+        elif stage in metrics_by_stage:
+            metrics_by_stage[stage]["backpressure_reason_counts"] = reason_counts
+
+    aggregate_reason_counts = _resource_reason_counts(
+        payload.get("backpressure_reason_counts")
+        or payload.get("backpressure_counts")
+        or (
+            payload.get("backpressure_reasons")
+            if isinstance(payload.get("backpressure_reasons"), Mapping)
+            else None
+        )
+        or (
+            raw_adaptive_metrics.get("backpressure_reasons")
+            if isinstance(
+                raw_adaptive_metrics.get("backpressure_reasons"), Mapping
+            )
+            else None
+        )
+        or payload.get("reason_counts")
+    )
+    decision_reason_counts: dict[str, int] = {}
+    decision_stage_reason_counts: dict[str, dict[str, int]] = {}
+    backpressured_decisions = 0
+    for decision in decisions:
+        admitted = bool(decision.get("admitted") or decision.get("allowed"))
+        if admitted:
+            continue
+        backpressured_decisions += 1
+        reasons = _resource_reasons(
+            decision.get("reasons") or decision.get("backpressure_reasons")
+            or decision.get("reason")
+        )
+        stage = _resource_stage(decision.get("stage"))
+        stage_counts = decision_stage_reason_counts.setdefault(stage, {})
+        for reason in reasons:
+            decision_reason_counts[reason] = decision_reason_counts.get(reason, 0) + 1
+            stage_counts[reason] = stage_counts.get(reason, 0) + 1
+    if decision_reason_counts:
+        aggregate_reason_counts = decision_reason_counts
+
+    listed_reasons = _resource_reasons(payload.get("backpressure_reasons"))
+    if not aggregate_reason_counts:
+        aggregate_reason_counts = {reason: 1 for reason in listed_reasons}
+    reasons = tuple(sorted({*listed_reasons, *aggregate_reason_counts}))
+    for stage, reason_counts in decision_stage_reason_counts.items():
+        target = capacities_by_stage.get(stage) or metrics_by_stage.get(stage)
+        if target is not None:
+            target["backpressure_reason_counts"] = dict(
+                sorted(reason_counts.items())
+            )
+
+    all_stages = sorted(
+        {
+            *capacities_by_stage,
+            *metrics_by_stage,
+            *decision_stage_reason_counts,
+        },
+        key=lambda stage: (
+            RESOURCE_ADMISSION_STAGES.index(stage)
+            if stage in RESOURCE_ADMISSION_STAGES
+            else len(RESOURCE_ADMISSION_STAGES),
+            stage,
+        ),
+    )
+    by_stage: dict[str, dict[str, Any]] = {}
+    for stage in all_stages:
+        capacity = capacities_by_stage.get(stage, {})
+        metrics = metrics_by_stage.get(stage, {})
+        stage_counts = _resource_reason_counts(
+            capacity.get("backpressure_reason_counts")
+            or metrics.get("backpressure_reason_counts")
+        )
+        if stage in decision_stage_reason_counts:
+            stage_counts = dict(sorted(decision_stage_reason_counts[stage].items()))
+        by_stage[stage] = {
+            "stage": stage,
+            **{
+                name: _resource_integer(capacity.get(name))
+                for name in _RESOURCE_CAPACITY_INTEGER_FIELDS
+            },
+            **{
+                name: _resource_integer(metrics.get(name))
+                for name in _RESOURCE_METRIC_INTEGER_FIELDS
+            },
+            "backpressure_reason_counts": stage_counts,
+        }
+        if capacity.get("reason"):
+            by_stage[stage]["reason"] = capacity["reason"]
+        if capacity.get("hysteresis_state"):
+            by_stage[stage]["hysteresis_state"] = capacity["hysteresis_state"]
+        if capacity.get("signal_limits"):
+            by_stage[stage]["signal_limits"] = dict(capacity["signal_limits"])
+
+    provider_available_slots = _resource_signal(
+        payload,
+        host,
+        signals_input,
+        ("provider_available_slots", "available_provider_capacity"),
+    )
+    if not provider_available_slots:
+        provider_available_slots = sum(
+            _resource_integer(provider.get("available_concurrency"))
+            for provider in providers
+            if provider.get("healthy", True)
+            and not _resource_integer(provider.get("retry_after_ms"))
+        )
+
+    queue_depth = _resource_signal(
+        payload, host, signals_input, ("queue_depth", "queued_count", "ready_count")
+    )
+    if not queue_depth:
+        queue_depth = sum(
+            _resource_integer(row.get("queued"))
+            for row in capacities_by_stage.values()
+        )
+    merge_age_ms = _resource_signal(
+        payload,
+        host,
+        signals_input,
+        ("merge_age_ms", "oldest_merge_age_ms", "merge_queue_age_ms"),
+    )
+    if not merge_age_ms:
+        merge_age_ms = max(
+            (
+                _resource_integer(row.get("merge_age_ms"))
+                for row in capacities_by_stage.values()
+            ),
+            default=0,
+        )
+    active_lease_count = _resource_signal(
+        payload,
+        host,
+        signals_input,
+        ("active_lease_count", "active_leases", "lease_count"),
+    )
+    raw_active_leases = payload.get("active_leases")
+    if (
+        not active_lease_count
+        and isinstance(raw_active_leases, Sequence)
+        and not isinstance(raw_active_leases, (str, bytes, bytearray))
+    ):
+        active_lease_count = len(raw_active_leases)
+    if not active_lease_count:
+        active_lease_count = _resource_integer(host.get("active_workers"))
+
+    signals = {
+        "cpu_percent": _resource_signal(
+            payload, host, signals_input, ("cpu_percent", "cpu_usage_percent")
+        ),
+        "memory_percent": _resource_signal(
+            payload, host, signals_input, ("memory_percent", "memory_usage_percent")
+        ),
+        "memory_available_bytes": _resource_signal(
+            payload, host, signals_input,
+            ("memory_available_bytes", "available_memory_bytes"),
+        ),
+        "gpu_memory_percent": _resource_signal(
+            payload, host, signals_input,
+            ("gpu_memory_percent", "gpu_memory_usage_percent"),
+        ),
+        "gpu_memory_available_bytes": _resource_signal(
+            payload, host, signals_input,
+            ("gpu_memory_available_bytes", "available_gpu_memory_bytes"),
+        ),
+        "disk_percent": _resource_signal(
+            payload, host, signals_input, ("disk_percent", "disk_usage_percent")
+        ),
+        "disk_available_bytes": _resource_signal(
+            payload, host, signals_input,
+            ("disk_available_bytes", "available_disk_bytes"),
+        ),
+        "provider_available_slots": provider_available_slots,
+        "queue_depth": queue_depth,
+        "merge_age_ms": merge_age_ms,
+        "active_lease_count": active_lease_count,
+    }
+    configured = _resource_integer(
+        payload.get("configured_max_lanes"),
+        _resource_integer(_resource_mapping(payload.get("policy")).get("max_lanes")),
+    )
+    backpressured_count = _resource_integer(
+        payload.get("backpressured_count"), backpressured_decisions
+    )
+    if not backpressured_count:
+        backpressured_count = sum(
+            _resource_integer(row.get("backpressured"))
+            for row in metrics_by_stage.values()
+        )
+
+    stage_capacities = [capacities_by_stage[stage] for stage in all_stages if stage in capacities_by_stage]
+    stage_metrics = [metrics_by_stage[stage] for stage in all_stages if stage in metrics_by_stage]
+    return {
+        "schema": RESOURCE_ADMISSION_METRICS_SCHEMA,
+        "schema_version": RESOURCE_ADMISSION_METRICS_SCHEMA_VERSION,
+        "observed": True,
+        "observed_at_ms": observed_at_ms,
+        "configured_max_lanes": configured,
+        "effective_slots": _resource_integer(payload.get("effective_slots")),
+        "available_slots": _resource_integer(payload.get("available_slots")),
+        "admitted_count": _resource_integer(payload.get("admitted_count")),
+        "backpressured_count": backpressured_count,
+        "active_lease_count": active_lease_count,
+        "queue_depth": queue_depth,
+        "merge_age_ms": merge_age_ms,
+        "backpressure_reasons": list(reasons),
+        "backpressure_reason_counts": dict(sorted(aggregate_reason_counts.items())),
+        "signals": signals,
+        "stage_capacities": stage_capacities,
+        "stage_metrics": stage_metrics,
+        "by_stage": by_stage,
+    }
+
+
+def project_resource_admission_metrics(
+    observations: Mapping[str, Any] | Iterable[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the latest valid deterministic resource-admission projection.
+
+    A direct resource schedule mapping is accepted for integrations. For event
+    streams, timestamped observations supersede undated legacy observations;
+    source order breaks exact timestamp ties.
+    """
+
+    if isinstance(observations, Mapping):
+        values = [dict(observations)]
+    else:
+        values = [
+            dict(value) for value in observations if isinstance(value, Mapping)
+        ]
+    candidates: list[tuple[int, Mapping[str, Any], datetime | None]] = []
+    for index, value in enumerate(values):
+        if _declares_resource_admission(value):
+            candidates.append((index, value, _event_time(value)))
+    candidates.sort(
+        key=lambda item: (
+            item[2] is not None,
+            item[2] or datetime.min.replace(tzinfo=timezone.utc),
+            item[0],
+        )
+    )
+    latest: dict[str, Any] | None = None
+    for _index, value, occurred in candidates:
+        projected = _resource_admission_projection(value, occurred=occurred)
+        if projected is None:
+            raise ValueError(
+                "resource admission observation has an invalid projection"
+            )
+        latest = projected
+    return latest
 
 
 def _now_iso(now: datetime | str | None = None) -> str:
@@ -1471,6 +2053,19 @@ class SchedulerSnapshot(Mapping[str, Any]):
 
         return _proof_rollout_projection(self.payload)
 
+    @property
+    def resource_admission(self) -> Mapping[str, Any] | None:
+        """Validated adaptive resource admission and backpressure metrics."""
+
+        value = self.payload.get("resource_admission")
+        return value if isinstance(value, Mapping) else None
+
+    @property
+    def adaptive_resources(self) -> Mapping[str, Any] | None:
+        """Compatibility alias for :attr:`resource_admission`."""
+
+        return self.resource_admission
+
     def __getitem__(self, key: str) -> Any:
         return self.payload[key]
 
@@ -1512,6 +2107,9 @@ def scheduler_snapshot(
     completion_diagnostics = project_goal_completion_diagnostics(
         [event for _index, event, _occurred in unique], now=now
     )
+    resource_admission = project_resource_admission_metrics(
+        [event for _index, event, _occurred in unique]
+    )
     rollout_projection: dict[str, Any] | None = None
     for _index, event, _occurred in unique:
         candidate = _proof_rollout_projection(event)
@@ -1538,6 +2136,25 @@ def scheduler_snapshot(
             # A repository scan is supervisor-level evidence, not a scheduler
             # task.  It contributes to scan_metrics but must not manufacture an
             # ``unknown`` idle task or alter a real task's current phase.
+            continue
+        if _declares_resource_admission(event) and (
+            kind in RESOURCE_ADMISSION_EVENT_TYPES
+            or not any(
+                event.get(key)
+                for key in (
+                    "task_cid",
+                    "canonical_task_cid",
+                    "canonical_task_key",
+                    "task_id",
+                    "lane_id",
+                    "parallel_lane",
+                    "bundle_key",
+                    "state_prefix",
+                )
+            )
+        ):
+            # Resource observations are supervisor-wide gauges, not lifecycle
+            # state. They must not create an anonymous scheduler task.
             continue
         if (
             _proof_rollout_projection(event) is not None
@@ -1857,6 +2474,7 @@ def scheduler_snapshot(
             if key != "generated_at"
         },
         "proof_rollout": rollout_projection,
+        "resource_admission": resource_admission,
     }
     snapshot_id = hashlib.sha256(
         json.dumps(fingerprint_material, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
@@ -1882,6 +2500,8 @@ def scheduler_snapshot(
         "goal_completion_diagnostics": completion_diagnostics,
         "proof_rollout": rollout_projection,
         "proof_rollout_diagnostics": rollout_projection,
+        "resource_admission": resource_admission,
+        "adaptive_resources": resource_admission,
     }
     if rollout_projection is not None:
         capabilities = rollout_projection["capability_health"]
@@ -2009,6 +2629,19 @@ def read_scheduler_snapshot(path: Path | str) -> SchedulerSnapshot | None:
     payload.setdefault("goal_completion", diagnostics)
     payload.setdefault("goal_completion_diagnostics", diagnostics)
 
+    raw_resource_admission = payload.get("resource_admission")
+    if raw_resource_admission is None:
+        raw_resource_admission = payload.get("adaptive_resources")
+    resource_admission = (
+        _resource_admission_projection(raw_resource_admission)
+        if raw_resource_admission is not None
+        else None
+    )
+    if raw_resource_admission is not None and resource_admission is None:
+        return None
+    payload["resource_admission"] = resource_admission
+    payload["adaptive_resources"] = resource_admission
+
     raw_rollout = payload.get("proof_rollout")
     if raw_rollout is None:
         raw_rollout = payload.get("proof_rollout_diagnostics")
@@ -2126,6 +2759,10 @@ __all__ = [
     "REFILL_SCAN_SKIPPED_REASONS",
     "REFILL_SCAN_SUCCESS_REASONS",
     "REFILL_SCAN_TERMINAL_REASONS",
+    "RESOURCE_ADMISSION_EVENT_TYPES",
+    "RESOURCE_ADMISSION_METRICS_SCHEMA",
+    "RESOURCE_ADMISSION_METRICS_SCHEMA_VERSION",
+    "RESOURCE_ADMISSION_STAGES",
     "SCHEDULER_PHASES",
     "SCHEDULER_SNAPSHOT_SCHEMA",
     "SCHEDULER_SNAPSHOT_SCHEMA_VERSION",
@@ -2152,6 +2789,7 @@ __all__ = [
     "publish_proof_rollout_status",
     "proof_rollout_diagnostics",
     "project_goal_completion_diagnostics",
+    "project_resource_admission_metrics",
     "query_proof_rollout_diagnostics",
     "query_proof_rollout_status",
     "read_proof_rollout_status",
