@@ -369,7 +369,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G090 Paired rollout, stable exports, and operator adoption
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G000
 - Depends on: ASI-G080
 - Fib priority: 13
@@ -394,6 +394,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-25T05:48:51.602035+00:00
+- State transition reason: Produce completion evidence for: Paired cold/warm, failure, adversarial, parallel, restart, and refill fixtures satisfy every non-negotiable safety gate and the documented token/cache/planning/throughput gates; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-25T05:48:51.602035+00:00
 
 ## ASI-G091 Prove 208290439421789408250562066350459701853 for Token-efficient context and end-to-end measurement
 
@@ -717,7 +720,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G100 Prove 314133036252270790078901745919131980427 for Strict output, code, test, semantic, and proof validation
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G040
 - Fib priority: 5000
 - Track: validation
@@ -746,6 +749,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-25T05:48:51.602035+00:00
+- State transition reason: Produce completion evidence for: Proposal admission deterministically checks schema, authority, baseline and candidate identity, non-empty effective change, normalized path safety, and task-owned scope before any expensive validation. Empty or effectless diffs and every out-of-scope path fail closed with bounded typed diagnostics; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-25T05:48:51.602035+00:00
 
 ## ASI-G101 Prove 266404049326363900535699811645710804440 for Strict output, code, test, semantic, and proof validation
 
