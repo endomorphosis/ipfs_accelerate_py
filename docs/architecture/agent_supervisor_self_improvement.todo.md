@@ -212,7 +212,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-012 Bind semantic, legal/logic, and proof validation to changed code
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: output-validation
