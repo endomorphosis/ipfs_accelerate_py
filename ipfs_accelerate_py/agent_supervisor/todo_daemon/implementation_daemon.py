@@ -18,7 +18,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..context_compiler import (
     ContextCompilationReceipt,
@@ -1394,6 +1394,41 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
     return tasks
 
 
+def dependency_satisfied_references(
+    tasks: Sequence[PortalTask],
+    *,
+    completed_task_ids: Iterable[str] = (),
+    assumed_completed_references: Iterable[str] = (),
+) -> set[str]:
+    """Return satisfied task and objective-goal dependency references.
+
+    Generated objective boards use stable goal IDs as dependencies before a
+    concrete task alias is always available. A goal dependency is satisfied
+    only after every task currently bound to that goal is complete, so a
+    completed historical task cannot prematurely unlock a newer continuation.
+    """
+
+    satisfied_task_ids = {
+        str(reference)
+        for reference in (*completed_task_ids, *assumed_completed_references)
+        if str(reference).strip()
+    }
+    satisfied = set(satisfied_task_ids)
+    declared_task_ids = {task.task_id for task in tasks}
+    task_ids_by_goal: dict[str, set[str]] = {}
+    for task in tasks:
+        for goal_id in split_csv(task.metadata.get("goal id", "")):
+            task_ids_by_goal.setdefault(goal_id, set()).add(task.task_id)
+    for goal_id, task_ids in task_ids_by_goal.items():
+        if (
+            goal_id not in declared_task_ids
+            and task_ids
+            and task_ids.issubset(satisfied_task_ids)
+        ):
+            satisfied.add(goal_id)
+    return satisfied
+
+
 class PortalImplementationDaemon:
     shared_todo_runner_class = TodoDaemonRunner
     shared_todo_hooks_class = TodoDaemonHooks
@@ -2655,7 +2690,11 @@ class PortalImplementationDaemon:
             for task in tasks
             if self._canonical_ref(task) in completed_cids
         )
-        dependency_satisfied_task_ids = completed_set | self.assumed_completed_task_ids
+        dependency_satisfied_task_ids = dependency_satisfied_references(
+            tasks,
+            completed_task_ids=completed_set,
+            assumed_completed_references=self.assumed_completed_task_ids,
+        )
         dependency_reopen_candidates = [
             task.task_id
             for task in tasks

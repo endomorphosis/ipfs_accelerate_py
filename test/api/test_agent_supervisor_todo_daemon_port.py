@@ -37,10 +37,15 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     parse_goal_heap,
     scan_objective_gaps,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
+from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+    _canonical_dependency_waves,
+    parse_todo_vector_records,
+    write_todo_vector_index,
+)
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority, run_goal_validation
 from ipfs_accelerate_py.agent_supervisor.validation_commands import split_validation_commands
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    dependency_guardrail_records,
     reconciliation_guardrail_plan,
     reconciliation_guardrail_records,
     record_reconciliation_guardrail_findings,
@@ -128,6 +133,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoTaskState,
     TodoImplementationDaemon,
+    dependency_satisfied_references,
     normalize_implementation_protected_paths,
     parse_task_file,
     parse_args as parse_implementation_daemon_args,
@@ -6246,6 +6252,89 @@ def test_implementation_daemon_reopens_dependency_block_after_prerequisite_compl
     ).read_text(encoding="utf-8")
 
 
+def test_implementation_daemon_resolves_completed_objective_goal_dependency(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 First completed goal task
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Goal id: VAIOS-G001
+
+## ACCEL-002 Second completed goal task
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Goal id: VAIOS-G001
+
+## ACCEL-003 Goal-dependent task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: VAIOS-G001
+- Goal id: VAIOS-G002
+""",
+        encoding="utf-8",
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    assert dependency_guardrail_records(tasks) == []
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+
+    assert result["active_task_id"] == "ACCEL-003"
+    assert state.ready_task_ids == ["ACCEL-003"]
+    assert state.waiting_task_ids == []
+
+
+def test_goal_dependency_alias_cannot_masquerade_as_an_open_task_id():
+    tasks = [
+        PortalTask(
+            task_id="ACCEL-001",
+            title="Completed goal owner",
+            status="completed",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            metadata={"goal id": "VAIOS-G-COLLIDE"},
+        ),
+        PortalTask(
+            task_id="VAIOS-G-COLLIDE",
+            title="Open colliding task ID",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            metadata={"goal id": "VAIOS-G-OTHER"},
+        ),
+    ]
+
+    satisfied = dependency_satisfied_references(
+        tasks,
+        completed_task_ids={"ACCEL-001"},
+    )
+
+    assert satisfied == {"ACCEL-001"}
+
+
 def test_implementation_daemon_filters_repo_wide_task_claims(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11228,6 +11317,111 @@ def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
     assert payload["execution_packets"][0]["work_item_count_total"] == 2
     assert payload["execution_packets"][0]["compact_packet_tokens"] < payload["execution_packets"][0]["raw_prompt_tokens"]
     assert records[0].related_task_ids == ["ACCEL-002"]
+
+
+def test_todo_vector_dependency_waves_resolve_objective_goal_ids(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Implement prerequisite
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Bundle: objective/runtime
+- Goal id: VAIOS-G001
+
+## ACCEL-002 Implement dependent
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Bundle: objective/runtime
+- Goal id: VAIOS-G002
+- Depends on: VAIOS-G001
+""",
+        encoding="utf-8",
+    )
+    records = parse_todo_vector_records(
+        repo_root=repo,
+        todo_path=todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+
+    waves, diagnostics = _canonical_dependency_waves(records)
+    records_by_id = {record.task_id: record for record in records}
+
+    assert diagnostics == {}
+    assert waves[records_by_id["ACCEL-001"].task_cid] == 0
+    assert waves[records_by_id["ACCEL-002"].task_cid] == 1
+
+
+def test_todo_vector_refresh_reconciles_bundle_task_dependency_aliases(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Implement prerequisite
+
+- Status: completed
+- Priority: P1
+- Track: runtime
+- Bundle: objective/runtime
+- Goal id: VAIOS-G001
+
+## ACCEL-002 Implement dependent
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Bundle: objective/runtime
+- Goal id: VAIOS-G002
+- Depends on: ACCEL-001
+""",
+        encoding="utf-8",
+    )
+    bundle_index_path = repo / "objective_bundles" / "index.json"
+    bundle_index_path.parent.mkdir()
+    bundle_index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "objective/runtime": {
+                        "tasks": [
+                            {
+                                "task_id": "ACCEL-002",
+                                "status": "completed",
+                                "depends_on": ["VAIOS-G001"],
+                                "dependency_task_ids": ["VAIOS-G001"],
+                            }
+                        ]
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    write_todo_vector_index(
+        repo_root=repo,
+        todo_path=todo_path,
+        index_path=repo / "objective_bundles" / "todo_vector_index.json",
+        task_header_prefix="## ACCEL-",
+        bundle_index_path=bundle_index_path,
+    )
+    refreshed = json.loads(bundle_index_path.read_text(encoding="utf-8"))
+    task = refreshed["bundles"]["objective/runtime"]["tasks"][0]
+
+    assert task["status"] == "todo"
+    assert task["depends_on"] == ["ACCEL-001"]
+    assert task["dependency_task_ids"] == ["ACCEL-001"]
+    assert task["dependency_task_cids"] == ["ACCEL-001"]
+    assert task["dependency_projection_valid"] is True
 
 
 def test_todo_vector_index_preserves_quoted_validation_semicolons(tmp_path):
