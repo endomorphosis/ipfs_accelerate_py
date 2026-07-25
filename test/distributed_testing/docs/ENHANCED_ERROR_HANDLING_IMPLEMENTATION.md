@@ -10,7 +10,7 @@ This document provides a technical reference for the Enhanced Error Handling sys
 
 ## System Components
 
-![Error Recovery Architecture](../images/error_recovery_architecture.png)
+![Progressive Recovery Analysis](../images/progressive_recovery_analysis.png)
 
 ### Core Components
 
