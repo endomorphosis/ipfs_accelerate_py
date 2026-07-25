@@ -625,27 +625,32 @@ or at least 2,000 basis points in aggregate invalid-plan-branch reduction. A
 missing fixture or any failed gate forces the effective mode to `shadow`, even
 when `assist` or `automatic` was requested.
 
-Two stable objective terms make these decisions directly auditable:
+Three stable objective terms make the rollout and its public adoption boundary
+directly auditable:
 
 - `109590900757783560279417463762322084165` is satisfied only when the complete
   seeded population has zero candidate false completions; seeding any false
   completion fails the non-negotiable gate and forces `shadow`.
 - `146189916032404266364029134505159070240` is satisfied only when the paired
   token, repeated-cache, planning, and independent-throughput gates all pass.
+- `300500866741873729474343907613893393545`, published as
+  `PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`, is satisfied only by a fresh
+  interpreter check proving package import and manifest inspection are cold,
+  every unique manifest member resolves to its identical provider-free owner,
+  and no optional provider is loaded. Its canonical heap owner is ASI-G114.
 
 Use
 `report.evidence_for(requirement_id, repository_id=..., repository_tree=...)`
-to obtain the bounded, typed projection for one of these terms. The canonical
-ASI-G112/ASI-G113 goal is derived from the requirement and cannot be supplied
-by the caller. An unmet term returns a negative diagnostic witness; an
-unsupported term raises `PairedRolloutValidationError`. Restore serialized
-evidence with `PairedRolloutRequirementEvidence.from_dict(payload,
-report=report)`, which re-derives the claim and rejects altered, detached, or
-unknown data. The projection contains identities, gate measurements, and
-stable reason codes, not prompts, model output, patches, proofs, cache values,
-or artifact bodies; it is rollout evidence, never mutation authorization or
-goal completion evidence. Keep the diagnostics with the report so a
-forced-shadow decision can be explained without retaining unbounded payloads.
+to obtain the bounded, typed projection for either report-backed term. The
+canonical ASI-G112/ASI-G113 goal is derived from the requirement and cannot be
+supplied by the caller. The ASI-G114 import-isolation term is intentionally not
+accepted by `evidence_for`: it is a package-interface property proved by the
+fresh-process surface test, not a claim about paired measurements. An unmet
+report term returns a negative diagnostic witness; an unsupported term raises
+`PairedRolloutValidationError`. Restore serialized report evidence with
+`PairedRolloutRequirementEvidence.from_dict(payload, report=report)`, which
+re-derives the claim and rejects altered, detached, or unknown data. Neither
+evidence route grants mutation authorization or goal-completion authority.
 
 Paired report version 2 adds the explicit invalid-plan-branch measurement and
 four component-gate projections. The reader still recomputes and accepts
@@ -662,6 +667,12 @@ fixture collections; and the evaluator. Importing
 `ipfs_accelerate_py.agent_supervisor` or reading the manifest does not load
 optional analysis, model, dataset, or prover providers or start a process.
 Accessing a listed name loads only the provider-free rollout contract module.
+The adjacent `PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID` and
+`PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID` bind that compatibility contract without
+loading the rollout module. A qualifying smoke preflight must run
+`test_stable_rollout_exports_remain_lazy_without_optional_providers` in its
+fresh child interpreter; importing successfully in an already-warm operator
+process or checking only some manifest names is not evidence.
 Migrate direct imports from
 `ipfs_accelerate_py.agent_supervisor.self_improvement_rollout` to the package
 root; migrate a version-1 report by running a fresh version-2 shadow population,
@@ -681,7 +692,9 @@ promotion; it is not itself an authorization decision or completion proof.
 Before requesting `assist`, and again before `automatic`, the operator's
 go/no-go review must confirm:
 
-1. capability discovery loaded no optional provider and started no process;
+1. the fresh-process ASI-G114 import-isolation preflight passed for the current
+   package and provider inventory, and capability discovery likewise loaded no
+   optional provider and started no process;
 2. a current version-2 report covers every reviewed fixture in shadow;
 3. both strictly restored projections are satisfied and bound to the current
    repository and tree, and are retained with the exact profile, capability
@@ -690,7 +703,9 @@ go/no-go review must confirm:
    reason codes have been reviewed;
 5. the desired mutation separately has authorization, expected effects,
    idempotency, a live lease, and the current fence; and
-6. any binding change returns operation to shadow and reruns the population.
+6. any package, manifest, provider-inventory, tree, policy, capability, or
+   profile binding change returns operation to shadow and reruns the applicable
+   import-isolation preflight and paired population.
 
 ## Metrics and evidence
 

@@ -5,13 +5,16 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
+import ipfs_accelerate_py.agent_supervisor as supervisor_api
+from ipfs_accelerate_py.agent_supervisor import (
     MAX_CANDIDATE_ARTIFACT_BYTES,
     MAX_CANDIDATE_ARTIFACT_COUNT,
     MIN_INDEPENDENT_LANE_THROUGHPUT_BPS,
     MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS,
     MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS,
     PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID,
+    PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID,
     SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
     PairedFixtureKind,
     PairedRolloutFixture,
@@ -24,6 +27,9 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
     RolloutBehaviorMeasurement,
     SelfImprovementRolloutMode,
     evaluate_paired_self_improvement_rollout,
+)
+from ipfs_accelerate_py.agent_supervisor import (
+    self_improvement_rollout as rollout_module,
 )
 
 
@@ -148,6 +154,39 @@ def _requirement_evidence(
         repository_id=REPOSITORY_ID,
         repository_tree=REPOSITORY_TREE,
     )
+
+
+def test_benchmark_uses_complete_stable_package_root_rollout_surface() -> None:
+    stable_exports = supervisor_api.PAIRED_ROLLOUT_STABLE_EXPORTS
+
+    assert PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID == (
+        "300500866741873729474343907613893393545"
+    )
+    assert PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID == "ASI-G114"
+    assert set(stable_exports) == set(rollout_module.__all__)
+    assert len(stable_exports) == len(set(stable_exports))
+    assert all(name in supervisor_api.__all__ for name in stable_exports)
+    assert all(
+        getattr(supervisor_api, name) is getattr(rollout_module, name)
+        for name in stable_exports
+    )
+    assert (
+        supervisor_api.evaluate_paired_self_improvement_rollout
+        is rollout_module.evaluate_paired_self_improvement_rollout
+    )
+
+    package_report = supervisor_api.evaluate_paired_self_improvement_rollout(
+        _fixtures(),
+        desired_mode=supervisor_api.SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+    direct_report = rollout_module.evaluate_paired_self_improvement_rollout(
+        _fixtures(),
+        desired_mode=rollout_module.SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+    assert package_report.report_id == direct_report.report_id
+    assert package_report.to_dict() == direct_report.to_dict()
 
 
 def test_closed_paired_population_passes_every_asi_023_gate() -> None:

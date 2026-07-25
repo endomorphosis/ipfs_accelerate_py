@@ -51,6 +51,17 @@ process. Accessing a provider-specific attribute for the first time may import
 that provider adapter, but it still does not establish that the provider is
 available or conformant.
 
+The paired-rollout subset has a machine-readable compatibility boundary:
+`PAIRED_ROLLOUT_STABLE_EXPORTS` is an immutable, unique, complete manifest
+whose members resolve lazily to their identical objects in the provider-free
+owner module. Package-owned
+`PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`
+(`300500866741873729474343907613893393545`) and
+`PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID` (ASI-G114) name the import-isolation
+obligation without resolving rollout code. This obligation is validated in a
+fresh interpreter across the complete manifest and optional-provider
+inventory; a warm-process import or a partial name check is non-authoritative.
+
 Availability is therefore an explicit two-step handshake:
 
 1. use the control discovery manifest or capability report to learn the closed
@@ -282,11 +293,19 @@ evaluator are enumerated by the package-root
 `PAIRED_ROLLOUT_STABLE_EXPORTS` compatibility manifest. Cold import, manifest
 inspection, and static control discovery do not load optional providers or
 start processes; first access to a listed name loads only the provider-free
-rollout contracts. Smoke operators exercise every seeded
-forced-shadow path with fixed inputs and bounded state. Production operators
-retain the two evidence projections with the report and current tree,
-objective, policy, capability, and profile identities, and return to shadow
-when any binding changes.
+rollout contracts. The isolated ASI-G114 validation checks cold state, exact
+`__all__`/manifest equality, owner identity for every member, absence of all
+registered and dataset-backed optional providers. It is public-interface
+evidence, not a third
+`PairedRolloutRequirementEvidence`, because it is independent of paired
+fixture measurements.
+
+Smoke operators run that import-isolation preflight before exercising every
+seeded forced-shadow path with fixed inputs and bounded state. Production
+operators run the same preflight for the deployed package/provider inventory,
+retain the two report evidence projections with the current tree, objective,
+policy, capability, and profile identities, and return to shadow when any
+package, manifest, provider, or report binding changes.
 
 Other subsystems use related but deliberately distinct vocabularies. Formal
 planning has `shadow`, `canary`, and `enforcement`; Leanstral goal development
