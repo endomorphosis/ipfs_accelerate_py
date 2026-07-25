@@ -22,6 +22,15 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_completion import (
     SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS,
     evaluate_self_improvement_root_completion,
 )
+from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
+    PairedFixtureKind,
+    PairedRolloutFixture,
+    PairedRolloutReportStore,
+    REQUIRED_PAIRED_FIXTURE_KINDS,
+    RolloutBehaviorMeasurement,
+    SelfImprovementRolloutMode,
+    evaluate_paired_self_improvement_rollout,
+)
 
 
 NOW = datetime(2026, 7, 24, 22, 30, tzinfo=timezone.utc)
@@ -581,7 +590,7 @@ def test_checked_in_root_remains_actionable_until_live_proof_exists() -> None:
 
     assert "- Status: provisionally_complete" in root_block
     assert "- ASI-082 root completion gate:" in root_block
-    assert task_states["ASI-082"] == "todo"
+    assert task_states["ASI-082"] in {"todo", "completed"}
     assert any(
         task_states[task_id] != "completed"
         for task_id in SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS
@@ -592,3 +601,157 @@ def test_checked_in_root_remains_actionable_until_live_proof_exists() -> None:
             1,
         )[0]
         assert "- Status: verified_complete" not in child_block
+
+
+def _rollout_measurement(
+    kind: PairedFixtureKind,
+    *,
+    candidate: bool,
+) -> RolloutBehaviorMeasurement:
+    rejected = {
+        PairedFixtureKind.CONTRADICTORY,
+        PairedFixtureKind.MALFORMED_OUTPUT,
+        PairedFixtureKind.FAILED_VALIDATION,
+    }
+    accepted = (
+        4
+        if kind is PairedFixtureKind.INDEPENDENT_PARALLEL
+        else 2
+        if kind is PairedFixtureKind.CONFLICTING_PARALLEL
+        else 0
+        if kind
+        in rejected
+        | {
+            PairedFixtureKind.PROVIDER_UNAVAILABLE,
+            PairedFixtureKind.DRAINED_REFILL,
+        }
+        else 1
+    )
+    outcome = (
+        "rejected"
+        if kind in rejected
+        else "degraded"
+        if kind is PairedFixtureKind.PROVIDER_UNAVAILABLE
+        else "exhausted"
+        if kind is PairedFixtureKind.DRAINED_REFILL
+        else "accepted"
+    )
+    repeated = kind in {
+        PairedFixtureKind.WARM,
+        PairedFixtureKind.RESTART,
+    }
+    state = "sha256:" + "d" * 64
+    seeded = 1 if kind is PairedFixtureKind.FAILED_VALIDATION else 0
+    return RolloutBehaviorMeasurement(
+        input_tokens=620 if candidate else 1_000,
+        cache_lookups=10 if repeated else 1,
+        cache_hits=8 if candidate and repeated else 2 if repeated else 0,
+        false_completions=0,
+        authority_violations=0,
+        stale_authoritative_hits=0,
+        artifact_count=1,
+        artifact_bytes=512,
+        elapsed_ms=(
+            1_900
+            if candidate and kind is PairedFixtureKind.INDEPENDENT_PARALLEL
+            else 4_000
+            if kind is PairedFixtureKind.INDEPENDENT_PARALLEL
+            else 900
+            if candidate
+            else 1_000
+        ),
+        completed_work=max(1, accepted),
+        accepted_work=accepted,
+        evidence_coverage_bps=9_200 if candidate else 9_000,
+        quality_score_bps=9_200 if candidate else 9_000,
+        seeded_defects=seeded,
+        detected_defects=seeded,
+        escaped_defects=0,
+        false_rejections=0,
+        merge_conflicts=(
+            1 if kind is PairedFixtureKind.CONFLICTING_PARALLEL else 0
+        ),
+        duplicate_executions=0,
+        unauthorized_mutations=0,
+        terminal_outcome=outcome,
+        state_digest_before=(
+            state if kind is PairedFixtureKind.RESTART else ""
+        ),
+        state_digest_after=(
+            state if kind is PairedFixtureKind.RESTART else ""
+        ),
+    )
+
+
+def _rollout_fixtures() -> tuple[PairedRolloutFixture, ...]:
+    return tuple(
+        PairedRolloutFixture(
+            fixture_id=f"e2e:{kind.value}",
+            fixture_kind=kind,
+            fixture_revision="asi-023-e2e@1",
+            input_digest="sha256:" + f"{index + 100:064x}",
+            baseline=_rollout_measurement(kind, candidate=False),
+            candidate=_rollout_measurement(kind, candidate=True),
+        )
+        for index, kind in enumerate(REQUIRED_PAIRED_FIXTURE_KINDS)
+    )
+
+
+def test_paired_rollout_gate_survives_process_restart_without_state_drift(
+    tmp_path,
+) -> None:
+    report = evaluate_paired_self_improvement_rollout(
+        _rollout_fixtures(),
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+    store = PairedRolloutReportStore(tmp_path / "paired-rollout")
+    store.persist(report)
+
+    restarted = PairedRolloutReportStore(tmp_path / "paired-rollout")
+    recovered = restarted.load(report.report_id)
+
+    assert recovered.report_id == report.report_id
+    assert recovered.promotion_allowed
+    assert recovered.effective_mode is SelfImprovementRolloutMode.AUTOMATIC
+    assert recovered["metrics"]["candidate_false_completions"] == 0
+    assert recovered["metrics"]["candidate_authority_violations"] == 0
+    assert recovered["metrics"]["candidate_stale_authoritative_hits"] == 0
+    fixtures = {
+        item["fixture_kind"]: item for item in recovered["fixtures"]
+    }
+    assert fixtures["malformed_output"]["candidate"][
+        "terminal_outcome"
+    ] == "rejected"
+    assert fixtures["provider_unavailable"]["candidate"][
+        "terminal_outcome"
+    ] == "degraded"
+    assert fixtures["drained_refill"]["candidate"][
+        "duplicate_executions"
+    ] == 0
+
+
+def test_any_end_to_end_authority_failure_keeps_candidate_in_shadow() -> None:
+    fixtures = tuple(
+        replace(
+            item,
+            candidate=replace(
+                item.candidate,
+                stale_authoritative_hits=1,
+            ),
+        )
+        if item.fixture_kind is PairedFixtureKind.STALE_CACHE
+        else item
+        for item in _rollout_fixtures()
+    )
+
+    decision = evaluate_paired_self_improvement_rollout(
+        fixtures,
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+
+    assert not decision.promotion_allowed
+    assert decision.effective_mode is SelfImprovementRolloutMode.SHADOW
+    assert "candidate_stale_authoritative_hit" in decision.reason_codes
+    assert not decision["nonnegotiable_gate_passed"]

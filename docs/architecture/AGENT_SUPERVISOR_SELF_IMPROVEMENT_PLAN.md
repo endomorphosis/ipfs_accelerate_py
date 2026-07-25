@@ -416,6 +416,71 @@ These are promotion gates, not hard-coded production defaults. A gate failure
 keeps the feature in shadow or assist mode and creates a bounded diagnostic
 task. It must never be hidden by a composite score.
 
+### Paired end-to-end rollout gate
+
+ASI-023 closes the integration gate in
+`agent_supervisor/self_improvement_rollout.py`. The gate consumes bounded
+measurements from the existing analysis, cache, context, planning, validation,
+resource, merge, control, and refill lanes; it does not rerun or replace those
+lanes. Baseline and candidate measurements are paired by a frozen fixture ID,
+fixture revision, input digest, and seeded-defect count. Reports contain
+counts, scores, terminal classifications, and content identities only. Raw
+prompts, model output, patches, proofs, cache values, and artifact bodies do
+not cross this boundary.
+
+The fixture population is closed and non-narrowable:
+
+1. cold and warm execution;
+2. a broad goal;
+3. contradictory input;
+4. malformed provider output;
+5. a stale cache record;
+6. an unavailable optional provider;
+7. independent parallel lanes;
+8. conflicting parallel lanes;
+9. failed validation;
+10. process restart; and
+11. a drained board followed by refill/exhaustion reconciliation.
+
+Each kind occurs exactly once in a report. A missing kind is a failed gate,
+not a smaller benchmark, and duplicate IDs or kinds are malformed input.
+Warm and restart fixtures form the repeated-fixture cache cohort. The
+independent-parallel fixture supplies the paired throughput measurement. The
+conflicting-parallel fixture supplies the merge-conflict comparison. The
+restart fixture binds pre- and post-restart state digests, while the
+drained-refill fixture records duplicate executions and its terminal
+classification.
+
+Promotion requires both gates below:
+
+- **Non-negotiable gate:** the candidate has exactly zero false completions,
+  authority violations, stale authoritative hits, escaped seeded defects,
+  duplicate executions, and unauthorized mutations. Malformed and
+  contradictory fixtures reject, provider unavailability remains degraded,
+  fallback, or rejected, failed validation detects every seeded defect, the
+  restart state digest is stable, and aggregate candidate artifacts remain at
+  or below 256 records and 4 MiB.
+- **Paired gate:** candidate terminal outcomes and accepted work do not regress;
+  evidence coverage, quality, and defect detection do not decrease; false
+  rejection and merge-conflict counts do not increase; median candidate input
+  tokens are at least 35 percent below the paired baseline median; candidate
+  cache reuse across repeated fixtures is at least 70 percent; and accepted
+  work throughput on the independent fixture is at least twice baseline.
+
+Threshold configuration may make these requirements stricter but cannot lower
+the token, cache, or throughput minimums, raise artifact bounds, or narrow the
+fixture population. There are no waivers for the non-negotiable gate.
+Performance improvements cannot compensate for a safety, authority, quality,
+validation, restart, merge, or population failure.
+
+The resulting report is canonical JSON with a stable SHA-256 identity that
+excludes only its observation timestamp. Deserialization recomputes the full
+decision from the embedded typed fixture evidence instead of trusting stored
+summary fields. The append-only report store uses exclusive creation, file and
+directory synchronization, symlink rejection, a 2 MiB hard report bound, and
+idempotent replay. This makes a recovered decision stable across a supervisor
+restart without turning the report into completion evidence.
+
 ## Delivery order
 
 The task board uses five dependency tranches:
@@ -449,4 +514,7 @@ Assist mode may present or queue operator-approved proposals. Automatic use
 requires every non-negotiable gate, stable restart recovery, bounded artifacts,
 and a paired improvement. Any false completion, authority violation, stale
 authoritative cache hit, uncontrolled mutation, or idempotency failure rolls
-the affected capability back to shadow.
+the affected capability back to shadow. The paired end-to-end gate also forces
+the effective mode to `shadow` whenever its fixture population is incomplete
+or either gate fails; a requested `assist` or `automatic` mode never survives
+that decision.
