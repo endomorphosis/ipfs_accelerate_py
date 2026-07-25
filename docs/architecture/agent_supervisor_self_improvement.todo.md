@@ -2920,3 +2920,48 @@ planner, and refill behavior defaults to shadow mode.
 - Acceptance: Objective scan filed this gap for ASI-G000. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-082-objective-gap-db30cef45181.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Complete the goal's producing tasks before requesting completion., Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied., Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Every child goal has fresh tree-bound evidence, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
 - Completion gate implementation: `self_improvement_completion.evaluate_self_improvement_root_completion` fixes the ASI-001..ASI-024 producer population, ASI-G010..ASI-G090 child population, four literal root criteria, and two-receipt exhaustive quorum; the E2E matrix is `test/api/test_agent_supervisor_self_improvement_e2e.py`, and the audit index is `data/agent_supervisor/discovery/2026-07-24-asi-082-completion-gate-evidence.md`.
 - Lifecycle disposition: Keep this task `todo` for the implementation daemon to close after fresh validation. ASI-G000 remains `provisionally_complete` and supervisor-actionable while any original producer or descendant is not verified and until a separate fresh current-tree root evaluation passes every completion gate.
+
+## ASI-083 Produce completion evidence for Adaptive parallel execution and acceptance throughput
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: parallelism
+- Depends on: 
+- Outputs: data/agent_supervisor/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/merge_queue.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, test/api/test_agent_supervisor_adaptive_resources.py, test/api/test_agent_supervisor_parallel_acceptance_flow.py, test/api/test_agent_supervisor_provider_batch_scheduler.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_resources.py test/api/test_agent_supervisor_provider_batch_scheduler.py test/api/test_agent_supervisor_parallel_acceptance_flow.py -q
+- Bundle: agent-supervisor/self-improvement/runtime
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-runtime.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G000
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/runtime
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/merge_queue.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, test/api/test_agent_supervisor_adaptive_resources.py, test/api/test_agent_supervisor_parallel_acceptance_flow.py, test/api/test_agent_supervisor_provider_batch_scheduler.py
+- Changed paths: 
+- AST symbols: 122080003600146794820964010047426915846, 124037811551945145648172208272779822741, 185033715568272291470322170325431455647
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G060
+- Canonical task key: task/v1/108a08fa20d0cea2af8cda7b701e00769d02d4733fda28df35bb0d6fe585da5d
+- Canonical task CID: baguqeeraccfar6ra2dhkfl4m3j5xahqao2oqfvdth7ncrxzvxmgw7zmf3joq
+- Evidence obligation key: objective-work/v1/e0d8763c9c31e15fe8579faddc628167717f936e
+- Missing evidence: Complete the goal's producing tasks before requesting completion., Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Resource pools expose backpressure and fair admission, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.
+- Embedding query: 122080003600146794820964010047426915846 124037811551945145648172208272779822741 185033715568272291470322170325431455647
+- AST query: 122080003600146794820964010047426915846, 124037811551945145648172208272779822741, 185033715568272291470322170325431455647
+- Surplus group: ASI-G060
+- Merge key: objective-work/v1/e0d8763c9c31e15fe8579faddc628167717f936e
+- Merge family: ASI-G060
+- Merge role: completion_gate
+- Work item count: 6
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: e0d8763c9c31e15f
+- Acceptance: Objective scan filed this gap for ASI-G060. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-25-asi-083-objective-gap-df2b5b9186e1.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Complete the goal's producing tasks before requesting completion., Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Resource pools expose backpressure and fair admission, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.

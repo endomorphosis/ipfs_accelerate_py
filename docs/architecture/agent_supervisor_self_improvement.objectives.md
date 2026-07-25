@@ -218,7 +218,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G060 Adaptive parallel execution and acceptance throughput
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G000
 - Depends on: ASI-G050
 - Fib priority: 5
@@ -247,6 +247,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-25T00:45:31.002035+00:00
+- State transition reason: Produce completion evidence for: Resource pools expose backpressure and fair admission; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-25T00:45:31.002035+00:00
 
 ## ASI-G070 Unified Python, CLI, and MCP supervisor control
 
