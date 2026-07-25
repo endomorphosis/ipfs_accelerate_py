@@ -308,6 +308,8 @@ def test_all_configured_code_test_kernel_model_protocol_and_runtime_evidence_is_
     [
         ("policy_id", "policy:changed", InvalidationCause.POLICY_CHANGED),
         ("repository_tree_id", "tree:changed", InvalidationCause.REPOSITORY_TREE_CHANGED),
+        ("goal_id", "G12.FOREIGN", InvalidationCause.GOAL_CHANGED),
+        ("toolchain_id", "toolchain:changed", InvalidationCause.TOOLCHAIN_CHANGED),
         ("ast_scope_ids", ("ast:changed",), InvalidationCause.AST_CHANGED),
         ("premise_ids", ("premise:changed",), InvalidationCause.PREMISE_CHANGED),
         (
@@ -336,6 +338,8 @@ def test_semantic_input_change_invalidates_prior_conformance_and_reopens_goal(
         "plan_id": original.plan_id,
         "policy_id": original.policy_id,
         "repository_tree_id": original.repository_tree_id,
+        "goal_id": original.goal_id,
+        "toolchain_id": original.toolchain_id,
         "ast_scope_ids": original.ast_scope_ids,
         "premise_ids": original.premise_ids,
         "counterexample_ids": original.counterexample_ids,

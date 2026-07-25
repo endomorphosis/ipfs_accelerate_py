@@ -1843,9 +1843,13 @@ class ImplementationResultBinding:
     static_analysis_evidence_ids: tuple[str, ...] = ()
     evidence_digests: Mapping[str, str] = field(default_factory=dict)
     plan_effect_ids: tuple[str, ...] = ()
+    effect_scope_map: Mapping[str, Any] = field(default_factory=dict)
     plan_requirement_ids: tuple[str, ...] = ()
     plan_trace_bound: int | None = None
     task_id: str = ""
+    goal_id: str = ""
+    code_proof_toolchain_id: str = ""
+    code_proof_policy_id: str = ""
     proposal_validation_receipt_id: str = ""
     proposal_accepted: bool | None = None
     binding_id: str = ""
@@ -1859,6 +1863,9 @@ class ImplementationResultBinding:
             "repository_tree_id",
             "changed_scope_set_id",
             "task_id",
+            "goal_id",
+            "code_proof_toolchain_id",
+            "code_proof_policy_id",
             "proposal_validation_receipt_id",
             "validation_dag_receipt_id",
             "validation_policy_id",
@@ -1904,6 +1911,16 @@ class ImplementationResultBinding:
             )
         object.__setattr__(self, "assumptions", _canonical_mapping(self.assumptions))
         object.__setattr__(self, "validation_bounds", _canonical_mapping(self.validation_bounds))
+        effect_scope_map = {
+            str(effect_id).strip(): list(_canonical_strings(scope_ids))
+            for effect_id, scope_ids in dict(self.effect_scope_map or {}).items()
+            if str(effect_id).strip()
+        }
+        object.__setattr__(
+            self,
+            "effect_scope_map",
+            _canonical_mapping(dict(sorted(effect_scope_map.items()))),
+        )
         digests = {
             str(key).strip(): str(value).strip()
             for key, value in dict(self.evidence_digests or {}).items()
@@ -1963,9 +1980,13 @@ class ImplementationResultBinding:
             "static_analysis_evidence_ids": self.static_analysis_evidence_ids,
             "evidence_digests": self.evidence_digests,
             "plan_effect_ids": self.plan_effect_ids,
+            "effect_scope_map": self.effect_scope_map,
             "plan_requirement_ids": self.plan_requirement_ids,
             "plan_trace_bound": self.plan_trace_bound,
             "task_id": self.task_id,
+            "goal_id": self.goal_id,
+            "code_proof_toolchain_id": self.code_proof_toolchain_id,
+            "code_proof_policy_id": self.code_proof_policy_id,
         }
         if self.proposal_validation_receipt_id or self.proposal_accepted is not None:
             payload["proposal_validation_receipt_id"] = (
@@ -2011,10 +2032,17 @@ class ImplementationResultBinding:
             "static_analysis_evidence_ids": self.static_analysis_evidence_ids,
             "evidence_digests": self.evidence_digests,
             "plan_effect_ids": self.plan_effect_ids,
+            "effect_scope_map": self.effect_scope_map,
             "plan_requirement_ids": self.plan_requirement_ids,
             "plan_trace_bound": self.plan_trace_bound,
             "task_id": self.task_id,
         }
+        if self.goal_id:
+            payload["goal_id"] = self.goal_id
+        if self.code_proof_toolchain_id:
+            payload["code_proof_toolchain_id"] = self.code_proof_toolchain_id
+        if self.code_proof_policy_id:
+            payload["code_proof_policy_id"] = self.code_proof_policy_id
         if self.proposal_validation_receipt_id:
             payload["proposal_validation_receipt_id"] = (
                 self.proposal_validation_receipt_id
@@ -2051,9 +2079,21 @@ class ImplementationResultBinding:
             static_analysis_evidence_ids=tuple(payload.get("static_analysis_evidence_ids") or ()),
             evidence_digests=payload.get("evidence_digests") or {},
             plan_effect_ids=tuple(payload.get("plan_effect_ids") or payload.get("planned_effect_ids") or payload.get("effect_ids") or ()),
+            effect_scope_map=payload.get("effect_scope_map") or {},
             plan_requirement_ids=tuple(payload.get("plan_requirement_ids") or ()),
             plan_trace_bound=payload.get("plan_trace_bound"),
             task_id=str(payload.get("task_id") or ""),
+            goal_id=str(payload.get("goal_id") or payload.get("objective_id") or ""),
+            code_proof_toolchain_id=str(
+                payload.get("code_proof_toolchain_id")
+                or payload.get("expected_toolchain_id")
+                or ""
+            ),
+            code_proof_policy_id=str(
+                payload.get("code_proof_policy_id")
+                or payload.get("expected_proof_policy_id")
+                or ""
+            ),
             proposal_validation_receipt_id=str(
                 payload.get("proposal_validation_receipt_id")
                 or payload.get("proposal_receipt_id")
@@ -2264,6 +2304,22 @@ class ImplementationObligationSet:
             "incomplete_reason_codes",
             _canonical_strings(self.incomplete_reason_codes),
         )
+        required_kinds: set[ImplementationObligationKind] = set()
+        if binding.plan_effect_ids or binding.effect_scope_map:
+            required_kinds.add(ImplementationObligationKind.EFFECT)
+        if binding.test_evidence_ids:
+            required_kinds.add(ImplementationObligationKind.TEST)
+        if binding.runtime_evidence_ids:
+            required_kinds.add(ImplementationObligationKind.RUNTIME_EVIDENCE)
+        if binding.static_analysis_evidence_ids:
+            required_kinds.add(ImplementationObligationKind.STATIC_ANALYSIS)
+        present_kinds = {
+            ImplementationObligationKind(value) for value in kinds.values()
+        }
+        if required_kinds - present_kinds:
+            raise ValueError(
+                "implementation obligation population omits a binding-required family"
+            )
         supplied = str(self.set_id or "").strip()
         object.__setattr__(self, "set_id", "")
         derived = content_identity(self._identity_payload())
@@ -2378,9 +2434,13 @@ def derive_fresh_implementation_obligations(
     runtime_evidence: Iterable[ImplementationResultEvidence | Mapping[str, Any]] = (),
     static_analysis_evidence: Iterable[ImplementationResultEvidence | Mapping[str, Any]] = (),
     planned_effect_ids: Iterable[str] = (),
+    effect_scope_map: Mapping[str, Iterable[str]] | None = None,
     plan_requirement_ids: Iterable[str] = (),
     plan_trace_bound: int | None = None,
     task_id: str = "",
+    goal_id: str = "",
+    code_proof_toolchain_id: str = "",
+    code_proof_policy_id: str = "",
     proposal_validation: Any = None,
     validation_dag: Any = None,
     require_validation_dag: bool = False,
@@ -2421,6 +2481,69 @@ def derive_fresh_implementation_obligations(
             for item in plan_effects
         ]
         planned_effect_ids = (*planned_effect_ids, *extracted_effects)
+        plan_goal_ids = _canonical_strings(
+            str(
+                getattr(item, "goal_id", "")
+                or (item.get("goal_id", "") if isinstance(item, Mapping) else "")
+            )
+            for item in (
+                getattr(plan, "goals", ())
+                if not isinstance(plan, Mapping)
+                else plan.get("goals", ())
+            )
+        )
+        if goal_id and plan_goal_ids and goal_id not in plan_goal_ids:
+            raise ValueError("implementation goal does not occur in accepted plan")
+        if not goal_id and len(plan_goal_ids) == 1:
+            goal_id = plan_goal_ids[0]
+        plan_metadata = (
+            getattr(plan, "metadata", {})
+            if not isinstance(plan, Mapping)
+            else plan.get("metadata", {})
+        )
+        if not isinstance(plan_metadata, Mapping):
+            raise ValueError("accepted plan metadata must be a mapping")
+        code_proof_toolchain_id = (
+            code_proof_toolchain_id
+            or str(
+                plan_metadata.get("code_proof_toolchain_id")
+                or plan_metadata.get("toolchain_id")
+                or ""
+            ).strip()
+        )
+        code_proof_policy_id = (
+            code_proof_policy_id
+            or str(
+                plan_metadata.get("code_proof_policy_id")
+                or plan_metadata.get("proof_policy_id")
+                or ""
+            ).strip()
+        )
+        if effect_scope_map is None:
+            plan_effect_scope_map = plan_metadata.get("effect_scope_map")
+            if plan_effect_scope_map is not None:
+                if not isinstance(plan_effect_scope_map, Mapping):
+                    raise ValueError(
+                        "accepted plan effect_scope_map must be a mapping"
+                    )
+                effect_scope_map = plan_effect_scope_map
+        plan_preconditions = (
+            getattr(plan, "preconditions", ())
+            if not isinstance(plan, Mapping)
+            else plan.get("preconditions", ())
+        )
+        extracted_assumptions = [
+            str(
+                getattr(item, "precondition_id", "")
+                or (
+                    item.get("precondition_id", "")
+                    if isinstance(item, Mapping)
+                    else ""
+                )
+            )
+            for item in plan_preconditions
+        ]
+        assumption_ids = (*assumption_ids, *extracted_assumptions)
         trace_bound = (
             getattr(plan, "trace_bound", None)
             if not isinstance(plan, Mapping)
@@ -2483,6 +2606,25 @@ def derive_fresh_implementation_obligations(
             scope_set.changed_paths
         ):
             raise ValueError("proposal and implementation changed scopes do not match")
+        # Paths alone are not a semantic binding.  Recompile the accepted
+        # candidate sources and require the exact AST/interface/effect scope
+        # population supplied to this derivation.
+        accepted_scopes = compile_candidate_proof_scopes(
+            proposal_result.proposal.candidate_diff
+        )
+        if (
+            accepted_scopes.scope_set_id != scope_set.scope_set_id
+            or accepted_scopes.scope_ids != scope_set.scope_ids
+        ):
+            raise ValueError(
+                "proposal and implementation AST/interface/effect scopes do not match"
+            )
+        proposal_goal_id = str(
+            proposal_result.proposal.objective_id or ""
+        ).strip()
+        if goal_id and proposal_goal_id and goal_id != proposal_goal_id:
+            raise ValueError("proposal and implementation goals do not match")
+        goal_id = goal_id or proposal_goal_id
         proposal_receipt_id = proposal_result.receipt.receipt_id
 
     validation_dag_receipt_id = ""
@@ -2596,9 +2738,13 @@ def derive_fresh_implementation_obligations(
             item.evidence_id: item.evidence_digest for item in evidence
         },
         plan_effect_ids=tuple(planned_effect_ids),
+        effect_scope_map=effect_scope_map or {},
         plan_requirement_ids=tuple(plan_requirement_ids),
         plan_trace_bound=plan_trace_bound,
         task_id=task_id,
+        goal_id=goal_id,
+        code_proof_toolchain_id=code_proof_toolchain_id,
+        code_proof_policy_id=code_proof_policy_id,
         proposal_validation_receipt_id=proposal_receipt_id,
         proposal_accepted=proposal_accepted,
         validation_dag_receipt_id=validation_dag_receipt_id,
@@ -2636,6 +2782,23 @@ def derive_fresh_implementation_obligations(
             key=lambda item: item.scope_id,
         )
     )
+    effect_scope_ids = {item.scope_id for item in effects}
+    if binding.plan_effect_ids and not effect_scope_ids:
+        incomplete.append("planned_effect_scope_omitted")
+    if binding.effect_scope_map:
+        mapped_effect_ids = set(binding.effect_scope_map)
+        planned_effect_id_set = set(binding.plan_effect_ids)
+        if mapped_effect_ids != planned_effect_id_set:
+            incomplete.append("planned_effect_coverage_mismatch")
+        mapped_scope_ids = {
+            str(scope_id)
+            for scope_ids in binding.effect_scope_map.values()
+            for scope_id in scope_ids
+        }
+        if not mapped_scope_ids.issubset(effect_scope_ids):
+            incomplete.append("planned_effect_scope_omitted")
+        if not effect_scope_ids.issubset(mapped_scope_ids):
+            incomplete.append("changed_effect_scope_unplanned")
     if symbols:
         groups.append((ImplementationObligationKind.CHANGED_SYMBOL, symbols, ()))
     if interfaces:
@@ -2695,9 +2858,13 @@ def derive_fresh_implementation_obligations(
                 "implementation_binding_id": binding.binding_id,
                 "scope_set_id": binding.changed_scope_set_id,
                 "accepted_plan_id": binding.accepted_plan_id,
+                "goal_id": binding.goal_id,
                 "assumption_ids": binding.assumption_ids,
                 "validation_bounds": binding.validation_bounds,
                 "evidence_ids": evidence_ids,
+                "effect_scope_map": binding.effect_scope_map,
+                "code_proof_toolchain_id": binding.code_proof_toolchain_id,
+                "code_proof_policy_id": binding.code_proof_policy_id,
                 "obligation_kind": kind.value,
                 "subject": subject,
             },
@@ -2923,6 +3090,13 @@ def validate_code_proof_receipt_bindings(
         obligation = matches[0] if matches else None
     if isinstance(obligation, Mapping):
         obligation = CodeProofObligation.from_dict(obligation)
+    obligation_belongs_to_set = (
+        obligation_set is None
+        or (
+            obligation is not None
+            and obligation.obligation_id in obligation_set.obligation_ids
+        )
+    )
 
     reasons: list[str] = []
     stale = False
@@ -2949,6 +3123,8 @@ def validate_code_proof_receipt_bindings(
                     or str(code).startswith("failed_")
                 ),
             )
+    if not obligation_belongs_to_set:
+        reject("wrong_theorem_not_in_fresh_obligation_set", is_stale=True)
     if obligation is None:
         reject("receipt_not_required_by_fresh_obligation_set", is_stale=True)
     else:
@@ -2969,6 +3145,16 @@ def validate_code_proof_receipt_bindings(
         reject("proof_repository_mismatch", is_stale=True)
     if proof.repository_tree_id != expected_binding.repository_tree_id:
         reject("proof_tree_mismatch", is_stale=True)
+    if (
+        expected_binding.code_proof_toolchain_id
+        and proof.toolchain_id != expected_binding.code_proof_toolchain_id
+    ):
+        reject("proof_toolchain_mismatch", is_stale=True)
+    if (
+        expected_binding.code_proof_policy_id
+        and proof.policy_id != expected_binding.code_proof_policy_id
+    ):
+        reject("proof_policy_mismatch", is_stale=True)
     if proof.freshness is not EvidenceFreshness.CURRENT:
         reject("stale_proof_receipt", is_stale=True)
         reject("stale_code_proof_receipt", is_stale=True)

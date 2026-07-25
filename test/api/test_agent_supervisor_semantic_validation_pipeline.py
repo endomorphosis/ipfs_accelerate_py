@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1286,3 +1287,91 @@ def test_independent_kernel_receipt_is_not_candidate_rejection_evidence(
             proposal_validation=accepted,
             validation_dag=dag,
         )
+
+
+def test_accepted_proposal_rejects_same_path_with_different_changed_ast() -> None:
+    proposal, policy, _entry = _proposal()
+    accepted = validate_proposal(proposal, policy=policy)
+    substituted = CandidateDiffEntry(
+        old_path="pkg/core.py",
+        new_path="pkg/core.py",
+        change_kind=DiffChangeKind.MODIFY,
+        before_source=BEFORE,
+        after_source=AFTER.replace("+ 2", "+ 9000"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="AST/interface/effect scopes do not match",
+    ):
+        derive_fresh_implementation_obligations(
+            compile_candidate_proof_scopes((substituted,)),
+            accepted_plan_id=proposal.accepted_plan_id,
+            repository_id=proposal.repository_id,
+            repository_tree_id=proposal.repository_tree_id,
+            proposal_validation=accepted,
+        )
+
+
+def test_wrong_theorem_and_post_merge_receipts_are_not_reusable() -> None:
+    proposal, policy, entry = _proposal()
+    accepted = validate_proposal(proposal, policy=policy)
+    scopes = compile_candidate_proof_scopes((entry,))
+    obligations = derive_fresh_implementation_obligations(
+        scopes,
+        accepted_plan_id=proposal.accepted_plan_id,
+        repository_id=proposal.repository_id,
+        repository_tree_id=proposal.repository_tree_id,
+        proposal_validation=accepted,
+        goal_id=proposal.objective_id,
+        code_proof_toolchain_id="toolchain:locked",
+        code_proof_policy_id="policy:strict-code-proof",
+    )
+    receipt = _proof_receipt(obligations, authoritative=True)
+
+    wrong_theorem = validate_code_proof_receipt_bindings(
+        replace(receipt, obligation_id="obligation:foreign-theorem"),
+        obligations,
+    )
+    assert wrong_theorem.valid is False
+    assert "wrong_theorem_not_in_fresh_obligation_set" in (
+        wrong_theorem.reason_codes
+    )
+
+    merged_obligations = derive_fresh_implementation_obligations(
+        scopes,
+        accepted_plan_id=proposal.accepted_plan_id,
+        repository_id=proposal.repository_id,
+        repository_tree_id="tree:post-merge",
+        goal_id=proposal.objective_id,
+        code_proof_toolchain_id="toolchain:locked",
+        code_proof_policy_id="policy:strict-code-proof",
+    )
+    stale = validate_code_proof_receipt_bindings(
+        receipt,
+        merged_obligations,
+    )
+    assert stale.valid is False
+    assert {
+        "receipt_repository_tree_id_mismatch",
+        "receipt_implementation_binding_id_mismatch",
+    }.intersection(stale.reason_codes)
+
+
+def test_omitted_planned_effect_fails_closed() -> None:
+    proposal, policy, entry = _proposal()
+    accepted = validate_proposal(proposal, policy=policy)
+    obligations = derive_fresh_implementation_obligations(
+        compile_candidate_proof_scopes((entry,)),
+        accepted_plan_id=proposal.accepted_plan_id,
+        repository_id=proposal.repository_id,
+        repository_tree_id=proposal.repository_tree_id,
+        proposal_validation=accepted,
+        planned_effect_ids=("effect:persist-reviewed-state",),
+    )
+
+    assert obligations.complete is False
+    assert (
+        "planned_effect_scope_omitted"
+        in obligations.incomplete_reason_codes
+    )
