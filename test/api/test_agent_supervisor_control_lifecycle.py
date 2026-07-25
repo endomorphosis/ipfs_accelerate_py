@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import copy
+import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Barrier
 from typing import Any
 
 import pytest
@@ -58,6 +61,14 @@ from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
+    InMemoryLifecycleStore,
+    JsonLifecycleStore,
+    JsonlControlStateStore,
+    LEGAL_LIFECYCLE_TRANSITIONS,
+    LifecycleEvent,
+    LifecycleStatus,
+    SupervisorLifecycleBackend,
+    SupervisorLifecycleState,
     SupervisorControlService,
 )
 
@@ -918,3 +929,783 @@ def test_lifecycle_rejects_non_lifecycle_operation(
 
     with pytest.raises(ValueError, match="not a lifecycle"):
         service.lifecycle(request)
+
+
+# ASI-021 lifecycle/state/event acceptance coverage.  These tests intentionally
+# exercise the transport-neutral service boundary rather than a watchdog or
+# CLI wrapper: every controller must observe the same durable state machine.
+
+
+_ACTION_TARGETS = {
+    Operation.START: SupervisorLifecycleState.STARTING,
+    Operation.PAUSE: SupervisorLifecycleState.PAUSED,
+    Operation.RESUME: SupervisorLifecycleState.HEALTHY,
+    Operation.DRAIN: SupervisorLifecycleState.DRAINING,
+    Operation.STOP: SupervisorLifecycleState.STOPPING,
+    Operation.RETRY: SupervisorLifecycleState.STARTING,
+    Operation.CANCEL: SupervisorLifecycleState.STOPPING,
+    Operation.QUARANTINE: SupervisorLifecycleState.BLOCKED,
+}
+
+
+def _asi021_request(
+    repo_root: Path,
+    state_root: Path,
+    operation: Operation,
+    *,
+    key: str = "command:1",
+    caller: str = "operator:test",
+    fencing_epoch: int = 7,
+    parameters: dict[str, Any] | None = None,
+) -> OperationRequest:
+    binding = {
+        **_binding(repo_root, state_root),
+        "caller": caller,
+    }
+    if operation not in _ACTION_TARGETS:
+        return OperationRequest(
+            operation=operation,
+            **binding,
+            parameters={
+                "target_id": "supervisor:fixture",
+                **dict(parameters or {}),
+            },
+        )
+
+    effect = ExpectedEffect(
+        effect_id=f"lifecycle:{operation.value}:{key}",
+        kind=EffectKind.LIFECYCLE_TRANSITION,
+        resource="supervisor:fixture",
+        paths=("supervisor-lifecycle.json",),
+        description=f"Apply {operation.value} to the supervisor",
+    )
+    request_parameters = {
+        "target_id": "supervisor:fixture",
+        "reason": f"ASI-021 {operation.value}",
+        "requested_state": _ACTION_TARGETS[operation].value,
+        **dict(parameters or {}),
+    }
+    return OperationRequest(
+        operation=operation,
+        **binding,
+        parameters=request_parameters,
+        expected_effects=(effect,),
+        idempotency=IdempotencyKey(
+            key=key,
+            operation=operation,
+            caller=caller,
+            repository_id=binding["repository_id"],
+            objective_id=binding["objective_id"],
+        ),
+        authorization=AuthorizationDecision(
+            verdict=AuthorizationVerdict.PERMIT,
+            operation=operation,
+            granted_authority=OperationAuthority.MUTATION,
+            **binding,
+            lease_id=f"lease:{fencing_epoch}",
+            fencing_epoch=fencing_epoch,
+            authorized_effect_ids=(effect.effect_id,),
+            grant_ids=("grant:lifecycle-controller",),
+            evaluated_at_ms=1_000,
+            expires_at_ms=10_000,
+        ),
+        lease_id=f"lease:{fencing_epoch}",
+        fencing_epoch=fencing_epoch,
+    )
+
+
+def _asi021_service(
+    repo_root: Path,
+    state_root: Path,
+    lifecycle_store: InMemoryLifecycleStore | JsonLifecycleStore,
+    *,
+    control_store: InMemoryControlStateStore | JsonlControlStateStore | None = None,
+    authorization_validator: Any = None,
+    pid_alive: Any = None,
+    stale_after_ms: int = 60_000,
+    max_events: int = 256,
+) -> SupervisorControlService:
+    backend = SupervisorLifecycleBackend(
+        state_store=lifecycle_store,
+        clock_ms=lambda: 1_500,
+        pid_alive=pid_alive or (lambda pid: pid > 0),
+        stale_after_ms=stale_after_ms,
+        max_events=max_events,
+    )
+    return SupervisorControlService(
+        repository_allowlist=(repo_root,),
+        state_allowlist=(state_root,),
+        backend=backend,
+        lease_validator=lambda request: True,
+        authorization_validator=authorization_validator,
+        state_store=control_store or InMemoryControlStateStore(),
+        clock_ms=lambda: 1_500,
+    )
+
+
+def _asi021_data(
+    service: SupervisorControlService,
+    repo_root: Path,
+    state_root: Path,
+    operation: Operation,
+    *,
+    parameters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result = service.execute(
+        _asi021_request(
+            repo_root,
+            state_root,
+            operation,
+            parameters=parameters,
+        )
+    )
+    assert result.succeeded, result.error
+    return dict(result.data)
+
+
+def _asi021_events(
+    service: SupervisorControlService,
+    repo_root: Path,
+    state_root: Path,
+    *,
+    limit: int = 256,
+    offset: int = 0,
+    after_sequence: int = 0,
+) -> list[dict[str, Any]]:
+    data = _asi021_data(
+        service,
+        repo_root,
+        state_root,
+        Operation.EVENTS,
+        parameters={
+            "limit": limit,
+            "offset": offset,
+            "after_sequence": after_sequence,
+        },
+    )
+    return [dict(item) for item in data["items"]]
+
+
+def test_lifecycle_state_vocabulary_and_transition_table_are_closed() -> None:
+    states = {
+        SupervisorLifecycleState.STOPPED,
+        SupervisorLifecycleState.STARTING,
+        SupervisorLifecycleState.HEALTHY,
+        SupervisorLifecycleState.DEGRADED,
+        SupervisorLifecycleState.PAUSED,
+        SupervisorLifecycleState.DRAINING,
+        SupervisorLifecycleState.BLOCKED,
+        SupervisorLifecycleState.STOPPING,
+        SupervisorLifecycleState.FAILED,
+    }
+    expected = {
+        SupervisorLifecycleState.STOPPED: {
+            SupervisorLifecycleState.STARTING,
+        },
+        SupervisorLifecycleState.STARTING: {
+            SupervisorLifecycleState.HEALTHY,
+            SupervisorLifecycleState.DEGRADED,
+            SupervisorLifecycleState.BLOCKED,
+            SupervisorLifecycleState.STOPPING,
+            SupervisorLifecycleState.FAILED,
+        },
+        SupervisorLifecycleState.HEALTHY: {
+            SupervisorLifecycleState.DEGRADED,
+            SupervisorLifecycleState.PAUSED,
+            SupervisorLifecycleState.DRAINING,
+            SupervisorLifecycleState.BLOCKED,
+            SupervisorLifecycleState.STOPPING,
+            SupervisorLifecycleState.FAILED,
+        },
+        SupervisorLifecycleState.DEGRADED: {
+            SupervisorLifecycleState.HEALTHY,
+            SupervisorLifecycleState.PAUSED,
+            SupervisorLifecycleState.DRAINING,
+            SupervisorLifecycleState.BLOCKED,
+            SupervisorLifecycleState.STOPPING,
+            SupervisorLifecycleState.FAILED,
+        },
+        SupervisorLifecycleState.PAUSED: {
+            SupervisorLifecycleState.HEALTHY,
+            SupervisorLifecycleState.DRAINING,
+            SupervisorLifecycleState.BLOCKED,
+            SupervisorLifecycleState.STOPPING,
+            SupervisorLifecycleState.FAILED,
+        },
+        SupervisorLifecycleState.DRAINING: {
+            SupervisorLifecycleState.STOPPING,
+            SupervisorLifecycleState.STOPPED,
+            SupervisorLifecycleState.BLOCKED,
+            SupervisorLifecycleState.FAILED,
+        },
+        SupervisorLifecycleState.BLOCKED: {
+            SupervisorLifecycleState.STARTING,
+            SupervisorLifecycleState.STOPPING,
+            SupervisorLifecycleState.FAILED,
+        },
+        SupervisorLifecycleState.STOPPING: {
+            SupervisorLifecycleState.STOPPED,
+            SupervisorLifecycleState.FAILED,
+        },
+        SupervisorLifecycleState.FAILED: {
+            SupervisorLifecycleState.STARTING,
+            SupervisorLifecycleState.STOPPING,
+            SupervisorLifecycleState.STOPPED,
+        },
+    }
+
+    assert set(SupervisorLifecycleState) == states
+    assert set(LEGAL_LIFECYCLE_TRANSITIONS) == states
+    assert {
+        state: set(targets)
+        for state, targets in LEGAL_LIFECYCLE_TRANSITIONS.items()
+    } == expected
+    assert all(state not in targets for state, targets in expected.items())
+
+
+def test_status_health_and_round_trip_share_one_complete_schema(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    initial = LifecycleStatus(
+        target_id="supervisor:fixture",
+        state=SupervisorLifecycleState.DEGRADED,
+        phase="validation",
+        heartbeat_at_ms=1_400,
+        pid=731,
+        active_leases=("lease:alpha", "lease:beta"),
+        refill_state="cooldown",
+        backpressure=True,
+        backpressure_reasons=("validation_queue_full",),
+        terminal_reason="",
+        transition_id="transition:fixture",
+        generation=4,
+        fencing_epoch=11,
+        updated_at_ms=1_400,
+    )
+    service = _asi021_service(
+        repo_root,
+        state_root,
+        InMemoryLifecycleStore(initial_status=initial),
+    )
+
+    status = _asi021_data(
+        service, repo_root, state_root, Operation.STATUS
+    )
+    health = _asi021_data(
+        service, repo_root, state_root, Operation.HEALTH
+    )
+    required = {
+        "schema",
+        "state",
+        "phase",
+        "heartbeat_at_ms",
+        "heartbeat_at",
+        "pid",
+        "active_leases",
+        "refill_state",
+        "backpressure",
+        "backpressure_reasons",
+        "terminal_reason",
+        "transition_id",
+        "generation",
+        "fencing_epoch",
+        "updated_at_ms",
+        "updated_at",
+    }
+
+    assert required <= status.keys()
+    assert status["schema"] == (
+        "ipfs_accelerate_py/agent-supervisor/lifecycle-status@1"
+    )
+    assert status["state"] == "degraded"
+    assert status["active_leases"] == ("lease:alpha", "lease:beta")
+    assert status["backpressure"] is True
+    assert LifecycleStatus.from_dict(status) == initial
+    assert {key: health[key] for key in status} == status
+    assert health["healthy"] is False
+
+
+def test_concurrent_controllers_apply_an_exact_command_once(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    lifecycle_store = InMemoryLifecycleStore(
+        initial_status=LifecycleStatus(
+            target_id="supervisor:fixture",
+            state=SupervisorLifecycleState.HEALTHY,
+            phase="work",
+            heartbeat_at_ms=1_400,
+            pid=731,
+            generation=3,
+            fencing_epoch=6,
+            updated_at_ms=1_400,
+        )
+    )
+    control_store = InMemoryControlStateStore()
+    controllers = tuple(
+        _asi021_service(
+            repo_root,
+            state_root,
+            lifecycle_store,
+            control_store=control_store,
+        )
+        for _ in range(2)
+    )
+    request = _asi021_request(
+        repo_root,
+        state_root,
+        Operation.PAUSE,
+        key="concurrent:pause",
+        fencing_epoch=7,
+    )
+    gate = Barrier(2)
+
+    def invoke(service: SupervisorControlService) -> OperationResult:
+        gate.wait()
+        return service.lifecycle(request)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = tuple(executor.map(invoke, controllers))
+
+    assert all(result.succeeded for result in results)
+    assert results[0] == results[1]
+    status = _asi021_data(
+        controllers[0], repo_root, state_root, Operation.STATUS
+    )
+    assert status["state"] == "paused"
+    # Generation identifies a process incarnation, not every control-state
+    # revision, so pausing cannot make the running generation appear newer.
+    assert status["generation"] == 3
+    matching = [
+        event
+        for event in _asi021_events(
+            controllers[0], repo_root, state_root
+        )
+        if event["request_id"] == request.request_id
+    ]
+    assert len(matching) == 2
+    assert all(event["accepted"] for event in matching)
+    assert sum(event["changed"] for event in matching) == 1
+    assert sum(event["replayed"] for event in matching) == 1
+
+
+def test_pause_and_drain_have_distinct_lease_and_transition_semantics(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    initial = LifecycleStatus(
+        target_id="supervisor:fixture",
+        state=SupervisorLifecycleState.HEALTHY,
+        phase="dispatch",
+        heartbeat_at_ms=1_400,
+        pid=731,
+        active_leases=("lease:running-task",),
+        refill_state="running",
+        generation=2,
+        fencing_epoch=6,
+        updated_at_ms=1_400,
+    )
+    service = _asi021_service(
+        repo_root,
+        state_root,
+        InMemoryLifecycleStore(initial_status=initial),
+    )
+
+    paused = service.lifecycle(
+        _asi021_request(
+            repo_root,
+            state_root,
+            Operation.PAUSE,
+            key="pause:work",
+            fencing_epoch=7,
+        )
+    )
+    assert paused.succeeded
+    assert paused.data["state"] == "paused"
+    paused_status = dict(paused.data["status"])
+    assert paused_status["active_leases"] == ("lease:running-task",)
+    assert paused_status["refill_state"] == "paused"
+    assert paused_status["backpressure"] is True
+
+    draining = service.lifecycle(
+        _asi021_request(
+            repo_root,
+            state_root,
+            Operation.DRAIN,
+            key="drain:work",
+            fencing_epoch=8,
+        )
+    )
+    assert draining.succeeded
+    assert draining.data["state"] == "draining"
+    draining_status = dict(draining.data["status"])
+    assert draining_status["active_leases"] == ("lease:running-task",)
+    assert draining_status["refill_state"] == "draining"
+    assert draining_status["backpressure"] is True
+    assert "drain" in draining_status["backpressure_reasons"]
+
+    rejected_resume = service.lifecycle(
+        _asi021_request(
+            repo_root,
+            state_root,
+            Operation.RESUME,
+            key="resume:during-drain",
+            fencing_epoch=9,
+        )
+    )
+    assert rejected_resume.status is OperationStatus.CONFLICT
+    assert rejected_resume.error is not None
+    assert (
+        rejected_resume.error.code.value
+        == "invalid_lifecycle_transition"
+    )
+    assert _asi021_data(
+        service, repo_root, state_root, Operation.STATUS
+    )["state"] == "draining"
+    rejected_event = next(
+        event
+        for event in _asi021_events(service, repo_root, state_root)
+        if event["request_id"] == rejected_resume.request_id
+    )
+    assert rejected_event["accepted"] is False
+    assert rejected_event["previous_state"] == "draining"
+    assert rejected_event["state"] == "draining"
+
+
+def test_stale_fence_and_unauthorized_stop_are_audited_without_mutation(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    initial = LifecycleStatus(
+        target_id="supervisor:fixture",
+        state=SupervisorLifecycleState.HEALTHY,
+        phase="work",
+        heartbeat_at_ms=1_400,
+        pid=731,
+        active_leases=("lease:running-task",),
+        generation=5,
+        fencing_epoch=8,
+        updated_at_ms=1_400,
+    )
+    lifecycle_store = InMemoryLifecycleStore(initial_status=initial)
+    service = _asi021_service(repo_root, state_root, lifecycle_store)
+    stale = _asi021_request(
+        repo_root,
+        state_root,
+        Operation.STOP,
+        key="stop:stale",
+        fencing_epoch=7,
+    )
+
+    stale_result = service.lifecycle(stale)
+
+    assert stale_result.status is OperationStatus.CONFLICT
+    assert stale_result.error is not None
+    assert stale_result.error.code.value == "stale_lease"
+    assert _asi021_data(
+        service, repo_root, state_root, Operation.STATUS
+    )["state"] == "healthy"
+
+    denied_service = _asi021_service(
+        repo_root,
+        state_root,
+        lifecycle_store,
+        authorization_validator=lambda request: False,
+    )
+    denied = _asi021_request(
+        repo_root,
+        state_root,
+        Operation.STOP,
+        key="stop:denied",
+        fencing_epoch=9,
+        caller="operator:untrusted",
+    )
+    denied_result = denied_service.lifecycle(denied)
+
+    assert denied_result.status is OperationStatus.DENIED
+    assert _asi021_data(
+        service, repo_root, state_root, Operation.STATUS
+    )["state"] == "healthy"
+
+    events = _asi021_events(service, repo_root, state_root)
+    by_request = {event["request_id"]: event for event in events}
+    assert by_request[stale.request_id]["accepted"] is False
+    assert "stale fencing epoch" in by_request[stale.request_id]["reason"]
+    assert by_request[denied.request_id]["accepted"] is False
+    assert by_request[denied.request_id]["reason"].startswith("unauthorized:")
+
+    accepted = service.lifecycle(
+        _asi021_request(
+            repo_root,
+            state_root,
+            Operation.STOP,
+            key="stop:current",
+            fencing_epoch=9,
+        )
+    )
+    assert accepted.succeeded
+    assert accepted.data["state"] == "stopping"
+    accepted_status = dict(accepted.data["status"])
+    assert accepted_status["active_leases"] == ("lease:running-task",)
+    assert accepted_status["terminal_reason"] == "ASI-021 stop"
+
+
+def test_json_store_restart_replays_command_without_duplicate_event(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    lifecycle_store = JsonLifecycleStore(state_root, max_events=8)
+    control_store = JsonlControlStateStore()
+    first_service = _asi021_service(
+        repo_root,
+        state_root,
+        lifecycle_store,
+        control_store=control_store,
+    )
+    start = _asi021_request(
+        repo_root,
+        state_root,
+        Operation.START,
+        key="restart:start",
+        fencing_epoch=1,
+    )
+
+    first = first_service.lifecycle(start)
+    restarted_service = _asi021_service(
+        repo_root,
+        state_root,
+        JsonLifecycleStore(state_root, max_events=8),
+        control_store=JsonlControlStateStore(),
+    )
+    replay = restarted_service.lifecycle(start)
+
+    assert first.succeeded
+    assert replay == first
+    assert _asi021_data(
+        restarted_service, repo_root, state_root, Operation.STATUS
+    )["state"] == "starting"
+    matching = [
+        event
+        for event in _asi021_events(
+            restarted_service, repo_root, state_root
+        )
+        if event["request_id"] == start.request_id
+    ]
+    assert len(matching) == 2
+    assert matching[0]["changed"] is True
+    assert matching[1]["replayed"] is True
+
+
+def test_stale_starting_pid_recovers_an_interrupted_transition(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    stale = LifecycleStatus(
+        target_id="supervisor:fixture",
+        state=SupervisorLifecycleState.STARTING,
+        phase="launch",
+        heartbeat_at_ms=1_000,
+        pid=999_999,
+        transition_id="transition:interrupted",
+        generation=4,
+        fencing_epoch=4,
+        updated_at_ms=1_000,
+    )
+    service = _asi021_service(
+        repo_root,
+        state_root,
+        InMemoryLifecycleStore(initial_status=stale),
+        pid_alive=lambda pid: False,
+        stale_after_ms=100,
+    )
+    recover = _asi021_request(
+        repo_root,
+        state_root,
+        Operation.START,
+        key="recover:stale-start",
+        fencing_epoch=5,
+    )
+
+    result = service.lifecycle(recover)
+
+    assert result.succeeded
+    assert result.data["state"] == "starting"
+    recovered_status = dict(result.data["status"])
+    assert recovered_status["pid"] is None
+    assert recovered_status["generation"] == 5
+    assert recovered_status["transition_id"] != stale.transition_id
+    events = _asi021_events(service, repo_root, state_root)
+    recovery_event = next(
+        item for item in events if item["action"] == "recover"
+    )
+    command_event = next(
+        item
+        for item in events
+        if item["request_id"] == recover.request_id
+    )
+    assert recovery_event["previous_state"] == "starting"
+    assert recovery_event["state"] == "stopped"
+    assert recovery_event["reason"] == "interrupted_start_stale_pid"
+    assert command_event["accepted"] is True
+    assert command_event["previous_state"] == "stopped"
+    assert command_event["state"] == "starting"
+
+
+def test_event_replay_is_bounded_ordered_and_round_trippable(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    service = _asi021_service(
+        repo_root,
+        state_root,
+        InMemoryLifecycleStore(max_events=3),
+        max_events=3,
+    )
+    commands = (
+        (Operation.START, 1),
+        (Operation.QUARANTINE, 2),
+        (Operation.RETRY, 3),
+        (Operation.STOP, 4),
+        (Operation.CANCEL, 5),
+    )
+    for index, (operation, fence) in enumerate(commands, start=1):
+        service.lifecycle(
+            _asi021_request(
+                repo_root,
+                state_root,
+                operation,
+                key=f"bounded:{index}",
+                fencing_epoch=fence,
+            )
+        )
+
+    complete = _asi021_events(
+        service, repo_root, state_root, limit=256
+    )
+    first_page = _asi021_events(
+        service, repo_root, state_root, limit=2
+    )
+    second_page = _asi021_events(
+        service, repo_root, state_root, limit=2, offset=2
+    )
+    cursor_page = _asi021_events(
+        service,
+        repo_root,
+        state_root,
+        after_sequence=complete[0]["sequence"],
+    )
+
+    assert len(complete) == 3
+    assert first_page + second_page == complete
+    assert cursor_page == complete[1:]
+    assert [item["sequence"] for item in complete] == sorted(
+        item["sequence"] for item in complete
+    )
+    assert len({item["event_id"] for item in complete}) == 3
+    assert all(
+        LifecycleEvent.from_dict(item).to_dict() == item
+        for item in complete
+    )
+
+    # Restart replay uses the stored sequence/event identities, not a new
+    # snapshot synthesized from current state.
+    encoded = json.dumps(complete, sort_keys=True)
+    assert json.loads(encoded) == complete
+
+
+def test_drain_and_stop_heartbeats_reconcile_process_exit() -> None:
+    store = InMemoryLifecycleStore(
+        initial_status=LifecycleStatus(
+            target_id="supervisor:fixture",
+            state=SupervisorLifecycleState.DRAINING,
+            phase="draining",
+            heartbeat_at_ms=1_000,
+            pid=731,
+            active_leases=("lease:last",),
+            generation=2,
+            fencing_epoch=4,
+            updated_at_ms=1_000,
+        )
+    )
+    backend = SupervisorLifecycleBackend(
+        state_store=store,
+        clock_ms=lambda: 1_500,
+        pid_alive=lambda pid: pid == 731,
+    )
+
+    stopping = backend.heartbeat(
+        "supervisor:fixture",
+        active_leases=(),
+    )
+    stopped = backend.heartbeat(
+        "supervisor:fixture",
+        active_leases=(),
+        pid=None,
+    )
+
+    assert stopping.state is SupervisorLifecycleState.STOPPING
+    assert stopping.pid == 731
+    assert stopping.terminal_reason == "drain_complete_stopping"
+    assert stopped.state is SupervisorLifecycleState.STOPPED
+    assert stopped.pid is None
+    assert stopped.terminal_reason == "drain_complete_stopping"
+
+
+def test_corrupt_durable_state_fails_closed_and_retains_event_cursor(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    first_service = _asi021_service(
+        repo_root,
+        state_root,
+        JsonLifecycleStore(state_root, max_events=8),
+    )
+    first_service.lifecycle(
+        _asi021_request(
+            repo_root,
+            state_root,
+            Operation.START,
+            key="corrupt:start",
+            fencing_epoch=1,
+        )
+    )
+    state_path = state_root / "supervisor-lifecycle.json"
+    state_path.write_text('{"statuses":', encoding="utf-8")
+
+    recovered_store = JsonLifecycleStore(state_root, max_events=8)
+    recovered = SupervisorLifecycleBackend(
+        state_store=recovered_store,
+        clock_ms=lambda: 2_000,
+        pid_alive=lambda _pid: False,
+    ).status("supervisor:fixture")
+    events = recovered_store.events(limit=8)
+
+    assert recovered.state is SupervisorLifecycleState.FAILED
+    assert recovered.terminal_reason == "lifecycle_state_corrupt"
+    assert events
+    assert events[-1].sequence >= 1

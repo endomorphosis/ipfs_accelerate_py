@@ -6,11 +6,15 @@ from datetime import datetime, timezone
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.control_plane import (
+    LEGAL_LIFECYCLE_TRANSITIONS,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime_temporal_monitor import (
     MonitorVerdict,
     NoticeCode,
     RUNTIME_TEMPORAL_COUNTEREXAMPLE_SCHEMA,
     RuntimeTemporalMonitor,
+    SUPERVISOR_LIFECYCLE_TRANSITIONS,
     TemporalMonitorConfig,
     TemporalMonitorPolicy,
     TemporalPropertyKind,
@@ -400,3 +404,78 @@ def test_policy_identity_changes_with_semantics() -> None:
     assert baseline.policy_id != changed.policy_id
     assert baseline.to_dict()["schema"].endswith("@1")
     assert datetime.fromtimestamp(0, timezone.utc).tzinfo is timezone.utc
+
+
+def test_lifecycle_events_follow_the_control_plane_transition_graph() -> None:
+    assert SUPERVISOR_LIFECYCLE_TRANSITIONS == {
+        state.value: frozenset(target.value for target in targets)
+        for state, targets in LEGAL_LIFECYCLE_TRANSITIONS.items()
+    }
+    monitor = RuntimeTemporalMonitor(
+        config=TemporalMonitorConfig(out_of_order_window_seconds=0)
+    )
+    base = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/lifecycle-event@1",
+        "target_id": "supervisor:test",
+        "restart_epoch": "epoch:lifecycle",
+        "accepted": True,
+    }
+    monitor.ingest_many(
+        [
+            {
+                **base,
+                "event_id": "lifecycle:1",
+                "sequence": 1,
+                "occurred_at_ms": 1_000,
+                "previous_state": "stopped",
+                "state": "starting",
+            },
+            {
+                **base,
+                "event_id": "lifecycle:2",
+                "sequence": 2,
+                "occurred_at_ms": 2_000,
+                "previous_state": "starting",
+                "state": "healthy",
+            },
+            {
+                **base,
+                "event_id": "lifecycle:3",
+                "sequence": 3,
+                "occurred_at_ms": 3_000,
+                "accepted": False,
+                "previous_state": "healthy",
+                "state": "healthy",
+            },
+        ]
+    )
+
+    report = monitor.finalize(now=4)
+
+    assert report.counterexamples == ()
+    assert report.events_evaluated == 3
+
+
+def test_illegal_lifecycle_transition_is_a_temporal_counterexample() -> None:
+    report = monitor_event_trace(
+        [
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/lifecycle-event@1"
+                ),
+                "target_id": "supervisor:test",
+                "event_id": "lifecycle:illegal",
+                "sequence": 1,
+                "occurred_at_ms": 1_000,
+                "accepted": True,
+                "previous_state": "stopped",
+                "state": "healthy",
+            }
+        ],
+        now=2,
+    )
+
+    assert {
+        item.property_kind for item in report.counterexamples
+    } == {TemporalPropertyKind.EVENT_ORDERING}
+    assert "stopped -> healthy" in report.counterexamples[0].reason

@@ -27,6 +27,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
+from .control_plane import (
+    CONTROL_MUTATION_EVENT_SCHEMA,
+    LEGAL_LIFECYCLE_TRANSITIONS,
+    LIFECYCLE_EVENT_SCHEMA,
+    LIFECYCLE_STATUS_SCHEMA,
+    SupervisorLifecycleState,
+)
 from .event_log import event_log_sources, read_jsonl_events
 
 
@@ -48,6 +55,14 @@ _UNKNOWN_TASK = "<unknown-task>"
 _UNKNOWN_LANE = "<unknown-lane>"
 _UNKNOWN_TREE = "<unknown-tree>"
 _UNKNOWN_EPOCH = "<unknown-epoch>"
+
+SUPERVISOR_LIFECYCLE_STATES: Final[frozenset[str]] = frozenset(
+    state.value for state in SupervisorLifecycleState
+)
+SUPERVISOR_LIFECYCLE_TRANSITIONS: Final[dict[str, frozenset[str]]] = {
+    state.value: frozenset(target.value for target in targets)
+    for state, targets in LEGAL_LIFECYCLE_TRANSITIONS.items()
+}
 
 
 def _canonical_json(value: Any) -> str:
@@ -123,6 +138,8 @@ def _timestamp(value: Any) -> tuple[float | None, str]:
         result = float(value)
         if not math.isfinite(result):
             return None, ""
+        if abs(result) > 100_000_000_000:
+            result /= 1000.0
         return result, datetime.fromtimestamp(result, timezone.utc).isoformat()
     text = str(value).strip()
     if not text:
@@ -136,6 +153,8 @@ def _timestamp(value: Any) -> tuple[float | None, str]:
             return None, text
         if not math.isfinite(result):
             return None, text
+        if abs(result) > 100_000_000_000:
+            result /= 1000.0
         return result, datetime.fromtimestamp(result, timezone.utc).isoformat()
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
@@ -798,6 +817,7 @@ class _PartitionState:
     terminal_deadline_reported: bool = False
     release_deadlines_reported: set[str] = field(default_factory=set)
     history_truncation_reported: bool = False
+    lifecycle_state: str = ""
 
     def has_live_obligations(self) -> bool:
         return bool(
@@ -888,11 +908,53 @@ _NON_ACTION_TYPES = (
         "heartbeat",
         "lane_heartbeat",
         "policy_changed",
+        "lifecycle_event",
+        "lifecycle_status",
+        "lifecycle_transition",
+        "lifecycle_mutation",
+        "lifecycle_mutation_accepted",
+        "lifecycle_mutation_rejected",
+        "control_mutation_event",
+        "control_mutation_accepted",
+        "control_mutation_rejected",
     }
 )
 
 
+def _event_schema(event: NormalizedSupervisorEvent) -> str:
+    return _text(event.payload.get("schema"))
+
+
+def _is_lifecycle_event(event: NormalizedSupervisorEvent) -> bool:
+    schema = _event_schema(event)
+    return (
+        schema
+        in {
+            LIFECYCLE_STATUS_SCHEMA,
+            LIFECYCLE_EVENT_SCHEMA,
+            CONTROL_MUTATION_EVENT_SCHEMA,
+        }
+        or event.event_type
+        in {
+            "lifecycle_event",
+            "lifecycle_status",
+            "lifecycle_transition",
+            "lifecycle_mutation",
+            "lifecycle_mutation_accepted",
+            "lifecycle_mutation_rejected",
+            "control_mutation_event",
+            "control_mutation_accepted",
+            "control_mutation_rejected",
+        }
+    )
+
+
 def _status_is_terminal(event: NormalizedSupervisorEvent) -> bool:
+    # Supervisor lifecycle terminal states are not task-completion evidence.
+    # In particular, a supervisor ``failed`` status must not accidentally
+    # settle an open task's eventual-terminal obligation.
+    if _is_lifecycle_event(event):
+        return False
     status = _text(
         event.payload.get("status")
         or event.payload.get("state")
@@ -1023,7 +1085,13 @@ class RuntimeTemporalMonitor:
     def _partition(self, payload: Mapping[str, Any]) -> TracePartition:
         task_id = _first_text(
             payload,
-            ("canonical_task_key", "task_id", "task_cid", "work_id"),
+            (
+                "canonical_task_key",
+                "task_id",
+                "task_cid",
+                "work_id",
+                "target_id",
+            ),
             _UNKNOWN_TASK,
         )
         lane_id = _first_text(
@@ -1053,9 +1121,22 @@ class RuntimeTemporalMonitor:
         self, payload: Mapping[str, Any], source: Path | str | None
     ) -> NormalizedSupervisorEvent:
         self._arrival_index += 1
+        schema = _text(payload.get("schema"))
         event_type = _text(
             payload.get("type") or payload.get("event_type") or payload.get("kind"),
-            "unknown",
+            (
+                "lifecycle_event"
+                if schema == LIFECYCLE_EVENT_SCHEMA
+                else (
+                    "lifecycle_status"
+                    if schema == LIFECYCLE_STATUS_SCHEMA
+                    else (
+                        "control_mutation_event"
+                        if schema == CONTROL_MUTATION_EVENT_SCHEMA
+                        else "unknown"
+                    )
+                )
+            ),
         ).lower()
         partition = self._partition(payload)
         epoch_id = _first_text(
@@ -1065,7 +1146,20 @@ class RuntimeTemporalMonitor:
         )
         raw_timestamp = payload.get("timestamp")
         if raw_timestamp in (None, ""):
-            raw_timestamp = payload.get("occurred_at", payload.get("event_time"))
+            if payload.get("occurred_at") not in (None, ""):
+                raw_timestamp = payload.get("occurred_at")
+            elif payload.get("occurred_at_ms") not in (None, ""):
+                try:
+                    raw_timestamp = float(payload["occurred_at_ms"]) / 1000.0
+                except (TypeError, ValueError):
+                    raw_timestamp = payload.get("occurred_at_ms")
+            elif payload.get("event_time") not in (None, ""):
+                raw_timestamp = payload.get("event_time")
+            elif payload.get("updated_at_ms") not in (None, ""):
+                try:
+                    raw_timestamp = float(payload["updated_at_ms"]) / 1000.0
+                except (TypeError, ValueError):
+                    raw_timestamp = payload.get("updated_at_ms")
         timestamp, timestamp_text = _timestamp(raw_timestamp)
         raw_sequence = payload.get("sequence", payload.get("sequence_number"))
         try:
@@ -1360,6 +1454,11 @@ class RuntimeTemporalMonitor:
             while len(state.sequences) > self.config.max_events_per_partition:
                 state.sequences.popitem(last=False)
 
+        if _is_lifecycle_event(event):
+            self._evaluate_lifecycle_event(state, event)
+            self._append_history(state, event)
+            return
+
         is_action = _is_action(event)
         if state.cancelled_or_revoked and is_action:
             self._violate(
@@ -1567,6 +1666,63 @@ class RuntimeTemporalMonitor:
                     )
 
         self._append_history(state, event)
+
+    def _evaluate_lifecycle_event(
+        self,
+        state: _PartitionState,
+        event: NormalizedSupervisorEvent,
+    ) -> None:
+        """Evaluate supervisor lifecycle ordering without treating it as work.
+
+        Rejected mutations are deliberately retained in history but never
+        advance state.  Accepted idempotent self-edges are legal, matching the
+        control plane's repeated-command semantics.
+        """
+
+        current = _text(event.payload.get("state")).lower()
+        if current not in SUPERVISOR_LIFECYCLE_STATES:
+            # Some generic control-mutation events concern non-lifecycle
+            # operations.  They are still replay/dedup observations, but they
+            # carry no lifecycle transition to evaluate.
+            return
+
+        if _event_schema(event) == LIFECYCLE_STATUS_SCHEMA:
+            state.lifecycle_state = current
+            return
+
+        previous = _text(event.payload.get("previous_state")).lower()
+        if previous not in SUPERVISOR_LIFECYCLE_STATES:
+            return
+        accepted_raw = event.payload.get("accepted")
+        try:
+            accepted = _boolean(accepted_raw, default=True)
+        except ValueError:
+            return
+
+        if state.lifecycle_state and state.lifecycle_state != previous:
+            self._violate(
+                TemporalPropertyKind.EVENT_ORDERING,
+                event,
+                state,
+                (
+                    "lifecycle event previous_state "
+                    f"{previous} did not match observed {state.lifecycle_state}"
+                ),
+            )
+
+        if not accepted:
+            return
+        if (
+            current != previous
+            and current not in SUPERVISOR_LIFECYCLE_TRANSITIONS[previous]
+        ):
+            self._violate(
+                TemporalPropertyKind.EVENT_ORDERING,
+                event,
+                state,
+                f"illegal supervisor lifecycle transition {previous} -> {current}",
+            )
+        state.lifecycle_state = current
 
     def _check_deadlines(
         self,
