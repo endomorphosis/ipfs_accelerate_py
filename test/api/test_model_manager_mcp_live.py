@@ -25,7 +25,8 @@ from ipfs_accelerate_py.model_manager import ModelManager
 
 
 PINNED_ENDPOINT = "http://127.0.0.1:8080/v1"
-PINNED_PROVIDER = "leanstral_local"
+PINNED_ROUTING_PROVIDER = "leanstral_local"
+PINNED_TRANSPORT_PROVIDER = "llamacpp"
 PINNED_MODEL = "Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4"
 PINNED_SERVICE = "leanstral-119b-shared"
 PINNED_SERVER_BUILD = "llama.cpp"
@@ -34,7 +35,8 @@ PINNED_SERVER_BUILD = "llama.cpp"
 # makes drift in any model-manager or MCP assertion reviewable as one contract.
 HSSLEV1126C73 = {
     "endpoint": PINNED_ENDPOINT,
-    "provider": PINNED_PROVIDER,
+    "routing_provider": PINNED_ROUTING_PROVIDER,
+    "transport_provider": PINNED_TRANSPORT_PROVIDER,
     "model": PINNED_MODEL,
     "service": PINNED_SERVICE,
     "server_build": PINNED_SERVER_BUILD,
@@ -55,7 +57,7 @@ def _models_payload() -> dict[str, Any]:
             {
                 "id": PINNED_MODEL,
                 "object": "model",
-                "owned_by": PINNED_PROVIDER,
+                "owned_by": PINNED_TRANSPORT_PROVIDER,
                 "capabilities": ["text-generation", "lean-proof-draft"],
                 "meta": {
                     "service_id": PINNED_SERVICE,
@@ -85,6 +87,14 @@ class _JSONResponse:
 
 def _request_url(request: urllib.request.Request | str) -> str:
     return request.full_url if isinstance(request, urllib.request.Request) else request
+
+
+def _identity_token(value: object) -> str:
+    return "".join(
+        character
+        for character in str(value).casefold()
+        if character.isalnum()
+    )
 
 
 @pytest.fixture
@@ -117,26 +127,54 @@ def served_model_transport(
     return calls
 
 
-def _assert_pinned_identity(model: dict[str, Any]) -> None:
+def _assert_pinned_identity(
+    model: dict[str, Any],
+    *,
+    require_service_metadata: bool = True,
+) -> None:
     assert model["id"] == PINNED_MODEL
     assert model["model_id"] == PINNED_MODEL
-    assert model["provider"] == PINNED_PROVIDER
+    assert model["provider"] == PINNED_TRANSPORT_PROVIDER
+    assert model["provider"] != PINNED_ROUTING_PROVIDER
+    assert _identity_token(model["provider"]) == _identity_token(
+        PINNED_SERVER_BUILD
+    )
     assert model["endpoint"] == PINNED_ENDPOINT
     assert model["status"] == "available"
     assert model["served"] is True
-    assert model["metadata"]["service_id"] == PINNED_SERVICE
-    assert model["metadata"]["server_build"] == PINNED_SERVER_BUILD
+    metadata = model["metadata"]
+    assert isinstance(metadata, dict)
+    if require_service_metadata or "service_id" in metadata:
+        assert model["metadata"]["service_id"] == PINNED_SERVICE
+    if require_service_metadata or "server_build" in metadata:
+        assert model["metadata"]["server_build"] == PINNED_SERVER_BUILD
 
     serialized = json.dumps(model, sort_keys=True).lower()
     for secret_name in ("api_key", "authorization", "credential", "secret"):
         assert secret_name not in serialized
 
 
+def test_contract_distinguishes_logical_route_from_llamacpp_transport() -> None:
+    """The logical service pin and observed transport are separate identities."""
+    assert HSSLEV1126C73 == {
+        "endpoint": PINNED_ENDPOINT,
+        "routing_provider": PINNED_ROUTING_PROVIDER,
+        "transport_provider": PINNED_TRANSPORT_PROVIDER,
+        "model": PINNED_MODEL,
+        "service": PINNED_SERVICE,
+        "server_build": PINNED_SERVER_BUILD,
+    }
+    assert PINNED_ROUTING_PROVIDER != PINNED_TRANSPORT_PROVIDER
+    assert _identity_token(PINNED_TRANSPORT_PROVIDER) == _identity_token(
+        PINNED_SERVER_BUILD
+    )
+
+
 def test_model_manager_reports_exact_shared_leanstral_identity(
     manager: ModelManager,
     served_model_transport: list[tuple[urllib.request.Request | str, float]],
 ) -> None:
-    """The manager must preserve endpoint, provider, model, and service IDs."""
+    """The manager preserves endpoint, model, transport, and service metadata."""
     models = manager.list_served_models(endpoint_url=PINNED_ENDPOINT, timeout=0.4)
 
     assert len(models) == 1
@@ -158,18 +196,19 @@ def test_model_manager_exact_lookup_and_alias_retain_served_identity(
         endpoint_url=PINNED_ENDPOINT,
         timeout=0.35,
     )
-    alias = manager.get_served_model(
-        "leanstral",
+    routed = manager.get_served_model(
+        PINNED_ROUTING_PROVIDER,
         endpoint_url=PINNED_ENDPOINT,
         timeout=0.35,
     )
 
     assert exact is not None
-    assert alias is not None
+    assert routed is not None
     _assert_pinned_identity(exact)
-    _assert_pinned_identity(alias)
+    _assert_pinned_identity(routed)
     assert "requested_alias" not in exact
-    assert alias["requested_alias"] == "leanstral"
+    assert routed["requested_alias"] == PINNED_ROUTING_PROVIDER
+    assert routed["provider"] == PINNED_TRANSPORT_PROVIDER
     assert len(served_model_transport) == 2
 
 
@@ -241,7 +280,7 @@ def test_mcp_client_lists_and_gets_the_same_pinned_leanstral_identity(
                 "params": {
                     "name": "model_get_served",
                     "arguments": {
-                        "model_id": PINNED_MODEL,
+                        "model_id": PINNED_ROUTING_PROVIDER,
                         "endpoint_url": PINNED_ENDPOINT,
                         "timeout": 0.3,
                     },
@@ -265,6 +304,10 @@ def test_mcp_client_lists_and_gets_the_same_pinned_leanstral_identity(
     assert "error" not in get_response, get_response
     assert get_response["result"]["status"] == "success"
     _assert_pinned_identity(get_response["result"]["model"])
+    assert (
+        get_response["result"]["model"]["requested_alias"]
+        == PINNED_ROUTING_PROVIDER
+    )
     assert [timeout for _request, timeout in served_model_transport] == [0.3, 0.3]
 
 
@@ -283,10 +326,15 @@ def test_supervisor_owned_leanstral_model_list_live(tmp_path) -> None:
         enable_ipfs=False,
     )
     model = manager.get_served_model(
-        PINNED_MODEL,
+        PINNED_ROUTING_PROVIDER,
         endpoint_url=endpoint,
         timeout=2.0,
     )
 
     assert model is not None
-    _assert_pinned_identity(model)
+    _assert_pinned_identity(model, require_service_metadata=False)
+    assert model["requested_alias"] == PINNED_ROUTING_PROVIDER
+    # llama.cpp does not advertise the supervisor's logical service alias in
+    # /v1/models.  That alias and exact service/build pair are lock-bound above;
+    # this live read proves that the pinned model is served by the truthful
+    # llama.cpp transport without issuing an inference request.
