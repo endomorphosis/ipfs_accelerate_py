@@ -13,8 +13,13 @@ from ipfs_accelerate_py.agent_supervisor import (
     MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS,
     MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS,
     PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA,
+    PAIRED_ROLLOUT_CHILD_GOAL_IDS,
     PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID,
     PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID,
+    PAIRED_ROLLOUT_OBJECTIVE_ID,
+    PAIRED_ROLLOUT_PRODUCING_TASK_IDS,
+    PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS,
     SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
     PairedFixtureKind,
     PairedRolloutFixture,
@@ -232,6 +237,85 @@ def test_closed_paired_population_passes_every_asi_023_gate() -> None:
     assert _requirement_evidence(
         report, PAIRED_EFFICIENCY_REQUIREMENT_ID
     ).requirement_satisfied
+
+
+def test_g090_fixture_families_share_every_required_gate_and_safety_invariant() -> None:
+    report = evaluate_paired_self_improvement_rollout(
+        _fixtures(),
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+    families = {
+        "cold_warm": {
+            PairedFixtureKind.COLD,
+            PairedFixtureKind.WARM,
+        },
+        "failure": {
+            PairedFixtureKind.FAILED_VALIDATION,
+            PairedFixtureKind.PROVIDER_UNAVAILABLE,
+        },
+        "adversarial": {
+            PairedFixtureKind.BROAD_GOAL,
+            PairedFixtureKind.CONTRADICTORY,
+            PairedFixtureKind.MALFORMED_OUTPUT,
+            PairedFixtureKind.STALE_CACHE,
+        },
+        "parallel": {
+            PairedFixtureKind.INDEPENDENT_PARALLEL,
+            PairedFixtureKind.CONFLICTING_PARALLEL,
+        },
+        "restart": {PairedFixtureKind.RESTART},
+        "refill": {PairedFixtureKind.DRAINED_REFILL},
+    }
+
+    assert set().union(*families.values()) == set(
+        REQUIRED_PAIRED_FIXTURE_KINDS
+    )
+    assert all(
+        report[name]
+        for name in (
+            "gate_passed",
+            "nonnegotiable_gate_passed",
+            "paired_gate_passed",
+            "token_gate_passed",
+            "cache_gate_passed",
+            "planning_gate_passed",
+            "throughput_gate_passed",
+        )
+    )
+    assert PAIRED_ROLLOUT_OBJECTIVE_ID == "ASI-G090"
+    assert PAIRED_ROLLOUT_PRODUCING_TASK_IDS == ("ASI-023", "ASI-024")
+    assert PAIRED_ROLLOUT_CHILD_GOAL_IDS == (
+        "ASI-G112",
+        "ASI-G113",
+        "ASI-G114",
+    )
+    assert len(PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA) == 5
+    assert PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS == 2
+
+    fixtures = {
+        PairedFixtureKind(item["fixture_kind"]): item["candidate"]
+        for item in report["fixtures"]
+    }
+    for measurement in fixtures.values():
+        assert measurement["false_completions"] == 0
+        assert measurement["authority_violations"] == 0
+        assert measurement["stale_authoritative_hits"] == 0
+        assert measurement["escaped_defects"] == 0
+        assert measurement["duplicate_executions"] == 0
+        assert measurement["unauthorized_mutations"] == 0
+    assert fixtures[PairedFixtureKind.FAILED_VALIDATION][
+        "detected_defects"
+    ] == fixtures[PairedFixtureKind.FAILED_VALIDATION]["seeded_defects"]
+    assert fixtures[PairedFixtureKind.PROVIDER_UNAVAILABLE][
+        "terminal_outcome"
+    ] == "degraded"
+    assert fixtures[PairedFixtureKind.RESTART][
+        "state_digest_before"
+    ] == fixtures[PairedFixtureKind.RESTART]["state_digest_after"]
+    assert fixtures[PairedFixtureKind.DRAINED_REFILL][
+        "terminal_outcome"
+    ] == "exhausted"
 
 
 def test_omitted_rollout_mode_proves_gates_but_never_promotes() -> None:

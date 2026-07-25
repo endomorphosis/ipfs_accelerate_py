@@ -707,6 +707,45 @@ go/no-go review must confirm:
    profile binding change returns operation to shadow and reruns the applicable
    import-isolation preflight and paired population.
 
+### Requesting ASI-G090 completion
+
+Promotion authority does not complete ASI-G090. After all changes are present
+on the candidate tree, run the mandatory command:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_self_improvement_e2e.py \
+  test/api/test_agent_supervisor_self_improvement_benchmark.py -q
+```
+
+Submit the completion request through
+`report.evaluate_objective_completion(...)` or
+`evaluate_paired_rollout_completion(...)` with all of the following:
+
+1. a fresh recomputed complete report and both strictly restored, satisfied
+   G112/G113 requirement projections bound to the current repository/tree;
+2. exactly ASI-023 and ASI-024 in terminal-success states and exactly G112,
+   G113, and G114 freshly `verified_complete`, each with a passing current-tree
+   gate, validation record, and conclusive current proof requirement;
+3. exactly one fresh passing current-tree validation receipt for each of the
+   five literal G090 clauses, plus an exact coverage row naming concrete
+   implementation and that receipt CID;
+4. analyzer data with `status: healthy`, `healthy: true`, and
+   `safe_for_completion_reasoning: true`, bound to repository, tree,
+   `ASI-G090`, `ASI-G090@asi-090`, `paired-rollout-completion@1`, and
+   `paired-rollout-completion-policy@1`;
+5. exactly two fresh members, each healthy, completion-safe, exhaustive, and
+   identically bound, with unique member ID, evidence channel, and receipt
+   CID.
+
+Every submitted record is checked. Extra, failed, stale, future, foreign,
+duplicated, or detached evidence fails the request; a passing sibling cannot
+mask it. The first successful evaluation produces only
+`provisionally_complete`. Run a separate later evaluation against the same
+still-current proof population before accepting `verified_complete`. If the
+tree/profile/provider binding changes or a child reopens, rerun the shadow
+population and completion evidence collection.
+
 ## Metrics and evidence
 
 Expose metrics through the control operation with an explicit state-relative
