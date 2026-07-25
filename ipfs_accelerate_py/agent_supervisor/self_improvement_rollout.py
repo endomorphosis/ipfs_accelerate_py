@@ -1050,12 +1050,12 @@ def evaluate_paired_self_improvement_rollout(
     fixtures: Sequence[PairedRolloutFixture | Mapping[str, Any]],
     *,
     desired_mode: SelfImprovementRolloutMode | str = (
-        SelfImprovementRolloutMode.AUTOMATIC
+        SelfImprovementRolloutMode.SHADOW
     ),
     policy: PairedRolloutPolicy | Mapping[str, Any] | None = None,
     evaluated_at: datetime | str | None = None,
 ) -> PairedRolloutReport:
-    """Evaluate the closed paired population and fail back to shadow."""
+    """Evaluate the closed paired population, defaulting safely to shadow."""
 
     if policy is None:
         normalized_policy = PairedRolloutPolicy()
@@ -1527,7 +1527,9 @@ __all__ = [
     "PAIRED_ROLLOUT_FIXTURE_SCHEMA",
     "PAIRED_ROLLOUT_POLICY_SCHEMA",
     "PAIRED_ROLLOUT_REPORT_SCHEMA",
+    "PAIRED_ROLLOUT_REPORT_VERSION",
     "PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA",
+    "PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION",
     "PairedFixtureKind",
     "PairedRolloutFixture",
     "PairedRolloutPolicy",

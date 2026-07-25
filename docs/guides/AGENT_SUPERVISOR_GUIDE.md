@@ -496,7 +496,8 @@ Two supported starting recipes follow. They are ceilings, not targets.
 | Control items / serialized bytes / text bytes / timeout | 32 / 65,536 / 4,096 / 10 s | 256 / 262,144 / 8,192 / 30 s |
 | Context input / output reserve / tool reserve | 2,048 / 512 / 128 tokens | 8,192 / 2,048 / 512 tokens |
 | Context items / serialized bytes | 32 / 65,536 | 128 / 262,144 |
-| Cache entries / namespace bytes / entry bytes | 64 / 4 MiB / 64 KiB | 512 / 32 MiB / 256 KiB |
+| Coordinator cache entries / namespace bytes / entry bytes | 64 / 4 MiB / 64 KiB | 512 / 32 MiB / 256 KiB |
+| Analysis cache entry / receipt bytes | 64 KiB / 48 KiB | 128 KiB / 96 KiB |
 | Negative TTL / maximum TTL | 60 s / 1 h | 5 min / 24 h |
 | Supervisor lanes | 1 | 4, reduced by admission telemetry |
 | Proof/model/artifact concurrency | 1 / 1 / 1 | 2 / 1 / 2, never above the top-level lease |
@@ -568,25 +569,49 @@ validation, restart, and drained refill.
 
 ```python
 from ipfs_accelerate_py.agent_supervisor import (
+    PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
+    PairedRolloutRequirementEvidence,
     PairedRolloutPolicy,
     PairedRolloutReportStore,
-    SelfImprovementRolloutMode,
+    REQUIRED_PAIRED_FIXTURE_KINDS,
     evaluate_paired_self_improvement_rollout,
 )
 
-# `fixtures` must contain one typed PairedRolloutFixture for every required
-# PairedFixtureKind, with baseline and candidate measured on identical input.
-report = evaluate_paired_self_improvement_rollout(
-    fixtures,
-    desired_mode=SelfImprovementRolloutMode.ASSIST,
-    policy=PairedRolloutPolicy(),
-)
-PairedRolloutReportStore(
-    "data/agent_supervisor/self_improvement/paired_rollout"
-).persist(report)
-
-if report.effective_mode is SelfImprovementRolloutMode.SHADOW:
-    print(report.reason_codes)
+def verify_shadow_population(fixtures, *, repository_id, tree_id, report_dir):
+    # The harness supplies one paired measurement for every reviewed kind.
+    kinds = tuple(item.fixture_kind for item in fixtures)
+    assert len(kinds) == len(REQUIRED_PAIRED_FIXTURE_KINDS)
+    assert frozenset(kinds) == frozenset(REQUIRED_PAIRED_FIXTURE_KINDS)
+    report = evaluate_paired_self_improvement_rollout(
+        fixtures,
+        policy=PairedRolloutPolicy(),
+    )  # omitted desired_mode intentionally defaults to shadow
+    store = PairedRolloutReportStore(report_dir)
+    store.persist(report)
+    recovered = store.load(report.report_id)
+    evidence = tuple(
+        recovered.evidence_for(
+            requirement_id,
+            repository_id=repository_id,
+            repository_tree=tree_id,
+        )
+        for requirement_id in (
+            SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
+            PAIRED_EFFICIENCY_REQUIREMENT_ID,
+        )
+    )
+    restored = tuple(
+        PairedRolloutRequirementEvidence.from_dict(
+            item.to_dict(),
+            report=recovered,
+        )
+        for item in evidence
+    )
+    assert all(item.requirement_satisfied for item in restored)
+    assert recovered.effective_mode.value == "shadow"
+    assert not recovered.promotion_allowed
+    return recovered, restored
 ```
 
 The default paired policy requires zero false completions, authority
@@ -629,11 +654,18 @@ cannot claim the paired-efficiency term because it never measured the planning
 gate. Run the current shadow population to mint a version-2 witness before
 considering assist or automatic use.
 
-The requirement identifiers, paired contracts, and evaluator are stable lazy
-package exports. Importing `ipfs_accelerate_py.agent_supervisor` does not load
+The package-root `PAIRED_ROLLOUT_STABLE_EXPORTS` manifest is the authoritative
+lazy surface. It groups the bounds and threshold constants; goal and
+requirement IDs; schema and version constants; fixture, measurement, policy,
+mode, report, evidence, store, and validation-error types; the reviewed
+fixture collections; and the evaluator. Importing
+`ipfs_accelerate_py.agent_supervisor` or reading the manifest does not load
 optional analysis, model, dataset, or prover providers or start a process.
-Accessing a paired export loads only its provider-free rollout contract module;
-provider availability still requires explicit discovery.
+Accessing a listed name loads only the provider-free rollout contract module.
+Migrate direct imports from
+`ipfs_accelerate_py.agent_supervisor.self_improvement_rollout` to the package
+root; migrate a version-1 report by running a fresh version-2 shadow population,
+not by editing its serialized form.
 
 In the deterministic smoke profile, call `evidence_for` after each seeded
 fault. A seeded false completion affirmatively proves the safety term only
@@ -645,6 +677,20 @@ new shadow evaluation before assist or automatic use.
 
 Promotion is capability-specific. A report permits policy to consider
 promotion; it is not itself an authorization decision or completion proof.
+
+Before requesting `assist`, and again before `automatic`, the operator's
+go/no-go review must confirm:
+
+1. capability discovery loaded no optional provider and started no process;
+2. a current version-2 report covers every reviewed fixture in shadow;
+3. both strictly restored projections are satisfied and bound to the current
+   repository and tree, and are retained with the exact profile, capability
+   snapshot, objective, and policy identities;
+4. the persisted report reloads to the same content identity and all bounded
+   reason codes have been reviewed;
+5. the desired mutation separately has authorization, expected effects,
+   idempotency, a live lease, and the current fence; and
+6. any binding change returns operation to shadow and reruns the population.
 
 ## Metrics and evidence
 
@@ -680,6 +726,9 @@ At minimum, monitor:
   replays, stale leases/fences, and unauthorized mutations;
 - retry counts, heartbeat age, recovery decisions, merge conflicts, and
   terminal acceptance;
+- paired token reduction, repeated-cache reuse, planning coverage improvement,
+  invalid-plan-branch reduction, independent throughput, all four component
+  gates, and bounded reason codes;
 - self-refill epoch status, blocker codes, successor counts, replay, and
   healthy exhaustion.
 
@@ -807,6 +856,7 @@ Run the deterministic contract and surface-parity suite:
 ```bash
 python -m pytest \
   test/api/test_agent_supervisor_self_improvement_e2e.py \
+  test/api/test_agent_supervisor_self_improvement_benchmark.py \
   test/api/test_agent_supervisor_control_plane.py \
   test/test_unified_cli_agent_supervisor.py \
   test/mcp_server/test_agent_supervisor_tools.py -q

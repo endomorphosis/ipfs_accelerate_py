@@ -190,7 +190,8 @@ promotion gates.
 | Rollout | `shadow` only | Start `shadow`; promote to `assist`, then narrowly to `automatic` only through the paired gate |
 | Providers | Deterministic local/fallback adapters; optional network/model routes disabled | Only explicitly configured routes with fresh capability and conformance receipts |
 | Context | `context_contracts.ContextBudget(max_input_tokens=2048, reserved_output_tokens=512, reserved_tool_tokens=128, max_items=32, max_item_bytes=8192, max_serialized_bytes=65536, max_depth=6, max_text_bytes=4096)` | Begin with the reviewed `context_contracts.ContextBudget()` defaults: 8192 input, 2048 output reserve, 512 tool reserve, 128 items, and 256 KiB serialized; lower to the provider-negotiated effective limit |
-| Analysis cache | Temporary profile-specific state, 64 entries, 4 MiB total, 64 KiB entry, 48 KiB receipt, 60-second negative TTL; discard between cold fixtures | Durable profile-specific state; reviewed defaults are 512 entries, 32 MiB total, 128 KiB entry, 96 KiB receipt, and 5-minute negative TTL; size and TTL changes require a new configuration digest |
+| Coordinator caches | Temporary profile-specific state, 64 entries, 4 MiB total, 64 KiB entry; isolate namespaces per test | Durable profile-specific state, initially 512 entries, 32 MiB total, and 256 KiB per entry; quota changes require a new configuration digest |
+| Analysis receipt cache | `AnalysisCache`: 64 entries, 4 MiB total, 64 KiB entry, 48 KiB receipt, 60-second negative TTL; discard between cold fixtures | `AnalysisCache` reviewed defaults: 512 entries, 32 MiB total, 128 KiB entry, 96 KiB receipt, and 5-minute negative TTL; size and TTL changes require a new configuration digest |
 | Lanes and resources | One lane, one process, one CPU-proof slot, one model slot, one artifact slot; adaptive scheduling off | Explicit `ResourcePolicy`; start with no more than four lanes, CPU-proof 2, model 1, artifact 2, stage/class ceilings, provider telemetry required, and adaptive scheduling off until the paired parallel fixtures pass |
 | Control bounds | Prefer 32 items, 64 KiB serialized, 4 KiB text, 16 paths/effects, and a 10-second timeout | Default 256-item/256-KiB/30-second request envelope, further constrained by service and backend limits |
 | Refill | Run one fixed epoch fixture against temporary objective/task-board copies; never materialize successors | At board drain, evaluate one identity-bound epoch; materialize at most the policy-admitted bounded successor population |
@@ -276,10 +277,12 @@ planning, and throughput projections. Version-1 reports remain recomputable
 audit records, but cannot satisfy the paired-efficiency witness; promotion
 requires a fresh version-2 shadow evaluation.
 
-The paired report types, requirement identifiers, store, and evaluator remain
-lazy package-root exports. Cold import and static control discovery do not load
-optional providers or start processes; first access loads only the
-provider-free rollout contracts. Smoke operators exercise every seeded
+The paired report types, schema versions, requirement identifiers, store, and
+evaluator are enumerated by the package-root
+`PAIRED_ROLLOUT_STABLE_EXPORTS` compatibility manifest. Cold import, manifest
+inspection, and static control discovery do not load optional providers or
+start processes; first access to a listed name loads only the provider-free
+rollout contracts. Smoke operators exercise every seeded
 forced-shadow path with fixed inputs and bounded state. Production operators
 retain the two evidence projections with the report and current tree,
 objective, policy, capability, and profile identities, and return to shadow
