@@ -428,7 +428,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-024 Publish stable exports, migration guidance, and operating profiles
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P2
 - Track: rollout
