@@ -30,6 +30,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, ClassVar
@@ -150,6 +151,34 @@ REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID = (
 # content-addressed witness carries the same identifier.
 DELTA_RETRY_CONTEXT_EVIDENCE_ID = (
     "306437607356117177048620815571362227127"
+)
+
+TOKEN_EFFICIENCY_OBJECTIVE_ID = "ASI-G010"
+TOKEN_EFFICIENCY_OBJECTIVE_REVISION = "ASI-G010@asi-088"
+TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS = 2
+TOKEN_EFFICIENCY_PRODUCING_TASK_IDS = (
+    "ASI-001",
+    "ASI-005",
+    "ASI-006",
+)
+TOKEN_EFFICIENCY_CHILD_GOAL_IDS = (
+    "ASI-G091",
+    "ASI-G092",
+    "ASI-G093",
+)
+TOKEN_EFFICIENCY_REQUIREMENT_IDS = (
+    REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
+    DELTA_RETRY_CONTEXT_EVIDENCE_ID,
+    TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+)
+TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA = (
+    "Required goal, authority, scope, and acceptance context is never truncated",
+    "optional evidence has deterministic inclusion reasons",
+    "retries use changed evidence rather than full replay",
+    (
+        "paired fixtures reduce median input tokens by at least 35 percent "
+        "without lowering required evidence coverage or safety."
+    ),
 )
 
 # Absolute construction bounds.  They are intentionally generous enough for a
@@ -6344,6 +6373,433 @@ def aggregate_efficiency_receipts(
     )
 
 
+def evaluate_token_efficiency_completion(
+    *,
+    repository_id: str,
+    repository_tree: str,
+    producing_tasks: Sequence[Any] = (),
+    child_goals: Sequence[Any] = (),
+    current_state: Any = "active",
+    evidence: Sequence[Any] = (),
+    tasks_complete: bool = False,
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    required_exhaustive_receipts: int = (
+        TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ),
+    policy_revision: str = "",
+    now: Any = None,
+    freshness_seconds: float = 86_400.0,
+    clock_skew_seconds: float = 300.0,
+    analysis_inconclusive: bool = False,
+    blocked_reason: str = "",
+) -> Any:
+    """Evaluate the immutable ASI-G010 parent completion contract.
+
+    Callers cannot narrow the producing tasks, direct child goals, literal
+    criteria, objective revision, or exhaustive-receipt count.  Verified child
+    artifacts remain separate from parent validation, analyzer, and quorum
+    authority.
+    """
+
+    from .analyzer_health import AnalyzerHealthReport
+    from .goal_completion import evaluate_goal_completion
+    from .scan_receipts import ExhaustionQuorumResult
+
+    if (
+        isinstance(required_exhaustive_receipts, bool)
+        or not isinstance(required_exhaustive_receipts, int)
+        or required_exhaustive_receipts
+        != TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ):
+        raise ValueError(
+            "required_exhaustive_receipts must equal the configured ASI-G010 "
+            f"count {TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+        )
+    repository_id = str(repository_id or "").strip()
+    repository_tree = str(repository_tree or "").strip()
+    if not repository_id or not repository_tree:
+        raise ValueError("repository_id and repository_tree must not be empty")
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    def normalized(value: Any) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    def parsed_time(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            result = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                result = datetime.fromisoformat(
+                    value.strip().replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if result.tzinfo is None:
+            result = result.replace(tzinfo=timezone.utc)
+        return result.astimezone(timezone.utc)
+
+    current = parsed_time(now) or datetime.now(timezone.utc)
+    max_age = timedelta(seconds=max(0.0, float(freshness_seconds)))
+    skew = timedelta(seconds=max(0.0, float(clock_skew_seconds)))
+
+    task_values = [payload(item) for item in producing_tasks]
+    task_ids = [
+        str(item.get("task_id", item.get("id", "")) or "").strip()
+        for item in task_values
+    ]
+    successful_states = {
+        "complete",
+        "completed",
+        "passed",
+        "success",
+        "succeeded",
+        "verified",
+        "verified_complete",
+    }
+    producer_population_complete = bool(task_values) and (
+        len(task_ids) == len(set(task_ids))
+        and tuple(sorted(task_ids))
+        == tuple(sorted(TOKEN_EFFICIENCY_PRODUCING_TASK_IDS))
+        and all(
+            normalized(item.get("status", item.get("state", "")))
+            in successful_states
+            for item in task_values
+        )
+    )
+
+    evidence_ids: dict[str, set[str]] = {}
+    for item in evidence:
+        value = payload(item)
+        source = value.get("evidence", value)
+        source = source if isinstance(source, Mapping) else value
+        criterion = normalized(source.get("acceptance_criterion"))
+        receipt_id = str(
+            source.get(
+                "provenance_cid",
+                source.get("receipt_id", source.get("evidence_id", "")),
+            )
+            or ""
+        ).strip()
+        if criterion and receipt_id:
+            evidence_ids.setdefault(criterion, set()).add(receipt_id)
+
+    coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+    expected_criteria = {
+        normalized(item) for item in TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA
+    }
+    row_keys = [
+        normalized(
+            row.get("criterion", row.get("acceptance_criterion", ""))
+        )
+        for row in rows
+        if isinstance(row, Mapping)
+    ]
+
+    def validation_ids(row: Mapping[str, Any]) -> set[str]:
+        values = row.get(
+            "validation_receipt_ids",
+            row.get("validation_receipt_id", ()),
+        )
+        if isinstance(values, str):
+            values = (values,)
+        if not isinstance(values, Sequence):
+            return set()
+        return {
+            str(item or "").strip()
+            for item in values
+            if str(item or "").strip()
+        }
+
+    coverage_bound = (
+        len(row_keys) == len(expected_criteria)
+        and len(row_keys) == len(set(row_keys))
+        and set(row_keys) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and bool(
+                str(row.get("implementation") or "").strip()
+                or str(row.get("implementation_binding") or "").strip()
+                or any(
+                    str(item or "").strip()
+                    for name in (
+                        "changed_files",
+                        "predicted_files",
+                        "ast_symbols",
+                        "interfaces",
+                    )
+                    for item in (
+                        row.get(name)
+                        if isinstance(row.get(name), (list, tuple))
+                        else ()
+                    )
+                )
+            )
+            and bool(
+                validation_ids(row).intersection(
+                    evidence_ids.get(
+                        normalized(
+                            row.get(
+                                "criterion",
+                                row.get("acceptance_criterion", ""),
+                            )
+                        ),
+                        set(),
+                    )
+                )
+            )
+            for row in rows
+        )
+    )
+    if not coverage_bound:
+        reasons = coverage_value.get("reason_codes")
+        reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "reason_codes": list(
+                dict.fromkeys(
+                    [*reasons, "coverage_validation_receipt_unbound"]
+                )
+            ),
+        }
+
+    typed_health = isinstance(analyzer_health, AnalyzerHealthReport)
+    typed_quorum = isinstance(exhaustion_quorum, ExhaustionQuorumResult)
+    quorum_value = payload(exhaustion_quorum)
+    quorum_binding_value = quorum_value.get("binding")
+    quorum_binding = (
+        dict(quorum_binding_value)
+        if isinstance(quorum_binding_value, Mapping)
+        else {}
+    )
+    health_value = payload(analyzer_health)
+    analyzer_version = str(
+        health_value.get("analyzer_version")
+        or quorum_binding.get("analyzer_version")
+        or ""
+    ).strip()
+    health_binding_value = health_value.get("binding")
+    health_binding = (
+        dict(health_binding_value)
+        if isinstance(health_binding_value, Mapping)
+        else {}
+    )
+    if typed_health and typed_quorum:
+        health_binding = {
+            **quorum_binding,
+            "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
+        }
+        health_value = {
+            **health_value,
+            "analyzer_version": analyzer_version,
+            "binding": health_binding,
+        }
+    expected_binding = {
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
+        "objective_revision": TOKEN_EFFICIENCY_OBJECTIVE_REVISION,
+        "analyzer_version": analyzer_version,
+        "configuration_revision": str(
+            health_binding.get("configuration_revision") or ""
+        ).strip(),
+    }
+    if policy_revision:
+        expected_binding["policy_revision"] = str(policy_revision).strip()
+    health_complete = (
+        normalized(health_value.get("status")) == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+        and bool(analyzer_version)
+        and bool(expected_binding["configuration_revision"])
+        and all(
+            health_binding.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+    )
+    if not health_complete:
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    members_value = quorum_value.get("members")
+    members = (
+        members_value
+        if isinstance(members_value, (list, tuple))
+        else []
+    )
+    if typed_quorum:
+        quorum_binding = {
+            **quorum_binding,
+            "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
+        }
+        members = [
+            {
+                **member,
+                "binding": quorum_binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+            }
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        quorum_value = {
+            **quorum_value,
+            "binding": quorum_binding,
+            "members": members,
+        }
+
+    def independent_field(name: str) -> bool:
+        values = [
+            str(member.get(name) or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        return (
+            len(values) == len(members)
+            and all(values)
+            and len(values) == len(set(values))
+        )
+
+    members_complete = bool(members) and all(
+        isinstance(member, Mapping)
+        and member.get("healthy") is True
+        and member.get("safe_for_completion_reasoning") is True
+        and normalized(member.get("scan_mode")) == "exhaustive"
+        and isinstance(member.get("binding"), Mapping)
+        and all(
+            member["binding"].get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        for member in members
+    )
+    quorum_complete = (
+        quorum_value.get("required_members")
+        == TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("member_count") == len(members)
+        and len(members) >= TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("satisfied") is True
+        and quorum_binding == health_binding
+        and members_complete
+        and independent_field("member_id")
+        and independent_field("evidence_channel")
+        and independent_field("receipt_cid")
+    )
+    if not quorum_complete:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    child_values = [payload(item) for item in child_goals]
+    child_ids = [
+        str(item.get("goal_id", item.get("id", "")) or "").strip()
+        for item in child_values
+    ]
+
+    def child_is_current(child: Mapping[str, Any]) -> bool:
+        gate_value = child.get("completion_gate", child.get("gate"))
+        gate = gate_value if isinstance(gate_value, Mapping) else {}
+        evaluated_value = gate.get("evaluated_evidence")
+        evaluated = (
+            evaluated_value if isinstance(evaluated_value, Mapping) else {}
+        )
+        evaluated_at = parsed_time(evaluated.get("evaluated_at"))
+        validations = evaluated.get("validation_evidence")
+        proof_requirements = child.get(
+            "proof_requirements",
+            evaluated.get("proof_requirements", ()),
+        )
+        if isinstance(proof_requirements, Mapping):
+            proof_requirements = (proof_requirements,)
+        return bool(
+            normalized(child.get("state", child.get("next_state", "")))
+            == "verified_complete"
+            and child.get("verified") is True
+            and gate.get("passed") is True
+            and evaluated.get("repository_id") == repository_id
+            and evaluated.get("repository_tree") == repository_tree
+            and evaluated_at is not None
+            and evaluated_at <= current + skew
+            and current - evaluated_at <= max_age
+            and isinstance(validations, list)
+            and bool(validations)
+            and all(
+                isinstance(item, Mapping)
+                and item.get("valid") is True
+                and isinstance(item.get("evidence"), Mapping)
+                and item["evidence"].get("repository_id") == repository_id
+                and item["evidence"].get("repository_tree")
+                == repository_tree
+                for item in validations
+            )
+            and isinstance(proof_requirements, (list, tuple))
+            and bool(proof_requirements)
+        )
+
+    child_population_complete = (
+        len(child_ids) == len(set(child_ids))
+        and tuple(sorted(child_ids))
+        == tuple(sorted(TOKEN_EFFICIENCY_CHILD_GOAL_IDS))
+        and all(child_is_current(item) for item in child_values)
+    )
+    if not child_population_complete:
+        child_values.append(
+            {
+                "goal_id": "ASI-G010-required-descendant-population",
+                "state": "active",
+                "verified": False,
+                "completion_gate": {
+                    "passed": False,
+                    "reason_code": (
+                        "required_descendant_population_or_binding_incomplete"
+                    ),
+                },
+            }
+        )
+
+    return evaluate_goal_completion(
+        current_state=current_state,
+        acceptance_criteria=TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
+        evidence=evidence,
+        tasks_complete=bool(
+            tasks_complete and producer_population_complete
+        ),
+        repository_tree=repository_tree,
+        repository_id=repository_id,
+        now=current,
+        freshness_seconds=freshness_seconds,
+        clock_skew_seconds=clock_skew_seconds,
+        coverage=coverage_value,
+        analyzer_health=health_value,
+        exhaustion_quorum=quorum_value,
+        child_goals=child_values,
+        analysis_result=None,
+        analysis_inconclusive=analysis_inconclusive,
+        blocked_reason=blocked_reason,
+        require_completion_gate=True,
+    )
+
+
 def _fixture_digest(label: str) -> str:
     return "sha256:" + hashlib.sha256(label.encode("utf-8")).hexdigest()
 
@@ -6569,6 +7025,13 @@ __all__ = [
     "TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA",
     "TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA",
     "TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID",
+    "TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA",
+    "TOKEN_EFFICIENCY_CHILD_GOAL_IDS",
+    "TOKEN_EFFICIENCY_OBJECTIVE_ID",
+    "TOKEN_EFFICIENCY_OBJECTIVE_REVISION",
+    "TOKEN_EFFICIENCY_PRODUCING_TASK_IDS",
+    "TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS",
+    "TOKEN_EFFICIENCY_REQUIREMENT_IDS",
     "TOKEN_USAGE_SCHEMA",
     "WORK_COST_SCHEMA",
     "ArtifactReference",
@@ -6606,6 +7069,7 @@ __all__ = [
     "build_required_context_promotion_report",
     "build_delta_retry_promotion_report",
     "build_efficiency_baseline_fixtures",
+    "evaluate_token_efficiency_completion",
     "compare_paired_efficiency_receipts",
     "make_baseline_fixtures",
     "PairedEfficiencyCase",

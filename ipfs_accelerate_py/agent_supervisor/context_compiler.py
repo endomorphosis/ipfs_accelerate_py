@@ -1789,6 +1789,20 @@ class ContextCompileResult:
     decisions: tuple[EvidenceSelectionDecision, ...]
     verifier: Any = field(default=None, repr=False, compare=False)
 
+    @property
+    def required_context_preserved(self) -> bool:
+        """Whether the receipt proves the complete invariant context survived."""
+
+        evidence = self.receipt.evidence
+        return bool(
+            evidence is not None
+            and evidence.required_fields
+            == tuple(sorted(self.capsule.required_field_names))
+            and not set(self.capsule.required_field_names).intersection(
+                self.capsule.omitted_reference_ids
+            )
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.capsule, ContextCapsule):
             raise ContextCompilationError("capsule must be a ContextCapsule")
@@ -1854,6 +1868,10 @@ class ContextCompileResult:
             raise ContextCompilationError(
                 "required-context evidence does not bind invariant fields"
             )
+        if not self.required_context_preserved:
+            raise ContextCompilationError(
+                "compiled result does not preserve its invariant context"
+            )
         for reference_id, reference in selected_by_id.items():
             decision = decision_by_id[reference_id]
             expected_reason = (
@@ -1917,6 +1935,17 @@ class ContextDeltaResult:
     def capsule(self) -> ContextDeltaCapsule:
         return self.delta_capsule
 
+    @property
+    def invariant_core_preserved(self) -> bool:
+        """Whether retry reconstruction retained the exact parent core."""
+
+        return bool(
+            self.parent_capsule.invariant_core_id
+            == self.reconstructed_capsule.invariant_core_id
+            and self.parent_capsule.invariant_core
+            == self.reconstructed_capsule.invariant_core
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.parent_capsule, ContextCapsule):
             raise ContextDeltaError("delta result parent must be a ContextCapsule")
@@ -1940,6 +1969,10 @@ class ContextDeltaResult:
         if reconstructed != self.reconstructed_capsule:
             raise ContextDeltaError(
                 "delta result is not an exact reconstruction of its parent"
+            )
+        if not self.invariant_core_preserved:
+            raise ContextDeltaError(
+                "delta result changed the non-truncatable invariant context"
             )
         receipt_bindings = {
             "repository_id": self.parent_capsule.repository_id,

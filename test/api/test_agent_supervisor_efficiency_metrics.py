@@ -52,6 +52,11 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
     TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA,
     TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
+    TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
+    TOKEN_EFFICIENCY_CHILD_GOAL_IDS,
+    TOKEN_EFFICIENCY_OBJECTIVE_ID,
+    TOKEN_EFFICIENCY_OBJECTIVE_REVISION,
+    TOKEN_EFFICIENCY_PRODUCING_TASK_IDS,
     MAX_ARTIFACT_REFERENCES,
     MAX_CHANGED_PATHS,
     MAX_DURATION_MS,
@@ -90,6 +95,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     build_paired_efficiency_report,
     build_terminal_accepted_work_evidence,
     build_required_context_promotion_report,
+    evaluate_token_efficiency_completion,
     verify_terminal_accepted_work_evidence,
 )
 
@@ -2867,4 +2873,353 @@ def test_retry_records_are_contiguous_compact_and_accounted_in_totals() -> None:
             repaired,
             attempt=2,
             retries=(replace(retry, attempt=3),),
+        )
+
+
+def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> None:
+    now = datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc)
+    repository_id = "repo:token-efficiency"
+    tree_id = "sha256:" + "a" * 64
+    command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_efficiency_metrics.py "
+        "test/api/test_agent_supervisor_context_compiler.py "
+        "test/api/test_agent_supervisor_context_delta.py -q"
+    )
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-088",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": tree_id,
+                "command": command,
+            },
+            validation_passed=True,
+            repository_id=repository_id,
+            repository_tree=tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-088:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "context_contracts.py"
+                        if index == 1
+                        else "context_compiler.py"
+                        if index < 4
+                        else "supervisor_efficiency_metrics.py"
+                    )
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_context_compiler.py"
+                    if index < 3
+                    else "test/api/test_agent_supervisor_context_delta.py"
+                    if index == 3
+                    else (
+                        "test/api/"
+                        "test_agent_supervisor_efficiency_metrics.py"
+                    )
+                ),
+                "validation_receipt_id": evidence[
+                    index - 1
+                ].provenance_cid,
+            }
+            for index, criterion in enumerate(
+                TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    analyzer_version = "token-efficiency-completion@1"
+    binding = {
+        "repository_id": repository_id,
+        "tree_id": tree_id,
+        "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
+        "objective_revision": TOKEN_EFFICIENCY_OBJECTIVE_REVISION,
+        "analyzer_version": analyzer_version,
+        "configuration_revision": "sha256:g010-completion-config",
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": analyzer_version,
+        "binding": binding,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-088-exhaustive-a",
+                "evidence_channel": "contracts-compiler",
+                "receipt_cid": "scan:asi-088:exhaustive-a",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-088-exhaustive-b",
+                "evidence_channel": "delta-measurement",
+                "receipt_cid": "scan:asi-088:exhaustive-b",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    producing_tasks = [
+        {"task_id": task_id, "status": "completed"}
+        for task_id in TOKEN_EFFICIENCY_PRODUCING_TASK_IDS
+    ]
+    child_goals = [
+        {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "proof_requirements": [
+                {
+                    "goal_id": goal_id,
+                    "acceptance_criterion": "typed producer proof",
+                    "obligation_id": f"proof:{goal_id}",
+                    "proof_receipt_id": f"receipt:{goal_id}",
+                    "required_assurance": "kernel_verified",
+                    "authoritative_assurance": "kernel_verified",
+                    "proof_verdict": "proved",
+                    "freshness": "current",
+                    "assurance_satisfied": True,
+                }
+            ],
+            "completion_gate": {
+                "passed": True,
+                "evaluated_evidence": {
+                    "repository_id": repository_id,
+                    "repository_tree": tree_id,
+                    "evaluated_at": now.isoformat(),
+                    "validation_evidence": [
+                        {
+                            "valid": True,
+                            "evidence": {
+                                "repository_id": repository_id,
+                                "repository_tree": tree_id,
+                            },
+                        }
+                    ],
+                },
+            },
+        }
+        for goal_id in TOKEN_EFFICIENCY_CHILD_GOAL_IDS
+    ]
+    values = {
+        "repository_id": repository_id,
+        "repository_tree": tree_id,
+        "producing_tasks": producing_tasks,
+        "child_goals": child_goals,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = evaluate_token_efficiency_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.acceptance_criteria == (
+        TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate is not None and provisional.gate.passed
+
+    verified = evaluate_token_efficiency_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    typed_coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"ASI-G010:{index}",
+                goal_id=TOKEN_EFFICIENCY_OBJECTIVE_ID,
+                criterion=criterion,
+                status=CoverageStatus.VERIFIED,
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "supervisor_efficiency_metrics.py"
+                ],
+                validation_receipt_ids=[
+                    evidence[index - 1].provenance_cid
+                ],
+            )
+            for index, criterion in enumerate(
+                TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+        edges=[],
+        receipts=[],
+        finding_assignments=[],
+        registered_goal_ids=[TOKEN_EFFICIENCY_OBJECTIVE_ID],
+        evaluated_at=now.isoformat(),
+        repository_tree=tree_id,
+    )
+    typed_health = AnalyzerHealthReport(
+        status=AnalyzerHealthStatus.HEALTHY,
+        reasons=(),
+        thresholds=AnalyzerHealthThresholds(),
+        metrics={"objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID},
+    )
+    typed_quorum = evaluate_exhaustion_quorum(
+        (
+            {
+                "receipt_cid": "scan:asi-088:typed-contracts",
+                "terminal_reason": "exhausted",
+                "scan_mode": "exhaustive",
+                "finished_at": now.isoformat(),
+                "metadata": {
+                    "analyzer_health": {"status": "healthy"},
+                    "coverage_complete": True,
+                    "evidence_channel": "typed-contracts",
+                },
+            },
+            {
+                "receipt_cid": "scan:asi-088:typed-measurement",
+                "terminal_reason": "exhausted",
+                "scan_mode": "exhaustive",
+                "finished_at": now.isoformat(),
+                "metadata": {
+                    "analyzer_health": {"status": "healthy"},
+                    "coverage_complete": True,
+                    "evidence_channel": "typed-measurement",
+                },
+            },
+        ),
+        binding=ExhaustionBinding(
+            repository_id=repository_id,
+            tree_id=tree_id,
+            analyzer_version=analyzer_version,
+            configuration_revision=binding["configuration_revision"],
+            objective_revision=TOKEN_EFFICIENCY_OBJECTIVE_REVISION,
+        ),
+        required_members=2,
+    )
+    typed_verified = evaluate_token_efficiency_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": typed_coverage,
+            "analyzer_health": typed_health,
+            "exhaustion_quorum": typed_quorum,
+        },
+    )
+    assert typed_verified.state is GoalState.VERIFIED_COMPLETE
+    assert typed_verified.verified
+
+    failed = replace(
+        evidence[0],
+        provenance_cid="validation:asi-088:failed",
+        validation_passed=False,
+        validation_receipt={"status": "failed", "tree_id": tree_id},
+    )
+    invalid_cases = (
+        {"producing_tasks": producing_tasks[:-1]},
+        {
+            "child_goals": [
+                {
+                    **child_goals[0],
+                    "completion_gate": {
+                        **child_goals[0]["completion_gate"],
+                        "evaluated_evidence": {
+                            **child_goals[0]["completion_gate"][
+                                "evaluated_evidence"
+                            ],
+                            "evaluated_at": (
+                                now - timedelta(seconds=301)
+                            ).isoformat(),
+                        },
+                    },
+                },
+                *child_goals[1:],
+            ]
+        },
+        {"evidence": (*evidence, failed)},
+        {
+            "coverage": {
+                **coverage,
+                "criteria": [
+                    {
+                        **coverage["criteria"][0],
+                        "validation_receipt_id": "validation:detached",
+                    },
+                    *coverage["criteria"][1:],
+                ],
+            }
+        },
+        {
+            "analyzer_health": {
+                **health,
+                "safe_for_completion_reasoning": False,
+            }
+        },
+        {
+            "exhaustion_quorum": {
+                **quorum,
+                "members": [
+                    quorum["members"][0],
+                    {
+                        **quorum["members"][1],
+                        "receipt_cid": quorum["members"][0]["receipt_cid"],
+                    },
+                ],
+            }
+        },
+    )
+    for change in invalid_cases:
+        rejected = evaluate_token_efficiency_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, **change},
+        )
+        assert not rejected.verified
+
+    with pytest.raises(ValueError, match="configured ASI-G010 count"):
+        evaluate_token_efficiency_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            required_exhaustive_receipts=1,
+            **values,
         )
