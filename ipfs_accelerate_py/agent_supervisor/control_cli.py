@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -570,6 +570,18 @@ def run_agent_cli(
                 raise TypeError(
                     "agent control service returned a non-OperationResult value"
                 )
+            # Keep the adapter fail-closed even for a caller-supplied service.
+            # The standard service validates its own output as well, but a
+            # custom embedding must not make the CLI emit a canonical-looking
+            # result bound to another request, tree, objective, or authority.
+            try:
+                result.validate_against(request)
+            except ControlContractError as exc:
+                # This is a service-output violation, not a user request
+                # error. Keep it on the redacted internal-error path.
+                raise TypeError(
+                    "agent control service returned a mismatched OperationResult"
+                ) from exc
             _write_record(
                 stdout,
                 result.to_record(),

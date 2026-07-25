@@ -25,6 +25,14 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION,
     CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
     CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION,
+    UNIFIED_CONTROL_ACCEPTANCE_CRITERIA,
+    UNIFIED_CONTROL_CHILD_GOAL_IDS,
+    UNIFIED_CONTROL_COMPLETION_ANALYZER_VERSION,
+    UNIFIED_CONTROL_COMPLETION_CONFIGURATION_REVISION,
+    UNIFIED_CONTROL_OBJECTIVE_ID,
+    UNIFIED_CONTROL_OBJECTIVE_REVISION,
+    UNIFIED_CONTROL_PRODUCING_TASK_IDS,
+    UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS,
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
@@ -52,6 +60,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationRequest,
     OperationResult,
     OperationStatus,
+    evaluate_unified_control_completion,
     operation_request_json_schema,
     operation_result_json_schema,
 )
@@ -291,6 +300,419 @@ def _parity_cases(
             )
         )
     return tuple(cases)
+
+
+def _g070_completion_inputs() -> dict[str, Any]:
+    now = datetime(2026, 7, 25, 3, 0, tzinfo=timezone.utc)
+    repository_id = "repository:unified-control"
+    repository_tree = "tree:asi-085"
+    binding = {
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": UNIFIED_CONTROL_OBJECTIVE_ID,
+        "objective_revision": UNIFIED_CONTROL_OBJECTIVE_REVISION,
+        "analyzer_version": UNIFIED_CONTROL_COMPLETION_ANALYZER_VERSION,
+        "configuration_revision": (
+            UNIFIED_CONTROL_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    validation_binding = {
+        "status": "passed",
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": UNIFIED_CONTROL_OBJECTIVE_ID,
+        "objective_revision": UNIFIED_CONTROL_OBJECTIVE_REVISION,
+        "command": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_control_plane.py "
+            "test/api/test_agent_supervisor_control_lifecycle.py "
+            "test/test_unified_cli_agent_supervisor.py "
+            "test/mcp_server/test_agent_supervisor_tools.py -q"
+        ),
+    }
+    evidence = [
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan=f"ASI-085:criterion:{index}",
+            producer_kind="task",
+            validation_receipt=validation_binding,
+            validation_passed=True,
+            repository_id=repository_id,
+            repository_tree=repository_tree,
+            freshness={"fresh": True},
+            observed_at=now - timedelta(seconds=60),
+            provenance_cid=f"validation:asi-085:g070:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            UNIFIED_CONTROL_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    ]
+    coverage = {
+        "verified": True,
+        "repository_tree": repository_tree,
+        "evaluated_at": (now - timedelta(seconds=30)).isoformat(),
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "implementation": [
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "control_contracts.py",
+                    "ipfs_accelerate_py/agent_supervisor/control_plane.py",
+                ],
+                "validation_receipt_id": evidence[
+                    index - 1
+                ].provenance_cid,
+            }
+            for index, criterion in enumerate(
+                UNIFIED_CONTROL_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "binding": binding,
+    }
+    quorum = {
+        "satisfied": True,
+        "quorum_met": True,
+        "required_members": UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS,
+        "member_count": UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-085-implementation-scan",
+                "evidence_channel": "implementation-validation",
+                "receipt_cid": "scan:asi-085:implementation",
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": (now - timedelta(seconds=90)).isoformat(),
+                "binding": binding,
+            },
+            {
+                "member_id": "asi-085-independent-replay",
+                "evidence_channel": "receipt-replay-audit",
+                "receipt_cid": "scan:asi-085:replay",
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": (now - timedelta(seconds=45)).isoformat(),
+                "binding": binding,
+            },
+        ],
+    }
+
+    def proof_requirement(goal_id: str) -> dict[str, Any]:
+        return {
+            "goal_id": goal_id,
+            "acceptance_criterion": f"{goal_id} remains proved",
+            "obligation_id": f"obligation:{goal_id}",
+            "proof_receipt_id": f"proof:{goal_id}",
+            "required_assurance": "candidate",
+            "authoritative_assurance": "candidate",
+            "proof_verdict": "proved",
+            "freshness": "current",
+            "repository_tree": repository_tree,
+            "provenance_id": f"provenance:{goal_id}",
+            "assurance_satisfied": True,
+            "contradicted": False,
+            "reason_codes": [],
+        }
+
+    children = [
+        {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "proof_requirements": [proof_requirement(goal_id)],
+            "completion_gate": {
+                "passed": True,
+                "evaluated_evidence": {
+                    "repository_id": repository_id,
+                    "repository_tree": repository_tree,
+                    "evaluated_at": (
+                        now - timedelta(seconds=120)
+                    ).isoformat(),
+                    "validation_evidence": [
+                        {
+                            "valid": True,
+                            "reason_codes": [],
+                            "evidence": {
+                                "repository_id": repository_id,
+                                "repository_tree": repository_tree,
+                                "provenance_cid": (
+                                    f"validation:child:{goal_id}"
+                                ),
+                            },
+                        }
+                    ],
+                    "proof_requirements": [proof_requirement(goal_id)],
+                    "child_goals": [],
+                },
+            },
+        }
+        for goal_id in UNIFIED_CONTROL_CHILD_GOAL_IDS
+    ]
+    return {
+        "repository_id": repository_id,
+        "repository_tree": repository_tree,
+        "producing_tasks": [
+            {"task_id": task_id, "status": "completed"}
+            for task_id in UNIFIED_CONTROL_PRODUCING_TASK_IDS
+        ],
+        "child_goals": children,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+
+def test_g070_parent_completion_requires_closed_current_tree_proof_packet() -> None:
+    values = _g070_completion_inputs()
+
+    assert UNIFIED_CONTROL_OBJECTIVE_ID == "ASI-G070"
+    assert UNIFIED_CONTROL_OBJECTIVE_REVISION == "ASI-G070@asi-085"
+    assert UNIFIED_CONTROL_PRODUCING_TASK_IDS == (
+        "ASI-002",
+        "ASI-018",
+        "ASI-019",
+        "ASI-020",
+        "ASI-021",
+    )
+    assert UNIFIED_CONTROL_CHILD_GOAL_IDS == (
+        "ASI-G103",
+        "ASI-G104",
+        "ASI-G105",
+    )
+    assert len(UNIFIED_CONTROL_ACCEPTANCE_CRITERIA) == 5
+
+    provisional = evaluate_unified_control_completion(**values)
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.gate is not None and provisional.gate.passed
+    assert "provisional_transition_required" in provisional.reason_codes
+
+    verified = evaluate_unified_control_completion(
+        **values,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+    assert verified.gate is not None and verified.gate.passed
+
+    with pytest.raises(ValueError, match="configured ASI-G070 count"):
+        evaluate_unified_control_completion(
+            **values,
+            required_exhaustive_receipts=1,
+        )
+
+
+def test_g070_parent_completion_rejects_each_narrowed_or_unhealthy_input() -> None:
+    baseline = _g070_completion_inputs()
+    variants: list[tuple[str, dict[str, Any]]] = []
+
+    missing_task = copy.deepcopy(baseline)
+    missing_task["producing_tasks"].pop()
+    variants.append(("missing producer", missing_task))
+    duplicate_task = copy.deepcopy(baseline)
+    duplicate_task["producing_tasks"][-1] = copy.deepcopy(
+        duplicate_task["producing_tasks"][0]
+    )
+    variants.append(("duplicate producer", duplicate_task))
+    unfinished_task = copy.deepcopy(baseline)
+    unfinished_task["producing_tasks"][0]["status"] = "todo"
+    variants.append(("unfinished producer", unfinished_task))
+    foreign_task = copy.deepcopy(baseline)
+    foreign_task["producing_tasks"][0]["task_id"] = "ASI-999"
+    variants.append(("foreign producer", foreign_task))
+    tasks_not_complete = copy.deepcopy(baseline)
+    tasks_not_complete["tasks_complete"] = False
+    variants.append(("tasks incomplete", tasks_not_complete))
+
+    missing_child = copy.deepcopy(baseline)
+    missing_child["child_goals"].pop()
+    variants.append(("missing child", missing_child))
+    duplicate_child = copy.deepcopy(baseline)
+    duplicate_child["child_goals"][-1] = copy.deepcopy(
+        duplicate_child["child_goals"][0]
+    )
+    variants.append(("duplicate child", duplicate_child))
+    unverified_child = copy.deepcopy(baseline)
+    unverified_child["child_goals"][0]["verified"] = False
+    variants.append(("unverified child", unverified_child))
+    stale_child = copy.deepcopy(baseline)
+    stale_child["child_goals"][0]["completion_gate"]["evaluated_evidence"][
+        "evaluated_at"
+    ] = (
+        baseline["now"] - timedelta(seconds=301)
+    ).isoformat()
+    variants.append(("stale child", stale_child))
+    foreign_child_tree = copy.deepcopy(baseline)
+    foreign_child_tree["child_goals"][0]["completion_gate"][
+        "evaluated_evidence"
+    ]["repository_tree"] = "tree:foreign"
+    variants.append(("foreign child tree", foreign_child_tree))
+    contradicted_child_proof = copy.deepcopy(baseline)
+    contradicted_child_proof["child_goals"][0]["proof_requirements"][0][
+        "contradicted"
+    ] = True
+    variants.append(("contradicted child proof", contradicted_child_proof))
+
+    missing_evidence = copy.deepcopy(baseline)
+    missing_evidence["evidence"].pop()
+    variants.append(("missing criterion validation", missing_evidence))
+    failed_evidence = copy.deepcopy(baseline)
+    failed_evidence["evidence"][0] = CompletionEvidence.from_dict(
+        {
+            **failed_evidence["evidence"][0].to_dict(),
+            "validation_passed": False,
+        }
+    )
+    variants.append(("failed validation", failed_evidence))
+    stale_evidence = copy.deepcopy(baseline)
+    stale_evidence["evidence"][0] = CompletionEvidence.from_dict(
+        {
+            **stale_evidence["evidence"][0].to_dict(),
+            "observed_at": (
+                baseline["now"] - timedelta(seconds=301)
+            ).isoformat(),
+        }
+    )
+    variants.append(("stale validation", stale_evidence))
+    foreign_evidence = copy.deepcopy(baseline)
+    foreign_evidence["evidence"][0] = CompletionEvidence.from_dict(
+        {
+            **foreign_evidence["evidence"][0].to_dict(),
+            "repository_tree": "tree:foreign",
+        }
+    )
+    variants.append(("foreign validation", foreign_evidence))
+
+    missing_coverage = copy.deepcopy(baseline)
+    missing_coverage["coverage"]["criteria"].pop()
+    variants.append(("missing coverage", missing_coverage))
+    detached_coverage = copy.deepcopy(baseline)
+    detached_coverage["coverage"]["criteria"][0][
+        "validation_receipt_id"
+    ] = "validation:detached"
+    variants.append(("detached coverage", detached_coverage))
+    no_implementation = copy.deepcopy(baseline)
+    no_implementation["coverage"]["criteria"][0].pop("implementation")
+    variants.append(("missing implementation", no_implementation))
+
+    unsafe_health = copy.deepcopy(baseline)
+    unsafe_health["analyzer_health"][
+        "safe_for_completion_reasoning"
+    ] = False
+    variants.append(("unsafe analyzer", unsafe_health))
+    wrong_health_tree = copy.deepcopy(baseline)
+    wrong_health_tree["analyzer_health"]["binding"][
+        "tree_id"
+    ] = "tree:foreign"
+    variants.append(("foreign analyzer tree", wrong_health_tree))
+    wrong_analyzer = copy.deepcopy(baseline)
+    wrong_analyzer["analyzer_health"]["binding"][
+        "analyzer_version"
+    ] = "asi-g070-objective-validation@stale"
+    variants.append(("wrong analyzer", wrong_analyzer))
+    wrong_configuration = copy.deepcopy(baseline)
+    wrong_configuration["analyzer_health"]["binding"][
+        "configuration_revision"
+    ] = "unified-control-parent-completion@stale"
+    variants.append(("wrong analyzer configuration", wrong_configuration))
+
+    insufficient_quorum = copy.deepcopy(baseline)
+    insufficient_quorum["exhaustion_quorum"]["members"].pop()
+    insufficient_quorum["exhaustion_quorum"]["member_count"] = 1
+    variants.append(("insufficient quorum", insufficient_quorum))
+    excess_quorum = copy.deepcopy(baseline)
+    extra_member = copy.deepcopy(
+        excess_quorum["exhaustion_quorum"]["members"][0]
+    )
+    extra_member.update(
+        member_id="asi-085-third",
+        evidence_channel="third-independent-channel",
+        receipt_cid="scan:asi-085:third",
+    )
+    excess_quorum["exhaustion_quorum"]["members"].append(extra_member)
+    excess_quorum["exhaustion_quorum"]["member_count"] = 3
+    variants.append(("caller-expanded quorum", excess_quorum))
+    duplicate_channel = copy.deepcopy(baseline)
+    duplicate_channel["exhaustion_quorum"]["members"][1][
+        "evidence_channel"
+    ] = duplicate_channel["exhaustion_quorum"]["members"][0][
+        "evidence_channel"
+    ]
+    variants.append(("dependent quorum", duplicate_channel))
+    duplicate_receipt = copy.deepcopy(baseline)
+    duplicate_receipt["exhaustion_quorum"]["members"][1][
+        "receipt_cid"
+    ] = duplicate_receipt["exhaustion_quorum"]["members"][0]["receipt_cid"]
+    variants.append(("duplicate receipt", duplicate_receipt))
+    duplicate_member = copy.deepcopy(baseline)
+    duplicate_member["exhaustion_quorum"]["members"][1][
+        "member_id"
+    ] = duplicate_member["exhaustion_quorum"]["members"][0]["member_id"]
+    variants.append(("duplicate member", duplicate_member))
+    unhealthy_receipt = copy.deepcopy(baseline)
+    unhealthy_receipt["exhaustion_quorum"]["members"][0][
+        "healthy"
+    ] = False
+    variants.append(("unhealthy receipt", unhealthy_receipt))
+    unsafe_receipt = copy.deepcopy(baseline)
+    unsafe_receipt["exhaustion_quorum"]["members"][0][
+        "safe_for_completion_reasoning"
+    ] = False
+    variants.append(("completion-unsafe receipt", unsafe_receipt))
+    non_exhaustive = copy.deepcopy(baseline)
+    non_exhaustive["exhaustion_quorum"]["members"][0][
+        "scan_mode"
+    ] = "targeted"
+    variants.append(("non-exhaustive receipt", non_exhaustive))
+    stale_receipt = copy.deepcopy(baseline)
+    stale_receipt["exhaustion_quorum"]["members"][0][
+        "finished_at"
+    ] = (
+        baseline["now"] - timedelta(seconds=301)
+    ).isoformat()
+    variants.append(("stale receipt", stale_receipt))
+    detached_receipt = copy.deepcopy(baseline)
+    detached_receipt["exhaustion_quorum"]["members"][0]["binding"][
+        "tree_id"
+    ] = "tree:foreign"
+    variants.append(("detached receipt", detached_receipt))
+
+    for label, values in variants:
+        decision = evaluate_unified_control_completion(
+            **values,
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+        )
+        assert not decision.verified, label
+        assert decision.state is not GoalState.VERIFIED_COMPLETE, label
+        assert decision.gate is not None, label
+        if label not in {
+            "missing producer",
+            "duplicate producer",
+            "unfinished producer",
+            "foreign producer",
+            "tasks incomplete",
+        }:
+            assert not decision.gate.passed, label
 
 
 def test_capabilities_are_complete_typed_and_side_effect_free(

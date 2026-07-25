@@ -17,15 +17,19 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
+    ControlDiscoveryManifest,
     ControlDiscoveryObservation,
     ControlSurface,
     EffectKind,
+    ErrorCode,
     ExpectedEffect,
     IdempotencyKey,
     Operation,
     OperationAuthority,
+    OperationError,
     OperationRequest,
     OperationResult,
+    OperationStatus,
 )
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
     InMemoryControlStateStore,
@@ -192,6 +196,21 @@ def test_agent_group_covers_the_closed_operation_vocabulary() -> None:
     assert len(COMMAND_OPERATIONS) == len(Operation)
 
 
+def test_cli_discovery_binds_the_python_schema_population() -> None:
+    python_manifest = ControlDiscoveryManifest(surface=ControlSurface.PYTHON)
+    cli_manifest = agent_cli_discovery_manifest()
+
+    assert cli_manifest.surface is ControlSurface.CLI
+    assert cli_manifest.operations == python_manifest.operations
+    assert dict(cli_manifest.request_schema_ids) == dict(
+        python_manifest.request_schema_ids
+    )
+    assert dict(cli_manifest.result_schema_ids) == dict(
+        python_manifest.result_schema_ids
+    )
+    assert cli_manifest.schema_population_id == python_manifest.schema_population_id
+
+
 def test_cli_discovery_is_repeatable_and_initializes_no_runtime(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -262,6 +281,58 @@ def test_cli_read_result_is_exactly_the_python_service_record(
     assert code == 0
     assert cli_record == python_record
     assert OperationResult.from_dict(cli_record).result_id == python_record["content_id"]
+
+
+def test_every_cli_operation_has_exact_python_execution_parity(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    service = _service(repo_root, state_root)
+    command_by_operation = {
+        operation: command for command, operation in COMMAND_OPERATIONS.items()
+    }
+
+    for operation in sorted(Operation, key=lambda item: item.value):
+        if operation.mutating:
+            effect = ExpectedEffect(
+                effect_id=f"{operation.value}:parity",
+                kind=EffectKind.LIFECYCLE_TRANSITION,
+                resource="supervisor:fixture",
+                paths=("supervisor.json",),
+                description=f"Preview {operation.value}",
+            )
+            request = OperationRequest(
+                operation=operation,
+                **_binding(repo_root, state_root),
+                parameters={
+                    "target_id": "supervisor:fixture",
+                    "reason": "exhaustive CLI parity validation",
+                },
+                expected_effects=(effect,),
+                dry_run=True,
+            )
+        else:
+            request = _request(repo_root, state_root, operation)
+
+        python_record = service.execute(request).to_record()
+        code, cli_record = _invoke(
+            capsys,
+            service,
+            command_by_operation[operation],
+            request,
+        )
+
+        expected_exit = (
+            0
+            if OperationResult.from_dict(python_record).succeeded
+            else AGENT_CLI_EXIT_FAILED
+        )
+        assert code == expected_exit, operation.value
+        assert cli_record == python_record, operation.value
+        assert OperationResult.from_dict(cli_record).operation is operation
 
 
 def test_cli_proposal_and_dry_run_use_the_same_result_envelope(
@@ -633,3 +704,53 @@ def test_cli_emits_stable_json_for_unexpected_service_failures(
         "status": "internal_error",
     }
     assert "credential" not in captured.err
+
+
+def test_cli_rejects_a_canonical_result_bound_to_another_request(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    request = _request(repo_root, state_root, Operation.STATUS)
+
+    class MismatchedService:
+        def execute(self, operation_request: OperationRequest) -> OperationResult:
+            return OperationResult(
+                request_id=operation_request.request_id,
+                operation=operation_request.operation,
+                authority=operation_request.effective_authority,
+                status=OperationStatus.FAILED,
+                repository_id=operation_request.repository_id,
+                tree_id="tree:another-checkout",
+                objective_id=operation_request.objective_id,
+                policy_id=operation_request.policy_id,
+                caller=operation_request.caller,
+                bounds=operation_request.bounds,
+                error=OperationError(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message="result is not bound to this tree",
+                ),
+            )
+
+    code = cli.main(
+        [
+            "agent",
+            "status",
+            "--request-json",
+            request.to_json(),
+            "--output-json",
+        ],
+        agent_control_service=MismatchedService(),
+    )
+    captured = capsys.readouterr()
+
+    assert code == AGENT_CLI_EXIT_FAILED
+    assert captured.out == ""
+    assert json.loads(captured.err) == {
+        "message": "agent control operation failed",
+        "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
+        "status": "internal_error",
+    }
+    assert "another-checkout" not in captured.err

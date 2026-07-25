@@ -250,14 +250,22 @@ def test_registration_covers_every_operation_with_shared_schema() -> None:
         operation.value for operation in Operation
     }
     assert len(manager.tools) == len(Operation)
+    manifest = agent_supervisor_discovery_manifest()
     for definition in manager.tools:
         operation = Operation(definition["name"])
         assert definition["category"] == "agent_supervisor"
         assert definition["runtime"] == "fastapi"
         request_schema = definition["input_schema"]["properties"]["request"]
         result_schema = definition["input_schema"]["x-output-schema"]
+        contract = definition["input_schema"]["x-agent-supervisor-contract"]
         assert request_schema["properties"]["operation"]["const"] == operation.value
         assert result_schema["properties"]["operation"]["const"] == operation.value
+        assert contract == {
+            "surface": ControlSurface.MCP.value,
+            "operation": operation.value,
+            "request_schema_id": manifest.request_schema_ids[operation.value],
+            "result_schema_id": manifest.result_schema_ids[operation.value],
+        }
         assert "request" in definition["input_schema"]["required"]
         assert operation.authority.value in definition["tags"]
         assert {"bounded", "policy-controlled", "redacted"}.issubset(
@@ -271,6 +279,9 @@ def test_registration_covers_every_operation_with_shared_schema() -> None:
                 "idempotent",
                 "lease-fenced",
             }.issubset(definition["tags"])
+
+    with pytest.raises(TypeError):
+        AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.STATUS] = lambda: None  # type: ignore[index]
 
 
 def test_discovery_and_registration_do_not_resolve_a_service() -> None:
@@ -510,11 +521,55 @@ async def test_named_tool_rejects_a_different_request_operation(
     state_root.mkdir()
     configure_agent_supervisor_control(service=_service(repo_root, state_root))
     request = _request(repo_root, state_root, Operation.HEALTH)
+    resolutions_before = agent_supervisor_service_resolution_count()
 
     with pytest.raises(ValueError, match="does not match"):
         await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.STATUS](
             request=request.to_record()
         )
+    assert agent_supervisor_service_resolution_count() == resolutions_before
+
+
+@pytest.mark.asyncio
+async def test_every_mcp_operation_has_exact_python_execution_parity(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    service = _service(repo_root, state_root)
+    configure_agent_supervisor_control(service=service)
+
+    for operation in sorted(Operation, key=lambda item: item.value):
+        if operation.mutating:
+            effect = ExpectedEffect(
+                effect_id=f"{operation.value}:parity",
+                kind=EffectKind.LIFECYCLE_TRANSITION,
+                resource="supervisor:fixture",
+                paths=("supervisor.json",),
+                description=f"Preview {operation.value}",
+            )
+            request = OperationRequest(
+                operation=operation,
+                **_binding(repo_root, state_root),
+                parameters={
+                    "target_id": "supervisor:fixture",
+                    "reason": "exhaustive MCP parity validation",
+                },
+                expected_effects=(effect,),
+                dry_run=True,
+            )
+        else:
+            request = _request(repo_root, state_root, operation)
+
+        python_record = service.execute(request).to_record()
+        mcp_record = await AGENT_SUPERVISOR_OPERATION_TOOLS[operation](
+            request=request.to_record()
+        )
+
+        assert mcp_record == python_record, operation.value
+        assert OperationResult.from_dict(mcp_record).operation is operation
 
 
 @pytest.mark.asyncio
