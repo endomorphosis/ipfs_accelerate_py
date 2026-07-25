@@ -220,7 +220,7 @@ Each browser receives specific optimizations:
 For more information, see the following documents:
 - [WebGPU Tensor Sharing Implementation Guide](WEBGPU_TENSOR_SHARING_GUIDE.md): Comprehensive implementation details
 - [Cross-Model Tensor Sharing Guide](CROSS_MODEL_TENSOR_SHARING_GUIDE.md): Memory-efficient tensor sharing between models
-- [WebGPU Operation Fusion Guide](OPERATION_FUSION_GUIDE.md): Performance optimization through operation fusion
+- [WebGPU Operation Fusion Guide](ipfs_accelerate_js/docs/OPERATION_FUSION_GUIDE.md): Performance optimization through operation fusion
 - [Browser-Specific WebGPU Shader Optimization Guide](BROWSER_OPTIMIZATION_GUIDE.md): Detailed optimization techniques
 - [Browser-Specific Optimization README](BROWSER_SPECIFIC_OPTIMIZATION_README.md): Quick reference for browser optimizations
 
