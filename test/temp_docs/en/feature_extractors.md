@@ -48,7 +48,7 @@ There are two ways you can load a feature extractor, [`AutoFeatureExtractor`] an
 <hfoptions id="feature-extractor-classes">
 <hfoption id="AutoFeatureExtractor">
 
-The [AutoClass](./model_doc/auto) API automatically loads the correct feature extractor for a given model.
+The [AutoClass](./model_doc/auto.md) API automatically loads the correct feature extractor for a given model.
 
 Use [`~AutoFeatureExtractor.from_pretrained`] to load a feature extractor.
 
