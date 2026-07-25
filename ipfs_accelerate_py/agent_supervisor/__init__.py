@@ -2405,6 +2405,16 @@ del (
     _missing_control_export,
 )
 
+# This package-owned requirement names the import-isolation contract itself.
+# It is deliberately not a paired-report requirement: it can only be proved by
+# observing a fresh interpreter while the package root and every stable export
+# are resolved.  Keeping the canonical goal beside the requirement prevents a
+# stale discovery label from redirecting that evidence.
+PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID = (
+    "300500866741873729474343907613893393545"
+)
+PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID = "ASI-G114"
+
 # Stable rollout contracts are kept off the cold-import path.  This public,
 # immutable manifest is the compatibility boundary for operators and adapters:
 # every listed name resolves from the package root to the provider-free rollout
@@ -2442,7 +2452,13 @@ PAIRED_ROLLOUT_STABLE_EXPORTS = (
     "SelfImprovementRolloutMode",
     "evaluate_paired_self_improvement_rollout",
 )
-__all__.append("PAIRED_ROLLOUT_STABLE_EXPORTS")
+__all__.extend(
+    (
+        "PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID",
+        "PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID",
+        "PAIRED_ROLLOUT_STABLE_EXPORTS",
+    )
+)
 _LAZY_STABLE_EXPORTS = {
     "self_improvement_rollout": PAIRED_ROLLOUT_STABLE_EXPORTS,
 }

@@ -518,12 +518,23 @@ The paired contracts, schema versions, evidence identifiers, evaluator, and
 report store are enumerated by the stable package-root
 `PAIRED_ROLLOUT_STABLE_EXPORTS` manifest. Import, manifest inspection, and
 capability discovery remain provider-free and process-free; accessing a listed
-export loads only the rollout contract module. The deterministic smoke recipe
-uses fixed bindings to seed every forced-shadow path and retain bounded reason
-codes. The production recipe persists both criterion projections with the
-report, profile, capability, repository tree, objective, and policy identities;
-a stale or missing binding returns operation to shadow and requires a fresh
-paired evaluation.
+export loads only the rollout contract module. Package-owned requirement
+`300500866741873729474343907613893393545`
+(`PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`) fixes canonical ASI-G114 and
+names this import-isolation contract separately from the two report-backed
+requirements. Its producer is the fresh-interpreter surface test: it observes
+cold state, checks the exact unique manifest and object identities, resolves
+every member, and proves the complete optional provider inventory remains
+unloaded. The numeric constant, a partial check, or a warm import is routing
+information rather than evidence.
+
+The deterministic smoke recipe runs that ASI-G114 preflight, then uses fixed
+bindings to seed every forced-shadow path and retain bounded reason codes. The
+production recipe reruns the preflight for the deployed package and provider
+inventory, and persists both paired-report criterion projections with the
+report, profile, capability, repository tree, objective, and policy identities.
+A stale or missing import, package, manifest, provider, or report binding
+returns operation to shadow and requires the applicable fresh evaluation.
 
 ## Delivery order
 
@@ -575,6 +586,17 @@ nor start a process. Provider-specific implementations remain behind their
 explicit capability handshakes and are loaded only after policy and resource
 admission select them.
 
+ASI-053 binds that design to the current objective heap. ASI-G114—not the
+scan's stale ASI-G100 label—owns
+`300500866741873729474343907613893393545`; current ASI-G100 remains unrelated
+strict-validation work. No finer child goal is useful because cold import,
+complete-manifest resolution, provider isolation, owner identity,
+benchmark adoption, and migration guidance are one compatibility contract.
+The paired benchmark imports the reviewed contracts through the package root
+and checks canonical parity with the owner module, while the isolated
+end-to-end child process proves that adoption does not make optional providers
+or rollout code eager.
+
 The Python, unified CLI, and MCP surfaces are adapters over the same
 `SupervisorControlService` operation vocabulary and canonical contracts.
 `ipfs-accelerate agent capabilities` is the first operator check; equivalent
@@ -604,6 +626,7 @@ no automatic mutation merely because a provider is available.
 | Providers | Enable only individually discovered, policy-allowed providers with recorded quota, latency, token, memory, and GPU bounds; preserve deterministic local fallback | Do not load optional providers; capability discovery must still run and explicitly report them unavailable |
 | State | Durable, access-controlled state/cache roots with independent artifact quotas and restart checks | Fresh temporary state/cache roots, frozen fixture IDs and inputs, fixed observation time, and no network/provider dependence |
 | Refill | Enabled only after authorization and a current benchmark population; at most the policy-bounded admitted successor set | Evaluate replay and healthy exhaustion, but do not materialize successor work |
+| Public API preflight | Run the fresh-interpreter ASI-G114 complete-manifest check for the deployed package and provider inventory before shadow evaluation and after upgrades | Run the same isolated check with every optional provider unavailable; a partial or warm import does not qualify |
 
 The production lane count is an upper bound, not a target. Admission still
 reduces it for CPU, RAM, GPU memory, disk pressure, provider capacity, queue

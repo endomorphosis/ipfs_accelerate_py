@@ -620,6 +620,16 @@ def test_checked_in_rollout_gap_routes_to_canonical_heap_child() -> None:
         "146189916032404266364029134505159070240",
         1,
     )[1].split("\n## ", 1)[0]
+    lazy_export_block = objective_text.split(
+        "## ASI-G114 Prove "
+        "300500866741873729474343907613893393545",
+        1,
+    )[1].split("\n## ", 1)[0]
+    strict_validation_block = objective_text.split(
+        "## ASI-G100 Prove "
+        "314133036252270790078901745919131980427",
+        1,
+    )[1].split("\n## ", 1)[0]
     planning_block = objective_text.split("## ASI-G115 ", 1)[1].split(
         "\n## ",
         1,
@@ -635,6 +645,28 @@ def test_checked_in_rollout_gap_routes_to_canonical_heap_child() -> None:
     assert "`PairedRolloutRequirementEvidence`" in efficiency_block
     assert "ASI-041 resolves discovery fingerprint" in efficiency_block
     assert "scan's ASI-G116 allocation is stale" in efficiency_block
+    assert "- Parent: ASI-G090" in lazy_export_block
+    assert (
+        "- Evidence: 300500866741873729474343907613893393545"
+        in lazy_export_block
+    )
+    assert (
+        "`PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`"
+        in lazy_export_block
+    )
+    assert "`PAIRED_ROLLOUT_STABLE_EXPORTS`" in lazy_export_block
+    assert (
+        "test_stable_rollout_exports_remain_lazy_without_optional_providers"
+        in lazy_export_block
+    )
+    assert "ASI-053 resolves discovery fingerprint" in lazy_export_block
+    assert "scan's ASI-G100 allocation is stale" in lazy_export_block
+    assert "314133036252270790078901745919131980427" in (
+        strict_validation_block
+    )
+    assert "300500866741873729474343907613893393545" not in (
+        strict_validation_block
+    )
     assert "312819945606360295782005228058369235550" in planning_block
     assert "146189916032404266364029134505159070240" not in planning_block
 
@@ -920,28 +952,33 @@ def test_rollout_requirement_evidence_restoration_rejects_tampering() -> None:
 def test_stable_rollout_exports_remain_lazy_without_optional_providers() -> None:
     module = "ipfs_accelerate_py.agent_supervisor"
     rollout_module = f"{module}.self_improvement_rollout"
-    optional_modules = (
-        f"{module}.formal_verification_provider",
-        f"{module}.leanstral_proof_provider",
-        f"{module}.leanstral_goal_development",
-        f"{module}.leanstral_goal_lifecycle",
-        f"{module}.formal_replanner",
-        f"{module}.proof_scheduler",
-        f"{module}.proof_carrying_planner",
-        f"{module}.adaptive_planner",
-    )
     program = f"""
 import importlib
 import json
 import sys
+
 import {module} as api
 
+requirement_id = api.PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID
+goal_id = api.PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID
 stable_exports = api.PAIRED_ROLLOUT_STABLE_EXPORTS
+optional_modules = tuple(
+    f"{{api.__name__}}.{{name}}" for name in api._LAZY_PROVIDER_EXPORTS
+) + (
+    f"{{api.__name__}}.ipfs_datasets_analysis_provider",
+    f"{{api.__name__}}.ipfs_datasets_logic_provider",
+)
 before = {{
     "rollout_loaded": {rollout_module!r} in sys.modules,
     "optional_loaded": [
-        name for name in {optional_modules!r} if name in sys.modules
+        name for name in optional_modules if name in sys.modules
     ],
+    "requirement_id": requirement_id,
+    "goal_id": goal_id,
+    "requirement_in_all": (
+        "PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID" in api.__all__
+    ),
+    "goal_in_all": "PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID" in api.__all__,
     "manifest_in_all": "PAIRED_ROLLOUT_STABLE_EXPORTS" in api.__all__,
     "exports_in_all": all(name in api.__all__ for name in stable_exports),
 }}
@@ -962,8 +999,10 @@ evidence_type = api.PairedRolloutRequirementEvidence
 after = {{
     "rollout_loaded": {rollout_module!r} in sys.modules,
     "optional_loaded": [
-        name for name in {optional_modules!r} if name in sys.modules
+        name for name in optional_modules if name in sys.modules
     ],
+    "requirement_id": api.PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID,
+    "goal_id": api.PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID,
     "safety_id": api.SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
     "efficiency_id": api.PAIRED_EFFICIENCY_REQUIREMENT_ID,
     "report_version": report_version,
@@ -985,12 +1024,28 @@ print(json.dumps({{"before": before, "after": after}}, sort_keys=True))
 
     assert result["before"] == {
         "exports_in_all": True,
+        "goal_id": "ASI-G114",
+        "goal_in_all": True,
         "manifest_in_all": True,
         "optional_loaded": [],
+        "requirement_id": (
+            "300500866741873729474343907613893393545"
+        ),
+        "requirement_in_all": True,
         "rollout_loaded": False,
     }
     assert result["after"]["rollout_loaded"] is True
     assert result["after"]["optional_loaded"] == []
+    assert supervisor_api.PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID == (
+        "300500866741873729474343907613893393545"
+    )
+    assert result["after"]["requirement_id"] == (
+        supervisor_api.PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID
+    )
+    assert supervisor_api.PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID == "ASI-G114"
+    assert result["after"]["goal_id"] == (
+        supervisor_api.PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID
+    )
     assert result["after"]["safety_id"] == (
         SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
     )
