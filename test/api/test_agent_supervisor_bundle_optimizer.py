@@ -16,6 +16,11 @@ from ipfs_accelerate_py.agent_supervisor.bundle_optimizer import (
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     EvidenceSourcePolicy,
+    task_generation_evidence_producer_bindings,
+)
+from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+    ConflictWaveProjection,
+    project_conflict_free_wave,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
     TodoIndexRecord,
@@ -206,6 +211,25 @@ def test_dependency_waves_preserve_independent_critical_path_width():
     assert wave_by_task[child_b["canonical_task_cid"]] == 1
     assert sum(wave == 0 for wave in wave_by_task.values()) == 2
     assert sum(wave == 1 for wave in wave_by_task.values()) == 2
+
+
+def test_objective_graph_depth_never_manufactures_dependency_waves():
+    first = _task("HIERARCHY-A", graph_depth=9)
+    second = _task(
+        "HIERARCHY-B",
+        graph_depth=9,
+        outputs=["src/hierarchy-b.py"],
+        predicted_paths=["src/hierarchy-b.py"],
+        predicted_symbols=["HierarchyB.run"],
+    )
+
+    result = optimize_task_bundles(
+        (first, second),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
+    )
+
+    assert {bundle.execution_wave for bundle in result.bundles} == {0}
+    assert result.metrics["critical_path_wave_count"] == 1
 
 
 def test_conflicting_tasks_are_serialized_even_when_context_reuse_is_high():
@@ -668,15 +692,169 @@ def test_critical_path_width_evidence_fails_closed_without_width_or_authority():
     assert no_independent_width.verify_integrity()
     assert no_independent_width.proved_requirement_ids == ()
     assert independent.proved_requirement_ids
+    unbound = CriticalPathWidthEvidence.create(
+        (
+            _task("UNBOUND-A"),
+            _task(
+                "UNBOUND-B",
+                outputs=["src/unbound-b.py"],
+                predicted_paths=["src/unbound-b.py"],
+                predicted_symbols=["UnboundB.run"],
+            ),
+        ),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
+    )
+    assert unbound.verify_integrity()
+    assert unbound.proved_requirement_ids == ()
     restored = CriticalPathWidthEvidence.from_dict(independent.to_dict())
     assert restored.verify_integrity()
     assert restored.proved_requirement_ids == ()
+    restored_decision = EvidenceSourcePolicy().validate_completion_evidence(
+        CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
+        restored,
+        repository_tree="git-tree-asi-034",
+        policy_id=BundleOptimizationPolicy(max_tasks_per_bundle=1).policy_id,
+    )
+    assert restored_decision.satisfies is False
+    assert "receipt_producer_authority_missing" in restored_decision.reason_codes
+
+    forged = {
+        "schema": "caller-width-lookalike@1",
+        "evidence_id": "fake-width",
+        "requirement_id": CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
+        "repository_tree": "git-tree-asi-034",
+        "policy_id": BundleOptimizationPolicy(max_tasks_per_bundle=1).policy_id,
+        "source_tier": "validation",
+        "status": "passed",
+        "complete": True,
+        "coverage_complete": True,
+    }
+    forged_decision = EvidenceSourcePolicy().validate_completion_evidence(
+        CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
+        forged,
+        repository_tree="git-tree-asi-034",
+        policy_id=forged["policy_id"],
+    )
+    assert forged_decision.satisfies is False
+    assert "receipt_producer_authority_missing" in forged_decision.reason_codes
 
     tampered = copy.deepcopy(independent.to_dict())
     cid = tampered["task_population"][0]["canonical_task_cid"]
     tampered["planned_task_waves"][cid] = 99
     with pytest.raises(ValueError, match="digest mismatch"):
         CriticalPathWidthEvidence.from_dict(tampered)
+
+
+def test_critical_path_width_proof_binds_closed_dag_and_exact_conflict_edges():
+    left = _task("DAG-WIDTH-A", conflicts=["left-middle"])
+    middle = _task(
+        "DAG-WIDTH-B",
+        outputs=["src/dag-width-b.py"],
+        predicted_paths=["src/dag-width-b.py"],
+        predicted_symbols=["DagWidthB.run"],
+        conflicts=["left-middle", "middle-right"],
+    )
+    right = _task(
+        "DAG-WIDTH-C",
+        outputs=["src/dag-width-c.py"],
+        predicted_paths=["src/dag-width-c.py"],
+        predicted_symbols=["DagWidthC.run"],
+        conflicts=["middle-right"],
+    )
+    left_child = _task(
+        "DAG-WIDTH-D",
+        dependencies=[left["canonical_task_cid"]],
+        outputs=["src/dag-width-d.py"],
+        predicted_paths=["src/dag-width-d.py"],
+        predicted_symbols=["DagWidthD.run"],
+    )
+    right_child = _task(
+        "DAG-WIDTH-E",
+        dependencies=[right["canonical_task_cid"]],
+        outputs=["src/dag-width-e.py"],
+        predicted_paths=["src/dag-width-e.py"],
+        predicted_symbols=["DagWidthE.run"],
+    )
+
+    evidence = prove_critical_path_width(
+        (right_child, middle, left, left_child, right),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
+        repository_tree="git-tree-asi-035",
+    )
+
+    assert evidence.proved_requirement_ids == (
+        CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
+    )
+    original_edges = {
+        (parent, child)
+        for child, parents in evidence.dependency_task_cids.items()
+        for parent in parents
+    }
+    serialized_edges = {
+        (parent, child)
+        for child, parents in evidence.serialized_dependencies.items()
+        for parent in parents
+    }
+    conflict_edges = serialized_edges - original_edges
+    assert len(conflict_edges) == len(evidence.blocking_conflict_pairs) == 2
+    assert original_edges.issubset(serialized_edges)
+    assert evidence.effective_task_waves[left["canonical_task_cid"]] == (
+        evidence.effective_task_waves[right["canonical_task_cid"]]
+    )
+    assert {
+        cid
+        for bundle in evidence.bundle_population
+        for cid in bundle["task_cids"]
+    } == {
+        task["canonical_task_cid"]
+        for task in (left, middle, right, left_child, right_child)
+    }
+
+
+def test_critical_path_width_proof_rejects_unresolved_dependency_population():
+    independent = _task("CLOSED-DAG-A")
+    unresolved = _task(
+        "CLOSED-DAG-B",
+        dependencies=["cid-outside-proof-population"],
+        outputs=["src/closed-dag-b.py"],
+        predicted_paths=["src/closed-dag-b.py"],
+        predicted_symbols=["ClosedDagB.run"],
+    )
+
+    evidence = prove_critical_path_width(
+        (independent, unresolved),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
+        repository_tree="git-tree-asi-035",
+    )
+
+    assert evidence.verify_integrity()
+    assert evidence.proved_requirement_ids == ()
+    assert evidence.unresolved_dependency_references == {
+        unresolved["canonical_task_cid"]: ("cid-outside-proof-population",)
+    }
+
+
+def test_width_projection_round_trip_requires_exact_canonical_replay():
+    projection = project_conflict_free_wave(
+        ("cid-c", "cid-a", "cid-b"),
+        (("cid-b", "cid-c"), ("cid-a", "cid-b")),
+        dependency_wave=4,
+    )
+    repeated = project_conflict_free_wave(
+        reversed(projection.task_cids),
+        reversed(projection.blocking_conflict_pairs),
+        dependency_wave=4,
+    )
+
+    assert projection.to_dict() == repeated.to_dict()
+    assert ConflictWaveProjection.from_dict(projection.to_dict()) == projection
+    tampered = projection.to_dict()
+    tampered["color_by_task_cid"]["cid-a"] = 7
+    with pytest.raises(ValueError, match="canonical replay"):
+        ConflictWaveProjection.from_dict(tampered)
+
+    with pytest.raises(ValueError, match="inside one dependency wave"):
+        project_conflict_free_wave(("cid-a",), (("cid-a", "cid-b"),))
 
 
 def test_optimizer_serializes_global_ast_conflicts_across_disjoint_files():
@@ -880,6 +1058,109 @@ def test_vector_packet_marks_conflicting_editors_for_serial_execution():
     }
     assert packet["independent_width_by_dependency_wave"] == {"0": 1}
     assert packet["conflict_width_projections"][0]["color_count"] == 2
+
+
+def test_vector_packet_uses_canonical_dag_waves_and_routes_width_producer():
+    common = {
+        "status": "todo",
+        "priority": "P1",
+        "track": "bundling",
+        "source_line": 1,
+        "bundle_key": "objective/dependency-width",
+        "graph_depth": 7,
+        "missing_evidence": [CRITICAL_PATH_WIDTH_REQUIREMENT_ID],
+    }
+    root = TodoIndexRecord(
+        task_id="VECTOR-ROOT",
+        title="Root",
+        canonical_task_key="task/v1/vector-root",
+        task_cid="cid-vector-root",
+        outputs=["src/vector-root.py"],
+        **common,
+    )
+    child = TodoIndexRecord(
+        task_id="VECTOR-CHILD",
+        title="Child",
+        canonical_task_key="task/v1/vector-child",
+        task_cid="cid-vector-child",
+        dependency_task_cids=[root.task_cid],
+        outputs=["src/vector-child.py"],
+        **common,
+    )
+
+    packet = build_execution_packet(
+        context={"context_key": "context/dependency-width"},
+        records=(child, root),
+    )
+
+    assert packet is not None
+    assert packet["dependency_projection_complete"] is True
+    assert packet["dependency_wave_by_task_cid"] == {
+        root.task_cid: 0,
+        child.task_cid: 1,
+    }
+    assert packet["independent_width_by_dependency_wave"] == {"0": 1, "1": 1}
+    expected_binding = {
+        CRITICAL_PATH_WIDTH_REQUIREMENT_ID: (
+            "bundle_optimizer.prove_critical_path_width:"
+            "CriticalPathWidthEvidence"
+        )
+    }
+    assert packet["evidence_producer_bindings"] == expected_binding
+    assert task_generation_evidence_producer_bindings(
+        [CRITICAL_PATH_WIDTH_REQUIREMENT_ID, "not-registered"]
+    ) == expected_binding
+
+
+def test_vector_packet_withholds_unresolved_tasks_from_width_projection():
+    independent = TodoIndexRecord(
+        task_id="VECTOR-INDEPENDENT",
+        title="Independent",
+        status="todo",
+        priority="P1",
+        track="bundling",
+        source_line=1,
+        bundle_key="objective/dependency-width",
+        canonical_task_key="task/v1/vector-independent",
+        task_cid="cid-vector-independent",
+        outputs=["src/vector-independent.py"],
+    )
+    unresolved = TodoIndexRecord(
+        task_id="VECTOR-UNRESOLVED",
+        title="Unresolved",
+        status="todo",
+        priority="P1",
+        track="bundling",
+        source_line=2,
+        bundle_key="objective/dependency-width",
+        canonical_task_key="task/v1/vector-unresolved",
+        task_cid="cid-vector-unresolved",
+        dependency_task_cids=["cid-not-in-packet-population"],
+        graph_depth=11,
+        outputs=["src/vector-unresolved.py"],
+    )
+
+    packet = build_execution_packet(
+        context={"context_key": "context/dependency-width"},
+        records=(unresolved, independent),
+    )
+
+    assert packet is not None
+    assert packet["dependency_projection_complete"] is False
+    assert packet["dependency_wave_by_task_cid"] == {
+        independent.task_cid: 0,
+    }
+    assert packet["dependency_projection_diagnostics"] == {
+        unresolved.task_cid: [
+            "unresolved_dependency:cid-not-in-packet-population"
+        ]
+    }
+    projected_cids = {
+        cid
+        for projection in packet["conflict_width_projections"]
+        for cid in projection["task_cids"]
+    }
+    assert projected_cids == {independent.task_cid}
 
 
 def test_bundle_supervisor_projects_optimizer_slices_and_comparison():

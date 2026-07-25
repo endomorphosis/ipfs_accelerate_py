@@ -745,7 +745,6 @@ def parse_todo_vector_records(
                 "dependency_task_cids",
                 "dependencies",
                 "depends_on",
-                "graph_parents",
             ),
             missing_evidence=missing_evidence,
             outputs=outputs,
@@ -1425,6 +1424,99 @@ def ordered_unique(values: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(str(value) for value in values if str(value)))
 
 
+def _canonical_dependency_waves(
+    records: Sequence[TodoIndexRecord],
+) -> tuple[dict[str, int], dict[str, list[str]]]:
+    """Resolve a closed task DAG without conflating objective hierarchy.
+
+    Records with ambiguous or unresolved prerequisites, cycles, or a
+    dependency on another invalid record are withheld from the wave map.  The
+    returned diagnostics are non-authoritative planning metadata, but they
+    prevent compact execution packets from advertising unsafe parallel width.
+    """
+
+    identity_by_record: dict[int, str] = {}
+    records_by_cid: dict[str, TodoIndexRecord] = {}
+    alias_owners: dict[str, set[str]] = {}
+    for record in records:
+        cid = record.task_cid or record.task_id
+        if not cid:
+            continue
+        identity_by_record[id(record)] = cid
+        records_by_cid[cid] = record
+        for alias in (
+            record.task_id,
+            record.task_cid,
+            record.canonical_task_key,
+            record.semantic_identity,
+        ):
+            if alias:
+                alias_owners.setdefault(alias, set()).add(cid)
+
+    diagnostics: dict[str, list[str]] = {}
+    aliases = {
+        alias: next(iter(owners))
+        for alias, owners in alias_owners.items()
+        if len(owners) == 1
+    }
+    ambiguous_aliases = {
+        alias for alias, owners in alias_owners.items() if len(owners) != 1
+    }
+    dependencies: dict[str, set[str]] = {
+        cid: set() for cid in records_by_cid
+    }
+    for record in records:
+        cid = identity_by_record.get(id(record))
+        if not cid:
+            continue
+        for reference in record.dependency_task_cids:
+            if reference in ambiguous_aliases:
+                diagnostics.setdefault(cid, []).append(
+                    f"ambiguous_dependency:{reference}"
+                )
+                continue
+            prerequisite = aliases.get(reference)
+            if prerequisite is None:
+                diagnostics.setdefault(cid, []).append(
+                    f"unresolved_dependency:{reference}"
+                )
+                continue
+            if prerequisite == cid:
+                diagnostics.setdefault(cid, []).append(
+                    f"self_dependency:{reference}"
+                )
+                continue
+            dependencies[cid].add(prerequisite)
+
+    waves: dict[str, int] = {}
+    remaining = set(dependencies) - set(diagnostics)
+    while remaining:
+        ready = sorted(
+            cid
+            for cid in remaining
+            if dependencies[cid].issubset(waves)
+        )
+        if not ready:
+            break
+        for cid in ready:
+            waves[cid] = max(
+                (waves[parent] + 1 for parent in dependencies[cid]),
+                default=0,
+            )
+            remaining.remove(cid)
+    for cid in sorted(remaining):
+        reason = (
+            "blocked_by_invalid_dependency"
+            if dependencies[cid] & (set(diagnostics) | remaining)
+            else "dependency_cycle"
+        )
+        diagnostics.setdefault(cid, []).append(reason)
+    return waves, {
+        cid: sorted(set(reasons))
+        for cid, reasons in sorted(diagnostics.items())
+    }
+
+
 def build_execution_packet(
     *,
     context: Mapping[str, Any],
@@ -1468,6 +1560,7 @@ def build_execution_packet(
         if not record.task_cid:
             continue
         for alias in (
+            record.task_id,
             record.task_cid,
             record.canonical_task_key,
             record.semantic_identity,
@@ -1660,15 +1753,37 @@ def build_execution_packet(
         assignment.task_cid: assignment.lane_color
         for assignment in packet_conflict_graph.assignments
     }
+    dependency_waves, dependency_diagnostics = _canonical_dependency_waves(
+        population_records
+    )
+    selected_cids = {
+        record.task_cid or record.task_id for record in selected_records
+    }
+    packet["dependency_wave_by_task_cid"] = {
+        cid: wave
+        for cid, wave in sorted(dependency_waves.items())
+        if cid in selected_cids
+    }
+    packet["dependency_projection_diagnostics"] = {
+        cid: reasons
+        for cid, reasons in dependency_diagnostics.items()
+        if cid in selected_cids
+    }
+    packet["dependency_projection_complete"] = not bool(
+        packet["dependency_projection_diagnostics"]
+    )
     width_projections = []
     for dependency_wave in sorted(
-        {record.graph_depth for record in selected_records}
+        {
+            dependency_waves[cid]
+            for cid in selected_cids
+            if cid in dependency_waves
+        }
     ):
         wave_cids = {
-            record.task_cid or record.task_id
-            for record in selected_records
-            if record.graph_depth == dependency_wave
-            and (record.task_cid or record.task_id)
+            cid
+            for cid in selected_cids
+            if dependency_waves.get(cid) == dependency_wave
         }
         if not wave_cids:
             continue
@@ -2053,6 +2168,7 @@ def update_bundle_index_with_todo_vectors(
     if not isinstance(bundles, dict):
         return
     by_task = {record.task_id: record for record in records}
+    dependency_waves, dependency_diagnostics = _canonical_dependency_waves(records)
 
     def conflict_key(record: TodoIndexRecord) -> str:
         return record.task_cid or record.task_id
@@ -2278,7 +2394,14 @@ def update_bundle_index_with_todo_vectors(
             task["todo_execution_packet_keys"] = packet_keys_by_task.get(record.task_id, [])[:5]
             task["related_task_ids"] = record.related_task_ids
             task["dependency_task_cids"] = record.dependency_task_cids
-            task["dependency_depth"] = record.graph_depth
+            task_identity = record.task_cid or record.task_id
+            task["dependency_depth"] = dependency_waves.get(task_identity, 0)
+            task["dependency_projection_valid"] = (
+                task_identity in dependency_waves
+            )
+            task["dependency_projection_diagnostics"] = (
+                dependency_diagnostics.get(task_identity, [])
+            )
             task["context_paths"] = record.context_paths
             task["resource_class"] = (
                 record.resource_class or task.get("resource_class", "")
