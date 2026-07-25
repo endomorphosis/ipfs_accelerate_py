@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -16,7 +18,20 @@ from ipfs_accelerate_py.agent_supervisor.bundle_optimizer import (
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     EvidenceSourcePolicy,
+    TASK_GENERATION_ACCEPTANCE_CRITERIA,
+    TASK_GENERATION_CHILD_GOAL_IDS,
+    TASK_GENERATION_COMPLETION_ANALYZER_VERSION,
+    TASK_GENERATION_COMPLETION_CONFIGURATION_REVISION,
+    TASK_GENERATION_OBJECTIVE_ID,
+    TASK_GENERATION_OBJECTIVE_REVISION,
+    TASK_GENERATION_PRODUCING_TASK_IDS,
+    TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS,
+    evaluate_task_generation_completion,
     task_generation_evidence_producer_bindings,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+    CompletionEvidence,
+    GoalState,
 )
 from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
     ConflictWaveProjection,
@@ -32,6 +47,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 from ipfs_accelerate_py.agent_supervisor.task_identity import (
     canonical_bundle_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.task_quality import TaskCandidate
 
 
 def _task(task_id: str, **overrides: object) -> dict[str, object]:
@@ -420,6 +436,13 @@ def test_vector_execution_packet_projects_exact_canonical_completion_binding():
         "bundle_key": "objective/task-generation",
         "goal_packet_key": "goal_packet/task-generation/shared",
         "merge_family": "goal_packet/task-generation/shared",
+        "acceptance_criteria": ["packet projection remains coherent"],
+        "effects": ["packet work is executed"],
+        "predicted_files": ["src/packet_projection.py"],
+        "predicted_symbols": ["PacketProjection.run"],
+        "estimated_context_tokens": 100,
+        "estimated_tokens": 300,
+        "estimated_validation_seconds": 5,
     }
     aggregate = TodoIndexRecord(
         task_id="PACKET",
@@ -478,6 +501,27 @@ def test_vector_execution_packet_projects_exact_canonical_completion_binding():
     assert "cid-unbound" not in packet["completion_binding"][
         "bound_sibling_task_cids"
     ]
+    assert len(packet["task_work_contracts"]) == 3
+    assert len(set(packet["task_work_contract_ids"])) == 3
+    assert {
+        contract["canonical_task_cid"]
+        for contract in packet["task_work_contracts"]
+    } == {"cid-packet", "cid-bound", "cid-unbound"}
+    assert all(
+        contract["work_contract"]["acceptance_effect_subset"] == {
+            "acceptance": ["packet projection remains coherent"],
+            "effects": ["packet work is executed"],
+            "evidence_subset": [],
+        }
+        for contract in packet["task_work_contracts"]
+    )
+    # The aggregate explicitly covers BOUND, so packet execution costs count
+    # only the aggregate and independent UNBOUND work.
+    assert packet["estimated_costs"] == {
+        "estimated_context_tokens": 200,
+        "estimated_tokens": 600,
+        "estimated_validation_seconds": 10,
+    }
 
 
 def test_optimizer_uses_evidence_provider_and_resource_compatibility():
@@ -1226,3 +1270,505 @@ def test_split_optimizer_slices_receive_distinct_execution_identities():
         for payload in payloads
     }
     assert len(identities) == 2
+
+
+G050_NOW = datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc)
+G050_REPOSITORY_ID = "repository:ipfs-accelerate-py"
+G050_REPOSITORY_TREE = "tree:sha256:asi-084-current"
+
+
+def _g050_binding() -> dict[str, str]:
+    return {
+        "repository_id": G050_REPOSITORY_ID,
+        "tree_id": G050_REPOSITORY_TREE,
+        "objective_id": TASK_GENERATION_OBJECTIVE_ID,
+        "objective_revision": TASK_GENERATION_OBJECTIVE_REVISION,
+        "analyzer_version": TASK_GENERATION_COMPLETION_ANALYZER_VERSION,
+        "configuration_revision": (
+            TASK_GENERATION_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+
+
+def _g050_completion_packet() -> dict[str, object]:
+    validation_command = (
+        "python -m pytest test/api/test_agent_supervisor_task_quality.py "
+        "test/api/test_agent_supervisor_bundle_optimizer.py -q"
+    )
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-084",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": G050_REPOSITORY_TREE,
+                "command": validation_command,
+            },
+            validation_passed=True,
+            repository_id=G050_REPOSITORY_ID,
+            repository_tree=G050_REPOSITORY_TREE,
+            freshness={"fresh": True},
+            observed_at=G050_NOW - timedelta(minutes=2),
+            provenance_cid=f"validation:asi-084:{index}",
+        )
+        for index, criterion in enumerate(
+            TASK_GENERATION_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "verified": True,
+        "repository_id": G050_REPOSITORY_ID,
+        "repository_tree": G050_REPOSITORY_TREE,
+        "evaluated_at": (G050_NOW - timedelta(minutes=1)).isoformat(),
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "task_quality.py"
+                        if index < 4
+                        else "bundle_optimizer.py"
+                    )
+                ),
+                "validation": validation_command,
+                "validation_receipt_ids": [
+                    f"validation:asi-084:{index}"
+                ],
+            }
+            for index, criterion in enumerate(
+                TASK_GENERATION_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    children = [
+        {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "completion_gate": {
+                "passed": True,
+                "evaluated_evidence": {
+                    "repository_id": G050_REPOSITORY_ID,
+                    "repository_tree": G050_REPOSITORY_TREE,
+                    "evaluated_at": (
+                        G050_NOW - timedelta(minutes=3)
+                    ).isoformat(),
+                    "validation_evidence": [
+                        {
+                            "valid": True,
+                            "evidence": {
+                                "repository_id": G050_REPOSITORY_ID,
+                                "repository_tree": G050_REPOSITORY_TREE,
+                            },
+                        }
+                    ],
+                },
+            },
+            "proof_requirements": [
+                {
+                    "repository_tree": G050_REPOSITORY_TREE,
+                    "provenance_id": f"proof:{goal_id}",
+                    "required_assurance": "solver_checked",
+                    "authoritative_assurance": "solver_checked",
+                    "assurance_satisfied": True,
+                    "contradicted": False,
+                    "proof_verdict": "proved",
+                    "freshness": "current",
+                    "reason_codes": [],
+                }
+            ],
+        }
+        for goal_id in TASK_GENERATION_CHILD_GOAL_IDS
+    ]
+    binding = _g050_binding()
+    members = [
+        {
+            "member_id": "asi-084-exhaustive",
+            "evidence_channel": "implementation-validation",
+            "receipt_cid": "scan:asi-084:exhaustive",
+            "binding": dict(binding),
+            "scan_mode": "exhaustive",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "finished_at": (G050_NOW - timedelta(minutes=4)).isoformat(),
+        },
+        {
+            "member_id": "asi-084-audit",
+            "evidence_channel": "independent-audit",
+            "receipt_cid": "scan:asi-084:audit",
+            "binding": dict(binding),
+            "scan_mode": "exhaustive",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "finished_at": (G050_NOW - timedelta(minutes=3)).isoformat(),
+        },
+    ]
+    return {
+        "repository_id": G050_REPOSITORY_ID,
+        "repository_tree": G050_REPOSITORY_TREE,
+        "producing_tasks": [
+            {"task_id": task_id, "status": "completed"}
+            for task_id in TASK_GENERATION_PRODUCING_TASK_IDS
+        ],
+        "child_goals": children,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "binding": dict(binding),
+        },
+        "exhaustion_quorum": {
+            "required_members": TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS,
+            "member_count": len(members),
+            "satisfied": True,
+            "quorum_met": True,
+            "binding": dict(binding),
+            "members": members,
+        },
+        "now": G050_NOW,
+        "freshness_seconds": 3600,
+    }
+
+
+def _assert_g050_rejected(packet: dict[str, object]) -> None:
+    decision = evaluate_task_generation_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **packet,
+    )
+    assert decision.verified is False
+    assert decision.state is not GoalState.VERIFIED_COMPLETE
+    assert decision.reason_codes
+
+
+def test_g050_parent_completion_requires_closed_current_tree_proof_packet():
+    assert TASK_GENERATION_OBJECTIVE_ID == "ASI-G050"
+    assert TASK_GENERATION_PRODUCING_TASK_IDS == ("ASI-013", "ASI-014")
+    assert TASK_GENERATION_CHILD_GOAL_IDS == (
+        "ASI-G106",
+        "ASI-G107",
+        "ASI-G108",
+    )
+    assert TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS == 2
+    assert len(TASK_GENERATION_ACCEPTANCE_CRITERIA) == 5
+
+    packet = _g050_completion_packet()
+    provisional = evaluate_task_generation_completion(
+        current_state=GoalState.ACTIVE,
+        **packet,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.verified is False
+    assert "provisional_transition_required" in provisional.reason_codes
+    assert provisional.acceptance_criteria == (
+        TASK_GENERATION_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate is not None and provisional.gate.passed
+
+    verified = evaluate_task_generation_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **packet,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified is True
+    assert verified.gate is not None and verified.gate.passed
+    evaluated = verified.gate.evaluated_evidence
+    assert evaluated["repository_id"] == G050_REPOSITORY_ID
+    assert evaluated["repository_tree"] == G050_REPOSITORY_TREE
+    assert evaluated["acceptance_criteria"] == list(
+        TASK_GENERATION_ACCEPTANCE_CRITERIA
+    )
+    assert {
+        child["goal_id"] for child in evaluated["child_goals"]
+    } == set(TASK_GENERATION_CHILD_GOAL_IDS)
+
+    invalidated = copy.deepcopy(packet)
+    stale_evidence = list(invalidated["evidence"])
+    stale_evidence[0] = replace(
+        stale_evidence[0],
+        freshness={"fresh": False},
+        observed_at=G050_NOW - timedelta(hours=2),
+    )
+    invalidated["evidence"] = tuple(stale_evidence)
+    reopened = evaluate_task_generation_completion(
+        current_state=GoalState.VERIFIED_COMPLETE,
+        **invalidated,
+    )
+    assert reopened.state is GoalState.REOPENED
+    assert reopened.verified is False
+    assert reopened.reason_codes
+
+
+@pytest.mark.parametrize(
+    "producer_failure",
+    ["tasks_not_complete", "missing", "wrong", "duplicate", "incomplete"],
+)
+def test_g050_parent_rejects_incomplete_wrong_or_duplicate_producers(
+    producer_failure: str,
+):
+    packet = _g050_completion_packet()
+    producers = copy.deepcopy(packet["producing_tasks"])
+    if producer_failure == "tasks_not_complete":
+        packet["tasks_complete"] = False
+    elif producer_failure == "missing":
+        packet["producing_tasks"] = producers[:-1]
+    elif producer_failure == "wrong":
+        producers[-1]["task_id"] = "ASI-084"
+        packet["producing_tasks"] = producers
+    elif producer_failure == "duplicate":
+        producers[-1]["task_id"] = producers[0]["task_id"]
+        packet["producing_tasks"] = producers
+    else:
+        producers[-1]["status"] = "active"
+        packet["producing_tasks"] = producers
+
+    _assert_g050_rejected(packet)
+
+
+@pytest.mark.parametrize(
+    "evidence_failure",
+    ["missing", "wrong", "duplicate", "stale", "failed", "foreign"],
+)
+def test_g050_parent_rejects_each_invalid_submitted_criterion_evidence(
+    evidence_failure: str,
+):
+    packet = _g050_completion_packet()
+    evidence = list(packet["evidence"])
+    if evidence_failure == "missing":
+        evidence.pop()
+    elif evidence_failure == "wrong":
+        evidence[-1] = replace(
+            evidence[-1],
+            acceptance_criterion="caller-selected substitute criterion",
+        )
+    elif evidence_failure == "duplicate":
+        evidence[-1] = replace(
+            evidence[-1],
+            acceptance_criterion=evidence[0].acceptance_criterion,
+            provenance_cid=evidence[0].provenance_cid,
+        )
+    elif evidence_failure == "stale":
+        evidence[0] = replace(
+            evidence[0],
+            freshness={"fresh": False},
+            observed_at=G050_NOW - timedelta(hours=2),
+        )
+    elif evidence_failure == "failed":
+        evidence[0] = replace(
+            evidence[0],
+            validation_passed=False,
+            validation_receipt={
+                "status": "failed",
+                "tree_id": G050_REPOSITORY_TREE,
+            },
+        )
+    else:
+        evidence[0] = replace(
+            evidence[0],
+            repository_id="repository:foreign",
+            repository_tree="tree:sha256:foreign",
+        )
+    packet["evidence"] = tuple(evidence)
+
+    _assert_g050_rejected(packet)
+
+
+@pytest.mark.parametrize(
+    "coverage_failure",
+    ["missing_row", "duplicate_row", "missing_implementation", "unbound_receipt"],
+)
+def test_g050_parent_rejects_incomplete_or_unbound_coverage(
+    coverage_failure: str,
+):
+    packet = _g050_completion_packet()
+    coverage = copy.deepcopy(packet["coverage"])
+    rows = coverage["criteria"]
+    if coverage_failure == "missing_row":
+        rows.pop()
+    elif coverage_failure == "duplicate_row":
+        rows[-1] = copy.deepcopy(rows[0])
+    elif coverage_failure == "missing_implementation":
+        rows[0]["implementation"] = ""
+    else:
+        rows[0]["validation_receipt_ids"] = ["validation:foreign"]
+    packet["coverage"] = coverage
+
+    _assert_g050_rejected(packet)
+
+
+@pytest.mark.parametrize(
+    "analyzer_failure",
+    ["missing", "unhealthy", "unsafe", "mismatched_binding"],
+)
+def test_g050_parent_rejects_missing_unhealthy_unsafe_or_foreign_analyzer(
+    analyzer_failure: str,
+):
+    packet = _g050_completion_packet()
+    health = copy.deepcopy(packet["analyzer_health"])
+    if analyzer_failure == "missing":
+        health = {}
+    elif analyzer_failure == "unhealthy":
+        health["status"] = "degraded"
+        health["healthy"] = False
+    elif analyzer_failure == "unsafe":
+        health["safe_for_completion_reasoning"] = False
+    else:
+        health["binding"]["analyzer_version"] = "foreign-analyzer@1"
+    packet["analyzer_health"] = health
+
+    _assert_g050_rejected(packet)
+
+
+def test_g050_parent_rejects_caller_lowered_exhaustive_quorum():
+    with pytest.raises(
+        ValueError,
+        match="must equal the configured ASI-G050 count",
+    ):
+        evaluate_task_generation_completion(
+            required_exhaustive_receipts=1,
+            **_g050_completion_packet(),
+        )
+
+
+@pytest.mark.parametrize(
+    "quorum_failure",
+    [
+        "insufficient",
+        "duplicate_member",
+        "duplicate_channel",
+        "duplicate_receipt",
+        "unhealthy",
+        "unsafe",
+        "non_exhaustive",
+        "stale",
+        "foreign",
+        "foreign_member",
+    ],
+)
+def test_g050_parent_rejects_nonindependent_or_unhealthy_exhaustive_quorum(
+    quorum_failure: str,
+):
+    packet = _g050_completion_packet()
+    quorum = copy.deepcopy(packet["exhaustion_quorum"])
+    members = quorum["members"]
+    if quorum_failure == "insufficient":
+        members.pop()
+        quorum["member_count"] = 1
+    elif quorum_failure == "duplicate_member":
+        members[1]["member_id"] = members[0]["member_id"]
+    elif quorum_failure == "duplicate_channel":
+        members[1]["evidence_channel"] = members[0]["evidence_channel"]
+    elif quorum_failure == "duplicate_receipt":
+        members[1]["receipt_cid"] = members[0]["receipt_cid"]
+    elif quorum_failure == "unhealthy":
+        members[1]["healthy"] = False
+    elif quorum_failure == "unsafe":
+        members[1]["safe_for_completion_reasoning"] = False
+    elif quorum_failure == "non_exhaustive":
+        members[1]["scan_mode"] = "partial"
+    elif quorum_failure == "stale":
+        members[1]["finished_at"] = (
+            G050_NOW - timedelta(hours=2)
+        ).isoformat()
+    elif quorum_failure == "foreign":
+        quorum["binding"]["tree_id"] = "tree:sha256:foreign"
+    else:
+        members[1]["binding"]["tree_id"] = "tree:sha256:foreign"
+    packet["exhaustion_quorum"] = quorum
+
+    _assert_g050_rejected(packet)
+
+
+@pytest.mark.parametrize(
+    "child_failure",
+    ["missing", "wrong", "duplicate", "unverified", "stale", "foreign"],
+)
+def test_g050_parent_rejects_unverified_stale_or_wrong_child_population(
+    child_failure: str,
+):
+    packet = _g050_completion_packet()
+    children = copy.deepcopy(packet["child_goals"])
+    if child_failure == "missing":
+        children.pop()
+    elif child_failure == "wrong":
+        children[-1]["goal_id"] = "ASI-G999"
+    elif child_failure == "duplicate":
+        children[-1]["goal_id"] = children[0]["goal_id"]
+    elif child_failure == "unverified":
+        children[0]["state"] = "provisionally_complete"
+        children[0]["verified"] = False
+    elif child_failure == "stale":
+        children[0]["proof_requirements"][0]["freshness"] = "stale"
+    else:
+        children[0]["completion_gate"]["evaluated_evidence"][
+            "repository_tree"
+        ] = "tree:sha256:foreign"
+    packet["child_goals"] = children
+
+    _assert_g050_rejected(packet)
+
+
+def test_optimizer_projection_preserves_coherent_contract_effects_and_costs():
+    task = _task(
+        "CONTRACT-PROJECTION",
+        acceptance=[
+            "The admitted task owns one exact acceptance subset",
+            "Every output remains current-tree-bound",
+        ],
+        effects=["write src/contract.py", "run contract validation"],
+        estimated_context_tokens=321,
+        estimated_tokens=654,
+        estimated_validation_seconds=17,
+    )
+
+    result = optimize_task_bundles((task,))
+    assert len(result.bundles) == 1
+    bundle = result.bundles[0]
+    assert bundle.acceptance_subsets == tuple(sorted(task["acceptance"]))
+    assert bundle.effect_subsets == tuple(sorted(task["effects"]))
+    assert bundle.predicted_paths == tuple(task["predicted_paths"])
+    assert bundle.predicted_symbols == tuple(task["predicted_symbols"])
+    assert bundle.estimated_context_tokens == 321
+    assert bundle.estimated_tokens == 654
+    assert bundle.estimated_validation_seconds == 17
+    assert len(bundle.task_work_contracts) == 1
+    contract = bundle.task_work_contracts[0]
+    assert contract["acceptance_subset"] == sorted(task["acceptance"])
+    assert contract["effect_subset"] == sorted(task["effects"])
+    assert contract["estimated_costs"] == {
+        "context_tokens": 321,
+        "task_tokens": 654,
+        "validation_seconds": 17,
+    }
+    projection = result.to_dict()["bundles"][0]
+    assert projection["task_work_contracts"] == [contract]
+    assert projection["work_contract_ids"] == list(bundle.work_contract_ids)
+
+
+def test_optimizer_preserves_admitted_task_candidate_contract_without_drift():
+    candidate = TaskCandidate.from_mapping(
+        _task("ADMITTED-CONTRACT", outputs=["src/admitted.py"]),
+        validate_identity=False,
+    )
+
+    result = optimize_task_bundles((candidate.to_dict(),))
+    bundle = result.bundles[0]
+    planning_contract = bundle.task_work_contracts[0]
+
+    assert bundle.work_contract_ids == (candidate.work_contract_id,)
+    assert planning_contract["canonical_task_cid"] == (
+        candidate.canonical_task_cid
+    )
+    assert planning_contract["canonical_task_key"] == (
+        candidate.canonical_task_key
+    )
+    assert planning_contract["work_contract"] == candidate.work_contract
+    assert planning_contract["work_contract_id"] == candidate.work_contract_id

@@ -33,7 +33,28 @@ TASK_QUALITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-quality@1"
 TASK_SEMANTIC_IDENTITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-semantic-identity@1"
 )
+TASK_WORK_CONTRACT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-work-contract@1"
+)
 TASK_QUALITY_EVALUATOR_VERSION = "task-quality/v1"
+TASK_GENERATION_OBJECTIVE_ID: Final = "ASI-G050"
+TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
+TASK_GENERATION_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
+    "ASI-013",
+    "ASI-014",
+)
+TASK_GENERATION_CHILD_GOAL_IDS: Final[tuple[str, ...]] = (
+    "ASI-G106",
+    "ASI-G107",
+    "ASI-G108",
+)
+TASK_GENERATION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "Tasks bind one coherent acceptance/effect subset with predicted scope and costs",
+    "broad tasks split and compatible tiny tasks coalesce",
+    "semantic duplicates are rejected across refills",
+    "bundles preserve critical-path width and serialize conflicts",
+    "model calls per accepted work item improve without increasing merge conflicts",
+)
 TASK_SPLIT_REFILL_REQUIREMENT_ID: Final = (
     "127990245919649912156052660092678945998"
 )
@@ -174,6 +195,71 @@ def _authoritative_repository_tree(value: Any) -> bool:
     }
 
 
+def _task_work_contract_material(candidate: "TaskCandidate") -> dict[str, Any]:
+    """Project one candidate's complete acceptance, scope, and cost contract.
+
+    Acceptance criteria, effects, and their evidence delta deliberately live
+    in one subset instead of independent arrays which a downstream projection
+    could accidentally mix with another task.  Scope and cost estimates are
+    part of the same canonical object, so changing an execution estimate
+    changes the semantic task identity rather than silently reusing stale
+    admission or bundle evidence.
+    """
+
+    return {
+        "schema": TASK_WORK_CONTRACT_SCHEMA,
+        "goal_id": _normalized_text(candidate.goal_id),
+        "acceptance_effect_subset": {
+            "acceptance": sorted(
+                _normalized_text(item) for item in candidate.acceptance
+            ),
+            "effects": sorted(
+                _normalized_text(item) for item in candidate.effects
+            ),
+            "evidence_subset": sorted(
+                _normalized_text(item) for item in candidate.evidence_subset
+            ),
+        },
+        "predicted_scope": {
+            "paths": sorted(
+                path.casefold()
+                for path in set(candidate.outputs) | set(candidate.predicted_paths)
+            ),
+            "symbols": sorted(
+                _normalized_text(item) for item in candidate.predicted_symbols
+            ),
+            "context_paths": sorted(
+                path.casefold() for path in candidate.context_paths
+            ),
+        },
+        "predicted_costs": {
+            "context_tokens": candidate.estimated_context_tokens,
+            "validation_seconds": candidate.estimated_validation_seconds,
+            "task_tokens": candidate.estimated_tokens,
+            "resource_class": candidate.resource_class.casefold(),
+            "token_class": candidate.token_class.casefold(),
+            "dependency_count": len(candidate.dependencies),
+            "conflict_count": len(candidate.conflicts),
+        },
+        "execution_boundary": {
+            "preconditions": sorted(
+                _normalized_text(item) for item in candidate.preconditions
+            ),
+            "dependencies": sorted(
+                _normalized_display_text(item) for item in candidate.dependencies
+            ),
+            "conflicts": sorted(
+                _normalized_display_text(item) for item in candidate.conflicts
+            ),
+            "validation_commands": sorted(
+                _normalized_display_text(item)
+                for item in candidate.validation_commands
+            ),
+            "merge_fate": _normalized_text(candidate.merge_fate),
+        },
+    }
+
+
 def _semantic_material(value: "TaskCandidate | Mapping[str, Any]") -> dict[str, Any]:
     candidate = (
         value
@@ -182,6 +268,7 @@ def _semantic_material(value: "TaskCandidate | Mapping[str, Any]") -> dict[str, 
     )
     material: dict[str, Any] = {
         "schema": TASK_SEMANTIC_IDENTITY_SCHEMA,
+        "work_contract": _task_work_contract_material(candidate),
         "goal_id": _normalized_text(candidate.goal_id),
         "acceptance": sorted(_normalized_text(item) for item in candidate.acceptance),
         "preconditions": sorted(_normalized_text(item) for item in candidate.preconditions),
@@ -437,6 +524,25 @@ class TaskCandidate:
             metadata=payload.get("metadata", {}),
         )
         if validate_identity:
+            supplied_contract = _mapping_value(payload, "work contract")
+            if supplied_contract not in (None, ""):
+                if (
+                    not isinstance(supplied_contract, Mapping)
+                    or dict(supplied_contract) != candidate.work_contract
+                ):
+                    raise ValueError(
+                        "work_contract does not match canonical task work content"
+                    )
+            supplied_contract_id = str(
+                _mapping_value(payload, "work contract id") or ""
+            ).strip()
+            if (
+                supplied_contract_id
+                and supplied_contract_id != candidate.work_contract_id
+            ):
+                raise ValueError(
+                    "work_contract_id does not match canonical task work content"
+                )
             supplied_key = str(
                 _mapping_value(payload, "canonical task key") or ""
             ).strip()
@@ -462,6 +568,28 @@ class TaskCandidate:
     @property
     def predicted_symbol_breadth(self) -> int:
         return len(self.predicted_symbols)
+
+    @property
+    def work_contract(self) -> dict[str, Any]:
+        """Return the canonical single-subset work contract."""
+
+        return _task_work_contract_material(self)
+
+    @property
+    def work_contract_id(self) -> str:
+        """Return the content identity of acceptance, scope, and cost binding."""
+
+        return _task_quality_evidence_cid(self.work_contract)
+
+    @property
+    def predicted_costs_complete(self) -> bool:
+        """Return whether every mandatory execution-cost estimate is bound."""
+
+        return (
+            self.estimated_context_tokens > 0
+            and self.estimated_validation_seconds > 0
+            and self.estimated_tokens > 0
+        )
 
     @property
     def canonical_task_key(self) -> str:
@@ -502,6 +630,9 @@ class TaskCandidate:
         result["canonical_task_key"] = self.canonical_task_key
         result["canonical_task_cid"] = self.canonical_task_cid
         result["task_cid"] = self.canonical_task_cid
+        result["work_contract"] = self.work_contract
+        result["work_contract_id"] = self.work_contract_id
+        result["predicted_costs_complete"] = self.predicted_costs_complete
         result["predicted_path_breadth"] = self.predicted_path_breadth
         result["predicted_symbol_breadth"] = self.predicted_symbol_breadth
         return result
@@ -1016,6 +1147,21 @@ def _task_rejections(
             "missing_validation",
             candidate.validation_commands,
             "validation commands are required",
+        ),
+        (
+            "missing_estimated_context_tokens",
+            candidate.estimated_context_tokens,
+            "a positive estimated_context_tokens cost binding is required",
+        ),
+        (
+            "missing_estimated_validation_seconds",
+            candidate.estimated_validation_seconds,
+            "a positive estimated_validation_seconds cost binding is required",
+        ),
+        (
+            "missing_estimated_tokens",
+            candidate.estimated_tokens,
+            "a positive estimated_tokens cost binding is required",
         ),
         (
             "missing_resource_class",
@@ -1841,11 +1987,17 @@ evaluate_task_candidates = refine_task_candidates
 
 __all__ = [
     "RESOURCE_CLASSES",
+    "TASK_GENERATION_ACCEPTANCE_CRITERIA",
+    "TASK_GENERATION_CHILD_GOAL_IDS",
+    "TASK_GENERATION_OBJECTIVE_ID",
+    "TASK_GENERATION_PRODUCING_TASK_IDS",
+    "TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "TASK_SPLIT_REFILL_EVIDENCE_SCHEMA",
     "TASK_SPLIT_REFILL_REQUIREMENT_ID",
     "TASK_QUALITY_EVALUATOR_VERSION",
     "TASK_QUALITY_SCHEMA",
     "TASK_SEMANTIC_IDENTITY_SCHEMA",
+    "TASK_WORK_CONTRACT_SCHEMA",
     "TOKEN_CLASSES",
     "TOKEN_CLASS_LIMITS",
     "HistoricalTask",

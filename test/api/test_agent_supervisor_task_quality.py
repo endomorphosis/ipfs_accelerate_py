@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_quality import (
     TASK_SPLIT_REFILL_REQUIREMENT_ID,
+    TASK_WORK_CONTRACT_SCHEMA,
     TaskCandidate,
     TaskQualityPolicy,
     TaskSplitRefillEvidence,
@@ -83,6 +84,112 @@ def test_candidate_contract_has_stable_canonical_semantic_identity():
     assert first.token_class == "medium"
 
 
+def test_work_contract_binds_exact_coherent_subset_scope_and_predicted_costs():
+    candidate = _candidate()
+    contract = candidate.work_contract
+
+    assert contract == {
+        "schema": TASK_WORK_CONTRACT_SCHEMA,
+        "goal_id": "cache g001",
+        "acceptance_effect_subset": {
+            "acceptance": [
+                "concurrent callers observe the same result",
+                "equivalent inputs share one cache entry",
+            ],
+            "effects": ["one canonical cache entry is persisted"],
+            "evidence_subset": ["cache admission unit tests"],
+        },
+        "predicted_scope": {
+            "paths": ["src/cache.py", "test/cache.py"],
+            "symbols": ["cache admit", "test cache admission"],
+            "context_paths": ["src/cache.py", "test/cache.py"],
+        },
+        "predicted_costs": {
+            "context_tokens": 1200,
+            "validation_seconds": 30,
+            "task_tokens": 2400,
+            "resource_class": "cpu-medium",
+            "token_class": "medium",
+            "dependency_count": 1,
+            "conflict_count": 1,
+        },
+        "execution_boundary": {
+            "preconditions": ["the cache key has been canonicalized"],
+            "dependencies": ["CACHE-001"],
+            "conflicts": ["cache-writer"],
+            "validation_commands": ["python -m pytest test/cache.py -q"],
+            "merge_fate": "cache admission",
+        },
+    }
+    assert candidate.predicted_costs_complete is True
+    assert candidate.work_contract_id
+
+    reordered = _candidate(
+        acceptance_criteria=list(reversed(candidate.acceptance)),
+        effects=list(reversed(candidate.effects)),
+        evidence_subset=list(reversed(candidate.evidence_subset)),
+        predicted_paths=list(reversed(candidate.predicted_paths)),
+        predicted_symbols=list(reversed(candidate.predicted_symbols)),
+        context_paths=list(reversed(candidate.context_paths)),
+    )
+    assert reordered.work_contract == contract
+    assert reordered.work_contract_id == candidate.work_contract_id
+
+
+@pytest.mark.parametrize(
+    ("field_name", "changed_value"),
+    [
+        ("predicted_paths", ["src/cache.py", "test/cache_v2.py"]),
+        ("predicted_symbols", ["Cache.admit", "test_cache_admission_v2"]),
+        ("context_paths", ["src/cache.py", "test/cache_v2.py"]),
+        ("estimated_context_tokens", 1201),
+        ("estimated_validation_seconds", 31),
+        ("estimated_tokens", 2401),
+    ],
+)
+def test_canonical_identity_changes_with_predicted_scope_or_any_mandatory_cost(
+    field_name: str,
+    changed_value: object,
+):
+    baseline = _candidate()
+    changed = _candidate(**{field_name: changed_value})
+
+    assert changed.work_contract != baseline.work_contract
+    assert changed.work_contract_id != baseline.work_contract_id
+    assert changed.semantic_identity != baseline.semantic_identity
+    assert changed.canonical_task_key != baseline.canonical_task_key
+    assert changed.canonical_task_cid != baseline.canonical_task_cid
+
+
+@pytest.mark.parametrize(
+    ("field_name", "expected_reason"),
+    [
+        (
+            "estimated_context_tokens",
+            "missing_estimated_context_tokens",
+        ),
+        (
+            "estimated_validation_seconds",
+            "missing_estimated_validation_seconds",
+        ),
+        ("estimated_tokens", "missing_estimated_tokens"),
+    ],
+)
+def test_admission_fails_closed_with_specific_reason_for_each_zero_cost(
+    field_name: str,
+    expected_reason: str,
+):
+    candidate = _candidate(**{field_name: 0})
+    decision = admit_task_candidate(candidate)
+
+    assert candidate.predicted_costs_complete is False
+    assert decision.accepted is False
+    assert expected_reason in decision.rejection_reasons
+    reason = next(item for item in decision.rejections if item.code == expected_reason)
+    assert reason.semantic_identity == candidate.semantic_identity
+    assert field_name in reason.detail
+
+
 def test_candidate_projection_round_trip_preserves_identity_and_rejects_tampering():
     candidate = _candidate(source_id="ASI-051")
     projection = candidate.to_dict()
@@ -100,6 +207,22 @@ def test_candidate_projection_round_trip_preserves_identity_and_rejects_tamperin
     with pytest.raises(
         ValueError,
         match="semantic_identity does not match canonical semantic task content",
+    ):
+        TaskCandidate.from_dict(projection)
+
+    projection = candidate.to_dict()
+    projection["work_contract"]["predicted_costs"]["task_tokens"] += 1
+    with pytest.raises(
+        ValueError,
+        match="work_contract does not match canonical task work content",
+    ):
+        TaskCandidate.from_dict(projection)
+
+    projection = candidate.to_dict()
+    projection["work_contract_id"] = "not-the-canonical-contract"
+    with pytest.raises(
+        ValueError,
+        match="work_contract_id does not match canonical task work content",
     ):
         TaskCandidate.from_dict(projection)
 
@@ -251,6 +374,89 @@ def test_over_broad_task_splits_deterministically_and_preserves_dependencies():
     assert all(item.goal_id == broad.goal_id for item in first)
 
 
+def test_split_recomputes_child_contracts_and_preserves_full_source_coverage():
+    source = _candidate(
+        acceptance_criteria=[f"criterion-{index}" for index in range(4)],
+        effects=[f"effect-{index}" for index in range(4)],
+        evidence_subset=[f"evidence-{index}" for index in range(4)],
+        context_paths=[f"src/part_{index}.py" for index in range(4)],
+        outputs=[f"src/part_{index}.py" for index in range(4)],
+        predicted_paths=[f"src/part_{index}.py" for index in range(4)],
+        predicted_symbols=[f"Part{index}.run" for index in range(4)],
+        estimated_context_tokens=2_400,
+        estimated_validation_seconds=40,
+        estimated_tokens=8_000,
+    )
+    policy = TaskQualityPolicy(
+        max_predicted_paths=2,
+        max_predicted_symbols=2,
+        max_acceptance_criteria=2,
+        max_effects=2,
+        max_evidence_items=2,
+        max_context_paths=2,
+        max_context_tokens=1_200,
+        max_estimated_tokens=4_000,
+    )
+
+    children = split_task_candidate(source, policy=policy)
+
+    assert len(children) == 2
+    assert len({child.work_contract_id for child in children}) == len(children)
+    assert source.work_contract_id not in {
+        child.work_contract_id for child in children
+    }
+    assert all(child.predicted_costs_complete for child in children)
+    assert all(
+        TaskCandidate.from_dict(child.to_dict()).work_contract_id
+        == child.work_contract_id
+        for child in children
+    )
+
+    for subset_key in ("acceptance", "effects", "evidence_subset"):
+        assert set().union(
+            *(
+                set(child.work_contract["acceptance_effect_subset"][subset_key])
+                for child in children
+            )
+        ) == set(source.work_contract["acceptance_effect_subset"][subset_key])
+    for scope_key in ("paths", "symbols", "context_paths"):
+        assert set().union(
+            *(
+                set(child.work_contract["predicted_scope"][scope_key])
+                for child in children
+            )
+        ) == set(source.work_contract["predicted_scope"][scope_key])
+    for boundary_key in (
+        "preconditions",
+        "dependencies",
+        "conflicts",
+        "validation_commands",
+    ):
+        assert set().union(
+            *(
+                set(child.work_contract["execution_boundary"][boundary_key])
+                for child in children
+            )
+        ) == set(source.work_contract["execution_boundary"][boundary_key])
+    assert all(
+        child.work_contract["execution_boundary"]["merge_fate"]
+        == source.work_contract["execution_boundary"]["merge_fate"]
+        for child in children
+    )
+
+    child_costs = [child.work_contract["predicted_costs"] for child in children]
+    source_costs = source.work_contract["predicted_costs"]
+    assert sum(cost["context_tokens"] for cost in child_costs) == (
+        source_costs["context_tokens"]
+    )
+    assert sum(cost["task_tokens"] for cost in child_costs) == (
+        source_costs["task_tokens"]
+    )
+    assert {cost["validation_seconds"] for cost in child_costs} == {
+        source_costs["validation_seconds"]
+    }
+
+
 def test_tiny_tasks_coalesce_only_with_shared_execution_and_merge_fate():
     left = _candidate(
         title="Add cache hit assertion",
@@ -296,6 +502,94 @@ def test_tiny_tasks_coalesce_only_with_shared_execution_and_merge_fate():
             ),
             policy=policy,
         )
+
+
+def test_coalesce_recomputes_contract_and_preserves_all_source_contract_coverage():
+    left = _candidate(
+        source_id="CACHE-LEFT",
+        title="Prove deterministic cache hits",
+        acceptance_criteria=["Cache hits are deterministic"],
+        effects=["Cache-hit state is observable"],
+        evidence_subset=["cache-hit-proof"],
+        predicted_symbols=["test_cache_hit"],
+        dependencies=["CACHE-001"],
+        conflicts=["cache-hit-writer"],
+        estimated_context_tokens=400,
+        estimated_validation_seconds=10,
+        estimated_tokens=300,
+    )
+    right = _candidate(
+        source_id="CACHE-RIGHT",
+        title="Prove deterministic cache misses",
+        acceptance_criteria=["Cache misses are deterministic"],
+        effects=["Cache-miss state is observable"],
+        evidence_subset=["cache-miss-proof"],
+        predicted_symbols=["test_cache_miss"],
+        dependencies=["CACHE-002"],
+        conflicts=["cache-miss-writer"],
+        estimated_context_tokens=600,
+        estimated_validation_seconds=20,
+        estimated_tokens=350,
+    )
+
+    merged = coalesce_task_candidates(
+        (right, left),
+        policy=TaskQualityPolicy(tiny_max_paths=2),
+    )
+    repeated = coalesce_task_candidates(
+        (left, right),
+        policy=TaskQualityPolicy(tiny_max_paths=2),
+    )
+
+    assert merged.work_contract == repeated.work_contract
+    assert merged.work_contract_id == repeated.work_contract_id
+    assert merged.work_contract_id not in {
+        left.work_contract_id,
+        right.work_contract_id,
+    }
+    assert TaskCandidate.from_dict(merged.to_dict()) == merged
+
+    source_contracts = (left.work_contract, right.work_contract)
+    for subset_key in ("acceptance", "effects", "evidence_subset"):
+        expected = set().union(
+            *(
+                set(contract["acceptance_effect_subset"][subset_key])
+                for contract in source_contracts
+            )
+        )
+        assert set(
+            merged.work_contract["acceptance_effect_subset"][subset_key]
+        ) == expected
+    for scope_key in ("paths", "symbols", "context_paths"):
+        expected = set().union(
+            *(
+                set(contract["predicted_scope"][scope_key])
+                for contract in source_contracts
+            )
+        )
+        assert set(merged.work_contract["predicted_scope"][scope_key]) == expected
+    for boundary_key in (
+        "preconditions",
+        "dependencies",
+        "conflicts",
+        "validation_commands",
+    ):
+        expected = set().union(
+            *(
+                set(contract["execution_boundary"][boundary_key])
+                for contract in source_contracts
+            )
+        )
+        assert set(
+            merged.work_contract["execution_boundary"][boundary_key]
+        ) == expected
+
+    merged_costs = merged.work_contract["predicted_costs"]
+    assert merged_costs["context_tokens"] == 600
+    assert merged_costs["validation_seconds"] == 20
+    assert merged_costs["task_tokens"] == 650
+    assert merged_costs["dependency_count"] == 2
+    assert merged_costs["conflict_count"] == 2
 
 
 def test_refinement_rejects_existing_semantic_duplicate_and_bounds_open_work():

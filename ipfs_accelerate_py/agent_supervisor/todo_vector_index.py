@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .conflict_graph import (
+    build_task_work_contract,
     build_conflict_surface,
     materialize_task_conflict_graph,
     project_conflict_free_wave,
@@ -69,6 +70,7 @@ class TodoIndexRecord:
     validation: list[str] = field(default_factory=list)
     acceptance: str = ""
     acceptance_criteria: list[str] = field(default_factory=list)
+    effects: list[str] = field(default_factory=list)
     validation_receipts: list[dict[str, Any]] = field(default_factory=list)
     provenance_cids: list[str] = field(default_factory=list)
     coverage_inputs: dict[str, Any] = field(default_factory=dict)
@@ -86,6 +88,8 @@ class TodoIndexRecord:
     provider_policy_digest: str = ""
     provider_generation_digest: str = ""
     estimated_context_tokens: int = 0
+    estimated_tokens: int = 0
+    estimated_validation_seconds: int = 0
     surplus_group: str = ""
     merge_key: str = ""
     merge_family: str = ""
@@ -109,11 +113,16 @@ class TodoIndexRecord:
     completion_goal_bindings: dict[str, list[str]] = field(default_factory=dict)
     completion_task_bindings: list[str] = field(default_factory=list)
     predicted_files: list[str] = field(default_factory=list)
+    predicted_symbols: list[str] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
     interfaces: list[str] = field(default_factory=list)
     submodules: list[str] = field(default_factory=list)
     generated_artifacts: list[str] = field(default_factory=list)
     allow_concurrent_with: list[str] = field(default_factory=list)
+    work_contract: dict[str, Any] = field(default_factory=dict)
+    work_contract_id: str = ""
+    task_work_contract: dict[str, Any] = field(default_factory=dict)
+    task_work_contract_id: str = ""
     conflict_surface: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -430,6 +439,11 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             record.provider_operation,
             " ".join(record.outputs),
             " ".join(record.predicted_files),
+            " ".join(record.predicted_symbols),
+            " ".join(record.effects),
+            str(record.estimated_context_tokens),
+            str(record.estimated_tokens),
+            str(record.estimated_validation_seconds),
             " ".join(record.changed_paths),
             " ".join(record.interfaces),
             " ".join(record.submodules),
@@ -506,7 +520,18 @@ def _record_coverage_inputs(
         "explicit_goal_metadata" if record.goal_id else "unmapped"
     )
     dimensions = {
+        "acceptance_subset": sorted_unique(record.acceptance_criteria),
+        "effect_subset": sorted_unique(record.effects),
         "predicted_files": sorted_unique(record.predicted_files),
+        "predicted_symbols": sorted_unique(record.predicted_symbols),
+        "estimated_costs": {
+            "estimated_context_tokens": record.estimated_context_tokens,
+            "estimated_tokens": record.estimated_tokens,
+            "estimated_validation_seconds": record.estimated_validation_seconds,
+        },
+        "task_work_contract": build_task_work_contract(
+            record.to_dict()
+        ).to_dict(),
         "changed_files": sorted_unique(record.changed_paths),
         "changed_paths": sorted_unique(record.changed_paths),
         "ast_symbols": sorted_unique(record.ast_symbols),
@@ -519,7 +544,9 @@ def _record_coverage_inputs(
         name
         for name, values in (
             ("acceptance", record.acceptance_criteria),
+            ("effects", record.effects),
             ("predicted_files", dimensions["predicted_files"]),
+            ("predicted_symbols", dimensions["predicted_symbols"]),
             ("changed_paths", dimensions["changed_paths"]),
             ("ast_symbols", dimensions["ast_symbols"]),
             ("interfaces", dimensions["interfaces"]),
@@ -751,6 +778,7 @@ def parse_todo_vector_records(
             validation=split_validation_commands(str(fields.get("validation") or "")),
             acceptance=acceptance,
             acceptance_criteria=acceptance_criteria,
+            effects=_all_csv(fields, "effects", "expected_effects", "effect_subset"),
             validation_receipts=validation_receipts,
             provenance_cids=provenance_cids,
             embedding_query=str(fields.get("embedding_query") or "").strip(),
@@ -795,6 +823,17 @@ def parse_todo_vector_records(
                 or fields.get("context_tokens"),
                 0,
             ),
+            estimated_tokens=parse_int(
+                fields.get("estimated_tokens")
+                or fields.get("token_cost"),
+                0,
+            ),
+            estimated_validation_seconds=parse_int(
+                fields.get("estimated_validation_seconds")
+                or fields.get("validation_seconds")
+                or fields.get("validation_cost"),
+                0,
+            ),
             surplus_group=surplus_group,
             merge_key=merge_key,
             merge_family=merge_family,
@@ -826,6 +865,11 @@ def parse_todo_vector_records(
             ),
             predicted_files=sorted_unique(
                 [*_first_csv(fields, "predicted_files", "files"), *outputs]
+            ),
+            predicted_symbols=_all_csv(
+                fields,
+                "predicted_symbols",
+                "ast_symbols",
             ),
             changed_paths=_first_csv(fields, "changed_paths", "actual_changed_paths", "branch_diff_paths"),
             interfaces=_all_csv(
@@ -866,6 +910,14 @@ def parse_todo_vector_records(
             ),
             allow_concurrent_with=list(
                 surface_payload.get("allow_concurrent_with") or base_record.allow_concurrent_with
+            ),
+            work_contract=dict(surface_payload.get("work_contract") or {}),
+            work_contract_id=str(surface_payload.get("work_contract_id") or ""),
+            task_work_contract=dict(
+                surface_payload.get("task_work_contract") or {}
+            ),
+            task_work_contract_id=str(
+                surface_payload.get("task_work_contract_id") or ""
             ),
             conflict_surface=surface_payload,
         )
@@ -1024,6 +1076,38 @@ def sorted_unique_receipts(values: Sequence[Mapping[str, Any]]) -> list[dict[str
     return [by_fingerprint[key] for key in sorted(by_fingerprint)]
 
 
+def _task_work_contract_projection(
+    records: Sequence[TodoIndexRecord],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Verify and aggregate task work contracts without losing task identity."""
+
+    contracts = [
+        build_task_work_contract(record.to_dict()).to_dict()
+        for record in sorted(
+            records,
+            key=lambda item: (
+                item.task_cid,
+                item.canonical_task_key,
+                item.task_id,
+            ),
+        )
+    ]
+    contract_ids = [
+        str(item.get("task_work_contract_id") or "") for item in contracts
+    ]
+    if any(not value for value in contract_ids):
+        raise ValueError("task work contracts must have canonical identities")
+    return contracts, {
+        "estimated_context_tokens": sum(
+            record.estimated_context_tokens for record in records
+        ),
+        "estimated_tokens": sum(record.estimated_tokens for record in records),
+        "estimated_validation_seconds": sum(
+            record.estimated_validation_seconds for record in records
+        ),
+    }
+
+
 def build_merge_candidate(
     *,
     group_type: str,
@@ -1045,6 +1129,7 @@ def build_merge_candidate(
     work_counts = [record.work_item_count for record in records if record.work_item_count > 0]
     packet_work_counts = [record.goal_packet_work_item_count for record in records if record.goal_packet_work_item_count > 0]
     graph_depths = [record.graph_depth for record in records if record.graph_depth >= 0]
+    task_work_contracts, estimated_costs = _task_work_contract_projection(records)
     candidate_seed = json.dumps({"group_type": group_type, "group_value": group_value, "task_ids": task_ids}, sort_keys=True)
     exact_merge_key_count = len({record.merge_key for record in records if record.merge_key})
     if group_type == "merge_key":
@@ -1096,6 +1181,22 @@ def build_merge_candidate(
         "acceptance_criteria": sorted_unique(
             [criterion for record in records for criterion in record.acceptance_criteria]
         ),
+        "effects": sorted_unique(
+            [effect for record in records for effect in record.effects]
+        ),
+        "predicted_symbols": sorted_unique(
+            [
+                symbol
+                for record in records
+                for symbol in record.predicted_symbols
+            ]
+        ),
+        "task_work_contracts": task_work_contracts,
+        "task_work_contract_ids": [
+            contract["task_work_contract_id"]
+            for contract in task_work_contracts
+        ],
+        "estimated_costs": estimated_costs,
         "validation": sorted_unique([command for record in records for command in record.validation]),
         "validation_receipts": sorted_unique_receipts(
             [receipt for record in records for receipt in record.validation_receipts]
@@ -1240,6 +1341,7 @@ def build_bundle_context(
         or bool(merge_families)
     )
     packet_work_counts = [record.goal_packet_work_item_count for record in records if record.goal_packet_work_item_count > 0]
+    task_work_contracts, estimated_costs = _task_work_contract_projection(records)
     representative_task_id = active_task_ids[0]
     context: dict[str, Any] = {
         "context_key": f"bundle_context/{sha1(context_seed.encode('utf-8')).hexdigest()[:12]}",
@@ -1280,6 +1382,22 @@ def build_bundle_context(
         "acceptance_criteria": sorted_unique(
             [criterion for record in records for criterion in record.acceptance_criteria]
         ),
+        "effects": sorted_unique(
+            [effect for record in records for effect in record.effects]
+        ),
+        "predicted_symbols": sorted_unique(
+            [
+                symbol
+                for record in records
+                for symbol in record.predicted_symbols
+            ]
+        ),
+        "task_work_contracts": task_work_contracts,
+        "task_work_contract_ids": [
+            contract["task_work_contract_id"]
+            for contract in task_work_contracts
+        ],
+        "estimated_costs": estimated_costs,
         "validation_receipts": sorted_unique_receipts(
             [receipt for record in records for receipt in record.validation_receipts]
         ),
@@ -1383,6 +1501,12 @@ def _compact_execution_packet_text(packet: Mapping[str, Any]) -> str:
         f"gp={','.join(packet.get('goal_packet_keys') or [])}",
         f"w={packet.get('work_item_count_total') or 0}",
         f"pw={packet.get('goal_packet_work_item_count_max') or 0}",
+        (
+            "cost="
+            f"{(packet.get('estimated_costs') or {}).get('estimated_context_tokens', 0)}/"
+            f"{(packet.get('estimated_costs') or {}).get('estimated_tokens', 0)}/"
+            f"{(packet.get('estimated_costs') or {}).get('estimated_validation_seconds', 0)}"
+        ),
         f"miss={','.join((packet.get('missing_evidence') or [])[:10])}",
         f"out={','.join((packet.get('shared_outputs') or packet.get('all_outputs') or [])[:5])}",
         f"ast={','.join((packet.get('ast_symbols') or [])[:12])}",
@@ -1622,6 +1746,12 @@ def build_execution_packet(
         for record in selected_records
         if record is primary or record.task_cid not in resolved_primary_bindings
     ]
+    task_work_contracts, _selected_estimated_costs = (
+        _task_work_contract_projection(selected_records)
+    )
+    _independent_contracts, estimated_costs = (
+        _task_work_contract_projection(independent_records)
+    )
     independent_work_item_count = sum(
         record.work_item_count
         for record in independent_records
@@ -1705,6 +1835,26 @@ def build_execution_packet(
         "acceptance_criteria": sorted_unique(
             [criterion for record in selected_records for criterion in record.acceptance_criteria]
         ),
+        "effects": sorted_unique(
+            [
+                effect
+                for record in selected_records
+                for effect in record.effects
+            ]
+        ),
+        "predicted_symbols": sorted_unique(
+            [
+                symbol
+                for record in selected_records
+                for symbol in record.predicted_symbols
+            ]
+        ),
+        "task_work_contracts": task_work_contracts,
+        "task_work_contract_ids": [
+            contract["task_work_contract_id"]
+            for contract in task_work_contracts
+        ],
+        "estimated_costs": estimated_costs,
         "validation_receipts": sorted_unique_receipts(
             [receipt for record in selected_records for receipt in record.validation_receipts]
         ),
@@ -2433,9 +2583,28 @@ def update_bundle_index_with_todo_vectors(
                 record.estimated_context_tokens,
                 parse_int(task.get("estimated_context_tokens"), 0),
             )
+            task["estimated_tokens"] = max(
+                record.estimated_tokens,
+                parse_int(task.get("estimated_tokens"), 0),
+            )
+            task["estimated_validation_seconds"] = max(
+                record.estimated_validation_seconds,
+                parse_int(task.get("estimated_validation_seconds"), 0),
+            )
             task["predicted_files"] = record.predicted_files
+            task["predicted_symbols"] = record.predicted_symbols
             task["changed_paths"] = record.changed_paths
             task["acceptance_criteria"] = record.acceptance_criteria
+            task["effects"] = record.effects
+            task.pop("task_work_contract", None)
+            task.pop("work_contract", None)
+            task.pop("work_contract_id", None)
+            task.pop("task_work_contract_id", None)
+            contract = build_task_work_contract(task)
+            task["work_contract"] = contract._material()
+            task["work_contract_id"] = contract.work_contract_id
+            task["task_work_contract"] = contract.to_dict()
+            task["task_work_contract_id"] = contract.task_work_contract_id
             task["validation_receipts"] = record.validation_receipts
             task["provenance_cids"] = record.provenance_cids
             task.pop("coverage_inputs", None)
