@@ -124,6 +124,6 @@ python test/scripts/duckdb_api/core/benchmark_db_maintenance.py --optimize-db --
 ## Further Information
 
 For more details, see:
-- [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md)
+- [BENCHMARK_DATABASE_GUIDE.md](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
 - [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md)
 - [PHASE16_DATABASE_IMPLEMENTATION.md](PHASE16_DATABASE_IMPLEMENTATION.md)
