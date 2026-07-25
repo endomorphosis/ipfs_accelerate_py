@@ -36,14 +36,39 @@ PAIRED_ROLLOUT_POLICY_SCHEMA: Final = (
 PAIRED_ROLLOUT_REPORT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/paired-rollout-report@1"
 )
-PAIRED_ROLLOUT_REPORT_VERSION: Final = 1
+PAIRED_ROLLOUT_REPORT_VERSION: Final = 2
+PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/paired-rollout-requirement-evidence@1"
+)
+PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION: Final = 1
 
 MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS: Final = 3_500
 MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS: Final = 7_000
 MIN_INDEPENDENT_LANE_THROUGHPUT_BPS: Final = 20_000
+MIN_PLANNING_COVERAGE_IMPROVEMENT_BPS: Final = 1_000
+MIN_INVALID_PLAN_BRANCH_REDUCTION_BPS: Final = 2_000
 MAX_CANDIDATE_ARTIFACT_COUNT: Final = 256
 MAX_CANDIDATE_ARTIFACT_BYTES: Final = 4 * 1024 * 1024
 MAX_PAIRED_ROLLOUT_REPORT_BYTES: Final = 2 * 1024 * 1024
+MAX_PAIRED_ROLLOUT_REASON_CODES: Final = 128
+
+# These IDs are objective requirements, not documentation labels.  A caller
+# may claim either one only through PairedRolloutRequirementEvidence rebuilt
+# from a complete typed report and an explicit current repository binding.
+SHADOW_FALSE_COMPLETION_REQUIREMENT_ID: Final = (
+    "109590900757783560279417463762322084165"
+)
+PAIRED_EFFICIENCY_REQUIREMENT_ID: Final = (
+    "146189916032404266364029134505159070240"
+)
+SHADOW_FALSE_COMPLETION_GOAL_ID: Final = "ASI-G112"
+PAIRED_EFFICIENCY_GOAL_ID: Final = "ASI-G113"
+_REQUIREMENT_GOAL_IDS: Final = {
+    SHADOW_FALSE_COMPLETION_REQUIREMENT_ID: (
+        SHADOW_FALSE_COMPLETION_GOAL_ID
+    ),
+    PAIRED_EFFICIENCY_REQUIREMENT_ID: PAIRED_EFFICIENCY_GOAL_ID,
+}
 
 _CONTENT_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 _NON_AUTHORITY_OUTCOMES = frozenset({"degraded", "fallback", "rejected"})
@@ -212,6 +237,7 @@ class RolloutBehaviorMeasurement:
     terminal_outcome: str
     state_digest_before: str = ""
     state_digest_after: str = ""
+    invalid_plan_branches: int = 0
 
     def __post_init__(self) -> None:
         for name in (
@@ -232,6 +258,7 @@ class RolloutBehaviorMeasurement:
             "merge_conflicts",
             "duplicate_executions",
             "unauthorized_mutations",
+            "invalid_plan_branches",
         ):
             object.__setattr__(
                 self, name, _integer(getattr(self, name), name)
@@ -296,8 +323,25 @@ class RolloutBehaviorMeasurement:
                 "rollout behavior measurement must be an object"
             )
         allowed = set(cls.__dataclass_fields__)
-        _strict_keys(payload, allowed, name="rollout behavior measurement")
-        return cls(**{name: payload[name] for name in allowed})
+        extra = sorted(set(payload) - allowed)
+        missing = sorted(
+            allowed - {"invalid_plan_branches"} - set(payload)
+        )
+        if extra or missing:
+            details = []
+            if missing:
+                details.append("missing " + ", ".join(missing))
+            if extra:
+                details.append("unexpected " + ", ".join(extra))
+            raise PairedRolloutValidationError(
+                "rollout behavior measurement has invalid fields: "
+                + "; ".join(details)
+            )
+        values = {name: payload[name] for name in allowed if name in payload}
+        # Version-1 persisted reports predate the explicit planning counter.
+        # Zero keeps them readable but cannot satisfy the new planning gate.
+        values.setdefault("invalid_plan_branches", 0)
+        return cls(**values)
 
 
 @dataclass(frozen=True)
@@ -555,6 +599,192 @@ def _ratio_bps(numerator: int | Fraction, denominator: int | Fraction) -> int:
 
 
 @dataclass(frozen=True)
+class PairedRolloutRequirementEvidence:
+    """Tree-bound, content-addressed projection of one rollout requirement.
+
+    Construction alone validates shape and identity.  Authoritative
+    restoration additionally requires :meth:`from_dict` with the source
+    report so the complete fixture population and all derived gates are
+    recomputed instead of trusting serialized claims.
+    """
+
+    requirement_id: str
+    goal_id: str
+    repository_id: str
+    repository_tree: str
+    report_id: str
+    policy_id: str
+    fixture_population_id: str
+    evaluated_at: str
+    required_fixture_count: int
+    requirement_satisfied: bool
+    reason_codes: tuple[str, ...]
+    metrics: Mapping[str, Any]
+    evidence_id: str = ""
+
+    def __post_init__(self) -> None:
+        requirement_id = _text(
+            self.requirement_id, "requirement_id", max_bytes=128
+        )
+        expected_goal = _REQUIREMENT_GOAL_IDS.get(requirement_id)
+        if expected_goal is None:
+            raise PairedRolloutValidationError(
+                "unsupported paired rollout requirement"
+            )
+        goal_id = _text(self.goal_id, "goal_id", max_bytes=128)
+        if goal_id != expected_goal:
+            raise PairedRolloutValidationError(
+                "paired rollout requirement has a non-canonical goal"
+            )
+        repository_id = _text(
+            self.repository_id, "repository_id", max_bytes=512
+        )
+        repository_tree = _text(
+            self.repository_tree, "repository_tree", max_bytes=512
+        )
+        for name in ("report_id", "policy_id", "fixture_population_id"):
+            value = _text(getattr(self, name), name, max_bytes=128)
+            if not _CONTENT_ID.fullmatch(value):
+                raise PairedRolloutValidationError(
+                    f"{name} must be a sha256 content ID"
+                )
+            object.__setattr__(self, name, value)
+        evaluated_at = _timestamp(self.evaluated_at)
+        required_fixture_count = _integer(
+            self.required_fixture_count,
+            "required_fixture_count",
+            positive=True,
+        )
+        if required_fixture_count != len(REQUIRED_PAIRED_FIXTURE_KINDS):
+            raise PairedRolloutValidationError(
+                "requirement evidence must bind the closed fixture population"
+            )
+        if not isinstance(self.requirement_satisfied, bool):
+            raise PairedRolloutValidationError(
+                "requirement_satisfied must be a boolean"
+            )
+        if not isinstance(self.reason_codes, (list, tuple)):
+            raise PairedRolloutValidationError(
+                "reason_codes must be a bounded sequence"
+            )
+        reason_codes = tuple(
+            _text(value, "reason_code", max_bytes=256)
+            for value in self.reason_codes
+        )
+        if (
+            len(reason_codes) > MAX_PAIRED_ROLLOUT_REASON_CODES
+            or len(reason_codes) != len(set(reason_codes))
+            or reason_codes != tuple(sorted(reason_codes))
+        ):
+            raise PairedRolloutValidationError(
+                "reason_codes must be unique, sorted, and bounded"
+            )
+        if not isinstance(self.metrics, Mapping):
+            raise PairedRolloutValidationError(
+                "requirement evidence metrics must be an object"
+            )
+        metrics = json.loads(_canonical_json(dict(self.metrics)))
+        object.__setattr__(self, "requirement_id", requirement_id)
+        object.__setattr__(self, "goal_id", goal_id)
+        object.__setattr__(self, "repository_id", repository_id)
+        object.__setattr__(self, "repository_tree", repository_tree)
+        object.__setattr__(self, "evaluated_at", evaluated_at)
+        object.__setattr__(
+            self, "required_fixture_count", required_fixture_count
+        )
+        object.__setattr__(self, "reason_codes", reason_codes)
+        object.__setattr__(self, "metrics", metrics)
+        expected_id = _digest(self._identity_payload())
+        if self.evidence_id and self.evidence_id != expected_id:
+            raise PairedRolloutValidationError(
+                "paired rollout requirement evidence identity does not match"
+            )
+        object.__setattr__(self, "evidence_id", expected_id)
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA,
+            "schema_version": PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION,
+            "requirement_id": self.requirement_id,
+            "goal_id": self.goal_id,
+            "repository_id": self.repository_id,
+            "repository_tree": self.repository_tree,
+            "report_id": self.report_id,
+            "policy_id": self.policy_id,
+            "fixture_population_id": self.fixture_population_id,
+            "evaluated_at": self.evaluated_at,
+            "required_fixture_count": self.required_fixture_count,
+            "requirement_satisfied": self.requirement_satisfied,
+            "reason_codes": list(self.reason_codes),
+            "metrics": dict(self.metrics),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._identity_payload(), "evidence_id": self.evidence_id}
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        report: "PairedRolloutReport",
+    ) -> "PairedRolloutRequirementEvidence":
+        if not isinstance(payload, Mapping):
+            raise PairedRolloutValidationError(
+                "paired rollout requirement evidence must be an object"
+            )
+        allowed = {
+            "schema",
+            "schema_version",
+            "requirement_id",
+            "goal_id",
+            "repository_id",
+            "repository_tree",
+            "report_id",
+            "policy_id",
+            "fixture_population_id",
+            "evaluated_at",
+            "required_fixture_count",
+            "requirement_satisfied",
+            "reason_codes",
+            "metrics",
+            "evidence_id",
+        }
+        _strict_keys(
+            payload, allowed, name="paired rollout requirement evidence"
+        )
+        if (
+            payload.get("schema")
+            != PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA
+            or payload.get("schema_version")
+            != PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION
+        ):
+            raise PairedRolloutValidationError(
+                "unsupported paired rollout requirement evidence schema"
+            )
+        candidate = cls(
+            **{
+                name: payload[name]
+                for name in allowed - {"schema", "schema_version"}
+            }
+        )
+        if not isinstance(report, PairedRolloutReport):
+            raise PairedRolloutValidationError(
+                "requirement evidence restoration needs its typed report"
+            )
+        expected = report.evidence_for(
+            candidate.requirement_id,
+            repository_id=candidate.repository_id,
+            repository_tree=candidate.repository_tree,
+        )
+        if expected.to_dict() != candidate.to_dict():
+            raise PairedRolloutValidationError(
+                "requirement evidence is detached from its rollout report"
+            )
+        return expected
+
+
+@dataclass(frozen=True)
 class PairedRolloutReport(Mapping[str, Any]):
     """Immutable, content-addressed rollout decision."""
 
@@ -566,7 +796,10 @@ class PairedRolloutReport(Mapping[str, Any]):
             raise PairedRolloutValidationError(
                 "unsupported paired rollout report schema"
             )
-        if copied.get("schema_version") != PAIRED_ROLLOUT_REPORT_VERSION:
+        if copied.get("schema_version") not in {
+            1,
+            PAIRED_ROLLOUT_REPORT_VERSION,
+        }:
             raise PairedRolloutValidationError(
                 "unsupported paired rollout report version"
             )
@@ -577,6 +810,16 @@ class PairedRolloutReport(Mapping[str, Any]):
         if copied.get("fixture_count") != len(copied["fixtures"]):
             raise PairedRolloutValidationError(
                 "paired rollout fixture count is inconsistent"
+            )
+        reason_codes = copied.get("reason_codes")
+        if (
+            not isinstance(reason_codes, list)
+            or len(reason_codes) > MAX_PAIRED_ROLLOUT_REASON_CODES
+            or len(reason_codes) != len(set(reason_codes))
+            or reason_codes != sorted(reason_codes)
+        ):
+            raise PairedRolloutValidationError(
+                "paired rollout reason codes must be unique, sorted, and bounded"
             )
         expected = _digest(
             {
@@ -618,6 +861,87 @@ class PairedRolloutReport(Mapping[str, Any]):
     def reason_codes(self) -> tuple[str, ...]:
         return tuple(self.payload["reason_codes"])
 
+    def evidence_for(
+        self,
+        requirement_id: str,
+        *,
+        repository_id: str,
+        repository_tree: str,
+    ) -> PairedRolloutRequirementEvidence:
+        """Re-derive one bounded objective witness from this report.
+
+        The canonical child goal is selected by the requirement ID; callers
+        cannot redirect evidence to another objective.  A negative witness is
+        still useful diagnostics but is not qualifying completion evidence.
+        """
+
+        normalized_requirement = _text(
+            requirement_id, "requirement_id", max_bytes=128
+        )
+        goal_id = _REQUIREMENT_GOAL_IDS.get(normalized_requirement)
+        if goal_id is None:
+            raise PairedRolloutValidationError(
+                "unsupported paired rollout requirement"
+            )
+        # PairedRolloutReport is intentionally constructible for decoding, so
+        # a typed instance alone is not provenance.  Rebuild every claim from
+        # its fixtures before projecting requirement evidence.
+        PairedRolloutReport.from_dict(self.to_dict())
+        reasons = tuple(self.reason_codes)
+        complete_population = bool(
+            self.payload["fixture_count"]
+            == self.payload["required_fixture_count"]
+            == len(REQUIRED_PAIRED_FIXTURE_KINDS)
+            and not any(
+                reason.startswith("required_fixture_missing:")
+                for reason in reasons
+            )
+        )
+        metrics = dict(self.payload["metrics"])
+        if (
+            normalized_requirement
+            == SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+        ):
+            false_completions = int(
+                metrics["candidate_false_completions"]
+            )
+            blocked_seed = bool(
+                false_completions > 0
+                and "candidate_false_completion" in reasons
+                and not self.payload["nonnegotiable_gate_passed"]
+                and not self.payload["promotion_allowed"]
+                and self.payload["effective_mode"]
+                == SelfImprovementRolloutMode.SHADOW.value
+            )
+            requirement_satisfied = complete_population and (
+                false_completions == 0 or blocked_seed
+            )
+        else:
+            requirement_satisfied = bool(
+                complete_population
+                and self.payload["gate_passed"]
+                and self.payload["nonnegotiable_gate_passed"]
+                and self.payload["paired_gate_passed"]
+                and self.payload.get("token_gate_passed", False)
+                and self.payload.get("cache_gate_passed", False)
+                and self.payload.get("planning_gate_passed", False)
+                and self.payload.get("throughput_gate_passed", False)
+            )
+        return PairedRolloutRequirementEvidence(
+            requirement_id=normalized_requirement,
+            goal_id=goal_id,
+            repository_id=repository_id,
+            repository_tree=repository_tree,
+            report_id=self.report_id,
+            policy_id=str(self.payload["policy"]["policy_id"]),
+            fixture_population_id=_digest(self.payload["fixtures"]),
+            evaluated_at=str(self.payload["evaluated_at"]),
+            required_fixture_count=len(REQUIRED_PAIRED_FIXTURE_KINDS),
+            requirement_satisfied=requirement_satisfied,
+            reason_codes=reasons,
+            metrics=metrics,
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return json.loads(_canonical_json(self.payload))
 
@@ -648,11 +972,78 @@ class PairedRolloutReport(Mapping[str, Any]):
             policy=policy,
             evaluated_at=candidate.payload["evaluated_at"],
         )
-        if rebuilt.to_dict() != candidate.to_dict():
+        expected = rebuilt.to_dict()
+        if candidate.payload["schema_version"] == 1:
+            # Version 1 did not carry an explicit plan-quality counter or the
+            # four component gate projections.  Reconstruct its exact legacy
+            # shape from the new evaluator rather than trusting old metrics.
+            expected["schema_version"] = 1
+            for fixture in expected["fixtures"]:
+                fixture["baseline"].pop("invalid_plan_branches", None)
+                fixture["candidate"].pop("invalid_plan_branches", None)
+            for field_name in (
+                "token_gate_passed",
+                "cache_gate_passed",
+                "planning_gate_passed",
+                "throughput_gate_passed",
+            ):
+                expected.pop(field_name, None)
+            for metric_name in (
+                "baseline_median_evidence_coverage_bps",
+                "candidate_median_evidence_coverage_bps",
+                "planning_coverage_improvement_bps",
+                "baseline_invalid_plan_branches",
+                "candidate_invalid_plan_branches",
+                "invalid_plan_branch_reduction_bps",
+            ):
+                expected["metrics"].pop(metric_name, None)
+            expected["reason_codes"] = [
+                reason
+                for reason in expected["reason_codes"]
+                if reason != "planning_improvement_below_threshold"
+            ]
+            paired_failure_prefixes = (
+                "paired_outcome_regression:",
+                "evidence_coverage_regression:",
+                "quality_regression:",
+                "defect_detection_regression:",
+                "false_rejection_regression:",
+                "merge_conflict_regression:",
+                "accepted_work_regression:",
+                "median_input_token_reduction_below_threshold",
+                "repeated_fixture_cache_reuse_below_threshold",
+                "independent_lane_throughput_below_threshold",
+            )
+            expected["paired_gate_passed"] = not any(
+                reason.startswith(paired_failure_prefixes)
+                for reason in expected["reason_codes"]
+            )
+            expected["gate_passed"] = bool(
+                expected["nonnegotiable_gate_passed"]
+                and expected["paired_gate_passed"]
+            )
+            expected["promotion_allowed"] = bool(
+                expected["gate_passed"]
+                and expected["desired_mode"]
+                != SelfImprovementRolloutMode.SHADOW.value
+            )
+            expected["effective_mode"] = (
+                expected["desired_mode"]
+                if expected["promotion_allowed"]
+                else SelfImprovementRolloutMode.SHADOW.value
+            )
+            expected["report_id"] = _digest(
+                {
+                    key: value
+                    for key, value in expected.items()
+                    if key not in {"report_id", "evaluated_at"}
+                }
+            )
+        if expected != candidate.to_dict():
             raise PairedRolloutValidationError(
                 "paired rollout report does not match its fixture evidence"
             )
-        return rebuilt
+        return candidate if candidate.payload["schema_version"] == 1 else rebuilt
 
 
 def evaluate_paired_self_improvement_rollout(
@@ -818,10 +1209,11 @@ def evaluate_paired_self_improvement_rollout(
     token_reduction_bps = _ratio_bps(
         baseline_median - candidate_median, baseline_median
     )
-    if (
+    token_gate_passed = bool(
         token_reduction_bps
-        < normalized_policy.min_median_input_token_reduction_bps
-    ):
+        >= normalized_policy.min_median_input_token_reduction_bps
+    )
+    if not token_gate_passed:
         reasons.add("median_input_token_reduction_below_threshold")
 
     repeated = [
@@ -832,13 +1224,45 @@ def evaluate_paired_self_improvement_rollout(
     repeated_lookups = sum(item.candidate.cache_lookups for item in repeated)
     repeated_hits = sum(item.candidate.cache_hits for item in repeated)
     repeated_cache_reuse_bps = _ratio_bps(repeated_hits, repeated_lookups)
-    if (
-        len(repeated) != len(REPEATED_FIXTURE_KINDS)
-        or repeated_lookups <= 0
-        or repeated_cache_reuse_bps
-        < normalized_policy.min_repeated_fixture_cache_reuse_bps
-    ):
+    cache_gate_passed = bool(
+        len(repeated) == len(REPEATED_FIXTURE_KINDS)
+        and repeated_lookups > 0
+        and repeated_cache_reuse_bps
+        >= normalized_policy.min_repeated_fixture_cache_reuse_bps
+    )
+    if not cache_gate_passed:
         reasons.add("repeated_fixture_cache_reuse_below_threshold")
+
+    baseline_coverage_median = _median(
+        [item.baseline.evidence_coverage_bps for item in normalized]
+    )
+    candidate_coverage_median = _median(
+        [item.candidate.evidence_coverage_bps for item in normalized]
+    )
+    planning_coverage_improvement_bps = math.floor(
+        candidate_coverage_median - baseline_coverage_median
+    )
+    baseline_invalid_plan_branches = sum(
+        item.baseline.invalid_plan_branches for item in normalized
+    )
+    candidate_invalid_plan_branches = sum(
+        item.candidate.invalid_plan_branches for item in normalized
+    )
+    invalid_plan_branch_reduction_bps = _ratio_bps(
+        baseline_invalid_plan_branches - candidate_invalid_plan_branches,
+        baseline_invalid_plan_branches,
+    )
+    planning_gate_passed = bool(
+        planning_coverage_improvement_bps
+        >= MIN_PLANNING_COVERAGE_IMPROVEMENT_BPS
+        or (
+            baseline_invalid_plan_branches > 0
+            and invalid_plan_branch_reduction_bps
+            >= MIN_INVALID_PLAN_BRANCH_REDUCTION_BPS
+        )
+    )
+    if not planning_gate_passed:
+        reasons.add("planning_improvement_below_threshold")
 
     independent = by_kind.get(PairedFixtureKind.INDEPENDENT_PARALLEL)
     independent_throughput_bps = 0
@@ -854,13 +1278,14 @@ def evaluate_paired_self_improvement_rollout(
         independent_throughput_bps = _ratio_bps(
             candidate_rate, baseline_rate
         )
-    if (
+    throughput_gate_passed = not (
         independent is None
         or independent.baseline.accepted_work <= 0
         or independent.candidate.accepted_work <= 0
         or independent_throughput_bps
         < normalized_policy.min_independent_lane_throughput_bps
-    ):
+    )
+    if not throughput_gate_passed:
         reasons.add("independent_lane_throughput_below_threshold")
 
     nonnegotiable_reason_prefixes = (
@@ -894,6 +1319,7 @@ def evaluate_paired_self_improvement_rollout(
                 "accepted_work_regression:",
                 "median_input_token_reduction_below_threshold",
                 "repeated_fixture_cache_reuse_below_threshold",
+                "planning_improvement_below_threshold",
                 "independent_lane_throughput_below_threshold",
             )
         )
@@ -920,6 +1346,10 @@ def evaluate_paired_self_improvement_rollout(
         "promotion_allowed": promotion_allowed,
         "nonnegotiable_gate_passed": nonnegotiable_passed,
         "paired_gate_passed": paired_passed,
+        "token_gate_passed": token_gate_passed,
+        "cache_gate_passed": cache_gate_passed,
+        "planning_gate_passed": planning_gate_passed,
+        "throughput_gate_passed": throughput_gate_passed,
         "gate_passed": gate_passed,
         "fixture_count": len(normalized),
         "required_fixture_count": len(
@@ -932,6 +1362,24 @@ def evaluate_paired_self_improvement_rollout(
             "repeated_fixture_cache_lookups": repeated_lookups,
             "repeated_fixture_cache_hits": repeated_hits,
             "repeated_fixture_cache_reuse_bps": repeated_cache_reuse_bps,
+            "baseline_median_evidence_coverage_bps": float(
+                baseline_coverage_median
+            ),
+            "candidate_median_evidence_coverage_bps": float(
+                candidate_coverage_median
+            ),
+            "planning_coverage_improvement_bps": (
+                planning_coverage_improvement_bps
+            ),
+            "baseline_invalid_plan_branches": (
+                baseline_invalid_plan_branches
+            ),
+            "candidate_invalid_plan_branches": (
+                candidate_invalid_plan_branches
+            ),
+            "invalid_plan_branch_reduction_bps": (
+                invalid_plan_branch_reduction_bps
+            ),
             "independent_lane_throughput_bps": independent_throughput_bps,
             "candidate_false_completions": candidate_false_completions,
             "candidate_authority_violations": (
@@ -960,6 +1408,10 @@ def evaluate_paired_self_improvement_rollout(
         "contains_model_outputs": False,
         "contains_artifact_bodies": False,
     }
+    if len(material["reason_codes"]) > MAX_PAIRED_ROLLOUT_REASON_CODES:
+        raise PairedRolloutValidationError(
+            "paired rollout diagnostics exceed their hard bound"
+        )
     material["report_id"] = _digest(
         {
             key: value
@@ -981,6 +1433,7 @@ class PairedRolloutReportStore:
             raise PairedRolloutValidationError(
                 "only typed paired rollout reports can be persisted"
             )
+        report = PairedRolloutReport.from_dict(report.to_dict())
         encoded = (_canonical_json(report.to_dict()) + "\n").encode("utf-8")
         policy = PairedRolloutPolicy.from_dict(report["policy"])
         if len(encoded) > policy.max_report_bytes:
@@ -1063,21 +1516,30 @@ __all__ = [
     "MAX_CANDIDATE_ARTIFACT_BYTES",
     "MAX_CANDIDATE_ARTIFACT_COUNT",
     "MAX_PAIRED_ROLLOUT_REPORT_BYTES",
+    "MAX_PAIRED_ROLLOUT_REASON_CODES",
     "MIN_INDEPENDENT_LANE_THROUGHPUT_BPS",
+    "MIN_INVALID_PLAN_BRANCH_REDUCTION_BPS",
     "MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS",
+    "MIN_PLANNING_COVERAGE_IMPROVEMENT_BPS",
     "MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS",
+    "PAIRED_EFFICIENCY_GOAL_ID",
+    "PAIRED_EFFICIENCY_REQUIREMENT_ID",
     "PAIRED_ROLLOUT_FIXTURE_SCHEMA",
     "PAIRED_ROLLOUT_POLICY_SCHEMA",
     "PAIRED_ROLLOUT_REPORT_SCHEMA",
+    "PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA",
     "PairedFixtureKind",
     "PairedRolloutFixture",
     "PairedRolloutPolicy",
     "PairedRolloutReport",
     "PairedRolloutReportStore",
+    "PairedRolloutRequirementEvidence",
     "PairedRolloutValidationError",
     "REPEATED_FIXTURE_KINDS",
     "REQUIRED_PAIRED_FIXTURE_KINDS",
     "RolloutBehaviorMeasurement",
+    "SHADOW_FALSE_COMPLETION_GOAL_ID",
+    "SHADOW_FALSE_COMPLETION_REQUIREMENT_ID",
     "SelfImprovementRolloutMode",
     "evaluate_paired_self_improvement_rollout",
 ]

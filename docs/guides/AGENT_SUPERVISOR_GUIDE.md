@@ -594,9 +594,54 @@ violations, stale authoritative hits, escaped defects, duplicate executions,
 and unauthorized mutations; bounded artifacts; stable restart; no quality,
 coverage, accepted-work, defect-detection, false-rejection, or merge-conflict
 regression; at least 35% lower median input tokens; at least 70% cache reuse on
-the repeated fixtures; and at least 2x independent-lane throughput. A missing
-fixture or any failed gate forces the effective mode to `shadow`, even when
-`assist` or `automatic` was requested.
+the repeated fixtures; at least 2x independent-lane throughput; and a planning
+improvement of either at least 1,000 basis points in median evidence coverage
+or at least 2,000 basis points in aggregate invalid-plan-branch reduction. A
+missing fixture or any failed gate forces the effective mode to `shadow`, even
+when `assist` or `automatic` was requested.
+
+Two stable objective terms make these decisions directly auditable:
+
+- `109590900757783560279417463762322084165` is satisfied only when the complete
+  seeded population has zero candidate false completions; seeding any false
+  completion fails the non-negotiable gate and forces `shadow`.
+- `146189916032404266364029134505159070240` is satisfied only when the paired
+  token, repeated-cache, planning, and independent-throughput gates all pass.
+
+Use
+`report.evidence_for(requirement_id, repository_id=..., repository_tree=...)`
+to obtain the bounded, typed projection for one of these terms. The canonical
+ASI-G112/ASI-G113 goal is derived from the requirement and cannot be supplied
+by the caller. An unmet term returns a negative diagnostic witness; an
+unsupported term raises `PairedRolloutValidationError`. Restore serialized
+evidence with `PairedRolloutRequirementEvidence.from_dict(payload,
+report=report)`, which re-derives the claim and rejects altered, detached, or
+unknown data. The projection contains identities, gate measurements, and
+stable reason codes, not prompts, model output, patches, proofs, cache values,
+or artifact bodies; it is rollout evidence, never mutation authorization or
+goal completion evidence. Keep the diagnostics with the report so a
+forced-shadow decision can be explained without retaining unbounded payloads.
+
+Paired report version 2 adds the explicit invalid-plan-branch measurement and
+four component-gate projections. The reader still recomputes and accepts
+persisted version-1 reports for audit and recovery, but a version-1 report
+cannot claim the paired-efficiency term because it never measured the planning
+gate. Run the current shadow population to mint a version-2 witness before
+considering assist or automatic use.
+
+The requirement identifiers, paired contracts, and evaluator are stable lazy
+package exports. Importing `ipfs_accelerate_py.agent_supervisor` does not load
+optional analysis, model, dataset, or prover providers or start a process.
+Accessing a paired export loads only its provider-free rollout contract module;
+provider availability still requires explicit discovery.
+
+In the deterministic smoke profile, call `evidence_for` after each seeded
+fault. A seeded false completion affirmatively proves the safety term only
+when the complete population forces shadow; failed efficiency gates produce
+negative efficiency witnesses. In production, persist both projections with
+the current report, profile revision, capability snapshot, tree, objective,
+and policy identities; a changed binding or a missing projection requires a
+new shadow evaluation before assist or automatic use.
 
 Promotion is capability-specific. A report permits policy to consider
 promotion; it is not itself an authorization decision or completion proof.

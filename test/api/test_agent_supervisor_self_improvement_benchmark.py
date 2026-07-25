@@ -11,9 +11,12 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
     MIN_INDEPENDENT_LANE_THROUGHPUT_BPS,
     MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS,
     MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS,
+    PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
     PairedFixtureKind,
     PairedRolloutFixture,
     PairedRolloutPolicy,
+    PairedRolloutRequirementEvidence,
     PairedRolloutReport,
     PairedRolloutReportStore,
     PairedRolloutValidationError,
@@ -26,6 +29,8 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
 
 NOW = datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc)
 STATE_DIGEST = "sha256:" + "a" * 64
+REPOSITORY_ID = "ipfs-accelerate-py"
+REPOSITORY_TREE = "sha256:" + "c" * 64
 
 
 def _measurement(
@@ -87,6 +92,7 @@ def _measurement(
         accepted_work=accepted_work,
         evidence_coverage_bps=9_200 if candidate else 9_000,
         quality_score_bps=9_200 if candidate else 9_000,
+        invalid_plan_branches=4 if candidate else 5,
         seeded_defects=seeded_defects,
         detected_defects=seeded_defects,
         escaped_defects=0,
@@ -133,6 +139,17 @@ def _replace_candidate(
     )
 
 
+def _requirement_evidence(
+    report: PairedRolloutReport,
+    requirement_id: str,
+) -> PairedRolloutRequirementEvidence:
+    return report.evidence_for(
+        requirement_id,
+        repository_id=REPOSITORY_ID,
+        repository_tree=REPOSITORY_TREE,
+    )
+
+
 def test_closed_paired_population_passes_every_asi_023_gate() -> None:
     report = evaluate_paired_self_improvement_rollout(
         _fixtures(),
@@ -169,6 +186,13 @@ def test_closed_paired_population_passes_every_asi_023_gate() -> None:
     assert metrics["candidate_stale_authoritative_hits"] == 0
     assert metrics["candidate_artifact_count"] <= MAX_CANDIDATE_ARTIFACT_COUNT
     assert metrics["candidate_artifact_bytes"] <= MAX_CANDIDATE_ARTIFACT_BYTES
+    assert metrics["invalid_plan_branch_reduction_bps"] >= 2_000
+    assert _requirement_evidence(
+        report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+    ).requirement_satisfied
+    assert _requirement_evidence(
+        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
+    ).requirement_satisfied
 
 
 @pytest.mark.parametrize(
@@ -207,6 +231,9 @@ def test_nonnegotiable_violation_always_forces_shadow(
     assert report.effective_mode is SelfImprovementRolloutMode.SHADOW
     assert not report["nonnegotiable_gate_passed"]
     assert reason in report.reason_codes
+    assert not _requirement_evidence(
+        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
+    ).requirement_satisfied
 
 
 @pytest.mark.parametrize(
@@ -253,6 +280,14 @@ def test_nonnegotiable_violation_always_forces_shadow(
         (
             _replace_candidate(
                 _fixtures(),
+                PairedFixtureKind.BROAD_GOAL,
+                invalid_plan_branches=5,
+            ),
+            "planning_improvement_below_threshold",
+        ),
+        (
+            _replace_candidate(
+                _fixtures(),
                 PairedFixtureKind.CONFLICTING_PARALLEL,
                 merge_conflicts=2,
             ),
@@ -274,6 +309,9 @@ def test_each_paired_regression_independently_forces_shadow(
     assert report.effective_mode is SelfImprovementRolloutMode.SHADOW
     assert not report["paired_gate_passed"]
     assert reason in report.reason_codes
+    assert not _requirement_evidence(
+        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
+    ).requirement_satisfied
 
 
 def test_fault_fixtures_must_fail_closed_and_restart_must_be_stable() -> None:
@@ -369,6 +407,12 @@ def test_missing_fixture_is_a_gate_failure_not_a_smaller_benchmark() -> None:
     assert not report.promotion_allowed
     assert report.effective_mode is SelfImprovementRolloutMode.SHADOW
     assert "required_fixture_missing:drained_refill" in report.reason_codes
+    assert not _requirement_evidence(
+        report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+    ).requirement_satisfied
+    assert not _requirement_evidence(
+        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
+    ).requirement_satisfied
 
 
 def test_policy_cannot_weaken_thresholds_bounds_or_population() -> None:
@@ -409,8 +453,94 @@ def test_report_round_trip_recomputes_metrics_and_rejects_tampering() -> None:
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
+    forged_typed = PairedRolloutReport(tampered)
+    with pytest.raises(PairedRolloutValidationError, match="fixture evidence"):
+        _requirement_evidence(
+            forged_typed, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
+        )
     with pytest.raises(PairedRolloutValidationError, match="fixture evidence"):
         PairedRolloutReport.from_dict(tampered)
+
+    legacy = report.to_dict()
+    legacy["schema_version"] = 1
+    for fixture in legacy["fixtures"]:
+        fixture["baseline"].pop("invalid_plan_branches")
+        fixture["candidate"].pop("invalid_plan_branches")
+    for name in (
+        "token_gate_passed",
+        "cache_gate_passed",
+        "planning_gate_passed",
+        "throughput_gate_passed",
+    ):
+        legacy.pop(name)
+    for name in (
+        "baseline_median_evidence_coverage_bps",
+        "candidate_median_evidence_coverage_bps",
+        "planning_coverage_improvement_bps",
+        "baseline_invalid_plan_branches",
+        "candidate_invalid_plan_branches",
+        "invalid_plan_branch_reduction_bps",
+    ):
+        legacy["metrics"].pop(name)
+    legacy_material = {
+        key: value
+        for key, value in legacy.items()
+        if key not in {"report_id", "evaluated_at"}
+    }
+    legacy["report_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            legacy_material,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    restored_legacy = PairedRolloutReport.from_dict(legacy)
+    assert restored_legacy.to_dict() == legacy
+    assert not _requirement_evidence(
+        restored_legacy, PAIRED_EFFICIENCY_REQUIREMENT_ID
+    ).requirement_satisfied
+
+
+def test_requirement_evidence_rejects_unknown_ids_and_is_round_trip_stable() -> None:
+    report = evaluate_paired_self_improvement_rollout(
+        _fixtures(), evaluated_at=NOW
+    )
+    restored = PairedRolloutReport.from_dict(report.to_dict())
+
+    for requirement_id in (
+        SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
+        PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    ):
+        first = _requirement_evidence(report, requirement_id)
+        second = _requirement_evidence(restored, requirement_id)
+        assert first.to_dict() == second.to_dict()
+        assert first.evidence_id == second.evidence_id
+        assert first.report_id == report.report_id
+        assert (
+            PairedRolloutRequirementEvidence.from_dict(
+                first.to_dict(),
+                report=restored,
+            )
+            == first
+        )
+
+    with pytest.raises(
+        PairedRolloutValidationError,
+        match="unsupported paired rollout requirement",
+    ):
+        _requirement_evidence(report, "not-a-reviewed-requirement")
+
+    tampered = _requirement_evidence(
+        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
+    ).to_dict()
+    tampered["repository_tree"] = "sha256:" + "d" * 64
+    with pytest.raises(
+        PairedRolloutValidationError,
+        match="evidence|binding|identity",
+    ):
+        PairedRolloutRequirementEvidence.from_dict(tampered, report=report)
 
 
 def test_bounded_report_store_is_idempotent_and_restart_safe(tmp_path) -> None:

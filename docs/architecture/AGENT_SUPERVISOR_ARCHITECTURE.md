@@ -249,6 +249,42 @@ seeded defects, duplicate execution, unauthorized mutation, unstable restart
 state, or a failed quality/performance threshold forces the effective mode
 back to `shadow`. The report is rollout evidence, not goal-completion evidence.
 
+The runtime binds two stable objective terms to that report. Term
+`109590900757783560279417463762322084165` proves the safety/shadow invariant:
+every fixture in the seeded population has zero candidate false completions,
+and any seeded false completion makes the non-negotiable gate fail and the
+effective mode `shadow`. Term
+`146189916032404266364029134505159070240` proves paired efficiency only when
+all token, repeated-cache, planning, and independent-lane throughput gates
+pass. The planning component is disjunctive but cannot be skipped: it requires
+either at least a 1,000-basis-point median evidence-coverage improvement or at
+least a 2,000-basis-point aggregate invalid-plan-branch reduction.
+
+`PairedRolloutReport.evidence_for(requirement_id, repository_id=...,
+repository_tree=...)` exposes the bounded, criterion-specific typed projection
+used for those bindings. It derives canonical ASI-G112/ASI-G113 internally,
+returns a negative diagnostic for an unmet supported term, and rejects an
+unsupported term. `PairedRolloutRequirementEvidence.from_dict` requires the
+typed source report and re-derives the complete claim, rejecting changed,
+detached, or unknown data. The witness never converts a report into completion
+or mutation authority. Its identities, measurements, and stable reason codes
+are sufficient for diagnostics; raw prompts, model outputs, patches, proofs,
+cache values, and artifact bodies remain outside the report boundary.
+
+Report version 2 adds the invalid-plan-branch count and explicit token, cache,
+planning, and throughput projections. Version-1 reports remain recomputable
+audit records, but cannot satisfy the paired-efficiency witness; promotion
+requires a fresh version-2 shadow evaluation.
+
+The paired report types, requirement identifiers, store, and evaluator remain
+lazy package-root exports. Cold import and static control discovery do not load
+optional providers or start processes; first access loads only the
+provider-free rollout contracts. Smoke operators exercise every seeded
+forced-shadow path with fixed inputs and bounded state. Production operators
+retain the two evidence projections with the report and current tree,
+objective, policy, capability, and profile identities, and return to shadow
+when any binding changes.
+
 Other subsystems use related but deliberately distinct vocabularies. Formal
 planning has `shadow`, `canary`, and `enforcement`; Leanstral goal development
 has `off`, `shadow`, `assist`, `repair_only`, and `auto_safe`. A top-level
