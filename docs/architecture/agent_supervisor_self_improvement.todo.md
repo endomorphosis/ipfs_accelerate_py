@@ -3283,7 +3283,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-091 Produce completion evidence for Prove 314133036252270790078901745919131980427 for Strict output, code, test, semantic, and proof validation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: validation
