@@ -35,8 +35,8 @@ Bitsandbytes supports multiple backends in addition to CUDA-based GPUs. Refer to
 
 Load a LLM with [`~PreTrainedModel.from_pretrained`] and add the following two parameters to reduce the memory requirements.
 
-- `device_map="auto"` enables Accelerates' [Big Model Inference](./models#big-model-inference) feature for automatically initiating the model skeleton and loading and dispatching the model weights across all available devices, starting with the fastest device (GPU).
-- `quantization_config` is a configuration object that defines the quantization settings. This examples uses bitsandbytes as the quantization backend (see the [Quantization](./quantization/overview) section for more available backends) and it loads the model in [4-bits](./quantization/bitsandbytes).
+- `device_map="auto"` enables Accelerates' [Big Model Inference](./models.md#big-model-inference) feature for automatically initiating the model skeleton and loading and dispatching the model weights across all available devices, starting with the fastest device (GPU).
+- `quantization_config` is a configuration object that defines the quantization settings. This examples uses bitsandbytes as the quantization backend (see the [Quantization](./quantization/overview.md) section for more available backends) and it loads the model in [4-bits](./quantization/bitsandbytes.md).
 
 ```py
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
@@ -89,7 +89,7 @@ model.generate(**inputs, num_beams=4, do_sample=True)
 
 [`~GenerationMixin.generate`] can also be extended with external libraries or custom code. The `logits_processor` parameter accepts custom [`LogitsProcessor`] instances for manipulating the next token probability distribution. `stopping_criteria` supports custom [`StoppingCriteria`] to stop text generation. Check out the [logits-processor-zoo](https://github.com/NVIDIA/logits-processor-zoo) for more examples of external [`~GenerationMixin.generate`]-compatible extensions.
 
-Refer to the [Generation strategies](./generation_strategies) guide to learn more about search, sampling, and decoding strategies.
+Refer to the [Generation strategies](./generation_strategies.md) guide to learn more about search, sampling, and decoding strategies.
 
 ### Saving
 
@@ -171,7 +171,7 @@ tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
 The default decoding strategy in [`~GenerationMixin.generate`] is *greedy search*, which selects the next most likely token, unless otherwise specified in a models [`GenerationConfig`]. While this decoding strategy works well for input-grounded tasks (transcription, translation), it is not optimal for more creative use cases (story writing, chat applications).
 
-For example, enable a [multinomial sampling](./generation_strategies#multinomial-sampling) strategy to generate more diverse outputs. Refer to the [Generation strategy](./generation_strategies) guide for more decoding strategies.
+For example, enable a [multinomial sampling](./generation_strategies.md#multinomial-sampling) strategy to generate more diverse outputs. Refer to the [Generation strategy](./generation_strategies.md) guide for more decoding strategies.
 
 ```py
 model_inputs = tokenizer(["I am a cat."], return_tensors="pt").to("cuda")
@@ -231,9 +231,9 @@ tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
 ### Prompt format
 
-Some models and tasks expect a certain input prompt format, and if the format is incorrect, the model returns a suboptimal output. You can learn more about prompting in the [prompt engineering](./tasks/prompting) guide.
+Some models and tasks expect a certain input prompt format, and if the format is incorrect, the model returns a suboptimal output. You can learn more about prompting in the [prompt engineering](./tasks/prompting.md) guide.
 
-For example, a chat model expects the input as a [chat template](./chat_templating). Your prompt should include a `role` and `content` to indicate who is participating in the conversation. If you try to pass your prompt as a single string, the model doesn't always return the expected output.
+For example, a chat model expects the input as a [chat template](./chat_templating.md). Your prompt should include a `role` and `content` to indicate who is participating in the conversation. If you try to pass your prompt as a single string, the model doesn't always return the expected output.
 
 ```py
 from transformers import AutoTokenizer, AutoModelForCausalLM
