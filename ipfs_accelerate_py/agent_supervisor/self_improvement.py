@@ -29,8 +29,10 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from .backlog_refinery import (
     DEFAULT_TASK_ID_PREFIX,
     effective_open_task_count,
+    filter_self_improvement_successor_candidates,
     load_strategy,
     record_self_improvement_exhaustion,
+    record_self_improvement_successor_admission,
     record_objective_backlog_findings,
     self_improvement_epoch_wait_active,
 )
@@ -49,6 +51,7 @@ from .objective_tracker import (
     ObjectiveMaterializationTransactionState,
     commit_objective_goal_materialization,
     objective_materialization_tree_identity,
+    reconcile_self_improvement_goal_evidence,
     resolve_objective_evidence_projection,
 )
 from .scan_receipts import (
@@ -256,7 +259,29 @@ class BenchmarkDisposition(str, Enum):
 
     @property
     def actionable(self) -> bool:
-        return self is not BenchmarkDisposition.HEALTHY
+        """Whether this classification may nominate successor work.
+
+        Provider failure and partial coverage are analyzer-health failures,
+        not repository gaps.  Treating them as actionable would let an
+        inconclusive benchmark authorize objective mutation.
+        """
+
+        return self in {
+            BenchmarkDisposition.REGRESSION,
+            BenchmarkDisposition.UNCOVERED,
+            BenchmarkDisposition.STALE,
+            BenchmarkDisposition.BOTTLENECK,
+            BenchmarkDisposition.UNSUPPORTED,
+        }
+
+    @property
+    def conclusive(self) -> bool:
+        """Whether the analyzer produced a completion-safe classification."""
+
+        return self not in {
+            BenchmarkDisposition.FAILED,
+            BenchmarkDisposition.PARTIAL,
+        }
 
 
 @dataclass(frozen=True)
@@ -528,11 +553,11 @@ class BenchmarkObservation:
         reasons = _string_tuple(
             self.actionable_reasons, field_name="actionable_reasons"
         )
-        if disposition.actionable and not reasons:
+        if disposition is not BenchmarkDisposition.HEALTHY and not reasons:
             raise ValueError(
-                "an actionable benchmark disposition requires a reason"
+                "a non-healthy benchmark disposition requires a reason"
             )
-        if not disposition.actionable and reasons:
+        if disposition is BenchmarkDisposition.HEALTHY and reasons:
             raise ValueError(
                 "a healthy benchmark observation cannot be actionable"
             )
@@ -836,9 +861,55 @@ class HealthyExhaustionEvidence:
     def proved_requirement_ids(self) -> tuple[str, ...]:
         return (self.requirement_id,)
 
+    def _receipt_provenance(self) -> dict[str, Any]:
+        """Project the exact benchmark inputs required by source policy."""
+
+        commands = tuple(
+            sorted({item.command for item in self.observations})
+        )
+        toolchains = tuple(
+            sorted({item.toolchain for item in self.observations})
+        )
+        scope = tuple(
+            sorted(
+                {
+                    scope_item
+                    for item in self.observations
+                    for scope_item in item.scope
+                }
+            )
+        )
+        return {
+            "producer_kind": "benchmark",
+            "repository_id": self.binding.repository_id,
+            "repository_tree": self.binding.repository_tree,
+            "tree_id": self.binding.repository_tree,
+            "policy_id": self.binding.policy_id,
+            "command": " ; ".join(commands),
+            "commands": list(commands),
+            "toolchain": " + ".join(toolchains),
+            "toolchains": list(toolchains),
+            "scope": list(scope),
+            "result": {
+                "status": "healthy_exhausted",
+                "benchmark_dimension_count": len(
+                    self.policy.required_dimensions
+                ),
+                "independent_channel_count": (
+                    self.exhaustion_quorum.count
+                ),
+                "classified_gap_count": self.classified_gap_count,
+                "candidate_count": self.candidate_count,
+                "admitted_count": self.admitted_count,
+                "materialized_count": self.materialized_count,
+                "taskboard_write_count": self.taskboard_write_count,
+            },
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
             **self._identity_payload(),
+            **self._receipt_provenance(),
             "evidence_id": self.evidence_id,
             "witness_id": self.evidence_id,
             "receipt_id": self.evidence_id,
@@ -846,12 +917,7 @@ class HealthyExhaustionEvidence:
             "artifact_digest": self.evidence_id,
             "requirement_ids": [self.requirement_id],
             "proved_requirement_ids": [self.requirement_id],
-            "producer_kind": "benchmark",
             "source_tier": "benchmark",
-            "repository_id": self.binding.repository_id,
-            "repository_tree": self.binding.repository_tree,
-            "tree_id": self.binding.repository_tree,
-            "policy_id": self.binding.policy_id,
             "status": "passed",
             "outcome": "healthy_exhausted",
             "validation_passed": True,
@@ -892,6 +958,12 @@ class HealthyExhaustionEvidence:
             "safe_for_completion_reasoning",
             "analyzer_health",
             "wait_state",
+            "command",
+            "commands",
+            "toolchain",
+            "toolchains",
+            "scope",
+            "result",
         }
         _strict_keys(payload, allowed, record_name="healthy exhaustion evidence")
         if (
@@ -935,6 +1007,14 @@ class HealthyExhaustionEvidence:
             if payload.get(alias) != result.evidence_id:
                 raise ValueError(f"healthy exhaustion {alias} does not match")
         projected = result.to_dict()
+        provenance_fields = {
+            "command",
+            "commands",
+            "toolchain",
+            "toolchains",
+            "scope",
+            "result",
+        }
         for name in (
             "requirement_ids",
             "producer_kind",
@@ -943,6 +1023,12 @@ class HealthyExhaustionEvidence:
             "repository_tree",
             "tree_id",
             "policy_id",
+            "command",
+            "commands",
+            "toolchain",
+            "toolchains",
+            "scope",
+            "result",
             "status",
             "outcome",
             "validation_passed",
@@ -952,6 +1038,12 @@ class HealthyExhaustionEvidence:
             "analyzer_health",
             "wait_state",
         ):
+            # These projections were added to the v1 receipt after the
+            # identity contract shipped.  They are derived from
+            # identity-bound observations, so legacy ledgers may omit them;
+            # whenever present they must match exactly.
+            if name in provenance_fields and name not in payload:
+                continue
             if payload.get(name) != projected[name]:
                 raise ValueError(
                     f"healthy exhaustion {name} projection does not match"
@@ -1115,20 +1207,46 @@ class SuccessorRefillEvidence:
     def proved_requirement_ids(self) -> tuple[str, ...]:
         return (self.requirement_id,)
 
+    def _receipt_provenance(self) -> dict[str, Any]:
+        return {
+            "producer_kind": "runtime",
+            "repository_id": self.binding.repository_id,
+            "repository_tree": self.binding.repository_tree,
+            "tree_id": self.binding.repository_tree,
+            "policy_id": self.binding.policy_id,
+            "command": (
+                "commit_objective_goal_materialization ; "
+                "record_objective_backlog_findings"
+            ),
+            "toolchain": (
+                "objective-tracker+objective-graph+backlog-refinery/v1"
+            ),
+            "scope": [
+                *self.actionable_dimensions,
+                *self.created_goal_ids,
+                *self.created_task_ids,
+            ],
+            "result": {
+                "status": "successors_created",
+                "candidate_count": len(self.candidate_proposal_ids),
+                "admitted_count": len(self.admitted_proposal_ids),
+                "created_goal_count": len(self.created_goal_ids),
+                "created_task_count": len(self.created_task_ids),
+                "transaction_id": self.transaction_id,
+            },
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
             **self._identity_payload(),
+            **self._receipt_provenance(),
             "evidence_id": self.evidence_id,
             "receipt_id": self.evidence_id,
             "artifact_digest": self.evidence_id,
             "provenance_cid": self.evidence_id,
             "requirement_ids": [self.requirement_id],
             "proved_requirement_ids": [self.requirement_id],
-            "producer_kind": "runtime",
             "source_tier": "runtime",
-            "repository_id": self.binding.repository_id,
-            "repository_tree": self.binding.repository_tree,
-            "policy_id": self.binding.policy_id,
             "status": "passed",
             "validation_passed": True,
             "coverage_complete": True,
@@ -1150,7 +1268,12 @@ class SuccessorRefillEvidence:
             "source_tier",
             "repository_id",
             "repository_tree",
+            "tree_id",
             "policy_id",
+            "command",
+            "toolchain",
+            "scope",
+            "result",
             "status",
             "validation_passed",
             "coverage_complete",
@@ -1183,6 +1306,7 @@ class SuccessorRefillEvidence:
             evidence_id=str(payload.get("evidence_id") or ""),
         )
         projected = result.to_dict()
+        provenance_fields = {"command", "toolchain", "scope", "result"}
         for name in (
             "receipt_id",
             "artifact_digest",
@@ -1193,12 +1317,19 @@ class SuccessorRefillEvidence:
             "source_tier",
             "repository_id",
             "repository_tree",
+            "tree_id",
             "policy_id",
+            "command",
+            "toolchain",
+            "scope",
+            "result",
             "status",
             "validation_passed",
             "coverage_complete",
             "complete",
         ):
+            if name in provenance_fields and name not in payload:
+                continue
             if payload.get(name) != projected[name]:
                 raise ValueError(f"successor refill {name} projection does not match")
         return result
@@ -1510,21 +1641,41 @@ class EpochReplayEvidence:
     def proved_requirement_ids(self) -> tuple[str, ...]:
         return (self.requirement_id,)
 
+    def _receipt_provenance(self) -> dict[str, Any]:
+        return {
+            "producer_kind": "runtime",
+            "repository_id": self.binding.repository_id,
+            "repository_tree": self.binding.repository_tree,
+            "tree_id": self.binding.repository_tree,
+            "policy_id": self.binding.policy_id,
+            "command": "self_improvement_epoch_ledger_replay",
+            "toolchain": SELF_IMPROVEMENT_LEDGER_SCHEMA,
+            "scope": [
+                self.binding.epoch_id,
+                self.objective_state_id,
+                self.taskboard_state_id,
+            ],
+            "result": {
+                "status": "idempotent_replay",
+                "original_receipt_id": self.original_receipt_id,
+                "provider_call_count": self.provider_call_count,
+                "proposal_call_count": self.proposal_call_count,
+                "materialization_count": self.materialization_count,
+                "taskboard_write_count": self.taskboard_write_count,
+            },
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
             **self._identity_payload(),
+            **self._receipt_provenance(),
             "evidence_id": self.evidence_id,
             "receipt_id": self.evidence_id,
             "artifact_digest": self.evidence_id,
             "provenance_cid": self.evidence_id,
             "requirement_ids": [self.requirement_id],
             "proved_requirement_ids": [self.requirement_id],
-            "producer_kind": "runtime",
             "source_tier": "runtime",
-            "repository_id": self.binding.repository_id,
-            "repository_tree": self.binding.repository_tree,
-            "tree_id": self.binding.repository_tree,
-            "policy_id": self.binding.policy_id,
             "status": "passed",
             "validation_passed": True,
             "coverage_complete": True,
@@ -1548,6 +1699,10 @@ class EpochReplayEvidence:
             "repository_tree",
             "tree_id",
             "policy_id",
+            "command",
+            "toolchain",
+            "scope",
+            "result",
             "status",
             "validation_passed",
             "coverage_complete",
@@ -1579,6 +1734,11 @@ class EpochReplayEvidence:
         projected = result.to_dict()
         for name in allowed - set(cls.__dataclass_fields__):
             if name in {"schema", "version"}:
+                continue
+            if (
+                name in {"command", "toolchain", "scope", "result"}
+                and name not in payload
+            ):
                 continue
             if payload.get(name) != projected[name]:
                 raise ValueError(f"epoch replay {name} projection does not match")
@@ -1768,11 +1928,22 @@ def evaluate_self_improvement_epoch(
     ]
     if foreign:
         blockers.append("benchmark_binding_mismatch")
-    stale_or_partial = [
-        item for item in normalized if not item.healthy_at(now) and not item.disposition.actionable
+    temporally_invalid = [
+        item
+        for item in normalized
+        if (
+            not item.complete
+            or item.observed_at > now
+            or (
+                item.disposition is not BenchmarkDisposition.STALE
+                and now > item.fresh_until
+            )
+        )
     ]
-    if stale_or_partial:
+    if temporally_invalid:
         blockers.append("benchmark_not_fresh_and_complete")
+    if any(not item.disposition.conclusive for item in normalized):
+        blockers.append("benchmark_analyzer_inconclusive")
     actionable = tuple(
         sorted(
             {
@@ -1988,6 +2159,41 @@ def _project_wait_state(
     )
 
 
+def _require_authoritative_goal_evidence(
+    objective_text: str,
+    evidence: (
+        HealthyExhaustionEvidence
+        | SuccessorRefillEvidence
+        | EpochReplayEvidence
+    ),
+    *,
+    now: datetime | str,
+) -> str:
+    """Fail closed unless the fresh typed receipt owns its exact leaf goal."""
+
+    reconciliation = reconcile_self_improvement_goal_evidence(
+        objective_text,
+        typed_receipts=(evidence,),
+        requirement_ids=(evidence.requirement_id,),
+        repository_tree=evidence.binding.repository_tree,
+        policy_id=evidence.binding.policy_id,
+        now=now,
+    )
+    if not reconciliation.satisfied:
+        reasons = sorted(
+            {
+                reason
+                for binding in reconciliation.bindings
+                for reason in binding.reason_codes
+            }
+        )
+        raise RuntimeError(
+            "self-improvement evidence failed objective reconciliation"
+            + (": " + ", ".join(reasons) if reasons else "")
+        )
+    return reconciliation.reconciliation_id
+
+
 def materialize_self_improvement_successors(
     *,
     receipt: SelfImprovementEpochReceipt,
@@ -2042,19 +2248,65 @@ def materialize_self_improvement_successors(
     )
     if not normalized:
         raise ValueError("actionable epoch proposal provider returned no candidates")
-    low_quality = [
-        item.canonical_id
-        for item in normalized
-        if (
-            item.confidence < policy.minimum_successor_confidence
-            or item.novelty < policy.minimum_successor_novelty
-            or item.kind not in {ObjectiveWorkKind.GOAL, ObjectiveWorkKind.SUBGOAL}
+    candidate_filter = filter_self_improvement_successor_candidates(
+        normalized,
+        objective_text=objective_text,
+        strategy=load_strategy(strategy_path),
+        observed_at=observed_at or receipt.observed_at,
+    )
+    rejection_reasons = {
+        item.canonical_id: item.reason
+        for item in candidate_filter.rejected
+        if item.canonical_id
+    }
+    eligible = candidate_filter.eligible
+    if not eligible:
+        record_self_improvement_successor_admission(
+            strategy_path,
+            epoch_id=receipt.binding.epoch_id,
+            proposals=normalized,
+            rejection_reasons=rejection_reasons,
+            recorded_at=observed_at or receipt.observed_at,
         )
-    ]
-    if low_quality:
+        reasons = sorted(
+            {
+                item.reason
+                for item in candidate_filter.rejected
+                if item.reason
+            }
+        )
+        raise ValueError(
+            "no successor candidate survived lifecycle and cooldown "
+            "deduplication"
+            + (": " + ", ".join(reasons) if reasons else "")
+        )
+    low_quality_reasons: dict[str, str] = {}
+    for item in eligible:
+        if item.confidence < policy.minimum_successor_confidence:
+            low_quality_reasons[item.canonical_id] = "confidence_below_policy"
+        elif item.novelty < policy.minimum_successor_novelty:
+            low_quality_reasons[item.canonical_id] = "novelty_below_policy"
+        elif item.kind not in {
+            ObjectiveWorkKind.GOAL,
+            ObjectiveWorkKind.SUBGOAL,
+        }:
+            low_quality_reasons[item.canonical_id] = (
+                "unsupported_successor_kind"
+            )
+    if low_quality_reasons:
+        record_self_improvement_successor_admission(
+            strategy_path,
+            epoch_id=receipt.binding.epoch_id,
+            proposals=normalized,
+            rejection_reasons={
+                **rejection_reasons,
+                **low_quality_reasons,
+            },
+            recorded_at=observed_at or receipt.observed_at,
+        )
         raise ValueError(
             "successor candidates failed quality, novelty, or kind policy: "
-            + ", ".join(sorted(low_quality))
+            + ", ".join(sorted(low_quality_reasons))
         )
     limits = ObjectiveGenerationLimits(
         max_depth=policy.max_successor_depth,
@@ -2065,7 +2317,7 @@ def materialize_self_improvement_successors(
     )
     preview = preview_objective_goal_materialization(
         objective_text,
-        normalized,
+        eligible,
         policy=ObjectiveGoalMaterializationPolicy(
             limits=limits,
             expected_heap_content_id=receipt.binding.objective_revision,
@@ -2078,6 +2330,30 @@ def materialize_self_improvement_successors(
             *preview.fatal_reasons,
             *(item.reason for item in preview.rejected),
         ]
+        preview_rejections = {
+            item.canonical_id: item.reason
+            for item in preview.rejected
+            if item.canonical_id
+        }
+        default_reason = (
+            "objective_preview_fatal"
+            if preview.fatal_reasons
+            else "objective_preview_rejected"
+        )
+        record_self_improvement_successor_admission(
+            strategy_path,
+            epoch_id=receipt.binding.epoch_id,
+            proposals=normalized,
+            rejection_reasons={
+                item.canonical_id: (
+                    preview_rejections.get(item.canonical_id)
+                    or rejection_reasons.get(item.canonical_id)
+                    or default_reason
+                )
+                for item in normalized
+            },
+            recorded_at=observed_at or receipt.observed_at,
+        )
         raise ValueError(
             "no bounded novel successor proposal was admissible"
             + (": " + ", ".join(sorted(set(reasons))) if reasons else "")
@@ -2102,6 +2378,15 @@ def materialize_self_improvement_successors(
             + ", ".join(transaction.reason_codes)
         )
     admitted_proposal_ids = transaction.admitted_proposal_ids
+    record_self_improvement_successor_admission(
+        strategy_path,
+        epoch_id=receipt.binding.epoch_id,
+        proposals=normalized,
+        admitted_proposal_ids=admitted_proposal_ids,
+        transaction_id=transaction.transaction_id,
+        rejection_reasons=rejection_reasons,
+        recorded_at=observed_at or receipt.observed_at,
+    )
     goal_ids = tuple(item.goal.goal_id for item in preview.materialized)
     refill = record_objective_backlog_findings(
         repo_root=repo_root,
@@ -2159,6 +2444,11 @@ def materialize_self_improvement_successors(
             taskboard_after, kind="taskboard"
         ),
         observed_at=observed_at or receipt.observed_at,
+    )
+    _require_authoritative_goal_evidence(
+        objective_text,
+        evidence,
+        now=observed_at or receipt.observed_at,
     )
     return SelfImprovementEpochReceipt(
         binding=receipt.binding,
@@ -2265,7 +2555,7 @@ def run_self_improvement_epoch(
             # Legacy heaps predating ASI-G110 may replay operationally but
             # cannot claim its objective requirement.
             return None
-        return EpochReplayEvidence(
+        evidence = EpochReplayEvidence(
             binding=binding,
             goal_projection=projection,
             original_receipt_id=original.receipt_id,
@@ -2277,6 +2567,12 @@ def run_self_improvement_epoch(
             ),
             replayed_at=observed_at,
         )
+        _require_authoritative_goal_evidence(
+            objective_text,
+            evidence,
+            now=observed_at or evidence.replayed_at,
+        )
+        return evidence
 
     existing = receipts.get(binding.epoch_id)
     if existing is not None:
@@ -2357,6 +2653,12 @@ def run_self_improvement_epoch(
         ),
         observed_at=now,
     )
+    if receipt.evidence is not None:
+        _require_authoritative_goal_evidence(
+            objective_text,
+            receipt.evidence,
+            now=now,
+        )
     if (
         receipt.status is SelfImprovementEpochStatus.ACTIONABLE
         and proposal_provider is not None

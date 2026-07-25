@@ -8,6 +8,7 @@ import re
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha1, sha256
 from pathlib import Path
@@ -27,6 +28,7 @@ from .goal_completion import (
 )
 from .objective_graph import (
     DEFAULT_EMBEDDING_MIN_SCORE,
+    OPAQUE_EVIDENCE_REQUIREMENT_PATTERN,
     ObjectiveFinding,
     ObjectiveGoal,
     ObjectiveGoalMaterializationPreview,
@@ -800,6 +802,899 @@ def resolve_objective_evidence_projection(
         parent_goal_id=parent,
         objective_heap_id=objective_heap_content_id(objective_text),
         goal_content_id=objective_goal_content_id(owner),
+    )
+
+
+SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "self_improvement_goal_evidence_binding.v1"
+)
+SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "self_improvement_goal_evidence_reconciliation.v1"
+)
+
+
+def _strict_record_keys(
+    payload: Mapping[str, Any],
+    allowed: set[str],
+    *,
+    record_name: str,
+) -> None:
+    unknown = sorted(str(key) for key in payload if str(key) not in allowed)
+    if unknown:
+        raise ValueError(
+            f"{record_name} contains unknown fields: {', '.join(unknown)}"
+        )
+
+
+def _canonical_receipt_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return {str(key): item for key, item in value.items()}
+    converter = getattr(value, "to_dict", None)
+    projected = converter() if callable(converter) else None
+    if not isinstance(projected, Mapping):
+        raise TypeError("typed evidence receipt must be a mapping or expose to_dict()")
+    return {str(key): item for key, item in projected.items()}
+
+
+def _receipt_string_values(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        values: Iterable[Any] = (value,)
+    elif isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        values = value
+    else:
+        return ()
+    return tuple(
+        dict.fromkeys(
+            compact
+            for item in values
+            if (compact := " ".join(str(item or "").strip().split()))
+        )
+    )
+
+
+def _receipt_requirement_ids(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    result: list[str] = []
+    for name in (
+        "requirement_id",
+        "requirement_ids",
+        "proved_requirement_ids",
+        "evidence_claim_references",
+        "authoritative_evidence_claim_references",
+    ):
+        result.extend(_receipt_string_values(payload.get(name)))
+    criterion = str(
+        payload.get("acceptance_criterion")
+        or payload.get("criterion")
+        or ""
+    ).strip()
+    if criterion:
+        result.append(criterion)
+    metadata = payload.get("metadata")
+    if isinstance(metadata, Mapping):
+        result.extend(_receipt_string_values(metadata.get("requirement_id")))
+        result.extend(_receipt_string_values(metadata.get("requirement_ids")))
+    return tuple(dict.fromkeys(result))
+
+
+def _receipt_content_identity(payload: Mapping[str, Any]) -> str:
+    """Hash finite measurement JSON without the task-ID float restriction."""
+
+    try:
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+            default=str,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("typed evidence receipt is not finite canonical JSON") from exc
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _receipt_nonempty_text(value: Any) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return bool(value) and all(
+            isinstance(item, str) and bool(item.strip()) for item in value
+        )
+    return False
+
+
+def _receipt_digest_valid(value: str) -> bool:
+    """Accept canonical SHA-256 digests and CID-like content identifiers."""
+
+    normalized = str(value or "").strip()
+    if re.fullmatch(r"sha256:[0-9a-fA-F]{64}", normalized):
+        return True
+    # Repository content identities are CIDv1 base32 strings (normally
+    # ``baguq...``).  Requiring the multibase prefix and a meaningful length
+    # rejects labels such as ``artifact-1`` without coupling the tracker to a
+    # single multicodec.
+    return bool(re.fullmatch(r"b[a-z2-7]{31,}", normalized.casefold()))
+
+
+def _receipt_identifier(payload: Mapping[str, Any]) -> str:
+    for name in (
+        "receipt_id",
+        "evidence_id",
+        "witness_id",
+        "provenance_cid",
+    ):
+        value = str(payload.get(name) or "").strip()
+        if value:
+            return value
+    return _receipt_content_identity(payload)
+
+
+def _receipt_timestamp(
+    payload: Mapping[str, Any], *names: str
+) -> datetime | None:
+    for name in names:
+        raw = payload.get(name)
+        if raw in (None, ""):
+            continue
+        if isinstance(raw, datetime):
+            value = raw
+        else:
+            text = str(raw).strip()
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            try:
+                value = datetime.fromisoformat(text)
+            except ValueError:
+                return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            return None
+        return value.astimezone(timezone.utc)
+    return None
+
+
+def _reconciliation_now(value: datetime | str | None) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    payload = {"value": value}
+    parsed = _receipt_timestamp(payload, "value")
+    if parsed is None:
+        raise ValueError("now must be a timezone-aware datetime or ISO-8601 value")
+    return parsed
+
+
+def _embedded_self_improvement_receipt(
+    payload: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Return the producer-owned witness inside CompletionEvidence, if any."""
+
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    for name in (
+        "healthy_exhaustion_evidence",
+        "successor_refill_evidence",
+        "epoch_replay_evidence",
+    ):
+        candidate = metadata.get(name)
+        if isinstance(candidate, Mapping):
+            return candidate
+    return None
+
+
+def _restore_self_improvement_receipt(
+    payload: Mapping[str, Any],
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Strictly restore a known producer receipt without a module cycle.
+
+    ``self_improvement`` imports this module for objective projections, so its
+    receipt types are imported only when this public reconciliation API is
+    invoked.  Unknown receipt schemas remain eligible for the general source
+    policy; known self-improvement schemas must pass their producer-owned
+    deserializer and reproduce byte-equivalent canonical JSON.
+    """
+
+    candidate = _embedded_self_improvement_receipt(payload) or payload
+    schema = str(candidate.get("schema") or "")
+    if schema not in {
+        "ipfs_accelerate_py.agent_supervisor.healthy_exhaustion_evidence.v1",
+        "ipfs_accelerate_py.agent_supervisor.successor_refill_evidence.v1",
+        "ipfs_accelerate_py.agent_supervisor.self_improvement_epoch_replay.v1",
+    }:
+        return dict(candidate), ()
+    try:
+        from .self_improvement import (
+            EpochReplayEvidence,
+            HealthyExhaustionEvidence,
+            SuccessorRefillEvidence,
+        )
+
+        receipt_types = {
+            "ipfs_accelerate_py.agent_supervisor.healthy_exhaustion_evidence.v1": (
+                HealthyExhaustionEvidence
+            ),
+            "ipfs_accelerate_py.agent_supervisor.successor_refill_evidence.v1": (
+                SuccessorRefillEvidence
+            ),
+            "ipfs_accelerate_py.agent_supervisor.self_improvement_epoch_replay.v1": (
+                EpochReplayEvidence
+            ),
+        }
+        restored = receipt_types[schema].from_dict(candidate)
+        reproduced = restored.to_dict()
+        if _receipt_content_identity(reproduced) != _receipt_content_identity(
+            candidate
+        ):
+            return dict(candidate), ("receipt_canonical_projection_mismatch",)
+        return reproduced, ()
+    except (KeyError, TypeError, ValueError):
+        return dict(candidate), ("receipt_integrity_invalid",)
+
+
+@dataclass(frozen=True)
+class SelfImprovementGoalEvidenceBinding:
+    """One opaque requirement's exact leaf owner and receipt decision."""
+
+    requirement_id: str
+    goal_projection: ObjectiveEvidenceProjection | None
+    receipt_id: str
+    receipt_content_id: str
+    producer_kind: str
+    source_tier: str
+    repository_tree: str
+    policy_id: str
+    artifact_digest: str
+    observed_at: str
+    fresh_until: str
+    authoritative: bool
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        requirement = str(self.requirement_id or "").strip()
+        if not requirement:
+            raise ValueError("requirement_id is required")
+        object.__setattr__(self, "requirement_id", requirement)
+        projection = self.goal_projection
+        if projection is not None and not isinstance(
+            projection, ObjectiveEvidenceProjection
+        ):
+            if not isinstance(projection, Mapping):
+                raise TypeError("goal_projection must be an evidence projection")
+            projection = ObjectiveEvidenceProjection.from_dict(projection)
+        if projection is not None and projection.requirement_id != requirement:
+            raise ValueError("goal projection binds a different requirement")
+        object.__setattr__(self, "goal_projection", projection)
+        for name in (
+            "receipt_id",
+            "receipt_content_id",
+            "producer_kind",
+            "source_tier",
+            "repository_tree",
+            "policy_id",
+            "artifact_digest",
+            "observed_at",
+            "fresh_until",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        object.__setattr__(
+            self,
+            "reason_codes",
+            tuple(
+                dict.fromkeys(
+                    str(item).strip()
+                    for item in self.reason_codes
+                    if str(item).strip()
+                )
+            ),
+        )
+        if self.authoritative and (
+            self.goal_projection is None or self.reason_codes
+        ):
+            raise ValueError(
+                "authoritative evidence requires a projection and no rejection"
+            )
+
+    @property
+    def binding_id(self) -> str:
+        return content_identity(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA,
+            "version": 1,
+            "requirement_id": self.requirement_id,
+            "goal_projection": (
+                self.goal_projection.to_dict()
+                if self.goal_projection is not None
+                else None
+            ),
+            "receipt_id": self.receipt_id,
+            "receipt_content_id": self.receipt_content_id,
+            "producer_kind": self.producer_kind,
+            "source_tier": self.source_tier,
+            "repository_tree": self.repository_tree,
+            "policy_id": self.policy_id,
+            "artifact_digest": self.artifact_digest,
+            "observed_at": self.observed_at,
+            "fresh_until": self.fresh_until,
+            "authoritative": self.authoritative,
+            "reason_codes": list(self.reason_codes),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "binding_id": self.binding_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "SelfImprovementGoalEvidenceBinding":
+        allowed = {
+            "schema",
+            "version",
+            "binding_id",
+            "requirement_id",
+            "goal_projection",
+            "receipt_id",
+            "receipt_content_id",
+            "producer_kind",
+            "source_tier",
+            "repository_tree",
+            "policy_id",
+            "artifact_digest",
+            "observed_at",
+            "fresh_until",
+            "authoritative",
+            "reason_codes",
+        }
+        _strict_record_keys(
+            payload, allowed, record_name="self-improvement evidence binding"
+        )
+        if (
+            payload.get("schema")
+            != SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA
+            or payload.get("version") != 1
+        ):
+            raise ValueError("unsupported self-improvement evidence binding schema")
+        result = cls(
+            requirement_id=str(payload.get("requirement_id") or ""),
+            goal_projection=payload.get("goal_projection"),
+            receipt_id=str(payload.get("receipt_id") or ""),
+            receipt_content_id=str(payload.get("receipt_content_id") or ""),
+            producer_kind=str(payload.get("producer_kind") or ""),
+            source_tier=str(payload.get("source_tier") or ""),
+            repository_tree=str(payload.get("repository_tree") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            artifact_digest=str(payload.get("artifact_digest") or ""),
+            observed_at=str(payload.get("observed_at") or ""),
+            fresh_until=str(payload.get("fresh_until") or ""),
+            authoritative=payload.get("authoritative") is True,
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+        )
+        if payload.get("binding_id") != result.binding_id:
+            raise ValueError("self-improvement evidence binding identity mismatch")
+        return result
+
+
+@dataclass(frozen=True)
+class SelfImprovementGoalEvidenceReconciliation:
+    """Content-addressed, mutation-free typed evidence batch decision."""
+
+    objective_heap_id: str
+    repository_tree: str
+    policy_id: str
+    evaluated_at: str
+    requested_requirement_ids: tuple[str, ...]
+    bindings: tuple[SelfImprovementGoalEvidenceBinding, ...]
+    proposal_evidence: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "objective_heap_id",
+            "repository_tree",
+            "policy_id",
+            "evaluated_at",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise ValueError(f"{name} is required")
+            object.__setattr__(self, name, value)
+        requested = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in self.requested_requirement_ids
+                    if str(item).strip()
+                }
+            )
+        )
+        object.__setattr__(self, "requested_requirement_ids", requested)
+        normalized_bindings = tuple(
+            sorted(
+                (
+                    item
+                    if isinstance(item, SelfImprovementGoalEvidenceBinding)
+                    else SelfImprovementGoalEvidenceBinding.from_dict(item)
+                    for item in self.bindings
+                ),
+                key=lambda item: (
+                    item.requirement_id,
+                    item.receipt_id,
+                    item.receipt_content_id,
+                ),
+            )
+        )
+        object.__setattr__(self, "bindings", normalized_bindings)
+        proposals = {
+            str(requirement).strip(): tuple(
+                sorted(
+                    {
+                        str(reference).strip()
+                        for reference in references
+                        if str(reference).strip()
+                    }
+                )
+            )
+            for requirement, references in dict(
+                self.proposal_evidence or {}
+            ).items()
+            if str(requirement).strip()
+        }
+        object.__setattr__(
+            self,
+            "proposal_evidence",
+            {key: proposals[key] for key in sorted(proposals)},
+        )
+
+    @property
+    def authoritative_requirement_ids(self) -> tuple[str, ...]:
+        return tuple(
+            requirement
+            for requirement in self.requested_requirement_ids
+            if any(
+                item.requirement_id == requirement and item.authoritative
+                for item in self.bindings
+            )
+        )
+
+    @property
+    def rejected_requirement_ids(self) -> tuple[str, ...]:
+        authoritative = set(self.authoritative_requirement_ids)
+        return tuple(
+            requirement
+            for requirement in self.requested_requirement_ids
+            if requirement not in authoritative
+            and any(
+                item.requirement_id == requirement for item in self.bindings
+            )
+        )
+
+    @property
+    def proposal_only_requirement_ids(self) -> tuple[str, ...]:
+        authoritative = set(self.authoritative_requirement_ids)
+        return tuple(
+            requirement
+            for requirement in self.requested_requirement_ids
+            if requirement not in authoritative
+            and bool(self.proposal_evidence.get(requirement))
+        )
+
+    @property
+    def missing_requirement_ids(self) -> tuple[str, ...]:
+        covered = set(self.authoritative_requirement_ids)
+        proposed = set(self.proposal_only_requirement_ids)
+        rejected = set(self.rejected_requirement_ids)
+        return tuple(
+            requirement
+            for requirement in self.requested_requirement_ids
+            if requirement not in covered | proposed | rejected
+        )
+
+    @property
+    def satisfied(self) -> bool:
+        return bool(self.requested_requirement_ids) and (
+            self.authoritative_requirement_ids
+            == self.requested_requirement_ids
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA,
+            "version": 1,
+            "objective_heap_id": self.objective_heap_id,
+            "repository_tree": self.repository_tree,
+            "policy_id": self.policy_id,
+            "evaluated_at": self.evaluated_at,
+            "requested_requirement_ids": list(
+                self.requested_requirement_ids
+            ),
+            "bindings": [item.to_dict() for item in self.bindings],
+            "proposal_evidence": {
+                key: list(value)
+                for key, value in self.proposal_evidence.items()
+            },
+            "authoritative_requirement_ids": list(
+                self.authoritative_requirement_ids
+            ),
+            "rejected_requirement_ids": list(
+                self.rejected_requirement_ids
+            ),
+            "proposal_only_requirement_ids": list(
+                self.proposal_only_requirement_ids
+            ),
+            "missing_requirement_ids": list(self.missing_requirement_ids),
+            "satisfied": self.satisfied,
+        }
+
+    @property
+    def reconciliation_id(self) -> str:
+        return content_identity(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._payload(),
+            "reconciliation_id": self.reconciliation_id,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "SelfImprovementGoalEvidenceReconciliation":
+        allowed = {
+            "schema",
+            "version",
+            "reconciliation_id",
+            "objective_heap_id",
+            "repository_tree",
+            "policy_id",
+            "evaluated_at",
+            "requested_requirement_ids",
+            "bindings",
+            "proposal_evidence",
+            "authoritative_requirement_ids",
+            "rejected_requirement_ids",
+            "proposal_only_requirement_ids",
+            "missing_requirement_ids",
+            "satisfied",
+        }
+        _strict_record_keys(
+            payload,
+            allowed,
+            record_name="self-improvement goal evidence reconciliation",
+        )
+        if (
+            payload.get("schema")
+            != SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA
+            or payload.get("version") != 1
+        ):
+            raise ValueError(
+                "unsupported self-improvement goal evidence reconciliation schema"
+            )
+        bindings = payload.get("bindings")
+        proposals = payload.get("proposal_evidence")
+        if not isinstance(bindings, Sequence) or isinstance(
+            bindings, (str, bytes, bytearray)
+        ):
+            raise ValueError("bindings must be a sequence")
+        if not isinstance(proposals, Mapping):
+            raise ValueError("proposal_evidence must be an object")
+        result = cls(
+            objective_heap_id=str(payload.get("objective_heap_id") or ""),
+            repository_tree=str(payload.get("repository_tree") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            evaluated_at=str(payload.get("evaluated_at") or ""),
+            requested_requirement_ids=tuple(
+                payload.get("requested_requirement_ids") or ()
+            ),
+            bindings=tuple(
+                SelfImprovementGoalEvidenceBinding.from_dict(item)
+                if isinstance(item, Mapping)
+                else (_raise_quality_report_value("bindings"))
+                for item in bindings
+            ),
+            proposal_evidence={
+                str(key): tuple(value)
+                for key, value in proposals.items()
+                if isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+            },
+        )
+        projected = result.to_dict()
+        for name in (
+            "authoritative_requirement_ids",
+            "rejected_requirement_ids",
+            "proposal_only_requirement_ids",
+            "missing_requirement_ids",
+            "satisfied",
+            "reconciliation_id",
+        ):
+            if payload.get(name) != projected[name]:
+                raise ValueError(
+                    f"self-improvement reconciliation {name} mismatch"
+                )
+        return result
+
+
+def reconcile_self_improvement_goal_evidence(
+    objective_text: str,
+    *,
+    typed_receipts: Sequence[Mapping[str, Any] | Any] = (),
+    requirement_ids: Iterable[str] = (),
+    proposal_evidence: Mapping[str, Sequence[str]] | None = None,
+    repository_tree: str,
+    policy_id: str,
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+) -> SelfImprovementGoalEvidenceReconciliation:
+    """Reconcile an immutable batch of self-improvement goal evidence.
+
+    Opaque IDs are resolved to their unique most-refined heap owner.  Text and
+    retrieval references are retained as proposal evidence but never become
+    completion authority.  Typed receipts must be current-tree, exact-policy,
+    fresh, terminally successful producer records.  Known self-improvement
+    receipts additionally pass their strict producer deserializer and content
+    identity check.  A receipt spanning different leaf owners and multiple
+    distinct receipts claiming the same requirement both fail closed.
+    """
+
+    if not isinstance(objective_text, str):
+        raise TypeError("objective_text must be a string")
+    tree = str(repository_tree or "").strip()
+    policy = str(policy_id or "").strip()
+    if not tree:
+        raise ValueError("repository_tree is required")
+    if not policy:
+        raise ValueError("policy_id is required")
+    if (
+        isinstance(freshness_seconds, bool)
+        or not isinstance(freshness_seconds, (int, float))
+        or freshness_seconds < 0
+    ):
+        raise ValueError("freshness_seconds must be a non-negative number")
+    evaluated = _reconciliation_now(now)
+    explicit_requirements = {
+        str(item).strip()
+        for item in requirement_ids
+        if str(item).strip()
+    }
+    if explicit_requirements:
+        requested = tuple(sorted(explicit_requirements))
+    else:
+        requested = tuple(
+            sorted(
+                {
+                    str(requirement).strip()
+                    for goal in parse_goal_heap(objective_text)
+                    for requirement in goal.required_evidence
+                    if OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(
+                        str(requirement).strip()
+                    )
+                }
+            )
+        )
+    nonopaque = tuple(
+        item
+        for item in requested
+        if not OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(item)
+    )
+    if nonopaque:
+        raise ValueError(
+            "self-improvement reconciliation accepts only opaque requirement "
+            f"IDs: {', '.join(nonopaque)}"
+        )
+
+    projections: dict[str, ObjectiveEvidenceProjection] = {}
+    projection_errors: dict[str, str] = {}
+    for requirement in requested:
+        try:
+            projections[requirement] = resolve_objective_evidence_projection(
+                objective_text, requirement_id=requirement
+            )
+        except ValueError as exc:
+            projection_errors[requirement] = str(exc)
+
+    normalized_proposals = {
+        requirement: tuple(
+            sorted(
+                {
+                    str(reference).strip()
+                    for reference in (proposal_evidence or {}).get(
+                        requirement, ()
+                    )
+                    if str(reference).strip()
+                }
+            )
+        )
+        for requirement in requested
+        if (proposal_evidence or {}).get(requirement)
+    }
+    provisional: list[SelfImprovementGoalEvidenceBinding] = []
+    for receipt_value in typed_receipts:
+        outer = _canonical_receipt_payload(receipt_value)
+        receipt, integrity_reasons = _restore_self_improvement_receipt(outer)
+        claims = tuple(
+            requirement
+            for requirement in _receipt_requirement_ids(receipt)
+            if requirement in requested
+        )
+        if not claims:
+            continue
+        owner_ids = {
+            projections[requirement].goal_id
+            for requirement in claims
+            if requirement in projections
+        }
+        shared_reasons: list[str] = list(integrity_reasons)
+        if len(owner_ids) > 1:
+            shared_reasons.append("receipt_claims_multiple_goal_owners")
+        receipt_id = _receipt_identifier(receipt)
+        receipt_content_id = _receipt_content_identity(receipt)
+        receipt_tree = str(
+            receipt.get("repository_tree")
+            or receipt.get("repository_tree_id")
+            or receipt.get("tree_id")
+            or ""
+        ).strip()
+        receipt_policy = str(
+            receipt.get("policy_id") or receipt.get("policy_digest") or ""
+        ).strip()
+        producer_kind = str(receipt.get("producer_kind") or "").strip()
+        source_tier = str(
+            receipt.get("source_tier")
+            or receipt.get("receipt_kind")
+            or producer_kind
+        ).strip()
+        artifact_digest = str(
+            receipt.get("artifact_digest")
+            or receipt.get("provenance_cid")
+            or ""
+        ).strip()
+        command = receipt.get("command", receipt.get("commands"))
+        toolchain = receipt.get("toolchain", receipt.get("toolchains"))
+        scope = receipt.get("scope")
+        result = receipt.get("result")
+        if not _receipt_nonempty_text(command):
+            shared_reasons.append("receipt_command_missing_or_invalid")
+        if not _receipt_nonempty_text(toolchain):
+            shared_reasons.append("receipt_toolchain_missing_or_invalid")
+        if (
+            not isinstance(scope, Sequence)
+            or isinstance(scope, (str, bytes, bytearray))
+            or not scope
+            or any(not str(item).strip() for item in scope)
+        ):
+            shared_reasons.append("receipt_scope_missing_or_invalid")
+        if not isinstance(result, Mapping) or not result:
+            shared_reasons.append("receipt_result_missing_or_invalid")
+        observed = _receipt_timestamp(
+            receipt,
+            "observed_at",
+            "replayed_at",
+            "finished_at",
+            "generated_at",
+            "created_at",
+        )
+        fresh_until = _receipt_timestamp(receipt, "fresh_until", "expires_at")
+        if observed is None:
+            shared_reasons.append("receipt_observed_at_missing_or_invalid")
+        elif observed > evaluated + timedelta(seconds=300):
+            shared_reasons.append("receipt_observed_in_future")
+        elif fresh_until is None and (
+            evaluated - observed
+        ).total_seconds() > float(freshness_seconds):
+            shared_reasons.append("receipt_stale")
+        if fresh_until is not None and evaluated > fresh_until:
+            shared_reasons.append("receipt_stale")
+        if not artifact_digest:
+            shared_reasons.append("receipt_artifact_digest_missing")
+        elif not _receipt_digest_valid(artifact_digest):
+            shared_reasons.append("receipt_artifact_digest_invalid")
+
+        embedded_projection = receipt.get("goal_projection")
+        parsed_embedded: ObjectiveEvidenceProjection | None = None
+        if embedded_projection is not None:
+            try:
+                if not isinstance(embedded_projection, Mapping):
+                    raise TypeError
+                parsed_embedded = ObjectiveEvidenceProjection.from_dict(
+                    embedded_projection
+                )
+            except (TypeError, ValueError):
+                shared_reasons.append("receipt_goal_projection_invalid")
+
+        for requirement in claims:
+            reasons = list(shared_reasons)
+            projection = projections.get(requirement)
+            if projection is None:
+                reasons.append("requirement_owner_missing_or_ambiguous")
+            if (
+                parsed_embedded is not None
+                and projection is not None
+                and parsed_embedded != projection
+            ):
+                reasons.append("receipt_goal_projection_mismatch")
+            try:
+                source_decision = completion_evidence_source_decision(
+                    receipt,
+                    requirement=requirement,
+                    repository_tree=tree,
+                    policy_id=policy,
+                )
+                reasons.extend(source_decision.reason_codes)
+                resolved_source_tier = source_decision.source_tier.value
+            except (TypeError, ValueError):
+                reasons.append("source_policy_evaluation_failed")
+                resolved_source_tier = source_tier
+            unique_reasons = tuple(dict.fromkeys(reasons))
+            provisional.append(
+                SelfImprovementGoalEvidenceBinding(
+                    requirement_id=requirement,
+                    goal_projection=projection,
+                    receipt_id=receipt_id,
+                    receipt_content_id=receipt_content_id,
+                    producer_kind=producer_kind,
+                    source_tier=resolved_source_tier,
+                    repository_tree=receipt_tree,
+                    policy_id=receipt_policy,
+                    artifact_digest=artifact_digest,
+                    observed_at=observed.isoformat() if observed else "",
+                    fresh_until=(
+                        fresh_until.isoformat() if fresh_until else ""
+                    ),
+                    authoritative=not unique_reasons and projection is not None,
+                    reason_codes=unique_reasons,
+                )
+            )
+
+    distinct_by_requirement: dict[str, set[str]] = {}
+    for item in provisional:
+        distinct_by_requirement.setdefault(item.requirement_id, set()).add(
+            item.receipt_id or item.receipt_content_id
+        )
+    bindings = tuple(
+        SelfImprovementGoalEvidenceBinding(
+            requirement_id=item.requirement_id,
+            goal_projection=item.goal_projection,
+            receipt_id=item.receipt_id,
+            receipt_content_id=item.receipt_content_id,
+            producer_kind=item.producer_kind,
+            source_tier=item.source_tier,
+            repository_tree=item.repository_tree,
+            policy_id=item.policy_id,
+            artifact_digest=item.artifact_digest,
+            observed_at=item.observed_at,
+            fresh_until=item.fresh_until,
+            authoritative=(
+                item.authoritative
+                and len(distinct_by_requirement[item.requirement_id]) == 1
+            ),
+            reason_codes=(
+                item.reason_codes
+                if len(distinct_by_requirement[item.requirement_id]) == 1
+                else tuple(
+                    dict.fromkeys(
+                        (
+                            *item.reason_codes,
+                            "duplicate_requirement_receipts",
+                        )
+                    )
+                )
+            ),
+        )
+        for item in provisional
+    )
+    return SelfImprovementGoalEvidenceReconciliation(
+        objective_heap_id=objective_heap_content_id(objective_text),
+        repository_tree=tree,
+        policy_id=policy,
+        evaluated_at=evaluated.isoformat(),
+        requested_requirement_ids=requested,
+        bindings=bindings,
+        proposal_evidence=normalized_proposals,
     )
 
 

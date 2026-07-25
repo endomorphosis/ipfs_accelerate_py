@@ -21,7 +21,7 @@ import shlex
 import subprocess
 import time
 from dataclasses import asdict, dataclass, field, fields
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -45,14 +45,17 @@ from .objective_graph import (
     LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS,
     OBJECTIVE_SCAN_ANALYZER_VERSION,
     SUCCESSFUL_MERGE_RECEIPT_STATUSES,
+    ObjectiveWorkProposal,
     bundle_path,
     generate_objective_todos_result,
+    parse_goal_heap,
     repo_relative_path,
     safe_bundle_key,
 )
 from .scan_receipts import (
     DEFAULT_EXHAUSTION_QUORUM_SIZE,
     ExhaustionBinding,
+    ExhaustionQuorumResult,
     RefillScanResult,
     RepositoryTreeIdentity,
     ScanAccounting,
@@ -118,6 +121,24 @@ DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
 DEFAULT_REFILL_OPEN_TASK_HEADROOM = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_REFILL_OPEN_TASK_HEADROOM", "1")
+)
+DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS = int(
+    os.environ.get(
+        "IPFS_ACCELERATE_AGENT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS",
+        "21600",
+    )
+)
+DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT = int(
+    os.environ.get(
+        "IPFS_ACCELERATE_AGENT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT",
+        "4096",
+    )
+)
+SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.self_improvement_successor_admission.v1"
+)
+SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY = (
+    "self_improvement_successor_admission_records"
 )
 CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
 CODEBASE_AUDIT_SCANNER_VERSION = "codebase-audit/v1"
@@ -196,6 +217,65 @@ class CodebaseFinding:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class SelfImprovementSuccessorRejection:
+    """One successor excluded before objective materialization.
+
+    Rejections deliberately retain both proposal identities.  Canonical IDs
+    distinguish exact proposal content while semantic keys prevent a cosmetic
+    rewrite from bypassing lifecycle or cooldown deduplication.
+    """
+
+    canonical_id: str
+    semantic_key: str
+    reason: str
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SelfImprovementSuccessorFilterResult:
+    """Deterministic pre-admission accounting for one successor candidate set."""
+
+    eligible: tuple[ObjectiveWorkProposal, ...]
+    rejected: tuple[SelfImprovementSuccessorRejection, ...]
+    lifecycle_canonical_ids: tuple[str, ...] = ()
+    lifecycle_semantic_keys: tuple[str, ...] = ()
+    cooldown_canonical_ids: tuple[str, ...] = ()
+    cooldown_semantic_keys: tuple[str, ...] = ()
+
+    @property
+    def candidate_count(self) -> int:
+        return len(self.eligible) + len(self.rejected)
+
+    @property
+    def eligible_count(self) -> int:
+        return len(self.eligible)
+
+    @property
+    def rejected_count(self) -> int:
+        return len(self.rejected)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "self_improvement_successor_filter.v1"
+            ),
+            "candidate_count": self.candidate_count,
+            "eligible_count": self.eligible_count,
+            "rejected_count": self.rejected_count,
+            "eligible": [item.to_dict() for item in self.eligible],
+            "rejected": [item.to_dict() for item in self.rejected],
+            "lifecycle_canonical_ids": list(self.lifecycle_canonical_ids),
+            "lifecycle_semantic_keys": list(self.lifecycle_semantic_keys),
+            "cooldown_canonical_ids": list(self.cooldown_canonical_ids),
+            "cooldown_semantic_keys": list(self.cooldown_semantic_keys),
+        }
 
 
 @dataclass
@@ -722,6 +802,460 @@ def parse_iso_timestamp(value: str) -> datetime | None:
     return parsed
 
 
+def _self_improvement_successor_timestamp(
+    value: datetime | str | None,
+    *,
+    field_name: str,
+) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = parse_iso_timestamp(str(value).strip())
+        if parsed is None:
+            raise ValueError(f"{field_name} must be an ISO-8601 timestamp")
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def self_improvement_successor_lifecycle_identities(
+    objective_text: str,
+) -> tuple[set[str], set[str]]:
+    """Return proposal identities owned by every objective lifecycle state.
+
+    Completed, rejected, blocked, and reopened goals remain deduplication
+    authority.  Looking only at schedulable goals would permit the same work
+    to be regenerated as soon as it reached a terminal state.
+    """
+
+    canonical_ids: set[str] = set()
+    semantic_keys: set[str] = set()
+    for goal in parse_goal_heap(objective_text):
+        canonical_id = goal.canonical_proposal_id
+        semantic_key = goal.semantic_key
+        if canonical_id:
+            canonical_ids.add(canonical_id)
+        if semantic_key:
+            semantic_keys.add(semantic_key)
+    return canonical_ids, semantic_keys
+
+
+def self_improvement_successor_admission_records(
+    strategy: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Validate and return the durable successor admission/cooldown ledger."""
+
+    raw = strategy.get(SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY) or {}
+    if not isinstance(raw, Mapping):
+        raise ValueError(
+            f"{SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY} must be an object"
+        )
+    result: dict[str, dict[str, Any]] = {}
+    allowed_statuses = {
+        "admitted",
+        "committed",
+        "cooldown",
+        "failed",
+        "materialized",
+        "prepared",
+        "rejected",
+        "review_required",
+    }
+    allowed_fields = {
+        "schema",
+        "version",
+        "canonical_id",
+        "semantic_key",
+        "status",
+        "epoch_id",
+        "transaction_id",
+        "recorded_at",
+        "cooldown_until",
+        "reason_codes",
+        "attempts",
+    }
+    for raw_key, raw_record in raw.items():
+        if not isinstance(raw_record, Mapping):
+            raise ValueError("successor admission records must be objects")
+        record = dict(raw_record)
+        unknown_fields = sorted(
+            str(key) for key in record if str(key) not in allowed_fields
+        )
+        if unknown_fields:
+            raise ValueError(
+                "successor admission record contains unknown fields: "
+                + ", ".join(unknown_fields)
+            )
+        canonical_id = str(record.get("canonical_id") or "").strip()
+        semantic_key = str(record.get("semantic_key") or "").strip()
+        status = str(record.get("status") or "").strip().lower()
+        if not canonical_id or str(raw_key) != canonical_id:
+            raise ValueError(
+                "successor admission record key must match canonical_id"
+            )
+        if not semantic_key:
+            raise ValueError("successor admission records require semantic_key")
+        version = record.get("version")
+        if (
+            record.get("schema") != SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA
+            or isinstance(version, bool)
+            or version != 1
+        ):
+            raise ValueError("unsupported successor admission record schema")
+        if status not in allowed_statuses:
+            raise ValueError(
+                f"unsupported successor admission status {status!r}"
+            )
+        recorded_at = parse_iso_timestamp(str(record.get("recorded_at") or ""))
+        if recorded_at is None:
+            raise ValueError("successor admission records require recorded_at")
+        cooldown_until = str(record.get("cooldown_until") or "").strip()
+        if cooldown_until and parse_iso_timestamp(cooldown_until) is None:
+            raise ValueError(
+                "successor admission cooldown_until must be an ISO-8601 timestamp"
+            )
+        transaction_id = str(record.get("transaction_id") or "").strip()
+        if status in {"admitted", "committed", "materialized"} and not transaction_id:
+            raise ValueError(
+                "successful successor admission records require transaction_id"
+            )
+        if status not in {"admitted", "committed", "materialized"} and not cooldown_until:
+            raise ValueError(
+                "non-admitted successor records require cooldown_until"
+            )
+        raw_reasons = record.get("reason_codes") or ()
+        if not isinstance(raw_reasons, Sequence) or isinstance(
+            raw_reasons, (str, bytes)
+        ):
+            raise ValueError("successor admission reason_codes must be a list")
+        normalized = {
+            **record,
+            "canonical_id": canonical_id,
+            "semantic_key": semantic_key,
+            "status": status,
+            "recorded_at": recorded_at.astimezone(timezone.utc).isoformat(),
+            "cooldown_until": cooldown_until,
+            "epoch_id": str(record.get("epoch_id") or "").strip(),
+            "transaction_id": transaction_id,
+            "reason_codes": sorted(
+                {
+                    str(item).strip()
+                    for item in raw_reasons
+                    if str(item).strip()
+                }
+            ),
+        }
+        attempts = normalized.get("attempts") or ()
+        if not isinstance(attempts, Sequence) or isinstance(
+            attempts, (str, bytes)
+        ):
+            raise ValueError("successor admission attempts must be a list")
+        if any(not isinstance(item, Mapping) for item in attempts):
+            raise ValueError("successor admission attempts must contain objects")
+        normalized["attempts"] = [
+            dict(item) for item in attempts
+        ][-16:]
+        result[canonical_id] = normalized
+    return result
+
+
+def filter_self_improvement_successor_candidates(
+    proposals: Iterable[ObjectiveWorkProposal | Mapping[str, Any]],
+    *,
+    objective_text: str,
+    strategy: Mapping[str, Any],
+    observed_at: datetime | str | None = None,
+) -> SelfImprovementSuccessorFilterResult:
+    """Exclude lifecycle, admission-history, cooldown, and batch duplicates.
+
+    This is a pre-admission filter, not materialization authority.  Callers
+    must still run the objective quality/refinement preview and commit its
+    immutable result through the objective materialization transaction.
+    """
+
+    now = _self_improvement_successor_timestamp(
+        observed_at, field_name="observed_at"
+    )
+    lifecycle_canonical, lifecycle_semantic = (
+        self_improvement_successor_lifecycle_identities(objective_text)
+    )
+    records = self_improvement_successor_admission_records(strategy)
+    permanent_statuses = {"admitted", "committed", "materialized"}
+    ledger_canonical: set[str] = set()
+    ledger_semantic: set[str] = set()
+    active_cooldown_canonical: set[str] = set()
+    active_cooldown_semantic: set[str] = set()
+    for record in records.values():
+        canonical_id = str(record["canonical_id"])
+        semantic_key = str(record["semantic_key"])
+        status = str(record["status"])
+        cooldown_until = parse_iso_timestamp(
+            str(record.get("cooldown_until") or "")
+        )
+        if status in permanent_statuses:
+            ledger_canonical.add(canonical_id)
+            ledger_semantic.add(semantic_key)
+        elif cooldown_until is not None and now < cooldown_until:
+            active_cooldown_canonical.add(canonical_id)
+            active_cooldown_semantic.add(semantic_key)
+
+    eligible: list[ObjectiveWorkProposal] = []
+    rejected: list[SelfImprovementSuccessorRejection] = []
+    batch_canonical: set[str] = set()
+    batch_semantic: set[str] = set()
+    normalized: list[ObjectiveWorkProposal] = []
+    for raw in proposals:
+        try:
+            proposal = (
+                raw
+                if isinstance(raw, ObjectiveWorkProposal)
+                else ObjectiveWorkProposal.from_dict(raw)
+            )
+        except (TypeError, ValueError) as exc:
+            rejected.append(
+                SelfImprovementSuccessorRejection(
+                    canonical_id="",
+                    semantic_key="",
+                    reason="invalid_proposal",
+                    detail=str(exc),
+                )
+            )
+            continue
+        normalized.append(proposal)
+    normalized.sort(
+        key=lambda item: (
+            item.depth,
+            item.parent_goal_id.casefold(),
+            item.semantic_key,
+            item.canonical_id,
+        )
+    )
+    for proposal in normalized:
+        reason = ""
+        detail = ""
+        if (
+            proposal.canonical_id in lifecycle_canonical
+            or proposal.semantic_key in lifecycle_semantic
+        ):
+            reason = "lifecycle_duplicate"
+            detail = "equivalent work exists in the objective heap"
+        elif (
+            proposal.canonical_id in ledger_canonical
+            or proposal.semantic_key in ledger_semantic
+        ):
+            reason = "prior_admission_duplicate"
+            detail = "equivalent work has a durable successful admission record"
+        elif (
+            proposal.canonical_id in active_cooldown_canonical
+            or proposal.semantic_key in active_cooldown_semantic
+        ):
+            reason = "successor_cooldown"
+            detail = "equivalent work is inside its durable cooldown window"
+        elif (
+            proposal.canonical_id in batch_canonical
+            or proposal.semantic_key in batch_semantic
+        ):
+            reason = "batch_duplicate"
+            detail = "equivalent work already appeared in this candidate batch"
+        if reason:
+            rejected.append(
+                SelfImprovementSuccessorRejection(
+                    canonical_id=proposal.canonical_id,
+                    semantic_key=proposal.semantic_key,
+                    reason=reason,
+                    detail=detail,
+                )
+            )
+            continue
+        batch_canonical.add(proposal.canonical_id)
+        batch_semantic.add(proposal.semantic_key)
+        eligible.append(proposal)
+    return SelfImprovementSuccessorFilterResult(
+        eligible=tuple(eligible),
+        rejected=tuple(rejected),
+        lifecycle_canonical_ids=tuple(sorted(lifecycle_canonical)),
+        lifecycle_semantic_keys=tuple(sorted(lifecycle_semantic)),
+        cooldown_canonical_ids=tuple(
+            sorted(active_cooldown_canonical)
+        ),
+        cooldown_semantic_keys=tuple(
+            sorted(active_cooldown_semantic)
+        ),
+    )
+
+
+def record_self_improvement_successor_admission(
+    strategy_path: Path,
+    *,
+    epoch_id: str,
+    proposals: Iterable[ObjectiveWorkProposal | Mapping[str, Any]],
+    admitted_proposal_ids: Sequence[str] = (),
+    transaction_id: str = "",
+    rejection_reasons: Mapping[str, Sequence[str] | str] | None = None,
+    recorded_at: datetime | str | None = None,
+    cooldown_seconds: int = DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS,
+    record_limit: int = DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT,
+) -> dict[str, Any]:
+    """Durably record committed admissions and finite rejected-work cooldowns.
+
+    The update is locked and durably flushed with the rest of the strategy.
+    An admitted record requires the objective transaction identity; recording
+    it before commit is therefore impossible through this API.  Expired
+    non-admission records are pruned before the hard ledger bound is applied.
+    """
+
+    epoch = str(epoch_id or "").strip()
+    transaction = str(transaction_id or "").strip()
+    if not epoch:
+        raise ValueError("epoch_id is required")
+    if (
+        isinstance(cooldown_seconds, bool)
+        or int(cooldown_seconds) < 0
+    ):
+        raise ValueError("cooldown_seconds must be a non-negative integer")
+    if isinstance(record_limit, bool) or int(record_limit) <= 0:
+        raise ValueError("record_limit must be a positive integer")
+    now = _self_improvement_successor_timestamp(
+        recorded_at, field_name="recorded_at"
+    )
+    normalized: dict[str, ObjectiveWorkProposal] = {}
+    for raw in proposals:
+        proposal = (
+            raw
+            if isinstance(raw, ObjectiveWorkProposal)
+            else ObjectiveWorkProposal.from_dict(raw)
+        )
+        prior = normalized.get(proposal.canonical_id)
+        if prior is not None and prior.semantic_key != proposal.semantic_key:
+            raise ValueError("canonical proposal identity collision")
+        normalized[proposal.canonical_id] = proposal
+    admitted = {
+        str(item).strip() for item in admitted_proposal_ids if str(item).strip()
+    }
+    unknown_admissions = admitted - set(normalized)
+    if unknown_admissions:
+        raise ValueError(
+            "admitted proposal IDs were not present in the candidate set: "
+            + ", ".join(sorted(unknown_admissions))
+        )
+    if admitted and not transaction:
+        raise ValueError(
+            "transaction_id is required for admitted successor proposals"
+        )
+    reasons_by_id: dict[str, list[str]] = {}
+    for canonical_id, raw_reasons in (rejection_reasons or {}).items():
+        values = (
+            (raw_reasons,)
+            if isinstance(raw_reasons, str)
+            else tuple(raw_reasons)
+        )
+        reasons_by_id[str(canonical_id)] = sorted(
+            {
+                str(item).strip()
+                for item in values
+                if str(item).strip()
+            }
+        )
+
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    with locked_taskboard(strategy_path) as stream:
+        raw_text = stream.read().strip()
+        if raw_text:
+            try:
+                loaded = json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "cannot update corrupt self-improvement strategy JSON"
+                ) from exc
+            if not isinstance(loaded, Mapping):
+                raise ValueError(
+                    "self-improvement strategy must contain a JSON object"
+                )
+            strategy = dict(loaded)
+        else:
+            strategy = {"blocked_tasks": []}
+        records = self_improvement_successor_admission_records(strategy)
+        permanent_statuses = {"admitted", "committed", "materialized"}
+        retained: dict[str, dict[str, Any]] = {}
+        for canonical_id, record in records.items():
+            cooldown_until = parse_iso_timestamp(
+                str(record.get("cooldown_until") or "")
+            )
+            if (
+                str(record.get("status") or "") in permanent_statuses
+                or (cooldown_until is not None and now < cooldown_until)
+            ):
+                retained[canonical_id] = record
+        for canonical_id, proposal in sorted(normalized.items()):
+            is_admitted = canonical_id in admitted
+            status = "admitted" if is_admitted else "rejected"
+            reason_codes = (
+                []
+                if is_admitted
+                else reasons_by_id.get(canonical_id, ["not_admitted"])
+            )
+            attempt = {
+                "epoch_id": epoch,
+                "transaction_id": transaction if is_admitted else "",
+                "status": status,
+                "recorded_at": now.isoformat(),
+                "reason_codes": reason_codes,
+            }
+            prior = retained.get(canonical_id)
+            prior_attempts = prior.get("attempts", ()) if prior else ()
+            if prior is not None and not is_admitted:
+                # Never downgrade committed authority or perpetually extend an
+                # existing cooldown merely because another epoch proposed the
+                # same work.  The attempt is still auditable.
+                retained[canonical_id] = {
+                    **prior,
+                    "attempts": [*prior_attempts, attempt][-16:],
+                }
+                continue
+            retained[canonical_id] = {
+                "schema": SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA,
+                "version": 1,
+                "canonical_id": canonical_id,
+                "semantic_key": proposal.semantic_key,
+                "status": status,
+                "epoch_id": epoch,
+                "transaction_id": transaction if is_admitted else "",
+                "recorded_at": now.isoformat(),
+                "cooldown_until": (
+                    ""
+                    if is_admitted
+                    else (
+                        now + timedelta(seconds=int(cooldown_seconds))
+                    ).isoformat()
+                ),
+                "reason_codes": reason_codes,
+                "attempts": [*prior_attempts, attempt][-16:],
+            }
+        if len(retained) > int(record_limit):
+            raise RuntimeError(
+                "self-improvement successor admission ledger limit reached; "
+                "refusing to discard live deduplication authority"
+            )
+        strategy[SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY] = {
+            key: retained[key] for key in sorted(retained)
+        }
+        strategy["last_self_improvement_successor_admission_at"] = (
+            now.isoformat()
+        )
+        strategy["last_self_improvement_successor_epoch_id"] = epoch
+        if admitted:
+            strategy["last_self_improvement_successor_transaction_id"] = (
+                transaction
+            )
+        replace_locked_taskboard(
+            stream,
+            json.dumps(strategy, indent=2, sort_keys=True) + "\n",
+        )
+    return strategy
+
+
 def should_refill_backlog(
     *,
     todo_text: str,
@@ -811,7 +1345,15 @@ def self_improvement_epoch_wait_active(
     recorded_requirement = str(
         strategy.get("last_self_improvement_requirement_id") or ""
     ).strip()
-    quorum = strategy.get("last_self_improvement_exhaustion_quorum")
+    raw_quorum = strategy.get("last_self_improvement_exhaustion_quorum")
+    try:
+        quorum = (
+            ExhaustionQuorumResult.from_dict(raw_quorum)
+            if isinstance(raw_quorum, Mapping)
+            else None
+        )
+    except (TypeError, ValueError):
+        quorum = None
     recorded_triggers = tuple(
         sorted(
             str(item).strip()
@@ -832,8 +1374,8 @@ def self_improvement_epoch_wait_active(
         == "waiting_for_meaningful_trigger"
         and recorded_evidence
         and recorded_requirement
-        and isinstance(quorum, Mapping)
-        and quorum.get("satisfied") is True
+        and quorum is not None
+        and quorum.satisfied
         and recorded_triggers
         and (
             not str(evidence_id or "").strip()
@@ -875,7 +1417,15 @@ def record_self_improvement_exhaustion(
         raise ValueError(
             "epoch_id, evidence_id, and requirement_id are required"
         )
-    if not isinstance(quorum, Mapping) or quorum.get("satisfied") is not True:
+    try:
+        parsed_quorum = (
+            ExhaustionQuorumResult.from_dict(quorum)
+            if isinstance(quorum, Mapping)
+            else None
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("a valid exhaustion quorum is required") from exc
+    if parsed_quorum is None or not parsed_quorum.satisfied:
         raise ValueError("a satisfied exhaustion quorum is required")
     if not triggers:
         raise ValueError("at least one meaningful next trigger is required")
@@ -886,7 +1436,7 @@ def record_self_improvement_exhaustion(
             "last_self_improvement_epoch_status": "healthy_exhausted",
             "last_self_improvement_exhaustion_evidence_id": evidence,
             "last_self_improvement_requirement_id": requirement,
-            "last_self_improvement_exhaustion_quorum": dict(quorum),
+            "last_self_improvement_exhaustion_quorum": parsed_quorum.to_dict(),
             "last_self_improvement_exhausted_at": str(recorded_at or utc_now()),
             "self_improvement_refill_state": "waiting_for_meaningful_trigger",
             "self_improvement_next_triggers": list(triggers),
