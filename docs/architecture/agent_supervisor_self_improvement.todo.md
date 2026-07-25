@@ -104,7 +104,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-006 Add progressive disclosure and delta retry contexts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: token-efficiency
