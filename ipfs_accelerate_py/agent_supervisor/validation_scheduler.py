@@ -19,7 +19,7 @@ import time
 from collections import deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -2371,6 +2371,113 @@ class ImpactDependencyGraph:
             graph_version=str(payload.get("graph_version") or "impact-dependency-v3"),
             graph_id=str(payload.get("graph_id") or ""),
         )
+
+
+def build_declared_validation_plan_graph(
+    commands: Iterable[str | ValidationCommand],
+    *,
+    repository_tree_id: str,
+    changed_paths: Iterable[str],
+) -> tuple[tuple[ValidationCommand, ...], ImpactDependencyGraph]:
+    """Bind a reviewed task validation plan to an accepted proposal.
+
+    Todo boards predate repository-wide impact indexes, but their validation
+    commands are still reviewed inputs and are already bound into the accepted
+    :class:`ImplementationProposal`.  This helper gives every declared command
+    a deterministic identity and builds a conservative, proposal-local impact
+    graph:
+
+    * every changed path is a graph root;
+    * every explicit validation target depends on every changed path unless it
+      is itself changed; and
+    * commands without an explicit target cover every changed path.
+
+    The result authorizes only the declared validation population.  It does not
+    emit transitive-impact proof evidence or weaken ``run_validated`` when its
+    caller requires a repository-wide impact graph.
+    """
+
+    tree_id = str(repository_tree_id or "").strip()
+    if not tree_id:
+        raise ValidationDAGError(
+            "declared validation plan requires repository_tree_id"
+        )
+    changed = tuple(
+        sorted(
+            {
+                path
+                for value in changed_paths
+                if (path := _normalize_impact_path(value))
+            }
+        )
+    )
+    if not changed:
+        raise ValidationDAGError(
+            "declared validation plan requires changed paths"
+        )
+    specs = build_validation_commands(commands)
+    if not specs:
+        raise ValidationDAGError(
+            "declared validation plan requires at least one command"
+        )
+
+    dependencies: dict[str, tuple[str, ...]] = {
+        path: () for path in changed
+    }
+    validation_targets: dict[str, tuple[str, ...]] = {}
+    bound_specs: list[ValidationCommand] = []
+    seen_ids: set[str] = set()
+    for spec in specs:
+        validation_id = str(spec.validation_id or "").strip()
+        if not validation_id:
+            digest = _sha256_bytes(
+                _canonical_json(
+                    {
+                        "command": spec.command,
+                        "ordinal": spec.ordinal,
+                        "stage": spec.stage.label,
+                    }
+                ).encode("utf-8")
+            )
+            validation_id = f"declared:{digest}"
+        if validation_id in seen_ids:
+            raise ValidationDAGError(
+                "declared validation plan contains duplicate validation IDs"
+            )
+        seen_ids.add(validation_id)
+
+        targets = tuple(
+            sorted(
+                {
+                    path
+                    for value in spec.impact_paths
+                    if (path := _normalize_impact_path(value))
+                }
+            )
+        )
+        if not targets:
+            targets = changed
+        for target in targets:
+            dependencies.setdefault(
+                target,
+                tuple(path for path in changed if path != target),
+            )
+        validation_targets[validation_id] = targets
+        bound_specs.append(
+            replace(
+                spec,
+                validation_id=validation_id,
+                impact_paths=targets,
+            )
+        )
+
+    graph = ImpactDependencyGraph(
+        repository_tree_id=tree_id,
+        dependencies=dependencies,
+        validation_targets=validation_targets,
+        graph_version="declared-validation-plan-v1",
+    )
+    return tuple(bound_specs), graph
 
 
 @dataclass(frozen=True)

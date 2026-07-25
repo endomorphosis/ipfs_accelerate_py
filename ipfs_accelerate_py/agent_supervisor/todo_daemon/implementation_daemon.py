@@ -44,7 +44,10 @@ from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
 from ..merge_queue import MergeQueue
 from ..validation_commands import normalize_validation_command_text, split_validation_commands
-from ..validation_scheduler import ValidationScheduler
+from ..validation_scheduler import (
+    ValidationScheduler,
+    build_declared_validation_plan_graph,
+)
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
 from .worktrees import WorktreeLease, WorktreePool
@@ -6012,16 +6015,57 @@ class PortalImplementationDaemon:
                     "error": "proposal_validation_failed",
                 }
             else:
-                result = strict_runner(
-                    proposal_validation,
-                    commands,
-                    workspace_path=workspace_path,
-                    require_impact_graph=False,
-                    require_full_validation=True,
-                    scope="pre_merge",
-                    runner=self._validation_command_runner,
-                    **proof_options,
-                )
+                proposal = getattr(proposal_validation, "proposal", None)
+                try:
+                    bound_commands, declared_graph = (
+                        build_declared_validation_plan_graph(
+                            commands,
+                            repository_tree_id=str(
+                                getattr(
+                                    proposal,
+                                    "repository_tree_id",
+                                    "",
+                                )
+                                or ""
+                            ),
+                            changed_paths=tuple(
+                                getattr(proposal, "changed_paths", ()) or ()
+                            ),
+                        )
+                    )
+                except (TypeError, ValueError) as exc:
+                    result = {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                        "results": [],
+                        "reason": "declared_validation_plan_invalid",
+                        "error": "validation_configuration_failed",
+                        "configuration_error": type(exc).__name__,
+                        "configuration_detail": str(exc)[:1000],
+                    }
+                else:
+                    result = strict_runner(
+                        proposal_validation,
+                        bound_commands,
+                        workspace_path=workspace_path,
+                        impact_graph=declared_graph,
+                        require_impact_graph=True,
+                        require_full_validation=True,
+                        scope="pre_merge",
+                        runner=self._validation_command_runner,
+                        **proof_options,
+                    )
+                    result["validation_plan_binding"] = {
+                        "source": "proposal_declared_validation_plan",
+                        "graph_id": declared_graph.graph_id,
+                        "graph_version": declared_graph.graph_version,
+                        "command_count": len(bound_commands),
+                        "validation_ids": [
+                            command.validation_id
+                            for command in bound_commands
+                        ],
+                    }
 
             # The scheduler needs full source-bound records in process, while
             # daemon state and JSONL events retain only compact repair data.

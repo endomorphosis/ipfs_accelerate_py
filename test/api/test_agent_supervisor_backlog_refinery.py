@@ -2132,6 +2132,80 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
     assert Path(findings[0]["discovery_path"]).exists()
 
 
+def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    events_path = repo / "state" / "events.jsonl"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix validation authority
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: pytest tests/test_runtime.py
+- Acceptance: Repair validation authority without retrying indefinitely.
+""",
+        encoding="utf-8",
+    )
+    events_path.parent.mkdir(parents=True)
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "validation_result": {
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "error": "uncovered_validation_impact",
+            "reason": "impact_validation_population_incomplete",
+            "coverage_errors": ["no_required_validation_declared"],
+        },
+        "log_path": "state/implementation_logs/auto-001-attempt-1.log",
+    }
+    events_path.write_text(
+        json.dumps(failure)
+        + "\n"
+        + json.dumps({**failure, "attempt": 2})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    findings = record_retry_budget_findings(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value="## AUTO-",
+        task_prefix="AUTO-",
+        validation_retry_budget=2,
+        merge_retry_budget=0,
+        implementation_retry_budget=0,
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["failure_kind"] == "validation"
+    assert findings[0]["failed_command"].startswith(
+        "validation_pre_dispatch:uncovered_validation_impact:"
+    )
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "Resolve validation retry-budget failure for AUTO-001" in todo_text
+    assert "- Validation: test -f " in todo_text
+    discovery_text = Path(findings[0]["discovery_path"]).read_text(
+        encoding="utf-8"
+    )
+    assert "Validation attempted: `False`" in discovery_text
+    assert "no_required_validation_declared" in discovery_text
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+
+
 def test_backlog_refinery_configured_retry_budget_adds_present_dependency(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"

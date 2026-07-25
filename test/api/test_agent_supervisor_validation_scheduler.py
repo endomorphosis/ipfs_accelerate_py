@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationStage,
@@ -357,3 +358,73 @@ def test_daemon_uses_full_pre_merge_scope_and_preserves_result_contract(tmp_path
     assert report["passed"] is False
     assert report["returncode"] == 6
     assert report["failed_command"] == "git diff --check"
+
+
+def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class Scheduler:
+        def run_validated(self, proposal_validation, commands, **kwargs):
+            captured["proposal_validation"] = proposal_validation
+            captured["commands"] = tuple(commands)
+            captured.update(kwargs)
+            return {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "results": [],
+            }
+
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        validation_scheduler=Scheduler(),  # type: ignore[arg-type]
+    )
+    task = PortalTask(
+        task_id="IRF-010",
+        title="proposal-local validation",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="platform",
+        validation=["python -m pytest tests/unit/test_identity.py -q"],
+    )
+    proposal_validation = SimpleNamespace(
+        accepted=True,
+        findings=(),
+        proposal=SimpleNamespace(
+            proposal_id="proposal:fixture",
+            repository_tree_id="tree:fixture",
+            changed_paths=("src/identity.py", "tests/unit/test_identity.py"),
+        ),
+        policy=SimpleNamespace(policy_id="policy:fixture"),
+        receipt=SimpleNamespace(receipt_id="receipt:fixture"),
+    )
+
+    report = daemon._run_validation_commands(
+        tmp_path,
+        task,
+        tmp_path / "validation.log",
+        proposal_validation=proposal_validation,
+    )
+
+    commands = captured["commands"]
+    graph = captured["impact_graph"]
+    assert captured["require_impact_graph"] is True
+    assert captured["require_full_validation"] is True
+    assert captured["scope"] == "pre_merge"
+    assert len(commands) == 1
+    assert commands[0].validation_id.startswith("declared:")
+    assert graph.graph_version == "declared-validation-plan-v1"
+    assert graph.required_validations(
+        graph.affected_paths(
+            ("src/identity.py", "tests/unit/test_identity.py")
+        )
+    )
+    assert report["passed"] is True
+    assert report["validation_plan_binding"]["graph_id"] == graph.graph_id

@@ -38,6 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ValidationDAGReceipt,
     ValidationNodeDisposition,
     ValidationScheduler,
+    build_declared_validation_plan_graph,
     build_impact_selected_validation_dag,
 )
 
@@ -497,6 +498,50 @@ def test_missing_or_uncovered_impact_fails_closed_without_false_completion(
     )
     assert receipt.uncovered_impact
     assert receipt.completion_authoritative is False
+
+
+def test_declared_validation_plan_builds_proposal_local_coverage(
+    tmp_path: Path,
+) -> None:
+    validation = validate_implementation_proposal(
+        _proposal((_source_change(),)),
+        policy=_policy(),
+    )
+    commands, graph = build_declared_validation_plan_graph(
+        ("pytest -q test/api/test_transitive_consumer.py",),
+        repository_tree_id=TREE_ID,
+        changed_paths=("pkg/source.py",),
+    )
+    calls: list[str] = []
+
+    def runner(*, spec: ValidationCommand, **_kwargs: object) -> dict[str, object]:
+        calls.append(spec.command)
+        return {"returncode": 0, "output": "passed"}
+
+    report = ValidationScheduler().run_validated(
+        validation,
+        commands,
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        dependency_state="fixture",
+        runner=runner,
+    )
+    receipt = ValidationDAGReceipt.from_dict(
+        report["validation_dag_receipt"]
+    )
+
+    assert calls == ["pytest -q test/api/test_transitive_consumer.py"]
+    assert report["passed"] is True
+    assert graph.graph_version == "declared-validation-plan-v1"
+    assert receipt.coverage_complete is True
+    assert receipt.affected_paths == (
+        "pkg/source.py",
+        "test/api/test_transitive_consumer.py",
+    )
+    assert len(receipt.required_validation_ids) == 1
+    assert receipt.required_validation_ids[0].startswith("declared:")
+    assert all(node.mandatory for node in receipt.nodes)
+    assert tuple(report["proved_requirement_ids"]) == ()
 
 
 def test_declared_transitive_validation_cannot_be_omitted_from_population(

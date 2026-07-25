@@ -3625,6 +3625,69 @@ def event_merge_result(event: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def validation_result_is_failure(value: Any) -> bool:
+    """Return whether a validation result represents a real failed gate.
+
+    Pre-dispatch failures such as a missing impact declaration deliberately set
+    ``attempted`` to false because no command was allowed to run.  They are
+    still validation failures and must consume the validation retry budget
+    instead of being misclassified as implementation failures.
+    """
+
+    if not isinstance(value, Mapping) or value.get("passed", False):
+        return False
+    if value.get("attempted", False):
+        return True
+    if value.get("error") or value.get("coverage_errors"):
+        return True
+    reason = str(value.get("reason") or "").strip()
+    if reason and reason not in {"no_commands", "not_run"}:
+        return True
+    try:
+        return int(value.get("returncode")) != 0
+    except (TypeError, ValueError):
+        return False
+
+
+def validation_failure_label(
+    validation: Mapping[str, Any],
+    *,
+    source_task: Any | None = None,
+) -> str:
+    """Return a stable command or typed pre-dispatch failure label."""
+
+    failed_command = str(validation.get("failed_command") or "").strip()
+    if failed_command:
+        return failed_command
+    if not validation.get("attempted", False):
+        error = str(validation.get("error") or "validation_gate_failed").strip()
+        reason = str(validation.get("reason") or "pre_dispatch").strip()
+        return f"validation_pre_dispatch:{error}:{reason}"
+    for node in validation.get("nodes", ()) or ():
+        if not isinstance(node, Mapping):
+            continue
+        if str(node.get("disposition") or "") != "failed":
+            continue
+        command = str(node.get("command") or "").strip()
+        if command:
+            return command
+    selection = validation.get("selection") or {}
+    if isinstance(selection, Mapping):
+        for decision in selection.get("decisions", ()) or ():
+            if not isinstance(decision, Mapping) or not decision.get(
+                "selected", False
+            ):
+                continue
+            command = str(decision.get("command") or "").strip()
+            if command:
+                return command
+    if source_task is not None:
+        for command in getattr(source_task, "validation", ()) or ():
+            if str(command).strip():
+                return str(command).strip()
+    return "validation_gate_failed"
+
+
 def consecutive_validation_failures(events: Sequence[Mapping[str, Any]], task_id: str) -> list[dict[str, Any]]:
     failures: list[dict[str, Any]] = []
     for event in reversed(events):
@@ -3633,9 +3696,7 @@ def consecutive_validation_failures(events: Sequence[Mapping[str, Any]], task_id
         if str(event.get("task_id") or "") != task_id:
             continue
         validation = event.get("validation_result") or {}
-        if not isinstance(validation, Mapping) or not validation.get("attempted"):
-            break
-        if validation.get("passed", False):
+        if not validation_result_is_failure(validation):
             break
         failures.append(dict(event))
     failures.reverse()
@@ -3661,7 +3722,7 @@ def consecutive_merge_failures(events: Sequence[Mapping[str, Any]], task_id: str
             break
         if event_type == "implementation_finished":
             validation = event.get("validation_result") or {}
-            if isinstance(validation, Mapping) and validation.get("attempted") and not validation.get("passed", False):
+            if validation_result_is_failure(validation):
                 break
             if merge_result.get("merged", False):
                 break
@@ -3701,7 +3762,7 @@ def consecutive_implementation_failures(events: Sequence[Mapping[str, Any]], tas
             continue
 
         validation = event.get("validation_result") or {}
-        if isinstance(validation, Mapping) and validation.get("attempted") and not validation.get("passed", False):
+        if validation_result_is_failure(validation):
             break
 
         merge_result = event_merge_result(event)
@@ -3779,6 +3840,27 @@ def write_retry_budget_discovery(
                 exception_text,
             ]
         ).strip()
+    validation_evidence = ""
+    if failures and failure_kind == "validation":
+        latest_validation = failures[-1].get("validation_result") or {}
+        if isinstance(latest_validation, Mapping):
+            coverage_errors = latest_validation.get("coverage_errors") or []
+            if isinstance(coverage_errors, str):
+                coverage_errors = [coverage_errors]
+            validation_evidence = "\n".join(
+                [
+                    f"- Validation attempted: `{bool(latest_validation.get('attempted', False))}`",
+                    f"- Validation return code: `{str(latest_validation.get('returncode') or 'not recorded')}`",
+                    f"- Validation error: `{str(latest_validation.get('error') or 'not recorded')}`",
+                    f"- Validation reason: `{str(latest_validation.get('reason') or 'not recorded')}`",
+                    "- Coverage errors: "
+                    + (
+                        ", ".join(str(item) for item in coverage_errors)
+                        or "not recorded"
+                    ),
+                    f"- Configuration detail: {str(latest_validation.get('configuration_detail') or 'not recorded')[:1000]}",
+                ]
+            )
     content = f"""# {task_id} {failure_kind.title()} Retry-Budget Finding: {source_task_id}
 
 Date: {date}
@@ -3794,6 +3876,7 @@ Observed consecutive {failure_kind} failures: {len(failures)}
 - Logs: {", ".join(log_paths) or "not recorded"}
 {merge_evidence}
 {implementation_evidence}
+{validation_evidence}
 
 ## Guardrail Result
 
@@ -3842,7 +3925,13 @@ def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
     """Return a parseable validation command for a retry-budget follow-up task."""
 
     stripped = normalize_validation_command_text(command)
-    if stripped:
+    typed_failure_label = stripped.startswith(
+        (
+            "validation_pre_dispatch:",
+            "validation_gate_failed",
+        )
+    )
+    if stripped and not typed_failure_label:
         commands = split_validation_commands(stripped)
         try:
             for parsed_command in commands:
@@ -4054,9 +4143,10 @@ def record_retry_budget_findings(
             if len(failures) < validation_retry_budget:
                 continue
             latest_validation = failures[-1].get("validation_result") or {}
-            failed_command = str(latest_validation.get("failed_command") or "")
-            if not failed_command:
-                continue
+            failed_command = validation_failure_label(
+                latest_validation,
+                source_task=task,
+            )
             follow_up_task_id = next_task_id(todo_text, task_prefix=task_prefix)
             discovery_path = write_retry_budget_discovery(
                 discovery_dir=discovery_dir,
