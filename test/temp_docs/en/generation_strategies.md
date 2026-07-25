@@ -144,7 +144,7 @@ outputs = model.generate(**inputs, max_new_tokens=50, do_sample=True, num_beams=
 
 ## Speculative decoding
 
-[Speculative](https://hf.co/papers/2211.17192) or assistive decoding isn't a search or sampling strategy. Instead, speculative decoding adds a second smaller model to generate candidate tokens. The main model verifies the candidate tokens in a single `forward` pass, which speeds up the decoding process overall. This method is especially useful for LLMs where it can be more costly and slower to generate tokens. Refer to the [speculative decoding](./llm_optims#speculative-decoding) guide to learn more.
+[Speculative](https://hf.co/papers/2211.17192) or assistive decoding isn't a search or sampling strategy. Instead, speculative decoding adds a second smaller model to generate candidate tokens. The main model verifies the candidate tokens in a single `forward` pass, which speeds up the decoding process overall. This method is especially useful for LLMs where it can be more costly and slower to generate tokens. Refer to the [speculative decoding](./llm_optims.md#speculative-decoding) guide to learn more.
 
 Currently, only greedy search and multinomial sampling are supported with speculative decoding. Batched inputs aren't supported either.
 
@@ -205,7 +205,7 @@ tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
 ### Prompt lookup decoding
 
-[Prompt lookup decoding](./llm_optims#prompt-lookup-decoding) is a variant of speculative decoding that uses overlapping n-grams as the candidate tokens. It works well for input-grounded tasks such as summarization. Refer to the [prompt lookup decoding](./llm_optims#prompt-lookup-decoding) guide to learn more.
+[Prompt lookup decoding](./llm_optims.md#prompt-lookup-decoding) is a variant of speculative decoding that uses overlapping n-grams as the candidate tokens. It works well for input-grounded tasks such as summarization. Refer to the [prompt lookup decoding](./llm_optims.md#prompt-lookup-decoding) guide to learn more.
 
 Enable prompt lookup decoding with the `prompt_lookup_num_tokens` parameter.
 
