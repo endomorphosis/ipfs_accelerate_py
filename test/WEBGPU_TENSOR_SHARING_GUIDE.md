@@ -414,4 +414,4 @@ For more information, see:
 - [WebGPU Tensor Sharing README](WEBGPU_TENSOR_SHARING_README.md)
 - [Cross-Model Tensor Sharing Guide](CROSS_MODEL_TENSOR_SHARING_GUIDE.md)
 - [Browser-Specific Optimization Guide](BROWSER_OPTIMIZATION_GUIDE.md)
-- [WebGPU Operation Fusion Guide](OPERATION_FUSION_GUIDE.md)
+- [WebGPU Operation Fusion Guide](ipfs_accelerate_js/docs/OPERATION_FUSION_GUIDE.md)
