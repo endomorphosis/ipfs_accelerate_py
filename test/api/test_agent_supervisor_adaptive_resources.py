@@ -150,6 +150,74 @@ def test_adaptive_admission_round_robins_stages_and_exports_lane_metrics() -> No
     assert snapshot.to_dict()["observed_at_ms"] == 2_000
 
 
+def test_resource_pools_expose_fair_order_and_backpressure() -> None:
+    scheduler = ResourceScheduler(_policy(max_lanes=2))
+    schedule = scheduler.schedule(
+        [
+            LaneResourceRequirements(
+                lane_id="analysis-a",
+                stage="analysis",
+                fairness_key="analysis",
+            ),
+            LaneResourceRequirements(
+                lane_id="analysis-b",
+                stage="analysis",
+                fairness_key="analysis",
+            ),
+            LaneResourceRequirements(
+                lane_id="validation-a",
+                stage="validation",
+                fairness_key="validation",
+            ),
+            LaneResourceRequirements(
+                lane_id="validation-b",
+                stage="validation",
+                fairness_key="validation",
+            ),
+        ],
+        host=_host(worker_limit=2, available_worker_capacity=2),
+    )
+
+    # Both stages use the same physical cpu-proof pool. Its durable projection
+    # demonstrates round-robin evaluation and explains the rejected remainder.
+    assert len(schedule.pool_admissions) == 1
+    pool = schedule.pool_admissions[0]
+    assert pool.resource_pool == "cpu-proof"
+    assert pool.fairness_order == (
+        "analysis-a",
+        "validation-a",
+        "analysis-b",
+        "validation-b",
+    )
+    assert pool.fairness_keys == (
+        "analysis",
+        "validation",
+        "analysis",
+        "validation",
+    )
+    assert pool.admitted_lane_ids == ("analysis-a", "validation-a")
+    assert pool.scheduled_count == 4
+    assert pool.admitted_count == 2
+    assert pool.backpressured_count == 2
+    assert pool.backpressure_counts == {
+        "cpu_proof_concurrency": 2,
+        "host_worker_capacity": 2,
+    }
+    assert [decision.admission_rank for decision in schedule.decisions] == [
+        1,
+        2,
+        3,
+        4,
+    ]
+    assert [decision.fairness_key for decision in schedule.decisions] == [
+        "analysis",
+        "validation",
+        "analysis",
+        "validation",
+    ]
+    assert schedule.to_dict()["pool_admissions"] == [pool.to_dict()]
+
+
 def test_six_stage_profiles_and_git_aliases_are_explicit_and_deterministic() -> None:
     assert [profile.stage for profile in ADAPTIVE_STAGE_PROFILES] == [
         "analysis",
