@@ -1161,7 +1161,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Gap task: Close the missing objective evidence `109590900757783560279417463762322084165` with a narrow, verifiable change.
 - Goal completion schema version: 1
 - Completion confidence: 0.166667
-- Uncovered criteria: ["109590900757783560279417463762322084165"]
+- Uncovered criteria: ["The exact closed fixture population is measured","zero false completions is recorded on a clean run","a false completion seeded into any fixture always emits the stable failure reason, fails the non-negotiable gate, denies promotion, and retains shadow","the typed current-tree witness is content-addressed and report-bound","malformed, incomplete, detached, or tampered claims fail closed."]
 - Stale evidence: []
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
@@ -1196,7 +1196,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Gap task: Close the missing objective evidence `146189916032404266364029134505159070240` with a narrow, verifiable change.
 - Goal completion schema version: 1
 - Completion confidence: 0.166667
-- Uncovered criteria: ["146189916032404266364029134505159070240"]
+- Uncovered criteria: ["The full paired population satisfies every token, cache, planning, throughput, quality, and non-negotiable threshold","every component regression independently forces shadow with bounded diagnostics","policy and population cannot be weakened","and the typed ASI-G113 evidence is current-tree, content-addressed, complete-population, and strictly report-bound."]
 - Stale evidence: []
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
