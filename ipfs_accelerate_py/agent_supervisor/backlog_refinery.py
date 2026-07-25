@@ -20,8 +20,8 @@ import re
 import shlex
 import subprocess
 import time
-from dataclasses import asdict, dataclass, field, fields
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field, fields, replace
+from datetime import datetime, timedelta, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -35,6 +35,10 @@ from .analyzer_health import (
     run_analyzer_canaries,
 )
 from .event_log import read_jsonl_events
+from .goal_completion import (
+    DEFAULT_CLOCK_SKEW_SECONDS,
+    DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+)
 from .objective_graph import (
     DEFAULT_DISCOVERY_OUTPUT_PATH,
     DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
@@ -45,14 +49,18 @@ from .objective_graph import (
     LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS,
     OBJECTIVE_SCAN_ANALYZER_VERSION,
     SUCCESSFUL_MERGE_RECEIPT_STATUSES,
+    ObjectiveWorkProposal,
+    ObjectiveGoal,
     bundle_path,
     generate_objective_todos_result,
+    parse_goal_heap,
     repo_relative_path,
     safe_bundle_key,
 )
 from .scan_receipts import (
     DEFAULT_EXHAUSTION_QUORUM_SIZE,
     ExhaustionBinding,
+    ExhaustionQuorumResult,
     RefillScanResult,
     RepositoryTreeIdentity,
     ScanAccounting,
@@ -63,6 +71,7 @@ from .scan_receipts import (
     scan_configuration_revision,
     scan_identity,
 )
+from .task_identity import TaskIdentity, canonical_task_identity
 from .todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
@@ -115,6 +124,71 @@ DEFAULT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS = int(
 )
 DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
+DEFAULT_REFILL_OPEN_TASK_HEADROOM = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_REFILL_OPEN_TASK_HEADROOM", "1")
+)
+DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS = int(
+    os.environ.get(
+        "IPFS_ACCELERATE_AGENT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS",
+        "21600",
+    )
+)
+
+
+def align_completion_gate_force_goal_ids(
+    force_goal_ids: Sequence[str] = (),
+    *,
+    completion_gate_decisions: Mapping[str, Any] | None = None,
+    repository_id: str = "",
+    repository_tree: str = "",
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
+) -> tuple[str, ...]:
+    """Keep proof-incomplete objective parents in the supervisor refill heap.
+
+    The objective tracker owns lifecycle interpretation.  This backlog helper
+    only merges its fail-closed actionable projection with explicitly forced
+    goals, preserving deterministic order and avoiding duplicate tasks.
+    """
+
+    from .objective_tracker import completion_gate_actionable_goal_ids
+
+    aligned = {
+        str(goal_id).strip()
+        for goal_id in force_goal_ids
+        if str(goal_id).strip()
+    }
+    for goal_id, decision in sorted(
+        (completion_gate_decisions or {}).items(),
+        key=lambda item: str(item[0]),
+    ):
+        aligned.update(
+            completion_gate_actionable_goal_ids(
+                str(goal_id),
+                decision,
+                repository_id=repository_id,
+                repository_tree=repository_tree,
+                now=now,
+                freshness_seconds=freshness_seconds,
+                clock_skew_seconds=clock_skew_seconds,
+            )
+        )
+    return tuple(sorted(aligned))
+
+
+DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT = int(
+    os.environ.get(
+        "IPFS_ACCELERATE_AGENT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT",
+        "4096",
+    )
+)
+SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.self_improvement_successor_admission.v1"
+)
+SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY = (
+    "self_improvement_successor_admission_records"
+)
 CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
 CODEBASE_AUDIT_SCANNER_VERSION = "codebase-audit/v1"
 CODEBASE_SCAN_REASON_SAMPLE_LIMIT = 10
@@ -189,9 +263,69 @@ class CodebaseFinding:
     snippet: str
     summary: str
     validation: str
+    objective_goal_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class SelfImprovementSuccessorRejection:
+    """One successor excluded before objective materialization.
+
+    Rejections deliberately retain both proposal identities.  Canonical IDs
+    distinguish exact proposal content while semantic keys prevent a cosmetic
+    rewrite from bypassing lifecycle or cooldown deduplication.
+    """
+
+    canonical_id: str
+    semantic_key: str
+    reason: str
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SelfImprovementSuccessorFilterResult:
+    """Deterministic pre-admission accounting for one successor candidate set."""
+
+    eligible: tuple[ObjectiveWorkProposal, ...]
+    rejected: tuple[SelfImprovementSuccessorRejection, ...]
+    lifecycle_canonical_ids: tuple[str, ...] = ()
+    lifecycle_semantic_keys: tuple[str, ...] = ()
+    cooldown_canonical_ids: tuple[str, ...] = ()
+    cooldown_semantic_keys: tuple[str, ...] = ()
+
+    @property
+    def candidate_count(self) -> int:
+        return len(self.eligible) + len(self.rejected)
+
+    @property
+    def eligible_count(self) -> int:
+        return len(self.eligible)
+
+    @property
+    def rejected_count(self) -> int:
+        return len(self.rejected)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "self_improvement_successor_filter.v1"
+            ),
+            "candidate_count": self.candidate_count,
+            "eligible_count": self.eligible_count,
+            "rejected_count": self.rejected_count,
+            "eligible": [item.to_dict() for item in self.eligible],
+            "rejected": [item.to_dict() for item in self.rejected],
+            "lifecycle_canonical_ids": list(self.lifecycle_canonical_ids),
+            "lifecycle_semantic_keys": list(self.lifecycle_semantic_keys),
+            "cooldown_canonical_ids": list(self.cooldown_canonical_ids),
+            "cooldown_semantic_keys": list(self.cooldown_semantic_keys),
+        }
 
 
 @dataclass
@@ -244,6 +378,7 @@ class CodebaseScanInventory:
         *,
         appended_tasks: int,
         late_deduplicated_candidates: int = 0,
+        additional_rejected_candidates: int = 0,
     ) -> dict[str, Any]:
         """Return all counters required by fail-closed health evaluation."""
 
@@ -255,7 +390,10 @@ class CodebaseScanInventory:
             "deduplicated_candidates": (
                 self.deduplicated_candidate_count + late_deduplicated_candidates
             ),
-            "rejected_candidates": self.rejected_candidate_count,
+            "rejected_candidates": (
+                self.rejected_candidate_count
+                + max(0, int(additional_rejected_candidates))
+            ),
             "appended_tasks": appended_tasks,
             "coverage_complete": self.complete,
         }
@@ -300,22 +438,124 @@ class CodebaseScanInventory:
         }
 
 
+@dataclass(frozen=True)
+class CodebaseRefillAdmission:
+    """Goal-scoped disposition of an objective-agnostic scan inventory."""
+
+    findings: tuple[CodebaseFinding, ...] = ()
+    rejections: tuple[Mapping[str, Any], ...] = ()
+    policy_errors: tuple[Mapping[str, str], ...] = ()
+    allow_unscoped: bool = False
+    max_findings: int | None = None
+
+    @property
+    def policy_valid(self) -> bool:
+        return not self.policy_errors
+
+    @property
+    def rejected_candidate_count(self) -> int:
+        return len(self.rejections)
+
+    @property
+    def admission_rejections(self) -> tuple[Mapping[str, Any], ...]:
+        """Compatibility name used by early callers of the admission stage."""
+
+        return self.rejections
+
+    def reason_summaries(self) -> list[dict[str, Any]]:
+        grouped: dict[str, list[str]] = {}
+        for record in self.rejections:
+            reason_code = str(record.get("reason_code") or "no_goal_lineage")
+            grouped.setdefault(reason_code, []).append(str(record.get("path") or ""))
+        return [
+            {
+                "reason_code": reason_code,
+                "count": len(paths),
+                "representative_paths": [
+                    path for path in paths if path
+                ][:CODEBASE_SCAN_REASON_SAMPLE_LIMIT],
+            }
+            for reason_code, paths in sorted(grouped.items())
+        ]
+
+    def details_dict(self) -> dict[str, Any]:
+        return {
+            "allow_unscoped": self.allow_unscoped,
+            "max_findings": self.max_findings,
+            "policy_valid": self.policy_valid,
+            "policy_errors": [dict(item) for item in self.policy_errors],
+            "admitted_candidate_count": len(self.findings),
+            "rejected_candidate_count": self.rejected_candidate_count,
+            "rejections": [dict(record) for record in self.rejections],
+        }
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_MARKDOWN_HEADING_PREFIX_RE = re.compile(r"^\s*#{1,6}\s*")
+
+
 def task_id_prefix(value: str) -> str:
-    value = str(value or DEFAULT_TASK_ID_PREFIX).strip()
-    if value.startswith("## "):
-        value = value[3:].strip()
-    return value or DEFAULT_TASK_ID_PREFIX
+    """Return a canonical display-ID prefix without Markdown rendering.
+
+    Older wrapper configurations used values such as ``"## AUTO-"``.  Treat
+    that form as a boundary adapter, including malformed values that acquired
+    more than one heading marker, and keep every internal ID operation on the
+    canonical ``"AUTO-"`` form.
+    """
+
+    normalized = str(value or DEFAULT_TASK_ID_PREFIX).strip()
+    while _MARKDOWN_HEADING_PREFIX_RE.match(normalized):
+        normalized = _MARKDOWN_HEADING_PREFIX_RE.sub("", normalized, count=1).strip()
+    return normalized or DEFAULT_TASK_ID_PREFIX
 
 
 def task_header_prefix(value: str) -> str:
-    value = str(value or DEFAULT_TASK_HEADER_PREFIX).strip()
-    if value.startswith("## "):
-        return value
-    return f"## {value}"
+    """Render a canonical task ID prefix as one level-two Markdown heading."""
+
+    return f"## {task_id_prefix(value or DEFAULT_TASK_HEADER_PREFIX)}"
+
+
+def normalize_task_id(value: Any) -> str:
+    """Normalize a task-ID alias supplied in legacy heading form."""
+
+    normalized = str(value or "").strip()
+    while _MARKDOWN_HEADING_PREFIX_RE.match(normalized):
+        normalized = _MARKDOWN_HEADING_PREFIX_RE.sub("", normalized, count=1).strip()
+    return normalized.split(None, 1)[0] if normalized else ""
+
+
+def task_id_pattern(task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> re.Pattern[str]:
+    """Return the strict Markdown heading parser for one numeric task family."""
+
+    prefix = task_id_prefix(task_prefix)
+    return re.compile(
+        rf"^##\s+({re.escape(prefix)}(?P<number>\d+))(?=\s|$)",
+        flags=re.MULTILINE,
+    )
+
+
+def normalize_task_block_heading(block: str, task_id: str) -> str:
+    """Render the first task-block heading exactly once.
+
+    Callers may still provide a legacy block beginning ``## ## AUTO-001``.
+    Normalize that input at this append boundary without rewriting the body.
+    """
+
+    text = str(block or "").strip()
+    canonical_id = normalize_task_id(task_id)
+    if not text or not canonical_id:
+        return text
+    lines = text.splitlines()
+    heading = lines[0].strip()
+    while _MARKDOWN_HEADING_PREFIX_RE.match(heading):
+        heading = _MARKDOWN_HEADING_PREFIX_RE.sub("", heading, count=1).strip()
+    parts = heading.split(None, 1)
+    title = parts[1] if len(parts) > 1 and normalize_task_id(parts[0]) == canonical_id else ""
+    lines[0] = f"## {canonical_id}{f' {title}' if title else ''}"
+    return "\n".join(lines)
 
 
 def split_csv(values: Iterable[str] | str) -> list[str]:
@@ -330,24 +570,40 @@ def split_csv(values: Iterable[str] | str) -> list[str]:
 
 
 def task_ids_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> list[str]:
-    prefix = task_id_prefix(task_prefix)
-    ids: list[str] = []
-    for line in todo_text.splitlines():
-        if not line.startswith(f"## {prefix}"):
-            continue
-        parts = line[3:].strip().split(" ", 1)
-        if parts:
-            ids.append(parts[0])
-    return ids
+    return [match.group(1) for match in task_id_pattern(task_prefix).finditer(todo_text)]
 
 
 def task_block_is_present(todo_text: str, task_id: str) -> bool:
     """Return whether a markdown task block for ``task_id`` is already present."""
 
-    escaped_task_id = re.escape(str(task_id).strip())
+    escaped_task_id = re.escape(normalize_task_id(task_id))
     if not escaped_task_id:
         return False
     return re.search(rf"^##\s+{escaped_task_id}(?:\s|$)", todo_text, flags=re.MULTILINE) is not None
+
+
+def task_block_semantic_identities(text: str) -> set[str]:
+    """Collect explicit canonical identities suitable for exact deduplication."""
+
+    identities: set[str] = set()
+    fields = (
+        "Canonical task key",
+        "Canonical task CID",
+        "Semantic identity",
+        "Evidence obligation key",
+        "Dedupe key",
+        "Todo vector key",
+    )
+    for field_name in fields:
+        for match in re.finditer(
+            rf"^-\s*{re.escape(field_name)}:\s*(\S+)\s*$",
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        ):
+            value = match.group(1).strip().casefold()
+            if value and value not in {"none", "n/a"}:
+                identities.add(f"identity:{value}")
+    return identities
 
 
 def ensure_task_blocks_present(
@@ -359,12 +615,24 @@ def ensure_task_blocks_present(
     if not todo_path.exists():
         return False
     todo_text = todo_path.read_text(encoding="utf-8")
+    existing_semantic_identities = task_block_semantic_identities(todo_text)
     entries = task_blocks.items() if isinstance(task_blocks, Mapping) else task_blocks
-    additions = [
-        block.strip()
-        for task_id, block in entries
-        if block.strip() and not task_block_is_present(todo_text, task_id)
-    ]
+    additions: list[str] = []
+    for raw_task_id, raw_block in entries:
+        task_id = normalize_task_id(raw_task_id)
+        block = normalize_task_block_heading(raw_block, task_id)
+        semantic_identities = task_block_semantic_identities(block)
+        is_semantic_duplicate = bool(
+            semantic_identities and semantic_identities & existing_semantic_identities
+        )
+        if (
+            block
+            and task_id
+            and not task_block_is_present(todo_text, task_id)
+            and not is_semantic_duplicate
+        ):
+            additions.append(block)
+            existing_semantic_identities.update(semantic_identities)
     if not additions:
         return False
     todo_path.write_text(todo_text.rstrip() + "\n\n" + "\n\n".join(additions) + "\n", encoding="utf-8")
@@ -397,29 +665,32 @@ def next_task_id(
 ) -> str:
     prefix = task_id_prefix(task_prefix)
     highest = 0
+    width = 3
     task_ids = [
         *task_ids_from_todo_text(todo_text, task_prefix=prefix),
         *(str(item) for item in reserved_task_ids),
     ]
+    id_re = re.compile(rf"^{re.escape(prefix)}(?P<number>\d+)$")
     for current in task_ids:
-        try:
-            current_prefix, number = current.rsplit("-", 1)
-            if f"{current_prefix}-" != prefix:
-                continue
-            highest = max(highest, int(number))
-        except (IndexError, ValueError):
+        match = id_re.fullmatch(normalize_task_id(current))
+        if match is None:
             continue
-    return f"{prefix}{highest + 1:03d}"
+        number = match.group("number")
+        highest = max(highest, int(number))
+        width = max(width, len(number))
+    return f"{prefix}{highest + 1:0{width}d}"
 
 
 def task_statuses_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> dict[str, str]:
-    prefix = task_id_prefix(task_prefix)
     statuses: dict[str, str] = {}
     current_task_id = ""
     for line in todo_text.splitlines():
-        if line.startswith(f"## {prefix}"):
-            parts = line[3:].strip().split(" ", 1)
-            current_task_id = parts[0] if parts else ""
+        heading = task_id_pattern(task_prefix).match(line)
+        if heading is not None:
+            current_task_id = heading.group(1)
+            continue
+        if line.startswith("## "):
+            current_task_id = ""
             continue
         if current_task_id and line.startswith("- Status:"):
             statuses[current_task_id] = line.split(":", 1)[1].strip().lower()
@@ -463,11 +734,10 @@ def mark_task_statuses_in_todo_text(
 ) -> tuple[str, list[str]]:
     """Return todo text with selected task status lines rewritten."""
 
-    prefix = task_id_prefix(task_prefix)
     target_task_ids = {
-        str(task_id).strip()
+        normalize_task_id(task_id)
         for task_id in task_ids
-        if str(task_id).strip()
+        if normalize_task_id(task_id)
     }
     if not target_task_ids:
         return todo_text, []
@@ -476,9 +746,12 @@ def mark_task_statuses_in_todo_text(
     current_task_id = ""
     updated_task_ids: list[str] = []
     for index, line in enumerate(lines):
-        if line.startswith(f"## {prefix}"):
-            parts = line[3:].strip().split(" ", 1)
-            current_task_id = parts[0] if parts else ""
+        heading = task_id_pattern(task_prefix).match(line)
+        if heading is not None:
+            current_task_id = heading.group(1)
+            continue
+        if line.startswith("## "):
+            current_task_id = ""
             continue
         if current_task_id not in target_task_ids or not line.startswith("- Status:"):
             continue
@@ -635,6 +908,460 @@ def parse_iso_timestamp(value: str) -> datetime | None:
     return parsed
 
 
+def _self_improvement_successor_timestamp(
+    value: datetime | str | None,
+    *,
+    field_name: str,
+) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = parse_iso_timestamp(str(value).strip())
+        if parsed is None:
+            raise ValueError(f"{field_name} must be an ISO-8601 timestamp")
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def self_improvement_successor_lifecycle_identities(
+    objective_text: str,
+) -> tuple[set[str], set[str]]:
+    """Return proposal identities owned by every objective lifecycle state.
+
+    Completed, rejected, blocked, and reopened goals remain deduplication
+    authority.  Looking only at schedulable goals would permit the same work
+    to be regenerated as soon as it reached a terminal state.
+    """
+
+    canonical_ids: set[str] = set()
+    semantic_keys: set[str] = set()
+    for goal in parse_goal_heap(objective_text):
+        canonical_id = goal.canonical_proposal_id
+        semantic_key = goal.semantic_key
+        if canonical_id:
+            canonical_ids.add(canonical_id)
+        if semantic_key:
+            semantic_keys.add(semantic_key)
+    return canonical_ids, semantic_keys
+
+
+def self_improvement_successor_admission_records(
+    strategy: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Validate and return the durable successor admission/cooldown ledger."""
+
+    raw = strategy.get(SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY) or {}
+    if not isinstance(raw, Mapping):
+        raise ValueError(
+            f"{SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY} must be an object"
+        )
+    result: dict[str, dict[str, Any]] = {}
+    allowed_statuses = {
+        "admitted",
+        "committed",
+        "cooldown",
+        "failed",
+        "materialized",
+        "prepared",
+        "rejected",
+        "review_required",
+    }
+    allowed_fields = {
+        "schema",
+        "version",
+        "canonical_id",
+        "semantic_key",
+        "status",
+        "epoch_id",
+        "transaction_id",
+        "recorded_at",
+        "cooldown_until",
+        "reason_codes",
+        "attempts",
+    }
+    for raw_key, raw_record in raw.items():
+        if not isinstance(raw_record, Mapping):
+            raise ValueError("successor admission records must be objects")
+        record = dict(raw_record)
+        unknown_fields = sorted(
+            str(key) for key in record if str(key) not in allowed_fields
+        )
+        if unknown_fields:
+            raise ValueError(
+                "successor admission record contains unknown fields: "
+                + ", ".join(unknown_fields)
+            )
+        canonical_id = str(record.get("canonical_id") or "").strip()
+        semantic_key = str(record.get("semantic_key") or "").strip()
+        status = str(record.get("status") or "").strip().lower()
+        if not canonical_id or str(raw_key) != canonical_id:
+            raise ValueError(
+                "successor admission record key must match canonical_id"
+            )
+        if not semantic_key:
+            raise ValueError("successor admission records require semantic_key")
+        version = record.get("version")
+        if (
+            record.get("schema") != SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA
+            or isinstance(version, bool)
+            or version != 1
+        ):
+            raise ValueError("unsupported successor admission record schema")
+        if status not in allowed_statuses:
+            raise ValueError(
+                f"unsupported successor admission status {status!r}"
+            )
+        recorded_at = parse_iso_timestamp(str(record.get("recorded_at") or ""))
+        if recorded_at is None:
+            raise ValueError("successor admission records require recorded_at")
+        cooldown_until = str(record.get("cooldown_until") or "").strip()
+        if cooldown_until and parse_iso_timestamp(cooldown_until) is None:
+            raise ValueError(
+                "successor admission cooldown_until must be an ISO-8601 timestamp"
+            )
+        transaction_id = str(record.get("transaction_id") or "").strip()
+        if status in {"admitted", "committed", "materialized"} and not transaction_id:
+            raise ValueError(
+                "successful successor admission records require transaction_id"
+            )
+        if status not in {"admitted", "committed", "materialized"} and not cooldown_until:
+            raise ValueError(
+                "non-admitted successor records require cooldown_until"
+            )
+        raw_reasons = record.get("reason_codes") or ()
+        if not isinstance(raw_reasons, Sequence) or isinstance(
+            raw_reasons, (str, bytes)
+        ):
+            raise ValueError("successor admission reason_codes must be a list")
+        normalized = {
+            **record,
+            "canonical_id": canonical_id,
+            "semantic_key": semantic_key,
+            "status": status,
+            "recorded_at": recorded_at.astimezone(timezone.utc).isoformat(),
+            "cooldown_until": cooldown_until,
+            "epoch_id": str(record.get("epoch_id") or "").strip(),
+            "transaction_id": transaction_id,
+            "reason_codes": sorted(
+                {
+                    str(item).strip()
+                    for item in raw_reasons
+                    if str(item).strip()
+                }
+            ),
+        }
+        attempts = normalized.get("attempts") or ()
+        if not isinstance(attempts, Sequence) or isinstance(
+            attempts, (str, bytes)
+        ):
+            raise ValueError("successor admission attempts must be a list")
+        if any(not isinstance(item, Mapping) for item in attempts):
+            raise ValueError("successor admission attempts must contain objects")
+        normalized["attempts"] = [
+            dict(item) for item in attempts
+        ][-16:]
+        result[canonical_id] = normalized
+    return result
+
+
+def filter_self_improvement_successor_candidates(
+    proposals: Iterable[ObjectiveWorkProposal | Mapping[str, Any]],
+    *,
+    objective_text: str,
+    strategy: Mapping[str, Any],
+    observed_at: datetime | str | None = None,
+) -> SelfImprovementSuccessorFilterResult:
+    """Exclude lifecycle, admission-history, cooldown, and batch duplicates.
+
+    This is a pre-admission filter, not materialization authority.  Callers
+    must still run the objective quality/refinement preview and commit its
+    immutable result through the objective materialization transaction.
+    """
+
+    now = _self_improvement_successor_timestamp(
+        observed_at, field_name="observed_at"
+    )
+    lifecycle_canonical, lifecycle_semantic = (
+        self_improvement_successor_lifecycle_identities(objective_text)
+    )
+    records = self_improvement_successor_admission_records(strategy)
+    permanent_statuses = {"admitted", "committed", "materialized"}
+    ledger_canonical: set[str] = set()
+    ledger_semantic: set[str] = set()
+    active_cooldown_canonical: set[str] = set()
+    active_cooldown_semantic: set[str] = set()
+    for record in records.values():
+        canonical_id = str(record["canonical_id"])
+        semantic_key = str(record["semantic_key"])
+        status = str(record["status"])
+        cooldown_until = parse_iso_timestamp(
+            str(record.get("cooldown_until") or "")
+        )
+        if status in permanent_statuses:
+            ledger_canonical.add(canonical_id)
+            ledger_semantic.add(semantic_key)
+        elif cooldown_until is not None and now < cooldown_until:
+            active_cooldown_canonical.add(canonical_id)
+            active_cooldown_semantic.add(semantic_key)
+
+    eligible: list[ObjectiveWorkProposal] = []
+    rejected: list[SelfImprovementSuccessorRejection] = []
+    batch_canonical: set[str] = set()
+    batch_semantic: set[str] = set()
+    normalized: list[ObjectiveWorkProposal] = []
+    for raw in proposals:
+        try:
+            proposal = (
+                raw
+                if isinstance(raw, ObjectiveWorkProposal)
+                else ObjectiveWorkProposal.from_dict(raw)
+            )
+        except (TypeError, ValueError) as exc:
+            rejected.append(
+                SelfImprovementSuccessorRejection(
+                    canonical_id="",
+                    semantic_key="",
+                    reason="invalid_proposal",
+                    detail=str(exc),
+                )
+            )
+            continue
+        normalized.append(proposal)
+    normalized.sort(
+        key=lambda item: (
+            item.depth,
+            item.parent_goal_id.casefold(),
+            item.semantic_key,
+            item.canonical_id,
+        )
+    )
+    for proposal in normalized:
+        reason = ""
+        detail = ""
+        if (
+            proposal.canonical_id in lifecycle_canonical
+            or proposal.semantic_key in lifecycle_semantic
+        ):
+            reason = "lifecycle_duplicate"
+            detail = "equivalent work exists in the objective heap"
+        elif (
+            proposal.canonical_id in ledger_canonical
+            or proposal.semantic_key in ledger_semantic
+        ):
+            reason = "prior_admission_duplicate"
+            detail = "equivalent work has a durable successful admission record"
+        elif (
+            proposal.canonical_id in active_cooldown_canonical
+            or proposal.semantic_key in active_cooldown_semantic
+        ):
+            reason = "successor_cooldown"
+            detail = "equivalent work is inside its durable cooldown window"
+        elif (
+            proposal.canonical_id in batch_canonical
+            or proposal.semantic_key in batch_semantic
+        ):
+            reason = "batch_duplicate"
+            detail = "equivalent work already appeared in this candidate batch"
+        if reason:
+            rejected.append(
+                SelfImprovementSuccessorRejection(
+                    canonical_id=proposal.canonical_id,
+                    semantic_key=proposal.semantic_key,
+                    reason=reason,
+                    detail=detail,
+                )
+            )
+            continue
+        batch_canonical.add(proposal.canonical_id)
+        batch_semantic.add(proposal.semantic_key)
+        eligible.append(proposal)
+    return SelfImprovementSuccessorFilterResult(
+        eligible=tuple(eligible),
+        rejected=tuple(rejected),
+        lifecycle_canonical_ids=tuple(sorted(lifecycle_canonical)),
+        lifecycle_semantic_keys=tuple(sorted(lifecycle_semantic)),
+        cooldown_canonical_ids=tuple(
+            sorted(active_cooldown_canonical)
+        ),
+        cooldown_semantic_keys=tuple(
+            sorted(active_cooldown_semantic)
+        ),
+    )
+
+
+def record_self_improvement_successor_admission(
+    strategy_path: Path,
+    *,
+    epoch_id: str,
+    proposals: Iterable[ObjectiveWorkProposal | Mapping[str, Any]],
+    admitted_proposal_ids: Sequence[str] = (),
+    transaction_id: str = "",
+    rejection_reasons: Mapping[str, Sequence[str] | str] | None = None,
+    recorded_at: datetime | str | None = None,
+    cooldown_seconds: int = DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS,
+    record_limit: int = DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT,
+) -> dict[str, Any]:
+    """Durably record committed admissions and finite rejected-work cooldowns.
+
+    The update is locked and durably flushed with the rest of the strategy.
+    An admitted record requires the objective transaction identity; recording
+    it before commit is therefore impossible through this API.  Expired
+    non-admission records are pruned before the hard ledger bound is applied.
+    """
+
+    epoch = str(epoch_id or "").strip()
+    transaction = str(transaction_id or "").strip()
+    if not epoch:
+        raise ValueError("epoch_id is required")
+    if (
+        isinstance(cooldown_seconds, bool)
+        or int(cooldown_seconds) < 0
+    ):
+        raise ValueError("cooldown_seconds must be a non-negative integer")
+    if isinstance(record_limit, bool) or int(record_limit) <= 0:
+        raise ValueError("record_limit must be a positive integer")
+    now = _self_improvement_successor_timestamp(
+        recorded_at, field_name="recorded_at"
+    )
+    normalized: dict[str, ObjectiveWorkProposal] = {}
+    for raw in proposals:
+        proposal = (
+            raw
+            if isinstance(raw, ObjectiveWorkProposal)
+            else ObjectiveWorkProposal.from_dict(raw)
+        )
+        prior = normalized.get(proposal.canonical_id)
+        if prior is not None and prior.semantic_key != proposal.semantic_key:
+            raise ValueError("canonical proposal identity collision")
+        normalized[proposal.canonical_id] = proposal
+    admitted = {
+        str(item).strip() for item in admitted_proposal_ids if str(item).strip()
+    }
+    unknown_admissions = admitted - set(normalized)
+    if unknown_admissions:
+        raise ValueError(
+            "admitted proposal IDs were not present in the candidate set: "
+            + ", ".join(sorted(unknown_admissions))
+        )
+    if admitted and not transaction:
+        raise ValueError(
+            "transaction_id is required for admitted successor proposals"
+        )
+    reasons_by_id: dict[str, list[str]] = {}
+    for canonical_id, raw_reasons in (rejection_reasons or {}).items():
+        values = (
+            (raw_reasons,)
+            if isinstance(raw_reasons, str)
+            else tuple(raw_reasons)
+        )
+        reasons_by_id[str(canonical_id)] = sorted(
+            {
+                str(item).strip()
+                for item in values
+                if str(item).strip()
+            }
+        )
+
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    with locked_taskboard(strategy_path) as stream:
+        raw_text = stream.read().strip()
+        if raw_text:
+            try:
+                loaded = json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "cannot update corrupt self-improvement strategy JSON"
+                ) from exc
+            if not isinstance(loaded, Mapping):
+                raise ValueError(
+                    "self-improvement strategy must contain a JSON object"
+                )
+            strategy = dict(loaded)
+        else:
+            strategy = {"blocked_tasks": []}
+        records = self_improvement_successor_admission_records(strategy)
+        permanent_statuses = {"admitted", "committed", "materialized"}
+        retained: dict[str, dict[str, Any]] = {}
+        for canonical_id, record in records.items():
+            cooldown_until = parse_iso_timestamp(
+                str(record.get("cooldown_until") or "")
+            )
+            if (
+                str(record.get("status") or "") in permanent_statuses
+                or (cooldown_until is not None and now < cooldown_until)
+            ):
+                retained[canonical_id] = record
+        for canonical_id, proposal in sorted(normalized.items()):
+            is_admitted = canonical_id in admitted
+            status = "admitted" if is_admitted else "rejected"
+            reason_codes = (
+                []
+                if is_admitted
+                else reasons_by_id.get(canonical_id, ["not_admitted"])
+            )
+            attempt = {
+                "epoch_id": epoch,
+                "transaction_id": transaction if is_admitted else "",
+                "status": status,
+                "recorded_at": now.isoformat(),
+                "reason_codes": reason_codes,
+            }
+            prior = retained.get(canonical_id)
+            prior_attempts = prior.get("attempts", ()) if prior else ()
+            if prior is not None and not is_admitted:
+                # Never downgrade committed authority or perpetually extend an
+                # existing cooldown merely because another epoch proposed the
+                # same work.  The attempt is still auditable.
+                retained[canonical_id] = {
+                    **prior,
+                    "attempts": [*prior_attempts, attempt][-16:],
+                }
+                continue
+            retained[canonical_id] = {
+                "schema": SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA,
+                "version": 1,
+                "canonical_id": canonical_id,
+                "semantic_key": proposal.semantic_key,
+                "status": status,
+                "epoch_id": epoch,
+                "transaction_id": transaction if is_admitted else "",
+                "recorded_at": now.isoformat(),
+                "cooldown_until": (
+                    ""
+                    if is_admitted
+                    else (
+                        now + timedelta(seconds=int(cooldown_seconds))
+                    ).isoformat()
+                ),
+                "reason_codes": reason_codes,
+                "attempts": [*prior_attempts, attempt][-16:],
+            }
+        if len(retained) > int(record_limit):
+            raise RuntimeError(
+                "self-improvement successor admission ledger limit reached; "
+                "refusing to discard live deduplication authority"
+            )
+        strategy[SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY] = {
+            key: retained[key] for key in sorted(retained)
+        }
+        strategy["last_self_improvement_successor_admission_at"] = (
+            now.isoformat()
+        )
+        strategy["last_self_improvement_successor_epoch_id"] = epoch
+        if admitted:
+            strategy["last_self_improvement_successor_transaction_id"] = (
+                transaction
+            )
+        replace_locked_taskboard(
+            stream,
+            json.dumps(strategy, indent=2, sort_keys=True) + "\n",
+        )
+    return strategy
+
+
 def should_refill_backlog(
     *,
     todo_text: str,
@@ -678,6 +1405,151 @@ def should_refill_backlog(
     if elapsed >= cooldown_seconds:
         return True, "runnable_drained_low_backlog" if no_ready_existing_work else "low_backlog", current_open, task_count
     return False, "cooldown", current_open, task_count
+
+
+def refill_open_task_capacity(
+    *,
+    current_open: int,
+    min_open_tasks: int,
+    max_findings: int,
+    headroom: int = DEFAULT_REFILL_OPEN_TASK_HEADROOM,
+) -> int:
+    """Bound one refill so generated work cannot create unbounded pressure.
+
+    The existing low-watermark behavior scans when the board is at or below
+    ``min_open_tasks``.  One item of headroom prevents refill thrashing at the
+    exact watermark while still placing a hard ceiling on newly opened work.
+    """
+
+    target = max(0, int(min_open_tasks)) + max(0, int(headroom))
+    available = max(0, target - max(0, int(current_open)))
+    return min(max(0, int(max_findings)), available)
+
+
+def self_improvement_epoch_wait_active(
+    strategy: Mapping[str, Any],
+    *,
+    epoch_id: str,
+    evidence_id: str = "",
+    requirement_id: str = "",
+    next_triggers: Sequence[str] = (),
+) -> bool:
+    """Return whether a proved healthy epoch suppresses an identical refill.
+
+    A timestamp or empty finding list is deliberately insufficient.  The
+    strategy must name the exact content-addressed epoch, its healthy
+    exhaustion evidence, and the explicit wait state written after all proof
+    gates passed.
+    """
+
+    expected = str(epoch_id or "").strip()
+    if not expected:
+        return False
+    recorded_evidence = str(
+        strategy.get("last_self_improvement_exhaustion_evidence_id") or ""
+    ).strip()
+    recorded_requirement = str(
+        strategy.get("last_self_improvement_requirement_id") or ""
+    ).strip()
+    raw_quorum = strategy.get("last_self_improvement_exhaustion_quorum")
+    try:
+        quorum = (
+            ExhaustionQuorumResult.from_dict(raw_quorum)
+            if isinstance(raw_quorum, Mapping)
+            else None
+        )
+    except (TypeError, ValueError):
+        quorum = None
+    recorded_triggers = tuple(
+        sorted(
+            str(item).strip()
+            for item in (
+                strategy.get("self_improvement_next_triggers") or ()
+            )
+            if str(item).strip()
+        )
+    )
+    expected_triggers = tuple(
+        sorted(str(item).strip() for item in next_triggers if str(item).strip())
+    )
+    return bool(
+        str(strategy.get("last_self_improvement_epoch_id") or "") == expected
+        and str(strategy.get("last_self_improvement_epoch_status") or "")
+        == "healthy_exhausted"
+        and str(strategy.get("self_improvement_refill_state") or "")
+        == "waiting_for_meaningful_trigger"
+        and recorded_evidence
+        and recorded_requirement
+        and quorum is not None
+        and quorum.satisfied
+        and recorded_triggers
+        and (
+            not str(evidence_id or "").strip()
+            or recorded_evidence == str(evidence_id).strip()
+        )
+        and (
+            not str(requirement_id or "").strip()
+            or recorded_requirement == str(requirement_id).strip()
+        )
+        and (not expected_triggers or recorded_triggers == expected_triggers)
+    )
+
+
+def record_self_improvement_exhaustion(
+    strategy_path: Path,
+    *,
+    epoch_id: str,
+    evidence_id: str,
+    requirement_id: str,
+    quorum: Mapping[str, Any],
+    next_triggers: Sequence[str],
+    recorded_at: str,
+) -> dict[str, Any]:
+    """Persist the supervisor wait state after a qualified healthy epoch.
+
+    This helper does not decide that exhaustion is healthy; the typed
+    self-improvement witness owns that decision.  It accepts only a satisfied
+    quorum and non-empty content identities so a generic empty objective scan
+    cannot advance the drained marker.
+    """
+
+    epoch = str(epoch_id or "").strip()
+    evidence = str(evidence_id or "").strip()
+    requirement = str(requirement_id or "").strip()
+    triggers = tuple(
+        dict.fromkeys(str(item).strip() for item in next_triggers if str(item).strip())
+    )
+    if not epoch or not evidence or not requirement:
+        raise ValueError(
+            "epoch_id, evidence_id, and requirement_id are required"
+        )
+    try:
+        parsed_quorum = (
+            ExhaustionQuorumResult.from_dict(quorum)
+            if isinstance(quorum, Mapping)
+            else None
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("a valid exhaustion quorum is required") from exc
+    if parsed_quorum is None or not parsed_quorum.satisfied:
+        raise ValueError("a satisfied exhaustion quorum is required")
+    if not triggers:
+        raise ValueError("at least one meaningful next trigger is required")
+    strategy = load_strategy(strategy_path)
+    strategy.update(
+        {
+            "last_self_improvement_epoch_id": epoch,
+            "last_self_improvement_epoch_status": "healthy_exhausted",
+            "last_self_improvement_exhaustion_evidence_id": evidence,
+            "last_self_improvement_requirement_id": requirement,
+            "last_self_improvement_exhaustion_quorum": parsed_quorum.to_dict(),
+            "last_self_improvement_exhausted_at": str(recorded_at or utc_now()),
+            "self_improvement_refill_state": "waiting_for_meaningful_trigger",
+            "self_improvement_next_triggers": list(triggers),
+        }
+    )
+    write_json(strategy_path, strategy)
+    return strategy
 
 
 def git_toplevel_for_path(cwd: Path) -> Path | None:
@@ -1607,11 +2479,15 @@ def file_is_scan_candidate(
     *,
     repo_root: Path,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
 ) -> bool:
     return not codebase_scan_file_exclusion_reason(
         path,
         repo_root=repo_root,
         skip_prefixes=skip_prefixes,
+        include_prefixes=include_prefixes,
+        allowed_tracks=allowed_tracks,
     )
 
 
@@ -1620,6 +2496,8 @@ def codebase_scan_file_exclusion_reason(
     *,
     repo_root: Path,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
 ) -> str:
     """Return a stable, bounded reason code when ``path`` is ineligible."""
 
@@ -1629,6 +2507,17 @@ def codebase_scan_file_exclusion_reason(
         relative = path.as_posix()
     if any(relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in skip_prefixes):
         return "excluded_prefix"
+    normalized_prefixes = tuple(
+        str(prefix).strip().strip("/") for prefix in include_prefixes if str(prefix).strip().strip("/")
+    )
+    if normalized_prefixes and not any(
+        relative == prefix or relative.startswith(f"{prefix}/")
+        for prefix in normalized_prefixes
+    ):
+        return "outside_scope_prefix"
+    normalized_tracks = {str(track).strip().lower() for track in allowed_tracks if str(track).strip()}
+    if normalized_tracks and scan_track_for_path(relative) not in normalized_tracks:
+        return "outside_scope_track"
     if any(part in CODEBASE_SCAN_SKIP_PARTS for part in path.parts):
         return "excluded_directory"
     if "-codebase-scan-" in path.name or "retry-budget" in path.name:
@@ -1682,10 +2571,264 @@ def scan_validation_for_path(root_relative: str) -> str:
     return f"test -f {quoted}"
 
 
+GOAL_ALIGNMENT_STOPWORDS = frozenset(
+    {
+        "and",
+        "code",
+        "current",
+        "data",
+        "file",
+        "for",
+        "from",
+        "goal",
+        "implementation",
+        "project",
+        "repository",
+        "state",
+        "task",
+        "test",
+        "the",
+        "with",
+    }
+)
+
+
+def objective_goals_for_codebase_refill(objective_path: Path | None) -> list[ObjectiveGoal]:
+    """Load objective nodes used for schedulable targets and their ancestry."""
+
+    if objective_path is None or not objective_path.is_file():
+        return []
+    return parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+
+
+def codebase_refill_goal_graph_errors(
+    goals: Sequence[ObjectiveGoal],
+) -> tuple[Mapping[str, str], ...]:
+    """Return structural defects that make objective lineage unsafe to emit."""
+
+    errors: list[dict[str, str]] = []
+
+    def add(reason_code: str, message: str) -> None:
+        record = {"reason_code": reason_code, "message": message}
+        if record not in errors:
+            errors.append(record)
+
+    goal_ids = [str(goal.goal_id).strip() for goal in goals]
+    duplicates = sorted(
+        goal_id
+        for goal_id in set(goal_ids)
+        if goal_id and goal_ids.count(goal_id) > 1
+    )
+    if duplicates:
+        add(
+            "invalid_goal_record",
+            "duplicate objective goal ids: " + ", ".join(duplicates),
+        )
+
+    nodes: dict[str, ObjectiveGoal] = {}
+    for goal in goals:
+        goal_id = str(goal.goal_id).strip()
+        if not goal_id or not str(goal.title).strip():
+            add("invalid_goal_record", "objective goal records require an id and title")
+            continue
+        if not str(goal.fields.get("status") or "").strip():
+            add(
+                "invalid_goal_record",
+                f"objective record {goal_id} has no explicit status",
+            )
+        else:
+            try:
+                goal.lifecycle_state
+            except (TypeError, ValueError) as exc:
+                add(
+                    "invalid_goal_record",
+                    f"objective record {goal_id} has invalid status: {exc}",
+                )
+        nodes.setdefault(goal_id, goal)
+
+    missing_edges = sorted(
+        {
+            f"{goal.goal_id}->{parent_id}"
+            for goal in goals
+            for parent_id in goal.parent_goal_ids
+            if parent_id and parent_id not in nodes
+        }
+    )
+    if missing_edges:
+        add(
+            "dangling_goal_parent",
+            "objective goal parents do not exist: " + ", ".join(missing_edges),
+        )
+
+    state: dict[str, int] = {}
+    stack: list[str] = []
+
+    def visit(goal_id: str) -> None:
+        current = state.get(goal_id, 0)
+        if current == 2:
+            return
+        if current == 1:
+            try:
+                cycle_start = stack.index(goal_id)
+            except ValueError:
+                cycle_start = 0
+            cycle = stack[cycle_start:] + [goal_id]
+            add(
+                "cyclic_goal_lineage",
+                "objective goal parent cycle: " + " -> ".join(cycle),
+            )
+            return
+        state[goal_id] = 1
+        stack.append(goal_id)
+        for parent_id in nodes[goal_id].parent_goal_ids:
+            if parent_id in nodes:
+                visit(parent_id)
+        stack.pop()
+        state[goal_id] = 2
+
+    for goal_id in sorted(nodes):
+        visit(goal_id)
+    return tuple(errors)
+
+
+def _goal_scope_path_matches(candidate_path: str, scope_path: str) -> bool:
+    candidate = str(candidate_path).strip().strip("/")
+    scope = str(scope_path).strip().strip("/").rstrip("*").rstrip("/")
+    if not candidate or not scope:
+        return False
+    if candidate == scope:
+        return True
+    return candidate.startswith(f"{scope}/")
+
+
+def _alignment_tokens(value: str) -> set[str]:
+    aliases = {
+        "doc": "documentation",
+        "docs": "documentation",
+        "documents": "documentation",
+    }
+    return {
+        aliases.get(token, token)
+        for token in re.findall(r"[a-z0-9][a-z0-9_+-]*", str(value).lower())
+        if len(token) > 2 and token not in GOAL_ALIGNMENT_STOPWORDS
+    }
+
+
+def align_codebase_finding_to_goals(
+    finding: CodebaseFinding,
+    goals: Sequence[ObjectiveGoal],
+    *,
+    mission_terms: Sequence[str] = (),
+) -> CodebaseFinding | None:
+    """Bind a candidate to existing goals or reject it as scope creep.
+
+    Declared goal outputs are authoritative.  Semantic matching is a fallback
+    for goals without output paths and requires multiple distinctive terms, so
+    a generic TODO/FIXME marker cannot create its own scope.  ``mission_terms``
+    is retained for API compatibility but never expands a goal's lineage.
+    """
+
+    del mission_terms
+    if codebase_refill_goal_graph_errors(goals):
+        return None
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+
+    def lineage(goal: ObjectiveGoal) -> tuple[str, ...]:
+        ordered = [goal.goal_id]
+        seen = {goal.goal_id}
+        pending = list(goal.parent_goal_ids)
+        while pending:
+            parent_id = pending.pop(0)
+            if parent_id in seen:
+                continue
+            seen.add(parent_id)
+            ordered.append(parent_id)
+            parent = goals_by_id.get(parent_id)
+            if parent is not None:
+                pending.extend(parent.parent_goal_ids)
+        return tuple(ordered)
+
+    def graph_depth(goal: ObjectiveGoal) -> int:
+        return max(0, len(lineage(goal)) - 1)
+
+    direct_matches: list[tuple[tuple[int, int, int, int, int], ObjectiveGoal]] = []
+    semantic_matches: list[tuple[tuple[int, int], ObjectiveGoal]] = []
+    candidate_tokens = _alignment_tokens(
+        " ".join((finding.summary, finding.snippet))
+    )
+    for goal in goals:
+        if not goal.is_schedulable:
+            continue
+        scope_paths = [*goal.predicted_files, *goal.required_evidence]
+        matching_paths = [
+            str(scope_path).strip().strip("/").rstrip("*").rstrip("/")
+            for scope_path in scope_paths
+            if _goal_scope_path_matches(finding.root_relative_path, scope_path)
+        ]
+        goal_text = " ".join(
+            (
+                goal.title,
+                goal.fields.get("goal", ""),
+                goal.fields.get("gap_task", ""),
+                goal.fields.get("embedding_query", ""),
+                goal.fields.get("ast_query", ""),
+                goal.fields.get("acceptance", ""),
+                goal.fields.get("acceptance_criteria", ""),
+            )
+        )
+        token_overlap = len(candidate_tokens & _alignment_tokens(goal_text))
+        if matching_paths:
+            best_scope = max(
+                matching_paths,
+                key=lambda path: (len(Path(path).parts), len(path)),
+            )
+            broad_directory_scope = (
+                len(Path(best_scope).parts) == 1
+                and not Path(best_scope).suffix
+            )
+            if broad_directory_scope and token_overlap < 2:
+                # A top-level directory such as ``scripts`` is an inventory
+                # boundary, not proof that every file advances this goal.
+                # Path tokens do not count: the finding itself must share at
+                # least two distinctive terms with the declared goal.
+                continue
+            direct_matches.append(
+                (
+                    (
+                        int(finding.root_relative_path.strip("/") == best_scope),
+                        len(Path(best_scope).parts),
+                        len(best_scope),
+                        graph_depth(goal),
+                        token_overlap,
+                    ),
+                    goal,
+                )
+            )
+            continue
+        if scope_paths:
+            continue
+        if token_overlap >= 3:
+            semantic_matches.append(((token_overlap, graph_depth(goal)), goal))
+
+    ranked: Sequence[tuple[tuple[int, ...], ObjectiveGoal]]
+    ranked = direct_matches if direct_matches else semantic_matches
+    if not ranked:
+        return None
+    best_score = max(score for score, _goal in ranked)
+    best_goals = [goal for score, goal in ranked if score == best_score]
+    if len(best_goals) != 1:
+        # Ambiguous sibling scopes fail closed instead of inventing lineage.
+        return None
+    return replace(finding, objective_goal_ids=lineage(best_goals[0]))
+
+
 def annotation_scan_text(line: str) -> str:
     """Remove path-like tokens that should not count as TODO annotations."""
 
-    return re.sub(r"(?i)[A-Za-z0-9_./-]*\.todo\.md\b", "", line)
+    text = re.sub(r"(?i)[A-Za-z0-9_./-]*\.todo\.md\b", "", line)
+    # Long CLI option names such as ``--todo-path`` are configuration
+    # identifiers, not SQL-style ``-- TODO:`` comments.
+    return re.sub(r"(?i)(?<![A-Za-z0-9_-])--[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b", "", text)
 
 
 def _position_in_simple_quoted_string(text: str, index: int) -> bool:
@@ -1827,6 +2970,8 @@ def scan_codebase_findings(
     seen_fingerprints: Iterable[str] = (),
     exhaustive: bool = False,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
     return_inventory: bool = False,
 ) -> list[CodebaseFinding] | CodebaseScanInventory:
     """Scan tracked files for candidates, optionally returning full accounting.
@@ -1888,6 +3033,8 @@ def scan_codebase_findings(
                 path,
                 repo_root=repo_root,
                 skip_prefixes=skip_prefixes,
+                include_prefixes=include_prefixes,
+                allowed_tracks=allowed_tracks,
             )
             if reason:
                 inventory.excluded_files.append(
@@ -1921,6 +3068,99 @@ def scan_codebase_findings(
                 inventory.complete = False
                 return inventory if return_inventory else inventory.findings
     return inventory if return_inventory else inventory.findings
+
+
+def admit_codebase_refill_candidates(
+    inventory: CodebaseScanInventory,
+    *,
+    objective_goals: Sequence[ObjectiveGoal],
+    mission_terms: Sequence[str] = (),
+    max_findings: int | None,
+    allow_unscoped: bool = False,
+    objective_scope_configured: bool = False,
+) -> CodebaseRefillAdmission:
+    """Apply goal policy after scanning and before any taskboard mutation.
+
+    The scanner remains objective-agnostic.  This admission stage either binds
+    each candidate to existing goal lineage or records why it was not allowed
+    to become a task.  ``allow_unscoped`` exists only for explicit legacy
+    maintenance boards without an objective heap.
+    """
+
+    admitted_findings: list[CodebaseFinding] = []
+    rejections: list[Mapping[str, Any]] = []
+    policy_errors = list(codebase_refill_goal_graph_errors(objective_goals))
+    if allow_unscoped and (objective_scope_configured or objective_goals):
+        policy_errors.insert(
+            0,
+            {
+                "reason_code": "incompatible_unscoped_refill",
+                "message": (
+                    "allow_unscoped is only valid when no objective heap is "
+                    "configured"
+                ),
+            },
+        )
+    if (
+        not policy_errors
+        and not allow_unscoped
+        and not any(goal.is_schedulable for goal in objective_goals)
+    ):
+        policy_errors.append(
+            {
+                "reason_code": "no_schedulable_goal",
+                "message": "objective heap has no schedulable goal or subgoal",
+            }
+        )
+
+    def rejection(finding: CodebaseFinding, reason_code: str) -> dict[str, Any]:
+        finding_payload = finding.to_dict()
+        finding_payload["objective_goal_ids"] = list(finding.objective_goal_ids)
+        return {
+            "path": finding.root_relative_path,
+            "reason_code": reason_code,
+            "fingerprint": finding.fingerprint,
+            "summary": finding.summary,
+            "finding": finding_payload,
+        }
+
+    if policy_errors:
+        reason_code = str(policy_errors[0]["reason_code"])
+        rejections.extend(
+            rejection(finding, reason_code)
+            for finding in inventory.findings
+        )
+        return CodebaseRefillAdmission(
+            findings=(),
+            rejections=tuple(rejections),
+            policy_errors=tuple(policy_errors),
+            allow_unscoped=allow_unscoped,
+            max_findings=max_findings,
+        )
+
+    for finding in inventory.findings:
+        admitted = align_codebase_finding_to_goals(
+            finding,
+            objective_goals,
+            mission_terms=mission_terms,
+        )
+        if admitted is None:
+            if allow_unscoped:
+                admitted = finding
+            else:
+                rejections.append(rejection(finding, "no_goal_lineage"))
+                continue
+        if max_findings is not None and len(admitted_findings) >= max_findings:
+            rejections.append(rejection(admitted, "admission_limit"))
+            continue
+        admitted_findings.append(admitted)
+    return CodebaseRefillAdmission(
+        findings=tuple(admitted_findings),
+        rejections=tuple(rejections),
+        policy_errors=(),
+        allow_unscoped=allow_unscoped,
+        max_findings=max_findings,
+    )
 
 
 def codebase_source_tree_identity(
@@ -1979,6 +3219,8 @@ def codebase_source_tree_identity(
 def codebase_exhaustion_configuration(
     *,
     skip_prefixes: Sequence[str],
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
     health_thresholds: AnalyzerHealthThresholds,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -1990,6 +3232,8 @@ def codebase_exhaustion_configuration(
         "max_file_bytes": CODEBASE_SCAN_MAX_FILE_BYTES,
         "suffixes": sorted(CODEBASE_SCAN_SUFFIXES),
         "skip_prefixes": sorted(str(item) for item in skip_prefixes),
+        "include_prefixes": sorted(str(item) for item in include_prefixes),
+        "allowed_tracks": sorted(str(item).strip().lower() for item in allowed_tracks),
         "health_thresholds": health_thresholds.to_dict(),
         "exhaustive": True,
         "extra": dict(extra or {}),
@@ -2013,6 +3257,7 @@ Kind: {finding.kind}
 Source: {finding.root_relative_path}:{finding.line_number}
 Priority: {finding.priority}
 Track: {finding.track}
+Objective goals: {", ".join(finding.objective_goal_ids)}
 
 ## Evidence
 
@@ -2022,13 +3267,31 @@ Track: {finding.track}
 
 ## Suggested Handling
 
-Review the finding in context, decide whether it represents a bug, missing test,
-maintenance risk, or false positive, and land a small fix with validation. If the
-finding is a false positive, document why in the changed code or discovery notes
-so the supervisor does not keep re-adding the same work.
+Resolve only the work needed to advance the existing objective lineage shown
+above. Do not broaden the task to adjacent cleanup. If the finding is a false
+positive or does not actually support that lineage, record that disposition in
+the discovery evidence so the supervisor does not keep re-adding it.
 """
     path.write_text(content, encoding="utf-8")
     return path
+
+
+def codebase_finding_task_identity(finding: CodebaseFinding) -> TaskIdentity:
+    """Return the canonical work identity for one codebase-scan finding."""
+
+    return canonical_task_identity(
+        {
+            "dedupe_key": f"codebase-scan:{finding.fingerprint}",
+            "title": finding.summary,
+            "outputs": [finding.root_relative_path],
+            "acceptance": [
+                f"Resolve {finding.kind} at "
+                f"{finding.root_relative_path}:{finding.line_number}"
+            ],
+        },
+        board_namespace="codebase-scan",
+        source_path=finding.root_relative_path,
+    )
 
 
 def codebase_scan_task_block(
@@ -2043,32 +3306,57 @@ def codebase_scan_task_block(
     ast_symbols: Sequence[str] = (),
 ) -> str:
     outputs = [discovery_output_path, finding.root_relative_path]
-    planning_lines: list[str] = []
+    identity = codebase_finding_task_identity(finding)
+    lineage = list(finding.objective_goal_ids)
+    goal_id = lineage[0] if lineage else ""
+    parent_goal_ids = lineage[1:]
+    planning_lines: list[str] = [
+        *(
+            [
+                f"- Graph parents: {', '.join(parent_goal_ids) or 'none'}",
+                f"- Graph depth: {len(parent_goal_ids)}",
+                f"- Goal id: {goal_id}",
+                f"- Goal lineage: {', '.join(lineage)}",
+                "- Goal registration: existing",
+            ]
+            if goal_id
+            else ["- Goal registration: unscoped_legacy"]
+        ),
+        f"- Canonical task key: {identity.canonical_task_key}",
+        f"- Canonical task CID: {identity.canonical_task_cid}",
+        f"- Semantic identity: {identity.semantic_fingerprint}",
+        f"- Acceptance subset: Resolve {finding.kind} at {finding.root_relative_path}:{finding.line_number}",
+        f"- Preconditions: {finding.root_relative_path} exists and the scan evidence remains applicable",
+        f"- Effects: resolve {finding.kind} in {finding.root_relative_path} and pass focused validation",
+        f"- Evidence subset: {finding.root_relative_path}:{finding.line_number}, {discovery_path}",
+        "- Resource class: cpu-small",
+        "- Token class: small",
+        "- Resources: python, focused validation runner",
+        f"- Merge fate: {finding.root_relative_path}",
+        "- Rejection reasons: none",
+        f"- Missing evidence: {finding.summary}",
+        "- Candidate kind: codebase_scan",
+        f"- Todo vector key: {finding.fingerprint[:16]}",
+    ]
     if bundle_key:
-        parent_goal = "/".join(bundle_key.split("/")[:2])
-        planning_lines = [
+        planning_lines.extend(
+        [
             f"- Bundle: {bundle_key}",
             f"- Bundle shard: {bundle_shard}",
             "- Bundle strategy: codebase_file_ast",
-            f"- Graph parents: {parent_goal}",
-            "- Graph depth: 1",
             f"- Parallel lane: {bundle_key}",
             "- Conflict policy: serialize findings for the same file; allow independent file bundles to run concurrently",
             f"- Predicted files: {finding.root_relative_path}",
             f"- AST symbols: {', '.join(ast_symbols)}",
             "- AST symbol scope: file",
-            f"- Goal id: {bundle_key}",
-            f"- Missing evidence: {finding.summary}",
             f"- Merge key: {bundle_key}",
             f"- Merge family: {finding.root_relative_path}",
             "- Merge role: codebase_scan",
             "- Work item count: 1",
             "- Work scope: codebase_file_ast",
-            "- Candidate kind: codebase_scan",
-            "- Goal registration: dynamic",
-            f"- Todo vector key: {finding.fingerprint[:16]}",
         ]
-    planning = ("\n" + "\n".join(planning_lines)) if planning_lines else ""
+        )
+    planning = "\n" + "\n".join(planning_lines)
     return f"""## {task_id} {finding.summary}
 
 - Status: todo
@@ -2078,7 +3366,7 @@ def codebase_scan_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {finding.validation}{planning}
-- Acceptance: Codebase scan filed this finding from {finding.root_relative_path}:{finding.line_number}. Use evidence in {discovery_path}, fix the bug or improvement, add or update focused validation when appropriate, and keep the supervisor-fed backlog parseable.
+- Acceptance: Goal-scoped refill admitted this finding from {finding.root_relative_path}:{finding.line_number} for {goal_id or "an explicitly unscoped legacy board"}. Use evidence in {discovery_path}, make only the smallest change required by that goal lineage, add or update focused validation when appropriate, and do not expand into adjacent cleanup.
 """
 
 
@@ -3358,6 +4646,69 @@ def event_merge_result(event: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def validation_result_is_failure(value: Any) -> bool:
+    """Return whether a validation result represents a real failed gate.
+
+    Pre-dispatch failures such as a missing impact declaration deliberately set
+    ``attempted`` to false because no command was allowed to run.  They are
+    still validation failures and must consume the validation retry budget
+    instead of being misclassified as implementation failures.
+    """
+
+    if not isinstance(value, Mapping) or value.get("passed", False):
+        return False
+    if value.get("attempted", False):
+        return True
+    if value.get("error") or value.get("coverage_errors"):
+        return True
+    reason = str(value.get("reason") or "").strip()
+    if reason and reason not in {"no_commands", "not_run"}:
+        return True
+    try:
+        return int(value.get("returncode")) != 0
+    except (TypeError, ValueError):
+        return False
+
+
+def validation_failure_label(
+    validation: Mapping[str, Any],
+    *,
+    source_task: Any | None = None,
+) -> str:
+    """Return a stable command or typed pre-dispatch failure label."""
+
+    failed_command = str(validation.get("failed_command") or "").strip()
+    if failed_command:
+        return failed_command
+    if not validation.get("attempted", False):
+        error = str(validation.get("error") or "validation_gate_failed").strip()
+        reason = str(validation.get("reason") or "pre_dispatch").strip()
+        return f"validation_pre_dispatch:{error}:{reason}"
+    for node in validation.get("nodes", ()) or ():
+        if not isinstance(node, Mapping):
+            continue
+        if str(node.get("disposition") or "") != "failed":
+            continue
+        command = str(node.get("command") or "").strip()
+        if command:
+            return command
+    selection = validation.get("selection") or {}
+    if isinstance(selection, Mapping):
+        for decision in selection.get("decisions", ()) or ():
+            if not isinstance(decision, Mapping) or not decision.get(
+                "selected", False
+            ):
+                continue
+            command = str(decision.get("command") or "").strip()
+            if command:
+                return command
+    if source_task is not None:
+        for command in getattr(source_task, "validation", ()) or ():
+            if str(command).strip():
+                return str(command).strip()
+    return "validation_gate_failed"
+
+
 def consecutive_validation_failures(events: Sequence[Mapping[str, Any]], task_id: str) -> list[dict[str, Any]]:
     failures: list[dict[str, Any]] = []
     for event in reversed(events):
@@ -3366,9 +4717,7 @@ def consecutive_validation_failures(events: Sequence[Mapping[str, Any]], task_id
         if str(event.get("task_id") or "") != task_id:
             continue
         validation = event.get("validation_result") or {}
-        if not isinstance(validation, Mapping) or not validation.get("attempted"):
-            break
-        if validation.get("passed", False):
+        if not validation_result_is_failure(validation):
             break
         failures.append(dict(event))
     failures.reverse()
@@ -3394,7 +4743,7 @@ def consecutive_merge_failures(events: Sequence[Mapping[str, Any]], task_id: str
             break
         if event_type == "implementation_finished":
             validation = event.get("validation_result") or {}
-            if isinstance(validation, Mapping) and validation.get("attempted") and not validation.get("passed", False):
+            if validation_result_is_failure(validation):
                 break
             if merge_result.get("merged", False):
                 break
@@ -3434,7 +4783,7 @@ def consecutive_implementation_failures(events: Sequence[Mapping[str, Any]], tas
             continue
 
         validation = event.get("validation_result") or {}
-        if isinstance(validation, Mapping) and validation.get("attempted") and not validation.get("passed", False):
+        if validation_result_is_failure(validation):
             break
 
         merge_result = event_merge_result(event)
@@ -3512,6 +4861,27 @@ def write_retry_budget_discovery(
                 exception_text,
             ]
         ).strip()
+    validation_evidence = ""
+    if failures and failure_kind == "validation":
+        latest_validation = failures[-1].get("validation_result") or {}
+        if isinstance(latest_validation, Mapping):
+            coverage_errors = latest_validation.get("coverage_errors") or []
+            if isinstance(coverage_errors, str):
+                coverage_errors = [coverage_errors]
+            validation_evidence = "\n".join(
+                [
+                    f"- Validation attempted: `{bool(latest_validation.get('attempted', False))}`",
+                    f"- Validation return code: `{str(latest_validation.get('returncode') or 'not recorded')}`",
+                    f"- Validation error: `{str(latest_validation.get('error') or 'not recorded')}`",
+                    f"- Validation reason: `{str(latest_validation.get('reason') or 'not recorded')}`",
+                    "- Coverage errors: "
+                    + (
+                        ", ".join(str(item) for item in coverage_errors)
+                        or "not recorded"
+                    ),
+                    f"- Configuration detail: {str(latest_validation.get('configuration_detail') or 'not recorded')[:1000]}",
+                ]
+            )
     content = f"""# {task_id} {failure_kind.title()} Retry-Budget Finding: {source_task_id}
 
 Date: {date}
@@ -3527,6 +4897,7 @@ Observed consecutive {failure_kind} failures: {len(failures)}
 - Logs: {", ".join(log_paths) or "not recorded"}
 {merge_evidence}
 {implementation_evidence}
+{validation_evidence}
 
 ## Guardrail Result
 
@@ -3575,7 +4946,13 @@ def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
     """Return a parseable validation command for a retry-budget follow-up task."""
 
     stripped = normalize_validation_command_text(command)
-    if stripped:
+    typed_failure_label = stripped.startswith(
+        (
+            "validation_pre_dispatch:",
+            "validation_gate_failed",
+        )
+    )
+    if stripped and not typed_failure_label:
         commands = split_validation_commands(stripped)
         try:
             for parsed_command in commands:
@@ -3787,9 +5164,10 @@ def record_retry_budget_findings(
             if len(failures) < validation_retry_budget:
                 continue
             latest_validation = failures[-1].get("validation_result") or {}
-            failed_command = str(latest_validation.get("failed_command") or "")
-            if not failed_command:
-                continue
+            failed_command = validation_failure_label(
+                latest_validation,
+                source_task=task,
+            )
             follow_up_task_id = next_task_id(todo_text, task_prefix=task_prefix)
             discovery_path = write_retry_budget_discovery(
                 discovery_dir=discovery_dir,
@@ -4515,6 +5893,7 @@ def retire_duplicate_codebase_scan_tasks(
 def persist_codebase_scan_inventory(
     inventory: CodebaseScanInventory,
     *,
+    admission: CodebaseRefillAdmission | None = None,
     repo_root: Path,
     discovery_dir: Path,
     dataset_dir: Path | None,
@@ -4536,14 +5915,28 @@ def persist_codebase_scan_inventory(
     ] + [
         {"detail_kind": "parser_failure", **record}
         for record in inventory.parser_failures
+    ] + [
+        {"detail_kind": "admission_rejection", **record}
+        for record in (admission.rejections if admission is not None else ())
     ]
     final_deduplicated = inventory.deduplicated_candidate_count + late_deduplicated_candidates
+    admission_rejected = (
+        admission.rejected_candidate_count if admission is not None else 0
+    )
     candidate_accounting = {
         "raw_candidates": inventory.raw_candidate_count,
         "seen_candidates": inventory.seen_candidate_count,
         "deduplicated_candidates": final_deduplicated,
-        "rejected_candidates": inventory.rejected_candidate_count,
+        "rejected_candidates": (
+            inventory.rejected_candidate_count + admission_rejected
+        ),
         "appended_tasks": appended_tasks,
+    }
+    reason_summaries = {
+        **inventory.reason_summaries(),
+        "admission_rejections": (
+            admission.reason_summaries() if admission is not None else []
+        ),
     }
     artifact = ObjectiveDatasetStore(dataset_dir or discovery_dir).persist_scan_details(
         scan_id=scan_id,
@@ -4557,8 +5950,11 @@ def persist_codebase_scan_inventory(
             "expected_git_roots": list(inventory.expected_git_roots),
             "expected_git_root_count": len(inventory.expected_git_roots),
             "coverage_complete": inventory.complete,
-            "reason_summaries": inventory.reason_summaries(),
+            "reason_summaries": reason_summaries,
             "candidate_accounting": candidate_accounting,
+            "admission": (
+                admission.details_dict() if admission is not None else {}
+            ),
         },
     )
     return artifact.to_dict()
@@ -4567,6 +5963,7 @@ def persist_codebase_scan_inventory(
 def codebase_scan_accounting_metadata(
     inventory: CodebaseScanInventory,
     *,
+    admission: CodebaseRefillAdmission | None = None,
     appended_tasks: int,
     late_deduplicated_candidates: int = 0,
     details_artifact: Mapping[str, Any] | None = None,
@@ -4574,11 +5971,16 @@ def codebase_scan_accounting_metadata(
     """Return the stable JSON projection used by receipts and artifacts."""
 
     deduplicated = inventory.deduplicated_candidate_count + late_deduplicated_candidates
+    admission_rejected = (
+        admission.rejected_candidate_count if admission is not None else 0
+    )
     candidates = {
         "raw_candidates": inventory.raw_candidate_count,
         "seen_candidates": inventory.seen_candidate_count,
         "deduplicated_candidates": deduplicated,
-        "rejected_candidates": inventory.rejected_candidate_count,
+        "rejected_candidates": (
+            inventory.rejected_candidate_count + admission_rejected
+        ),
         "appended_tasks": appended_tasks,
     }
     accounted = sum(
@@ -4596,11 +5998,18 @@ def codebase_scan_accounting_metadata(
             f"raw={inventory.raw_candidate_count}, accounted={accounted}"
         )
     coverage = inventory.coverage_dict()
+    reason_summaries = {
+        **inventory.reason_summaries(),
+        "admission_rejections": (
+            admission.reason_summaries() if admission is not None else []
+        ),
+    }
     return {
         "coverage": coverage,
         "candidate_accounting": candidates,
-        "reason_summaries": inventory.reason_summaries(),
+        "reason_summaries": reason_summaries,
         "details_artifact": dict(details_artifact or {}),
+        "admission": admission.details_dict() if admission is not None else {},
         "coverage_complete": inventory.complete,
         "expected_git_root_count": len(inventory.expected_git_roots),
         "expected_git_roots": list(inventory.expected_git_roots),
@@ -4614,6 +6023,7 @@ def codebase_scan_accounting_metadata(
 def safe_codebase_scan_accounting_metadata(
     inventory: CodebaseScanInventory,
     *,
+    admission: CodebaseRefillAdmission | None = None,
     appended_tasks: int,
     late_deduplicated_candidates: int = 0,
     details_artifact: Mapping[str, Any] | None = None,
@@ -4628,6 +6038,7 @@ def safe_codebase_scan_accounting_metadata(
     try:
         return codebase_scan_accounting_metadata(
             inventory,
+            admission=admission,
             appended_tasks=appended_tasks,
             late_deduplicated_candidates=late_deduplicated_candidates,
             details_artifact=details_artifact,
@@ -4637,6 +6048,11 @@ def safe_codebase_scan_accounting_metadata(
             "invalid_scan_accounting": inventory.health_inventory_dict(
                 appended_tasks=appended_tasks,
                 late_deduplicated_candidates=late_deduplicated_candidates,
+                additional_rejected_candidates=(
+                    admission.rejected_candidate_count
+                    if admission is not None
+                    else 0
+                ),
             ),
             "invalid_scan_accounting_error": f"{type(exc).__name__}: {exc}",
             "scan_details_artifact": dict(details_artifact or {}),
@@ -4661,6 +6077,7 @@ def typed_codebase_scan_accounting(metadata: Mapping[str, Any]) -> ScanAccountin
 def classify_codebase_scan_health(
     inventory: CodebaseScanInventory,
     *,
+    admission: CodebaseRefillAdmission | None = None,
     appended_tasks: int,
     late_deduplicated_candidates: int = 0,
     canaries: AnalyzerCanaryReport | Mapping[str, Any] | None = None,
@@ -4672,6 +6089,11 @@ def classify_codebase_scan_health(
         inventory.health_inventory_dict(
             appended_tasks=appended_tasks,
             late_deduplicated_candidates=late_deduplicated_candidates,
+            additional_rejected_candidates=(
+                admission.rejected_candidate_count
+                if admission is not None
+                else 0
+            ),
         ),
         canaries=canaries,
         thresholds=thresholds,
@@ -4733,6 +6155,11 @@ def record_codebase_scan_findings(
     force: bool = False,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
+    objective_path: Path | None = None,
+    mission_terms: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
     exhaustion_quorum_size: int = DEFAULT_EXHAUSTION_QUORUM_SIZE,
     objective_revision: str = "",
@@ -4742,6 +6169,9 @@ def record_codebase_scan_findings(
 ) -> RefillScanResult[dict[str, Any]]:
     """Feed a low backlog and return a typed account of the scan attempt."""
 
+    # Normalize the legacy Markdown-style option once at this public boundary.
+    # Downstream ID allocation and rendering only receive the canonical prefix.
+    task_prefix = task_id_prefix(task_prefix)
     started_at = datetime.now(timezone.utc)
     initial_identity = scan_identity(repo_root)
     health_policy = AnalyzerHealthThresholds.from_value(health_thresholds)
@@ -4766,6 +6196,26 @@ def record_codebase_scan_findings(
     )
     todo_text = todo_path.read_text(encoding="utf-8")
     strategy = load_strategy(strategy_path)
+    objective_source = (
+        objective_path.read_text(encoding="utf-8")
+        if objective_path is not None and objective_path.is_file()
+        else ""
+    )
+    objective_id = (
+        objective_revision
+        or canonical_objective_revision(objective_source)
+    )
+    gate_strategy: Mapping[str, Any] = strategy
+    if (
+        objective_path is not None
+        and str(strategy.get("last_codebase_scan_objective_revision") or "")
+        != objective_id
+    ):
+        gate_strategy = {
+            **strategy,
+            "last_codebase_scan_at": "",
+            "last_drained_codebase_scan_task_count": -1,
+        }
     strategy_seen = {
         str(item)
         for item in strategy.get("codebase_scan_seen_fingerprints", [])
@@ -4798,7 +6248,7 @@ def record_codebase_scan_findings(
     should_scan, mode, current_open, task_count = should_refill_backlog(
         todo_text=todo_text,
         state_path=state_path,
-        strategy=strategy,
+        strategy=gate_strategy,
         last_scan_key="last_codebase_scan_at",
         last_drained_scan_task_count_key="last_drained_codebase_scan_task_count",
         task_prefix=task_prefix,
@@ -4827,6 +6277,31 @@ def record_codebase_scan_findings(
                 "task_count": task_count,
             },
         )
+    capacity_open_count = (
+        0 if mode.startswith("runnable_drained") else current_open
+    )
+    refill_capacity = refill_open_task_capacity(
+        current_open=capacity_open_count,
+        min_open_tasks=min_open_tasks,
+        max_findings=max_findings,
+    )
+    if refill_capacity <= 0:
+        return build_scan_result(
+            ScanTerminalReason.THRESHOLD_SATISFIED,
+            "open_task_pressure_bound",
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={
+                **policy_metadata,
+                **empty_codebase_scan_accounting_metadata(),
+                "open_task_count": current_open,
+                "task_count": task_count,
+                "refill_capacity": 0,
+                "open_task_target": max(0, int(min_open_tasks))
+                + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
+            },
+        )
 
     canaries = run_codebase_analyzer_canaries()
     scan_metadata = analyzer_health_metadata(
@@ -4834,17 +6309,28 @@ def record_codebase_scan_findings(
         canaries=canaries,
     )
     try:
+        objective_goals = objective_goals_for_codebase_refill(objective_path)
         inventory = scan_codebase_findings(
             repo_root,
-            max_findings=max_findings,
+            max_findings=None,
             seen_fingerprints=seen,
-            exhaustive=mode.endswith("drained_exhaustive"),
+            exhaustive=True,
             skip_prefixes=skip_prefixes,
+            include_prefixes=include_prefixes,
+            allowed_tracks=allowed_tracks,
             return_inventory=True,
         )
         if not isinstance(inventory, CodebaseScanInventory):  # pragma: no cover - defensive
             raise TypeError("instrumented codebase scan did not return inventory")
-        findings = inventory.findings
+        admission = admit_codebase_refill_candidates(
+            inventory,
+            objective_goals=objective_goals,
+            mission_terms=mission_terms,
+            max_findings=max_findings,
+            allow_unscoped=allow_unscoped_codebase_refill,
+            objective_scope_configured=objective_path is not None,
+        )
+        findings = list(admission.findings)
     except TimeoutError as exc:
         return build_scan_result(
             ScanTerminalReason.TIMED_OUT,
@@ -4866,12 +6352,73 @@ def record_codebase_scan_findings(
             error=f"{type(exc).__name__}: {exc}",
             metadata={**scan_metadata, **empty_codebase_scan_accounting_metadata()},
         )
+    if not admission.policy_valid:
+        details_artifact = persist_codebase_scan_inventory(
+            inventory,
+            admission=admission,
+            repo_root=repo_root,
+            discovery_dir=discovery_dir,
+            dataset_dir=dataset_dir,
+            started_at=started_at,
+            appended_tasks=0,
+            late_deduplicated_candidates=0,
+        )
+        source_identity = RepositoryTreeIdentity(
+            initial_identity.repository_id,
+            codebase_source_tree_identity(repo_root, inventory),
+        )
+        policy_error = "; ".join(
+            str(item.get("message") or item.get("reason_code") or "")
+            for item in admission.policy_errors
+        )
+        return build_scan_result(
+            ScanTerminalReason.FAILED,
+            mode,
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            safe_for_completion_reasoning=False,
+            error=f"codebase refill admission policy failed: {policy_error}",
+            metadata={
+                **scan_metadata,
+                **safe_codebase_scan_accounting_metadata(
+                    inventory,
+                    admission=admission,
+                    appended_tasks=0,
+                    details_artifact=details_artifact,
+                ),
+                "objective_revision": objective_id,
+                "admission_policy_errors": [
+                    dict(item) for item in admission.policy_errors
+                ],
+            },
+            identity=source_identity,
+        )
     strategy["last_codebase_scan_at"] = utc_now()
     strategy["last_codebase_scan_mode"] = mode
+    strategy["last_codebase_scan_objective_revision"] = objective_id
+    strategy["last_codebase_scan_scope"] = {
+        "include_prefixes": sorted(
+            str(prefix).strip().strip("/")
+            for prefix in include_prefixes
+            if str(prefix).strip().strip("/")
+        ),
+        "allowed_tracks": sorted(
+            str(track).strip().lower()
+            for track in allowed_tracks
+            if str(track).strip()
+        ),
+        "allow_unscoped_codebase_refill": bool(allow_unscoped_codebase_refill),
+        "objective_path": str(objective_path or ""),
+        "objective_goal_ids": [
+            goal.goal_id for goal in objective_goals if goal.is_schedulable
+        ],
+    }
     strategy["codebase_scan_seen_fingerprints"] = sorted(seen | {finding.fingerprint for finding in findings})
     if not findings:
         details_artifact = persist_codebase_scan_inventory(
             inventory,
+            admission=admission,
             repo_root=repo_root,
             discovery_dir=discovery_dir,
             dataset_dir=dataset_dir,
@@ -4881,11 +6428,12 @@ def record_codebase_scan_findings(
         )
         nominal_reason = (
             ScanTerminalReason.DUPLICATE_ONLY
-            if inventory.raw_candidate_count
+            if inventory.seen_candidate_count or inventory.deduplicated_candidate_count
             else ScanTerminalReason.EXHAUSTED
         )
         health = classify_codebase_scan_health(
             inventory,
+            admission=admission,
             appended_tasks=0,
             canaries=canaries,
             thresholds=health_policy,
@@ -4900,10 +6448,11 @@ def record_codebase_scan_findings(
             initial_identity.repository_id,
             codebase_source_tree_identity(repo_root, inventory),
         )
-        objective_id = objective_revision or canonical_objective_revision("")
         configuration_id = scan_configuration_revision(
             codebase_exhaustion_configuration(
                 skip_prefixes=skip_prefixes,
+                include_prefixes=include_prefixes,
+                allowed_tracks=allowed_tracks,
                 health_thresholds=health_policy,
             )
         )
@@ -4922,6 +6471,7 @@ def record_codebase_scan_findings(
             ),
             **safe_codebase_scan_accounting_metadata(
                 inventory,
+                admission=admission,
                 appended_tasks=0,
                 details_artifact=details_artifact,
             ),
@@ -5030,6 +6580,7 @@ def record_codebase_scan_findings(
             task_prefix=task_prefix,
         )
         for finding in findings:
+            identity = codebase_finding_task_identity(finding)
             follow_up_task_id = next_task_id(
                 todo_text,
                 task_prefix=task_prefix,
@@ -5067,10 +6618,16 @@ def record_codebase_scan_findings(
                 "kind": finding.kind,
                 "source": f"{finding.root_relative_path}:{finding.line_number}",
                 "discovery_path": str(discovery_path),
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "semantic_identity": identity.semantic_fingerprint,
+                "objective_goal_ids": list(finding.objective_goal_ids),
             }
             if bundle_key:
                 finding_record.update({"bundle_key": bundle_key, "bundle_shard": bundle_shard})
-                parent_goal = "/".join(bundle_key.split("/")[:2])
+                lineage = list(finding.objective_goal_ids)
+                goal_id = lineage[0] if lineage else ""
+                parent_goal_ids = lineage[1:]
                 bundle_records.append(
                     {
                         "task_id": follow_up_task_id,
@@ -5078,16 +6635,38 @@ def record_codebase_scan_findings(
                         "task_block": task_block,
                         "task_payload": {
                             "task_id": follow_up_task_id,
+                            "canonical_task_key": identity.canonical_task_key,
+                            "canonical_task_cid": identity.canonical_task_cid,
+                            "semantic_identity": identity.semantic_fingerprint,
                             "status": "todo",
                             "title": finding.summary,
                             "priority": finding.priority,
                             "track": finding.track,
-                            "goal_id": bundle_key,
-                            "parent_goal_id": parent_goal,
-                            "subgoal_id": bundle_key,
-                            "parent_goal_ids": [parent_goal],
-                            "graph_depth": 1,
+                            "goal_id": goal_id,
+                            "parent_goal_id": (
+                                parent_goal_ids[0] if parent_goal_ids else ""
+                            ),
+                            "subgoal_id": goal_id if parent_goal_ids else "",
+                            "parent_goal_ids": parent_goal_ids,
+                            "graph_depth": len(parent_goal_ids),
                             "rationale": finding.summary,
+                            "preconditions": [
+                                f"{finding.root_relative_path} exists",
+                                "scan evidence remains applicable",
+                            ],
+                            "effects": [
+                                f"resolve {finding.kind} in {finding.root_relative_path}",
+                                "pass focused validation",
+                            ],
+                            "evidence_subset": [
+                                f"{finding.root_relative_path}:{finding.line_number}",
+                                repo_relative_path(repo_root, discovery_path),
+                            ],
+                            "resource_class": "cpu-small",
+                            "token_class": "small",
+                            "resources": ["python", "focused-validation-runner"],
+                            "merge_fate": finding.root_relative_path,
+                            "rejection_reasons": [],
                             "acceptance": [
                                 f"Resolve the {finding.kind} finding at "
                                 f"{finding.root_relative_path}:{finding.line_number}."
@@ -5101,14 +6680,16 @@ def record_codebase_scan_findings(
                             "generated_artifacts": [repo_relative_path(repo_root, discovery_path)],
                             "depends_on": list(depends_on),
                             "bundle_strategy": "codebase_file_ast",
-                            "surplus_group": parent_goal,
+                            "surplus_group": goal_id,
                             "merge_key": bundle_key,
                             "merge_family": finding.root_relative_path,
                             "merge_role": "codebase_scan",
                             "work_item_count": 1,
                             "work_scope": "codebase_file_ast",
                             "candidate_kind": "codebase_scan",
-                            "goal_registration": "dynamic",
+                            "goal_registration": (
+                                "existing" if goal_id else "unscoped_legacy"
+                            ),
                             "todo_vector_key": finding.fingerprint[:16],
                             "discovery_path": repo_relative_path(repo_root, discovery_path),
                         },
@@ -5129,6 +6710,7 @@ def record_codebase_scan_findings(
     late_deduplicated_candidates = detected_count - len(appended)
     details_artifact = persist_codebase_scan_inventory(
         inventory,
+        admission=admission,
         repo_root=repo_root,
         discovery_dir=discovery_dir,
         dataset_dir=dataset_dir,
@@ -5155,6 +6737,7 @@ def record_codebase_scan_findings(
     )
     health = classify_codebase_scan_health(
         inventory,
+        admission=admission,
         appended_tasks=len(appended),
         late_deduplicated_candidates=late_deduplicated_candidates,
         canaries=canaries,
@@ -5185,6 +6768,7 @@ def record_codebase_scan_findings(
             ),
             **safe_codebase_scan_accounting_metadata(
                 inventory,
+                admission=admission,
                 appended_tasks=len(appended),
                 late_deduplicated_candidates=late_deduplicated_candidates,
                 details_artifact=details_artifact,
@@ -5193,6 +6777,9 @@ def record_codebase_scan_findings(
             "duplicate_count": detected_count - len(appended),
             "open_task_count": current_open,
             "task_count": task_count,
+            "refill_capacity": refill_capacity,
+            "open_task_target": max(0, int(min_open_tasks))
+            + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
         },
     )
 
@@ -5244,11 +6831,15 @@ def record_objective_backlog_findings(
     surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    force_goal_ids: Sequence[str] = (),
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
 ) -> RefillScanResult[dict[str, Any]]:
     """Feed a todo board from objective gaps and return a typed scan result."""
 
+    # Objective generation is an external write boundary, so never forward a
+    # legacy ``"## PREFIX-"`` value to its heading renderer.
+    task_prefix = task_id_prefix(task_prefix)
     started_at = datetime.now(timezone.utc)
     if max_findings <= 0:
         return build_scan_result(
@@ -5301,6 +6892,29 @@ def record_objective_backlog_findings(
             started_at,
             metadata={"open_task_count": current_open, "task_count": task_count},
         )
+    capacity_open_count = (
+        0 if mode.startswith("runnable_drained") else current_open
+    )
+    refill_capacity = refill_open_task_capacity(
+        current_open=capacity_open_count,
+        min_open_tasks=min_open_tasks,
+        max_findings=max_findings,
+    )
+    if refill_capacity <= 0:
+        return build_scan_result(
+            ScanTerminalReason.THRESHOLD_SATISFIED,
+            "open_task_pressure_bound",
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={
+                "open_task_count": current_open,
+                "task_count": task_count,
+                "refill_capacity": 0,
+                "open_task_target": max(0, int(min_open_tasks))
+                + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
+            },
+        )
 
     seen = {str(item) for item in strategy.get("objective_goal_seen_fingerprints", []) if str(item).strip()}
     generation_result = generate_objective_todos_result(
@@ -5313,7 +6927,7 @@ def record_objective_backlog_findings(
         dataset_dir=dataset_dir,
         task_prefix=task_prefix,
         depends_on=depends_on,
-        max_findings=max_findings,
+        max_findings=refill_capacity,
         seen_fingerprints=seen,
         persist_ast_dataset=persist_ast_dataset,
         write_todo_vector_index=write_todo_vector_index,
@@ -5322,12 +6936,11 @@ def record_objective_backlog_findings(
         surplus_min_terms_per_todo=surplus_min_terms_per_todo,
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path,
+        force_goal_ids=force_goal_ids,
     )
     records = list(generation_result.items)
     strategy["last_objective_goal_scan_at"] = utc_now()
     strategy["last_objective_goal_scan_mode"] = mode
-    if current_open == 0 or mode.endswith("drained_exhaustive"):
-        strategy["last_drained_objective_goal_scan_task_count"] = task_count
     strategy["objective_goal_seen_fingerprints"] = sorted(
         seen | {record.finding.fingerprint for record in records}
     )
@@ -5366,6 +6979,11 @@ def record_objective_backlog_findings(
     strategy["last_objective_surplus_findings_per_goal"] = surplus_findings_per_goal
     strategy["last_objective_surplus_min_terms_per_todo"] = surplus_min_terms_per_todo
     strategy["last_objective_goal_scan_findings"] = appended
+    if mode.startswith("drained") and generation_result.terminal_reason in {
+        ScanTerminalReason.GENERATED,
+        ScanTerminalReason.EXHAUSTED,
+    }:
+        strategy["last_drained_objective_goal_scan_task_count"] = task_count
     write_json(strategy_path, strategy)
     if commit_outputs and records:
         generated_paths = [todo_path]
@@ -5400,11 +7018,20 @@ def record_objective_backlog_findings(
         repo_root,
         started_at,
         appended,
-        safe_for_completion_reasoning=(not appended and mode.endswith("exhaustive")),
+        # An empty objective-gap result is proposal evidence, not healthy
+        # exhaustion authority.  The benchmark-driven self-improvement epoch
+        # separately requires explicit analyzer health, an exact context
+        # binding, and an independent quorum before it advances the durable
+        # drained marker.
+        safe_for_completion_reasoning=False,
         metadata={
             **generation_result.metadata,
             "open_task_count": current_open,
             "task_count": task_count,
+            "refill_capacity": refill_capacity,
+            "open_task_target": max(0, int(min_open_tasks))
+            + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
+            "healthy_epoch_required_for_completion": True,
         },
     )
 
@@ -5441,6 +7068,13 @@ def record_configured_objective_backlog_findings(
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    force_goal_ids: Sequence[str] = (),
+    completion_gate_decisions: Mapping[str, Any] | None = None,
+    completion_gate_now: datetime | str | None = None,
+    completion_gate_freshness_seconds: float = (
+        DEFAULT_EVIDENCE_FRESHNESS_SECONDS
+    ),
+    completion_gate_clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
 ) -> RefillScanResult[dict[str, Any]]:
@@ -5452,6 +7086,14 @@ def record_configured_objective_backlog_findings(
         or repo_root / "data" / "agent_supervisor" / "objective_bundles"
     )
     resolved_dataset_dir = dataset_dir if dataset_dir is not None else default_dataset_dir
+    completion_identity = None
+    if completion_gate_decisions:
+        from .objective_tracker import completion_tree_identity
+
+        completion_identity = completion_tree_identity(
+            repo_root,
+            objective_path=objective_path,
+        )
     return record_objective_backlog_findings(
         repo_root=repo_root,
         objective_path=objective_path,
@@ -5479,6 +7121,23 @@ def record_configured_objective_backlog_findings(
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path
         or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
+        force_goal_ids=align_completion_gate_force_goal_ids(
+            force_goal_ids,
+            completion_gate_decisions=completion_gate_decisions,
+            repository_id=(
+                completion_identity.repository_id
+                if completion_identity is not None
+                else ""
+            ),
+            repository_tree=(
+                completion_identity.tree_id
+                if completion_identity is not None
+                else ""
+            ),
+            now=completion_gate_now,
+            freshness_seconds=completion_gate_freshness_seconds,
+            clock_skew_seconds=completion_gate_clock_skew_seconds,
+        ),
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
     )
@@ -5504,6 +7163,11 @@ def record_configured_codebase_scan_findings(
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
+    objective_path: Path | None = None,
+    mission_terms: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record codebase scan backlog findings",
@@ -5535,6 +7199,11 @@ def record_configured_codebase_scan_findings(
         discovery_output_path=discovery_output_path
         or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
         skip_prefixes=skip_prefixes,
+        include_prefixes=include_prefixes,
+        allowed_tracks=allowed_tracks,
+        objective_path=objective_path,
+        mission_terms=mission_terms,
+        allow_unscoped_codebase_refill=allow_unscoped_codebase_refill,
         health_thresholds=health_thresholds,
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
@@ -5655,6 +7324,13 @@ class ConfiguredObjectiveBacklogRecorder:
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
     discovery_output_path: str | None = None
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
+    force_goal_ids: Sequence[str] = ()
+    completion_gate_decisions: Mapping[str, Any] | None = None
+    completion_gate_now: datetime | str | None = None
+    completion_gate_freshness_seconds: float = (
+        DEFAULT_EVIDENCE_FRESHNESS_SECONDS
+    )
+    completion_gate_clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS
     commit_outputs: bool = False
     commit_subject: str = "Agent: record objective backlog findings"
     prepare_environment: Callable[[], None] | None = None
@@ -5688,6 +7364,11 @@ class ConfiguredCodebaseScanRecorder:
     discovery_output_path: str | None = None
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES
+    include_prefixes: Sequence[str] = ()
+    allowed_tracks: Sequence[str] = ()
+    objective_path: Path | None = None
+    mission_terms: Sequence[str] = ()
+    allow_unscoped_codebase_refill: bool = False
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None
     commit_outputs: bool = False
     commit_subject: str = "Agent: record codebase scan backlog findings"
@@ -5887,6 +7568,13 @@ def build_namespace_objective_backlog_recorder(
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    force_goal_ids: Sequence[str] = (),
+    completion_gate_decisions: Mapping[str, Any] | None = None,
+    completion_gate_now: datetime | str | None = None,
+    completion_gate_freshness_seconds: float = (
+        DEFAULT_EVIDENCE_FRESHNESS_SECONDS
+    ),
+    completion_gate_clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
     prepare_environment: Callable[[], None] | None = None,
@@ -5916,6 +7604,15 @@ def build_namespace_objective_backlog_recorder(
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path,
         discovery_output_path_default=discovery_output_path_default,
+        force_goal_ids=tuple(force_goal_ids),
+        completion_gate_decisions=completion_gate_decisions,
+        completion_gate_now=completion_gate_now,
+        completion_gate_freshness_seconds=(
+            completion_gate_freshness_seconds
+        ),
+        completion_gate_clock_skew_seconds=(
+            completion_gate_clock_skew_seconds
+        ),
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
         prepare_environment=prepare_environment,
@@ -5938,6 +7635,11 @@ def build_namespace_codebase_scan_recorder(
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    include_prefixes: Sequence[str] = (),
+    allowed_tracks: Sequence[str] = (),
+    objective_path: Path | str | None = None,
+    mission_terms: Sequence[str] = (),
+    allow_unscoped_codebase_refill: bool = False,
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record codebase scan backlog findings",
@@ -5962,6 +7664,11 @@ def build_namespace_codebase_scan_recorder(
         discovery_output_path=discovery_output_path,
         discovery_output_path_default=discovery_output_path_default,
         skip_prefixes=tuple(skip_prefixes),
+        include_prefixes=tuple(include_prefixes),
+        allowed_tracks=tuple(allowed_tracks),
+        objective_path=Path(objective_path) if objective_path is not None else None,
+        mission_terms=tuple(mission_terms),
+        allow_unscoped_codebase_refill=allow_unscoped_codebase_refill,
         health_thresholds=health_thresholds,
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
@@ -6032,6 +7739,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-prefix", action="append", default=[])
     parser.add_argument("--objective-scan", action="store_true")
     parser.add_argument("--codebase-scan", action="store_true")
+    parser.add_argument(
+        "--allow-unscoped-codebase-refill",
+        action="store_true",
+        help=(
+            "Allow codebase findings without objective lineage to become tasks. "
+            "Unsafe for goal-backed boards."
+        ),
+    )
     parser.add_argument("--retry-budget", action="store_true")
     parser.add_argument("--dependency-guardrail", action="store_true")
     parser.add_argument("--force", action="store_true")
@@ -6174,6 +7889,8 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             force=args.force,
             discovery_output_path=args.discovery_output_path,
             skip_prefixes=skip_prefixes,
+            objective_path=args.objective_path.resolve() if args.objective_path else None,
+            allow_unscoped_codebase_refill=args.allow_unscoped_codebase_refill,
             health_thresholds=health_thresholds,
             commit_outputs=args.commit_generated_outputs,
         )

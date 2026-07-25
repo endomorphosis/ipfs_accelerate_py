@@ -24,6 +24,378 @@ architecture:
 | Proof-carrying execution | `proof_carrying_planner.py` (`REF-293`) | Compile, verify, implement, scope-check, merge, monitor, and repair nodes run as a durable DAG with paired JSON/DuckDB state. The workflow is replayable and only completes when required assurance is present. |
 | Rollout measurement and gates | `formal_planning_metrics.py`, `formal_planning_rollout.py` (`REF-294`) | Cold/warm/parallel benchmark samples measure context reduction, defect detection, proof support, counterexample quality, cache reuse, queue latency, CPU, memory, and throughput before promotion. |
 
+## Stable control surface and operating model
+
+The reviewed public control boundary is intentionally much smaller than the
+complete module map in this document. Applications should build on the stable
+exports from `ipfs_accelerate_py.agent_supervisor`, especially:
+
+- `SupervisorControlService`, `SupervisorClient`, `SupervisorTarget`, and
+  `RepositorySupervisorBackend`;
+- `Operation`, `OperationAuthority`, `OperationRequest`, `OperationResult`,
+  `OperationStatus`, `OperationError`, `ErrorCode`, and `ControlBounds`;
+- `ExpectedEffect`, `EffectClaim`, `DryRunPreview`, `IdempotencyKey`, and
+  `AuthorizationDecision`;
+- `OperationCapability`, `CapabilityReport`, `ControlDiscoveryManifest`, and
+  the request/result schema helpers; and
+- `FormalVerificationProbeConfig`,
+  `probe_formal_verification_capabilities`, the paired self-improvement rollout
+  contracts, and their report store.
+
+Those package exports are convenience names for transport-neutral contracts;
+the implementation modules remain the contract owners. Provider-backed
+planning and proof adapters are lazy package attributes. Importing the package,
+the control service, the contracts, or discovery helpers must not import an
+optional provider, resolve an MCP service, inspect a repository, or start a
+process. Accessing a provider-specific attribute for the first time may import
+that provider adapter, but it still does not establish that the provider is
+available or conformant.
+
+The paired-rollout subset has a machine-readable compatibility boundary:
+`PAIRED_ROLLOUT_STABLE_EXPORTS` is an immutable, unique, complete manifest
+whose members resolve lazily to their identical objects in the provider-free
+owner module. Package-owned
+`PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`
+(`300500866741873729474343907613893393545`) and
+`PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID` (ASI-G114) name the import-isolation
+obligation without resolving rollout code. This obligation is validated in a
+fresh interpreter across the complete manifest and optional-provider
+inventory; a warm-process import or a partial name check is non-authoritative.
+
+Availability is therefore an explicit two-step handshake:
+
+1. use the control discovery manifest or capability report to learn the closed
+   operation vocabulary, schema identities, authority class, bounds, and
+   dry-run/idempotency/authorization requirements; then
+2. run the relevant capability probe or provider-matrix self-test before
+   admitting work that depends on an optional model, solver, kernel, protocol,
+   hyperproperty, or dataset route.
+
+Import success is never a capability signal, and a capability signal is never
+proof evidence. A deployment should retain the capability snapshot identity
+alongside plans, cache keys, rollout reports, and self-refill epochs so that a
+changed provider environment invalidates the appropriate decisions.
+
+### One contract across Python, CLI, and MCP
+
+`control_contracts.py` defines a closed operation vocabulary. The operations
+are divided by maximum semantic authority:
+
+| Authority | Operations |
+| --- | --- |
+| Read | `capabilities`, `status`, `health`, `metrics`, `goals`, `tasks`, `bundles`, `lanes`, `events`, `receipts`, `cache_inspect`, `artifact_query` |
+| Proposal | `objective_preview`, `plan` |
+| Mutation | `objective_refine`, `objective_reconcile`, `backlog_refill`, `start`, `pause`, `resume`, `drain`, `stop`, `retry`, `cancel`, `quarantine`, `validation_replay` |
+
+Python calls `SupervisorControlService.execute(OperationRequest(...))`. The
+unified CLI exposes the same operations under `ipfs-accelerate agent`; the
+short CLI spellings `cache`, `artifact`, `preview`, `refine`, `reconcile`,
+`refill`, and `validation-replay` decode to their canonical enum values. MCP
+registers one tool per canonical operation in the lazily loaded
+`agent_supervisor` category. Each MCP tool accepts an `OperationRequest` under
+its `request` field and returns the canonical `OperationResult`.
+
+All adapters decode the request before resolving a service and dispatch
+directly to `SupervisorControlService`; neither CLI nor MCP shells out to a
+standalone supervisor script. The service owns allowlists, target and tree
+identity checks, bounds, authorization freshness, lease/fence validation,
+idempotency, effect validation, redaction, stable errors, and audit receipts.
+An adapter must validate the returned result against the original request
+before presenting it as canonical output.
+
+Discovery has a stronger no-side-effect rule than ordinary read execution.
+Python, CLI, and MCP discovery manifests cover the same operation population
+and canonical request/result schema identities. CLI parser construction is
+static. MCP tool registration is static, and listing its category, tools, or
+schemas does not resolve the configured service. Repeated discovery must be
+byte-deterministic and leave optional-provider imports, process starts, backend
+dispatches, and service-resolution counters unchanged.
+
+The shared operation contract provides behavioral parity, but it does not make
+every backend universally available. `RepositorySupervisorBackend` supplies
+bounded adapters for existing status, objective, task-board, event, cache, and
+artifact data. A deployment must explicitly register any mutating backend
+operation it intends to allow; otherwise that operation returns the stable
+`unavailable` result.
+
+### Authorization and mutation boundary
+
+Every request binds absolute repository and state roots plus repository, tree,
+objective, objective-revision, policy, policy-revision, and caller identities.
+The service accepts only roots in its constructor-supplied allowlists. Read and
+proposal operations remain structurally bounded but cannot claim mutation
+effects.
+
+A real mutation must satisfy all of these conditions before its backend can be
+called:
+
+1. it declares the complete expected-effect set, and every path is contained
+   by the selected root;
+2. an unexpired permit binds the operation, caller, roots, identities, lease,
+   fence, and authorized effect IDs;
+3. an idempotency key is scoped to the same operation, caller, repository, and
+   objective;
+4. the repository/tree identity is current;
+5. a live lease validator accepts the lease ID and fencing epoch; and
+6. the backend applies only declared effects and a durable, redacted audit
+   receipt can be written.
+
+Failure at any preflight step prevents dispatch. Reusing an idempotency key for
+a different request is a conflict. Replaying the exact accepted request
+returns its original result without applying the backend effect again. A
+mutation with `dry_run=True` never invokes the mutating adapter, has proposal
+authority, and returns a `DryRunPreview` rather than applied effect claims.
+
+The local CLI service is scoped to the explicit roots in its request, but this
+is containment, not authorization: a real mutation still fails closed without
+the required permit and a configured live lease/fence validator. MCP is
+stricter at configuration time. Its repository and state allowlists must come
+from server configuration or the dedicated allowlist environment variables;
+it never derives server authority from tool input. Production embedding should
+configure a reviewed service or service factory rather than depend on the
+environment fallback.
+
+### Objective, task-board, and lifecycle operations
+
+The control API intentionally separates observation, proposal, and mutation:
+
+| Operator need | Read or preview first | Authorized operation |
+| --- | --- | --- |
+| Inspect objective state | `goals`, `receipts`, `artifact_query` | `objective_reconcile` |
+| Develop a goal | `objective_preview`, `plan`, `health` | `objective_refine` |
+| Inspect the board | `tasks`, `bundles`, `lanes`, `status` | `backlog_refill`, `retry`, `cancel`, `quarantine` |
+| Operate workers | `status`, `health`, `events`, `metrics` | `start`, `pause`, `resume`, `drain`, `stop` |
+| Recheck accepted work | `receipts`, `artifact_query` | `validation_replay` |
+
+For example, `ipfs-accelerate agent goals ...`,
+`ipfs-accelerate agent tasks ...`, and
+`ipfs-accelerate agent preview ...` are bounded reads/proposals.
+`ipfs-accelerate agent reconcile ...` and
+`ipfs-accelerate agent refill ...` are real mutations unless `--dry-run` is
+present, so they need the complete canonical authorization, idempotency,
+lease/fence, and expected-effect bindings. CLI output is JSON; a bounded watch
+is available only for `status`, `health`, `metrics`, and `events`. MCP clients
+perform the identical operation through the same canonical records instead of
+translating the CLI example into a command string.
+
+Lifecycle commands are transitions over the service's closed supervisor state
+machine. `start`, `pause`, `resume`, `drain`, and `stop` do not mean “run this
+shell command”; the backend checks the authoritative current state and returns
+`invalid_lifecycle_transition` for an illegal edge. Target, requested state,
+reason, dry-run flag, and the containing request must agree.
+
+### Reviewed operating profiles
+
+The profiles below are configuration envelopes, not new Python classes or
+implicit modes. Operators construct them from
+`context_contracts.ContextBudget`, `ControlBounds`,
+`analysis_cache.AnalysisCache`, `ResourcePolicy`, `ResourceLeaseBudget`,
+provider-capacity records, rollout policies, and daemon settings. Persist the
+resulting typed configuration and policy identities with evidence. Neither
+profile bypasses capability discovery, authorization, proof freshness, or
+promotion gates.
+
+| Setting | Deterministic smoke | Production starting envelope |
+| --- | --- | --- |
+| Purpose | Repeatable contract, recovery, and local integration check | Durable supervised operation after environment sizing |
+| Rollout | `shadow` only | Start `shadow`; promote to `assist`, then narrowly to `automatic` only through the paired gate |
+| Providers | Deterministic local/fallback adapters; optional network/model routes disabled | Only explicitly configured routes with fresh capability and conformance receipts |
+| Context | `context_contracts.ContextBudget(max_input_tokens=2048, reserved_output_tokens=512, reserved_tool_tokens=128, max_items=32, max_item_bytes=8192, max_serialized_bytes=65536, max_depth=6, max_text_bytes=4096)` | Begin with the reviewed `context_contracts.ContextBudget()` defaults: 8192 input, 2048 output reserve, 512 tool reserve, 128 items, and 256 KiB serialized; lower to the provider-negotiated effective limit |
+| Coordinator caches | Temporary profile-specific state, 64 entries, 4 MiB total, 64 KiB entry; isolate namespaces per test | Durable profile-specific state, initially 512 entries, 32 MiB total, and 256 KiB per entry; quota changes require a new configuration digest |
+| Analysis receipt cache | `AnalysisCache`: 64 entries, 4 MiB total, 64 KiB entry, 48 KiB receipt, 60-second negative TTL; discard between cold fixtures | `AnalysisCache` reviewed defaults: 512 entries, 32 MiB total, 128 KiB entry, 96 KiB receipt, and 5-minute negative TTL; size and TTL changes require a new configuration digest |
+| Lanes and resources | One lane, one process, one CPU-proof slot, one model slot, one artifact slot; adaptive scheduling off | Explicit `ResourcePolicy`; start with no more than four lanes, CPU-proof 2, model 1, artifact 2, stage/class ceilings, provider telemetry required, and adaptive scheduling off until the paired parallel fixtures pass |
+| Control bounds | Prefer 32 items, 64 KiB serialized, 4 KiB text, 16 paths/effects, and a 10-second timeout | Default 256-item/256-KiB/30-second request envelope, further constrained by service and backend limits |
+| Refill | Run one fixed epoch fixture against temporary objective/task-board copies; never materialize successors | At board drain, evaluate one identity-bound epoch; materialize at most the policy-admitted bounded successor population |
+| State | New temporary state root per run; fixed clock and fixture identities where supported | Dedicated durable state root, fsynced receipts/reports, backups, retention, and monitored recovery |
+
+The production numbers are a conservative starting ceiling, not a claim that a
+host can sustain them. Provider concurrency, CPU, memory, GPU memory, disk,
+quota, latency, merge pressure, and active leases can only reduce admitted
+width. Unknown telemetry does not grant capacity, and an explicit zero means
+exhausted. The smoke profile is smaller than production but exercises the same
+contracts, canonical serialization, stable errors, idempotent replay, restart
+loading, and no-side-effect discovery.
+
+Context, cache, and resources have independent invariants:
+
+- A `context_contracts.ContextBudgetResolution` computes usable input as the minimum of the
+  supervisor ceiling, provider input ceiling, and provider context window
+  after output/tool reserves. Zero fails closed. The capsule includes the
+  invariant core first, selected evidence second, and on-demand references
+  only when requested.
+- Cache namespaces are separated by trust and purpose. A cache key binds every
+  relevant tree/blob, objective, query, analyzer/provider, configuration,
+  policy, scope, and capability dimension. Negative, failed, timed-out,
+  truncated, stale, and inconclusive hits are short-lived diagnostics and
+  cannot satisfy completion.
+- A worker count is only a ceiling. `ResourcePolicy` and
+  `ResourceLeaseBudget` bound top-level and child concurrency, process count,
+  time, memory, GPU memory, disk, model tokens, quota, context, and provider
+  latency. Proof, model, artifact-I/O, validation, merge, and persistence
+  classes remain independently accountable.
+
+### Rollout authority
+
+The self-improvement integration uses the public
+`SelfImprovementRolloutMode` vocabulary:
+
+```text
+shadow -> assist -> automatic
+```
+
+`shadow` is the default and may persist bounded metrics, candidate receipts,
+and rollout reports, but cannot mutate canonical objectives, task boards,
+implementation trees, or completion state. `assist` may present proposals for
+operator-authorized execution; it does not inherit mutation authority.
+`automatic` means policy-approved automatic use, not unrestricted autonomy. It
+still executes each mutation through the normal authorization, identity,
+lease/fence, expected-effect, idempotency, validation, and audit gates.
+
+The paired rollout report covers the complete cold, warm, broad-goal,
+contradictory, malformed-output, stale-cache, provider-unavailable,
+independent-parallel, conflicting-parallel, failed-validation, restart, and
+drained-refill fixture population. Promotion requires both the non-negotiable
+safety gate and the paired improvement gate. Missing fixtures, false
+completion, authority violation, stale authoritative cache reuse, escaped
+seeded defects, duplicate execution, unauthorized mutation, unstable restart
+state, or a failed quality/performance threshold forces the effective mode
+back to `shadow`. The report is rollout evidence, not goal-completion evidence.
+
+The runtime binds two stable objective terms to that report. Term
+`109590900757783560279417463762322084165` proves the safety/shadow invariant:
+every fixture in the seeded population has zero candidate false completions,
+and any seeded false completion makes the non-negotiable gate fail and the
+effective mode `shadow`. Term
+`146189916032404266364029134505159070240` proves paired efficiency only when
+all token, repeated-cache, planning, and independent-lane throughput gates
+pass. The planning component is disjunctive but cannot be skipped: it requires
+either at least a 1,000-basis-point median evidence-coverage improvement or at
+least a 2,000-basis-point aggregate invalid-plan-branch reduction.
+
+`PairedRolloutReport.evidence_for(requirement_id, repository_id=...,
+repository_tree=...)` exposes the bounded, criterion-specific typed projection
+used for those bindings. It derives canonical ASI-G112/ASI-G113 internally,
+returns a negative diagnostic for an unmet supported term, and rejects an
+unsupported term. `PairedRolloutRequirementEvidence.from_dict` requires the
+typed source report and re-derives the complete claim, rejecting changed,
+detached, or unknown data. The witness never converts a report into completion
+or mutation authority. Its identities, measurements, and stable reason codes
+are sufficient for diagnostics; raw prompts, model outputs, patches, proofs,
+cache values, and artifact bodies remain outside the report boundary.
+
+Report version 2 adds the invalid-plan-branch count and explicit token, cache,
+planning, and throughput projections. Version-1 reports remain recomputable
+audit records, but cannot satisfy the paired-efficiency witness; promotion
+requires a fresh version-2 shadow evaluation.
+
+The paired report types, schema versions, requirement identifiers, store, and
+evaluator are enumerated by the package-root
+`PAIRED_ROLLOUT_STABLE_EXPORTS` compatibility manifest. Cold import, manifest
+inspection, and static control discovery do not load optional providers or
+start processes; first access to a listed name loads only the provider-free
+rollout contracts. The isolated ASI-G114 validation checks cold state, exact
+`__all__`/manifest equality, owner identity for every member, absence of all
+registered and dataset-backed optional providers. It is public-interface
+evidence, not a third
+`PairedRolloutRequirementEvidence`, because it is independent of paired
+fixture measurements.
+
+Smoke operators run that import-isolation preflight before exercising every
+seeded forced-shadow path with fixed inputs and bounded state. Production
+operators run the same preflight for the deployed package/provider inventory,
+retain the two report evidence projections with the current tree, objective,
+policy, capability, and profile identities, and return to shadow when any
+package, manifest, provider, or report binding changes.
+
+Completion authority remains separate. The ASI-G090 adapter fixes terminal
+producers ASI-023/ASI-024, verified direct descendants
+ASI-G112/ASI-G113/ASI-G114, the five literal rollout/adoption criteria, and a
+two-receipt exhaustive quorum. It recomputes a fresh complete paired report and
+restores both current-tree report projections as operational prerequisites,
+but never treats them, the import preflight, documentation, or analyzer output
+as passing criterion validation. Every criterion has one fresh passing receipt
+bound by exact implementation coverage; the analyzer is explicitly healthy,
+completion-safe, and fully bound; and two fresh healthy exhaustive members are
+independent by member, channel, and receipt identity. Missing or invalid
+producers, descendants, validations, coverage, health, or quorum keep the goal
+actionable. Even a fully closed pass moves `active` only to
+`provisionally_complete`; a later evaluation must revalidate the entire packet
+before `verified_complete`.
+
+Other subsystems use related but deliberately distinct vocabularies. Formal
+planning has `shadow`, `canary`, and `enforcement`; Leanstral goal development
+has `off`, `shadow`, `assist`, `repair_only`, and `auto_safe`. A top-level
+automatic decision does not silently translate into either `enforcement` or
+`auto_safe`: the downstream subsystem must also pass its own policy,
+capability, proof, and freshness gate.
+
+### Metrics, failure recovery, and self-refill epochs
+
+Operators should correlate canonical identities rather than scrape prose.
+`metrics`, `status`, `health`, `events`, and `receipts` expose the control
+projection. Supervisor efficiency receipts join stage latency, input/output
+and reused tokens, cache outcomes, queue delay, retries, validation cost,
+changed scope, and acceptance. Scheduler metrics add admission waits,
+utilization, provider pressure, lane throughput, and resource high-watermarks.
+Proof and rollout projections report attempt outcomes, assurance, cache
+freshness, defect detection, authority violations, restart stability, and
+promotion reason codes. Metrics are bounded, low-cardinality projections;
+full outputs belong in content-addressed artifacts.
+
+Failures retain enough identity and evidence for deterministic recovery:
+
+- contract, authorization, bounds, stale-tree, stale-lease, idempotency,
+  unavailable-provider, timeout, cancellation, conflict, and lifecycle errors
+  have stable codes and redacted audit receipts;
+- an exact successful mutation replay returns its persisted result without
+  duplicating the backend effect, while conflicting replay fails;
+- watchdogs use heartbeat, process liveness, active phase, and retry budgets to
+  restart or block work without granting a stale worker publication authority;
+- corrupt cache entries are rejected and recomputed, never promoted; torn
+  projections recover from append-only journals or authoritative receipts;
+- merge conflicts and failed validation become bounded repair work with their
+  original commands and evidence; and
+- paired rollout reports are content-addressed, append-only, fsynced, bounded,
+  symlink-resistant, and recomputed from fixture evidence after restart.
+
+When the actionable task board drains, `run_self_improvement_epoch` evaluates a
+bounded epoch rather than looping the refill command. Its
+`SelfImprovementEpochBinding` includes repository/tree, objective revision,
+task-board revision, self-improvement policy, capability snapshot, observation
+window, and operator revision. The content identity of those inputs is the
+epoch ID.
+
+The epoch reconciles goals, evaluates the complete benchmark population,
+classifies gaps, validates bounded novel successor candidates, and either
+transactionally materializes admitted work or records healthy exhaustion.
+Replaying an identical persisted epoch produces replay evidence and performs
+no second objective/task-board mutation. A failed, partial, blocked, or
+inconclusive analyzer cannot create work. Healthy exhaustion requires
+independent fresh exhaustive receipts and enters a wait state; another epoch
+requires a meaningful trigger such as a changed tree, policy, capability
+snapshot, objective revision, regression, stale evidence, cooldown expiry, or
+scheduled observation window. A drained board alone is neither permission to
+manufacture work nor evidence that the root objective is complete.
+
+### Migration boundary for standalone scripts
+
+Legacy objective, daemon, and supervisor scripts remain project-binding
+adapters during migration. New integrations should replace direct script
+imports, subprocess calls, ad hoc JSON, and private daemon mutation with:
+
+1. stable package contracts and the `SupervisorControlService` for Python;
+2. `ipfs-accelerate agent` for operator and process-boundary use; or
+3. the `agent_supervisor` MCP category for policy-configured remote control.
+
+Migrate reads first and compare canonical results across surfaces. Next move
+preview/dry-run paths and record schema identities. Finally move mutations one
+operation at a time after supplying explicit roots, authorization, idempotency,
+lease/fence validators, expected effects, and durable audit storage. Existing
+runtime runners may still construct the backend, but they must not maintain a
+second authorization or lifecycle policy. A compatibility wrapper should
+decode into `OperationRequest`, call the service once, and return
+`OperationResult`; it should not translate back into a shell command.
+
 ## Architectural synthesis: a constrained feedback controller
 
 The recent implementation completes the first integrated slice of a
@@ -460,8 +832,13 @@ finding.
    stale receipts, unhealthy analyzers, or unsatisfied exhaustion quorum remains
    open, blocked, or inconclusive.
 8. Inspect event logs and metrics before starting another pass. A drained queue
-   may trigger bounded objective/codebase refill, but refill must not create
-   unbounded duplicate work.
+   may trigger bounded objective/codebase refill. Codebase scanning remains a
+   general evidence operation; a separate fail-closed admission stage can
+   materialize a task only under one specific existing goal/subgoal and records
+   its validated ancestor lineage. Goal records with missing status, dangling
+   parents, or cycles fail closed, and a broad directory name alone is not
+   semantic evidence. Refill must not create unbounded duplicate or out-of-scope
+   work.
 
 ## The theory behind the design
 

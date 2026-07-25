@@ -8,16 +8,20 @@ import re
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .adaptive_goal_refiner import GoalDebtRecord, GoalQualityRecord
 from .goal_completion import (
+    DEFAULT_CLOCK_SKEW_SECONDS,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     GOAL_COMPLETION_SCHEMA_VERSION,
     GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION,
     CompletionEvidence,
+    GoalCompletionDecision,
     GoalState,
     is_legacy_completed_goal_state,
     migrate_legacy_goal_completion,
@@ -26,6 +30,7 @@ from .goal_completion import (
 )
 from .objective_graph import (
     DEFAULT_EMBEDDING_MIN_SCORE,
+    OPAQUE_EVIDENCE_REQUIREMENT_PATTERN,
     ObjectiveFinding,
     ObjectiveGoal,
     ObjectiveGoalMaterializationPreview,
@@ -43,8 +48,13 @@ from .objective_graph import (
     utc_now,
 )
 from .validation_commands import split_validation_commands
+from .formal_verification_contracts import content_identity
+from .validation_runtime import (
+    build_validation_environment,
+    validation_shell_command,
+)
 from .scan_receipts import RepositoryTreeIdentity, scan_identity
-from .task_identity import canonical_content_cid
+from .task_identity import canonical_content_cid, normalize_identity_text
 
 
 DEFAULT_ULTIMATE_GOAL = (
@@ -67,6 +77,340 @@ TASK_GOAL_METADATA_KEYS = (
     "goal packet goals",
     "graph parents",
 )
+OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-goal-quality-report@1"
+)
+_COMPLETION_GATE_REQUIRED_CHECK_NAMES = frozenset(
+    {
+        "mandatory_coverage",
+        "required_validations",
+        "analyzer_health",
+        "exhaustion_quorum",
+        "analysis_terminal_state",
+        "child_goals",
+    }
+)
+
+
+def _completion_gate_projection_is_current(
+    payload: Mapping[str, Any],
+    *,
+    repository_id: str = "",
+    repository_tree: str = "",
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
+) -> bool:
+    """Validate a serialized completion decision before backlog suppression.
+
+    A durable summary is less trusted than the evaluator object that produced
+    it.  Requiring the complete canonical projection prevents a skeletal
+    ``verified`` mapping, an old passing decision, or a foreign-tree decision
+    from silently removing its parent from supervisor refill.
+    """
+
+    required_fields = {
+        "schema_version",
+        "state",
+        "verified",
+        "tasks_complete",
+        "acceptance_criteria",
+        "missing_criteria",
+        "invalid_criteria",
+        "reason_codes",
+        "actionable_reasons",
+        "evidence_results",
+        "completion_gate",
+    }
+    if not required_fields.issubset(payload):
+        return False
+    if payload.get("schema_version") != GOAL_COMPLETION_SCHEMA_VERSION:
+        return False
+    if payload.get("tasks_complete") is not True:
+        return False
+
+    def sequence(value: Any) -> list[Any] | None:
+        if not isinstance(value, (list, tuple)):
+            return None
+        return list(value)
+
+    criteria = sequence(payload.get("acceptance_criteria"))
+    missing = sequence(payload.get("missing_criteria"))
+    invalid = sequence(payload.get("invalid_criteria"))
+    reason_codes = sequence(payload.get("reason_codes"))
+    actionable = sequence(payload.get("actionable_reasons"))
+    results = sequence(payload.get("evidence_results"))
+    if any(
+        item is None
+        for item in (
+            criteria,
+            missing,
+            invalid,
+            reason_codes,
+            actionable,
+            results,
+        )
+    ):
+        return False
+    assert criteria is not None
+    assert missing is not None
+    assert invalid is not None
+    assert reason_codes is not None
+    assert actionable is not None
+    assert results is not None
+    criterion_keys = [
+        " ".join(str(item or "").strip().lower().split())
+        for item in criteria
+    ]
+    if (
+        not criterion_keys
+        or any(not item for item in criterion_keys)
+        or len(criterion_keys) != len(set(criterion_keys))
+        or missing
+        or invalid
+        or reason_codes
+        or actionable
+    ):
+        return False
+
+    result_keys: list[str] = []
+    for result in results:
+        if not isinstance(result, Mapping) or result.get("valid") is not True:
+            return False
+        evidence = result.get("evidence")
+        if not isinstance(evidence, Mapping):
+            return False
+        criterion = " ".join(
+            str(evidence.get("acceptance_criterion") or "")
+            .strip()
+            .lower()
+            .split()
+        )
+        if not criterion:
+            return False
+        result_keys.append(criterion)
+    if (
+        len(result_keys) != len(criterion_keys)
+        or len(result_keys) != len(set(result_keys))
+        or set(result_keys) != set(criterion_keys)
+    ):
+        return False
+
+    gate_value = payload.get("completion_gate")
+    if not isinstance(gate_value, Mapping):
+        return False
+    gate = dict(gate_value)
+    if (
+        gate.get("schema_version") != GOAL_COMPLETION_SCHEMA_VERSION
+        or gate.get("passed") is not True
+        or sequence(gate.get("reason_codes")) != []
+        or sequence(gate.get("fail_reason_codes")) != []
+        or sequence(gate.get("actionable_reasons")) != []
+    ):
+        return False
+    checks = sequence(gate.get("checks"))
+    if checks is None:
+        return False
+    check_names = [
+        str(check.get("name") or "").strip()
+        for check in checks
+        if isinstance(check, Mapping)
+    ]
+    if (
+        len(check_names) != len(checks)
+        or len(check_names) != len(set(check_names))
+        or not _COMPLETION_GATE_REQUIRED_CHECK_NAMES.issubset(check_names)
+        or any(check.get("passed") is not True for check in checks)
+    ):
+        return False
+
+    evaluated_value = gate.get("evaluated_evidence")
+    if not isinstance(evaluated_value, Mapping):
+        return False
+    evaluated = dict(evaluated_value)
+    evaluated_criteria = sequence(evaluated.get("acceptance_criteria"))
+    evaluated_results = sequence(evaluated.get("validation_evidence"))
+    if evaluated_criteria is None or evaluated_results is None:
+        return False
+    evaluated_keys = [
+        " ".join(str(item or "").strip().lower().split())
+        for item in evaluated_criteria
+    ]
+    if evaluated_keys != criterion_keys or evaluated_results != results:
+        return False
+    for required_payload in (
+        "coverage",
+        "analyzer_health",
+        "exhaustion_quorum",
+    ):
+        if (
+            not isinstance(evaluated.get(required_payload), Mapping)
+            or not evaluated[required_payload]
+        ):
+            return False
+
+    evaluated_repository_id = str(evaluated.get("repository_id") or "").strip()
+    evaluated_tree = str(evaluated.get("repository_tree") or "").strip()
+    if not evaluated_repository_id or not evaluated_tree:
+        return False
+    if repository_id and evaluated_repository_id != str(repository_id):
+        return False
+    if repository_tree and evaluated_tree != str(repository_tree):
+        return False
+
+    def timestamp(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            parsed = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                parsed = datetime.fromisoformat(
+                    value.strip().replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+
+    current = timestamp(now) if now is not None else datetime.now(timezone.utc)
+    evaluated_at = timestamp(evaluated.get("evaluated_at"))
+    if current is None or evaluated_at is None:
+        return False
+    if (
+        isinstance(freshness_seconds, bool)
+        or not isinstance(freshness_seconds, (int, float))
+        or float(freshness_seconds) < 0
+        or isinstance(clock_skew_seconds, bool)
+        or not isinstance(clock_skew_seconds, (int, float))
+        or float(clock_skew_seconds) < 0
+    ):
+        return False
+    declared_freshness = evaluated.get("freshness_seconds")
+    if (
+        isinstance(declared_freshness, bool)
+        or not isinstance(declared_freshness, (int, float))
+        or float(declared_freshness) < 0
+    ):
+        return False
+    max_age = timedelta(
+        seconds=min(float(freshness_seconds), float(declared_freshness))
+    )
+    skew = timedelta(seconds=float(clock_skew_seconds))
+    return bool(
+        evaluated_at <= current + skew
+        and current - evaluated_at <= max_age
+    )
+
+
+def completion_gate_actionable_goal_ids(
+    goal_id: str,
+    decision: GoalCompletionDecision | Mapping[str, Any] | None,
+    *,
+    repository_id: str = "",
+    repository_tree: str = "",
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
+) -> tuple[str, ...]:
+    """Project an incomplete completion gate back into objective scheduling.
+
+    Completion-gate tasks are proof-producing projections, not replacements
+    for their parent goal.  The parent therefore remains eligible for forced
+    objective refill until a canonical decision says that it is verified,
+    its completion gate passed, and no actionable reason remains.  Mapping
+    inputs are accepted for durable supervisor records, but fail closed when
+    any of those fields is absent.
+    """
+
+    normalized_goal_id = str(goal_id or "").strip()
+    if not normalized_goal_id:
+        raise ValueError("goal_id is required")
+    if decision is None:
+        return (normalized_goal_id,)
+    if isinstance(decision, GoalCompletionDecision):
+        payload = decision.to_dict()
+    elif isinstance(decision, Mapping):
+        payload = dict(decision)
+    else:
+        raise TypeError("decision must be a GoalCompletionDecision or mapping")
+    gate_value = payload.get("completion_gate", payload.get("gate"))
+    gate = dict(gate_value) if isinstance(gate_value, Mapping) else {}
+    state = str(
+        payload.get("state", payload.get("next_state", ""))
+        or ""
+    ).strip().lower()
+    verified = bool(
+        state == GoalState.VERIFIED_COMPLETE.value
+        and payload.get("verified") is True
+        and gate.get("passed") is True
+        and _completion_gate_projection_is_current(
+            payload,
+            repository_id=repository_id,
+            repository_tree=repository_tree,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+        )
+    )
+    return () if verified else (normalized_goal_id,)
+
+
+def _quality_terms(goal: ObjectiveGoal, *field_names: str) -> tuple[str, ...]:
+    """Read one canonical JSON list or legacy delimited objective field."""
+
+    for name in field_names:
+        raw = str(goal.fields.get(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, list) and all(
+            isinstance(item, str) for item in payload
+        ):
+            return tuple(
+                sorted({item.strip() for item in payload if item.strip()})
+            )
+        return tuple(sorted(set(split_terms(raw))))
+    return ()
+
+
+def _quality_mapping(goal: ObjectiveGoal, *field_names: str) -> dict[str, Any]:
+    for name in field_names:
+        raw = str(goal.fields.get(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        if isinstance(payload, Mapping) and all(
+            isinstance(key, str) for key in payload
+        ):
+            # The quality type applies canonical-JSON validation and copying.
+            return dict(payload)
+        return {}
+    return {}
+
+
+def _quality_nonnegative_integer(
+    goal: ObjectiveGoal,
+    *field_names: str,
+    default: int = 0,
+) -> int:
+    for name in field_names:
+        raw = str(goal.fields.get(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            return default
+        return value if value >= 0 else default
+    return default
 
 
 @dataclass(frozen=True)
@@ -84,6 +428,356 @@ class ObjectiveTrackingResult:
         if self.graph_path is not None:
             payload["graph_path"] = str(self.graph_path)
         return payload
+
+
+@dataclass(frozen=True)
+class ObjectiveGoalQualityReport:
+    """Restart-safe quality/debt projection of one exact objective heap."""
+
+    objective_heap_id: str
+    quality_records: tuple[GoalQualityRecord, ...]
+
+    def __post_init__(self) -> None:
+        heap_id = str(self.objective_heap_id or "").strip()
+        if not heap_id:
+            raise ValueError("objective_heap_id is required")
+        object.__setattr__(self, "objective_heap_id", heap_id)
+        records = tuple(self.quality_records)
+        if any(not isinstance(item, GoalQualityRecord) for item in records):
+            raise TypeError(
+                "quality_records must contain GoalQualityRecord values"
+            )
+        if len({item.goal_id for item in records}) != len(records):
+            raise ValueError("quality_records contain duplicate goal IDs")
+        object.__setattr__(
+            self,
+            "quality_records",
+            tuple(sorted(records, key=lambda item: item.goal_id)),
+        )
+
+    @property
+    def debt_records(self) -> tuple[GoalDebtRecord, ...]:
+        return tuple(
+            debt
+            for quality in self.quality_records
+            for debt in quality.debt_records
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA,
+            "version": 1,
+            "objective_heap_id": self.objective_heap_id,
+            "quality_records": tuple(
+                item.to_dict() for item in self.quality_records
+            ),
+            "debt_records": tuple(item.to_dict() for item in self.debt_records),
+        }
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ObjectiveGoalQualityReport":
+        if not isinstance(payload, Mapping):
+            raise TypeError("objective goal-quality report must be an object")
+        allowed = {
+            "schema",
+            "version",
+            "content_id",
+            "objective_heap_id",
+            "quality_records",
+            "debt_records",
+        }
+        unknown = sorted(set(payload) - allowed)
+        if unknown:
+            raise ValueError(
+                "unknown objective goal-quality report fields: "
+                + ", ".join(unknown)
+            )
+        if payload.get("schema") != OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA:
+            raise ValueError("unsupported objective goal-quality report schema")
+        if payload.get("version") != 1:
+            raise ValueError("unsupported objective goal-quality report version")
+        quality_values = payload.get("quality_records")
+        debt_values = payload.get("debt_records")
+        if not isinstance(quality_values, Sequence) or isinstance(
+            quality_values, (str, bytes, bytearray)
+        ):
+            raise ValueError("quality_records must be a sequence")
+        if not isinstance(debt_values, Sequence) or isinstance(
+            debt_values, (str, bytes, bytearray)
+        ):
+            raise ValueError("debt_records must be a sequence")
+        quality_records = tuple(
+            GoalQualityRecord.from_dict(item)
+            if isinstance(item, Mapping)
+            else (_raise_quality_report_value("quality_records"))
+            for item in quality_values
+        )
+        result = cls(
+            objective_heap_id=str(payload.get("objective_heap_id") or ""),
+            quality_records=quality_records,
+        )
+        restored_debt = tuple(
+            GoalDebtRecord.from_dict(item)
+            if isinstance(item, Mapping)
+            else (_raise_quality_report_value("debt_records"))
+            for item in debt_values
+        )
+        if restored_debt != result.debt_records:
+            raise ValueError(
+                "objective goal-quality debt records do not match quality records"
+            )
+        identity = payload.get("content_id")
+        if not isinstance(identity, str) or not identity.strip():
+            raise ValueError("objective goal-quality report identity is required")
+        if identity != result.content_id:
+            raise ValueError(
+                "objective goal-quality report content identity does not match"
+            )
+        return result
+
+
+def _raise_quality_report_value(field_name: str) -> Any:
+    raise ValueError(f"{field_name} must contain objects")
+
+
+def objective_goal_quality_record(
+    goal: ObjectiveGoal,
+    *,
+    breadth: int = 1,
+    default_max_breadth: int = 8,
+) -> GoalQualityRecord:
+    """Project one markdown goal into the reviewed adaptive quality schema."""
+
+    if not isinstance(goal, ObjectiveGoal):
+        raise TypeError("goal must be an ObjectiveGoal")
+    outcome = str(
+        goal.fields.get("outcome")
+        or goal.fields.get("goal")
+        or goal.fields.get("objective")
+        or goal.title
+        or ""
+    ).strip()
+    scope_ids = tuple(
+        sorted(
+            set(
+                _quality_terms(
+                    goal,
+                    "scope_ids_json",
+                    "scope_ids",
+                    "scope",
+                )
+                + tuple(goal.predicted_files)
+                + tuple(goal.predicted_symbols)
+            )
+        )
+    )
+    acceptance = _quality_terms(
+        goal,
+        "acceptance_criteria_json",
+        "acceptance_criteria",
+        "acceptance",
+    )
+    producers = set(
+        _quality_terms(
+            goal,
+            "evidence_producer_ids_json",
+            "evidence_producer_ids",
+            "evidence_producers",
+            "producing_task_or_scan",
+            "produced_by",
+        )
+    )
+    metadata_producer = str(
+        goal.completion_evidence_metadata.get("producer") or ""
+    ).strip()
+    if metadata_producer:
+        producers.add(metadata_producer)
+    validation = set(goal.validation_commands)
+    validation.update(
+        _quality_terms(
+            goal,
+            "validation_policy_json",
+            "validation_policy",
+            "validation_ids",
+        )
+    )
+    resource_envelope = _quality_mapping(
+        goal, "resource_envelope_json", "resource_envelope"
+    )
+    if not resource_envelope:
+        resource_envelope = {
+            key: value
+            for key, value in {
+                "resource_class": str(
+                    goal.fields.get("resource_class") or ""
+                ).strip(),
+                "estimated_tokens": str(
+                    goal.fields.get("estimated_tokens") or ""
+                ).strip(),
+                "estimated_runtime": str(
+                    goal.fields.get("estimated_runtime") or ""
+                ).strip(),
+                "estimated_memory": str(
+                    goal.fields.get("estimated_memory") or ""
+                ).strip(),
+                "artifact_budget": str(
+                    goal.fields.get("artifact_budget") or ""
+                ).strip(),
+            }.items()
+            if value
+        }
+    refinement_budget = _quality_mapping(
+        goal, "refinement_budget_json", "refinement_budget"
+    )
+    if not refinement_budget:
+        refinement_budget = {
+            key: value
+            for key, value in {
+                "max_depth": str(
+                    goal.fields.get("max_refinement_depth")
+                    or goal.fields.get("refinement_depth_limit")
+                    or ""
+                ).strip(),
+                "max_children": str(
+                    goal.fields.get("max_refinement_children")
+                    or goal.fields.get("refinement_breadth_limit")
+                    or ""
+                ).strip(),
+            }.items()
+            if value
+        }
+    explicit_breadth = _quality_nonnegative_integer(
+        goal, "breadth", default=max(1, breadth)
+    )
+    max_breadth = _quality_nonnegative_integer(
+        goal, "max_breadth", "refinement_breadth_limit",
+        default=default_max_breadth,
+    )
+    return GoalQualityRecord(
+        goal_id=goal.goal_id,
+        outcome=outcome,
+        scope_ids=scope_ids,
+        assumption_ids=_quality_terms(
+            goal,
+            "assumption_ids_json",
+            "assumptions_json",
+            "assumption_ids",
+            "assumptions",
+        ),
+        non_goals=_quality_terms(
+            goal, "non_goals_json", "non_goals", "non_goal"
+        ),
+        acceptance_criteria=acceptance,
+        evidence_producer_ids=tuple(sorted(producers)),
+        validation_ids=tuple(sorted(validation)),
+        freshness_horizon_seconds=_quality_nonnegative_integer(
+            goal,
+            "freshness_horizon_seconds",
+            "evidence_freshness_seconds",
+        ),
+        resource_envelope=resource_envelope,
+        refinement_budget=refinement_budget,
+        ambiguities=_quality_terms(
+            goal, "ambiguities_json", "ambiguities", "ambiguity"
+        ),
+        stale_evidence_ids=_quality_terms(
+            goal, "stale_evidence_ids_json", "stale_evidence", "stale_receipts"
+        ),
+        uncovered_acceptance_criteria=_quality_terms(
+            goal,
+            "uncovered_acceptance_criteria_json",
+            "uncovered_acceptance_criteria",
+            "uncovered_criteria",
+        ),
+        unsupported_semantics=_quality_terms(
+            goal,
+            "unsupported_semantics_json",
+            "unsupported_semantics",
+        ),
+        breadth=max(1, explicit_breadth),
+        max_breadth=max(1, max_breadth),
+    )
+
+
+def build_objective_goal_quality_report(
+    objective_text: str,
+    *,
+    default_max_breadth: int = 8,
+) -> ObjectiveGoalQualityReport:
+    """Build a deterministic report without mutating the objective heap."""
+
+    if not isinstance(objective_text, str):
+        raise TypeError("objective_text must be a string")
+    goals = parse_goal_heap(objective_text)
+    child_counts: dict[str, int] = {}
+    for goal in goals:
+        for parent_id in goal.parent_goal_ids:
+            child_counts[parent_id] = child_counts.get(parent_id, 0) + 1
+    return ObjectiveGoalQualityReport(
+        objective_heap_id=objective_heap_content_id(objective_text),
+        quality_records=tuple(
+            objective_goal_quality_record(
+                goal,
+                breadth=max(1, child_counts.get(goal.goal_id, 0)),
+                default_max_breadth=default_max_breadth,
+            )
+            for goal in goals
+        ),
+    )
+
+
+def write_objective_goal_quality_report(
+    objective_path: Path,
+    report_path: Path,
+    *,
+    default_max_breadth: int = 8,
+) -> ObjectiveGoalQualityReport:
+    """Atomically persist an exact-heap quality snapshot for restart reuse."""
+
+    if objective_path.resolve() == report_path.resolve():
+        raise ValueError(
+            "goal-quality report path must not overwrite the objective heap"
+        )
+    text = objective_path.read_text(encoding="utf-8")
+    report = build_objective_goal_quality_report(
+        text, default_max_breadth=default_max_breadth
+    )
+    _atomic_write_json(report_path, report.to_dict())
+    return report
+
+
+def load_objective_goal_quality_report(
+    report_path: Path,
+    *,
+    objective_path: Path | None = None,
+) -> ObjectiveGoalQualityReport:
+    """Restore a report fail-closed and optionally reject a stale heap."""
+
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid objective goal-quality report: {exc}") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError("objective goal-quality report must contain an object")
+    report = ObjectiveGoalQualityReport.from_dict(payload)
+    if objective_path is not None:
+        current_id = objective_heap_content_id(
+            objective_path.read_text(encoding="utf-8")
+        )
+        if report.objective_heap_id != current_id:
+            raise ValueError(
+                "objective goal-quality report is stale for the current heap"
+            )
+    return report
 
 
 @dataclass(frozen=True)
@@ -192,6 +886,1097 @@ class ObjectiveMaterializationTransactionResult:
             }
         )
         return payload
+
+
+OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_evidence_projection.v1"
+)
+
+
+@dataclass(frozen=True)
+class ObjectiveEvidenceProjection:
+    """Stable owner of one evidence requirement in the objective heap.
+
+    Supervisor backlog records can outlive objective refinement.  Consumers
+    must therefore resolve an old aggregate goal to the one current child that
+    owns the requirement instead of recreating the aggregate or appending
+    another child.  This projection is intentionally read-only and
+    content-addressed to the exact heap.
+    """
+
+    requirement_id: str
+    goal_id: str
+    parent_goal_id: str
+    objective_heap_id: str
+    goal_content_id: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "requirement_id",
+            "goal_id",
+            "parent_goal_id",
+            "objective_heap_id",
+            "goal_content_id",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise ValueError(f"{name} is required")
+            object.__setattr__(self, name, value)
+
+    @property
+    def projection_id(self) -> str:
+        return content_identity(
+            {
+                "schema": OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA,
+                "version": 1,
+                "requirement_id": self.requirement_id,
+                "goal_id": self.goal_id,
+                "parent_goal_id": self.parent_goal_id,
+                "objective_heap_id": self.objective_heap_id,
+                "goal_content_id": self.goal_content_id,
+            }
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA,
+            "version": 1,
+            "requirement_id": self.requirement_id,
+            "goal_id": self.goal_id,
+            "parent_goal_id": self.parent_goal_id,
+            "objective_heap_id": self.objective_heap_id,
+            "goal_content_id": self.goal_content_id,
+            "projection_id": self.projection_id,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ObjectiveEvidenceProjection":
+        allowed = {
+            "schema",
+            "version",
+            "requirement_id",
+            "goal_id",
+            "parent_goal_id",
+            "objective_heap_id",
+            "goal_content_id",
+            "projection_id",
+        }
+        unknown = sorted(str(key) for key in payload if str(key) not in allowed)
+        if unknown:
+            raise ValueError(
+                "objective evidence projection contains unknown fields: "
+                + ", ".join(unknown)
+            )
+        if (
+            payload.get("schema") != OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA
+            or payload.get("version") != 1
+        ):
+            raise ValueError("unsupported objective evidence projection schema")
+        result = cls(
+            requirement_id=str(payload.get("requirement_id") or ""),
+            goal_id=str(payload.get("goal_id") or ""),
+            parent_goal_id=str(payload.get("parent_goal_id") or ""),
+            objective_heap_id=str(payload.get("objective_heap_id") or ""),
+            goal_content_id=str(payload.get("goal_content_id") or ""),
+        )
+        if payload.get("projection_id") != result.projection_id:
+            raise ValueError("objective evidence projection identity does not match")
+        return result
+
+
+def resolve_objective_evidence_projection(
+    objective_text: str,
+    *,
+    requirement_id: str,
+    expected_parent_goal_id: str = "",
+    expected_goal_id: str = "",
+) -> ObjectiveEvidenceProjection:
+    """Resolve exactly one current heap owner for an evidence requirement.
+
+    Ambiguous, detached, or unexpectedly renamed owners fail closed.  The
+    caller may omit either expected ID for general use, while objective-gap
+    repairs should bind both IDs so stale supervisor metadata cannot silently
+    redirect completion evidence.
+    """
+
+    requirement = str(requirement_id or "").strip()
+    if not requirement:
+        raise ValueError("requirement_id is required")
+    goals = parse_goal_heap(objective_text)
+    owners = [
+        goal
+        for goal in goals
+        if requirement in {str(item).strip() for item in goal.required_evidence}
+    ]
+    if not owners:
+        raise ValueError(
+            f"objective heap has no owner for evidence requirement {requirement}"
+        )
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+
+    def ancestor_ids(goal: ObjectiveGoal) -> set[str]:
+        pending = list(goal.parent_goal_ids)
+        result: set[str] = set()
+        while pending:
+            goal_id = str(pending.pop()).strip()
+            if not goal_id or goal_id in result:
+                continue
+            result.add(goal_id)
+            parent = goals_by_id.get(goal_id)
+            if parent is not None:
+                pending.extend(parent.parent_goal_ids)
+        return result
+
+    expected_goal = str(expected_goal_id or "").strip()
+    if expected_goal:
+        owner = next(
+            (goal for goal in owners if goal.goal_id == expected_goal),
+            None,
+        )
+        if owner is None:
+            owner_ids = ", ".join(sorted(goal.goal_id for goal in owners))
+            raise ValueError(
+                f"evidence requirement {requirement} is owned by "
+                f"{owner_ids}, expected {expected_goal}"
+            )
+        ancestors = ancestor_ids(owner)
+        incomparable = sorted(
+            goal.goal_id
+            for goal in owners
+            if goal.goal_id != owner.goal_id and goal.goal_id not in ancestors
+        )
+        if incomparable:
+            raise ValueError(
+                f"objective heap has ambiguous owners for evidence requirement "
+                f"{requirement}: {', '.join(incomparable + [owner.goal_id])}"
+            )
+    else:
+        maximal = [
+            goal
+            for goal in owners
+            if all(
+                other.goal_id == goal.goal_id
+                or other.goal_id in ancestor_ids(goal)
+                for other in owners
+            )
+        ]
+        if len(maximal) != 1:
+            raise ValueError(
+                f"objective heap has multiple owners for evidence requirement "
+                f"{requirement}"
+            )
+        owner = maximal[0]
+    parents = tuple(str(item).strip() for item in owner.parent_goal_ids if str(item).strip())
+    expected_parent = str(expected_parent_goal_id or "").strip()
+    if expected_parent and expected_parent not in parents:
+        raise ValueError(
+            f"evidence owner {owner.goal_id} is not a child of {expected_parent}"
+        )
+    if not parents:
+        raise ValueError(f"evidence owner {owner.goal_id} has no parent goal")
+    parent = expected_parent or parents[0]
+    return ObjectiveEvidenceProjection(
+        requirement_id=requirement,
+        goal_id=owner.goal_id,
+        parent_goal_id=parent,
+        objective_heap_id=objective_heap_content_id(objective_text),
+        goal_content_id=objective_goal_content_id(owner),
+    )
+
+
+SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "self_improvement_goal_evidence_binding.v1"
+)
+SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "self_improvement_goal_evidence_reconciliation.v1"
+)
+
+
+def _strict_record_keys(
+    payload: Mapping[str, Any],
+    allowed: set[str],
+    *,
+    record_name: str,
+) -> None:
+    unknown = sorted(str(key) for key in payload if str(key) not in allowed)
+    if unknown:
+        raise ValueError(
+            f"{record_name} contains unknown fields: {', '.join(unknown)}"
+        )
+
+
+def _canonical_receipt_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return {str(key): item for key, item in value.items()}
+    converter = getattr(value, "to_dict", None)
+    projected = converter() if callable(converter) else None
+    if not isinstance(projected, Mapping):
+        raise TypeError("typed evidence receipt must be a mapping or expose to_dict()")
+    return {str(key): item for key, item in projected.items()}
+
+
+def _receipt_string_values(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        values: Iterable[Any] = (value,)
+    elif isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        values = value
+    else:
+        return ()
+    return tuple(
+        dict.fromkeys(
+            compact
+            for item in values
+            if (compact := " ".join(str(item or "").strip().split()))
+        )
+    )
+
+
+def _receipt_requirement_ids(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    result: list[str] = []
+    for name in (
+        "requirement_id",
+        "requirement_ids",
+        "proved_requirement_ids",
+        "evidence_claim_references",
+        "authoritative_evidence_claim_references",
+    ):
+        result.extend(_receipt_string_values(payload.get(name)))
+    criterion = str(
+        payload.get("acceptance_criterion")
+        or payload.get("criterion")
+        or ""
+    ).strip()
+    if criterion:
+        result.append(criterion)
+    metadata = payload.get("metadata")
+    if isinstance(metadata, Mapping):
+        result.extend(_receipt_string_values(metadata.get("requirement_id")))
+        result.extend(_receipt_string_values(metadata.get("requirement_ids")))
+    return tuple(dict.fromkeys(result))
+
+
+def _receipt_content_identity(payload: Mapping[str, Any]) -> str:
+    """Hash finite measurement JSON without the task-ID float restriction."""
+
+    try:
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+            default=str,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("typed evidence receipt is not finite canonical JSON") from exc
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _receipt_nonempty_text(value: Any) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return bool(value) and all(
+            isinstance(item, str) and bool(item.strip()) for item in value
+        )
+    return False
+
+
+def _receipt_digest_valid(value: str) -> bool:
+    """Accept canonical SHA-256 digests and CID-like content identifiers."""
+
+    normalized = str(value or "").strip()
+    if re.fullmatch(r"sha256:[0-9a-fA-F]{64}", normalized):
+        return True
+    # Repository content identities are CIDv1 base32 strings (normally
+    # ``baguq...``).  Requiring the multibase prefix and a meaningful length
+    # rejects labels such as ``artifact-1`` without coupling the tracker to a
+    # single multicodec.
+    return bool(re.fullmatch(r"b[a-z2-7]{31,}", normalized.casefold()))
+
+
+def _receipt_identifier(payload: Mapping[str, Any]) -> str:
+    for name in (
+        "receipt_id",
+        "evidence_id",
+        "witness_id",
+        "provenance_cid",
+    ):
+        value = str(payload.get(name) or "").strip()
+        if value:
+            return value
+    return _receipt_content_identity(payload)
+
+
+def _receipt_timestamp(
+    payload: Mapping[str, Any], *names: str
+) -> datetime | None:
+    for name in names:
+        raw = payload.get(name)
+        if raw in (None, ""):
+            continue
+        if isinstance(raw, datetime):
+            value = raw
+        else:
+            text = str(raw).strip()
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            try:
+                value = datetime.fromisoformat(text)
+            except ValueError:
+                return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            return None
+        return value.astimezone(timezone.utc)
+    return None
+
+
+def _reconciliation_now(value: datetime | str | None) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    payload = {"value": value}
+    parsed = _receipt_timestamp(payload, "value")
+    if parsed is None:
+        raise ValueError("now must be a timezone-aware datetime or ISO-8601 value")
+    return parsed
+
+
+def _embedded_self_improvement_receipt(
+    payload: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Return the producer-owned witness inside CompletionEvidence, if any."""
+
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    for name in (
+        "healthy_exhaustion_evidence",
+        "successor_refill_evidence",
+        "epoch_replay_evidence",
+    ):
+        candidate = metadata.get(name)
+        if isinstance(candidate, Mapping):
+            return candidate
+    return None
+
+
+def _restore_self_improvement_receipt(
+    payload: Mapping[str, Any],
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Strictly restore a known producer receipt without a module cycle.
+
+    ``self_improvement`` imports this module for objective projections, so its
+    receipt types are imported only when this public reconciliation API is
+    invoked.  Unknown receipt schemas remain eligible for the general source
+    policy; known self-improvement schemas must pass their producer-owned
+    deserializer and reproduce byte-equivalent canonical JSON.
+    """
+
+    candidate = _embedded_self_improvement_receipt(payload) or payload
+    schema = str(candidate.get("schema") or "")
+    if schema not in {
+        "ipfs_accelerate_py.agent_supervisor.healthy_exhaustion_evidence.v1",
+        "ipfs_accelerate_py.agent_supervisor.successor_refill_evidence.v1",
+        "ipfs_accelerate_py.agent_supervisor.self_improvement_epoch_replay.v1",
+    }:
+        return dict(candidate), ()
+    try:
+        from .self_improvement import (
+            EpochReplayEvidence,
+            HealthyExhaustionEvidence,
+            SuccessorRefillEvidence,
+        )
+
+        receipt_types = {
+            "ipfs_accelerate_py.agent_supervisor.healthy_exhaustion_evidence.v1": (
+                HealthyExhaustionEvidence
+            ),
+            "ipfs_accelerate_py.agent_supervisor.successor_refill_evidence.v1": (
+                SuccessorRefillEvidence
+            ),
+            "ipfs_accelerate_py.agent_supervisor.self_improvement_epoch_replay.v1": (
+                EpochReplayEvidence
+            ),
+        }
+        restored = receipt_types[schema].from_dict(candidate)
+        reproduced = restored.to_dict()
+        if _receipt_content_identity(reproduced) != _receipt_content_identity(
+            candidate
+        ):
+            return dict(candidate), ("receipt_canonical_projection_mismatch",)
+        return reproduced, ()
+    except (KeyError, TypeError, ValueError):
+        return dict(candidate), ("receipt_integrity_invalid",)
+
+
+@dataclass(frozen=True)
+class SelfImprovementGoalEvidenceBinding:
+    """One opaque requirement's exact leaf owner and receipt decision."""
+
+    requirement_id: str
+    goal_projection: ObjectiveEvidenceProjection | None
+    receipt_id: str
+    receipt_content_id: str
+    producer_kind: str
+    source_tier: str
+    repository_tree: str
+    policy_id: str
+    artifact_digest: str
+    observed_at: str
+    fresh_until: str
+    authoritative: bool
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        requirement = str(self.requirement_id or "").strip()
+        if not requirement:
+            raise ValueError("requirement_id is required")
+        object.__setattr__(self, "requirement_id", requirement)
+        projection = self.goal_projection
+        if projection is not None and not isinstance(
+            projection, ObjectiveEvidenceProjection
+        ):
+            if not isinstance(projection, Mapping):
+                raise TypeError("goal_projection must be an evidence projection")
+            projection = ObjectiveEvidenceProjection.from_dict(projection)
+        if projection is not None and projection.requirement_id != requirement:
+            raise ValueError("goal projection binds a different requirement")
+        object.__setattr__(self, "goal_projection", projection)
+        for name in (
+            "receipt_id",
+            "receipt_content_id",
+            "producer_kind",
+            "source_tier",
+            "repository_tree",
+            "policy_id",
+            "artifact_digest",
+            "observed_at",
+            "fresh_until",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        object.__setattr__(
+            self,
+            "reason_codes",
+            tuple(
+                dict.fromkeys(
+                    str(item).strip()
+                    for item in self.reason_codes
+                    if str(item).strip()
+                )
+            ),
+        )
+        if self.authoritative and (
+            self.goal_projection is None or self.reason_codes
+        ):
+            raise ValueError(
+                "authoritative evidence requires a projection and no rejection"
+            )
+
+    @property
+    def binding_id(self) -> str:
+        return content_identity(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA,
+            "version": 1,
+            "requirement_id": self.requirement_id,
+            "goal_projection": (
+                self.goal_projection.to_dict()
+                if self.goal_projection is not None
+                else None
+            ),
+            "receipt_id": self.receipt_id,
+            "receipt_content_id": self.receipt_content_id,
+            "producer_kind": self.producer_kind,
+            "source_tier": self.source_tier,
+            "repository_tree": self.repository_tree,
+            "policy_id": self.policy_id,
+            "artifact_digest": self.artifact_digest,
+            "observed_at": self.observed_at,
+            "fresh_until": self.fresh_until,
+            "authoritative": self.authoritative,
+            "reason_codes": list(self.reason_codes),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "binding_id": self.binding_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "SelfImprovementGoalEvidenceBinding":
+        allowed = {
+            "schema",
+            "version",
+            "binding_id",
+            "requirement_id",
+            "goal_projection",
+            "receipt_id",
+            "receipt_content_id",
+            "producer_kind",
+            "source_tier",
+            "repository_tree",
+            "policy_id",
+            "artifact_digest",
+            "observed_at",
+            "fresh_until",
+            "authoritative",
+            "reason_codes",
+        }
+        _strict_record_keys(
+            payload, allowed, record_name="self-improvement evidence binding"
+        )
+        if (
+            payload.get("schema")
+            != SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA
+            or payload.get("version") != 1
+        ):
+            raise ValueError("unsupported self-improvement evidence binding schema")
+        result = cls(
+            requirement_id=str(payload.get("requirement_id") or ""),
+            goal_projection=payload.get("goal_projection"),
+            receipt_id=str(payload.get("receipt_id") or ""),
+            receipt_content_id=str(payload.get("receipt_content_id") or ""),
+            producer_kind=str(payload.get("producer_kind") or ""),
+            source_tier=str(payload.get("source_tier") or ""),
+            repository_tree=str(payload.get("repository_tree") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            artifact_digest=str(payload.get("artifact_digest") or ""),
+            observed_at=str(payload.get("observed_at") or ""),
+            fresh_until=str(payload.get("fresh_until") or ""),
+            authoritative=payload.get("authoritative") is True,
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+        )
+        if payload.get("binding_id") != result.binding_id:
+            raise ValueError("self-improvement evidence binding identity mismatch")
+        return result
+
+
+@dataclass(frozen=True)
+class SelfImprovementGoalEvidenceReconciliation:
+    """Content-addressed, mutation-free typed evidence batch decision."""
+
+    objective_heap_id: str
+    repository_tree: str
+    policy_id: str
+    evaluated_at: str
+    requested_requirement_ids: tuple[str, ...]
+    bindings: tuple[SelfImprovementGoalEvidenceBinding, ...]
+    proposal_evidence: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "objective_heap_id",
+            "repository_tree",
+            "policy_id",
+            "evaluated_at",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise ValueError(f"{name} is required")
+            object.__setattr__(self, name, value)
+        requested = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in self.requested_requirement_ids
+                    if str(item).strip()
+                }
+            )
+        )
+        object.__setattr__(self, "requested_requirement_ids", requested)
+        normalized_bindings = tuple(
+            sorted(
+                (
+                    item
+                    if isinstance(item, SelfImprovementGoalEvidenceBinding)
+                    else SelfImprovementGoalEvidenceBinding.from_dict(item)
+                    for item in self.bindings
+                ),
+                key=lambda item: (
+                    item.requirement_id,
+                    item.receipt_id,
+                    item.receipt_content_id,
+                ),
+            )
+        )
+        object.__setattr__(self, "bindings", normalized_bindings)
+        proposals = {
+            str(requirement).strip(): tuple(
+                sorted(
+                    {
+                        str(reference).strip()
+                        for reference in references
+                        if str(reference).strip()
+                    }
+                )
+            )
+            for requirement, references in dict(
+                self.proposal_evidence or {}
+            ).items()
+            if str(requirement).strip()
+        }
+        object.__setattr__(
+            self,
+            "proposal_evidence",
+            {key: proposals[key] for key in sorted(proposals)},
+        )
+
+    @property
+    def authoritative_requirement_ids(self) -> tuple[str, ...]:
+        return tuple(
+            requirement
+            for requirement in self.requested_requirement_ids
+            if any(
+                item.requirement_id == requirement and item.authoritative
+                for item in self.bindings
+            )
+        )
+
+    @property
+    def rejected_requirement_ids(self) -> tuple[str, ...]:
+        authoritative = set(self.authoritative_requirement_ids)
+        return tuple(
+            requirement
+            for requirement in self.requested_requirement_ids
+            if requirement not in authoritative
+            and any(
+                item.requirement_id == requirement for item in self.bindings
+            )
+        )
+
+    @property
+    def proposal_only_requirement_ids(self) -> tuple[str, ...]:
+        authoritative = set(self.authoritative_requirement_ids)
+        return tuple(
+            requirement
+            for requirement in self.requested_requirement_ids
+            if requirement not in authoritative
+            and bool(self.proposal_evidence.get(requirement))
+        )
+
+    @property
+    def missing_requirement_ids(self) -> tuple[str, ...]:
+        covered = set(self.authoritative_requirement_ids)
+        proposed = set(self.proposal_only_requirement_ids)
+        rejected = set(self.rejected_requirement_ids)
+        return tuple(
+            requirement
+            for requirement in self.requested_requirement_ids
+            if requirement not in covered | proposed | rejected
+        )
+
+    @property
+    def satisfied(self) -> bool:
+        return bool(self.requested_requirement_ids) and (
+            self.authoritative_requirement_ids
+            == self.requested_requirement_ids
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA,
+            "version": 1,
+            "objective_heap_id": self.objective_heap_id,
+            "repository_tree": self.repository_tree,
+            "policy_id": self.policy_id,
+            "evaluated_at": self.evaluated_at,
+            "requested_requirement_ids": list(
+                self.requested_requirement_ids
+            ),
+            "bindings": [item.to_dict() for item in self.bindings],
+            "proposal_evidence": {
+                key: list(value)
+                for key, value in self.proposal_evidence.items()
+            },
+            "authoritative_requirement_ids": list(
+                self.authoritative_requirement_ids
+            ),
+            "rejected_requirement_ids": list(
+                self.rejected_requirement_ids
+            ),
+            "proposal_only_requirement_ids": list(
+                self.proposal_only_requirement_ids
+            ),
+            "missing_requirement_ids": list(self.missing_requirement_ids),
+            "satisfied": self.satisfied,
+        }
+
+    @property
+    def reconciliation_id(self) -> str:
+        return content_identity(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._payload(),
+            "reconciliation_id": self.reconciliation_id,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "SelfImprovementGoalEvidenceReconciliation":
+        allowed = {
+            "schema",
+            "version",
+            "reconciliation_id",
+            "objective_heap_id",
+            "repository_tree",
+            "policy_id",
+            "evaluated_at",
+            "requested_requirement_ids",
+            "bindings",
+            "proposal_evidence",
+            "authoritative_requirement_ids",
+            "rejected_requirement_ids",
+            "proposal_only_requirement_ids",
+            "missing_requirement_ids",
+            "satisfied",
+        }
+        _strict_record_keys(
+            payload,
+            allowed,
+            record_name="self-improvement goal evidence reconciliation",
+        )
+        if (
+            payload.get("schema")
+            != SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA
+            or payload.get("version") != 1
+        ):
+            raise ValueError(
+                "unsupported self-improvement goal evidence reconciliation schema"
+            )
+        bindings = payload.get("bindings")
+        proposals = payload.get("proposal_evidence")
+        if not isinstance(bindings, Sequence) or isinstance(
+            bindings, (str, bytes, bytearray)
+        ):
+            raise ValueError("bindings must be a sequence")
+        if not isinstance(proposals, Mapping):
+            raise ValueError("proposal_evidence must be an object")
+        result = cls(
+            objective_heap_id=str(payload.get("objective_heap_id") or ""),
+            repository_tree=str(payload.get("repository_tree") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            evaluated_at=str(payload.get("evaluated_at") or ""),
+            requested_requirement_ids=tuple(
+                payload.get("requested_requirement_ids") or ()
+            ),
+            bindings=tuple(
+                SelfImprovementGoalEvidenceBinding.from_dict(item)
+                if isinstance(item, Mapping)
+                else (_raise_quality_report_value("bindings"))
+                for item in bindings
+            ),
+            proposal_evidence={
+                str(key): tuple(value)
+                for key, value in proposals.items()
+                if isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+            },
+        )
+        projected = result.to_dict()
+        for name in (
+            "authoritative_requirement_ids",
+            "rejected_requirement_ids",
+            "proposal_only_requirement_ids",
+            "missing_requirement_ids",
+            "satisfied",
+            "reconciliation_id",
+        ):
+            if payload.get(name) != projected[name]:
+                raise ValueError(
+                    f"self-improvement reconciliation {name} mismatch"
+                )
+        return result
+
+
+def reconcile_self_improvement_goal_evidence(
+    objective_text: str,
+    *,
+    typed_receipts: Sequence[Mapping[str, Any] | Any] = (),
+    requirement_ids: Iterable[str] = (),
+    proposal_evidence: Mapping[str, Sequence[str]] | None = None,
+    repository_tree: str,
+    policy_id: str,
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+) -> SelfImprovementGoalEvidenceReconciliation:
+    """Reconcile an immutable batch of self-improvement goal evidence.
+
+    Opaque IDs are resolved to their unique most-refined heap owner.  Text and
+    retrieval references are retained as proposal evidence but never become
+    completion authority.  Typed receipts must be current-tree, exact-policy,
+    fresh, terminally successful producer records.  Known self-improvement
+    receipts additionally pass their strict producer deserializer and content
+    identity check.  A receipt spanning different leaf owners and multiple
+    distinct receipts claiming the same requirement both fail closed.
+    """
+
+    if not isinstance(objective_text, str):
+        raise TypeError("objective_text must be a string")
+    tree = str(repository_tree or "").strip()
+    policy = str(policy_id or "").strip()
+    if not tree:
+        raise ValueError("repository_tree is required")
+    if not policy:
+        raise ValueError("policy_id is required")
+    if (
+        isinstance(freshness_seconds, bool)
+        or not isinstance(freshness_seconds, (int, float))
+        or freshness_seconds < 0
+    ):
+        raise ValueError("freshness_seconds must be a non-negative number")
+    evaluated = _reconciliation_now(now)
+    explicit_requirements = {
+        str(item).strip()
+        for item in requirement_ids
+        if str(item).strip()
+    }
+    if explicit_requirements:
+        requested = tuple(sorted(explicit_requirements))
+    else:
+        requested = tuple(
+            sorted(
+                {
+                    str(requirement).strip()
+                    for goal in parse_goal_heap(objective_text)
+                    for requirement in goal.required_evidence
+                    if OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(
+                        str(requirement).strip()
+                    )
+                }
+            )
+        )
+    nonopaque = tuple(
+        item
+        for item in requested
+        if not OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(item)
+    )
+    if nonopaque:
+        raise ValueError(
+            "self-improvement reconciliation accepts only opaque requirement "
+            f"IDs: {', '.join(nonopaque)}"
+        )
+
+    projections: dict[str, ObjectiveEvidenceProjection] = {}
+    projection_errors: dict[str, str] = {}
+    for requirement in requested:
+        try:
+            projections[requirement] = resolve_objective_evidence_projection(
+                objective_text, requirement_id=requirement
+            )
+        except ValueError as exc:
+            projection_errors[requirement] = str(exc)
+
+    normalized_proposals = {
+        requirement: tuple(
+            sorted(
+                {
+                    str(reference).strip()
+                    for reference in (proposal_evidence or {}).get(
+                        requirement, ()
+                    )
+                    if str(reference).strip()
+                }
+            )
+        )
+        for requirement in requested
+        if (proposal_evidence or {}).get(requirement)
+    }
+    provisional: list[SelfImprovementGoalEvidenceBinding] = []
+    for receipt_value in typed_receipts:
+        outer = _canonical_receipt_payload(receipt_value)
+        receipt, integrity_reasons = _restore_self_improvement_receipt(outer)
+        claims = tuple(
+            requirement
+            for requirement in _receipt_requirement_ids(receipt)
+            if requirement in requested
+        )
+        if not claims:
+            continue
+        owner_ids = {
+            projections[requirement].goal_id
+            for requirement in claims
+            if requirement in projections
+        }
+        shared_reasons: list[str] = list(integrity_reasons)
+        if len(owner_ids) > 1:
+            shared_reasons.append("receipt_claims_multiple_goal_owners")
+        receipt_id = _receipt_identifier(receipt)
+        receipt_content_id = _receipt_content_identity(receipt)
+        receipt_tree = str(
+            receipt.get("repository_tree")
+            or receipt.get("repository_tree_id")
+            or receipt.get("tree_id")
+            or ""
+        ).strip()
+        receipt_policy = str(
+            receipt.get("policy_id") or receipt.get("policy_digest") or ""
+        ).strip()
+        producer_kind = str(receipt.get("producer_kind") or "").strip()
+        source_tier = str(
+            receipt.get("source_tier")
+            or receipt.get("receipt_kind")
+            or producer_kind
+        ).strip()
+        artifact_digest = str(
+            receipt.get("artifact_digest")
+            or receipt.get("provenance_cid")
+            or ""
+        ).strip()
+        command = receipt.get("command", receipt.get("commands"))
+        toolchain = receipt.get("toolchain", receipt.get("toolchains"))
+        scope = receipt.get("scope")
+        result = receipt.get("result")
+        if not _receipt_nonempty_text(command):
+            shared_reasons.append("receipt_command_missing_or_invalid")
+        if not _receipt_nonempty_text(toolchain):
+            shared_reasons.append("receipt_toolchain_missing_or_invalid")
+        if (
+            not isinstance(scope, Sequence)
+            or isinstance(scope, (str, bytes, bytearray))
+            or not scope
+            or any(not str(item).strip() for item in scope)
+        ):
+            shared_reasons.append("receipt_scope_missing_or_invalid")
+        if not isinstance(result, Mapping) or not result:
+            shared_reasons.append("receipt_result_missing_or_invalid")
+        observed = _receipt_timestamp(
+            receipt,
+            "observed_at",
+            "replayed_at",
+            "finished_at",
+            "generated_at",
+            "created_at",
+        )
+        fresh_until = _receipt_timestamp(receipt, "fresh_until", "expires_at")
+        if observed is None:
+            shared_reasons.append("receipt_observed_at_missing_or_invalid")
+        elif observed > evaluated + timedelta(seconds=300):
+            shared_reasons.append("receipt_observed_in_future")
+        elif fresh_until is None and (
+            evaluated - observed
+        ).total_seconds() > float(freshness_seconds):
+            shared_reasons.append("receipt_stale")
+        if fresh_until is not None and evaluated > fresh_until:
+            shared_reasons.append("receipt_stale")
+        if not artifact_digest:
+            shared_reasons.append("receipt_artifact_digest_missing")
+        elif not _receipt_digest_valid(artifact_digest):
+            shared_reasons.append("receipt_artifact_digest_invalid")
+
+        embedded_projection = receipt.get("goal_projection")
+        parsed_embedded: ObjectiveEvidenceProjection | None = None
+        if embedded_projection is not None:
+            try:
+                if not isinstance(embedded_projection, Mapping):
+                    raise TypeError
+                parsed_embedded = ObjectiveEvidenceProjection.from_dict(
+                    embedded_projection
+                )
+            except (TypeError, ValueError):
+                shared_reasons.append("receipt_goal_projection_invalid")
+
+        for requirement in claims:
+            reasons = list(shared_reasons)
+            projection = projections.get(requirement)
+            if projection is None:
+                reasons.append("requirement_owner_missing_or_ambiguous")
+            if (
+                parsed_embedded is not None
+                and projection is not None
+                and parsed_embedded != projection
+            ):
+                reasons.append("receipt_goal_projection_mismatch")
+            try:
+                source_decision = completion_evidence_source_decision(
+                    receipt,
+                    requirement=requirement,
+                    repository_tree=tree,
+                    policy_id=policy,
+                )
+                reasons.extend(source_decision.reason_codes)
+                resolved_source_tier = source_decision.source_tier.value
+            except (TypeError, ValueError):
+                reasons.append("source_policy_evaluation_failed")
+                resolved_source_tier = source_tier
+            unique_reasons = tuple(dict.fromkeys(reasons))
+            provisional.append(
+                SelfImprovementGoalEvidenceBinding(
+                    requirement_id=requirement,
+                    goal_projection=projection,
+                    receipt_id=receipt_id,
+                    receipt_content_id=receipt_content_id,
+                    producer_kind=producer_kind,
+                    source_tier=resolved_source_tier,
+                    repository_tree=receipt_tree,
+                    policy_id=receipt_policy,
+                    artifact_digest=artifact_digest,
+                    observed_at=observed.isoformat() if observed else "",
+                    fresh_until=(
+                        fresh_until.isoformat() if fresh_until else ""
+                    ),
+                    authoritative=not unique_reasons and projection is not None,
+                    reason_codes=unique_reasons,
+                )
+            )
+
+    distinct_by_requirement: dict[str, set[str]] = {}
+    for item in provisional:
+        distinct_by_requirement.setdefault(item.requirement_id, set()).add(
+            item.receipt_id or item.receipt_content_id
+        )
+    bindings = tuple(
+        SelfImprovementGoalEvidenceBinding(
+            requirement_id=item.requirement_id,
+            goal_projection=item.goal_projection,
+            receipt_id=item.receipt_id,
+            receipt_content_id=item.receipt_content_id,
+            producer_kind=item.producer_kind,
+            source_tier=item.source_tier,
+            repository_tree=item.repository_tree,
+            policy_id=item.policy_id,
+            artifact_digest=item.artifact_digest,
+            observed_at=item.observed_at,
+            fresh_until=item.fresh_until,
+            authoritative=(
+                item.authoritative
+                and len(distinct_by_requirement[item.requirement_id]) == 1
+            ),
+            reason_codes=(
+                item.reason_codes
+                if len(distinct_by_requirement[item.requirement_id]) == 1
+                else tuple(
+                    dict.fromkeys(
+                        (
+                            *item.reason_codes,
+                            "duplicate_requirement_receipts",
+                        )
+                    )
+                )
+            ),
+        )
+        for item in provisional
+    )
+    return SelfImprovementGoalEvidenceReconciliation(
+        objective_heap_id=objective_heap_content_id(objective_text),
+        repository_tree=tree,
+        policy_id=policy,
+        evaluated_at=evaluated.isoformat(),
+        requested_requirement_ids=requested,
+        bindings=bindings,
+        proposal_evidence=normalized_proposals,
+    )
 
 
 @dataclass(frozen=True)
@@ -353,6 +2138,26 @@ def open_goal_ids_from_todo_board(todo_path: Path, task_header_prefix: str = "")
     return {goal_id for goal_id in open_goal_ids if goal_id}
 
 
+def directly_open_goal_ids_from_todo_board(
+    todo_path: Path,
+    task_header_prefix: str = "",
+) -> set[str]:
+    """Return goals directly bound to open tasks, excluding ancestor lineage."""
+
+    if not todo_path.exists():
+        return set()
+
+    from .todo_daemon.implementation_daemon import TASK_HEADER_PREFIX, parse_task_file
+
+    goal_ids: set[str] = set()
+    for task in parse_task_file(todo_path, task_header_prefix or TASK_HEADER_PREFIX):
+        if task.status not in OPEN_TASK_STATUSES_FOR_GOAL_COMPLETION:
+            continue
+        for key in ("goal id", "goal ids", "goal packet goals"):
+            goal_ids.update(split_terms(task.metadata.get(key, "")))
+    return {goal_id for goal_id in goal_ids if goal_id}
+
+
 def open_implementation_goal_ids_from_todo_board(
     todo_path: Path,
     task_header_prefix: str = "",
@@ -484,17 +2289,19 @@ def run_goal_validation(
         return payload
     results: list[dict[str, Any]] = []
     failure: dict[str, Any] = {}
+    validation_environment = build_validation_environment()
     for command in commands:
         command_started_at = utc_now()
         try:
             completed = subprocess.run(
-                ["/bin/bash", "-lc", command],
+                validation_shell_command(command),
                 cwd=repo_root,
                 text=True,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 timeout=timeout_seconds,
                 check=False,
+                env=validation_environment,
             )
         except subprocess.TimeoutExpired as exc:
             result = {
@@ -558,10 +2365,132 @@ def _git_output(repo_root: Path, *arguments: str, binary: bool = False) -> str |
     return completed.stdout if binary else str(completed.stdout).strip()
 
 
+def _gitlink_paths(repo_root: Path) -> tuple[str, ...]:
+    """Return index-backed submodule paths without trusting ``.gitmodules``."""
+
+    raw_entries = _git_output(
+        repo_root,
+        "ls-files",
+        "--stage",
+        "-z",
+        binary=True,
+    )
+    if not isinstance(raw_entries, bytes):
+        return ()
+    paths: list[str] = []
+    for raw_entry in raw_entries.split(b"\0"):
+        if not raw_entry:
+            continue
+        metadata, separator, raw_path = raw_entry.partition(b"\t")
+        if not separator or not metadata.startswith(b"160000 "):
+            continue
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        candidate = Path(path)
+        if (
+            not path
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or path in paths
+        ):
+            continue
+        paths.append(path)
+    return tuple(sorted(paths))
+
+
+def _bind_submodule_worktree_identities(
+    repo_root: Path,
+    identity: RepositoryTreeIdentity,
+    *,
+    excluded_paths: Sequence[Path],
+    visited_repositories: frozenset[Path],
+    status_snapshot: bytes | None = None,
+) -> RepositoryTreeIdentity:
+    """Fold initialized submodule worktree bytes into a parent identity.
+
+    Git's parent status records only that a submodule is dirty.  Two different
+    dirty byte states can therefore have identical parent ``status`` and
+    ``diff`` output.  Completion evidence needs the recursively computed child
+    identity as well as the gitlink commit already present in the parent tree.
+    """
+
+    root = repo_root.resolve()
+    gitlinks = _gitlink_paths(root)
+    if not gitlinks:
+        return identity
+    if status_snapshot is None:
+        raw_status = _git_output(
+            root,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--ignore-submodules=none",
+            binary=True,
+        )
+        status_snapshot = raw_status if isinstance(raw_status, bytes) else b""
+    dirty_paths = {
+        entry[3:]
+        for entry in status_snapshot.split(b"\0")
+        if len(entry) >= 4
+    }
+    dirty_gitlinks = tuple(
+        relative
+        for relative in gitlinks
+        if relative.encode("utf-8", errors="surrogateescape") in dirty_paths
+    )
+    if not dirty_gitlinks:
+        # Clean submodule bytes are already content-addressed by the gitlink in
+        # the parent manifest.  Inspect only dirty/mismatched worktrees; this
+        # keeps completion identity bounded even in repositories with many
+        # initialized submodules.
+        return identity
+
+    digest = sha256()
+    digest.update(b"completion-source-tree-with-submodules-v1\0")
+    digest.update(identity.tree_id.encode("utf-8", errors="surrogateescape"))
+    next_visited = frozenset((*visited_repositories, root))
+    for relative in dirty_gitlinks:
+        raw_relative = relative.encode("utf-8", errors="surrogateescape")
+        child = (root / relative).resolve()
+        digest.update(b"\0submodule\0")
+        digest.update(raw_relative)
+        if child in next_visited:
+            digest.update(b"\0cycle\0")
+            continue
+        child_top = str(_git_output(child, "rev-parse", "--show-toplevel") or "")
+        if not child_top or Path(child_top).resolve() != child:
+            # The gitlink commit remains bound by the parent manifest.  This
+            # marker additionally distinguishes an absent/uninitialized child
+            # from the initialized worktree that validators inspect.
+            digest.update(b"\0uninitialized\0")
+            continue
+        child_controls: list[Path] = []
+        for control in excluded_paths:
+            try:
+                control.resolve().relative_to(child)
+            except ValueError:
+                continue
+            child_controls.append(control)
+        child_identity = _control_tree_identity(
+            child,
+            excluded_paths=child_controls,
+            _visited_repositories=next_visited,
+        )
+        digest.update(b"\0tree\0")
+        digest.update(
+            child_identity.tree_id.encode("utf-8", errors="surrogateescape")
+        )
+    return RepositoryTreeIdentity(
+        repository_id=identity.repository_id,
+        tree_id=f"sha256:{digest.hexdigest()}",
+    )
+
+
 def _control_tree_identity(
     repo_root: Path,
     *,
     excluded_paths: Sequence[Path],
+    _visited_repositories: frozenset[Path] = frozenset(),
 ) -> RepositoryTreeIdentity:
     """Return source-tree identity while excluding supervisor control files."""
 
@@ -635,11 +2564,46 @@ def _control_tree_identity(
         if relative and relative not in relatives:
             relatives.append(relative)
     if not relatives:
-        return scan_identity(root)
+        return _bind_submodule_worktree_identities(
+            root,
+            scan_identity(root),
+            excluded_paths=excluded_paths,
+            visited_repositories=_visited_repositories,
+        )
     base = scan_identity(root)
     head_tree = str(_git_output(root, "rev-parse", "HEAD^{tree}") or "")
     if not head_tree:
         return base
+    # Hash the tracked manifest after removing control paths.  Starting from
+    # ``HEAD^{tree}`` would still include the last committed bytes of an
+    # excluded artifact, so committing a regenerated proof would make that
+    # proof part of the source identity it is trying to attest to.
+    raw_head_entries = _git_output(
+        top,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--full-tree",
+        "HEAD",
+        binary=True,
+    )
+    assert isinstance(raw_head_entries, bytes)
+    excluded_bytes = tuple(relative.encode("utf-8") for relative in relatives)
+    digest = sha256()
+    digest.update(b"completion-source-tree-v1\0")
+    for entry in raw_head_entries.split(b"\0"):
+        if not entry:
+            continue
+        separator = entry.find(b"\t")
+        entry_path = entry[separator + 1 :] if separator >= 0 else b""
+        if entry_path and any(
+            entry_path == excluded
+            or entry_path.startswith(excluded + b"/")
+            for excluded in excluded_bytes
+        ):
+            continue
+        digest.update(entry)
+        digest.update(b"\0")
     pathspec = ("--", ".", *(f":(exclude){relative}" for relative in relatives))
     status = _git_output(
         top,
@@ -647,14 +2611,22 @@ def _control_tree_identity(
         "--porcelain=v1",
         "-z",
         "--untracked-files=all",
+        "--ignore-submodules=none",
         *pathspec,
         binary=True,
     )
     assert isinstance(status, bytes)
     if not status:
-        return RepositoryTreeIdentity(repository_id=base.repository_id, tree_id=head_tree)
-    digest = sha256()
-    digest.update(head_tree.encode("ascii", errors="replace"))
+        return _bind_submodule_worktree_identities(
+            root,
+            RepositoryTreeIdentity(
+                repository_id=base.repository_id,
+                tree_id=f"sha256:{digest.hexdigest()}",
+            ),
+            excluded_paths=excluded_paths,
+            visited_repositories=_visited_repositories,
+            status_snapshot=status,
+        )
     digest.update(b"\0status\0")
     digest.update(status)
     digest.update(b"\0diff\0")
@@ -692,25 +2664,114 @@ def _control_tree_identity(
                         digest.update(chunk)
         except OSError:
             continue
-    return RepositoryTreeIdentity(
-        repository_id=base.repository_id,
-        tree_id=f"sha256:{digest.hexdigest()}",
+    return _bind_submodule_worktree_identities(
+        root,
+        RepositoryTreeIdentity(
+            repository_id=base.repository_id,
+            tree_id=f"sha256:{digest.hexdigest()}",
+        ),
+        excluded_paths=excluded_paths,
+        visited_repositories=_visited_repositories,
+        status_snapshot=status,
     )
 
 
-def completion_tree_identity(repo_root: Path, *, objective_path: Path) -> RepositoryTreeIdentity:
+def _objective_goal_completion_policy(goal: ObjectiveGoal) -> dict[str, Any]:
+    fields = goal.fields
+    acceptance = str(
+        fields.get("acceptance_criteria")
+        or fields.get("acceptance")
+        or fields.get("acceptance_criterion")
+        or ""
+    )
+    return {
+        "goal_id": str(goal.goal_id),
+        "title": normalize_identity_text(goal.title),
+        "goal": normalize_identity_text(fields.get("goal", "")),
+        "conflict_policy": normalize_identity_text(
+            fields.get("conflict_policy", "")
+        ),
+        "parents": sorted(str(item) for item in goal.parent_goal_ids),
+        "acceptance": normalize_identity_text(acceptance),
+        "required_evidence": sorted(
+            normalize_identity_text(item) for item in goal.required_evidence
+        ),
+        "dependencies": sorted(str(item) for item in goal.dependencies),
+        "outputs": sorted(str(item) for item in goal.predicted_files),
+        "predicted_symbols": sorted(
+            normalize_identity_text(item) for item in goal.predicted_symbols
+        ),
+        "validation": [
+            normalize_identity_text(item) for item in goal.validation_commands
+        ],
+    }
+
+
+def objective_goal_completion_revision(goal: ObjectiveGoal) -> str:
+    """Return the canonical lifecycle-independent policy revision for one goal."""
+
+    return canonical_content_cid(
+        {
+            "schema": "ipfs_accelerate_py/agent-supervisor/objective-goal-completion-policy@1",
+            "goal": _objective_goal_completion_policy(goal),
+        }
+    )
+
+
+def objective_completion_revision(
+    objective_path: Path | None = None,
+    *,
+    goals: Sequence[ObjectiveGoal] | None = None,
+) -> str:
+    """Return a lifecycle-independent revision of the full completion policy.
+
+    The objective markdown is mutable control state and is excluded from the
+    repository-tree fence.  Completion proof therefore binds this separate
+    semantic revision so changing a goal, its hierarchy, acceptance criteria,
+    evidence surface, outputs, or validation policy invalidates prior proof,
+    while status/diagnostic rewrites do not.
+    """
+
+    if goals is None:
+        if objective_path is None or not Path(objective_path).exists():
+            parsed_goals: Sequence[ObjectiveGoal] = ()
+        else:
+            parsed_goals = parse_goal_heap(
+                Path(objective_path).read_text(encoding="utf-8", errors="replace")
+            )
+    else:
+        parsed_goals = goals
+    semantic_goals = [
+        _objective_goal_completion_policy(goal)
+        for goal in sorted(parsed_goals, key=lambda item: item.goal_id)
+    ]
+    return canonical_content_cid(
+        {
+            "schema": "ipfs_accelerate_py/agent-supervisor/objective-completion-policy@1",
+            "goals": semantic_goals,
+        }
+    )
+
+
+def completion_tree_identity(
+    repo_root: Path,
+    *,
+    objective_path: Path,
+    control_paths: Sequence[Path] = (),
+) -> RepositoryTreeIdentity:
     """Return source-tree identity without self-invalidating tracker writes.
 
     The objective document is mutable supervisor state.  Persisting a
     lifecycle transition must not immediately make otherwise-current evidence
     stale.  This calculation is byte-for-byte compatible with ``scan_identity``
-    while excluding only that control document; every code, test, task-board,
-    configuration, tracked, and untracked change remains in the digest.
+    while excluding that document and explicit completion-control artifacts;
+    every code, test, task-board, configuration, tracked, and untracked change
+    remains in the digest.
     """
 
     return _control_tree_identity(
         repo_root,
-        excluded_paths=(objective_path,),
+        excluded_paths=(objective_path, *(Path(path) for path in control_paths)),
     )
 
 
@@ -1542,6 +3603,8 @@ def migrate_legacy_objective_goals(
         str, Sequence[CompletionEvidence | Mapping[str, Any]]
     ] | None = None,
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
+    completion_control_paths: Sequence[Path] = (),
+    require_artifact_binding: bool = False,
     goal_ids: Iterable[str] | None = None,
     preview: bool = False,
     max_goals: int | None = None,
@@ -1582,7 +3645,11 @@ def migrate_legacy_objective_goals(
         boards.append((todo_path, task_header_prefix))
     boards.extend(todo_boards or ())
     open_goals = open_goal_ids_from_todo_boards(boards)
-    identity = completion_tree_identity(repo_root, objective_path=objective_path)
+    identity = completion_tree_identity(
+        repo_root,
+        objective_path=objective_path,
+        control_paths=completion_control_paths,
+    )
     hierarchy = goal_graph(goals)
     goals_by_id = {goal.goal_id: goal for goal in goals}
     updates: dict[str, dict[str, str]] = {}
@@ -1616,11 +3683,22 @@ def migrate_legacy_objective_goals(
         return result
 
     for goal in batch:
+        if require_artifact_binding:
+            evidence = [
+                item
+                if isinstance(item, CompletionEvidence)
+                else CompletionEvidence.from_dict(item)
+                for item in supplied_records.get(goal.goal_id, ())
+            ]
+            supplied_gate = gate_records.get(goal.goal_id)
+            gate = dict(supplied_gate) if isinstance(supplied_gate, Mapping) else {}
+        else:
+            evidence = _goal_completion_records(goal, supplied_records)
+            gate = _goal_completion_gate_record(goal, gate_records)
         evidence = _apply_completion_evidence_source_policy(
-            _goal_completion_records(goal, supplied_records),
+            evidence,
             repository_tree=identity.tree_id,
         )
-        gate = _goal_completion_gate_record(goal, gate_records)
         criteria = str(
             goal.fields.get("acceptance_criteria")
             or goal.fields.get("acceptance")
@@ -1640,6 +3718,9 @@ def migrate_legacy_objective_goals(
             analysis_inconclusive=bool(gate.get("analysis_inconclusive", False)),
             repository_tree=identity.tree_id,
             repository_id=identity.repository_id,
+            objective_revision=objective_goal_completion_revision(goal),
+            completion_binding=gate.get("binding"),
+            require_artifact_binding=require_artifact_binding,
             now=now,
             freshness_seconds=evidence_freshness_seconds,
         )
@@ -1699,6 +3780,8 @@ def reconcile_objective_goal_completion(
         str, Sequence[CompletionEvidence | Mapping[str, Any]]
     ] | None = None,
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
+    completion_control_paths: Sequence[Path] = (),
+    require_artifact_binding: bool = False,
     now: str | None = None,
     evidence_freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
 ) -> ObjectiveCompletionResult:
@@ -1730,19 +3813,86 @@ def reconcile_objective_goal_completion(
         todo_boards=todo_boards,
         completion_evidence_records=supplied_records,
         completion_gate_records=supplied_gate_records,
+        completion_control_paths=completion_control_paths,
+        require_artifact_binding=require_artifact_binding,
         now=now,
         evidence_freshness_seconds=evidence_freshness_seconds,
     )
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
+    if require_artifact_binding:
+        goal_ids = [goal.goal_id for goal in goals]
+        duplicate_goal_ids = sorted(
+            {
+                goal_id
+                for goal_id in goal_ids
+                if goal_id and goal_ids.count(goal_id) > 1
+            }
+        )
+        if duplicate_goal_ids:
+            raise ValueError(
+                "objective completion graph contains duplicate goal ids: "
+                + ", ".join(duplicate_goal_ids)
+            )
+        known_goal_ids = {goal_id for goal_id in goal_ids if goal_id}
+        unknown_parents = sorted(
+            {
+                parent
+                for goal in goals
+                for parent in goal.parent_goal_ids
+                if parent and parent not in known_goal_ids
+            }
+        )
+        if unknown_parents:
+            raise ValueError(
+                "objective completion graph contains unknown parent ids: "
+                + ", ".join(unknown_parents)
+            )
+        parents_by_goal = {
+            goal.goal_id: tuple(
+                parent for parent in goal.parent_goal_ids if parent
+            )
+            for goal in goals
+            if goal.goal_id
+        }
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def verify_acyclic(goal_id: str) -> None:
+            if goal_id in visited:
+                return
+            if goal_id in visiting:
+                raise ValueError(
+                    "objective completion graph contains a parent cycle at "
+                    f"{goal_id}"
+                )
+            visiting.add(goal_id)
+            for parent_id in parents_by_goal.get(goal_id, ()):
+                verify_acyclic(parent_id)
+            visiting.remove(goal_id)
+            visited.add(goal_id)
+
+        for goal_id in sorted(parents_by_goal):
+            verify_acyclic(goal_id)
     repository_identity = completion_tree_identity(
-        repo_root, objective_path=objective_path
+        repo_root,
+        objective_path=objective_path,
+        control_paths=completion_control_paths,
     )
     candidate_goals = []
     persisted_records: dict[str, list[CompletionEvidence]] = {}
     for goal in goals:
+        if require_artifact_binding:
+            records = [
+                item
+                if isinstance(item, CompletionEvidence)
+                else CompletionEvidence.from_dict(item)
+                for item in supplied_records.get(goal.goal_id, ())
+            ]
+        else:
+            records = _goal_completion_records(goal, supplied_records)
         records = _apply_completion_evidence_source_policy(
-            _goal_completion_records(goal, supplied_records),
+            records,
             repository_tree=repository_identity.tree_id,
         )
         persisted_records[goal.goal_id] = records
@@ -1752,7 +3902,10 @@ def reconcile_objective_goal_completion(
             GoalState.REOPENED,
             GoalState.PROVISIONALLY_COMPLETE,
             GoalState.ANALYSIS_INCONCLUSIVE,
-        } or (goal.status == GoalState.VERIFIED_COMPLETE.value and records):
+        } or (
+            goal.status == GoalState.VERIFIED_COMPLETE.value
+            and (records or require_artifact_binding)
+        ):
             candidate_goals.append(goal)
 
     terms: list[str] = []
@@ -1785,6 +3938,33 @@ def reconcile_objective_goal_completion(
     referenced_goal_ids = referenced_goal_ids_from_todo_boards(completion_boards)
     hierarchy = goal_graph(goals)
     goals_by_id = {item.goal_id: item for item in goals if item.goal_id}
+    effective_states = {
+        goal_id: normalize_goal_state(goal.status)
+        for goal_id, goal in goals_by_id.items()
+    }
+    candidate_by_id = {goal.goal_id: goal for goal in candidate_goals}
+    evaluation_goal_ids: list[str] = []
+    visited_goal_ids: set[str] = set()
+    visiting_goal_ids: set[str] = set()
+
+    def visit_descendants_first(goal_id: str) -> None:
+        if goal_id in visited_goal_ids:
+            return
+        if goal_id in visiting_goal_ids:
+            return
+        visiting_goal_ids.add(goal_id)
+        for child_id in hierarchy.get("children", {}).get(goal_id, ()):
+            normalized_child_id = str(child_id)
+            if normalized_child_id in candidate_by_id:
+                visit_descendants_first(normalized_child_id)
+        visiting_goal_ids.remove(goal_id)
+        visited_goal_ids.add(goal_id)
+        if goal_id in candidate_by_id:
+            evaluation_goal_ids.append(goal_id)
+
+    for candidate in candidate_goals:
+        visit_descendants_first(candidate.goal_id)
+    evaluation_goals = [candidate_by_id[goal_id] for goal_id in evaluation_goal_ids]
 
     def descendant_states(goal_id: str) -> list[dict[str, Any]]:
         pending = list(hierarchy.get("children", {}).get(goal_id, ()))
@@ -1797,7 +3977,7 @@ def reconcile_objective_goal_completion(
             seen.add(child_id)
             child = goals_by_id.get(child_id)
             if child is not None:
-                state = child.lifecycle_state_value
+                state = effective_states[child_id].value
                 descendants.append({
                     "goal_id": child_id,
                     "state": state,
@@ -1806,7 +3986,7 @@ def reconcile_objective_goal_completion(
             pending.extend(hierarchy.get("children", {}).get(child_id, ()))
         return descendants
 
-    for goal in candidate_goals:
+    for goal in evaluation_goals:
         current_state = normalize_goal_state(goal.status)
         records = persisted_records.get(goal.goal_id, [])
         source_evidence_complete = bool(goal.required_evidence) and all(
@@ -1824,7 +4004,18 @@ def reconcile_objective_goal_completion(
                 )
             )
         )
-        gate_record = _goal_completion_gate_record(goal, supplied_gate_records)
+        if require_artifact_binding:
+            supplied_gate = supplied_gate_records.get(goal.goal_id)
+            gate_record = (
+                dict(supplied_gate)
+                if isinstance(supplied_gate, Mapping)
+                else {}
+            )
+        else:
+            gate_record = _goal_completion_gate_record(
+                goal,
+                supplied_gate_records,
+            )
         criteria_text = str(
             goal.fields.get("acceptance_criteria")
             or goal.fields.get("acceptance")
@@ -1857,18 +4048,24 @@ def reconcile_objective_goal_completion(
                 goal=goal,
                 repository_identity=repository_identity,
             )
-            records = [
-                CompletionEvidence.from_dict(
-                    {
-                        **record.to_dict(),
-                        "validation_receipt": validation_results[goal.goal_id],
-                        "validation_passed": bool(
-                            validation_results[goal.goal_id].get("passed", False)
-                        ),
-                    }
+            reconciled_records: list[CompletionEvidence] = []
+            for record in records:
+                payload = record.to_dict()
+                metadata = dict(payload.get("metadata") or {})
+                # The producer receipt and its provenance CID are immutable.
+                # A current validation rerun is a separate, content-addressed
+                # reconciliation receipt; overwriting the producer receipt
+                # would leave provenance_cid referring to bytes no longer
+                # present in the evidence record.
+                metadata["reconciliation_validation_receipt"] = (
+                    validation_results[goal.goal_id]
                 )
-                for record in records
-            ]
+                payload["metadata"] = metadata
+                payload["validation_passed"] = bool(
+                    validation_results[goal.goal_id].get("passed", False)
+                )
+                reconciled_records.append(CompletionEvidence.from_dict(payload))
+            records = reconciled_records
 
         decision = evaluate_goal_completion(
             current_state=current_state,
@@ -1877,6 +4074,9 @@ def reconcile_objective_goal_completion(
             tasks_complete=tasks_complete,
             repository_tree=repository_identity.tree_id,
             repository_id=repository_identity.repository_id,
+            objective_revision=objective_goal_completion_revision(goal),
+            completion_binding=gate_record.get("binding"),
+            require_artifact_binding=require_artifact_binding,
             now=now,
             freshness_seconds=evidence_freshness_seconds,
             coverage=gate_record.get("coverage"),
@@ -1886,12 +4086,16 @@ def reconcile_objective_goal_completion(
                 *descendant_states(goal.goal_id),
                 *gate_record.get("child_goals", ()),
             ],
+            required_child_goal_ids=gate_record.get(
+                "required_child_goal_ids", ()
+            ),
             analysis_result=gate_record.get("analysis_result"),
             analysis_inconclusive=bool(
                 gate_record.get("analysis_inconclusive", False)
             ),
         )
         decisions[goal.goal_id] = decision.to_dict()
+        effective_states[goal.goal_id] = decision.state
         diagnostics = decisions[goal.goal_id]["diagnostics"]
         goal_evidence = {
             term: list(discovered_evidence.get(term, []))
@@ -1941,6 +4145,29 @@ def reconcile_objective_goal_completion(
         elif decision.state is GoalState.BLOCKED:
             blocked_goal_ids.append(goal.goal_id)
         updates[goal.goal_id] = goal_updates
+
+    goal_position = {goal.goal_id: index for index, goal in enumerate(goals)}
+    for transitioned_goal_ids in (
+        completed_goal_ids,
+        provisional_goal_ids,
+        reopened_goal_ids,
+        analysis_inconclusive_goal_ids,
+        blocked_goal_ids,
+    ):
+        transitioned_goal_ids.sort(
+            key=lambda goal_id: goal_position.get(goal_id, len(goal_position))
+        )
+
+    final_repository_identity = completion_tree_identity(
+        repo_root,
+        objective_path=objective_path,
+        control_paths=completion_control_paths,
+    )
+    if final_repository_identity != repository_identity:
+        raise RuntimeError(
+            "repository tree changed while live goal validation commands were "
+            "running; completion reconciliation was aborted"
+        )
 
     if updates:
         rewritten = rewrite_goal_fields(text, updates)

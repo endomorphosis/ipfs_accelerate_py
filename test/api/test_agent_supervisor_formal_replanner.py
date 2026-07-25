@@ -4,6 +4,10 @@ import json
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
+    RefinementSignal,
+    RefinementSignalKind,
+)
 from ipfs_accelerate_py.agent_supervisor.formal_counterexamples import (
     CounterexampleKind,
     RepairClass,
@@ -19,10 +23,13 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
 )
 from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
     BOUNDED_REFINEMENT_EVIDENCE_ID,
+    UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
+    OBJECTIVE_COMPLETION_EVIDENCE_ROLES,
     CODEX_REPAIR_PACKET_SCHEMA,
     REPAIR_TRANSITION_SCHEMA,
     RESPONSIVE_REPLAN_DECISION_SCHEMA,
     CodexRepairPacket,
+    DiagnosticReceipt,
     FormalReplanner,
     RepairCandidateStatus,
     RepairOperation,
@@ -150,6 +157,53 @@ def _operation(kind: RepairRuleKind, counterexample_id: str) -> RepairOperation:
         parameters=parameters,
         counterexample_id=counterexample_id,
     )
+
+
+def test_typed_runtime_signal_change_forces_one_bounded_formal_replan() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+    signal = RefinementSignal(
+        kind=RefinementSignalKind.INTERFACE_CHANGE,
+        subject_id="interface:runtime",
+        evidence_revision="interface:v2",
+        observed_at=100,
+        details={"previous": "v1", "current": "v2"},
+    )
+    operation = _operation(
+        RepairRuleKind.ADD_EVIDENCE, counterexample.semantic_id
+    )
+    replanner = FormalReplanner()
+
+    changed = replanner.replan_for_signal(
+        source,
+        counterexample,
+        signal,
+        previous_signal_id="sha256:interface-v1",
+        previous_counterexample_id=counterexample.semantic_id,
+        candidate_repairs=(operation,),
+    )
+    unchanged = replanner.replan_for_signal(
+        source,
+        counterexample,
+        signal,
+        previous_signal_id=signal.evidence_id,
+        previous_counterexample_id=counterexample.semantic_id,
+        candidate_repairs=(operation,),
+        base_backoff_seconds=2,
+    )
+
+    assert changed.changed
+    assert changed.result is not None
+    assert changed.trigger_evidence_id == signal.evidence_id
+    assert changed.trigger_signal_kind == RefinementSignalKind.INTERFACE_CHANGE.value
+    assert changed.requirement_ids == ()
+    assert unchanged.stop_reason is (
+        ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
+    )
+    assert not unchanged.changed
+    assert unchanged.result is None
+    assert unchanged.backoff_seconds == 2
+    assert unchanged.requirement_ids == ()
 
 
 @pytest.mark.parametrize("kind", tuple(RepairRuleKind))
@@ -485,9 +539,21 @@ def test_unchanged_counterexample_backs_off_before_compile_or_generation() -> No
     payload = decision.to_dict()
     assert payload["schema"] == RESPONSIVE_REPLAN_DECISION_SCHEMA
     assert payload["evidence_ids"] == []
+    assert decision.completion_evidence_roles == ()
+    assert OBJECTIVE_COMPLETION_EVIDENCE_ROLES == (
+        "completion_analyzer_health",
+        "completion_criterion_coverage",
+        "completion_exhaustion_quorum",
+    )
     assert payload["requirement_ids"] == [
-        BOUNDED_REFINEMENT_EVIDENCE_ID
+        UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID
     ]
+    assert decision.requirement_ids == (
+        UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
+    )
+    assert UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID == (
+        "312819945606360295782005228058369235550"
+    )
     assert BOUNDED_REFINEMENT_EVIDENCE_ID == (
         "003778425160038348524906247302938706902"
     )
@@ -545,3 +611,80 @@ def test_changed_but_unadmitted_replan_does_not_emit_objective_evidence() -> Non
     assert not decision.result.admitted
     assert decision.evidence_ids == ()
     assert decision.to_dict()["evidence_ids"] == []
+
+
+def test_identical_failure_reuses_diagnostic_then_escalates_at_bound() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+    replanner = FormalReplanner()
+
+    first = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id="sha256:older",
+        prior_decision_id="decision:root",
+        candidate_repairs=(),
+        max_identical_failures=2,
+    )
+    assert isinstance(first.diagnostic_receipt, DiagnosticReceipt)
+    assert not first.diagnostic_reused
+
+    repeated = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id=counterexample.semantic_id,
+        previous_trigger_evidence_id=counterexample.semantic_id,
+        prior_decision_id="decision:root",
+        previous_diagnostic_receipt_id=first.diagnostic_receipt_id,
+        max_identical_failures=2,
+    )
+    assert repeated.stop_reason is (
+        ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
+    )
+    assert repeated.diagnostic_reused
+    assert repeated.diagnostic_receipt_id == first.diagnostic_receipt_id
+
+    escalated = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id=counterexample.semantic_id,
+        previous_trigger_evidence_id=counterexample.semantic_id,
+        prior_decision_id="decision:root",
+        previous_diagnostic_receipt_id=first.diagnostic_receipt_id,
+        backoff_attempt=repeated.backoff_attempt,
+        max_identical_failures=2,
+    )
+    assert escalated.escalated
+    assert escalated.stop_reason is ReplanStopReason.IDENTICAL_FAILURE_ESCALATED
+    assert escalated.diagnostic_reused
+    assert escalated.diagnostic_receipt_id == first.diagnostic_receipt_id
+    assert not escalated.model_call_required
+
+
+def test_cancellation_stops_before_compile_and_before_admission() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+    compiler = _CountingCompiler()
+    replanner = _CountingReplanner(compiler=compiler)
+
+    cancelled = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id="sha256:older",
+        cancelled=True,
+    )
+    assert cancelled.cancelled
+    assert cancelled.result is None
+    assert cancelled.requirement_ids == ()
+    assert compiler.calls == replanner.replan_calls == 0
+
+    checks = iter((False, True))
+    cancelled_during_entry = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id="sha256:older",
+        cancelled=lambda: next(checks),
+    )
+    assert cancelled_during_entry.cancelled
+    assert cancelled_during_entry.result is None
+    assert compiler.calls == 0

@@ -8,9 +8,43 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import plan_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+    ConflictWeightHistory,
     build_conflict_surface,
     materialize_task_conflict_graph,
 )
+
+
+def test_conflict_history_is_idempotent_and_learns_every_surface_domain() -> None:
+    history = ConflictWeightHistory()
+    receipt = {
+        "receipt_cid": "receipt-1",
+        "task_cids": ["cid-a", "cid-b"],
+        "status": "merge_conflict",
+        "interfaces": ["Router.dispatch"],
+        "submodules": ["vendor/runtime"],
+        "generated_artifacts": ["dist/schema.json"],
+    }
+
+    history.observe_receipt(receipt)
+    history.observe_receipt(receipt)
+    history.observe_diff("cid-a", ["src/runtime.py"])
+    history.observe_diff("cid-a", ["src/runtime.py"])
+
+    assert history.observation_count == 2
+    assert history.pair_weights["cid-a\0cid-b"] == 5.0
+    assert history.interface_weights == {"Router.dispatch": 5.0}
+    assert history.submodule_weights == {"vendor/runtime": 5.0}
+    assert history.artifact_weights == {"dist/schema.json": 5.0}
+    assert history.path_weights["src/runtime.py"] == 1.0
+
+    unrelated_failure = {
+        "receipt_cid": "receipt-2",
+        "task_cids": ["cid-a", "cid-b"],
+        "status": "failed",
+        "stderr": "unit tests failed",
+    }
+    history.observe_receipt(unrelated_failure)
+    assert history.pair_weights["cid-a\0cid-b"] == 5.0
 
 
 def _edge(graph, left: str, right: str):

@@ -45,22 +45,29 @@ from .goal_refinement_verification import (
 
 
 ADAPTIVE_GOAL_REFINER_VERSION: Final = 2
+ADAPTIVE_REFINEMENT_RECEIPT_VERSION: Final = 3
 NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID: Final = (
     "003778425160038348524906247302938706902"
 )
+NEW_EVIDENCE_REFINEMENT_GOAL_ID: Final = "ASI-G098"
 UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID: Final = (
     "312819945606360295782005228058369235550"
 )
+UNCHANGED_FAILURE_BACKOFF_GOAL_ID: Final = "ASI-G115"
 
 SIGNAL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/refinement-signal@1"
 QUALITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-quality@1"
+GOAL_DEBT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-debt@1"
 REQUEST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-request@1"
 CANDIDATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-candidate@1"
 )
-RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-receipt@1"
+RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-receipt@2"
 REQUIREMENT_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/new-counterexample-refinement-evidence@1"
+)
+UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/unchanged-failure-backoff-evidence@1"
 )
 
 # This is the closed mandatory population for the objective completion bridge
@@ -89,6 +96,37 @@ NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA: Final = (
         "Non-counterexample admissions remain non-authoritative for this "
         "requirement, and restored objective receipts reject unsupported "
         "versions, missing identities, and unknown fields"
+    ),
+)
+
+UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA: Final = (
+    (
+        "A persisted failed refinement attempt starts a finite policy-bounded "
+        "retry window"
+    ),
+    (
+        "A semantically unchanged typed repeated failure observed before the "
+        "deadline suppresses candidate generation and independent verification"
+    ),
+    (
+        "Observation time and occurrence-count changes do not disguise the "
+        "same failure, while changed failure evidence or plan state bypasses "
+        "the old backoff"
+    ),
+    (
+        "The backoff witness binds the exact requirement, repeated-failure "
+        "signal and signature, request and evidence fingerprint, frozen root, "
+        "assumptions, repository tree, policy, and previous plan"
+    ),
+    (
+        "The witness causally binds the source failure receipt, decision, "
+        "model call, attempts, timestamps, retry deadline, and suppressed "
+        "no-model-call decision"
+    ),
+    (
+        "Only a source-bound in-window backoff is authoritative, and restored "
+        "receipts reject unsupported schemas, versions, identities, fields, "
+        "or detached and tampered witnesses"
     ),
 )
 
@@ -215,8 +253,33 @@ class RefinementSignalKind(str, Enum):
     RESOURCE_INFEASIBLE = "resource_infeasible"
 
     # Compatibility spellings for callers that use the task language.
+    STALE_RECEIPT = "stale_evidence"
+    REPEATED_VALIDATION_SIGNATURE = "repeated_failure"
     UNAVAILABLE_CAPABILITY = "capability_change"
+    UNAVAILABLE_PROVIDER = "capability_change"
+    CHANGED_INTERFACE = "interface_change"
+    CONFLICT = "scope_conflict"
     INFEASIBLE_RESOURCES = "resource_infeasible"
+
+
+_SIGNAL_KIND_ALIASES: Final[Mapping[str, RefinementSignalKind]] = {
+    "stale_receipt": RefinementSignalKind.STALE_EVIDENCE,
+    "repeated_validation_signature": RefinementSignalKind.REPEATED_FAILURE,
+    "unavailable_capability": RefinementSignalKind.CAPABILITY_CHANGE,
+    "unavailable_provider": RefinementSignalKind.CAPABILITY_CHANGE,
+    "changed_interface": RefinementSignalKind.INTERFACE_CHANGE,
+    "conflict": RefinementSignalKind.SCOPE_CONFLICT,
+    "infeasible_resources": RefinementSignalKind.RESOURCE_INFEASIBLE,
+}
+
+
+def _signal_kind(value: Any) -> RefinementSignalKind:
+    if isinstance(value, RefinementSignalKind):
+        return value
+    normalized = str(getattr(value, "value", value)).strip().lower()
+    if normalized in _SIGNAL_KIND_ALIASES:
+        return _SIGNAL_KIND_ALIASES[normalized]
+    return _enum(value, RefinementSignalKind, "kind")
 
 
 class GoalDebtKind(str, Enum):
@@ -229,8 +292,59 @@ class GoalDebtKind(str, Enum):
     MISSING_VALIDATION = "missing_validation"
     MISSING_FRESHNESS = "missing_freshness"
     MISSING_RESOURCE_ENVELOPE = "missing_resource_envelope"
+    MISSING_REFINEMENT_BUDGET = "missing_refinement_budget"
+    AMBIGUOUS = "ambiguous"
+    STALE_EVIDENCE = "stale_evidence"
+    UNCOVERED_ACCEPTANCE = "uncovered_acceptance"
     UNSUPPORTED_SEMANTICS = "unsupported_semantics"
     EXCESSIVE_BREADTH = "excessive_breadth"
+
+
+_GOAL_DEBT_DIMENSIONS: Final[Mapping[GoalDebtKind, str]] = {
+    GoalDebtKind.MISSING_OUTCOME: "outcome",
+    GoalDebtKind.MISSING_SCOPE: "scope",
+    GoalDebtKind.MISSING_ASSUMPTIONS: "assumptions",
+    GoalDebtKind.MISSING_NON_GOALS: "non_goals",
+    GoalDebtKind.MISSING_ACCEPTANCE: "acceptance",
+    GoalDebtKind.MISSING_EVIDENCE_PRODUCER: "evidence_producers",
+    GoalDebtKind.MISSING_VALIDATION: "validation",
+    GoalDebtKind.MISSING_FRESHNESS: "freshness",
+    GoalDebtKind.MISSING_RESOURCE_ENVELOPE: "resource_envelope",
+    GoalDebtKind.MISSING_REFINEMENT_BUDGET: "refinement_budget",
+    GoalDebtKind.AMBIGUOUS: "ambiguity",
+    GoalDebtKind.STALE_EVIDENCE: "freshness",
+    GoalDebtKind.UNCOVERED_ACCEPTANCE: "acceptance",
+    GoalDebtKind.UNSUPPORTED_SEMANTICS: "unsupported_semantics",
+    GoalDebtKind.EXCESSIVE_BREADTH: "breadth",
+}
+
+_GOAL_DEBT_MESSAGES: Final[Mapping[GoalDebtKind, str]] = {
+    GoalDebtKind.MISSING_OUTCOME: "Goal has no explicit outcome.",
+    GoalDebtKind.MISSING_SCOPE: "Goal has no bounded scope.",
+    GoalDebtKind.MISSING_ASSUMPTIONS: "Goal has no explicit assumption set.",
+    GoalDebtKind.MISSING_NON_GOALS: "Goal has no explicit non-goals.",
+    GoalDebtKind.MISSING_ACCEPTANCE: "Goal has no acceptance criteria.",
+    GoalDebtKind.MISSING_EVIDENCE_PRODUCER: (
+        "Goal has no bound evidence producer."
+    ),
+    GoalDebtKind.MISSING_VALIDATION: "Goal has no validation policy.",
+    GoalDebtKind.MISSING_FRESHNESS: "Goal has no evidence freshness horizon.",
+    GoalDebtKind.MISSING_RESOURCE_ENVELOPE: (
+        "Goal has no finite resource envelope."
+    ),
+    GoalDebtKind.MISSING_REFINEMENT_BUDGET: (
+        "Goal has no finite refinement budget."
+    ),
+    GoalDebtKind.AMBIGUOUS: "Goal contains unresolved ambiguity.",
+    GoalDebtKind.STALE_EVIDENCE: "Goal depends on stale evidence.",
+    GoalDebtKind.UNCOVERED_ACCEPTANCE: (
+        "Goal has acceptance criteria without evidence coverage."
+    ),
+    GoalDebtKind.UNSUPPORTED_SEMANTICS: (
+        "Goal relies on unsupported semantics."
+    ),
+    GoalDebtKind.EXCESSIVE_BREADTH: "Goal exceeds its reviewed breadth bound.",
+}
 
 
 class RefinementDecision(str, Enum):
@@ -242,6 +356,16 @@ class RefinementDecision(str, Enum):
     CANDIDATE_REJECTED = "candidate_rejected"
     VERIFICATION_FAILED = "verification_failed"
     COMMIT_FAILED = "commit_failed"
+
+
+REFINEMENT_FAILURE_DECISIONS: Final[frozenset[RefinementDecision]] = frozenset(
+    {
+        RefinementDecision.GENERATION_FAILED,
+        RefinementDecision.CANDIDATE_REJECTED,
+        RefinementDecision.VERIFICATION_FAILED,
+        RefinementDecision.COMMIT_FAILED,
+    }
+)
 
 
 class RefinementProducerKind(str, Enum):
@@ -272,7 +396,7 @@ class RefinementSignal:
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "kind", _enum(self.kind, RefinementSignalKind, "kind"))
+        object.__setattr__(self, "kind", _signal_kind(self.kind))
         object.__setattr__(self, "subject_id", _text(self.subject_id, "subject_id"))
         object.__setattr__(
             self,
@@ -356,6 +480,99 @@ GoalRefinementSignal = RefinementSignal
 
 
 @dataclass(frozen=True)
+class GoalDebtRecord:
+    """One content-addressed, reviewed goal-quality finding.
+
+    Debt is diagnostic rather than completion authority.  Each record is
+    nevertheless bound to the exact quality snapshot that produced it so a
+    later objective revision cannot silently reuse an old finding.
+    """
+
+    goal_id: str
+    quality_id: str
+    kind: GoalDebtKind
+    related_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
+        object.__setattr__(
+            self, "quality_id", _text(self.quality_id, "quality_id")
+        )
+        object.__setattr__(self, "kind", _enum(self.kind, GoalDebtKind, "kind"))
+        object.__setattr__(
+            self,
+            "related_ids",
+            _strings(self.related_ids, "related_ids"),
+        )
+
+    @property
+    def dimension(self) -> str:
+        return _GOAL_DEBT_DIMENSIONS[self.kind]
+
+    @property
+    def message(self) -> str:
+        return _GOAL_DEBT_MESSAGES[self.kind]
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": GOAL_DEBT_SCHEMA,
+            "version": ADAPTIVE_GOAL_REFINER_VERSION,
+            "goal_id": self.goal_id,
+            "quality_id": self.quality_id,
+            "kind": self.kind.value,
+            "dimension": self.dimension,
+            "message": self.message,
+            "related_ids": self.related_ids,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalDebtRecord":
+        _restored_record(
+            payload,
+            noun="goal-debt record",
+            schema=GOAL_DEBT_SCHEMA,
+            version=ADAPTIVE_GOAL_REFINER_VERSION,
+            allowed_fields=frozenset(
+                {
+                    "schema",
+                    "version",
+                    "content_id",
+                    "goal_id",
+                    "quality_id",
+                    "kind",
+                    "dimension",
+                    "message",
+                    "related_ids",
+                }
+            ),
+            identity_field="content_id",
+        )
+        result = cls(
+            goal_id=payload.get("goal_id", ""),
+            quality_id=payload.get("quality_id", ""),
+            kind=payload.get("kind", ""),
+            related_ids=payload.get("related_ids") or (),
+        )
+        if payload.get("dimension") != result.dimension:
+            raise AdaptiveGoalRefinementError(
+                "goal-debt dimension does not match its reviewed kind"
+            )
+        if payload.get("message") != result.message:
+            raise AdaptiveGoalRefinementError(
+                "goal-debt message does not match its reviewed kind"
+            )
+        _claimed(payload, result.content_id, "goal-debt record")
+        return result
+
+
+@dataclass(frozen=True)
 class GoalQualityRecord:
     """Explicit quality envelope and deterministic goal-debt assessment."""
 
@@ -372,6 +589,10 @@ class GoalQualityRecord:
     unsupported_semantics: tuple[str, ...] = ()
     breadth: int = 1
     max_breadth: int = 8
+    refinement_budget: Mapping[str, Any] = field(default_factory=dict)
+    ambiguities: tuple[str, ...] = ()
+    stale_evidence_ids: tuple[str, ...] = ()
+    uncovered_acceptance_criteria: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
@@ -386,6 +607,9 @@ class GoalQualityRecord:
             "evidence_producer_ids",
             "validation_ids",
             "unsupported_semantics",
+            "ambiguities",
+            "stale_evidence_ids",
+            "uncovered_acceptance_criteria",
         ):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
         object.__setattr__(
@@ -397,6 +621,11 @@ class GoalQualityRecord:
             self,
             "resource_envelope",
             _mapping(self.resource_envelope, "resource_envelope"),
+        )
+        object.__setattr__(
+            self,
+            "refinement_budget",
+            _mapping(self.refinement_budget, "refinement_budget"),
         )
         object.__setattr__(self, "breadth", _positive(self.breadth, "breadth"))
         object.__setattr__(
@@ -425,6 +654,24 @@ class GoalQualityRecord:
                 not self.resource_envelope,
                 GoalDebtKind.MISSING_RESOURCE_ENVELOPE,
             ),
+            (
+                not self.refinement_budget,
+                GoalDebtKind.MISSING_REFINEMENT_BUDGET,
+            ),
+            (
+                bool(self.ambiguities) or not self.outcome,
+                GoalDebtKind.AMBIGUOUS,
+            ),
+            (
+                bool(self.stale_evidence_ids)
+                or self.freshness_horizon_seconds == 0,
+                GoalDebtKind.STALE_EVIDENCE,
+            ),
+            (
+                bool(self.uncovered_acceptance_criteria)
+                or not self.acceptance_criteria,
+                GoalDebtKind.UNCOVERED_ACCEPTANCE,
+            ),
             (bool(self.unsupported_semantics), GoalDebtKind.UNSUPPORTED_SEMANTICS),
             (self.breadth > self.max_breadth, GoalDebtKind.EXCESSIVE_BREADTH),
         )
@@ -432,6 +679,28 @@ class GoalQualityRecord:
             if present:
                 findings.append(kind)
         return tuple(findings)
+
+    @property
+    def debt_records(self) -> tuple[GoalDebtRecord, ...]:
+        """Return stable typed findings bound to this exact quality snapshot."""
+
+        related: Mapping[GoalDebtKind, tuple[str, ...]] = {
+            GoalDebtKind.AMBIGUOUS: self.ambiguities,
+            GoalDebtKind.STALE_EVIDENCE: self.stale_evidence_ids,
+            GoalDebtKind.UNCOVERED_ACCEPTANCE: (
+                self.uncovered_acceptance_criteria
+            ),
+            GoalDebtKind.UNSUPPORTED_SEMANTICS: self.unsupported_semantics,
+        }
+        return tuple(
+            GoalDebtRecord(
+                goal_id=self.goal_id,
+                quality_id=self.content_id,
+                kind=kind,
+                related_ids=related.get(kind, ()),
+            )
+            for kind in self.debt
+        )
 
     @property
     def content_id(self) -> str:
@@ -451,6 +720,12 @@ class GoalQualityRecord:
             "validation_ids": self.validation_ids,
             "freshness_horizon_seconds": self.freshness_horizon_seconds,
             "resource_envelope": self.resource_envelope,
+            "refinement_budget": self.refinement_budget,
+            "ambiguities": self.ambiguities,
+            "stale_evidence_ids": self.stale_evidence_ids,
+            "uncovered_acceptance_criteria": (
+                self.uncovered_acceptance_criteria
+            ),
             "unsupported_semantics": self.unsupported_semantics,
             "breadth": self.breadth,
             "max_breadth": self.max_breadth,
@@ -458,7 +733,97 @@ class GoalQualityRecord:
         }
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "content_id": self.content_id}
+        return {
+            **self._payload(),
+            "content_id": self.content_id,
+            "debt_records": tuple(item.to_dict() for item in self.debt_records),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalQualityRecord":
+        _restored_record(
+            payload,
+            noun="goal-quality record",
+            schema=QUALITY_SCHEMA,
+            version=ADAPTIVE_GOAL_REFINER_VERSION,
+            allowed_fields=frozenset(
+                {
+                    "schema",
+                    "version",
+                    "content_id",
+                    "goal_id",
+                    "outcome",
+                    "scope_ids",
+                    "assumption_ids",
+                    "non_goals",
+                    "acceptance_criteria",
+                    "evidence_producer_ids",
+                    "validation_ids",
+                    "freshness_horizon_seconds",
+                    "resource_envelope",
+                    "refinement_budget",
+                    "ambiguities",
+                    "stale_evidence_ids",
+                    "uncovered_acceptance_criteria",
+                    "unsupported_semantics",
+                    "breadth",
+                    "max_breadth",
+                    "debt",
+                    "debt_records",
+                }
+            ),
+            identity_field="content_id",
+        )
+        result = cls(
+            goal_id=payload.get("goal_id", ""),
+            outcome=payload.get("outcome", ""),
+            scope_ids=payload.get("scope_ids") or (),
+            assumption_ids=payload.get("assumption_ids") or (),
+            non_goals=payload.get("non_goals") or (),
+            acceptance_criteria=payload.get("acceptance_criteria") or (),
+            evidence_producer_ids=payload.get("evidence_producer_ids") or (),
+            validation_ids=payload.get("validation_ids") or (),
+            freshness_horizon_seconds=payload.get(
+                "freshness_horizon_seconds", 0
+            ),
+            resource_envelope=payload.get("resource_envelope") or {},
+            refinement_budget=payload.get("refinement_budget") or {},
+            ambiguities=payload.get("ambiguities") or (),
+            stale_evidence_ids=payload.get("stale_evidence_ids") or (),
+            uncovered_acceptance_criteria=payload.get(
+                "uncovered_acceptance_criteria"
+            )
+            or (),
+            unsupported_semantics=payload.get("unsupported_semantics") or (),
+            breadth=payload.get("breadth", 1),
+            max_breadth=payload.get("max_breadth", 8),
+        )
+        expected_debt = tuple(item.value for item in result.debt)
+        if tuple(payload.get("debt") or ()) != expected_debt:
+            raise AdaptiveGoalRefinementError(
+                "goal-quality debt projection does not match its fields"
+            )
+        records = payload.get("debt_records")
+        if not isinstance(records, Sequence) or isinstance(
+            records, (str, bytes, bytearray, memoryview)
+        ):
+            raise AdaptiveGoalRefinementError(
+                "goal-quality debt_records must be a sequence"
+            )
+        restored_record_values: list[GoalDebtRecord] = []
+        for item in records:
+            if not isinstance(item, Mapping):
+                raise AdaptiveGoalRefinementError(
+                    "goal-quality debt_records must contain objects"
+                )
+            restored_record_values.append(GoalDebtRecord.from_dict(item))
+        restored_records = tuple(restored_record_values)
+        if restored_records != result.debt_records:
+            raise AdaptiveGoalRefinementError(
+                "goal-quality debt records do not match its fields"
+            )
+        _claimed(payload, result.content_id, "goal-quality record")
+        return result
 
 
 GoalQuality = GoalQualityRecord
@@ -575,6 +940,18 @@ class AdaptiveRefinementRequest:
             self.quality, GoalQualityRecord
         ):
             raise AdaptiveGoalRefinementError("quality must be GoalQualityRecord")
+        if self.quality is not None:
+            if self.quality.goal_id != self.root_goal_id:
+                raise AdaptiveGoalRefinementError(
+                    "quality record must describe the frozen root goal"
+                )
+            if (
+                self.quality.assumption_ids
+                and self.quality.assumption_ids != self.assumption_ids
+            ):
+                raise AdaptiveGoalRefinementError(
+                    "quality assumptions do not match the frozen assumptions"
+                )
         roots = [item for item in self.plan.goals if item.goal_id == self.root_goal_id]
         if len(roots) != 1 or roots[0].content_id != self.root_goal_content_id:
             raise AdaptiveGoalRefinementError(
@@ -600,6 +977,12 @@ class AdaptiveRefinementRequest:
                     item.evidence_id for item in self.signals
                 ),
                 "repository_tree_id": self.repository_tree_id,
+                "quality_id": self.quality.content_id if self.quality else "",
+                "goal_debt_ids": tuple(
+                    item.content_id for item in self.quality.debt_records
+                )
+                if self.quality
+                else (),
             }
         )
 
@@ -620,6 +1003,11 @@ class AdaptiveRefinementRequest:
             "refinement_depth": self.refinement_depth,
             "repository_tree_id": self.repository_tree_id,
             "quality_id": self.quality.content_id if self.quality else "",
+            "goal_debt_ids": tuple(
+                item.content_id for item in self.quality.debt_records
+            )
+            if self.quality
+            else (),
             "evidence_fingerprint": self.evidence_fingerprint,
         }
 
@@ -657,7 +1045,7 @@ class AdaptiveRefinementCandidate:
         object.__setattr__(
             self,
             "signal_kind",
-            _enum(self.signal_kind, RefinementSignalKind, "signal_kind"),
+            _signal_kind(self.signal_kind),
         )
         object.__setattr__(
             self,
@@ -845,6 +1233,257 @@ class NewCounterexampleRefinementEvidence:
 
 
 @dataclass(frozen=True)
+class UnchangedFailureBackoffEvidence:
+    """Concrete causal witness for the ASI-G115 no-second-call criterion.
+
+    A backoff decision is authoritative only when it references the exact
+    persisted failed attempt that opened the retry window.  Delivery metadata
+    may change, but the repeated-failure signal's semantic identity, frozen
+    planning context, policy, repository tree, and previous plan must not.
+    """
+
+    repeated_failure_signal_id: str
+    failure_signature: str
+    request_id: str
+    cycle_id: str
+    evidence_fingerprint: str
+    root_goal_id: str
+    root_goal_content_id: str
+    assumption_ids: tuple[str, ...]
+    policy_id: str
+    repository_tree_id: str
+    previous_plan_id: str
+    source_failure_receipt_id: str
+    source_failure_decision: str
+    source_failure_model_called: bool
+    source_failure_attempted_at: int
+    source_failure_retry_after: int
+    source_failure_attempt_index: int
+    source_failure_refinement_index: int
+    suppressed_at: int
+    suppressed_attempt_index: int
+    retry_after: int
+    model_call_suppressed: bool = True
+    requirement_id: str = UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+    evidence_producer_kind: str = "adaptive_goal_refinement"
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repeated_failure_signal_id",
+            "failure_signature",
+            "request_id",
+            "cycle_id",
+            "evidence_fingerprint",
+            "root_goal_id",
+            "root_goal_content_id",
+            "policy_id",
+            "repository_tree_id",
+            "previous_plan_id",
+            "source_failure_receipt_id",
+            "source_failure_decision",
+            "requirement_id",
+            "evidence_producer_kind",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
+        )
+        for name in (
+            "source_failure_attempted_at",
+            "source_failure_retry_after",
+            "source_failure_attempt_index",
+            "source_failure_refinement_index",
+            "suppressed_at",
+            "suppressed_attempt_index",
+            "retry_after",
+        ):
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
+        try:
+            source_decision = RefinementDecision(self.source_failure_decision)
+        except ValueError as exc:
+            raise AdaptiveGoalRefinementError(
+                "unsupported backoff source failure decision"
+            ) from exc
+        if source_decision not in REFINEMENT_FAILURE_DECISIONS:
+            raise AdaptiveGoalRefinementError(
+                "backoff source must be a failed refinement decision"
+            )
+        if self.source_failure_model_called is not True:
+            raise AdaptiveGoalRefinementError(
+                "backoff source must record the preceding model call"
+            )
+        if self.model_call_suppressed is not True:
+            raise AdaptiveGoalRefinementError(
+                "backoff evidence must record a suppressed model call"
+            )
+        if not (
+            self.source_failure_attempted_at
+            <= self.suppressed_at
+            < self.source_failure_retry_after
+        ):
+            raise AdaptiveGoalRefinementError(
+                "backoff suppression must occur inside the source retry window"
+            )
+        if self.retry_after != self.source_failure_retry_after:
+            raise AdaptiveGoalRefinementError(
+                "backoff deadline must match the source failure deadline"
+            )
+        if self.suppressed_attempt_index <= self.source_failure_attempt_index:
+            raise AdaptiveGoalRefinementError(
+                "backoff attempt must follow the source failure attempt"
+            )
+        if self.requirement_id != UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID:
+            raise AdaptiveGoalRefinementError(
+                "unsupported unchanged-failure backoff requirement id"
+            )
+        if self.evidence_producer_kind != "adaptive_goal_refinement":
+            raise AdaptiveGoalRefinementError(
+                "unsupported unchanged-failure backoff evidence producer"
+            )
+
+    @property
+    def evidence_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    @property
+    def content_id(self) -> str:
+        return self.evidence_id
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA,
+            "requirement_id": self.requirement_id,
+            "evidence_producer_kind": self.evidence_producer_kind,
+            "repeated_failure_signal_id": self.repeated_failure_signal_id,
+            "failure_signature": self.failure_signature,
+            "request_id": self.request_id,
+            "cycle_id": self.cycle_id,
+            "evidence_fingerprint": self.evidence_fingerprint,
+            "root_goal_id": self.root_goal_id,
+            "root_goal_content_id": self.root_goal_content_id,
+            "assumption_ids": self.assumption_ids,
+            "policy_id": self.policy_id,
+            "repository_tree_id": self.repository_tree_id,
+            "previous_plan_id": self.previous_plan_id,
+            "source_failure_receipt_id": self.source_failure_receipt_id,
+            "source_failure_decision": self.source_failure_decision,
+            "source_failure_model_called": self.source_failure_model_called,
+            "source_failure_attempted_at": self.source_failure_attempted_at,
+            "source_failure_retry_after": self.source_failure_retry_after,
+            "source_failure_attempt_index": self.source_failure_attempt_index,
+            "source_failure_refinement_index": (
+                self.source_failure_refinement_index
+            ),
+            "suppressed_at": self.suppressed_at,
+            "suppressed_attempt_index": self.suppressed_attempt_index,
+            "retry_after": self.retry_after,
+            "model_call_suppressed": self.model_call_suppressed,
+        }
+        if include_identity:
+            payload["evidence_id"] = self.evidence_id
+        return payload
+
+    def validate_source(self, source: "AdaptiveRefinementReceipt") -> None:
+        """Reconcile this witness with the persisted attempt it references."""
+
+        if not isinstance(source, AdaptiveRefinementReceipt):
+            raise AdaptiveGoalRefinementError(
+                "backoff source must be an adaptive refinement receipt"
+            )
+        expected = {
+            "source_failure_receipt_id": source.receipt_id,
+            "source_failure_decision": source.decision.value,
+            "source_failure_model_called": source.model_called,
+            "source_failure_attempted_at": source.attempted_at,
+            "source_failure_retry_after": source.retry_after,
+            "source_failure_attempt_index": source.attempt_index,
+            "source_failure_refinement_index": source.refinement_index,
+            "evidence_fingerprint": source.evidence_fingerprint,
+            "root_goal_id": source.root_goal_id,
+            "root_goal_content_id": source.root_goal_content_id,
+            "assumption_ids": source.assumption_ids,
+            "policy_id": source.policy_id,
+            "repository_tree_id": source.repository_tree_id,
+            "previous_plan_id": source.previous_plan_id,
+        }
+        mismatched = [
+            name for name, value in expected.items() if getattr(self, name) != value
+        ]
+        if mismatched:
+            raise AdaptiveGoalRefinementError(
+                "backoff evidence does not match its source failure: "
+                + ", ".join(mismatched)
+            )
+        if (
+            source.decision not in REFINEMENT_FAILURE_DECISIONS
+            or source.requirement_ids
+            or source.signal_ids != (self.repeated_failure_signal_id,)
+            or source.signal_kinds
+            != (RefinementSignalKind.REPEATED_FAILURE.value,)
+        ):
+            raise AdaptiveGoalRefinementError(
+                "backoff source is not the exact non-authoritative repeated "
+                "failure attempt"
+            )
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "UnchangedFailureBackoffEvidence":
+        fields = {
+            "schema",
+            "requirement_id",
+            "evidence_producer_kind",
+            "repeated_failure_signal_id",
+            "failure_signature",
+            "request_id",
+            "cycle_id",
+            "evidence_fingerprint",
+            "root_goal_id",
+            "root_goal_content_id",
+            "assumption_ids",
+            "policy_id",
+            "repository_tree_id",
+            "previous_plan_id",
+            "source_failure_receipt_id",
+            "source_failure_decision",
+            "source_failure_model_called",
+            "source_failure_attempted_at",
+            "source_failure_retry_after",
+            "source_failure_attempt_index",
+            "source_failure_refinement_index",
+            "suppressed_at",
+            "suppressed_attempt_index",
+            "retry_after",
+            "model_call_suppressed",
+            "evidence_id",
+        }
+        _restored_record(
+            payload,
+            noun="unchanged-failure backoff evidence",
+            schema=UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA,
+            allowed_fields=frozenset(fields),
+            identity_field="evidence_id",
+        )
+        values = {
+            name: payload.get(name)
+            for name in fields
+            if name
+            not in {
+                "schema",
+                "evidence_id",
+            }
+        }
+        values["assumption_ids"] = tuple(payload.get("assumption_ids") or ())
+        result = cls(**values)
+        if payload["evidence_id"] != result.evidence_id:
+            raise AdaptiveGoalRefinementError(
+                "unchanged-failure backoff evidence identity does not match"
+            )
+        return result
+
+
+@dataclass(frozen=True)
 class AdaptiveRefinementReceipt:
     """Durable evidence for one decision at the adaptive trust boundary."""
 
@@ -872,6 +1511,9 @@ class AdaptiveRefinementReceipt:
     signal_kinds: tuple[str, ...]
     requirement_ids: tuple[str, ...]
     new_counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
+    unchanged_failure_backoff_evidence: (
+        UnchangedFailureBackoffEvidence | None
+    ) = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -959,6 +1601,50 @@ class AdaptiveRefinementReceipt:
                     "counterexample evidence requires exactly one bound "
                     "counterexample signal"
                 )
+        backoff_evidence = self.unchanged_failure_backoff_evidence
+        if backoff_evidence is not None:
+            if not isinstance(
+                backoff_evidence, UnchangedFailureBackoffEvidence
+            ):
+                raise AdaptiveGoalRefinementError(
+                    "invalid unchanged-failure backoff evidence"
+                )
+            expected = {
+                "request_id": self.request_id,
+                "cycle_id": self.cycle_id,
+                "evidence_fingerprint": self.evidence_fingerprint,
+                "root_goal_id": self.root_goal_id,
+                "root_goal_content_id": self.root_goal_content_id,
+                "assumption_ids": self.assumption_ids,
+                "policy_id": self.policy_id,
+                "repository_tree_id": self.repository_tree_id,
+                "previous_plan_id": self.previous_plan_id,
+                "suppressed_at": self.attempted_at,
+                "suppressed_attempt_index": self.attempt_index,
+                "retry_after": self.retry_after,
+                "model_call_suppressed": not self.model_called,
+            }
+            mismatched = [
+                name
+                for name, value in expected.items()
+                if getattr(backoff_evidence, name) != value
+            ]
+            if mismatched:
+                raise AdaptiveGoalRefinementError(
+                    "backoff evidence does not match receipt bindings: "
+                    + ", ".join(mismatched)
+                )
+            if (
+                len(self.signal_ids) != 1
+                or self.signal_kinds
+                != (RefinementSignalKind.REPEATED_FAILURE.value,)
+                or backoff_evidence.repeated_failure_signal_id
+                != self.signal_ids[0]
+            ):
+                raise AdaptiveGoalRefinementError(
+                    "backoff evidence requires exactly one bound repeated-failure "
+                    "signal"
+                )
         if not isinstance(self.model_called, bool):
             raise AdaptiveGoalRefinementError("model_called must be boolean")
         for name in (
@@ -990,11 +1676,10 @@ class AdaptiveRefinementReceipt:
             if (
                 self.signal_kinds
                 == (RefinementSignalKind.REPEATED_FAILURE.value,)
-                and UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
-                not in self.requirement_ids
+                and backoff_evidence is None
             ):
                 raise AdaptiveGoalRefinementError(
-                    "backoff receipt is missing its objective evidence binding"
+                    "repeated-failure backoff receipt is missing its causal witness"
                 )
             if NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID in self.requirement_ids:
                 raise AdaptiveGoalRefinementError(
@@ -1014,11 +1699,11 @@ class AdaptiveRefinementReceipt:
                     "only an admitted receipt may carry counterexample evidence"
                 )
             expected_requirements.append(NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID)
-        if (
-            self.decision is RefinementDecision.BACKED_OFF
-            and self.signal_kinds
-            == (RefinementSignalKind.REPEATED_FAILURE.value,)
-        ):
+        if backoff_evidence is not None:
+            if self.decision is not RefinementDecision.BACKED_OFF:
+                raise AdaptiveGoalRefinementError(
+                    "only a backoff receipt may carry unchanged-failure evidence"
+                )
             expected_requirements.append(UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID)
         if self.requirement_ids != tuple(sorted(expected_requirements)):
             raise AdaptiveGoalRefinementError(
@@ -1037,22 +1722,28 @@ class AdaptiveRefinementReceipt:
     def proved_requirement_ids(self) -> tuple[str, ...]:
         """Requirements backed by a concrete witness in this receipt."""
 
-        return self.requirement_ids
+        result: list[str] = []
+        if self.new_counterexample_evidence is not None:
+            result.append(self.new_counterexample_evidence.requirement_id)
+        if self.unchanged_failure_backoff_evidence is not None:
+            result.append(self.unchanged_failure_backoff_evidence.requirement_id)
+        return tuple(sorted(result))
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:
         """Content identities of concrete objective evidence witnesses."""
 
-        return (
-            (self.new_counterexample_evidence.evidence_id,)
-            if self.new_counterexample_evidence is not None
-            else ()
-        )
+        result: list[str] = []
+        if self.new_counterexample_evidence is not None:
+            result.append(self.new_counterexample_evidence.evidence_id)
+        if self.unchanged_failure_backoff_evidence is not None:
+            result.append(self.unchanged_failure_backoff_evidence.evidence_id)
+        return tuple(sorted(result))
 
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": RECEIPT_SCHEMA,
-            "version": ADAPTIVE_GOAL_REFINER_VERSION,
+            "version": ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
             "decision": self.decision.value,
             "request_id": self.request_id,
             "cycle_id": self.cycle_id,
@@ -1081,6 +1772,11 @@ class AdaptiveRefinementReceipt:
                 if self.new_counterexample_evidence is not None
                 else None
             ),
+            "unchanged_failure_backoff_evidence": (
+                self.unchanged_failure_backoff_evidence.to_dict()
+                if self.unchanged_failure_backoff_evidence is not None
+                else None
+            ),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -1092,7 +1788,7 @@ class AdaptiveRefinementReceipt:
             payload,
             noun="refinement receipt",
             schema=RECEIPT_SCHEMA,
-            version=ADAPTIVE_GOAL_REFINER_VERSION,
+            version=ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
             allowed_fields=frozenset(
                 {
                     "schema",
@@ -1121,6 +1817,7 @@ class AdaptiveRefinementReceipt:
                     "signal_kinds",
                     "requirement_ids",
                     "new_counterexample_evidence",
+                    "unchanged_failure_backoff_evidence",
                     "receipt_id",
                 }
             ),
@@ -1157,6 +1854,13 @@ class AdaptiveRefinementReceipt:
                 if payload.get("new_counterexample_evidence") is not None
                 else None
             ),
+            unchanged_failure_backoff_evidence=(
+                UnchangedFailureBackoffEvidence.from_dict(
+                    payload["unchanged_failure_backoff_evidence"]
+                )
+                if payload.get("unchanged_failure_backoff_evidence") is not None
+                else None
+            ),
         )
         if payload["receipt_id"] != result.receipt_id:
             raise AdaptiveGoalRefinementError(
@@ -1166,6 +1870,32 @@ class AdaptiveRefinementReceipt:
 
 
 GoalRefinementReceipt = AdaptiveRefinementReceipt
+
+
+def _validate_receipt_history(
+    receipts: Iterable[AdaptiveRefinementReceipt],
+) -> tuple[AdaptiveRefinementReceipt, ...]:
+    """Require every causal backoff witness to reference an earlier journal row."""
+
+    result: list[AdaptiveRefinementReceipt] = []
+    by_id: dict[str, AdaptiveRefinementReceipt] = {}
+    for receipt in receipts:
+        if not isinstance(receipt, AdaptiveRefinementReceipt):
+            raise AdaptiveGoalRefinementError(
+                "refinement history contains a non-receipt value"
+            )
+        witness = receipt.unchanged_failure_backoff_evidence
+        if witness is not None:
+            source = by_id.get(witness.source_failure_receipt_id)
+            if source is None:
+                raise AdaptiveGoalRefinementError(
+                    "backoff evidence source failure is absent or not earlier "
+                    "in the receipt journal"
+                )
+            witness.validate_source(source)
+        result.append(receipt)
+        by_id[receipt.receipt_id] = receipt
+    return tuple(result)
 
 
 @dataclass(frozen=True)
@@ -1203,6 +1933,26 @@ class AdaptiveRefinementResult:
     def decision(self) -> RefinementDecision:
         return self.receipt.decision
 
+    @property
+    def planning_completion_witness(self) -> Mapping[str, Any]:
+        """Project a qualifying ASI-G030 producer without granting authority.
+
+        The parent planning cohort persists the complete receipt and validates
+        it again.  This small projection is useful for routing only: it cannot
+        substitute for fresh criterion validation, analyzer health,
+        descendant proof, or an exhaustion receipt.
+        """
+
+        return {
+            "objective_id": "ASI-G030",
+            "receipt_id": self.receipt.receipt_id,
+            "repository_tree_id": self.receipt.repository_tree_id,
+            "requirement_ids": list(self.receipt.proved_requirement_ids),
+            "evidence_ids": list(self.receipt.evidence_ids),
+            "completion_authority": False,
+            "safe_for_completion_reasoning": False,
+        }
+
     def evaluate_objective_completion(
         self,
         *,
@@ -1219,7 +1969,7 @@ class AdaptiveRefinementResult:
         analysis_inconclusive: bool = False,
         blocked_reason: str = "",
     ) -> "GoalCompletionDecision":
-        """Evaluate ASI-G098 without promoting runtime output into proof.
+        """Evaluate the receipt's refinement objective without self-promotion.
 
         The adaptive receipt fixes the repository-tree boundary, but it is not
         itself a validation run, criterion-coverage map, analyzer-health
@@ -1235,6 +1985,13 @@ class AdaptiveRefinementResult:
         """
 
         from .goal_completion import evaluate_goal_completion
+
+        if self.receipt.unchanged_failure_backoff_evidence is not None:
+            objective_goal_id = UNCHANGED_FAILURE_BACKOFF_GOAL_ID
+            acceptance_criteria = UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA
+        else:
+            objective_goal_id = NEW_EVIDENCE_REFINEMENT_GOAL_ID
+            acceptance_criteria = NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA
 
         def payload(value: Any) -> dict[str, Any]:
             if isinstance(value, Mapping):
@@ -1261,16 +2018,126 @@ class AdaptiveRefinementResult:
                 "safe_for_completion_reasoning": False,
             }
 
-        # A coverage summary must identify both sides of every criterion
-        # mapping, not merely claim a verified status.
-        coverage_value = payload(coverage)
+        # GoalCoverageMap is the canonical repository-wide producer.  Ask it
+        # for this objective's narrow projection rather than inspecting every
+        # unrelated goal row in its full serialization.
+        coverage_projection = getattr(coverage, "completion_gate_evidence", None)
+        if callable(coverage_projection):
+            try:
+                projected = coverage_projection(objective_goal_id)
+            except (TypeError, ValueError):
+                projected = {}
+            coverage_value = (
+                dict(projected) if isinstance(projected, Mapping) else {}
+            )
+        else:
+            coverage_value = payload(coverage)
         coverage_rows = coverage_value.get("criteria")
         coverage_rows = coverage_rows if isinstance(coverage_rows, list) else []
-        coverage_bindings_complete = bool(coverage_rows) and all(
-            isinstance(row, Mapping)
-            and bool(str(row.get("implementation") or "").strip())
-            and bool(str(row.get("validation") or "").strip())
+        criterion_keys = {
+            " ".join(item.strip().lower().split())
+            for item in acceptance_criteria
+        }
+        relevant_coverage_rows = [
+            row
             for row in coverage_rows
+            if isinstance(row, Mapping)
+            and " ".join(
+                str(
+                    row.get(
+                        "criterion",
+                        row.get("acceptance_criterion", row.get("acceptance", "")),
+                    )
+                    or ""
+                )
+                .strip()
+                .lower()
+                .split()
+            )
+            in criterion_keys
+        ]
+
+        def populated(row: Mapping[str, Any], *names: str) -> bool:
+            for name in names:
+                value = row.get(name)
+                if isinstance(value, str) and value.strip():
+                    return True
+                if (
+                    isinstance(value, Sequence)
+                    and not isinstance(value, (str, bytes, bytearray))
+                    and any(str(item or "").strip() for item in value)
+                ):
+                    return True
+            return False
+
+        submitted_validation_ids: set[str] = set()
+        for item in evidence:
+            source: Any = item
+            if isinstance(source, Mapping) and isinstance(
+                source.get("evidence"), Mapping
+            ):
+                source = source["evidence"]
+            identity = (
+                source.get("provenance_cid")
+                if isinstance(source, Mapping)
+                else getattr(source, "provenance_cid", "")
+            )
+            identity = str(identity or "").strip()
+            if identity:
+                submitted_validation_ids.add(identity)
+
+        def validation_bound(row: Mapping[str, Any]) -> bool:
+            receipt_ids = row.get("validation_receipt_ids")
+            if isinstance(receipt_ids, Sequence) and not isinstance(
+                receipt_ids, (str, bytes, bytearray)
+            ):
+                normalized = {
+                    str(item or "").strip()
+                    for item in receipt_ids
+                    if str(item or "").strip()
+                }
+                return bool(
+                    normalized
+                    and normalized.intersection(submitted_validation_ids)
+                )
+            # Preserve the reviewed ASI-058 mapping spelling for persisted
+            # compatibility. Canonical GoalCoverageMap projections always use
+            # validation_receipt_ids and therefore take the bound path above.
+            return populated(row, "validation")
+
+        coverage_bindings_complete = (
+            len(relevant_coverage_rows) >= len(criterion_keys)
+            and {
+                " ".join(
+                    str(
+                        row.get(
+                            "criterion",
+                            row.get(
+                                "acceptance_criterion",
+                                row.get("acceptance", ""),
+                            ),
+                        )
+                        or ""
+                    )
+                    .strip()
+                    .lower()
+                    .split()
+                )
+                for row in relevant_coverage_rows
+            }
+            == criterion_keys
+            and all(
+                populated(
+                    row,
+                    "implementation",
+                    "changed_files",
+                    "predicted_files",
+                    "ast_symbols",
+                    "interfaces",
+                )
+                and validation_bound(row)
+                for row in relevant_coverage_rows
+            )
         )
         if not coverage_bindings_complete:
             coverage_value = {
@@ -1289,22 +2156,94 @@ class AdaptiveRefinementResult:
             }
 
         # Every configured quorum member must explicitly be a healthy,
-        # completion-safe exhaustive receipt.  Independence, binding, count,
-        # and timestamp freshness remain canonical gate responsibilities.
+        # completion-safe exhaustive receipt.  Enforce the configured count,
+        # unique member/receipt/channel identities, and exact binding here as
+        # well as in the generic gate.  This objective boundary must fail
+        # closed even if a future generic projection becomes more permissive.
+        from .scan_receipts import ExhaustionQuorumResult
+
+        evaluated_quorum = isinstance(
+            exhaustion_quorum,
+            ExhaustionQuorumResult,
+        )
         quorum_value = payload(exhaustion_quorum)
         quorum_members = quorum_value.get("members")
         quorum_members = (
             quorum_members if isinstance(quorum_members, list) else []
         )
-        quorum_members_healthy = bool(quorum_members) and all(
-            isinstance(member, Mapping)
-            and member.get("healthy") is True
-            and member.get("safe_for_completion_reasoning") is True
-            and str(member.get("scan_mode") or "").strip().lower()
-            == "exhaustive"
-            for member in quorum_members
+        quorum_members_healthy = bool(quorum_members) and (
+            # ExhaustionQuorumResult members have already passed the
+            # canonical evaluator's terminal, exhaustive-mode, analyzer
+            # health, coverage, actionability, and binding filters. Its
+            # persisted member projection intentionally does not duplicate
+            # health fields from the underlying scan receipts.
+            evaluated_quorum
+            or all(
+                isinstance(member, Mapping)
+                and member.get("healthy") is True
+                and member.get("safe_for_completion_reasoning") is True
+                and str(member.get("scan_mode") or "").strip().lower()
+                == "exhaustive"
+                for member in quorum_members
+            )
         )
-        if not quorum_members_healthy:
+        required_members = quorum_value.get("required_members")
+        member_count = quorum_value.get("member_count")
+        configured_count_met = (
+            isinstance(required_members, int)
+            and not isinstance(required_members, bool)
+            and required_members > 0
+            and isinstance(member_count, int)
+            and not isinstance(member_count, bool)
+            and member_count == len(quorum_members)
+            and member_count >= required_members
+        )
+        member_ids = [
+            str(member.get("member_id") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+        channels = [
+            str(member.get("evidence_channel") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+
+        def independent(values: Sequence[str]) -> bool:
+            return (
+                len(values) == len(quorum_members)
+                and all(values)
+                and len(values) == len(set(values))
+            )
+
+        binding_value = quorum_value.get("binding")
+        binding = (
+            dict(binding_value)
+            if isinstance(binding_value, Mapping)
+            else {}
+        )
+        binding_is_current = (
+            binding.get("tree_id") == self.receipt.repository_tree_id
+            and all(
+                isinstance(member, Mapping)
+                and isinstance(member.get("binding"), Mapping)
+                and dict(member["binding"]) == binding
+                for member in quorum_members
+            )
+        )
+        if not (
+            quorum_members_healthy
+            and configured_count_met
+            and independent(member_ids)
+            and independent(receipt_ids)
+            and independent(channels)
+            and binding_is_current
+        ):
             quorum_value = {
                 **quorum_value,
                 "satisfied": False,
@@ -1313,9 +2252,7 @@ class AdaptiveRefinementResult:
 
         values: dict[str, Any] = {
             "current_state": current_state,
-            "acceptance_criteria": (
-                NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA
-            ),
+            "acceptance_criteria": acceptance_criteria,
             "evidence": evidence,
             "tasks_complete": tasks_complete,
             "repository_tree": self.receipt.repository_tree_id,
@@ -1350,7 +2287,7 @@ class InMemoryRefinementStore:
 
     def __init__(self, receipts: Iterable[AdaptiveRefinementReceipt] = ()) -> None:
         self._lock = threading.RLock()
-        self._receipts = list(receipts)
+        self._receipts = list(_validate_receipt_history(receipts))
 
     @property
     def lock(self) -> threading.RLock:
@@ -1374,6 +2311,7 @@ class InMemoryRefinementStore:
             )
         with self._lock:
             if all(item.receipt_id != receipt.receipt_id for item in self._receipts):
+                _validate_receipt_history((*self._receipts, receipt))
                 self._receipts.append(receipt)
 
 
@@ -1436,7 +2374,7 @@ class JsonlRefinementStore:
                 raise RefinementPersistenceError(
                     f"could not read refinement receipt journal: {exc}"
                 ) from exc
-            return tuple(result)
+            return _validate_receipt_history(result)
 
     def append(self, receipt: AdaptiveRefinementReceipt) -> None:
         if not isinstance(receipt, AdaptiveRefinementReceipt):
@@ -1447,6 +2385,7 @@ class JsonlRefinementStore:
             existing = self.receipts()
             if any(item.receipt_id == receipt.receipt_id for item in existing):
                 return
+            _validate_receipt_history((*existing, receipt))
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self.path.open("a", encoding="utf-8") as handle:
@@ -1542,6 +2481,7 @@ class AdaptiveGoalRefiner:
                 for item in history
                 if item.evidence_fingerprint == request.evidence_fingerprint
                 and item.policy_id == self.policy.content_id
+                and item.previous_plan_id == request.plan.content_id
             )
             admitted = next(
                 (
@@ -1567,13 +2507,7 @@ class AdaptiveGoalRefiner:
                 (
                     item
                     for item in reversed(matching)
-                    if item.decision
-                    in {
-                        RefinementDecision.GENERATION_FAILED,
-                        RefinementDecision.CANDIDATE_REJECTED,
-                        RefinementDecision.VERIFICATION_FAILED,
-                        RefinementDecision.COMMIT_FAILED,
-                    }
+                    if item.decision in REFINEMENT_FAILURE_DECISIONS
                 ),
                 None,
             )
@@ -1590,6 +2524,7 @@ class AdaptiveGoalRefiner:
                     retry_after=latest_failure.retry_after,
                     attempt_index=len(matching) + 1,
                     refinement_index=latest_failure.refinement_index,
+                    backoff_source=latest_failure,
                 )
                 self._persist_nonadmission(receipt)
                 return AdaptiveRefinementResult(receipt)
@@ -1635,6 +2570,13 @@ class AdaptiveGoalRefiner:
                 )
 
             attempt_index = len(matching) + 1
+            failure_index = (
+                sum(
+                    item.decision in REFINEMENT_FAILURE_DECISIONS
+                    for item in matching
+                )
+                + 1
+            )
             refinement_index = len(root_admissions) + 1
             try:
                 raw_candidate = self.generator(request)
@@ -1647,6 +2589,7 @@ class AdaptiveGoalRefiner:
                     attempt_index,
                     refinement_index,
                     f"candidate generation failed closed: {type(exc).__name__}: {exc}",
+                    failure_index=failure_index,
                 )
 
             invalid = self._candidate_violation(candidate, request)
@@ -1658,6 +2601,7 @@ class AdaptiveGoalRefiner:
                     attempt_index,
                     refinement_index,
                     invalid,
+                    failure_index=failure_index,
                     producer_id=candidate.producer_id,
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
@@ -1682,6 +2626,7 @@ class AdaptiveGoalRefiner:
                     attempt_index,
                     refinement_index,
                     verification_reason or "child sufficiency was not verified",
+                    failure_index=failure_index,
                     producer_id=candidate.producer_id,
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
@@ -1716,7 +2661,7 @@ class AdaptiveGoalRefiner:
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
                     verification_receipt_id=verification_id,
-                    retry_after=self._retry_after(now, len(matching) + 1),
+                    retry_after=self._retry_after(now, failure_index),
                     attempt_index=attempt_index,
                     refinement_index=refinement_index,
                 )
@@ -1897,6 +2842,8 @@ class AdaptiveGoalRefiner:
         attempt_index: int,
         refinement_index: int,
         reason: str,
+        *,
+        failure_index: int,
         **fields: Any,
     ) -> AdaptiveRefinementResult:
         receipt = self._receipt(
@@ -1905,7 +2852,7 @@ class AdaptiveGoalRefiner:
             now,
             model_called=True,
             reason=reason,
-            retry_after=self._retry_after(now, attempt_index),
+            retry_after=self._retry_after(now, failure_index),
             attempt_index=attempt_index,
             refinement_index=refinement_index,
             **fields,
@@ -1967,9 +2914,11 @@ class AdaptiveGoalRefiner:
         retry_after: int = 0,
         attempt_index: int = 1,
         refinement_index: int = 0,
+        backoff_source: AdaptiveRefinementReceipt | None = None,
     ) -> AdaptiveRefinementReceipt:
         requirement_ids: list[str] = []
         counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
+        backoff_evidence: UnchangedFailureBackoffEvidence | None = None
         if (
             decision is RefinementDecision.ADMITTED
             and len(request.signals) == 1
@@ -1997,6 +2946,37 @@ class AdaptiveGoalRefiner:
             and len(request.signals) == 1
             and request.signals[0].kind is RefinementSignalKind.REPEATED_FAILURE
         ):
+            if backoff_source is None:
+                raise AdaptiveGoalRefinementError(
+                    "repeated-failure backoff requires its persisted source failure"
+                )
+            signal = request.signals[0]
+            backoff_evidence = UnchangedFailureBackoffEvidence(
+                repeated_failure_signal_id=signal.evidence_id,
+                failure_signature=signal.failure_signature,
+                request_id=request.content_id,
+                cycle_id=request.cycle_id,
+                evidence_fingerprint=request.evidence_fingerprint,
+                root_goal_id=request.root_goal_id,
+                root_goal_content_id=request.root_goal_content_id,
+                assumption_ids=request.assumption_ids,
+                policy_id=self.policy.content_id,
+                repository_tree_id=request.repository_tree_id,
+                previous_plan_id=request.plan.content_id,
+                source_failure_receipt_id=backoff_source.receipt_id,
+                source_failure_decision=backoff_source.decision.value,
+                source_failure_model_called=backoff_source.model_called,
+                source_failure_attempted_at=backoff_source.attempted_at,
+                source_failure_retry_after=backoff_source.retry_after,
+                source_failure_attempt_index=backoff_source.attempt_index,
+                source_failure_refinement_index=(
+                    backoff_source.refinement_index
+                ),
+                suppressed_at=now,
+                suppressed_attempt_index=attempt_index,
+                retry_after=retry_after,
+            )
+            backoff_evidence.validate_source(backoff_source)
             requirement_ids.append(UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID)
         return AdaptiveRefinementReceipt(
             decision=decision,
@@ -2023,6 +3003,7 @@ class AdaptiveGoalRefiner:
             signal_kinds=tuple(item.kind.value for item in request.signals),
             requirement_ids=tuple(requirement_ids),
             new_counterexample_evidence=counterexample_evidence,
+            unchanged_failure_backoff_evidence=backoff_evidence,
         )
 
 
@@ -2048,13 +3029,21 @@ def refine_goal_from_evidence(
 
 __all__ = [
     "ADAPTIVE_GOAL_REFINER_VERSION",
+    "ADAPTIVE_REFINEMENT_RECEIPT_VERSION",
     "NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID",
+    "NEW_EVIDENCE_REFINEMENT_GOAL_ID",
     "UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID",
+    "UNCHANGED_FAILURE_BACKOFF_GOAL_ID",
+    "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA",
+    "QUALITY_SCHEMA",
+    "GOAL_DEBT_SCHEMA",
     "NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA",
+    "UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA",
     "AdaptiveGoalRefinementError",
     "RefinementPersistenceError",
     "RefinementSignalKind",
     "GoalDebtKind",
+    "GoalDebtRecord",
     "RefinementDecision",
     "RefinementProducerKind",
     "RefinementSignal",
@@ -2070,6 +3059,7 @@ __all__ = [
     "GoalRefinementCandidate",
     "GoalRefinementProposal",
     "NewCounterexampleRefinementEvidence",
+    "UnchangedFailureBackoffEvidence",
     "AdaptiveRefinementReceipt",
     "GoalRefinementReceipt",
     "AdaptiveRefinementResult",

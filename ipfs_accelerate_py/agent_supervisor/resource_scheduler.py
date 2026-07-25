@@ -14,12 +14,15 @@ zero is always treated as exhausted.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import threading
 import time
 import uuid
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -27,6 +30,153 @@ from typing import Any
 
 
 UNKNOWN_LIMIT = -1
+ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID = (
+    "122080003600146794820964010047426915846"
+)
+ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.adaptive-throughput-benchmark@1"
+)
+ADAPTIVE_STAGES = (
+    "analysis",
+    "inference",
+    "proof",
+    "validation",
+    "merge",
+    "persistence",
+    "execution",
+)
+CANONICAL_ADAPTIVE_STAGES = ADAPTIVE_STAGES[:-1]
+
+
+def normalize_adaptive_stage(value: Any) -> str:
+    """Return a stable resource-admission stage name.
+
+    Extensions are intentionally accepted because supervisor deployments can
+    add independent stages. Empty legacy stage values map to ``execution``.
+    """
+
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace(" ", "_").replace("-", "_").replace("/", "_")
+    aliases = {
+        "analyze": "analysis",
+        "analysis_pipeline": "analysis",
+        "model": "inference",
+        "llm": "inference",
+        "provider": "inference",
+        "solve": "proof",
+        "solver": "proof",
+        "validate": "validation",
+        "acceptance": "validation",
+        "git": "merge",
+        "git_merge": "merge",
+        "gitmerge": "merge",
+        "merging": "merge",
+        "merge_train": "merge",
+        "persist": "persistence",
+        "artifact": "persistence",
+        "storage": "persistence",
+        "scheduler": "execution",
+    }
+    return aliases.get(raw, raw) if raw else "execution"
+
+
+def _canonical_digest(value: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+@dataclass(frozen=True)
+class AdaptiveStageProfile:
+    """Canonical resource shape for one supervisor pipeline stage.
+
+    These profiles describe pool ownership without imposing non-zero byte
+    estimates on legacy callers. Deployments can add exact per-lane estimates
+    through :class:`LaneResourceRequirements`.
+    """
+
+    stage: str
+    pool: str
+    resource_class: str
+    requires_provider: bool = False
+    cpu_sensitive: bool = True
+    memory_sensitive: bool = True
+    gpu_memory_sensitive: bool = False
+    disk_sensitive: bool = False
+
+    def __post_init__(self) -> None:
+        normalized = normalize_adaptive_stage(self.stage)
+        if normalized not in CANONICAL_ADAPTIVE_STAGES:
+            raise ValueError(f"unsupported canonical adaptive stage: {self.stage!r}")
+        object.__setattr__(self, "stage", normalized)
+        if not str(self.pool).strip():
+            raise ValueError("pool must be non-empty")
+        if not str(self.resource_class).strip():
+            raise ValueError("resource_class must be non-empty")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+ADAPTIVE_STAGE_PROFILES = (
+    AdaptiveStageProfile("analysis", "analysis", "cpu-medium"),
+    AdaptiveStageProfile(
+        "inference",
+        "inference",
+        "llm-proof-draft",
+        requires_provider=True,
+        gpu_memory_sensitive=True,
+    ),
+    AdaptiveStageProfile("proof", "proof", "cpu-proof-solver"),
+    AdaptiveStageProfile("validation", "validation", "cpu-validation"),
+    AdaptiveStageProfile(
+        "merge",
+        "git-merge",
+        "git-merge",
+        disk_sensitive=True,
+    ),
+    AdaptiveStageProfile(
+        "persistence",
+        "persistence",
+        "io-artifact",
+        disk_sensitive=True,
+    ),
+)
+_ADAPTIVE_STAGE_PROFILE_BY_NAME = {
+    item.stage: item for item in ADAPTIVE_STAGE_PROFILES
+}
+
+
+def adaptive_stage_profile(stage: Any) -> AdaptiveStageProfile:
+    """Return the explicit canonical profile for ``stage``.
+
+    ``execution`` is the compatibility stage for whole-lane work and maps to
+    the analysis pool. Extension stages receive a conservative CPU profile.
+    """
+
+    name = normalize_adaptive_stage(stage)
+    if name == "execution":
+        return AdaptiveStageProfile(
+            "analysis",
+            "execution",
+            "cpu-small",
+            disk_sensitive=True,
+        )
+    profile = _ADAPTIVE_STAGE_PROFILE_BY_NAME.get(name)
+    if profile is not None:
+        return profile
+    # Extensions remain schedulable but cannot silently acquire provider/GPU
+    # capacity or bypass host CPU and memory pressure.
+    return AdaptiveStageProfile("analysis", name, name)
+
+
+# Compatibility-friendly singular/plural names used by integrations.
+StageResourceProfile = AdaptiveStageProfile
+STAGE_RESOURCE_PROFILES = ADAPTIVE_STAGE_PROFILES
 
 
 class ProofResourceClass(str, Enum):
@@ -247,9 +397,17 @@ class HostResourceSnapshot:
     available_worker_capacity: int = 1
     capabilities: tuple[str, ...] = ("cpu",)
     resource_classes: tuple[str, ...] = DEFAULT_RESOURCE_CLASSES
+    gpu_memory_percent: int = 0
+    gpu_memory_total_bytes: int = 0
+    gpu_memory_available_bytes: int = 0
 
     def __post_init__(self) -> None:
-        for name in ("cpu_percent", "memory_percent", "disk_percent"):
+        for name in (
+            "cpu_percent",
+            "memory_percent",
+            "disk_percent",
+            "gpu_memory_percent",
+        ):
             value = int(getattr(self, name))
             if not 0 <= value <= 100:
                 raise ValueError(f"{name} must be in [0, 100]")
@@ -257,6 +415,7 @@ class HostResourceSnapshot:
             "observed_at_ms", "memory_total_bytes", "memory_available_bytes",
             "disk_total_bytes", "disk_available_bytes",
             "active_workers", "worker_limit", "available_worker_capacity",
+            "gpu_memory_total_bytes", "gpu_memory_available_bytes",
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
@@ -277,6 +436,13 @@ class HostResourceSnapshot:
     def disk_used_bytes(self) -> int:
         return max(0, self.disk_total_bytes - self.disk_available_bytes)
 
+    @property
+    def gpu_memory_used_bytes(self) -> int:
+        return max(
+            0,
+            self.gpu_memory_total_bytes - self.gpu_memory_available_bytes,
+        )
+
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["capabilities"] = list(self.capabilities)
@@ -285,6 +451,7 @@ class HostResourceSnapshot:
         payload["cpu_millionths"] = self.cpu_millionths
         payload["memory_used_bytes"] = self.memory_used_bytes
         payload["disk_used_bytes"] = self.disk_used_bytes
+        payload["gpu_memory_used_bytes"] = self.gpu_memory_used_bytes
         return payload
 
     @classmethod
@@ -344,6 +511,47 @@ class HostResourceSnapshot:
             available_worker_capacity=available,
             capabilities=_strings(value.get("capabilities")) or ("cpu",),
             resource_classes=_strings(value.get("resource_classes")) or DEFAULT_RESOURCE_CLASSES,
+            gpu_memory_percent=_integer(
+                _first(
+                    value,
+                    (
+                        "gpu_memory_percent",
+                        "gpu_memory_usage_percent",
+                        "vram_percent",
+                    ),
+                    0,
+                ),
+                0,
+                minimum=0,
+            ),
+            gpu_memory_total_bytes=_integer(
+                _first(
+                    value,
+                    (
+                        "gpu_memory_total_bytes",
+                        "total_gpu_memory_bytes",
+                        "vram_total_bytes",
+                    ),
+                    0,
+                ),
+                0,
+                minimum=0,
+            ),
+            gpu_memory_available_bytes=_integer(
+                _first(
+                    value,
+                    (
+                        "gpu_memory_available_bytes",
+                        "available_gpu_memory_bytes",
+                        "gpu_memory_free_bytes",
+                        "vram_available_bytes",
+                        "vram_free_bytes",
+                    ),
+                    0,
+                ),
+                0,
+                minimum=0,
+            ),
         )
 
 
@@ -370,6 +578,9 @@ def sample_host_resources(
     disk_percent = 0
     disk_available = 0
     disk_total = 0
+    gpu_memory_percent = 0
+    gpu_memory_available = 0
+    gpu_memory_total = 0
     try:
         import psutil  # type: ignore[import-not-found]
 
@@ -403,6 +614,39 @@ def sample_host_resources(
         except (AttributeError, OSError, TypeError, ValueError):
             pass
 
+    # NVML is optional. Aggregate devices because provider/model work may be
+    # routed to any local accelerator. Failure to inspect a driver means
+    # "unreported", not "zero capacity", unless a lane explicitly requests
+    # GPU memory.
+    try:
+        import pynvml  # type: ignore[import-not-found]
+
+        pynvml.nvmlInit()
+        try:
+            for device_index in range(int(pynvml.nvmlDeviceGetCount())):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+                info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                gpu_memory_total += _integer(getattr(info, "total", 0), 0, minimum=0)
+                gpu_memory_available += _integer(
+                    getattr(info, "free", 0), 0, minimum=0
+                )
+        finally:
+            pynvml.nvmlShutdown()
+        if gpu_memory_total:
+            gpu_memory_percent = max(
+                0,
+                min(
+                    100,
+                    100
+                    - gpu_memory_available * 100 // gpu_memory_total,
+                ),
+            )
+    except Exception:
+        # Driver/library-specific NVML exceptions do not share a stable
+        # built-in base across pynvml releases. Optional accelerator telemetry
+        # must never make host sampling fail.
+        pass
+
     return HostResourceSnapshot(
         observed_at_ms=int(time.time() * 1000),
         cpu_percent=min(100, cpu_percent),
@@ -416,6 +660,9 @@ def sample_host_resources(
         active_workers=active,
         worker_limit=limit,
         available_worker_capacity=max(0, limit - active),
+        gpu_memory_percent=gpu_memory_percent,
+        gpu_memory_total_bytes=gpu_memory_total,
+        gpu_memory_available_bytes=gpu_memory_available,
     )
 
 
@@ -616,6 +863,7 @@ class LaneResourceRequirements:
     """Resources and provider features needed by one candidate lane."""
 
     lane_id: str = ""
+    stage: str = "execution"
     resource_class: str = "cpu-small"
     required_capabilities: tuple[str, ...] = ()
     provider_id: str = ""
@@ -624,9 +872,16 @@ class LaneResourceRequirements:
     token_budget: int = 0
     quota_units: int = 1
     memory_bytes: int = 0
+    gpu_memory_bytes: int = 0
     disk_bytes: int = 0
     max_provider_latency_ms: int = 0
     process_slots: int = 1
+    queue_age_ms: int = 0
+    merge_age_ms: int = 0
+    critical_path_length: int = 0
+    downstream_unlock_value: int = 0
+    enqueue_sequence: int = 0
+    fairness_key: str = ""
 
     def __post_init__(self) -> None:
         for name in (
@@ -634,8 +889,14 @@ class LaneResourceRequirements:
             "token_budget",
             "quota_units",
             "memory_bytes",
+            "gpu_memory_bytes",
             "disk_bytes",
             "max_provider_latency_ms",
+            "queue_age_ms",
+            "merge_age_ms",
+            "critical_path_length",
+            "downstream_unlock_value",
+            "enqueue_sequence",
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
@@ -646,6 +907,7 @@ class LaneResourceRequirements:
             "resource_class",
             normalize_resource_class(self.resource_class),
         )
+        object.__setattr__(self, "stage", normalize_adaptive_stage(self.stage))
         object.__setattr__(
             self,
             "provider_id",
@@ -655,6 +917,11 @@ class LaneResourceRequirements:
             self,
             "required_capabilities",
             _strings(self.required_capabilities),
+        )
+        object.__setattr__(
+            self,
+            "fairness_key",
+            str(self.fairness_key or self.stage).strip().lower(),
         )
 
     @property
@@ -704,6 +971,9 @@ class LaneResourceRequirements:
         )
         return cls(
             lane_id=str(first("lane_id", "bundle_key", "parallel_lane", "task_cid", default="") or ""),
+            stage=normalize_adaptive_stage(
+                first("stage", "scheduler_stage", "pipeline_stage", default="execution")
+            ),
             resource_class=str(first("resource_class", default="cpu-small") or "cpu-small").strip().lower(),
             required_capabilities=_strings(first("required_capabilities", "capabilities", default=())),
             provider_id=provider,
@@ -712,6 +982,16 @@ class LaneResourceRequirements:
             token_budget=tokens,
             quota_units=_integer(first("quota_units", "quota_cost", "request_cost", default=1), 1, minimum=0),
             memory_bytes=_integer(first("memory_bytes", "required_memory_bytes", default=0), 0, minimum=0),
+            gpu_memory_bytes=_integer(
+                first(
+                    "gpu_memory_bytes",
+                    "required_gpu_memory_bytes",
+                    "vram_bytes",
+                    default=0,
+                ),
+                0,
+                minimum=0,
+            ),
             disk_bytes=_integer(first("disk_bytes", "required_disk_bytes", default=0), 0, minimum=0),
             max_provider_latency_ms=_integer(
                 first("max_provider_latency_ms", "max_latency_ms", "latency_budget_ms", default=0),
@@ -729,6 +1009,60 @@ class LaneResourceRequirements:
                 1,
                 minimum=1,
             ),
+            queue_age_ms=_integer(
+                first("queue_age_ms", "wait_age_ms", default=0),
+                0,
+                minimum=0,
+            )
+            or _integer(
+                first("age_seconds", "queue_age_seconds", default=0),
+                0,
+                minimum=0,
+            )
+            * 1000,
+            merge_age_ms=_integer(
+                first("merge_age_ms", "merge_wait_ms", default=0),
+                0,
+                minimum=0,
+            ),
+            critical_path_length=_integer(
+                first(
+                    "critical_path_length",
+                    "critical_path_value",
+                    "critical_path_score",
+                    default=0,
+                ),
+                0,
+                minimum=0,
+            ),
+            downstream_unlock_value=_integer(
+                first(
+                    "downstream_unlock_value",
+                    "unlock_value",
+                    default=0,
+                ),
+                0,
+                minimum=0,
+            ),
+            enqueue_sequence=_integer(
+                first(
+                    "enqueue_sequence",
+                    "queue_sequence",
+                    "schedule_rank",
+                    default=0,
+                ),
+                0,
+                minimum=0,
+            ),
+            fairness_key=str(
+                first(
+                    "fairness_key",
+                    "parallel_lane",
+                    "goal_cid",
+                    default="",
+                )
+                or ""
+            ),
         )
 
 
@@ -742,6 +1076,7 @@ class ChildResourceLimits:
     wall_time_ms: int = 0
     cpu_time_ms: int = 0
     memory_bytes: int = 0
+    gpu_memory_bytes: int = 0
     disk_bytes: int = 0
     model_token_limit: int = 0
     provider_quota: int = 0
@@ -756,6 +1091,7 @@ class ChildResourceLimits:
             "wall_time_ms",
             "cpu_time_ms",
             "memory_bytes",
+            "gpu_memory_bytes",
             "disk_bytes",
             "model_token_limit",
             "provider_quota",
@@ -787,6 +1123,7 @@ class ResourceLeaseBudget:
     wall_time_ms: int = 0
     cpu_time_ms: int = 0
     memory_bytes: int = 0
+    gpu_memory_bytes: int = 0
     disk_bytes: int = 0
     model_token_limit: int = 0
     provider_quota: int = 0
@@ -808,6 +1145,7 @@ class ResourceLeaseBudget:
             "wall_time_ms",
             "cpu_time_ms",
             "memory_bytes",
+            "gpu_memory_bytes",
             "disk_bytes",
             "model_token_limit",
             "provider_quota",
@@ -862,6 +1200,7 @@ class ResourceLeaseBudget:
             wall_time_ms=budget_value("wall_time_ms"),
             cpu_time_ms=budget_value("cpu_time_ms"),
             memory_bytes=budget_value("memory_bytes"),
+            gpu_memory_bytes=budget_value("gpu_memory_bytes"),
             disk_bytes=budget_value("disk_bytes"),
             model_token_limit=budget_value("model_token_limit"),
             provider_quota=budget_value("provider_quota"),
@@ -925,6 +1264,11 @@ class ResourceLeaseBudget:
             wall_time_ms=self.wall_time_ms,
             cpu_time_ms=self.cpu_time_ms,
             memory_bytes=self.memory_bytes,
+            gpu_memory_bytes=(
+                min(self.gpu_memory_bytes, requirement.gpu_memory_bytes)
+                if self.gpu_memory_bytes and requirement.gpu_memory_bytes
+                else (self.gpu_memory_bytes or requirement.gpu_memory_bytes)
+            ),
             disk_bytes=self.disk_bytes,
             model_token_limit=min(
                 item
@@ -960,7 +1304,9 @@ class ResourcePolicy:
     cpu_high_watermark_percent: int = 90
     memory_high_watermark_percent: int = 90
     disk_high_watermark_percent: int = 95
+    gpu_memory_high_watermark_percent: int = 95
     minimum_memory_available_bytes: int = 0
+    minimum_gpu_memory_available_bytes: int = 0
     minimum_disk_available_bytes: int = 0
     maximum_provider_latency_ms: int = 120_000
     provider_quota_reserve: int = 0
@@ -970,24 +1316,50 @@ class ResourcePolicy:
     max_model_concurrency: int = 0
     max_artifact_concurrency: int = 0
     resource_class_limits: Mapping[str, int] = field(default_factory=dict)
+    adaptive_enabled: bool = False
+    adaptive_target_utilization_percent: int = 75
+    adaptive_hysteresis_percent: int = 10
+    adaptive_recovery_samples: int = 2
+    adaptive_queue_depth_per_slot: int = 1
+    adaptive_merge_age_ms: int = 60_000
+    adaptive_starvation_age_ms: int = 300_000
+    stage_concurrency_limits: Mapping[str, int] = field(default_factory=dict)
+    stage_min_concurrency: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.max_lanes < 0:
             raise ValueError("max_lanes must be non-negative")
         for name in (
             "cpu_high_watermark_percent", "memory_high_watermark_percent",
-            "disk_high_watermark_percent",
+            "disk_high_watermark_percent", "gpu_memory_high_watermark_percent",
         ):
             if not 0 <= int(getattr(self, name)) <= 100:
                 raise ValueError(f"{name} must be in [0, 100]")
         for name in (
-            "minimum_memory_available_bytes", "minimum_disk_available_bytes",
+            "minimum_memory_available_bytes",
+            "minimum_gpu_memory_available_bytes",
+            "minimum_disk_available_bytes",
             "maximum_provider_latency_ms", "provider_quota_reserve", "provider_token_reserve",
             "max_cpu_proof_concurrency", "max_model_concurrency",
             "max_artifact_concurrency",
+            "adaptive_merge_age_ms", "adaptive_starvation_age_ms",
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
+        if not 1 <= int(self.adaptive_target_utilization_percent) <= 100:
+            raise ValueError("adaptive_target_utilization_percent must be in [1, 100]")
+        if not 0 <= int(self.adaptive_hysteresis_percent) <= 100:
+            raise ValueError("adaptive_hysteresis_percent must be in [0, 100]")
+        if (
+            isinstance(self.adaptive_recovery_samples, bool)
+            or int(self.adaptive_recovery_samples) <= 0
+        ):
+            raise ValueError("adaptive_recovery_samples must be positive")
+        if (
+            isinstance(self.adaptive_queue_depth_per_slot, bool)
+            or int(self.adaptive_queue_depth_per_slot) <= 0
+        ):
+            raise ValueError("adaptive_queue_depth_per_slot must be positive")
         normalized_limits: dict[str, int] = {}
         for raw_name, raw_limit in (self.resource_class_limits or {}).items():
             name = normalize_resource_class(raw_name)
@@ -997,6 +1369,23 @@ class ResourcePolicy:
                 raise ValueError("resource class limits must be positive integers")
             normalized_limits[name] = raw_limit
         object.__setattr__(self, "resource_class_limits", normalized_limits)
+        stage_limits: dict[str, int] = {}
+        for raw_name, raw_limit in (self.stage_concurrency_limits or {}).items():
+            name = normalize_adaptive_stage(raw_name)
+            if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or raw_limit <= 0:
+                raise ValueError("stage concurrency limits must be positive integers")
+            stage_limits[name] = min(raw_limit, self.max_lanes) if self.max_lanes else raw_limit
+        stage_minimums: dict[str, int] = {}
+        for raw_name, raw_limit in (self.stage_min_concurrency or {}).items():
+            name = normalize_adaptive_stage(raw_name)
+            if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or raw_limit < 0:
+                raise ValueError("stage minimum concurrency must be non-negative integers")
+            ceiling = stage_limits.get(name, self.max_lanes)
+            if ceiling and raw_limit > ceiling:
+                raise ValueError("stage minimum concurrency cannot exceed its stage limit")
+            stage_minimums[name] = raw_limit
+        object.__setattr__(self, "stage_concurrency_limits", stage_limits)
+        object.__setattr__(self, "stage_min_concurrency", stage_minimums)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -1009,7 +1398,33 @@ class ResourcePolicy:
             cpu_high_watermark_percent=_integer(_first(value, ("cpu_high_watermark_percent", "max_cpu_percent"), defaults.cpu_high_watermark_percent), defaults.cpu_high_watermark_percent, minimum=0),
             memory_high_watermark_percent=_integer(_first(value, ("memory_high_watermark_percent", "max_memory_percent"), defaults.memory_high_watermark_percent), defaults.memory_high_watermark_percent, minimum=0),
             disk_high_watermark_percent=_integer(_first(value, ("disk_high_watermark_percent", "max_disk_percent"), defaults.disk_high_watermark_percent), defaults.disk_high_watermark_percent, minimum=0),
+            gpu_memory_high_watermark_percent=_integer(
+                _first(
+                    value,
+                    (
+                        "gpu_memory_high_watermark_percent",
+                        "max_gpu_memory_percent",
+                        "max_vram_percent",
+                    ),
+                    defaults.gpu_memory_high_watermark_percent,
+                ),
+                defaults.gpu_memory_high_watermark_percent,
+                minimum=0,
+            ),
             minimum_memory_available_bytes=_integer(_first(value, ("minimum_memory_available_bytes", "min_memory_available_bytes"), 0), 0, minimum=0),
+            minimum_gpu_memory_available_bytes=_integer(
+                _first(
+                    value,
+                    (
+                        "minimum_gpu_memory_available_bytes",
+                        "min_gpu_memory_available_bytes",
+                        "minimum_vram_available_bytes",
+                    ),
+                    0,
+                ),
+                0,
+                minimum=0,
+            ),
             minimum_disk_available_bytes=_integer(_first(value, ("minimum_disk_available_bytes", "min_disk_available_bytes"), 0), 0, minimum=0),
             maximum_provider_latency_ms=_integer(_first(value, ("maximum_provider_latency_ms", "max_provider_latency_ms", "latency_limit_ms"), defaults.maximum_provider_latency_ms), defaults.maximum_provider_latency_ms, minimum=0),
             provider_quota_reserve=_integer(_first(value, ("provider_quota_reserve", "quota_reserve"), 0), 0, minimum=0),
@@ -1037,7 +1452,220 @@ class ResourcePolicy:
             resource_class_limits=_mapping(
                 _first(value, ("resource_class_limits", "resource_limits"), {})
             ),
+            adaptive_enabled=_boolean(
+                _first(value, ("adaptive_enabled", "adaptive_admission"), False),
+                False,
+            ),
+            adaptive_target_utilization_percent=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_target_utilization_percent",
+                        "target_utilization_percent",
+                    ),
+                    defaults.adaptive_target_utilization_percent,
+                ),
+                defaults.adaptive_target_utilization_percent,
+                minimum=1,
+            ),
+            adaptive_hysteresis_percent=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_hysteresis_percent",
+                        "hysteresis_percent",
+                        "recovery_hysteresis_percent",
+                    ),
+                    defaults.adaptive_hysteresis_percent,
+                ),
+                defaults.adaptive_hysteresis_percent,
+                minimum=0,
+            ),
+            adaptive_recovery_samples=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_recovery_samples",
+                        "recovery_samples",
+                        "scale_up_samples",
+                    ),
+                    defaults.adaptive_recovery_samples,
+                ),
+                defaults.adaptive_recovery_samples,
+                minimum=1,
+            ),
+            adaptive_queue_depth_per_slot=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_queue_depth_per_slot",
+                        "queue_depth_per_slot",
+                    ),
+                    defaults.adaptive_queue_depth_per_slot,
+                ),
+                defaults.adaptive_queue_depth_per_slot,
+                minimum=1,
+            ),
+            adaptive_merge_age_ms=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_merge_age_ms",
+                        "merge_age_priority_ms",
+                        "maximum_merge_wait_ms",
+                    ),
+                    defaults.adaptive_merge_age_ms,
+                ),
+                defaults.adaptive_merge_age_ms,
+                minimum=0,
+            ),
+            adaptive_starvation_age_ms=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_starvation_age_ms",
+                        "starvation_age_ms",
+                        "maximum_queue_wait_ms",
+                    ),
+                    defaults.adaptive_starvation_age_ms,
+                ),
+                defaults.adaptive_starvation_age_ms,
+                minimum=0,
+            ),
+            stage_concurrency_limits=_mapping(
+                _first(value, ("stage_concurrency_limits", "stage_limits"), {})
+            ),
+            stage_min_concurrency=_mapping(
+                _first(value, ("stage_min_concurrency", "stage_minimums"), {})
+            ),
         )
+
+
+@dataclass(frozen=True)
+class AdaptiveStageCapacity:
+    """Explainable live concurrency bound for one independently measured stage."""
+
+    stage: str
+    configured_limit: int
+    effective_limit: int
+    active: int
+    queued: int
+    available: int
+    pressure_percent: int
+    reason: str
+    queue_depth: int = 0
+    merge_age_ms: int = 0
+    provider_available_slots: int = UNKNOWN_LIMIT
+    active_leases: int = 0
+    recovery_samples: int = 0
+    hysteresis_state: str = "stable"
+    observed_at_ms: int = 0
+    signal_limits: Mapping[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["signal_limits"] = {
+            str(name): int(value)
+            for name, value in sorted(self.signal_limits.items())
+        }
+        return payload
+
+
+@dataclass(frozen=True)
+class AdaptiveStageMetrics:
+    """Integer-only counters suitable for durable scheduler artifacts."""
+
+    stage: str
+    scheduled: int = 0
+    admitted: int = 0
+    backpressured: int = 0
+    completed: int = 0
+    accepted: int = 0
+    cancelled: int = 0
+    leases_acquired: int = 0
+    leases_released: int = 0
+    lease_transitions: int = 0
+    recovery_events: int = 0
+    contraction_events: int = 0
+    active_leases: int = 0
+    total_duration_ms: int = 0
+    backpressure_reasons: Mapping[str, int] = field(default_factory=dict)
+
+    @property
+    def admission_ratio_millionths(self) -> int:
+        return self.admitted * 1_000_000 // self.scheduled if self.scheduled else 0
+
+    @property
+    def acceptance_throughput_per_million_ms(self) -> int:
+        return (
+            self.accepted * 1_000_000 // self.total_duration_ms
+            if self.total_duration_ms
+            else 0
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["backpressure_reasons"] = {
+            str(name): int(value)
+            for name, value in sorted(self.backpressure_reasons.items())
+        }
+        payload["admission_ratio_millionths"] = self.admission_ratio_millionths
+        payload["acceptance_throughput_per_million_ms"] = (
+            self.acceptance_throughput_per_million_ms
+        )
+        return payload
+
+
+@dataclass(frozen=True)
+class AdaptiveResourceMetrics:
+    """Point-in-time, separately benchmarkable adaptive-admission telemetry."""
+
+    observed_at_ms: int
+    stages: tuple[AdaptiveStageMetrics, ...]
+    active_lease_count: int = 0
+    backpressure_reasons: Mapping[str, int] = field(default_factory=dict)
+
+    @property
+    def by_stage(self) -> dict[str, AdaptiveStageMetrics]:
+        return {item.stage: item for item in self.stages}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "observed_at_ms": self.observed_at_ms,
+            "stages": [item.to_dict() for item in self.stages],
+            "active_lease_count": self.active_lease_count,
+            "backpressure_reasons": {
+                str(name): int(value)
+                for name, value in sorted(self.backpressure_reasons.items())
+            },
+        }
+
+
+@dataclass
+class _MutableStageMetrics:
+    scheduled: int = 0
+    admitted: int = 0
+    backpressured: int = 0
+    completed: int = 0
+    accepted: int = 0
+    cancelled: int = 0
+    leases_acquired: int = 0
+    leases_released: int = 0
+    lease_transitions: int = 0
+    recovery_events: int = 0
+    contraction_events: int = 0
+    active_leases: int = 0
+    total_duration_ms: int = 0
+    backpressure_reasons: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class _AdaptiveStageState:
+    effective_limit: int
+    last_observed_at_ms: int
+    recovery_samples: int = 0
+    state: str = "stable"
+    limit_reason: str = "configured_limit"
 
 
 @dataclass(frozen=True)
@@ -1057,7 +1685,18 @@ class AdmissionDecision:
     resource_pool: str = ""
     reserved_process_slots: int = 0
     reserved_memory_bytes: int = 0
+    reserved_gpu_memory_bytes: int = 0
     reserved_disk_bytes: int = 0
+    stage: str = "execution"
+    pressure_percent: int = 0
+    queue_depth: int = 0
+    merge_age_ms: int = 0
+    active_leases: int = 0
+    critical_path_length: int = 0
+    queue_age_ms: int = 0
+    hysteresis_state: str = "stable"
+    fairness_key: str = ""
+    admission_rank: int = 0
 
     @property
     def allowed(self) -> bool:
@@ -1076,6 +1715,63 @@ class AdmissionDecision:
 
 
 @dataclass(frozen=True)
+class ResourcePoolAdmissionSnapshot:
+    """Expose fair evaluation and backpressure for one bounded pool."""
+
+    resource_pool: str
+    scheduled_count: int
+    admitted_count: int
+    backpressured_count: int
+    fairness_order: tuple[str, ...] = ()
+    fairness_keys: tuple[str, ...] = ()
+    admitted_lane_ids: tuple[str, ...] = ()
+    backpressure_counts: Mapping[str, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        counts = (
+            self.scheduled_count,
+            self.admitted_count,
+            self.backpressured_count,
+        )
+        if any(isinstance(value, bool) or int(value) < 0 for value in counts):
+            raise ValueError("resource pool admission counts must be non-negative")
+        if self.admitted_count + self.backpressured_count != self.scheduled_count:
+            raise ValueError(
+                "resource pool admitted and backpressured counts must cover "
+                "every scheduled lane"
+            )
+        if len(self.fairness_order) != self.scheduled_count:
+            raise ValueError(
+                "resource pool fairness order must identify every scheduled lane"
+            )
+        if len(self.fairness_keys) != self.scheduled_count:
+            raise ValueError(
+                "resource pool fairness keys must identify every scheduled lane"
+            )
+        if len(self.admitted_lane_ids) != self.admitted_count:
+            raise ValueError(
+                "resource pool admitted lane identities must match admitted_count"
+            )
+        if any(int(value) <= 0 for value in self.backpressure_counts.values()):
+            raise ValueError("resource pool backpressure counts must be positive")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "resource_pool": self.resource_pool,
+            "scheduled_count": self.scheduled_count,
+            "admitted_count": self.admitted_count,
+            "backpressured_count": self.backpressured_count,
+            "fairness_order": list(self.fairness_order),
+            "fairness_keys": list(self.fairness_keys),
+            "admitted_lane_ids": list(self.admitted_lane_ids),
+            "backpressure_counts": {
+                str(name): int(value)
+                for name, value in sorted(self.backpressure_counts.items())
+            },
+        }
+
+
+@dataclass(frozen=True)
 class ResourceScheduleSnapshot:
     observed_at_ms: int
     host: HostResourceSnapshot
@@ -1087,10 +1783,25 @@ class ResourceScheduleSnapshot:
     available_slots: int
     admitted_count: int
     backpressure_reasons: tuple[str, ...] = ()
+    stage_capacities: tuple[AdaptiveStageCapacity, ...] = ()
+    adaptive_metrics: AdaptiveResourceMetrics | None = None
+    active_lease_count: int = 0
+    backpressure_counts: Mapping[str, int] = field(default_factory=dict)
+    signals: Mapping[str, Any] = field(default_factory=dict)
+    pool_admissions: tuple[ResourcePoolAdmissionSnapshot, ...] = ()
 
     @property
     def admitted_lane_ids(self) -> tuple[str, ...]:
         return tuple(item.lane_id for item in self.decisions if item.admitted)
+
+    @property
+    def decision_by_lane_id(self) -> dict[str, AdmissionDecision]:
+        return {item.lane_id: item for item in self.decisions}
+
+    def decision_for(self, lane_id: str) -> AdmissionDecision | None:
+        """Return the decision for a unique stable lane identity."""
+
+        return self.decision_by_lane_id.get(str(lane_id))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1105,6 +1816,23 @@ class ResourceScheduleSnapshot:
             "admitted_count": self.admitted_count,
             "admitted_lane_ids": list(self.admitted_lane_ids),
             "backpressure_reasons": list(self.backpressure_reasons),
+            "stage_capacities": [item.to_dict() for item in self.stage_capacities],
+            "adaptive_metrics": (
+                self.adaptive_metrics.to_dict()
+                if self.adaptive_metrics is not None
+                else None
+            ),
+            "active_lease_count": self.active_lease_count,
+            "backpressure_counts": {
+                str(name): int(value)
+                for name, value in sorted(self.backpressure_counts.items())
+            },
+            "pool_admissions": [
+                item.to_dict() for item in self.pool_admissions
+            ],
+            "signals": json.loads(
+                json.dumps(dict(self.signals), sort_keys=True)
+            ),
         }
 
 
@@ -1180,6 +1908,376 @@ class ResourceScheduler:
         self.host_sampler = host_sampler
         self._lease_lock = threading.RLock()
         self._leases: dict[str, ResourceAdmissionLease] = {}
+        self._metrics_lock = threading.RLock()
+        self._stage_metrics: dict[str, _MutableStageMetrics] = {}
+        self._adaptive_state: dict[str, _AdaptiveStageState] = {}
+        self._cancelled_lanes: dict[str, str] = {}
+        self._known_lanes: set[str] = set()
+
+    def adaptive_stage_capacity(
+        self,
+        stage: Any,
+        *,
+        host: HostResourceSnapshot | Mapping[str, Any],
+        active: int = 0,
+        queued: int = 0,
+        merge_age_ms: int = 0,
+        provider_available_slots: int = UNKNOWN_LIMIT,
+        memory_available_slots: int = UNKNOWN_LIMIT,
+        gpu_memory_available_slots: int = UNKNOWN_LIMIT,
+        disk_available_slots: int = UNKNOWN_LIMIT,
+        active_leases: int = 0,
+    ) -> AdaptiveStageCapacity:
+        """Calculate a stage bound from configured limits and live pressure.
+
+        The high-watermark gates in :meth:`evaluate` remain hard stops.
+        Below them, adaptive mode contracts concurrency gradually rather than
+        admitting a full wave immediately before exhaustion.
+        """
+
+        name = normalize_adaptive_stage(stage)
+        snapshot = (
+            host
+            if isinstance(host, HostResourceSnapshot)
+            else HostResourceSnapshot.from_mapping(host)
+        )
+        configured = min(
+            self.policy.max_lanes,
+            self.policy.stage_concurrency_limits.get(name, self.policy.max_lanes),
+        )
+        signal_limits = {
+            "configured": configured,
+            "workers": min(
+                configured,
+                snapshot.worker_limit,
+                snapshot.active_workers + snapshot.available_worker_capacity,
+            ),
+        }
+        for signal_name, raw_value in (
+            ("memory", memory_available_slots),
+            ("gpu_memory", gpu_memory_available_slots),
+            ("disk", disk_available_slots),
+            ("provider", provider_available_slots),
+        ):
+            value = int(raw_value)
+            if value >= 0:
+                signal_limits[signal_name] = max(0, value)
+        resource_limit = min(signal_limits.values(), default=configured)
+        profile = adaptive_stage_profile(name)
+        active_count = max(0, int(active))
+        queued_count = max(0, int(queued))
+        merge_age = max(0, int(merge_age_ms))
+        minimum = min(
+            resource_limit,
+            self.policy.stage_min_concurrency.get(name, 1),
+        )
+        pressure_values = [
+            snapshot.cpu_percent,
+            snapshot.memory_percent,
+        ]
+        if profile.disk_sensitive:
+            pressure_values.append(snapshot.disk_percent)
+        if (
+            profile.gpu_memory_sensitive
+            and snapshot.gpu_memory_total_bytes > 0
+        ):
+            pressure_values.append(snapshot.gpu_memory_percent)
+        pressure = max(
+            pressure_values,
+            default=0,
+        )
+        candidate = resource_limit
+        reason = "configured_limit"
+        if self.policy.adaptive_enabled and resource_limit:
+            target = self.policy.adaptive_target_utilization_percent
+            if pressure > target:
+                remaining = max(0, 100 - pressure)
+                span = max(1, 100 - target)
+                candidate = minimum + (
+                    max(0, resource_limit - minimum) * remaining // span
+                )
+                candidate = max(minimum, min(resource_limit, candidate))
+                reason = "live_pressure_backoff"
+            else:
+                reason = "live_headroom"
+        elif resource_limit < configured:
+            reason = "resource_signal_limit"
+
+        merge_age_priority = (
+            name == "merge"
+            and self.policy.adaptive_merge_age_ms
+            and merge_age >= self.policy.adaptive_merge_age_ms
+        )
+        if self.policy.adaptive_enabled and not merge_age_priority:
+            # Queue depth represents work waiting in addition to ``active``.
+            # One slot is opened for each configured chunk of queued work,
+            # avoiding a full fan-out for a shallow queue while retaining the
+            # stage minimum.  Integer arithmetic keeps admission artifacts
+            # deterministic across hosts.
+            queued_slots = (
+                queued_count + self.policy.adaptive_queue_depth_per_slot - 1
+            ) // self.policy.adaptive_queue_depth_per_slot
+            demand_limit = min(
+                resource_limit,
+                max(minimum, active_count + queued_slots),
+            )
+            if demand_limit < candidate:
+                candidate = demand_limit
+                reason = "queue_depth_demand"
+
+        observed_at_ms = max(0, int(snapshot.observed_at_ms))
+        hysteresis_state = "stable"
+        recovery_samples = 0
+        effective = candidate
+        if self.policy.adaptive_enabled:
+            with self._metrics_lock:
+                state = self._adaptive_state.get(name)
+                metric = self._stage_metrics.setdefault(
+                    name, _MutableStageMetrics()
+                )
+                if state is None:
+                    state = _AdaptiveStageState(
+                        effective_limit=candidate,
+                        last_observed_at_ms=observed_at_ms,
+                        limit_reason=reason,
+                    )
+                    self._adaptive_state[name] = state
+                elif candidate < state.effective_limit:
+                    state.effective_limit = candidate
+                    state.last_observed_at_ms = max(
+                        state.last_observed_at_ms, observed_at_ms
+                    )
+                    state.recovery_samples = 0
+                    state.state = "contracted"
+                    state.limit_reason = reason
+                    metric.contraction_events += 1
+                elif candidate > state.effective_limit:
+                    if state.limit_reason == "queue_depth_demand":
+                        # Demand changed, resources did not recover. Queue
+                        # growth must be actionable in the current scheduling
+                        # wave and therefore does not consume recovery samples.
+                        state.effective_limit = candidate
+                        state.recovery_samples = 0
+                        state.state = "stable"
+                        state.limit_reason = reason
+                        effective = min(resource_limit, state.effective_limit)
+                        hysteresis_state = state.state
+                        recovery_samples = state.recovery_samples
+                        continue_recovery = False
+                    else:
+                        continue_recovery = True
+                    recovery_pressure = max(
+                        0,
+                        self.policy.adaptive_target_utilization_percent
+                        - self.policy.adaptive_hysteresis_percent,
+                    )
+                    fresh_sample = observed_at_ms > state.last_observed_at_ms
+                    below_recovery_watermark = pressure <= recovery_pressure
+                    # Capacity which was lost solely to a provider/worker/byte
+                    # signal can recover under normal target pressure. A
+                    # utilization contraction requires the lower watermark.
+                    pressure_recovery = (
+                        state.state != "contracted"
+                        or below_recovery_watermark
+                        or reason == "resource_signal_limit"
+                    )
+                    if continue_recovery and fresh_sample and pressure_recovery:
+                        state.recovery_samples += 1
+                        state.last_observed_at_ms = observed_at_ms
+                    if (
+                        continue_recovery
+                        and state.recovery_samples
+                        >= self.policy.adaptive_recovery_samples
+                    ):
+                        state.effective_limit = candidate
+                        state.recovery_samples = 0
+                        state.state = "recovered"
+                        state.limit_reason = reason
+                        metric.recovery_events += 1
+                    elif continue_recovery:
+                        state.state = "recovering"
+                else:
+                    if observed_at_ms > state.last_observed_at_ms:
+                        state.last_observed_at_ms = observed_at_ms
+                    if state.state not in {"contracted", "recovering"}:
+                        state.state = "stable"
+                    state.recovery_samples = (
+                        state.recovery_samples
+                        if state.state == "recovering"
+                        else 0
+                    )
+                effective = min(resource_limit, state.effective_limit)
+                hysteresis_state = state.state
+                recovery_samples = state.recovery_samples
+        if merge_age_priority and effective:
+            reason = "merge_age_priority"
+        return AdaptiveStageCapacity(
+            stage=name,
+            configured_limit=configured,
+            effective_limit=effective,
+            active=active_count,
+            queued=queued_count,
+            available=max(0, effective - active_count),
+            pressure_percent=pressure,
+            reason=reason,
+            queue_depth=queued_count,
+            merge_age_ms=merge_age,
+            provider_available_slots=int(provider_available_slots),
+            active_leases=max(0, int(active_leases)),
+            recovery_samples=recovery_samples,
+            hysteresis_state=hysteresis_state,
+            observed_at_ms=observed_at_ms,
+            signal_limits=signal_limits,
+        )
+
+    def record_stage_completion(
+        self,
+        stage: Any,
+        *,
+        duration_ms: int,
+        accepted: bool,
+        cancelled: bool = False,
+    ) -> AdaptiveStageMetrics:
+        """Record one terminal result and return that stage's new metrics."""
+
+        name = normalize_adaptive_stage(stage)
+        duration = max(0, int(duration_ms))
+        with self._metrics_lock:
+            mutable = self._stage_metrics.setdefault(name, _MutableStageMetrics())
+            mutable.completed += 1
+            mutable.total_duration_ms += duration
+            if accepted:
+                mutable.accepted += 1
+            if cancelled:
+                mutable.cancelled += 1
+            return self._stage_metric(name, mutable)
+
+    def _stage_metric(
+        self,
+        stage: str,
+        value: _MutableStageMetrics,
+    ) -> AdaptiveStageMetrics:
+        payload = asdict(value)
+        payload["backpressure_reasons"] = dict(value.backpressure_reasons)
+        return AdaptiveStageMetrics(stage=stage, **payload)
+
+    def metrics_snapshot(self, *, observed_at_ms: int | None = None) -> AdaptiveResourceMetrics:
+        """Return immutable per-stage admission and acceptance telemetry."""
+
+        # Keep the global lock order lease -> metrics. Admission writes a lease
+        # before updating counters, so taking these in the opposite order here
+        # could deadlock a concurrent metrics scrape.
+        lease_stages: dict[str, int] = {}
+        with self._lease_lock:
+            active_lease_count = len(self._leases)
+            for lease in self._leases.values():
+                stage = lease.requirement.stage
+                lease_stages[stage] = lease_stages.get(stage, 0) + 1
+        with self._metrics_lock:
+            for stage, count in lease_stages.items():
+                self._stage_metrics.setdefault(
+                    stage, _MutableStageMetrics()
+                ).active_leases = count
+            for stage, metric in self._stage_metrics.items():
+                if stage not in lease_stages:
+                    metric.active_leases = 0
+            stages = tuple(
+                self._stage_metric(name, self._stage_metrics[name])
+                for name in sorted(self._stage_metrics)
+            )
+            backpressure: dict[str, int] = {}
+            for metric in self._stage_metrics.values():
+                for reason, count in metric.backpressure_reasons.items():
+                    backpressure[reason] = backpressure.get(reason, 0) + count
+        return AdaptiveResourceMetrics(
+            observed_at_ms=(
+                max(0, int(observed_at_ms))
+                if observed_at_ms is not None
+                else int(time.time() * 1000)
+            ),
+            stages=stages,
+            active_lease_count=active_lease_count,
+            backpressure_reasons=backpressure,
+        )
+
+    def reset_metrics(self) -> AdaptiveResourceMetrics:
+        """Atomically clear benchmark counters and return the prior snapshot."""
+
+        with self._lease_lock:
+            active_lease_count = len(self._leases)
+        with self._metrics_lock:
+            previous = AdaptiveResourceMetrics(
+                observed_at_ms=int(time.time() * 1000),
+                stages=tuple(
+                    self._stage_metric(name, self._stage_metrics[name])
+                    for name in sorted(self._stage_metrics)
+                ),
+                active_lease_count=active_lease_count,
+                backpressure_reasons={
+                    reason: sum(
+                        metric.backpressure_reasons.get(reason, 0)
+                        for metric in self._stage_metrics.values()
+                    )
+                    for reason in sorted(
+                        {
+                            reason
+                            for metric in self._stage_metrics.values()
+                            for reason in metric.backpressure_reasons
+                        }
+                    )
+                },
+            )
+            self._stage_metrics.clear()
+        return previous
+
+    def _fair_requirements(
+        self,
+        requirements: tuple[LaneResourceRequirements, ...],
+    ) -> tuple[LaneResourceRequirements, ...]:
+        if not self.policy.adaptive_enabled or len(requirements) < 2:
+            return requirements
+        grouped: dict[str, deque[LaneResourceRequirements]] = {}
+        for item in requirements:
+            grouped.setdefault(item.fairness_key or item.stage, deque()).append(
+                item
+            )
+        starvation_age = self.policy.adaptive_starvation_age_ms
+        merge_priority_age = self.policy.adaptive_merge_age_ms
+
+        def priority(item: LaneResourceRequirements) -> tuple[Any, ...]:
+            starved = bool(
+                starvation_age and item.queue_age_ms >= starvation_age
+            )
+            overdue_merge = bool(
+                item.stage == "merge"
+                and merge_priority_age
+                and item.merge_age_ms >= merge_priority_age
+            )
+            return (
+                -int(starved),
+                -int(overdue_merge),
+                -item.critical_path_length,
+                -item.downstream_unlock_value,
+                -item.merge_age_ms,
+                -item.queue_age_ms,
+                item.enqueue_sequence,
+                item.lane_id,
+            )
+
+        for key, items in tuple(grouped.items()):
+            grouped[key] = deque(sorted(items, key=priority))
+        stages = sorted(
+            grouped,
+            key=lambda key: (priority(grouped[key][0]), key),
+        )
+        if len(stages) < 2:
+            return tuple(grouped[stages[0]]) if stages else ()
+        ordered: list[LaneResourceRequirements] = []
+        while any(grouped.values()):
+            for stage in stages:
+                if grouped[stage]:
+                    ordered.append(grouped[stage].popleft())
+        return tuple(ordered)
 
     def _pool_limit(self, pool: str) -> int:
         if pool == "model":
@@ -1195,14 +2293,45 @@ class ResourceScheduler:
             reasons.append("host_cpu_high_watermark")
         if host.memory_percent >= policy.memory_high_watermark_percent:
             reasons.append("host_memory_high_watermark")
-        if host.disk_percent >= policy.disk_high_watermark_percent:
+        stage_profile = adaptive_stage_profile(requirement.stage)
+        if (
+            (stage_profile.disk_sensitive or requirement.disk_bytes)
+            and host.disk_percent >= policy.disk_high_watermark_percent
+        ):
             reasons.append("host_disk_high_watermark")
+        if (
+            requirement.gpu_memory_bytes
+            and host.gpu_memory_percent
+            >= policy.gpu_memory_high_watermark_percent
+        ):
+            reasons.append("host_gpu_memory_high_watermark")
         required_memory = max(policy.minimum_memory_available_bytes, requirement.memory_bytes)
-        required_disk = max(policy.minimum_disk_available_bytes, requirement.disk_bytes)
+        required_gpu_memory = (
+            max(
+                policy.minimum_gpu_memory_available_bytes,
+                requirement.gpu_memory_bytes,
+            )
+            if stage_profile.gpu_memory_sensitive
+            or requirement.gpu_memory_bytes
+            else 0
+        )
+        required_disk = (
+            max(
+                policy.minimum_disk_available_bytes,
+                requirement.disk_bytes,
+            )
+            if stage_profile.disk_sensitive or requirement.disk_bytes
+            else 0
+        )
         if required_memory and host.memory_available_bytes < required_memory:
             reasons.append("host_memory_headroom")
         if required_disk and host.disk_available_bytes < required_disk:
             reasons.append("host_disk_headroom")
+        if (
+            required_gpu_memory
+            and host.gpu_memory_available_bytes < required_gpu_memory
+        ):
+            reasons.append("host_gpu_memory_headroom")
         if (
             requirement.resource_class
             and host.resource_classes
@@ -1288,6 +2417,8 @@ class ResourceScheduler:
         admitted_workers: int = 0,
         reservations: Mapping[str, _ProviderReservation] | None = None,
         active_requirements: Iterable[LaneResourceRequirements] = (),
+        queue_depth: int = 1,
+        merge_age_ms: int | None = None,
     ) -> AdmissionDecision:
         """Evaluate one lane without mutating caller-owned reservation state."""
 
@@ -1296,6 +2427,32 @@ class ResourceScheduler:
         normalized = normalize_provider_capacities(providers)
         configured = self.policy.max_lanes
         active_items = tuple(active_requirements)
+        cancellation_reason = self._cancelled_lanes.get(req.lane_id, "")
+        active_lease_count = sum(
+            1 for item in active_items if item.stage == req.stage
+        )
+        decision_signals = {
+            "queue_depth": max(0, int(queue_depth)),
+            "merge_age_ms": max(
+                0,
+                int(req.merge_age_ms if merge_age_ms is None else merge_age_ms),
+            ),
+            "active_leases": active_lease_count,
+            "critical_path_length": req.critical_path_length,
+            "queue_age_ms": req.queue_age_ms,
+            "fairness_key": req.fairness_key,
+        }
+        if cancellation_reason:
+            return AdmissionDecision(
+                lane_id=req.lane_id,
+                admitted=False,
+                stage=req.stage,
+                reasons=("cancelled", cancellation_reason),
+                configured_max_lanes=configured,
+                resource_class=req.resource_class,
+                resource_pool=req.resource_pool,
+                **decision_signals,
+            )
         occupied_processes = sum(item.process_slots for item in active_items)
         host_slots = max(
             0,
@@ -1306,14 +2463,31 @@ class ResourceScheduler:
         )
         host_reasons = self._host_reasons(host_snapshot, req)
         reserved_memory = sum(item.memory_bytes for item in active_items)
+        reserved_gpu_memory = sum(
+            item.gpu_memory_bytes for item in active_items
+        )
         reserved_disk = sum(item.disk_bytes for item in active_items)
         required_memory = max(
             self.policy.minimum_memory_available_bytes,
             req.memory_bytes,
         )
-        required_disk = max(
-            self.policy.minimum_disk_available_bytes,
-            req.disk_bytes,
+        stage_profile = adaptive_stage_profile(req.stage)
+        required_disk = (
+            max(
+                self.policy.minimum_disk_available_bytes,
+                req.disk_bytes,
+            )
+            if stage_profile.disk_sensitive or req.disk_bytes
+            else 0
+        )
+        required_gpu_memory = (
+            max(
+                self.policy.minimum_gpu_memory_available_bytes,
+                req.gpu_memory_bytes,
+            )
+            if stage_profile.gpu_memory_sensitive
+            or req.gpu_memory_bytes
+            else 0
         )
         if (
             required_memory
@@ -1327,6 +2501,14 @@ class ResourceScheduler:
             and "host_disk_headroom" not in host_reasons
         ):
             host_reasons.append("host_disk_headroom")
+        if (
+            required_gpu_memory
+            and host_snapshot.gpu_memory_available_bytes
+            - reserved_gpu_memory
+            < required_gpu_memory
+            and "host_gpu_memory_headroom" not in host_reasons
+        ):
+            host_reasons.append("host_gpu_memory_headroom")
         if host_slots < req.process_slots:
             host_reasons.append("host_worker_capacity")
         pool_occupied = sum(
@@ -1344,16 +2526,86 @@ class ResourceScheduler:
         )
         if class_limit is not None and class_occupied + req.process_slots > class_limit:
             host_reasons.append("resource_class_concurrency")
+        stage_occupied = sum(
+            item.process_slots for item in active_items if item.stage == req.stage
+        )
+        if self.policy.adaptive_enabled or req.stage in self.policy.stage_concurrency_limits:
+            provider_slots = UNKNOWN_LIMIT
+            if req.provider_required and req.stage == "inference":
+                provider_slots = sum(
+                    item.available_concurrency
+                    for item in normalized
+                    if item.healthy
+                    and item.retry_after_ms == 0
+                    and (
+                        not req.provider_id
+                        or item.provider_id == req.provider_id
+                    )
+                )
+            memory_slots = (
+                max(
+                    0,
+                    (
+                        host_snapshot.memory_available_bytes
+                        - reserved_memory
+                    )
+                    // req.memory_bytes,
+                )
+                if req.memory_bytes
+                else UNKNOWN_LIMIT
+            )
+            gpu_slots = (
+                max(
+                    0,
+                    (
+                        host_snapshot.gpu_memory_available_bytes
+                        - reserved_gpu_memory
+                    )
+                    // req.gpu_memory_bytes,
+                )
+                if req.gpu_memory_bytes
+                else UNKNOWN_LIMIT
+            )
+            disk_slots = (
+                max(
+                    0,
+                    (
+                        host_snapshot.disk_available_bytes
+                        - reserved_disk
+                    )
+                    // req.disk_bytes,
+                )
+                if req.disk_bytes
+                else UNKNOWN_LIMIT
+            )
+            capacity = self.adaptive_stage_capacity(
+                req.stage,
+                host=host_snapshot,
+                active=stage_occupied,
+                queued=max(0, int(queue_depth)),
+                merge_age_ms=decision_signals["merge_age_ms"],
+                provider_available_slots=provider_slots,
+                memory_available_slots=memory_slots,
+                gpu_memory_available_slots=gpu_slots,
+                disk_available_slots=disk_slots,
+                active_leases=active_lease_count,
+            )
+            decision_signals["pressure_percent"] = capacity.pressure_percent
+            decision_signals["hysteresis_state"] = capacity.hysteresis_state
+            if stage_occupied + req.process_slots > capacity.effective_limit:
+                host_reasons.append("stage_concurrency")
         if host_reasons:
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=False,
+                stage=req.stage,
                 reasons=tuple(dict.fromkeys(host_reasons)),
                 configured_max_lanes=configured,
                 host_available_slots=host_slots,
                 effective_slots=0,
                 resource_class=req.resource_class,
                 resource_pool=req.resource_pool,
+                **decision_signals,
             )
 
         # Backwards compatibility: non-LLM lanes do not require provider
@@ -1362,6 +2614,7 @@ class ResourceScheduler:
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=True,
+                stage=req.stage,
                 configured_max_lanes=configured,
                 host_available_slots=host_slots,
                 provider_available_slots=host_slots,
@@ -1371,7 +2624,9 @@ class ResourceScheduler:
                 resource_pool=req.resource_pool,
                 reserved_process_slots=req.process_slots,
                 reserved_memory_bytes=req.memory_bytes,
+                reserved_gpu_memory_bytes=req.gpu_memory_bytes,
                 reserved_disk_bytes=req.disk_bytes,
+                **decision_signals,
             )
 
         candidates = [item for item in normalized if not req.provider_id or item.provider_id == req.provider_id]
@@ -1380,6 +2635,7 @@ class ResourceScheduler:
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=not self.policy.require_provider_telemetry,
+                stage=req.stage,
                 provider_id=req.provider_id,
                 reasons=(reason,),
                 configured_max_lanes=configured,
@@ -1391,7 +2647,13 @@ class ResourceScheduler:
                 resource_pool=req.resource_pool,
                 reserved_process_slots=req.process_slots if not self.policy.require_provider_telemetry else 0,
                 reserved_memory_bytes=req.memory_bytes if not self.policy.require_provider_telemetry else 0,
+                reserved_gpu_memory_bytes=(
+                    req.gpu_memory_bytes
+                    if not self.policy.require_provider_telemetry
+                    else 0
+                ),
                 reserved_disk_bytes=req.disk_bytes if not self.policy.require_provider_telemetry else 0,
+                **decision_signals,
             )
 
         reserved = reservations or {}
@@ -1406,6 +2668,7 @@ class ResourceScheduler:
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=True,
+                stage=req.stage,
                 provider_id=provider.provider_id,
                 configured_max_lanes=configured,
                 host_available_slots=host_slots,
@@ -1418,7 +2681,9 @@ class ResourceScheduler:
                 resource_pool=req.resource_pool,
                 reserved_process_slots=req.process_slots,
                 reserved_memory_bytes=req.memory_bytes,
+                reserved_gpu_memory_bytes=req.gpu_memory_bytes,
                 reserved_disk_bytes=req.disk_bytes,
+                **decision_signals,
             )
 
         # Preserve all distinct constraint failures. This makes backpressure
@@ -1428,6 +2693,7 @@ class ResourceScheduler:
         return AdmissionDecision(
             lane_id=req.lane_id,
             admitted=False,
+            stage=req.stage,
             provider_id=selected.provider_id,
             reasons=reasons or ("provider_unavailable",),
             configured_max_lanes=configured,
@@ -1436,6 +2702,7 @@ class ResourceScheduler:
             effective_slots=0,
             resource_class=req.resource_class,
             resource_pool=req.resource_pool,
+            **decision_signals,
         )
 
     def acquire(
@@ -1490,20 +2757,39 @@ class ResourceScheduler:
                 host_snapshot = host
             else:
                 host_snapshot = HostResourceSnapshot.from_mapping(host)
+            host_snapshot = self._host_excluding_accounted_requirements(
+                host_snapshot,
+                active,
+            )
             provider_reservations: dict[str, _ProviderReservation] = {}
+            provider_lease_counts: dict[str, int] = {}
             for lease in self._leases.values():
                 if not lease.provider_id:
                     continue
+                provider_lease_counts[lease.provider_id] = (
+                    provider_lease_counts.get(lease.provider_id, 0) + 1
+                )
                 reservation = provider_reservations.setdefault(
                     lease.provider_id, _ProviderReservation()
                 )
                 reservation.requests += 1
                 reservation.quota += lease.requirement.quota_units
                 reservation.tokens += lease.requirement.token_budget
+            adjusted_providers = tuple(
+                replace(
+                    provider,
+                    active_requests=max(
+                        0,
+                        provider.active_requests
+                        - provider_lease_counts.get(provider.provider_id, 0),
+                    ),
+                )
+                for provider in normalize_provider_capacities(providers)
+            )
             decision = self.evaluate(
                 req,
                 host=host_snapshot,
-                providers=providers,
+                providers=adjusted_providers,
                 reservations=provider_reservations,
                 active_requirements=active,
             )
@@ -1521,6 +2807,9 @@ class ResourceScheduler:
                 total_used = sum(item.process_slots for item in active)
                 memory_used = sum(item.memory_bytes for item in active)
                 disk_used = sum(item.disk_bytes for item in active)
+                gpu_memory_used = sum(
+                    item.gpu_memory_bytes for item in active
+                )
                 tokens_used = sum(
                     item.token_budget for item in active if item.provider_required
                 )
@@ -1545,6 +2834,12 @@ class ResourceScheduler:
                 ):
                     extra_reasons.append("lease_disk_budget")
                 if (
+                    lease_budget.gpu_memory_bytes
+                    and gpu_memory_used + req.gpu_memory_bytes
+                    > lease_budget.gpu_memory_bytes
+                ):
+                    extra_reasons.append("lease_gpu_memory_budget")
+                if (
                     lease_budget.model_token_limit
                     and tokens_used + req.token_budget
                     > lease_budget.model_token_limit
@@ -1566,6 +2861,7 @@ class ResourceScheduler:
                         reserved_quota_units=0,
                         reserved_tokens=0,
                         reserved_memory_bytes=0,
+                        reserved_gpu_memory_bytes=0,
                         reserved_disk_bytes=0,
                     )
             if not decision.admitted:
@@ -1578,14 +2874,306 @@ class ResourceScheduler:
                 acquired_at_ms=host_snapshot.observed_at_ms or int(time.time() * 1000),
             )
             self._leases[lease.lease_id] = lease
+            self._known_lanes.add(req.lane_id)
+            with self._metrics_lock:
+                metric = self._stage_metrics.setdefault(
+                    req.stage, _MutableStageMetrics()
+                )
+                metric.leases_acquired += 1
+                metric.active_leases += 1
             return decision, lease
 
-    def release(self, lease: ResourceAdmissionLease | str) -> bool:
+    @staticmethod
+    def _host_excluding_accounted_requirements(
+        host: HostResourceSnapshot,
+        requirements: Iterable[LaneResourceRequirements],
+    ) -> HostResourceSnapshot:
+        """Avoid counting leases twice when host telemetry includes workers.
+
+        Resource byte reservations are still subtracted explicitly by
+        :meth:`evaluate`; this adjustment applies only to process occupancy.
+        """
+
+        accounted = sum(item.process_slots for item in requirements)
+        if not accounted or not host.active_workers:
+            return host
+        external_active = max(0, host.active_workers - accounted)
+        reported_capacity = min(
+            host.worker_limit,
+            host.active_workers + host.available_worker_capacity,
+        )
+        return replace(
+            host,
+            active_workers=external_active,
+            available_worker_capacity=max(
+                0, reported_capacity - external_active
+            ),
+        )
+
+    def release(
+        self,
+        lease: ResourceAdmissionLease | str,
+        *,
+        reason: str = "released",
+    ) -> bool:
         """Release a lease and make all of its capacity immediately reusable."""
 
         lease_id = lease.lease_id if isinstance(lease, ResourceAdmissionLease) else str(lease)
         with self._lease_lock:
-            return self._leases.pop(lease_id, None) is not None
+            released = self._leases.pop(lease_id, None)
+        if released is None:
+            return False
+        with self._metrics_lock:
+            metric = self._stage_metrics.setdefault(
+                released.requirement.stage, _MutableStageMetrics()
+            )
+            metric.leases_released += 1
+            metric.active_leases = max(0, metric.active_leases - 1)
+            if str(reason).strip().lower().startswith("cancel"):
+                metric.cancelled += 1
+        return True
+
+    def cancel(
+        self,
+        lease: ResourceAdmissionLease | str,
+        reason: str = "cancelled",
+    ) -> bool:
+        """Atomically cancel a queued lane or active resource lease."""
+
+        identity = (
+            lease.lease_id
+            if isinstance(lease, ResourceAdmissionLease)
+            else str(lease)
+        )
+        normalized_reason = str(reason or "cancelled").strip() or "cancelled"
+        with self._lease_lock:
+            matched = self._leases.get(identity)
+            matching_ids: list[str]
+            if matched is not None:
+                matching_ids = [identity]
+            else:
+                matching_ids = [
+                    lease_id
+                    for lease_id, item in self._leases.items()
+                    if item.lane_id == identity
+                ]
+            if not matching_ids and identity in self._cancelled_lanes:
+                return False
+            known = identity in self._known_lanes or bool(matching_ids)
+            if not known:
+                return False
+            released = [
+                self._leases.pop(lease_id)
+                for lease_id in matching_ids
+            ]
+            lane_id = (
+                released[0].lane_id
+                if released
+                else identity
+            )
+            if lane_id in self._cancelled_lanes:
+                return False
+            self._cancelled_lanes[lane_id] = normalized_reason
+        stages = (
+            {item.requirement.stage for item in released}
+            or {"execution"}
+        )
+        with self._metrics_lock:
+            for stage in stages:
+                metric = self._stage_metrics.setdefault(
+                    stage, _MutableStageMetrics()
+                )
+                metric.cancelled += 1
+                metric.leases_released += sum(
+                    1
+                    for item in released
+                    if item.requirement.stage == stage
+                )
+                metric.active_leases = max(
+                    0,
+                    metric.active_leases
+                    - sum(
+                        1
+                        for item in released
+                        if item.requirement.stage == stage
+                    ),
+                )
+        return True
+
+    cancel_lease = cancel
+
+    def clear_cancellation(self, lane_id: str) -> bool:
+        """Allow an explicitly retried lane to participate in admission."""
+
+        with self._lease_lock:
+            return self._cancelled_lanes.pop(str(lane_id), None) is not None
+
+    def transition(
+        self,
+        lease: ResourceAdmissionLease | str,
+        new_requirement: LaneResourceRequirements | Mapping[str, Any],
+        *,
+        host: HostResourceSnapshot | Mapping[str, Any] | None = None,
+        providers: Mapping[str, Any] | Iterable[ProviderCapacity | Mapping[str, Any]] | None = None,
+        path: Path | str = ".",
+    ) -> tuple[AdmissionDecision, ResourceAdmissionLease | None]:
+        """Atomically move a lease between stage/resource reservations.
+
+        The original lease and reservation remain authoritative when the new
+        stage cannot be admitted. A successful transition retains the lease
+        identity and acquisition timestamp.
+        """
+
+        lease_id = (
+            lease.lease_id
+            if isinstance(lease, ResourceAdmissionLease)
+            else str(lease)
+        )
+        req = (
+            new_requirement
+            if isinstance(new_requirement, LaneResourceRequirements)
+            else LaneResourceRequirements.from_mapping(new_requirement)
+        )
+        with self._lease_lock:
+            current = self._leases.get(lease_id)
+            if current is None:
+                return (
+                    AdmissionDecision(
+                        lane_id=req.lane_id,
+                        admitted=False,
+                        stage=req.stage,
+                        reasons=("lease_not_found",),
+                        resource_class=req.resource_class,
+                        resource_pool=req.resource_pool,
+                    ),
+                    None,
+                )
+            if req.lane_id and req.lane_id != current.lane_id:
+                return (
+                    AdmissionDecision(
+                        lane_id=req.lane_id,
+                        admitted=False,
+                        stage=req.stage,
+                        reasons=("lease_lane_mismatch",),
+                        resource_class=req.resource_class,
+                        resource_pool=req.resource_pool,
+                    ),
+                    None,
+                )
+            req = replace(req, lane_id=current.lane_id)
+            others = tuple(
+                item.requirement
+                for other_id, item in self._leases.items()
+                if other_id != lease_id
+            )
+            all_current = (*others, current.requirement)
+            if host is None:
+                host_snapshot = self.host_sampler(
+                    path,
+                    active_workers=len(self._leases),
+                    worker_limit=min(
+                        self.policy.max_lanes,
+                        current.budget.max_processes,
+                    ),
+                    active_phase=req.stage,
+                )
+            elif isinstance(host, HostResourceSnapshot):
+                host_snapshot = host
+            else:
+                host_snapshot = HostResourceSnapshot.from_mapping(host)
+            host_snapshot = self._host_excluding_accounted_requirements(
+                host_snapshot,
+                all_current,
+            )
+            reservations: dict[str, _ProviderReservation] = {}
+            current_provider_counts: dict[str, int] = {}
+            for other_id, item in self._leases.items():
+                if item.provider_id:
+                    current_provider_counts[item.provider_id] = (
+                        current_provider_counts.get(item.provider_id, 0) + 1
+                    )
+                if other_id == lease_id or not item.provider_id:
+                    continue
+                reservation = reservations.setdefault(
+                    item.provider_id, _ProviderReservation()
+                )
+                reservation.requests += 1
+                reservation.quota += item.requirement.quota_units
+                reservation.tokens += item.requirement.token_budget
+            adjusted_providers = tuple(
+                replace(
+                    provider,
+                    active_requests=max(
+                        0,
+                        provider.active_requests
+                        - current_provider_counts.get(provider.provider_id, 0),
+                    ),
+                )
+                for provider in normalize_provider_capacities(providers)
+            )
+            decision = self.evaluate(
+                req,
+                host=host_snapshot,
+                providers=adjusted_providers,
+                reservations=reservations,
+                active_requirements=others,
+            )
+            if decision.admitted:
+                budget = current.budget
+                total_processes = sum(
+                    item.process_slots for item in others
+                ) + req.process_slots
+                memory = sum(item.memory_bytes for item in others) + req.memory_bytes
+                gpu_memory = sum(
+                    item.gpu_memory_bytes for item in others
+                ) + req.gpu_memory_bytes
+                disk = sum(item.disk_bytes for item in others) + req.disk_bytes
+                budget_reasons: list[str] = []
+                if total_processes > budget.max_processes:
+                    budget_reasons.append("lease_process_capacity")
+                if budget.memory_bytes and memory > budget.memory_bytes:
+                    budget_reasons.append("lease_memory_budget")
+                if (
+                    budget.gpu_memory_bytes
+                    and gpu_memory > budget.gpu_memory_bytes
+                ):
+                    budget_reasons.append("lease_gpu_memory_budget")
+                if budget.disk_bytes and disk > budget.disk_bytes:
+                    budget_reasons.append("lease_disk_budget")
+                if budget_reasons:
+                    decision = replace(
+                        decision,
+                        admitted=False,
+                        reasons=tuple(budget_reasons),
+                        effective_slots=0,
+                        reserved_process_slots=0,
+                        reserved_memory_bytes=0,
+                        reserved_gpu_memory_bytes=0,
+                        reserved_disk_bytes=0,
+                    )
+            if not decision.admitted:
+                return decision, None
+            transitioned = replace(
+                current,
+                requirement=req,
+                decision=decision,
+            )
+            self._leases[lease_id] = transitioned
+        with self._metrics_lock:
+            old_metric = self._stage_metrics.setdefault(
+                current.requirement.stage, _MutableStageMetrics()
+            )
+            new_metric = self._stage_metrics.setdefault(
+                req.stage, _MutableStageMetrics()
+            )
+            old_metric.active_leases = max(
+                0, old_metric.active_leases - 1
+            )
+            new_metric.active_leases += 1
+            new_metric.lease_transitions += 1
+        return decision, transitioned
+
+    transition_lease = transition
 
     @property
     def active_leases(self) -> tuple[ResourceAdmissionLease, ...]:
@@ -1604,9 +3192,15 @@ class ResourceScheduler:
                 for lease_id, lease in self._leases.items()
                 if lease.lane_id == lane_id
             ]
-            for lease_id in matching:
-                self._leases.pop(lease_id, None)
-            return len(matching)
+            released = [self._leases.pop(lease_id) for lease_id in matching]
+        with self._metrics_lock:
+            for item in released:
+                metric = self._stage_metrics.setdefault(
+                    item.requirement.stage, _MutableStageMetrics()
+                )
+                metric.leases_released += 1
+                metric.active_leases = max(0, metric.active_leases - 1)
+        return len(matching)
 
     def schedule(
         self,
@@ -1616,13 +3210,60 @@ class ResourceScheduler:
         providers: Mapping[str, Any] | Iterable[ProviderCapacity | Mapping[str, Any]] | None = None,
         path: Path | str = ".",
         active_workers: int = 0,
+        active_requirements: Iterable[
+            LaneResourceRequirements | Mapping[str, Any]
+        ] = (),
+        signals: Mapping[str, Any] | None = None,
+        record_metrics: bool = True,
     ) -> ResourceScheduleSnapshot:
-        """Admit lanes in input priority order while reserving shared capacity."""
+        """Admit a unique candidate batch against all active reservations.
+
+        Active local leases are included automatically. ``active_requirements``
+        represents externally leased work which shares this scheduler's host.
+        Host/provider telemetry that already counts those leases is normalized
+        before explicit reservations are applied, preventing double counting.
+        """
 
         requirements = tuple(
             item if isinstance(item, LaneResourceRequirements) else LaneResourceRequirements.from_mapping(item)
             for item in lanes
         )
+        lane_ids = [item.lane_id for item in requirements]
+        if any(not item for item in lane_ids):
+            raise ValueError("scheduled lanes must have non-empty lane_id values")
+        duplicates = sorted(
+            {
+                lane_id
+                for lane_id in lane_ids
+                if lane_ids.count(lane_id) > 1
+            }
+        )
+        if duplicates:
+            raise ValueError(
+                "duplicate lane_id values are not schedulable: "
+                + ", ".join(duplicates)
+            )
+        with self._lease_lock:
+            leases = tuple(self._leases[key] for key in sorted(self._leases))
+            lease_requirements = tuple(item.requirement for item in leases)
+            self._known_lanes.update(lane_ids)
+        external_requirements = tuple(
+            item
+            if isinstance(item, LaneResourceRequirements)
+            else LaneResourceRequirements.from_mapping(item)
+            for item in active_requirements
+        )
+        # A supervisor may expose the same active work both through its local
+        # lease and its durable lane projection. Count each lane exactly once.
+        active_by_id: dict[str, LaneResourceRequirements] = {
+            item.lane_id: item for item in external_requirements
+        }
+        for item in lease_requirements:
+            active_by_id[item.lane_id] = item
+        baseline_active = tuple(
+            active_by_id[key] for key in sorted(active_by_id)
+        )
+        requirements = self._fair_requirements(requirements)
         if host is None:
             host_snapshot = self.host_sampler(
                 path,
@@ -1634,21 +3275,95 @@ class ResourceScheduler:
             host_snapshot = host
         else:
             host_snapshot = HostResourceSnapshot.from_mapping(host)
-        normalized = normalize_provider_capacities(providers)
+        host_snapshot = self._host_excluding_accounted_requirements(
+            host_snapshot,
+            baseline_active,
+        )
+        normalized_raw = normalize_provider_capacities(providers)
+        lease_provider_counts: dict[str, int] = {}
+        for lease in leases:
+            if lease.provider_id:
+                lease_provider_counts[lease.provider_id] = (
+                    lease_provider_counts.get(lease.provider_id, 0) + 1
+                )
+        normalized = tuple(
+            replace(
+                provider,
+                active_requests=max(
+                    0,
+                    provider.active_requests
+                    - lease_provider_counts.get(provider.provider_id, 0),
+                ),
+            )
+            for provider in normalized_raw
+        )
         reservations: dict[str, _ProviderReservation] = {
             item.provider_id: _ProviderReservation() for item in normalized
         }
+        for item in baseline_active:
+            if not item.provider_required:
+                continue
+            provider_id = item.provider_id
+            if not provider_id:
+                matching = [
+                    provider.provider_id
+                    for provider in normalized
+                    if provider.healthy
+                ]
+                provider_id = matching[0] if len(matching) == 1 else ""
+            if provider_id:
+                reservation = reservations.setdefault(
+                    provider_id, _ProviderReservation()
+                )
+                reservation.requests += 1
+                reservation.quota += item.quota_units
+                reservation.tokens += item.token_budget
         decisions: list[AdmissionDecision] = []
         admitted = 0
-        admitted_requirements: list[LaneResourceRequirements] = []
-        for requirement in requirements:
+        admitted_requirements: list[LaneResourceRequirements] = list(
+            baseline_active
+        )
+        signal_map = dict(signals or {})
+        queue_counts: dict[str, int] = {}
+        for item in requirements:
+            queue_counts[item.stage] = queue_counts.get(item.stage, 0) + 1
+
+        def stage_signal(
+            names: Sequence[str],
+            stage: str,
+            default: int,
+        ) -> int:
+            for name in names:
+                value = signal_map.get(name)
+                if isinstance(value, Mapping):
+                    if stage in value:
+                        return _integer(value.get(stage), default, minimum=0)
+                elif value is not None:
+                    return _integer(value, default, minimum=0)
+            return default
+
+        for admission_rank, requirement in enumerate(requirements, start=1):
             decision = self.evaluate(
                 requirement,
                 host=host_snapshot,
                 providers=normalized,
                 reservations=reservations,
                 active_requirements=admitted_requirements,
+                queue_depth=stage_signal(
+                    ("queue_depth_by_stage", "queue_depth"),
+                    requirement.stage,
+                    queue_counts.get(requirement.stage, 1),
+                ),
+                merge_age_ms=max(
+                    requirement.merge_age_ms,
+                    stage_signal(
+                        ("merge_age_ms_by_stage", "merge_age_ms"),
+                        requirement.stage,
+                        0,
+                    ),
+                ),
             )
+            decision = replace(decision, admission_rank=admission_rank)
             decisions.append(decision)
             if not decision.admitted:
                 continue
@@ -1659,6 +3374,21 @@ class ResourceScheduler:
                 reservation.requests += 1
                 reservation.quota += requirement.quota_units
                 reservation.tokens += requirement.token_budget
+        if record_metrics:
+            with self._metrics_lock:
+                for decision in decisions:
+                    metric = self._stage_metrics.setdefault(
+                        decision.stage, _MutableStageMetrics()
+                    )
+                    metric.scheduled += 1
+                    if decision.admitted:
+                        metric.admitted += 1
+                    else:
+                        metric.backpressured += 1
+                        for reason in decision.reasons:
+                            metric.backpressure_reasons[reason] = (
+                                metric.backpressure_reasons.get(reason, 0) + 1
+                            )
 
         configured = self.policy.max_lanes
         total_host_capacity = min(
@@ -1666,15 +3396,36 @@ class ResourceScheduler:
             host_snapshot.worker_limit,
             host_snapshot.active_workers + host_snapshot.available_worker_capacity,
         )
-        host_blocked = bool(self._host_reasons(host_snapshot, LaneResourceRequirements()))
-        host_free = max(0, total_host_capacity - host_snapshot.active_workers)
+        baseline_processes = sum(
+            item.process_slots for item in baseline_active
+        )
+        host_blocked = any(
+            reason
+            in {
+                "host_cpu_high_watermark",
+                "host_memory_high_watermark",
+                "host_memory_headroom",
+            }
+            for reason in self._host_reasons(
+                host_snapshot,
+                LaneResourceRequirements(stage="analysis"),
+            )
+        )
+        host_free = max(
+            0,
+            total_host_capacity
+            - host_snapshot.active_workers
+            - baseline_processes,
+        )
         effective = 0 if host_blocked else host_free
         # If every candidate needs an LLM, provider capacity is a pool-wide
-        # upper bound.  Mixed or legacy work can still fill remaining host
-        # slots without consuming a provider request.
+        # upper bound. Mixed work can fill host slots without a provider.
         if requirements and all(item.provider_required for item in requirements):
             provider_free = 0
             for provider in normalized:
+                reservation = reservations.get(
+                    provider.provider_id, _ProviderReservation()
+                )
                 if (
                     provider.healthy
                     and provider.retry_after_ms == 0
@@ -1682,16 +3433,174 @@ class ResourceScheduler:
                     and provider.quota_remaining != 0
                     and provider.token_budget_remaining != 0
                 ):
-                    provider_free += provider.available_concurrency
-            effective = min(effective, provider_free)
+                    # ``reservations`` includes newly admitted candidates.
+                    # Add those back when reporting the pre-admission bound.
+                    provider_free += max(
+                        0,
+                        provider.available_concurrency
+                        - reservation.requests,
+                    )
+            effective = min(effective, provider_free + admitted)
         available = max(0, effective - admitted)
         backpressure = tuple(
-            dict.fromkeys(reason for decision in decisions if not decision.admitted for reason in decision.reasons)
+            dict.fromkeys(
+                reason
+                for decision in decisions
+                if not decision.admitted
+                for reason in decision.reasons
+            )
         )
+        backpressure_counts = {
+            reason: sum(
+                1
+                for decision in decisions
+                if not decision.admitted and reason in decision.reasons
+            )
+            for reason in backpressure
+        }
+        pool_admissions: list[ResourcePoolAdmissionSnapshot] = []
+        for pool_name in sorted({item.resource_pool for item in requirements}):
+            pool_items = [
+                (requirement, decision)
+                for requirement, decision in zip(requirements, decisions)
+                if requirement.resource_pool == pool_name
+            ]
+            pool_backpressure: dict[str, int] = {}
+            for _requirement, decision in pool_items:
+                if decision.admitted:
+                    continue
+                for reason in decision.reasons:
+                    pool_backpressure[reason] = (
+                        pool_backpressure.get(reason, 0) + 1
+                    )
+            admitted_pool_lane_ids = tuple(
+                decision.lane_id
+                for _requirement, decision in pool_items
+                if decision.admitted
+            )
+            pool_admissions.append(
+                ResourcePoolAdmissionSnapshot(
+                    resource_pool=pool_name,
+                    scheduled_count=len(pool_items),
+                    admitted_count=len(admitted_pool_lane_ids),
+                    backpressured_count=(
+                        len(pool_items) - len(admitted_pool_lane_ids)
+                    ),
+                    fairness_order=tuple(
+                        decision.lane_id
+                        for _requirement, decision in pool_items
+                    ),
+                    fairness_keys=tuple(
+                        requirement.fairness_key
+                        for requirement, _decision in pool_items
+                    ),
+                    admitted_lane_ids=admitted_pool_lane_ids,
+                    backpressure_counts=pool_backpressure,
+                )
+            )
+        active_by_stage: dict[str, int] = {}
+        active_lease_by_stage: dict[str, int] = {}
+        for item in baseline_active:
+            active_by_stage[item.stage] = (
+                active_by_stage.get(item.stage, 0) + item.process_slots
+            )
+        for lease in leases:
+            stage = lease.requirement.stage
+            active_lease_by_stage[stage] = (
+                active_lease_by_stage.get(stage, 0) + 1
+            )
+        for requirement, decision in zip(requirements, decisions):
+            if decision.admitted:
+                active_by_stage[requirement.stage] = (
+                    active_by_stage.get(requirement.stage, 0)
+                    + requirement.process_slots
+                )
+        stages = sorted(
+            set(queue_counts)
+            | {item.stage for item in baseline_active}
+        )
+        stage_capacities = tuple(
+            self.adaptive_stage_capacity(
+                stage,
+                host=host_snapshot,
+                active=active_by_stage.get(stage, 0),
+                queued=stage_signal(
+                    ("queue_depth_by_stage", "queue_depth"),
+                    stage,
+                    queue_counts.get(stage, 0),
+                ),
+                merge_age_ms=max(
+                    (
+                        item.merge_age_ms
+                        for item in requirements
+                        if item.stage == stage
+                    ),
+                    default=stage_signal(
+                        ("merge_age_ms_by_stage", "merge_age_ms"),
+                        stage,
+                        0,
+                    ),
+                ),
+                provider_available_slots=(
+                    sum(
+                        item.available_concurrency
+                        for item in normalized
+                        if item.healthy and item.retry_after_ms == 0
+                    )
+                    if stage == "inference"
+                    else UNKNOWN_LIMIT
+                ),
+                active_leases=active_lease_by_stage.get(stage, 0),
+            )
+            for stage in stages
+        )
+        if len(stage_capacities) == 1:
+            baseline_stage_active = sum(
+                item.process_slots for item in baseline_active
+            )
+            effective = min(
+                effective,
+                max(
+                    0,
+                    stage_capacities[0].effective_limit
+                    - baseline_stage_active,
+                ),
+            )
+            available = max(0, effective - admitted)
+        metrics = self.metrics_snapshot(
+            observed_at_ms=host_snapshot.observed_at_ms or int(time.time() * 1000)
+        )
+        signal_payload = {
+            "queue_depth_by_stage": {
+                stage: stage_signal(
+                    ("queue_depth_by_stage", "queue_depth"),
+                    stage,
+                    queue_counts.get(stage, 0),
+                )
+                for stage in stages
+            },
+            "merge_age_ms_by_stage": {
+                stage: max(
+                    (
+                        item.merge_age_ms
+                        for item in requirements
+                        if item.stage == stage
+                    ),
+                    default=stage_signal(
+                        ("merge_age_ms_by_stage", "merge_age_ms"),
+                        stage,
+                        0,
+                    ),
+                )
+                for stage in stages
+            },
+            "active_process_slots": baseline_processes,
+            "active_lease_count": len(leases),
+        }
         return ResourceScheduleSnapshot(
             observed_at_ms=host_snapshot.observed_at_ms or int(time.time() * 1000),
             host=host_snapshot,
-            providers=normalized,
+            providers=normalized_raw,
             policy=self.policy,
             decisions=tuple(decisions),
             configured_max_lanes=configured,
@@ -1699,11 +3608,340 @@ class ResourceScheduler:
             available_slots=available,
             admitted_count=admitted,
             backpressure_reasons=backpressure,
+            stage_capacities=stage_capacities,
+            adaptive_metrics=metrics,
+            active_lease_count=len(leases),
+            backpressure_counts=backpressure_counts,
+            signals=signal_payload,
+            pool_admissions=tuple(pool_admissions),
         )
 
     # Descriptive aliases used by scheduler integrations and callers.
     evaluate_lane = evaluate
     schedule_lanes = schedule
+
+
+@dataclass(frozen=True)
+class AdaptiveThroughputRun:
+    """Measured execution of the same independent fixture set."""
+
+    fixture_ids: tuple[str, ...]
+    executed_fixture_ids: tuple[str, ...]
+    accepted_fixture_ids: tuple[str, ...]
+    duration_ms: int
+    peak_concurrency: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "fixture_ids", tuple(str(item) for item in self.fixture_ids)
+        )
+        object.__setattr__(
+            self,
+            "executed_fixture_ids",
+            tuple(str(item) for item in self.executed_fixture_ids),
+        )
+        object.__setattr__(
+            self,
+            "accepted_fixture_ids",
+            tuple(str(item) for item in self.accepted_fixture_ids),
+        )
+        if self.duration_ms <= 0:
+            raise ValueError("duration_ms must be positive")
+        if self.peak_concurrency <= 0:
+            raise ValueError("peak_concurrency must be positive")
+
+    @property
+    def accepted_count(self) -> int:
+        return len(self.accepted_fixture_ids)
+
+    @property
+    def throughput_per_million_ms(self) -> int:
+        return self.accepted_count * 1_000_000 // self.duration_ms
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fixture_ids": list(self.fixture_ids),
+            "executed_fixture_ids": list(self.executed_fixture_ids),
+            "accepted_fixture_ids": list(self.accepted_fixture_ids),
+            "duration_ms": self.duration_ms,
+            "peak_concurrency": self.peak_concurrency,
+            "accepted_count": self.accepted_count,
+            "throughput_per_million_ms": self.throughput_per_million_ms,
+        }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "AdaptiveThroughputRun":
+        return cls(
+            fixture_ids=tuple(str(item) for item in value.get("fixture_ids", ())),
+            executed_fixture_ids=tuple(
+                str(item) for item in value.get("executed_fixture_ids", ())
+            ),
+            accepted_fixture_ids=tuple(
+                str(item) for item in value.get("accepted_fixture_ids", ())
+            ),
+            duration_ms=_integer(value.get("duration_ms"), 0, minimum=0),
+            peak_concurrency=_integer(
+                value.get("peak_concurrency"), 0, minimum=0
+            ),
+        )
+
+
+def _adaptive_benchmark_failure_codes(
+    baseline: AdaptiveThroughputRun,
+    adaptive: AdaptiveThroughputRun,
+    *,
+    policy: ResourcePolicy,
+    repository_tree_id: str,
+) -> tuple[str, ...]:
+    failures: list[str] = []
+    expected = baseline.fixture_ids
+    expected_set = set(expected)
+    if not repository_tree_id.strip():
+        failures.append("repository_tree_unbound")
+    if not policy.adaptive_enabled:
+        failures.append("adaptive_policy_disabled")
+    if policy.max_lanes < 2:
+        failures.append("insufficient_parallel_capacity")
+    if len(expected) < 2 or len(expected_set) != len(expected):
+        failures.append("invalid_fixture_identity")
+    if adaptive.fixture_ids != expected:
+        failures.append("fixture_set_mismatch")
+    for name, run in (("baseline", baseline), ("adaptive", adaptive)):
+        executed = run.executed_fixture_ids
+        if len(executed) != len(set(executed)):
+            failures.append(f"{name}_duplicate_execution")
+        if set(executed) != expected_set or len(executed) != len(expected):
+            failures.append(f"{name}_execution_incomplete")
+        if (
+            set(run.accepted_fixture_ids) != expected_set
+            or len(run.accepted_fixture_ids) != len(expected)
+        ):
+            failures.append(f"{name}_acceptance_incomplete")
+    if baseline.peak_concurrency != 1:
+        failures.append("baseline_not_single_lane")
+    if adaptive.peak_concurrency < 2:
+        failures.append("adaptive_parallelism_unobserved")
+    if adaptive.peak_concurrency > policy.max_lanes:
+        failures.append("adaptive_resource_overcommit")
+    # Cross multiplication avoids float precision and serialization.
+    if (
+        adaptive.accepted_count * baseline.duration_ms
+        < 2 * baseline.accepted_count * adaptive.duration_ms
+    ):
+        failures.append("throughput_below_two_x")
+    return tuple(dict.fromkeys(failures))
+
+
+@dataclass(frozen=True)
+class AdaptiveThroughputBenchmarkReceipt:
+    """Fail-closed objective evidence for adaptive acceptance throughput."""
+
+    repository_tree_id: str
+    policy_digest: str
+    baseline: AdaptiveThroughputRun
+    adaptive: AdaptiveThroughputRun
+    passed: bool
+    failure_codes: tuple[str, ...]
+    content_id: str
+    schema: str = ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA
+    requirement_id: str = ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "repository_tree_id", str(self.repository_tree_id).strip()
+        )
+        object.__setattr__(
+            self, "failure_codes", tuple(str(item) for item in self.failure_codes)
+        )
+
+    def _content_payload(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "requirement_id": self.requirement_id,
+            "repository_tree_id": self.repository_tree_id,
+            "policy_digest": self.policy_digest,
+            "baseline": self.baseline.to_dict(),
+            "adaptive": self.adaptive.to_dict(),
+            "passed": self.passed,
+            "failure_codes": list(self.failure_codes),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content_payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any]
+    ) -> "AdaptiveThroughputBenchmarkReceipt":
+        return cls(
+            schema=str(value.get("schema", "")),
+            requirement_id=str(value.get("requirement_id", "")),
+            repository_tree_id=str(value.get("repository_tree_id", "")),
+            policy_digest=str(value.get("policy_digest", "")),
+            baseline=AdaptiveThroughputRun.from_mapping(
+                _mapping(value.get("baseline"))
+            ),
+            adaptive=AdaptiveThroughputRun.from_mapping(
+                _mapping(value.get("adaptive"))
+            ),
+            passed=_boolean(value.get("passed"), False),
+            failure_codes=tuple(
+                str(item) for item in value.get("failure_codes", ())
+            ),
+            content_id=str(value.get("content_id", "")),
+        )
+
+    def proved_requirement_ids_for(
+        self,
+        *,
+        policy: ResourcePolicy | Mapping[str, Any],
+        repository_tree_id: str,
+    ) -> tuple[str, ...]:
+        """Rebind and revalidate this receipt before exposing evidence."""
+
+        current_policy = (
+            policy
+            if isinstance(policy, ResourcePolicy)
+            else ResourcePolicy.from_mapping(policy)
+        )
+        current_failures = _adaptive_benchmark_failure_codes(
+            self.baseline,
+            self.adaptive,
+            policy=current_policy,
+            repository_tree_id=repository_tree_id,
+        )
+        valid = (
+            self.schema == ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA
+            and self.requirement_id
+            == ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID
+            and self.repository_tree_id == str(repository_tree_id).strip()
+            and self.policy_digest == _canonical_digest(current_policy.to_dict())
+            and self.passed
+            and not self.failure_codes
+            and not current_failures
+            and self.content_id == _canonical_digest(self._content_payload())
+        )
+        return (self.requirement_id,) if valid else ()
+
+
+def evaluate_adaptive_throughput_benchmark(
+    baseline: AdaptiveThroughputRun,
+    adaptive: AdaptiveThroughputRun,
+    *,
+    policy: ResourcePolicy | Mapping[str, Any],
+    repository_tree_id: str,
+) -> AdaptiveThroughputBenchmarkReceipt:
+    """Create a content-addressed receipt from paired benchmark measurements."""
+
+    normalized_policy = (
+        policy
+        if isinstance(policy, ResourcePolicy)
+        else ResourcePolicy.from_mapping(policy)
+    )
+    failures = _adaptive_benchmark_failure_codes(
+        baseline,
+        adaptive,
+        policy=normalized_policy,
+        repository_tree_id=repository_tree_id,
+    )
+    values = {
+        "repository_tree_id": str(repository_tree_id).strip(),
+        "policy_digest": _canonical_digest(normalized_policy.to_dict()),
+        "baseline": baseline,
+        "adaptive": adaptive,
+        "passed": not failures,
+        "failure_codes": failures,
+    }
+    provisional = AdaptiveThroughputBenchmarkReceipt(content_id="", **values)
+    return replace(
+        provisional,
+        content_id=_canonical_digest(provisional._content_payload()),
+    )
+
+
+def benchmark_adaptive_execution(
+    fixtures: (
+        Mapping[str, Callable[[], bool]]
+        | Iterable[tuple[str, Callable[[], bool]]]
+    ),
+    *,
+    policy: ResourcePolicy | Mapping[str, Any],
+    repository_tree_id: str,
+) -> AdaptiveThroughputBenchmarkReceipt:
+    """Run paired single-lane/adaptive fixtures and issue objective evidence.
+
+    Fixture functions must be independent and safe to invoke once in each
+    paired run. Exceptions are measured as rejected fixtures; they do not
+    cancel siblings.
+    """
+
+    normalized_policy = (
+        policy
+        if isinstance(policy, ResourcePolicy)
+        else ResourcePolicy.from_mapping(policy)
+    )
+    items = (
+        tuple((str(name), callback) for name, callback in fixtures.items())
+        if isinstance(fixtures, Mapping)
+        else tuple((str(name), callback) for name, callback in fixtures)
+    )
+    fixture_ids = tuple(name for name, _callback in items)
+    if not items:
+        raise ValueError("at least one benchmark fixture is required")
+
+    def run(max_workers: int) -> AdaptiveThroughputRun:
+        active = 0
+        peak = 0
+        lock = threading.Lock()
+
+        def invoke(
+            fixture_id: str, callback: Callable[[], bool]
+        ) -> tuple[str, bool]:
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            try:
+                return fixture_id, bool(callback())
+            except Exception:
+                return fixture_id, False
+            finally:
+                with lock:
+                    active -= 1
+
+        started_ns = time.monotonic_ns()
+        executed: list[str] = []
+        accepted: list[str] = []
+        with ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="adaptive-resource-benchmark",
+        ) as executor:
+            futures = [
+                executor.submit(invoke, fixture_id, callback)
+                for fixture_id, callback in items
+            ]
+            for future in as_completed(futures):
+                fixture_id, was_accepted = future.result()
+                executed.append(fixture_id)
+                if was_accepted:
+                    accepted.append(fixture_id)
+        elapsed_ns = max(1, time.monotonic_ns() - started_ns)
+        return AdaptiveThroughputRun(
+            fixture_ids=fixture_ids,
+            executed_fixture_ids=tuple(executed),
+            accepted_fixture_ids=tuple(accepted),
+            duration_ms=max(1, (elapsed_ns + 999_999) // 1_000_000),
+            peak_concurrency=max(1, peak),
+        )
+
+    baseline = run(1)
+    adaptive = run(max(1, normalized_policy.max_lanes))
+    return evaluate_adaptive_throughput_benchmark(
+        baseline,
+        adaptive,
+        policy=normalized_policy,
+        repository_tree_id=repository_tree_id,
+    )
 
 
 class ProofWorkStatus(str, Enum):
@@ -1835,6 +4073,12 @@ class ProofWorkRequest:
             )
         return LaneResourceRequirements(
             lane_id=self.work_id,
+            stage={
+                ProofWorkKind.MODEL_DRAFT: "inference",
+                ProofWorkKind.TYPE_CHECK: "validation",
+                ProofWorkKind.SOLVER_PORTFOLIO: "proof",
+                ProofWorkKind.KERNEL_RECONSTRUCTION: "proof",
+            }[self.work_kind],
             resource_class=self.resource_class,
             required_capabilities=capabilities,
             provider_id=self.provider_id,
@@ -2474,7 +4718,18 @@ ScheduledProofWorkResult = ProofWorkResult
 
 
 __all__ = [
+    "ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID",
+    "ADAPTIVE_STAGE_PROFILES",
+    "ADAPTIVE_STAGES",
+    "ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA",
     "AdmissionDecision",
+    "AdaptiveResourceMetrics",
+    "AdaptiveStageCapacity",
+    "AdaptiveStageMetrics",
+    "AdaptiveStageProfile",
+    "AdaptiveThroughputBenchmarkReceipt",
+    "AdaptiveThroughputRun",
+    "CANONICAL_ADAPTIVE_STAGES",
     "ChildResourceLimits",
     "DEFAULT_RESOURCE_CLASSES",
     "FormalVerificationResourceScheduler",
@@ -2495,12 +4750,19 @@ __all__ = [
     "ResourceAdmissionLease",
     "ResourceLeaseBudget",
     "ResourcePolicy",
+    "ResourcePoolAdmissionSnapshot",
     "ResourceScheduleSnapshot",
     "ResourceScheduler",
     "RouteAwareResourceScheduler",
     "ScheduledProofWorkRequest",
     "ScheduledProofWorkResult",
+    "STAGE_RESOURCE_PROFILES",
+    "StageResourceProfile",
     "SupervisorResourceLeaseBudget",
+    "adaptive_stage_profile",
+    "benchmark_adaptive_execution",
+    "evaluate_adaptive_throughput_benchmark",
+    "normalize_adaptive_stage",
     "normalize_provider_capacities",
     "normalize_provider_capacity",
     "normalize_proof_work_kind",

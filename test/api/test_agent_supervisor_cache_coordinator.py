@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import multiprocessing
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -15,12 +17,22 @@ from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
     AnalysisCacheReason,
 )
 from ipfs_accelerate_py.agent_supervisor.cache_coordinator import (
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA,
     SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     AnalysisCacheCoordinator,
+    BoundedArtifactReference,
+    CacheAuthority,
     CacheCoordinationError,
     CacheCoordinationStatus,
+    CacheNamespace,
     CachePublication,
+    CacheQuotaPolicy,
+    CacheRecordOutcome,
+    NamespaceCacheCoordinator,
+    NamespaceLookupStatus,
     SingleFlightCollapseEvidence,
+    build_namespace_semantic_key,
+    namespace_metadata,
 )
 
 
@@ -45,6 +57,74 @@ def _receipt(status: str = "successful", ordinal: int = 1):
         "summary": {"ordinal": ordinal},
         "artifact_refs": [{"artifact_id": f"artifact-{ordinal}"}],
     }
+
+
+def test_g020_cache_criteria_keep_runtime_authority_separate_from_completion() -> None:
+    assert INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA == (
+        "expensive identical misses collapse across lanes",
+        "stale or negative records never become completion evidence",
+        (
+            "repeated fixtures achieve at least 70 percent cache reuse with "
+            "zero stale authoritative hits."
+        ),
+    )
+    # A cache key is caller-selected runtime identity. It carries no
+    # criterion, analyzer-health, validation-freshness, or quorum authority.
+    key_payload = _key().to_dict()
+    assert "acceptance_criterion" not in key_payload
+    assert "analyzer_health" not in key_payload
+    assert "exhaustion_quorum" not in key_payload
+
+
+def _common_analysis_key(**changes: object):
+    dimensions: dict[str, object] = {
+        "repository_tree_identity": "tree:sha256:111",
+        "objective_revision": "objective@1",
+        "analyzer_version": "analyzer@1",
+        "schema_version": "schema@1",
+        "configuration_digest": "sha256:config-1",
+        "query_digest": "sha256:query-1",
+        "policy_digest": "sha256:policy-1",
+    }
+    dimensions.update(changes)
+    return build_namespace_semantic_key(CacheNamespace.ANALYSIS, dimensions)
+
+
+def _cross_process_common_cache_worker(
+    cache_path: str,
+    marker_path: str,
+    ready: multiprocessing.synchronize.Barrier,
+    output: multiprocessing.queues.Queue,
+) -> None:
+    coordinator = NamespaceCacheCoordinator(cache_path)
+    # Do not let process-spawn latency turn an intended concurrent miss into
+    # a post-publication cache hit.  Every worker must be ready to perform its
+    # first lookup before any worker may acquire the cross-process lease.
+    ready.wait(10)
+
+    def produce():
+        with open(marker_path, "a", encoding="utf-8") as stream:
+            stream.write("produced\n")
+            stream.flush()
+        time.sleep(0.15)
+        return {"receipt_id": "shared"}
+
+    result = coordinator.get_or_compute(
+        _common_analysis_key(),
+        produce,
+        authority=CacheAuthority.AUTHORITATIVE,
+        require_completion_evidence=True,
+        payload_validator=lambda value: (
+            isinstance(value, dict) and value.get("receipt_id") == "shared"
+        ),
+    )
+    output.put(
+        {
+            "completion": result.is_completion_evidence,
+            "produced": result.produced,
+            "shared": result.shared,
+        }
+    )
 
 
 def test_exact_cache_hit_avoids_producer_and_stale_key_does_not(
@@ -181,6 +261,15 @@ def test_single_flight_evidence_is_active_key_and_publication_bound(
         SingleFlightCollapseEvidence.from_result(
             unattested,
             follower_count=1,
+        )
+    attestation = results[0]._single_flight_attestation
+    assert attestation is not None
+    forged_attestation = replace(attestation, seal=object())
+    with pytest.raises(CacheCoordinationError, match="coordinator-attested"):
+        SingleFlightCollapseEvidence.from_result(
+            unattested,
+            follower_count=1,
+            _attestation=forged_attestation,
         )
 
     forged = replace(
@@ -565,3 +654,252 @@ def test_sync_leader_and_async_followers_share_one_cross_facade_flight(
         for item in all_results
     )
     assert coordinator.metrics().active_flights == 0
+
+
+def test_common_namespace_metadata_and_every_analysis_dimension_are_bound() -> None:
+    metadata = namespace_metadata(
+        CacheNamespace.ANALYSIS,
+        authority=CacheAuthority.AUTHORITATIVE,
+    )
+    assert metadata.to_dict()["namespace"] == "analysis"
+    assert metadata.to_dict()["authority"] == "authoritative"
+    assert set(metadata.required_dimensions) == {
+        "repository_tree_identity",
+        "objective_revision",
+        "analyzer_version",
+        "schema_version",
+        "configuration_digest",
+        "query_digest",
+        "policy_digest",
+    }
+
+    base = _common_analysis_key()
+    variants = (
+        _common_analysis_key(repository_tree_identity="tree:sha256:222"),
+        _common_analysis_key(objective_revision="objective@2"),
+        _common_analysis_key(analyzer_version="analyzer@2"),
+        _common_analysis_key(schema_version="schema@2"),
+        _common_analysis_key(configuration_digest="sha256:config-2"),
+        _common_analysis_key(query_digest="sha256:query-2"),
+        _common_analysis_key(policy_digest="sha256:policy-2"),
+    )
+    assert len({base.key_id, *(item.key_id for item in variants)}) == 8
+    with pytest.raises(ValueError, match="missing dimensions"):
+        build_namespace_semantic_key(
+            CacheNamespace.ANALYSIS,
+            {"repository_tree_identity": "tree-only"},
+        )
+
+
+def test_proof_drafts_have_a_separate_non_authoritative_namespace(
+    tmp_path: Path,
+) -> None:
+    draft_key = build_namespace_semantic_key(
+        CacheNamespace.PROOF_DRAFT,
+        goal_digest="goal",
+        repository_tree_digest="tree",
+        vocabulary_digest="vocabulary",
+        compiler_digest="compiler",
+        model_route_digest="route",
+        model_version="model",
+        assumptions_digest="assumptions",
+        bounds_digest="bounds",
+        policy_digest="policy",
+    )
+    proof_key = build_namespace_semantic_key(
+        CacheNamespace.PROOF,
+        obligation="obligation",
+        premises=[],
+        translator="translator",
+        solver="solver",
+        kernel="kernel",
+        toolchain="toolchain",
+        theorem_registry="registry",
+        policy="policy",
+        resource_budget="budget",
+        candidate_tree="tree",
+    )
+    assert draft_key.namespace is CacheNamespace.PROOF_DRAFT
+    assert proof_key.namespace is CacheNamespace.PROOF
+    assert draft_key.key_id != proof_key.key_id
+
+    coordinator = NamespaceCacheCoordinator(tmp_path)
+    with pytest.raises(ValueError, match="proof drafts"):
+        coordinator.put(
+            draft_key,
+            {"candidate": "untrusted"},
+            authority=CacheAuthority.AUTHORITATIVE,
+        )
+    draft = coordinator.put(
+        draft_key,
+        {"candidate": "untrusted"},
+        authority=CacheAuthority.DRAFT,
+        outcome=CacheRecordOutcome.INCONCLUSIVE,
+    )
+    assert draft is not None
+    assert draft.expires_at_ms is not None
+    assert not draft.is_completion_evidence
+
+
+def test_common_exact_reuse_negative_ttl_and_zero_stale_authority(
+    tmp_path: Path,
+) -> None:
+    now = 1_000.0
+    coordinator = NamespaceCacheCoordinator(
+        tmp_path, clock=lambda: now
+    )
+    key = _common_analysis_key()
+    calls = 0
+
+    def successful():
+        nonlocal calls
+        calls += 1
+        return {"receipt_id": "authoritative"}
+
+    first = coordinator.get_or_compute(
+        key,
+        successful,
+        authority=CacheAuthority.AUTHORITATIVE,
+        ttl_seconds=2,
+        require_completion_evidence=True,
+    )
+    reused = coordinator.get_or_compute(
+        key,
+        lambda: pytest.fail("exact completion hit executed producer"),
+        authority=CacheAuthority.AUTHORITATIVE,
+        require_completion_evidence=True,
+    )
+    assert first.produced and first.is_completion_evidence
+    assert reused.cache_hit and reused.is_completion_evidence
+    assert calls == 1
+
+    negative_key = _common_analysis_key(query_digest="sha256:negative")
+    negative = coordinator.put(
+        negative_key,
+        {"reason": "provider unavailable"},
+        outcome=CacheRecordOutcome.INCONCLUSIVE,
+        authority=CacheAuthority.AUTHORITATIVE,
+    )
+    assert negative is not None
+    assert negative.expires_at_ms is not None
+    assert not negative.is_completion_evidence
+    rejected = coordinator.lookup(
+        negative_key, require_completion_evidence=True
+    )
+    assert rejected.status is NamespaceLookupStatus.REJECTED
+    assert not rejected.is_completion_evidence
+
+    now += 3
+    stale = coordinator.lookup(key, require_completion_evidence=True)
+    assert stale.status is NamespaceLookupStatus.REJECTED
+    assert not stale.is_completion_evidence
+    metrics = coordinator.metrics()
+    assert metrics.stale_rejections == 1
+
+
+def test_common_corruption_and_poison_are_rejected_then_repaired(
+    tmp_path: Path,
+) -> None:
+    coordinator = NamespaceCacheCoordinator(tmp_path)
+    key = _common_analysis_key()
+    assert coordinator.put(
+        key,
+        {"receipt_id": "one"},
+        authority=CacheAuthority.AUTHORITATIVE,
+    )
+    path = coordinator._entry_path(key)
+    path.write_text("{broken", encoding="utf-8")
+    corrupt = coordinator.lookup(key, require_completion_evidence=True)
+    assert corrupt.status is NamespaceLookupStatus.REJECTED
+    assert not path.exists()
+
+    repaired = coordinator.get_or_compute(
+        key,
+        lambda: {"receipt_id": "two"},
+        authority=CacheAuthority.AUTHORITATIVE,
+        require_completion_evidence=True,
+    )
+    assert repaired.is_completion_evidence
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["authority"] = "draft"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    poisoned = coordinator.lookup(key, require_completion_evidence=True)
+    assert poisoned.status is NamespaceLookupStatus.REJECTED
+    assert coordinator.metrics().poisoned_rejections >= 2
+
+
+def test_common_quota_gc_and_artifact_reference_bounds(
+    tmp_path: Path,
+) -> None:
+    quota = CacheQuotaPolicy(
+        max_entries=2,
+        max_bytes=16 * 1024,
+        max_entry_bytes=8 * 1024,
+        max_artifact_references=1,
+        max_artifact_reference_bytes=256,
+    )
+    coordinator = NamespaceCacheCoordinator(tmp_path, quotas=quota)
+    with pytest.raises(ValueError, match="cannot embed"):
+        BoundedArtifactReference(
+            {"artifact_id": "unsafe", "content": "embedded body"}
+        )
+
+    for ordinal in range(3):
+        entry = coordinator.put(
+            _common_analysis_key(query_digest=f"sha256:q-{ordinal}"),
+            {"receipt_id": f"r-{ordinal}"},
+            authority=(
+                CacheAuthority.DIAGNOSTIC
+                if ordinal == 0
+                else CacheAuthority.AUTHORITATIVE
+            ),
+            artifact_references=(
+                {"artifact_id": f"a-{ordinal}", "digest": f"sha256:{ordinal}"},
+            ),
+        )
+        assert entry is not None
+
+    stats = coordinator.metrics(CacheNamespace.ANALYSIS)
+    assert stats.entries == 2
+    assert stats.evictions >= 1
+    assert coordinator.lookup(
+        _common_analysis_key(query_digest="sha256:q-0")
+    ).status is NamespaceLookupStatus.MISS
+
+    rejected = coordinator.put(
+        _common_analysis_key(query_digest="sha256:too-many-refs"),
+        {"receipt_id": "bounded"},
+        artifact_references=(
+            {"artifact_id": "a"},
+            {"artifact_id": "b"},
+        ),
+    )
+    assert rejected is None
+
+
+def test_common_cross_process_single_flight_collapses_one_miss(
+    tmp_path: Path,
+) -> None:
+    context = multiprocessing.get_context("spawn")
+    ready = context.Barrier(3)
+    output = context.Queue()
+    marker = tmp_path / "producer-markers.txt"
+    processes = [
+        context.Process(
+            target=_cross_process_common_cache_worker,
+            args=(str(tmp_path / "cache"), str(marker), ready, output),
+        )
+        for _ in range(3)
+    ]
+    for process in processes:
+        process.start()
+    results = [output.get(timeout=15) for _ in processes]
+    for process in processes:
+        process.join(timeout=15)
+        assert process.exitcode == 0
+
+    assert marker.read_text(encoding="utf-8").splitlines() == ["produced"]
+    assert all(result["completion"] for result in results)
+    assert sum(result["produced"] for result in results) == 1
+    assert sum(result["shared"] for result in results) == 2

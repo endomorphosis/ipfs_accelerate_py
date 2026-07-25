@@ -940,6 +940,32 @@ def run_process_group_stream(
             output=exc.output,
             stderr=exc.stderr,
         ) from exc
+    # A successful CLI process may have daemonized descendants that closed
+    # their inherited output descriptors.  They remain in the owned session
+    # and could mutate the checkout after the implementation fence's final
+    # check, so quiesce the complete group before returning to validation.
+    def group_alive() -> bool:
+        try:
+            os.killpg(process.pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except OSError:
+            return False
+
+    if group_alive():
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except OSError:
+            pass
+        deadline = time.monotonic() + max(0.0, float(termination_grace_seconds))
+        while group_alive() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if group_alive():
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except OSError:
+                pass
     return subprocess.CompletedProcess(
         args=list(command),
         returncode=int(process.returncode or 0),

@@ -27,11 +27,40 @@ import signal
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Final, Mapping, Sequence
 
+from .control_plane import (
+    LIFECYCLE_STATUS_SCHEMA,
+    SupervisorLifecycleState,
+)
 from .scheduler_metrics import scheduler_snapshot, scheduler_state_events
 
 logger = logging.getLogger(__name__)
+
+SUPERVISOR_LIFECYCLE_STATES: Final[tuple[str, ...]] = (
+    tuple(state.value for state in SupervisorLifecycleState)
+)
+_LIFECYCLE_STATE_SET: Final[frozenset[str]] = frozenset(
+    SUPERVISOR_LIFECYCLE_STATES
+)
+_TRANSITIONAL_STATES: Final[frozenset[str]] = frozenset(
+    {"starting", "draining", "stopping"}
+)
+_INTENTIONAL_NON_RUNNING_STATES: Final[frozenset[str]] = frozenset(
+    {"paused", "draining", "blocked", "stopping", "stopped", "failed"}
+)
+_STATE_ALIASES: Final[dict[str, str]] = {
+    "alive": "healthy",
+    "ok": "healthy",
+    "running": "healthy",
+    "ready": "healthy",
+    "unhealthy": "degraded",
+    "hung": "degraded",
+    "error": "failed",
+    "crashed": "failed",
+    "shutdown": "stopped",
+    "shutdown_complete": "stopped",
+}
 
 
 def utc_now() -> str:
@@ -40,13 +69,201 @@ def utc_now() -> str:
 
 def pid_alive(pid: int) -> bool:
     """Check if a process with given PID is alive."""
+    if isinstance(pid, bool) or pid <= 0:
+        return False
     try:
         os.kill(pid, 0)
         return True
-    except (ProcessLookupError, PermissionError):
+    except ProcessLookupError:
         return False
+    except PermissionError:
+        # Permission denial still proves that a process owns the PID.
+        return True
     except OSError:
         return False
+
+
+def _lifecycle_state(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("-", "_")
+    text = _STATE_ALIASES.get(text, text)
+    return text if text in _LIFECYCLE_STATE_SET else ""
+
+
+def _timestamp_seconds(value: Any) -> float | None:
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        # LifecycleStatus exposes millisecond timestamps.
+        return number / 1000.0 if number > 10_000_000_000 else number
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def _nonnegative_int(value: Any) -> int:
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, result)
+
+
+def _timestamp_text_from_ms(value: int) -> str:
+    if value <= 0:
+        return ""
+    return (
+        datetime.fromtimestamp(value / 1000.0, timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _status_payload(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _active_leases(payload: Mapping[str, Any]) -> list[str]:
+    value = payload.get("active_leases")
+    if isinstance(value, (list, tuple)):
+        return sorted(
+            {str(item).strip() for item in value if str(item).strip()}
+        )[:256]
+    if isinstance(value, Mapping):
+        return sorted(
+            {str(item).strip() for item in value if str(item).strip()}
+        )[:256]
+    lease_id = str(payload.get("lease_id") or "").strip()
+    return [lease_id] if lease_id else []
+
+
+def lifecycle_status_projection(
+    *,
+    pid_check: Mapping[str, Any],
+    heartbeat_check: Mapping[str, Any],
+    state: str | None = None,
+    phase: str | None = None,
+    target_id: str = "supervisor:lane",
+) -> dict[str, Any]:
+    """Project lane observations into the shared lifecycle status schema.
+
+    The control plane owns lifecycle mutation policy.  The watchdog only
+    reconciles process/heartbeat observations and emits the same public shape,
+    so a caller never has to interpret a second set of health fields.
+    """
+
+    observed_state = _lifecycle_state(state or heartbeat_check.get("state"))
+    alive = bool(pid_check.get("alive"))
+    stale = bool(heartbeat_check.get("stale"))
+    if not observed_state:
+        observed_state = "healthy" if alive and not stale else (
+            "degraded" if alive else "stopped"
+        )
+    if alive and stale and observed_state not in _INTENTIONAL_NON_RUNNING_STATES:
+        observed_state = "degraded"
+    elif not alive and observed_state == "healthy":
+        observed_state = "degraded"
+
+    heartbeat_at = str(heartbeat_check.get("heartbeat_at") or "")
+    heartbeat_at_ms = heartbeat_check.get("heartbeat_at_ms")
+    if heartbeat_at_ms is None:
+        timestamp = _timestamp_seconds(heartbeat_at)
+        heartbeat_at_ms = None if timestamp is None else int(timestamp * 1000)
+    heartbeat_at_ms = _nonnegative_int(heartbeat_at_ms)
+    heartbeat_at = _timestamp_text_from_ms(heartbeat_at_ms)
+
+    updated_at = str(heartbeat_check.get("updated_at") or heartbeat_at or "")
+    updated_at_ms = heartbeat_check.get("updated_at_ms")
+    if updated_at_ms is None:
+        timestamp = _timestamp_seconds(updated_at)
+        updated_at_ms = None if timestamp is None else int(timestamp * 1000)
+    updated_at_ms = _nonnegative_int(updated_at_ms)
+    updated_at = _timestamp_text_from_ms(updated_at_ms)
+
+    reasons = heartbeat_check.get("backpressure_reasons")
+    if not isinstance(reasons, (list, tuple)):
+        reasons = []
+    leases = sorted(
+        {
+            str(item).strip()
+            for item in heartbeat_check.get("active_leases", ())
+            if str(item).strip()
+        }
+    )[:256]
+    result: dict[str, Any] = {
+        "schema": LIFECYCLE_STATUS_SCHEMA,
+        "target_id": str(target_id or "supervisor:lane"),
+        "state": observed_state,
+        "phase": str(phase or heartbeat_check.get("phase") or observed_state),
+        "heartbeat_at_ms": heartbeat_at_ms,
+        "heartbeat_at": heartbeat_at,
+        "pid": (
+            pid_check.get("pid")
+            if isinstance(pid_check.get("pid"), int)
+            and not isinstance(pid_check.get("pid"), bool)
+            and pid_check.get("pid") > 0
+            else None
+        ),
+        "active_leases": leases,
+        "active_lease_count": len(leases),
+        "refill_state": str(heartbeat_check.get("refill_state") or "idle"),
+        "backpressure": bool(heartbeat_check.get("backpressure", False)),
+        "backpressure_reasons": sorted(
+            {str(item).strip() for item in reasons if str(item).strip()}
+        )[:256],
+        "terminal_reason": str(heartbeat_check.get("terminal_reason") or ""),
+        "transition_id": str(heartbeat_check.get("transition_id") or ""),
+        "generation": _nonnegative_int(heartbeat_check.get("generation")),
+        "fencing_epoch": (
+            None
+            if heartbeat_check.get("fencing_epoch") in (None, "")
+            else _nonnegative_int(heartbeat_check.get("fencing_epoch"))
+        ),
+        "updated_at_ms": updated_at_ms,
+        "updated_at": updated_at,
+    }
+    return result
+
+
+def watchdog_process_status(
+    state: str,
+    *,
+    phase: str,
+    terminal_reason: str = "",
+    backpressure_reasons: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Build a canonical status for watchdog-level outcomes."""
+
+    now_ms = int(time.time() * 1000)
+    running = state != "stopped"
+    return lifecycle_status_projection(
+        pid_check={
+            "pid": os.getpid() if running else None,
+            "alive": running,
+        },
+        heartbeat_check={
+            "state": state,
+            "phase": phase,
+            "heartbeat_at_ms": now_ms,
+            "updated_at_ms": now_ms,
+            "active_leases": (),
+            "refill_state": "idle",
+            "backpressure": bool(backpressure_reasons),
+            "backpressure_reasons": tuple(backpressure_reasons),
+            "terminal_reason": terminal_reason,
+            "generation": 0,
+            "fencing_epoch": None,
+        },
+        target_id="supervisor:watchdog",
+    )
 
 
 def read_lane_manifest(manifest_path: Path) -> dict[str, Any]:
@@ -80,7 +297,9 @@ def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
     try:
         pid = int(pid_path.read_text().strip())
         result["pid"] = pid
-        if pid_alive(pid):
+        if pid <= 0:
+            result["reason"] = "invalid_pid"
+        elif pid_alive(pid):
             result["alive"] = True
         else:
             result["reason"] = "process_dead"
@@ -102,24 +321,87 @@ def check_lane_heartbeat(state_dir: Path, state_prefix: str, *, timeout_seconds:
 
     try:
         stat = status_path.stat()
-        age_seconds = time.time() - stat.st_mtime
+        status = _status_payload(status_path)
+        if status.get("heartbeat_at_ms") not in (None, ""):
+            try:
+                heartbeat_timestamp = float(status["heartbeat_at_ms"]) / 1000.0
+            except (TypeError, ValueError):
+                heartbeat_timestamp = None
+        elif status.get("heartbeat_at") not in (None, ""):
+            heartbeat_timestamp = _timestamp_seconds(status["heartbeat_at"])
+        elif status.get("updated_at_ms") not in (None, ""):
+            try:
+                heartbeat_timestamp = float(status["updated_at_ms"]) / 1000.0
+            except (TypeError, ValueError):
+                heartbeat_timestamp = None
+        else:
+            heartbeat_timestamp = _timestamp_seconds(
+                status.get("updated_at") or status.get("timestamp")
+            )
+        age_seconds = time.time() - (
+            heartbeat_timestamp if heartbeat_timestamp is not None else stat.st_mtime
+        )
+        # Future timestamps can occur under small host clock skews.
+        age_seconds = max(0.0, age_seconds)
         result["age_seconds"] = age_seconds
         if age_seconds > timeout_seconds:
             result["stale"] = True
             result["reason"] = "heartbeat_timeout"
-        try:
-            status = json.loads(status_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            status = {}
-        if isinstance(status, dict):
-            result["phase"] = str(status.get("active_phase") or status.get("phase") or "")
-            result["active_task_id"] = str(status.get("active_task_id") or "")
-            result["heartbeat_at"] = str(status.get("heartbeat_at") or "")
+        result["phase"] = str(status.get("active_phase") or status.get("phase") or "")
+        result["schema"] = str(status.get("schema") or "")
+        result["active_task_id"] = str(status.get("active_task_id") or "")
+        result["heartbeat_at"] = str(status.get("heartbeat_at") or "")
+        result["heartbeat_at_ms"] = status.get("heartbeat_at_ms")
+        result["updated_at"] = str(status.get("updated_at") or "")
+        result["updated_at_ms"] = status.get("updated_at_ms")
+        result["state"] = _lifecycle_state(
+            status.get("state")
+            or status.get("lifecycle_state")
+            or status.get("status")
+        )
+        result["active_leases"] = _active_leases(status)
+        result["refill_state"] = status.get("refill_state")
+        result["backpressure"] = bool(status.get("backpressure", False))
+        raw_reasons = status.get("backpressure_reasons")
+        result["backpressure_reasons"] = (
+            list(raw_reasons[:256])
+            if isinstance(raw_reasons, (list, tuple))
+            else []
+        )
+        result["terminal_reason"] = str(
+            status.get("terminal_reason") or status.get("reason") or ""
+        )
+        result["transition_id"] = str(status.get("transition_id") or "")
+        result["generation"] = status.get("generation") or 0
+        result["fencing_epoch"] = status.get("fencing_epoch")
+        status_pid = status.get("pid")
+        if status_pid not in (None, ""):
+            try:
+                result["status_pid"] = int(status_pid)
+            except (TypeError, ValueError):
+                result["state_inconsistent"] = True
+                result["state_reason"] = "invalid_status_pid"
     except OSError as exc:
         result["stale"] = True
         result["reason"] = f"stat_error: {exc}"
 
     return result
+
+
+def _replace_pid_file(pid_path: Path, pid: int) -> None:
+    """Atomically repair a PID file from a live canonical status record."""
+
+    temporary = pid_path.with_name(
+        f".{pid_path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp"
+    )
+    try:
+        temporary.write_text(f"{pid}\n", encoding="utf-8")
+        os.replace(temporary, pid_path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def restart_lane(lane_info: dict[str, Any], *, repo_root: Path) -> dict[str, Any]:
@@ -129,6 +411,12 @@ def restart_lane(lane_info: dict[str, Any], *, repo_root: Path) -> dict[str, Any
     command = lane_info.get("command", [])
     if not command:
         return {"restarted": False, "reason": "no_command"}
+    if (
+        isinstance(command, (str, bytes))
+        or not isinstance(command, Sequence)
+        or not all(str(item).strip() for item in command)
+    ):
+        return {"restarted": False, "reason": "invalid_command"}
 
     log_path = lane_info.get("log_path", "")
     if log_path:
@@ -158,9 +446,17 @@ def restart_lane(lane_info: dict[str, Any], *, repo_root: Path) -> dict[str, Any
     if pid_path_str:
         pid_path = Path(pid_path_str) if Path(pid_path_str).is_absolute() else repo_root / pid_path_str
         pid_path.parent.mkdir(parents=True, exist_ok=True)
-        pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
+        try:
+            _replace_pid_file(pid_path, process.pid)
+        except OSError as exc:
+            return {
+                "restarted": True,
+                "new_pid": process.pid,
+                "pid_persisted": False,
+                "reason": f"pid_write_error: {exc}",
+            }
 
-    return {"restarted": True, "new_pid": process.pid}
+    return {"restarted": True, "new_pid": process.pid, "pid_persisted": True}
 
 
 def aggregate_logs(
@@ -255,6 +551,8 @@ class SupervisorWatchdog:
             manifest_path.parent / "logs" / "aggregated"
         )
         self._consecutive_restart_counts: dict[str, int] = {}
+        self._recent_restarts: dict[str, tuple[int, float]] = {}
+        self._generation = 0
         self._running = True
 
     def run(self) -> dict[str, Any]:
@@ -303,7 +601,12 @@ class SupervisorWatchdog:
                 sleep_remaining -= chunk
 
         return {
-            "status": "shutdown",
+            "status": watchdog_process_status(
+                "stopped",
+                phase="watchdog_stopped",
+                terminal_reason="watchdog_shutdown",
+            ),
+            "legacy_status": "shutdown",
             "total_checks": total_checks,
             "total_restarts": total_restarts,
         }
@@ -312,7 +615,16 @@ class SupervisorWatchdog:
         """Run one health-check cycle across all lanes."""
         manifest = read_lane_manifest(self.manifest_path)
         if not manifest:
-            return {"error": "manifest_empty", "restarts": 0}
+            return {
+                "timestamp": utc_now(),
+                "error": "manifest_empty",
+                "restarts": 0,
+                "status": watchdog_process_status(
+                    "blocked",
+                    phase="manifest_unavailable",
+                    backpressure_reasons=("manifest_empty",),
+                ),
+            }
 
         lanes = manifest.get("lanes", [])
         started = manifest.get("started", [])
@@ -344,6 +656,55 @@ class SupervisorWatchdog:
             heartbeat_check = check_lane_heartbeat(
                 state_dir, state_prefix, timeout_seconds=self.lane_timeout
             )
+            canonical_status = (
+                heartbeat_check.get("schema") == LIFECYCLE_STATUS_SCHEMA
+            )
+            observed_state = _lifecycle_state(heartbeat_check.get("state"))
+            recovery: dict[str, Any] = {}
+
+            # The canonical status binds the process it describes.  Repair a
+            # stale PID file from a live status PID instead of launching an
+            # unfenced duplicate.
+            status_pid = heartbeat_check.get("status_pid")
+            pid_file_pid = pid_check.get("pid")
+            untrusted_live_status_pid = False
+            if (
+                canonical_status
+                and isinstance(status_pid, int)
+                and status_pid > 0
+                and status_pid != pid_file_pid
+            ):
+                status_pid_alive = pid_alive(status_pid)
+                if status_pid_alive and not heartbeat_check.get("stale", False):
+                    pid_path = Path(str(pid_check["pid_path"]))
+                    try:
+                        pid_path.parent.mkdir(parents=True, exist_ok=True)
+                        _replace_pid_file(pid_path, status_pid)
+                    except OSError as exc:
+                        heartbeat_check["state_inconsistent"] = True
+                        heartbeat_check["state_reason"] = (
+                            f"pid_file_repair_error: {exc}"
+                        )
+                    else:
+                        recovery = {
+                            "kind": "stale_pid_file",
+                            "previous_pid": pid_file_pid,
+                            "recovered_pid": status_pid,
+                        }
+                        self._generation += 1
+                        pid_check = {
+                            **pid_check,
+                            "pid": status_pid,
+                            "alive": True,
+                        }
+                        pid_check.pop("reason", None)
+                elif status_pid_alive:
+                    untrusted_live_status_pid = True
+                    heartbeat_check["state_inconsistent"] = True
+                    heartbeat_check["state_reason"] = "stale_status_pid_alive"
+                else:
+                    heartbeat_check["state_inconsistent"] = True
+                    heartbeat_check["state_reason"] = "status_pid_dead"
 
             report = {
                 "bundle_key": bundle_key,
@@ -352,7 +713,47 @@ class SupervisorWatchdog:
                 "action": "none",
             }
 
-            needs_restart = not pid_check["alive"] or heartbeat_check.get("stale", False)
+            alive = bool(pid_check["alive"])
+            heartbeat_stale = bool(heartbeat_check.get("stale", False))
+            inconsistent = bool(heartbeat_check.get("state_inconsistent"))
+            recent = self._recent_restarts.get(bundle_key)
+            in_startup_grace = bool(
+                recent
+                and alive
+                and pid_check.get("pid") == recent[0]
+                and time.monotonic() - recent[1] <= self.lane_timeout
+            )
+            if in_startup_grace and heartbeat_stale:
+                observed_state = "starting"
+                recovery = {
+                    "kind": "restart_heartbeat_pending",
+                    "pid": pid_check.get("pid"),
+                }
+            elif recent and (
+                not heartbeat_stale or pid_check.get("pid") != recent[0]
+            ):
+                self._recent_restarts.pop(bundle_key, None)
+
+            terminal_process_conflict = (
+                canonical_status
+                and observed_state in {"stopped", "failed"}
+                and alive
+            )
+            if terminal_process_conflict:
+                inconsistent = True
+                heartbeat_check["state_inconsistent"] = True
+                heartbeat_check["state_reason"] = "terminal_state_pid_alive"
+            suppressed_state = (
+                canonical_status
+                and observed_state in _INTENTIONAL_NON_RUNNING_STATES
+                and not terminal_process_conflict
+                and not (alive and heartbeat_stale)
+            )
+            needs_restart = (
+                not in_startup_grace
+                and not suppressed_state
+                and (not alive or heartbeat_stale or inconsistent)
+            )
 
             if needs_restart:
                 if dynamic_authority:
@@ -362,11 +763,32 @@ class SupervisorWatchdog:
                     # unfenced duplicate.
                     report["action"] = "scheduler_recovery_required"
                     report["reason"] = "dynamic_scheduler_owns_restart"
+                    report["status"] = lifecycle_status_projection(
+                        pid_check=pid_check,
+                        heartbeat_check=heartbeat_check,
+                        state="blocked",
+                        target_id=str(bundle_key),
+                    )
+                    if recovery:
+                        report["recovery"] = recovery
                     reports.append(report)
                     continue
+                if canonical_status and (alive or untrusted_live_status_pid):
+                    # Replacing a live canonical process requires the control
+                    # plane's lease/fencing check.  The watchdog reports the
+                    # requirement and never starts a second raw lane.
+                    report["action"] = "fenced_stop_required"
+                    report["reason"] = str(
+                        heartbeat_check.get("state_reason")
+                        or heartbeat_check.get("reason")
+                        or "live_process_unhealthy"
+                    )
+                    observed_state = "blocked"
                 # Check consecutive restart count for backoff
                 count = self._consecutive_restart_counts.get(bundle_key, 0)
-                if count >= self.max_consecutive_restarts:
+                if report["action"] == "fenced_stop_required":
+                    pass
+                elif count >= self.max_consecutive_restarts:
                     # Exponential backoff: skip this cycle
                     backoff_cycles = 2 ** min(count - self.max_consecutive_restarts, 5)
                     report["action"] = "backoff"
@@ -374,19 +796,76 @@ class SupervisorWatchdog:
                     # Decrement so we'll try again eventually
                     self._consecutive_restart_counts[bundle_key] = count + 1
                 else:
-                    restart_info = lane_started or lane
+                    restart_info = dict(lane_started or lane)
+                    restart_info.setdefault("pid_path", str(pid_check["pid_path"]))
                     restart_result = restart_lane(restart_info, repo_root=self.repo_root)
                     report["action"] = "restarted" if restart_result.get("restarted") else "restart_failed"
                     report["restart_result"] = restart_result
                     if restart_result.get("restarted"):
                         restarts += 1
                         self._consecutive_restart_counts[bundle_key] = count + 1
+                        new_pid = int(restart_result["new_pid"])
+                        self._recent_restarts[bundle_key] = (
+                            new_pid,
+                            time.monotonic(),
+                        )
+                        self._generation += 1
+                        if observed_state in _TRANSITIONAL_STATES:
+                            recovery = {
+                                "kind": "interrupted_transition",
+                                "previous_state": observed_state,
+                                "restarted_pid": new_pid,
+                            }
+                        observed_state = "starting"
+                        pid_check = {
+                            **pid_check,
+                            "pid": new_pid,
+                            "alive": True,
+                        }
+                        pid_check.pop("reason", None)
                     else:
                         self._consecutive_restart_counts[bundle_key] = count + 1
+                        observed_state = "failed"
             else:
                 # Healthy - reset consecutive restart counter
                 self._consecutive_restart_counts[bundle_key] = 0
+                if suppressed_state:
+                    if (
+                        not alive
+                        and observed_state
+                        in {"paused", "draining", "stopping"}
+                    ):
+                        interrupted_state = observed_state
+                        if interrupted_state == "stopping":
+                            observed_state = "stopped"
+                            terminal_reason = (
+                                "stop_completed_after_process_exit"
+                            )
+                        else:
+                            observed_state = "failed"
+                            terminal_reason = (
+                                f"{interrupted_state}_process_exited"
+                            )
+                        heartbeat_check["terminal_reason"] = terminal_reason
+                        report["action"] = "control_recovery_required"
+                        report["reason"] = terminal_reason
+                        recovery = {
+                            "kind": "interrupted_transition",
+                            "previous_state": interrupted_state,
+                            "recovered_state": observed_state,
+                        }
+                    else:
+                        report["action"] = "state_preserved"
+                        report["reason"] = f"canonical_{observed_state}"
 
+            report["status"] = lifecycle_status_projection(
+                pid_check=pid_check,
+                heartbeat_check=heartbeat_check,
+                state=observed_state,
+                target_id=str(bundle_key),
+            )
+            if recovery:
+                report["recovery"] = recovery
             reports.append(report)
 
         # Aggregate logs periodically
@@ -410,11 +889,80 @@ class SupervisorWatchdog:
             )
             operator_snapshot = scheduler_snapshot(events).to_dict()
 
+        timestamp = utc_now()
+        lane_states = [
+            str(item.get("status", {}).get("state") or "") for item in reports
+        ]
+        state_priority = (
+            "failed",
+            "blocked",
+            "degraded",
+            "starting",
+            "stopping",
+            "draining",
+        )
+        aggregate_state = next(
+            (state for state in state_priority if state in lane_states),
+            (
+                "stopped"
+                if not lane_states or all(state == "stopped" for state in lane_states)
+                else (
+                    "paused"
+                    if all(state == "paused" for state in lane_states)
+                    else "healthy"
+                )
+            ),
+        )
+        timestamp_seconds = _timestamp_seconds(timestamp)
+        timestamp_ms = (
+            None if timestamp_seconds is None else int(timestamp_seconds * 1000)
+        )
+        status_timestamp = _timestamp_text_from_ms(timestamp_ms or 0)
+        aggregate_leases = sorted(
+            {
+                str(lease)
+                for item in reports
+                for lease in item.get("status", {}).get("active_leases", ())
+                if str(lease)
+            }
+        )[:256]
+        aggregate_status = {
+            "schema": LIFECYCLE_STATUS_SCHEMA,
+            "target_id": "supervisor:watchdog",
+            "state": aggregate_state,
+            "phase": "watchdog_check",
+            "heartbeat_at_ms": timestamp_ms,
+            "heartbeat_at": status_timestamp,
+            "pid": os.getpid(),
+            "active_leases": aggregate_leases,
+            "active_lease_count": len(aggregate_leases),
+            "refill_state": "idle",
+            "backpressure": any(
+                bool(item.get("status", {}).get("backpressure"))
+                for item in reports
+            ),
+            "backpressure_reasons": sorted(
+                {
+                    str(reason)
+                    for item in reports
+                    for reason in item.get("status", {}).get(
+                        "backpressure_reasons", ()
+                    )
+                }
+            )[:256],
+            "terminal_reason": "",
+            "transition_id": "",
+            "generation": self._generation,
+            "fencing_epoch": 0,
+            "updated_at_ms": timestamp_ms,
+            "updated_at": status_timestamp,
+        }
         return {
-            "timestamp": utc_now(),
+            "timestamp": timestamp,
             "lane_count": len(lanes),
             "restarts": restarts,
             "reports": reports,
+            "status": aggregate_status,
             "scheduler_snapshot": operator_snapshot,
             "scheduler_snapshot_id": str(operator_snapshot.get("snapshot_id") or ""),
         }

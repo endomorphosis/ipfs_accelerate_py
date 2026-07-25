@@ -1,214 +1,465 @@
 # Agent Supervisor Guide
 
-This guide documents the current `ipfs_accelerate_py.agent_supervisor` control
-plane. It is for maintainers and operators who want to generate objective-driven
-work, run isolated implementation lanes, inspect evidence, or add a new
-provider. It is not required for ordinary model inference.
+The agent supervisor is a bounded control plane for objective-driven software
+work. It turns reviewed objectives into typed tasks, runs implementation work
+in isolated lanes, records evidence, and exposes the same control contract to
+Python, the product CLI, and MCP.
 
-The authoritative design description is
-[Agent Supervisor Architecture](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md).
-The formal planning and assurance details live in the
-[formal planning/prover matrix](../architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md),
-[formal verification plan](../architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md),
-[Leanstral goal-development benchmark](../architecture/AGENT_SUPERVISOR_LEANSTRAL_GOAL_DEVELOPMENT.md),
-and [supervisor self-improvement plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md).
+The supervisor is not an authority shortcut. Model output is a proposal;
+completion, mutation, merge, and automatic self-improvement remain subject to
+repository and state allowlists, identity and policy bindings, deterministic
+validation, fresh evidence, leases, fencing, and authorization.
 
-## What the supervisor does
-
-The supervisor is a bounded control plane around implementation agents. Its
-responsibilities are deliberately separated:
-
-1. An objective heap describes desired outcomes and required evidence.
-2. Deterministic scanners build objective, AST, dependency, and proof-gap
-   projections.
-3. The objective daemon turns missing evidence into typed todo records and
-   bundle shards.
-4. The bundle supervisor schedules isolated lanes with leases, resource
-   limits, conflict metadata, and separate state roots.
-5. The implementation daemon asks an LLM to propose edits in an ephemeral
-   worktree, runs configured validation, and records receipts.
-6. The implementation supervisor watches heartbeats, retries bounded failures,
-   reconciles worktrees, and creates follow-up tasks when a retry budget is
-   exhausted.
-
-LLM output is proposal material. A model response does not itself prove a task
-complete, authorize a merge, or change the canonical objective graph. Those
-decisions require deterministic validation and the configured assurance gates.
+For the design rationale and rollout invariants, see the
+[Agent Supervisor Architecture](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
+and
+[Self-Improvement Plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md).
 
 ## Installation and entry points
 
-The supervisor tools are installed with the package. From a source checkout:
+From a source checkout:
 
 ```bash
 python -m pip install -e ".[dev]"
 ```
 
-The installed console scripts are:
+The preferred operator surface is the unified product CLI:
+
+```bash
+ipfs-accelerate agent --help
+```
+
+The low-level entry points remain available for objective generation, board
+execution, recovery, and migrations:
 
 | Command | Purpose |
 | --- | --- |
-| `ipfs-accelerate-agent-objective-daemon` | Scan an objective heap and generate tasks, graph artifacts, datasets, and bundle shards. |
-| `ipfs-accelerate-agent-backlog-refinery` | Refill a low backlog and turn code, retry, and dependency findings into bounded follow-up work. |
-| `ipfs-accelerate-agent-bundle-supervisor` | Plan or launch isolated supervisors for bundle shards. |
-| `ipfs-accelerate-agent-implementation-daemon` | Drain a Markdown task board with the implementation loop. |
-| `ipfs-accelerate-agent-implementation-supervisor` | Watch and repair an implementation daemon. |
-| `ipfs-accelerate-agent-artifact-query` | Query JSON/DuckDB evidence artifacts without loading large payloads into prompts. |
-| `ipfs-accelerate-agent-merge-resolver` | Inspect a failed merge and build a bounded resolver prompt. |
-| `ipfs-accelerate-agent-llm-merge-resolver-fallback` | Run the packaged Codex/Copilot merge-repair fallback. |
+| `ipfs-accelerate-agent-objective-daemon` | Reconcile an objective heap and generate task, graph, dataset, and bundle projections. |
+| `ipfs-accelerate-agent-backlog-refinery` | Create bounded repair or refill work from objective, code, dependency, and retry evidence. |
+| `ipfs-accelerate-agent-bundle-supervisor` | Plan or start isolated lanes for bundle shards. |
+| `ipfs-accelerate-agent-implementation-daemon` | Drain one Markdown task board. |
+| `ipfs-accelerate-agent-implementation-supervisor` | Monitor and recover an implementation daemon. |
+| `ipfs-accelerate-agent-artifact-query` | Query bounded JSON or DuckDB evidence. |
+| `ipfs-accelerate-agent-merge-resolver` | Inspect a failed merge and construct a bounded repair request. |
+| `ipfs-accelerate-agent-llm-merge-resolver-fallback` | Run the packaged merge-repair fallback. |
 
-The package dispatcher is also available as:
+These scripts are execution engines, not competing control APIs. The unified
+service can call their package APIs through registered handlers; it never
+turns a typed operation into a shell string.
 
-```bash
-python -m ipfs_accelerate_py.agent_supervisor.todo_daemon list
-python -m ipfs_accelerate_py.agent_supervisor.todo_daemon --help
+## One contract on Python, CLI, and MCP
+
+The closed operation vocabulary is:
+
+| Authority | Operations | CLI names |
+| --- | --- | --- |
+| Read | `capabilities`, `status`, `health`, `metrics`, `goals`, `tasks`, `bundles`, `lanes`, `events`, `receipts`, `cache_inspect`, `artifact_query` | The same names, except `cache` and `artifact` |
+| Proposal | `objective_preview`, `plan` | `preview`, `plan` |
+| Mutation | `objective_refine`, `objective_reconcile`, `backlog_refill`, `start`, `pause`, `resume`, `drain`, `stop`, `retry`, `cancel`, `quarantine`, `validation_replay` | `refine`, `reconcile`, `refill`, lifecycle names, and `validation-replay` |
+
+Every surface decodes an `OperationRequest`, invokes
+`SupervisorControlService.execute()`, and returns an `OperationResult`. The
+request and result schema identities come from
+`operation_request_json_schema()` and `operation_result_json_schema()`.
+Transport adapters cannot silently add authority or narrow the schema.
+
+The three surfaces have deliberately different configuration boundaries:
+
+- Python receives an explicit service and explicit allowlists from its
+  embedding process.
+- The local CLI creates a service for the absolute repository and state roots
+  named by the operator.
+- MCP accepts roots in a request only when the server has independently
+  allowlisted them. A tool request never configures server authority.
+
+Read and proposal behavior, stable failure records, and authorized mutation
+behavior are parity-tested across all three surfaces. A successful result on
+one surface therefore has the same canonical record as the same request on the
+other surfaces.
+
+## Discover capabilities before use
+
+Discovery and capability inspection are separate:
+
+- A `ControlDiscoveryManifest` describes the complete, static operation and
+  schema population for a surface.
+- A `CapabilityReport` describes the operations the configured service backend
+  can actually execute and their bounds.
+
+Static discovery does not resolve a service, import an optional provider, scan
+a repository, or start a process. Runtime capability inspection is also
+read-only and reports `optional_providers_loaded` and `processes_started`.
+
+```python
+from ipfs_accelerate_py.agent_supervisor import (
+    ControlDiscoveryManifest,
+    ControlSurface,
+    Operation,
+    SupervisorControlService,
+    operation_request_json_schema,
+    operation_result_json_schema,
+)
+
+# Static shared schemas; no backend or optional provider is initialized.
+manifest = ControlDiscoveryManifest(surface=ControlSurface.PYTHON)
+assert set(manifest.operations) == set(Operation)
+status_request_schema = operation_request_json_schema(Operation.STATUS)
+status_result_schema = operation_result_json_schema(Operation.STATUS)
+
+# Runtime support is explicit and scoped to allowlisted roots.
+service = SupervisorControlService(
+    repository_allowlist=("/srv/project",),
+    state_allowlist=("/var/lib/ipfs-accelerate-agent/project",),
+)
+capabilities = service.capabilities()
+assert capabilities.optional_providers_loaded is False
+if not capabilities.supports(Operation.GOALS):
+    raise RuntimeError("configured backend does not support objective reads")
 ```
 
-The dispatcher currently registers the reusable `legal-parser` and `logic-port`
-daemon families. The objective and implementation tools above are separate
-entry points because they require different project-specific paths and state
-contracts.
+The default repository backend implements bounded file-backed reads. Proposal
+and mutation operations require an embedding runtime to register direct Python
+handlers. Always test `CapabilityReport.supports()`; a command name existing
+does not prove that the selected backend implements it.
 
-## Generate objective work
+Formal-analysis and prover support has a second, operation-specific handshake.
+Use `probe_formal_verification_capabilities()` and the prover matrix before
+routing work. Package presence, a model name, or an old successful receipt is
+not a current capability. Optional `ipfs_datasets_py`, Leanstral, and external
+prover integrations stay lazy until a configured operation invokes them.
 
-An objective heap is a Markdown document containing `## GOAL-...` records. The
-scanner preserves goal identity, evidence references, dependencies, and bundle
-metadata. A minimal source-checkout invocation is:
+## Python control
+
+`SupervisorTarget` binds every constructed request to one repository tree,
+objective revision, policy revision, state root, and caller. `SupervisorClient`
+constructs reads and proposals from that binding, but deliberately refuses to
+manufacture authorization for real mutations.
+
+```python
+from pathlib import Path
+
+from ipfs_accelerate_py.agent_supervisor import (
+    ControlBounds,
+    SupervisorControlService,
+    SupervisorTarget,
+)
+
+repo = Path.cwd().resolve()
+state = (repo / "data" / "agent_supervisor").resolve()
+
+service = SupervisorControlService(
+    repository_allowlist=(repo,),
+    state_allowlist=(state,),
+)
+target = SupervisorTarget(
+    repository_root=str(repo),
+    state_root=str(state),
+    repository_id="repo:ipfs-accelerate",
+    tree_id="git:CURRENT_TREE_ID",
+    objective_id="ASI-G090",
+    objective_revision="objectives:CURRENT_CONTENT_ID",
+    policy_id="policy:production",
+    policy_revision="policy:1",
+    caller="operator:release",
+)
+client = service.client(
+    target,
+    bounds=ControlBounds(
+        max_items=50,
+        max_paths=50,
+        max_effects=50,
+        max_serialized_bytes=262_144,
+        max_text_bytes=8_192,
+        timeout_ms=30_000,
+    ),
+)
+
+goals = client.goals(
+    objective_path="docs/architecture/"
+    "agent_supervisor_self_improvement.objectives.md",
+    limit=20,
+)
+tasks = client.tasks(
+    todo_path="docs/architecture/"
+    "agent_supervisor_self_improvement.todo.md",
+    task_header_prefix="## ASI-",
+    limit=20,
+)
+assert goals.succeeded and tasks.succeeded
+```
+
+Paths in operation parameters are root-relative. Objective and task-board
+paths are resolved beneath `repository_root`; status, health, metrics, events,
+receipts, cache, and lane state are normally resolved beneath `state_root`.
+Path traversal and raw SQL are rejected. Reads are paginated with `limit` and
+`offset`; request count, byte, depth, text, path, effect, and timeout bounds
+travel with the request.
+
+## Unified CLI
+
+The CLI requires all nine target bindings. This is intentional: it never
+guesses a tree, objective, policy, caller, repository root, or state root.
+Agent output is always canonical JSON; `--output-json` selects compact output.
+
+```bash
+REPO_ROOT="$(pwd -P)"
+STATE_ROOT="${REPO_ROOT}/data/agent_supervisor"
+mkdir -p "${STATE_ROOT}"
+
+ipfs-accelerate agent capabilities \
+  --repository-root "${REPO_ROOT}" \
+  --state-root "${STATE_ROOT}" \
+  --repository-id "repo:ipfs-accelerate" \
+  --tree-id "git:CURRENT_TREE_ID" \
+  --objective-id "ASI-G090" \
+  --objective-revision "objectives:CURRENT_CONTENT_ID" \
+  --policy-id "policy:smoke" \
+  --policy-revision "policy:1" \
+  --caller "operator:local-smoke" \
+  --output-json
+```
+
+Reuse the same binding flags for reads:
+
+```bash
+ipfs-accelerate agent goals \
+  --repository-root "${REPO_ROOT}" \
+  --state-root "${STATE_ROOT}" \
+  --repository-id "repo:ipfs-accelerate" \
+  --tree-id "git:CURRENT_TREE_ID" \
+  --objective-id "ASI-G090" \
+  --objective-revision "objectives:CURRENT_CONTENT_ID" \
+  --policy-id "policy:smoke" \
+  --policy-revision "policy:1" \
+  --caller "operator:local-smoke" \
+  --path "docs/architecture/agent_supervisor_self_improvement.objectives.md" \
+  --limit 20 --max-items 20 --output-json
+
+ipfs-accelerate agent tasks \
+  --repository-root "${REPO_ROOT}" \
+  --state-root "${STATE_ROOT}" \
+  --repository-id "repo:ipfs-accelerate" \
+  --tree-id "git:CURRENT_TREE_ID" \
+  --objective-id "ASI-G090" \
+  --objective-revision "objectives:CURRENT_CONTENT_ID" \
+  --policy-id "policy:smoke" \
+  --policy-revision "policy:1" \
+  --caller "operator:local-smoke" \
+  --path "docs/architecture/agent_supervisor_self_improvement.todo.md" \
+  --task-header-prefix "## ASI-" \
+  --limit 20 --max-items 20 --output-json
+```
+
+`status`, `health`, `metrics`, and `events` support bounded JSON Lines watch
+output with `--watch-count 1..100` and
+`--watch-interval-ms 0..60000`. Other operations reject watch mode. Stable
+exit codes are `0` for success, `1` for operation/internal failure, `2` for an
+invalid or denied request, `3` for conflict, and `4` for not found.
+
+Use `--request-file` for production mutations. It preserves the exact typed
+authorization and avoids shell quoting a policy decision. Request-file and
+request-building flags cannot be mixed.
+
+## MCP control
+
+The MCP category is `agent_supervisor`. It registers one tool per canonical
+operation using the operation value as its name, for example
+`agent_supervisor/status`, `agent_supervisor/tasks`, and
+`agent_supervisor/objective_reconcile`. Each tool accepts exactly:
+
+```json
+{
+  "request": {
+    "operation": "status",
+    "...": "the canonical OperationRequest record"
+  }
+}
+```
+
+The MCP server must configure both allowlists before any tool invocation:
+
+```bash
+export IPFS_ACCELERATE_AGENT_REPOSITORY_ALLOWLIST="/srv/project"
+export IPFS_ACCELERATE_AGENT_STATE_ALLOWLIST="/var/lib/ipfs-accelerate-agent/project"
+```
+
+Multiple roots use the platform path separator (`:` on POSIX, `;` on
+Windows). An embedded server can instead call
+`configure_agent_supervisor_control(service=...)` or supply a
+`service_factory`. Supplying neither makes invocation fail closed when either
+allowlist is absent.
+
+Listing the category, tools, tags, or schemas is safe. Service resolution
+occurs only after a tool receives and successfully decodes a request.
+Mutation tools are tagged as authorization-required, dry-run, idempotent,
+lease-fenced, and audit-receipt-producing.
+
+## Authorization and mutation workflow
+
+Read operations need a complete target binding and bounds. Proposal operations
+have proposal authority only. A dry-run mutation may describe mutation-shaped
+effects, but it cannot invoke a mutation backend or claim that an effect was
+applied.
+
+Use dry-run first:
+
+```bash
+ipfs-accelerate agent pause \
+  --repository-root "${REPO_ROOT}" \
+  --state-root "${STATE_ROOT}" \
+  --repository-id "repo:ipfs-accelerate" \
+  --tree-id "git:CURRENT_TREE_ID" \
+  --objective-id "ASI-G090" \
+  --objective-revision "objectives:CURRENT_CONTENT_ID" \
+  --policy-id "policy:production" \
+  --policy-revision "policy:1" \
+  --caller "operator:release" \
+  --target-id "supervisor:self-improvement" \
+  --reason "rollout review" \
+  --requested-state "paused" \
+  --expected-effects-json '[{
+    "effect_id":"pause:self-improvement",
+    "kind":"lifecycle_transition",
+    "resource":"supervisor:self-improvement",
+    "paths":["supervisor.json"],
+    "description":"Pause dispatch for rollout review"
+  }]' \
+  --dry-run --output-json
+```
+
+A real mutation additionally requires all of the following:
+
+1. An `IdempotencyKey` scoped to the exact operation, caller, repository, and
+   objective.
+2. A current `AuthorizationDecision` with verdict `permit`, mutation
+   authority, the exact repository/state/tree/objective/policy/caller binding,
+   and exactly the declared effect IDs.
+3. A lease ID and non-negative fencing epoch matching the authorization.
+4. At least one declared mutation `ExpectedEffect`.
+5. A backend handler for the operation and, by conservative default, a lease
+   validator.
+
+Policy should create the decision; do not turn authorization into a static
+configuration file. Decisions may carry an expiry and grant IDs. Stale trees,
+expired or mismatched decisions, missing effects, path escapes, absent
+idempotency, invalid leases, stale fencing epochs, undeclared backend effects,
+and excess bounds return stable failures before mutation dispatch.
+
+Successful mutations emit an audit receipt. Replaying the same scoped request
+returns the persisted result without dispatching the backend twice. Reusing an
+idempotency key for different request content is a conflict.
+
+## Generate objectives and task boards
+
+The objective heap is the source of intent. Graphs, datasets, bundle indexes,
+and todo boards are rebuildable projections.
 
 ```bash
 ipfs-accelerate-agent-objective-daemon \
-  --repo-root "$PWD" \
-  --objective-path docs/objectives.md \
-  --todo-path data/agent_supervisor/tasks.todo.md \
-  --discovery-dir data/agent_supervisor/discovery \
-  --bundle-dir data/agent_supervisor/objective_bundles \
-  --dataset-dir data/agent_supervisor/objective_datasets \
-  --graph-path data/agent_supervisor/objective_graph.json
+  --repo-root "${REPO_ROOT}" \
+  --objective-path \
+    docs/architecture/agent_supervisor_self_improvement.objectives.md \
+  --todo-path \
+    docs/architecture/agent_supervisor_self_improvement.todo.md \
+  --discovery-dir data/agent_supervisor/self_improvement/discovery \
+  --bundle-dir data/agent_supervisor/self_improvement/bundles \
+  --dataset-dir data/agent_supervisor/self_improvement/datasets \
+  --graph-path data/agent_supervisor/self_improvement/objective_graph.json \
+  --task-prefix "ASI-"
 ```
 
-The objective file must exist unless `--ensure-tracking-document` is supplied
-with `--ultimate-goal`. Useful optional stages include:
+Add `--refine-objective-heap` for bounded child-goal refinement,
+`--generate-plan-branches --plan-branch-count 3` for typed alternative plan
+proposals, or `--submit-bundles` to submit generated shards to the local queue.
+Run without submission first and inspect the graph and bundle index.
 
-```bash
-# Refine broad goals into bounded child goals before task generation.
-ipfs-accelerate-agent-objective-daemon ... --refine-objective-heap
-
-# Ask the router for bounded plan alternatives; deterministic validation still
-# selects or rejects them.
-ipfs-accelerate-agent-objective-daemon ... \
-  --generate-plan-branches --plan-branch-count 3
-
-# Submit generated bundle shards to the local task queue.
-ipfs-accelerate-agent-objective-daemon ... --submit-bundles
-```
-
-The normal outputs are:
-
-- `objective_graph.json`: goal nodes, dependencies, depth, and priorities;
-- `objective_bundles/index.json`: bundle and task projections;
-- `objective_bundles/*.todo.md`: one worker-facing shard per bundle;
-- `objective_bundles/todo_vector_index.json`: bounded lexical, vector, and AST
-  relationships for task selection;
-- `objective_datasets/`: JSONL and optional dataset-manager projections of
-  larger AST/symbol evidence;
-- discovery and summary receipts under the configured state directory.
-
-These are projections and evidence artifacts. The objective heap remains the
-source of intent; a generated todo file is not a second authority.
-
-## Run isolated lanes
-
-Plan lanes first. Planning is the default and does not launch an LLM:
+Plan isolated lanes before starting them:
 
 ```bash
 ipfs-accelerate-agent-bundle-supervisor \
-  --bundle-index-path data/agent_supervisor/objective_bundles/index.json \
-  --repo-root "$PWD" \
-  --state-root data/agent_supervisor/bundles \
-  --worktree-root data/agent_supervisor/worktrees \
-  --log-dir data/agent_supervisor/logs \
+  --bundle-index-path \
+    data/agent_supervisor/self_improvement/bundles/index.json \
+  --repo-root "${REPO_ROOT}" \
+  --state-root data/agent_supervisor/self_improvement/state \
+  --worktree-root data/agent_supervisor/self_improvement/worktrees \
+  --log-dir data/agent_supervisor/self_improvement/logs \
   --once
-```
 
-Launch only after reviewing the generated manifest:
-
-```bash
 ipfs-accelerate-agent-bundle-supervisor \
-  --bundle-index-path data/agent_supervisor/objective_bundles/index.json \
-  --repo-root "$PWD" \
-  --state-root data/agent_supervisor/bundles \
-  --worktree-root data/agent_supervisor/worktrees \
-  --log-dir data/agent_supervisor/logs \
+  --bundle-index-path \
+    data/agent_supervisor/self_improvement/bundles/index.json \
+  --repo-root "${REPO_ROOT}" \
+  --state-root data/agent_supervisor/self_improvement/state \
+  --worktree-root data/agent_supervisor/self_improvement/worktrees \
+  --log-dir data/agent_supervisor/self_improvement/logs \
   --start --max-lanes 4
 ```
 
-`--max-lanes` is an admission limit, not a promise to start that many
-processes. Dependency readiness, conflicting paths, CPU/memory/disk budgets,
-provider capacity, and active leases can reduce the admitted width.
+`--max-lanes` is an admission ceiling. Dependencies, conflict paths, leases,
+provider capacity, and CPU, memory, disk, GPU, process, model, and artifact
+budgets may reduce actual width.
 
-For a single board, the implementation daemon and supervisor can be run
-directly:
+For a single board:
 
 ```bash
-# One pass, no implementation agent.
+# Reconcile once without invoking an implementation agent.
 ipfs-accelerate-agent-implementation-daemon \
-  --once --todo-path data/agent_supervisor/tasks.todo.md \
-  --state-dir data/agent_supervisor/implementation
+  --once \
+  --todo-path \
+    docs/architecture/agent_supervisor_self_improvement.todo.md \
+  --state-dir data/agent_supervisor/self_improvement/state
 
-# A long-running daemon that may invoke the configured implementation command.
+# Start implementation only after the dry pass and profile review.
 ipfs-accelerate-agent-implementation-daemon \
   --implement --interval 300 \
-  --todo-path data/agent_supervisor/tasks.todo.md \
-  --state-dir data/agent_supervisor/implementation
+  --todo-path \
+    docs/architecture/agent_supervisor_self_improvement.todo.md \
+  --state-dir data/agent_supervisor/self_improvement/state
 
-# One health/reconciliation pass.
+# Run one monitoring, recovery, and refill pass.
 ipfs-accelerate-agent-implementation-supervisor \
-  --once --todo-path data/agent_supervisor/tasks.todo.md \
-  --state-dir data/agent_supervisor/implementation
+  --once \
+  --todo-path \
+    docs/architecture/agent_supervisor_self_improvement.todo.md \
+  --task-prefix "ASI-" \
+  --state-dir data/agent_supervisor/self_improvement/state
 ```
 
-For unattended operation, use the lifecycle wrappers exposed by the registered
-daemon families and verify health before assuming that a process is making
-progress:
+## Bounded backlog refill
 
-```bash
-python -m ipfs_accelerate_py.agent_supervisor.todo_daemon \
-  legal-parser check
-python -m ipfs_accelerate_py.agent_supervisor.todo_daemon \
-  legal-parser ensure
-python -m ipfs_accelerate_py.agent_supervisor.todo_daemon \
-  legal-parser spec
-```
-
-`check` reports heartbeat age and process liveness. `ensure` starts the
-wrapper/supervisor only when health is not fresh. `stop` terminates the owned
-process group, and `spec` prints the resolved paths and launch environment.
-
-## Backlog maintenance
-
-The backlog refinery is intentionally bounded and can run in a scheduled
-maintenance pass:
+The backlog refinery can run four evidence sources:
 
 ```bash
 ipfs-accelerate-agent-backlog-refinery \
-  --repo-root "$PWD" \
-  --todo-path data/agent_supervisor/tasks.todo.md \
-  --state-path data/agent_supervisor/state.json \
-  --events-path data/agent_supervisor/events.jsonl \
-  --objective-path docs/objectives.md \
+  --repo-root "${REPO_ROOT}" \
+  --todo-path \
+    docs/architecture/agent_supervisor_self_improvement.todo.md \
+  --state-path data/agent_supervisor/self_improvement/state.json \
+  --strategy-path data/agent_supervisor/self_improvement/strategy.json \
+  --events-path data/agent_supervisor/self_improvement/events.jsonl \
+  --objective-path \
+    docs/architecture/agent_supervisor_self_improvement.objectives.md \
+  --task-prefix "ASI-" \
+  --task-header-prefix "## ASI-" \
   --objective-scan --codebase-scan --retry-budget --dependency-guardrail
 ```
 
-The four modes have different evidence sources:
+- `--objective-scan` finds unsatisfied objective evidence.
+- `--codebase-scan` records bounded static findings.
+- `--retry-budget` turns exhausted implementation, validation, or merge
+  retries into repair work.
+- `--dependency-guardrail` repairs invalid task dependencies.
 
-- `--objective-scan` finds missing objective evidence;
-- `--codebase-scan` finds bounded static findings in tracked code and worktrees;
-- `--retry-budget` converts repeated implementation, validation, or merge
-  failures into repair tasks;
-- `--dependency-guardrail` repairs missing, self-referential, or cyclic task
-  dependencies.
-
-When no mode flag is supplied, the refinery runs all available modes. Generated
-tasks are deduplicated by canonical identity and discovery fingerprint.
+With no mode flag, all available sources run. Findings are content-identified,
+deduplicated, cooled down, and bounded by configured open-work and finding
+limits. Refill does not prove completion and does not authorize implementation.
+The raw codebase inventory remains objective-agnostic and unchanged by refill
+policy. Rejected admission candidates remain in the durable details artifact.
+Use `--allow-unscoped-codebase-refill` only for an explicitly unscoped legacy
+board; it is rejected when an objective heap is configured and is an unsafe
+compatibility opt-out, not a scanner-scope flag. Goal-backed admission also
+requires explicit statuses, existing parents, acyclic ancestry, and semantic
+evidence beyond a path token for broad top-level directory outputs.
 
 ## Supervisor self-improvement program
 
@@ -225,100 +476,465 @@ supervisor can refill it from the objective heap as the initial work drains:
 
 ```bash
 ipfs-accelerate-agent-implementation-supervisor \
-  --todo-path docs/architecture/agent_supervisor_self_improvement.todo.md \
+  --once \
+  --todo-path \
+    docs/architecture/agent_supervisor_self_improvement.todo.md \
   --task-prefix "ASI-" \
   --state-dir data/agent_supervisor/self_improvement/state \
   --worktree-root data/agent_supervisor/self_improvement/worktrees \
   --objective-refill-scan \
-  --objective-path docs/architecture/agent_supervisor_self_improvement.objectives.md \
-  --objective-graph-path data/agent_supervisor/self_improvement/objective_graph.json \
-  --objective-bundle-dir data/agent_supervisor/self_improvement/bundles \
-  --objective-dataset-dir data/agent_supervisor/self_improvement/datasets \
-  --objective-discovery-dir data/agent_supervisor/self_improvement/discovery \
-  --objective-todo-vector-index-path data/agent_supervisor/self_improvement/bundles/todo_vector_index.json \
-  --once
+  --objective-path \
+    docs/architecture/agent_supervisor_self_improvement.objectives.md \
+  --objective-graph-path \
+    data/agent_supervisor/self_improvement/objective_graph.json \
+  --objective-bundle-dir \
+    data/agent_supervisor/self_improvement/bundles \
+  --objective-dataset-dir \
+    data/agent_supervisor/self_improvement/datasets \
+  --objective-discovery-dir \
+    data/agent_supervisor/self_improvement/discovery \
+  --objective-todo-vector-index-path \
+    data/agent_supervisor/self_improvement/bundles/todo_vector_index.json
 ```
 
-Run without `--implement` first to inspect reconciliation and refill output.
-The final task tranche adds benchmark-driven successor-goal generation, but it
-still uses the existing transactional objective admission, deduplication,
-cooldown, and exhaustion contracts. A drained board is an observation, not
-completion evidence and not permission to generate unbounded work.
+## Context, cache, and resource profiles
 
-## Evidence and artifacts
+An operating profile is a reviewed recipe, not a global singleton. Bind its
+values into `ControlBounds`, `context_contracts.ContextBudget`,
+`cache_coordinator.CacheQuotaPolicy`, `ResourcePolicy`,
+`ResourceLeaseBudget`, formal-verification
+`formal_verification_contracts.ResourceBudget`, and daemon CLI limits at the
+point each component is constructed. Persist the profile revision in requests,
+receipts, cache keys, plans, and epoch bindings.
 
-The supervisor keeps large evidence out of task prompts. JSONL events and
-versioned artifacts retain identities, verdicts, paths, counts, and bounded
-diagnostics; raw provider output and large source bodies stay in their dedicated
-artifact locations. Use the query tool for inspection:
+Two supported starting recipes follow. They are ceilings, not targets.
+
+| Setting | Deterministic smoke | Production starting point |
+| --- | ---: | ---: |
+| Control items / serialized bytes / text bytes / timeout | 32 / 65,536 / 4,096 / 10 s | 256 / 262,144 / 8,192 / 30 s |
+| Context input / output reserve / tool reserve | 2,048 / 512 / 128 tokens | 8,192 / 2,048 / 512 tokens |
+| Context items / serialized bytes | 32 / 65,536 | 128 / 262,144 |
+| Coordinator cache entries / namespace bytes / entry bytes | 64 / 4 MiB / 64 KiB | 512 / 32 MiB / 256 KiB |
+| Analysis cache entry / receipt bytes | 64 KiB / 48 KiB | 128 KiB / 96 KiB |
+| Negative TTL / maximum TTL | 60 s / 1 h | 5 min / 24 h |
+| Supervisor lanes | 1 | 4, reduced by admission telemetry |
+| Proof/model/artifact concurrency | 1 / 1 / 1 | 2 / 1 / 2, never above the top-level lease |
+| Network and optional providers | Disabled | Disabled until capability and policy approval |
+| Rollout | `shadow` | Start `shadow`; promote through `assist` only after paired evidence |
+
+### Deterministic smoke profile
+
+Use the smoke profile in CI, migration rehearsals, and recovery checks:
+
+- one lane, one process, one proof route, and no adaptive scheduling;
+- frozen tree, objective, policy, capability snapshot, fixture inputs, and
+  clock where the test harness supports it;
+- local deterministic handlers or fixtures only; network remains false;
+- small context and cache bounds, with cache directories isolated per test;
+- no implementation mutation unless the test explicitly supplies typed
+  authorization, lease validation, and a temporary repository;
+- paired rollout requested as `shadow`.
+
+This profile is intentionally too small for broad production goals. A passing
+smoke run proves contract wiring and deterministic recovery, not production
+capacity or automatic-rollout eligibility.
+
+### Production profile
+
+Start production conservatively:
+
+- retain the default `ControlBounds` and
+  `context_contracts.ContextBudget` ceilings shown above;
+- negotiate the effective context limit against the current provider report
+  and reserve output/tool tokens before compiling context;
+- retain namespaced cache identity dimensions and freshness checks; never
+  convert a draft, negative, stale, or capability-mismatched hit into
+  authoritative evidence;
+- cap each coordinator cache namespace at 512 entries, 32 MiB, and 256 KiB per
+  entry initially. The analysis-receipt cache retains its stricter defaults of
+  128 KiB per entry and 96 KiB per receipt; size from measured eviction and
+  reuse rather than disabling quotas;
+- begin with four top-level lanes and concurrency two for CPU-proof, one for
+  model, and two for artifact classes; lower admission under host pressure,
+  provider latency, quota reserve, merge age, or conflicting paths;
+- use explicit non-zero wall-time, memory, disk, process, output, token, and
+  provider-quota limits in each production plan. A zero in `ResourceBudget`
+  means “not declared,” not a safe finite limit;
+- leave network access false unless the exact provider operation and egress
+  are policy-approved;
+- require provider telemetry and current capability probes before admission;
+- run in shadow, retain paired reports, and require operator review in assist
+  before considering automatic behavior.
+
+Scale one dimension at a time. Increasing context, lane width, prover
+portfolio width, model concurrency, or cache TTL changes policy and invalidates
+receipts or cache entries bound to the previous profile.
+
+## Shadow, assist, and automatic rollout
+
+`SelfImprovementRolloutMode` has exactly `shadow`, `assist`, and `automatic`.
+
+| Mode | Allowed behavior |
+| --- | --- |
+| `shadow` | Run bounded candidates and write metrics/reports; do not change dispatch authority, objective state, task completion, or merge decisions. |
+| `assist` | Present or queue a validated proposal for an authorized operator; no unreviewed mutation. |
+| `automatic` | Apply only the narrowly approved capability after all policy, authorization, assurance, freshness, resource, and paired-rollout gates pass. |
+
+Evaluate baseline and candidate on the closed fixture population: cold, warm,
+broad goal, contradictory input, malformed output, stale cache, unavailable
+provider, independent parallel work, conflicting parallel work, failed
+validation, restart, and drained refill.
+
+```python
+from ipfs_accelerate_py.agent_supervisor import (
+    PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
+    PairedRolloutRequirementEvidence,
+    PairedRolloutPolicy,
+    PairedRolloutReportStore,
+    REQUIRED_PAIRED_FIXTURE_KINDS,
+    evaluate_paired_self_improvement_rollout,
+)
+
+def verify_shadow_population(fixtures, *, repository_id, tree_id, report_dir):
+    # The harness supplies one paired measurement for every reviewed kind.
+    kinds = tuple(item.fixture_kind for item in fixtures)
+    assert len(kinds) == len(REQUIRED_PAIRED_FIXTURE_KINDS)
+    assert frozenset(kinds) == frozenset(REQUIRED_PAIRED_FIXTURE_KINDS)
+    report = evaluate_paired_self_improvement_rollout(
+        fixtures,
+        policy=PairedRolloutPolicy(),
+    )  # omitted desired_mode intentionally defaults to shadow
+    store = PairedRolloutReportStore(report_dir)
+    store.persist(report)
+    recovered = store.load(report.report_id)
+    evidence = tuple(
+        recovered.evidence_for(
+            requirement_id,
+            repository_id=repository_id,
+            repository_tree=tree_id,
+        )
+        for requirement_id in (
+            SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
+            PAIRED_EFFICIENCY_REQUIREMENT_ID,
+        )
+    )
+    restored = tuple(
+        PairedRolloutRequirementEvidence.from_dict(
+            item.to_dict(),
+            report=recovered,
+        )
+        for item in evidence
+    )
+    assert all(item.requirement_satisfied for item in restored)
+    assert recovered.effective_mode.value == "shadow"
+    assert not recovered.promotion_allowed
+    return recovered, restored
+```
+
+The default paired policy requires zero false completions, authority
+violations, stale authoritative hits, escaped defects, duplicate executions,
+and unauthorized mutations; bounded artifacts; stable restart; no quality,
+coverage, accepted-work, defect-detection, false-rejection, or merge-conflict
+regression; at least 35% lower median input tokens; at least 70% cache reuse on
+the repeated fixtures; at least 2x independent-lane throughput; and a planning
+improvement of either at least 1,000 basis points in median evidence coverage
+or at least 2,000 basis points in aggregate invalid-plan-branch reduction. A
+missing fixture or any failed gate forces the effective mode to `shadow`, even
+when `assist` or `automatic` was requested.
+
+Three stable objective terms make the rollout and its public adoption boundary
+directly auditable:
+
+- `109590900757783560279417463762322084165` is satisfied only when the complete
+  seeded population has zero candidate false completions; seeding any false
+  completion fails the non-negotiable gate and forces `shadow`.
+- `146189916032404266364029134505159070240` is satisfied only when the paired
+  token, repeated-cache, planning, and independent-throughput gates all pass.
+- `300500866741873729474343907613893393545`, published as
+  `PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`, is satisfied only by a fresh
+  interpreter check proving package import and manifest inspection are cold,
+  every unique manifest member resolves to its identical provider-free owner,
+  and no optional provider is loaded. Its canonical heap owner is ASI-G114.
+
+Use
+`report.evidence_for(requirement_id, repository_id=..., repository_tree=...)`
+to obtain the bounded, typed projection for either report-backed term. The
+canonical ASI-G112/ASI-G113 goal is derived from the requirement and cannot be
+supplied by the caller. The ASI-G114 import-isolation term is intentionally not
+accepted by `evidence_for`: it is a package-interface property proved by the
+fresh-process surface test, not a claim about paired measurements. An unmet
+report term returns a negative diagnostic witness; an unsupported term raises
+`PairedRolloutValidationError`. Restore serialized report evidence with
+`PairedRolloutRequirementEvidence.from_dict(payload, report=report)`, which
+re-derives the claim and rejects altered, detached, or unknown data. Neither
+evidence route grants mutation authorization or goal-completion authority.
+
+Paired report version 2 adds the explicit invalid-plan-branch measurement and
+four component-gate projections. The reader still recomputes and accepts
+persisted version-1 reports for audit and recovery, but a version-1 report
+cannot claim the paired-efficiency term because it never measured the planning
+gate. Run the current shadow population to mint a version-2 witness before
+considering assist or automatic use.
+
+The package-root `PAIRED_ROLLOUT_STABLE_EXPORTS` manifest is the authoritative
+lazy surface. It groups the bounds and threshold constants; goal and
+requirement IDs; schema and version constants; fixture, measurement, policy,
+mode, report, evidence, store, and validation-error types; the reviewed
+fixture collections; and the evaluator. Importing
+`ipfs_accelerate_py.agent_supervisor` or reading the manifest does not load
+optional analysis, model, dataset, or prover providers or start a process.
+Accessing a listed name loads only the provider-free rollout contract module.
+The adjacent `PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID` and
+`PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID` bind that compatibility contract without
+loading the rollout module. A qualifying smoke preflight must run
+`test_stable_rollout_exports_remain_lazy_without_optional_providers` in its
+fresh child interpreter; importing successfully in an already-warm operator
+process or checking only some manifest names is not evidence.
+Migrate direct imports from
+`ipfs_accelerate_py.agent_supervisor.self_improvement_rollout` to the package
+root; migrate a version-1 report by running a fresh version-2 shadow population,
+not by editing its serialized form.
+
+In the deterministic smoke profile, call `evidence_for` after each seeded
+fault. A seeded false completion affirmatively proves the safety term only
+when the complete population forces shadow; failed efficiency gates produce
+negative efficiency witnesses. In production, persist both projections with
+the current report, profile revision, capability snapshot, tree, objective,
+and policy identities; a changed binding or a missing projection requires a
+new shadow evaluation before assist or automatic use.
+
+Promotion is capability-specific. A report permits policy to consider
+promotion; it is not itself an authorization decision or completion proof.
+
+Before requesting `assist`, and again before `automatic`, the operator's
+go/no-go review must confirm:
+
+1. the fresh-process ASI-G114 import-isolation preflight passed for the current
+   package and provider inventory, and capability discovery likewise loaded no
+   optional provider and started no process;
+2. a current version-2 report covers every reviewed fixture in shadow;
+3. both strictly restored projections are satisfied and bound to the current
+   repository and tree, and are retained with the exact profile, capability
+   snapshot, objective, and policy identities;
+4. the persisted report reloads to the same content identity and all bounded
+   reason codes have been reviewed;
+5. the desired mutation separately has authorization, expected effects,
+   idempotency, a live lease, and the current fence; and
+6. any package, manifest, provider-inventory, tree, policy, capability, or
+   profile binding change returns operation to shadow and reruns the applicable
+   import-isolation preflight and paired population.
+
+### Requesting ASI-G090 completion
+
+Promotion authority does not complete ASI-G090. After all changes are present
+on the candidate tree, run the mandatory command:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_self_improvement_e2e.py \
+  test/api/test_agent_supervisor_self_improvement_benchmark.py -q
+```
+
+Submit the completion request through
+`report.evaluate_objective_completion(...)` or
+`evaluate_paired_rollout_completion(...)` with all of the following:
+
+1. a fresh recomputed complete report and both strictly restored, satisfied
+   G112/G113 requirement projections bound to the current repository/tree;
+2. exactly ASI-023 and ASI-024 in terminal-success states and exactly G112,
+   G113, and G114 freshly `verified_complete`, each with a passing current-tree
+   gate, validation record, and conclusive current proof requirement;
+3. exactly one fresh passing current-tree validation receipt for each of the
+   five literal G090 clauses, plus an exact coverage row naming concrete
+   implementation and that receipt CID;
+4. analyzer data with `status: healthy`, `healthy: true`, and
+   `safe_for_completion_reasoning: true`, bound to repository, tree,
+   `ASI-G090`, `ASI-G090@asi-090`, `paired-rollout-completion@1`, and
+   `paired-rollout-completion-policy@1`;
+5. exactly two fresh members, each healthy, completion-safe, exhaustive, and
+   identically bound, with unique member ID, evidence channel, and receipt
+   CID.
+
+Every submitted record is checked. Extra, failed, stale, future, foreign,
+duplicated, or detached evidence fails the request; a passing sibling cannot
+mask it. The first successful evaluation produces only
+`provisionally_complete`. Run a separate later evaluation against the same
+still-current proof population before accepting `verified_complete`. If the
+tree/profile/provider binding changes or a child reopens, rerun the shadow
+population and completion evidence collection.
+
+## Metrics and evidence
+
+Expose metrics through the control operation with an explicit state-relative
+path:
+
+```bash
+ipfs-accelerate agent metrics \
+  --repository-root "${REPO_ROOT}" \
+  --state-root "${STATE_ROOT}" \
+  --repository-id "repo:ipfs-accelerate" \
+  --tree-id "git:CURRENT_TREE_ID" \
+  --objective-id "ASI-G090" \
+  --objective-revision "objectives:CURRENT_CONTENT_ID" \
+  --policy-id "policy:production" \
+  --policy-revision "policy:1" \
+  --caller "operator:release" \
+  --path "metrics/supervisor.json" \
+  --output-json
+```
+
+At minimum, monitor:
+
+- accepted and completed work, false completions, and evidence coverage;
+- input tokens, context truncation/inclusion reasons, delta retries, and cost;
+- cache lookup, hit, miss, rejection, stale rejection, eviction, and
+  single-flight behavior by namespace;
+- queue depth, admitted lanes, resource pressure, provider latency/quota, lane
+  throughput, conflicts, and starvation age;
+- validation/proof outcomes, false rejection, seeded/detected/escaped defects,
+  prover quarantine, and freshness;
+- mutation dispatches, authorization failures, audit receipts, idempotent
+  replays, stale leases/fences, and unauthorized mutations;
+- retry counts, heartbeat age, recovery decisions, merge conflicts, and
+  terminal acceptance;
+- paired token reduction, repeated-cache reuse, planning coverage improvement,
+  invalid-plan-branch reduction, independent throughput, all four component
+  gates, and bounded reason codes;
+- self-refill epoch status, blocker codes, successor counts, replay, and
+  healthy exhaustion.
+
+Metrics are observations. Completion requires typed evidence bound to the
+current repository tree, objective, policy, command/toolchain, scope, result,
+artifact digest, and freshness policy. Keep raw prompts, model outputs, source
+bodies, cache values, and large artifacts outside metrics and control results.
+
+Use bounded artifact inspection:
 
 ```bash
 ipfs-accelerate-agent-artifact-query \
-  data/agent_supervisor/objective_bundles/index.json --schema
+  data/agent_supervisor/self_improvement/bundles/index.json --schema
 
 ipfs-accelerate-agent-artifact-query \
-  data/agent_supervisor/objective_bundles/index.json \
+  data/agent_supervisor/self_improvement/bundles/index.json \
   --table bundles --limit 20
 ```
 
-The artifact store supports bundle indexes, scheduler manifests, code-evidence
-graphs, proof attestations, and proof metrics. Each artifact carries a schema
-and canonical identity so projections can be rebuilt or migrated.
+## Failure recovery
 
-## Leanstral and formal assurance
+Recovery is evidence-preserving and bounded:
 
-Leanstral is an optional proposal provider for goal development and proof
-candidates. It can suggest refinements, translations, and candidate proofs for
-the supported logic families, but its output remains untrusted until the typed
-contracts, capability checks, and authoritative prover receipts accept it.
+1. Read `health`, `status`, recent `events`, and `receipts`; check heartbeat
+   age, lease/fence ownership, tree identity, and the last terminal receipt.
+2. Use `pause` to stop new dispatch while retaining resumability, or `drain`
+   to finish admitted work without accepting more.
+3. Run the implementation supervisor once. It reconciles state, stale
+   heartbeats, retry budgets, worktree ownership, and refill hooks.
+4. Use `validation_replay` only with the exact validation and tree binding.
+   Changed evidence requires a new request, not replay of an old success.
+5. Use `retry` only after a transient failure or a recorded changed trigger.
+   Idempotency prevents duplicate execution.
+6. Use `quarantine` for a task/provider/lane that must not be scheduled until
+   reviewed. Use `cancel` or `stop` only with an explicit target and effects.
+7. Inspect merge receipts and use the merge resolver for a bounded conflict;
+   never mark a task complete because a process exited or a board drained.
 
-The relevant operational sequence is:
+Do not delete state to “unstick” the supervisor. JSONL control receipts,
+content-addressed artifacts, epoch ledgers, lease records, and materialization
+journals are the restart and audit boundary. If state is corrupt, preserve it,
+start from a new explicit state root, and reconcile against the unchanged
+objective and repository tree.
 
-1. Discover effective provider context limits and prover capabilities.
-2. Build a bounded goal-development context from immutable goal and evidence
-   records.
-3. Generate a proposal or proof candidate.
-4. Validate its schema, logic vocabulary, scope, and translation semantics.
-5. Route independent obligations to the registered prover portfolio.
-6. Persist bounded receipts and use them for planning, merge, and completion
-   gates.
+Stable error codes distinguish invalid requests, denied authority, conflict,
+not found, cancellation, timeout, and unavailable operations. Provider
+unavailability degrades to a typed local fallback or rejection; it never
+grants another provider more authority.
 
-Use the architecture and benchmark documents linked at the top of this guide
-for rollout policy. Do not treat model confidence, package discovery, or a
-syntactically valid candidate as proof.
+## Self-refill epochs
 
-## Extending the supervisor
+A drained board is a trigger for reconciliation, not proof that the objective
+is complete. `run_self_improvement_epoch()` binds one epoch to:
 
-The extension-point guidance in the architecture document is for maintainers
-adding integrations; it is not a list of mandatory next steps for every user.
-New integrations should normally:
+- the repository and tree;
+- objective and task-board content;
+- self-improvement policy;
+- capability snapshot;
+- observation window and operator revision; and
+- ledger, strategy, materialization, discovery, and bundle control paths.
 
-- expose evidence through a versioned receipt;
-- register provers through capability/conformance contracts;
-- add task sources through the objective graph and backlog refinery;
-- route LLM calls through the existing provider boundary;
-- express scheduler policy with typed resource and lease contracts; and
-- persist projections through versioned artifact stores.
+The observation provider must return fresh typed observations for the closed
+efficiency, planning, validation, cache, throughput, control, and safety
+dimensions. Observations are read-only. A proposal provider is called only for
+a blocker-free actionable epoch, and admitted successor work is bounded,
+quality-checked, deduplicated across lifecycle states, cooled down, and
+materialized transactionally.
 
-This keeps proposal, admission, execution, and evidence responsibilities
-separate and prevents a new integration from silently becoming an authority
-source.
+An identical content-addressed epoch replays before providers run. A healthy
+epoch with complete independent evidence records healthy exhaustion, creates
+no busywork, and waits for a meaningful trigger: a changed tree, objective,
+policy, or capability snapshot; stale evidence; a measured regression; an
+operator revision; or the scheduled observation window. An actionable epoch
+can create bounded successor goals and tasks. A blocked or incomplete epoch
+cannot claim exhaustion.
 
-## Tests
+Keep the epoch ledger and strategy projection under the state root and include
+their receipt IDs in operations and dashboards. Never edit the ledger to force
+a refill.
 
-The supervisor API tests are grouped under `test/api/`:
+## Migration from standalone scripts
+
+Existing deployments can migrate incrementally:
+
+| Standalone pattern | Unified replacement |
+| --- | --- |
+| Read objective Markdown directly | `goals` with explicit `objective_path`, bounds, and target binding |
+| Parse the todo board in an operator script | `tasks` with explicit `todo_path` and `task_header_prefix` |
+| Read status, metrics, events, cache, or bundle JSON ad hoc | Corresponding bounded read operation |
+| Shell out from Python to a supervisor script | Register a direct package-API handler and call `SupervisorControlService` |
+| Let an MCP request choose arbitrary roots | Configure server-side repository/state allowlists |
+| Invoke a lifecycle command without a receipt | Typed mutation request with authorization, idempotency, lease/fence, effects, and audit receipt |
+| Treat successful process exit as completion | Require terminal acceptance and objective evidence bound to the current tree |
+| Refill whenever the board is empty | Objective reconciliation, then a content-addressed self-refill epoch |
+
+Recommended sequence:
+
+1. Inventory current roots, callers, scripts, state files, task prefixes, and
+   mutation effects.
+2. Freeze repository, objective, policy, and capability identities for a smoke
+   run.
+3. Move reads first and compare canonical results with the old projections.
+4. Add server allowlists and policy-produced authorization; keep all new
+   mutation behavior in dry-run and shadow.
+5. Register package handlers for the standalone engines. Keep scripts as
+   operator break-glass entry points, not as hidden subprocesses behind the
+   service.
+6. Run the deterministic smoke profile, restart/replay checks, and full
+   Python/CLI/MCP parity tests.
+7. Run paired production fixtures in shadow, then assist. Consider automatic
+   use only after the complete gate passes and policy approves the exact
+   capability.
+8. Retire duplicate parsing and shell orchestration only after receipts and
+   recovery have been verified from a clean restart.
+
+Standalone commands do not automatically gain unified authorization,
+idempotency, or MCP allowlists. During migration, protect them with the same
+filesystem ownership, process isolation, explicit paths, and operator policy;
+do not assume equivalence until their direct package handler is parity-tested.
+
+## Validation
+
+Run the deterministic contract and surface-parity suite:
 
 ```bash
 python -m pytest \
-  test/api/test_agent_supervisor_objective_graph.py \
-  test/api/test_agent_supervisor_todo_daemon_port.py \
-  test/api/test_agent_supervisor_bundle_plan_cache.py -q
-
-python -m pytest \
-  test/api/test_agent_supervisor_leanstral_goal_benchmark.py \
-  test/api/test_agent_supervisor_leanstral_goal_lifecycle_e2e.py -q
+  test/api/test_agent_supervisor_self_improvement_e2e.py \
+  test/api/test_agent_supervisor_self_improvement_benchmark.py \
+  test/api/test_agent_supervisor_control_plane.py \
+  test/test_unified_cli_agent_supervisor.py \
+  test/mcp_server/test_agent_supervisor_tools.py -q
 ```
 
-Optional provider, prover, IPFS, and P2P tests require their corresponding
-dependencies and should be run separately from the deterministic contract
-tests.
+Run provider, external prover, IPFS, P2P, and hardware-dependent tests
+separately with their declared capabilities and resource profile. A skipped or
+unavailable optional integration must remain a typed non-authority outcome,
+not a silent pass.

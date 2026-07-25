@@ -13,11 +13,13 @@ import json
 import logging
 import os
 import re
+import shlex
 import tempfile
-from dataclasses import asdict, dataclass, is_dataclass
-from pathlib import Path
+from dataclasses import asdict, dataclass, is_dataclass, replace
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .goal_completion import CompletionEvidence
 from .objective_graph import (
     DEFAULT_DISCOVERY_OUTPUT_PATH,
     DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
@@ -43,6 +45,7 @@ from .objective_tracker import (
     append_refinement_goals,
     completion_tree_identity,
     deduplicate_interoperability_goals,
+    directly_open_goal_ids_from_todo_board,
     ensure_objective_tracking_document,
     open_goal_ids_from_todo_board,
     parse_root_evidence,
@@ -54,6 +57,9 @@ logger = logging.getLogger(__name__)
 
 OBJECTIVE_COMPLETION_GATE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.objective_daemon.completion_gate.v1"
+)
+OBJECTIVE_COMPLETION_EVIDENCE_ARTIFACT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_daemon.completion_evidence.v1"
 )
 OBJECTIVE_GENERATION_ARTIFACT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.objective_daemon.generation.v1"
@@ -440,6 +446,7 @@ def _load_generation_payload(path: Path) -> dict[str, Any]:
             "generated_work_count": 0,
             "generated_work": [],
             "admission_records": {},
+            "gap_family_states": {},
         }
     # Validate every work identity before retaining any admission state.
     load_objective_generation_work(path)
@@ -455,6 +462,15 @@ def _load_generation_payload(path: Path) -> dict[str, Any]:
         raise ValueError("objective generation admission_records must be an object")
     result["admission_records"] = {
         str(key): dict(value) for key, value in sorted(records.items())
+    }
+    family_states = result.get("gap_family_states", {})
+    if not isinstance(family_states, Mapping) or any(
+        not isinstance(key, str) or not isinstance(value, Mapping)
+        for key, value in family_states.items()
+    ):
+        raise ValueError("objective generation gap_family_states must be an object")
+    result["gap_family_states"] = {
+        str(key): dict(value) for key, value in sorted(family_states.items())
     }
     return result
 
@@ -535,6 +551,7 @@ def persist_objective_generation(
     *,
     existing_work: Iterable[Mapping[str, Any]] = (),
     evaluation: Any = None,
+    gap_family_states: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Persist a bounded generation cycle and its cross-cycle identity ledger."""
 
@@ -563,16 +580,26 @@ def persist_objective_generation(
             # best-effort counter is observability only and cannot admit work.
             prior_cycle_count = 0
     retained_admission_records: dict[str, Any] = {}
+    retained_gap_family_states: dict[str, Any] = {}
     if path.exists():
         try:
             previous_payload = _load_generation_payload(path)
             retained_admission_records = dict(
                 previous_payload.get("admission_records") or {}
             )
+            retained_gap_family_states = dict(
+                previous_payload.get("gap_family_states") or {}
+            )
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             # The identity load above remains fail-closed.  This branch is only
             # reachable for observability fields in a legacy/corrupt artifact.
             retained_admission_records = {}
+            retained_gap_family_states = {}
+    if gap_family_states is not None:
+        retained_gap_family_states = {
+            str(key): dict(value)
+            for key, value in gap_family_states.items()
+        }
     payload = {
         "schema": OBJECTIVE_GENERATION_ARTIFACT_SCHEMA,
         "cycle_count": prior_cycle_count + 1,
@@ -583,6 +610,10 @@ def persist_objective_generation(
             evaluation.to_dict() if hasattr(evaluation, "to_dict") else evaluation
         ),
         "admission_records": retained_admission_records,
+        "gap_family_states": {
+            key: retained_gap_family_states[key]
+            for key in sorted(retained_gap_family_states)
+        },
     }
     _atomic_json_write(path, payload)
     return payload
@@ -596,35 +627,444 @@ def materialize_objective_generation_cycle(
     current_open_work: int | None = None,
     evaluation_policy: Any = None,
     objective_terms: Sequence[str] = (),
+    active_family_keys: Iterable[str] | None = None,
+    terminal_family_counts: Mapping[str, int] | None = None,
+    blocked_family_counts: Mapping[str, int] | None = None,
+    observed_gap_goal_ids: Iterable[str] | None = None,
 ) -> tuple[Any, dict[str, Any]]:
-    """Apply finite graph limits and persist canonical history for one cycle."""
+    """Apply finite graph limits and persist canonical history for one cycle.
 
-    from .objective_graph import materialize_bounded_objective_work
+    Typed completion gaps advance through a bounded repair lifecycle.  A
+    completed board task authorizes one retry, up to ``max_retries``; persistent
+    failure then produces one review task and finally a durable blocked-review
+    state. A blocked task bypasses retries and produces the review directly.
+    Board task counts, rather than receipt hashes, drive this lifecycle.
+    """
+
+    from .objective_graph import (
+        ObjectiveGenerationLimits,
+        ObjectiveWorkProposal,
+        materialize_bounded_objective_work,
+    )
     from .plan_evaluator import evaluate_objective_work_proposals
 
     existing = load_objective_generation_work(artifact_path)
     proposal_values = tuple(proposals)
+    active_keys = (
+        None
+        if active_family_keys is None
+        else {
+            str(item).strip()
+            for item in active_family_keys
+            if str(item).strip()
+        }
+    )
+    completed_counts = {
+        str(key).strip(): max(0, int(value))
+        for key, value in (terminal_family_counts or {}).items()
+        if str(key).strip()
+    }
+    blocked_counts = {
+        str(key).strip(): max(0, int(value))
+        for key, value in (blocked_family_counts or {}).items()
+        if str(key).strip()
+    }
+    observed_goal_ids = (
+        None
+        if observed_gap_goal_ids is None
+        else {
+            str(item).strip()
+            for item in observed_gap_goal_ids
+            if str(item).strip()
+        }
+    )
+    if limits is None:
+        max_retries = ObjectiveGenerationLimits().max_retries
+    elif isinstance(limits, Mapping):
+        max_retries = int(
+            limits.get("max_retries", ObjectiveGenerationLimits().max_retries)
+        )
+    else:
+        max_retries = int(
+            getattr(limits, "max_retries", ObjectiveGenerationLimits().max_retries)
+        )
+    prior_payload = _load_generation_payload(artifact_path)
+    prior_family_states = {
+        str(key): dict(value)
+        for key, value in (prior_payload.get("gap_family_states") or {}).items()
+    }
+    typed_candidates: dict[str, ObjectiveWorkProposal] = {}
+    for proposal in proposal_values:
+        family_key = str(getattr(proposal, "family_key", "") or "").strip()
+        if not family_key and isinstance(proposal, Mapping):
+            family_key = str(proposal.get("family_key") or "").strip()
+        if not family_key:
+            continue
+        normalized = (
+            proposal
+            if isinstance(proposal, ObjectiveWorkProposal)
+            else ObjectiveWorkProposal.from_dict(proposal)
+        )
+        prior = typed_candidates.get(family_key)
+        if prior is not None:
+            if prior.instance_key != normalized.instance_key:
+                raise ValueError(
+                    f"completion gap family {family_key} has conflicting instances"
+                )
+        typed_candidates[family_key] = normalized
+
+    lifecycle_actions: dict[str, str] = {}
+    prepared_typed: dict[str, ObjectiveWorkProposal] = {}
+
+    def retry_proposal(
+        proposal: ObjectiveWorkProposal,
+        *,
+        retry_ordinal: int,
+        note: str,
+    ) -> ObjectiveWorkProposal:
+        return replace(
+            proposal,
+            title=f"Retry {retry_ordinal}: {proposal.title}",
+            expected_evidence_delta=tuple(
+                dict.fromkeys([*proposal.expected_evidence_delta, note])
+            ),
+            retry_count=retry_ordinal,
+            source="completion_gate_gap_retry",
+            source_id=f"{proposal.instance_key}:retry:{retry_ordinal}",
+            rationale="; ".join(
+                dict.fromkeys([proposal.rationale, note])
+            ),
+            canonical_id="",
+        )
+
+    def review_proposal(
+        proposal: ObjectiveWorkProposal,
+        *,
+        retry_count: int,
+        note: str,
+    ) -> ObjectiveWorkProposal:
+        return replace(
+            proposal,
+            title=f"Review persistent gap: {proposal.title}",
+            expected_evidence_delta=tuple(
+                dict.fromkeys([*proposal.expected_evidence_delta, note])
+            ),
+            retry_count=retry_count,
+            source="completion_gate_gap_review",
+            source_id=f"{proposal.instance_key}:review",
+            rationale="; ".join(
+                dict.fromkeys([proposal.rationale, note])
+            ),
+            canonical_id="",
+        )
+
+    for family_key, proposal in typed_candidates.items():
+        prior = prior_family_states.get(family_key, {})
+        family_unresolved = bool(prior) and prior.get("resolved") is not True
+        same_instance = (
+            family_unresolved
+            and str(prior.get("instance_key") or "") == proposal.instance_key
+        )
+        completed_count = completed_counts.get(family_key, 0)
+        blocked_count = blocked_counts.get(family_key, 0)
+        prior_completed_count = max(
+            0,
+            int(
+                prior.get(
+                    "completed_task_count",
+                    prior.get("terminal_task_count", 0),
+                )
+                or 0
+            ),
+        )
+        prior_blocked_count = max(
+            0, int(prior.get("blocked_task_count", 0) or 0)
+        )
+        attempt_count = max(1, int(prior.get("attempt_count", 1) or 1))
+        review_emitted = bool(prior.get("review_emitted", False))
+        action = "stable"
+        prepared = proposal
+
+        # A family already represented by active board work cannot admit a
+        # second task, even when fresher diagnostics arrive mid-attempt.
+        if active_keys is not None and family_key in active_keys:
+            action = "active"
+        elif (
+            family_unresolved
+            and str(prior.get("outcome") or "") == "blocked_review"
+        ):
+            action = "blocked_review"
+        elif family_unresolved and blocked_count > prior_blocked_count:
+            if review_emitted:
+                action = "blocked_review"
+            else:
+                review_note = (
+                    "A completion-evidence alignment task was blocked; "
+                    "perform one manual review and record a durable block or "
+                    "a concrete remediation. The block does not consume the "
+                    "automated retry budget."
+                )
+                prepared = review_proposal(
+                    proposal,
+                    retry_count=max(0, attempt_count - 1),
+                    note=review_note,
+                )
+                action = "review"
+        elif family_unresolved and completed_count > prior_completed_count:
+            if review_emitted:
+                action = "blocked_review"
+            elif attempt_count <= max_retries:
+                retry_ordinal = attempt_count
+                retry_note = (
+                    "The completion-evidence gap persists after completed "
+                    f"attempt {retry_ordinal}; produce fresh aligned evidence."
+                )
+                prepared = retry_proposal(
+                    proposal,
+                    retry_ordinal=retry_ordinal,
+                    note=retry_note,
+                )
+                action = "retry"
+            else:
+                review_note = (
+                    f"Retry budget exhausted after {max_retries} retries; "
+                    "review the persistent completion-evidence gap and "
+                    "record a durable block or an actionable remediation."
+                )
+                prepared = review_proposal(
+                    proposal,
+                    retry_count=max_retries,
+                    note=review_note,
+                )
+                action = "review"
+        elif family_unresolved and not same_instance:
+            # Fresher diagnostics update observability only. A board task must
+            # complete or become blocked before another task or review can be
+            # emitted and before either lifecycle budget advances.
+            action = "diagnostics_updated"
+        elif not family_unresolved:
+            action = "fresh"
+
+        lifecycle_actions[family_key] = action
+        prepared_typed[family_key] = prepared
+
+    materialization_values: list[Any] = []
+    emitted_families: set[str] = set()
+    for proposal in proposal_values:
+        family_key = str(getattr(proposal, "family_key", "") or "").strip()
+        if not family_key and isinstance(proposal, Mapping):
+            family_key = str(proposal.get("family_key") or "").strip()
+        if not family_key:
+            materialization_values.append(proposal)
+            continue
+        if family_key in emitted_families:
+            continue
+        emitted_families.add(family_key)
+        # Stable unresolved work, refreshed diagnostics, durable blocks, and
+        # active tasks are lifecycle state updates, not generation candidates.
+        if lifecycle_actions[family_key] in {
+            "active",
+            "blocked_review",
+            "diagnostics_updated",
+            "stable",
+        }:
+            continue
+        materialization_values.append(prepared_typed[family_key])
+    proposal_values = tuple(materialization_values)
+
+    dedupe_existing = list(existing)
+    if active_keys is not None:
+        typed_goal_ids = {
+            value.parent_goal_id
+            for value in typed_candidates.values()
+        }
+        dedupe_existing = []
+        for raw in existing:
+            item = ObjectiveWorkProposal.from_dict(raw)
+            family_key = item.family_key
+            if not family_key:
+                # Completed generic completion-gate tasks are historical
+                # provenance, not authority to suppress a newly typed gap.
+                if (
+                    item.source == "completion_gate"
+                    and item.parent_goal_id in typed_goal_ids
+                    and item.semantic_key not in active_keys
+                ):
+                    continue
+                dedupe_existing.append(raw)
+                continue
+            current = typed_candidates.get(family_key)
+            if current is None:
+                dedupe_existing.append(raw)
+                continue
+            # Fresh occurrences, terminal-driven retries, and the one review
+            # task intentionally supersede historical canonical records in the
+            # same semantic family. All other states remain deduplicated.
+            if lifecycle_actions.get(family_key) not in {
+                "fresh",
+                "retry",
+                "review",
+            }:
+                dedupe_existing.append(raw)
+
     evaluation = None
     if evaluation_policy is not None:
         evaluation = evaluate_objective_work_proposals(
             proposal_values,
             policy=evaluation_policy,
             objective_terms=objective_terms,
-            known_canonical_ids=(str(item.get("canonical_id") or "") for item in existing),
-            known_semantic_keys=(str(item.get("semantic_key") or "") for item in existing),
+            known_canonical_ids=(
+                str(item.get("canonical_id") or "") for item in dedupe_existing
+            ),
+            known_semantic_keys=(
+                str(item.get("semantic_key") or "") for item in dedupe_existing
+            ),
         )
         proposal_values = evaluation.accepted_proposals
     result = materialize_bounded_objective_work(
         proposal_values,
-        existing_work=existing,
+        existing_work=dedupe_existing,
         limits=limits,
         current_open_work=current_open_work,
     )
+    accepted_by_family = {
+        item.family_key: item
+        for item in result.accepted
+        if item.family_key
+    }
+    next_family_states = {
+        key: dict(value) for key, value in prior_family_states.items()
+    }
+    current_families = set(typed_candidates)
+    for family_key, state in next_family_states.items():
+        goal_was_observed = (
+            observed_goal_ids is None
+            or str(state.get("goal_id") or "") in observed_goal_ids
+        )
+        if family_key not in current_families and goal_was_observed:
+            state["resolved"] = True
+            state["active"] = False
+            state["outcome"] = "resolved"
+    for family_key, proposal in typed_candidates.items():
+        prior = prior_family_states.get(family_key, {})
+        action = lifecycle_actions[family_key]
+        completed_count = completed_counts.get(family_key, 0)
+        blocked_count = blocked_counts.get(family_key, 0)
+        is_active = bool(
+            active_keys is not None and family_key in active_keys
+        )
+        accepted = accepted_by_family.get(family_key)
+
+        if action == "blocked_review":
+            if prior:
+                blocked_state = dict(prior)
+                blocked_state.update(
+                    {
+                        "resolved": False,
+                        "active": False,
+                        "outcome": "blocked_review",
+                        "review_emitted": True,
+                        "completed_task_count": completed_count,
+                        "blocked_task_count": blocked_count,
+                        "latest_instance_key": proposal.instance_key,
+                        "latest_diagnostic_canonical_id": proposal.canonical_id,
+                    }
+                )
+                next_family_states[family_key] = blocked_state
+            continue
+        if is_active:
+            active_state = dict(prior) if prior else {
+                "family_key": family_key,
+                "instance_key": proposal.instance_key,
+                "canonical_id": proposal.canonical_id,
+                "goal_id": proposal.parent_goal_id,
+                "occurrence": 1,
+                "attempt_count": 1,
+                "completed_task_count": completed_count,
+                "blocked_task_count": blocked_count,
+                "review_emitted": (
+                    proposal.source == "completion_gate_gap_manual_review"
+                ),
+                "outcome": (
+                    "review_required"
+                    if proposal.source == "completion_gate_gap_manual_review"
+                    else "actionable"
+                ),
+            }
+            active_state.update(
+                {
+                    "resolved": False,
+                    "active": True,
+                    "latest_instance_key": proposal.instance_key,
+                    "latest_diagnostic_canonical_id": proposal.canonical_id,
+                }
+            )
+            next_family_states[family_key] = active_state
+            continue
+        if accepted is None:
+            if prior:
+                retained_state = dict(prior)
+                retained_state["resolved"] = False
+                retained_state["active"] = False
+                retained_state["latest_instance_key"] = proposal.instance_key
+                retained_state[
+                    "latest_diagnostic_canonical_id"
+                ] = proposal.canonical_id
+                next_family_states[family_key] = retained_state
+            continue
+
+        is_fresh = action == "fresh"
+        prior_occurrence = max(0, int(prior.get("occurrence", 0) or 0))
+        occurrence = (
+            prior_occurrence + 1
+            if prior
+            else 1
+        ) if is_fresh else max(1, prior_occurrence)
+        prior_attempt_count = max(
+            1, int(prior.get("attempt_count", 1) or 1)
+        )
+        attempt_count = (
+            1
+            if is_fresh
+            else prior_attempt_count + (1 if action == "retry" else 0)
+        )
+        manual_review_accepted = (
+            accepted.source == "completion_gate_gap_manual_review"
+        )
+        outcome = {
+            "fresh": "actionable",
+            "retry": "retry",
+            "review": "review_required",
+            "stable": "actionable",
+        }.get(action, "actionable")
+        if manual_review_accepted:
+            outcome = "review_required"
+        next_family_states[family_key] = {
+            "family_key": family_key,
+            "instance_key": proposal.instance_key,
+            "canonical_id": accepted.canonical_id,
+            "goal_id": proposal.parent_goal_id,
+            "occurrence": occurrence,
+            "attempt_count": attempt_count,
+            "completed_task_count": completed_count,
+            "blocked_task_count": blocked_count,
+            "review_emitted": (
+                action == "review"
+                or manual_review_accepted
+                or (not is_fresh and bool(prior.get("review_emitted", False)))
+            ),
+            "outcome": outcome,
+            "resolved": False,
+            "active": False,
+            "latest_instance_key": proposal.instance_key,
+            "latest_diagnostic_canonical_id": proposal.canonical_id,
+        }
     return result, persist_objective_generation(
         artifact_path,
         result,
         existing_work=existing,
         evaluation=evaluation,
+        gap_family_states=next_family_states,
     )
 
 
@@ -1380,9 +1820,847 @@ def completion_gate_work_terms(decision: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(terms))
 
 
+def _stable_completion_gap_key(prefix: str, material: Mapping[str, Any]) -> str:
+    canonical = json.dumps(
+        dict(material),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    )
+    return f"{prefix}/" + sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _normalized_completion_gap_text(value: Any) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+
+
+def _completion_gap_strings(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        normalized = " ".join(value.split())
+        return (normalized,) if normalized else ()
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    values: list[str] = []
+    for item in value:
+        if isinstance(item, Mapping):
+            rendered = json.dumps(
+                dict(item),
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+        else:
+            rendered = " ".join(str(item or "").split())
+        if rendered and rendered not in values:
+            values.append(rendered)
+    return tuple(values)
+
+
+_VOLATILE_COMPLETION_DIAGNOSTIC_FIELDS = frozenset(
+    {
+        "cid",
+        "generated_at",
+        "observed_at",
+        "provenance_cid",
+        "receipt_cid",
+        "receipt_sha256",
+        "refreshed_at",
+        "repository_tree",
+        "sha256",
+        "timestamp",
+        "tree_id",
+    }
+)
+
+
+def _stable_completion_gap_diagnostic(value: Any) -> Any:
+    """Remove refresh-only provenance from an actionable diagnostic value."""
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _stable_completion_gap_diagnostic(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            if str(key).strip().casefold()
+            not in _VOLATILE_COMPLETION_DIAGNOSTIC_FIELDS
+        }
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [_stable_completion_gap_diagnostic(item) for item in value]
+    if isinstance(value, str):
+        return " ".join(value.split())
+    return value
+
+
+def _completion_gap_alignment_diagnostics(
+    *surfaces: Mapping[str, Any],
+) -> tuple[str, ...]:
+    labels = {
+        "probe_outcome": "Probe outcome",
+        "documentation_alignment": "Documentation alignment",
+        "debt_path": "Documentation debt path",
+    }
+    diagnostics: list[str] = []
+    for surface in surfaces:
+        for field_name, label in labels.items():
+            raw = surface.get(field_name)
+            if raw in (None, "", (), [], {}):
+                continue
+            stable = _stable_completion_gap_diagnostic(raw)
+            if stable in (None, "", (), [], {}):
+                continue
+            rendered = (
+                stable
+                if isinstance(stable, str)
+                else json.dumps(
+                    stable,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                )
+            )
+            diagnostic = f"{label}: {rendered}"
+            if diagnostic not in diagnostics:
+                diagnostics.append(diagnostic)
+    return tuple(diagnostics)
+
+
+def _completion_gap_paths(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        values: Iterable[Any] = re.split(r"[,\n]+", value)
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        values = value
+    else:
+        return ()
+    paths: list[str] = []
+    for item in values:
+        if not isinstance(item, str):
+            continue
+        path = item.strip().replace("\\", "/")
+        if path and path not in paths:
+            paths.append(path)
+    return tuple(paths)
+
+
+_COMPLETION_GAP_EDIT_TARGET_FIELDS = (
+    "implementation_paths",
+    "analyzer_implementation_paths",
+    "affected_document_paths",
+    "validator_source_paths",
+    "validator_source_path",
+)
+
+
+def _completion_gap_explicit_paths(
+    *surfaces: Mapping[str, Any],
+) -> tuple[str, ...]:
+    paths: list[str] = []
+    for surface in surfaces:
+        for field_name in _COMPLETION_GAP_EDIT_TARGET_FIELDS:
+            for path in _completion_gap_paths(surface.get(field_name)):
+                if path not in paths:
+                    paths.append(path)
+    return tuple(paths)
+
+
+def _completion_gap_evidence_path_diagnostics(
+    *surfaces: Mapping[str, Any],
+) -> tuple[str, ...]:
+    diagnostics: list[str] = []
+    for surface in surfaces:
+        for path in _completion_gap_paths(surface.get("evidence_paths")):
+            diagnostic = f"Evidence path (read-only): {path}"
+            if diagnostic not in diagnostics:
+                diagnostics.append(diagnostic)
+        receipt_path = str(surface.get("path") or "").strip()
+        if receipt_path:
+            diagnostic = f"Receipt/report path (read-only): {receipt_path}"
+            if diagnostic not in diagnostics:
+                diagnostics.append(diagnostic)
+    return tuple(diagnostics)
+
+
+def _completion_gap_precise_files(
+    values: Iterable[str],
+    *,
+    repo_root: Path,
+) -> tuple[str, ...]:
+    """Retain explicit file targets which resolve inside ``repo_root``."""
+
+    paths: list[str] = []
+    extensionless_files = {
+        "changelog",
+        "contributing",
+        "license",
+        "makefile",
+        "readme",
+    }
+    resolved_root = repo_root.resolve()
+    for value in values:
+        raw_path = str(value or "").strip()
+        if (
+            not raw_path
+            or "\x00" in raw_path
+            or raw_path.endswith(("/", "\\"))
+        ):
+            continue
+        normalized = raw_path.replace("\\", "/")
+        if (
+            "://" in normalized
+            or re.match(r"^[A-Za-z]:", normalized)
+        ):
+            continue
+        relative_path = PurePosixPath(normalized)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            continue
+        normalized = relative_path.as_posix()
+        if normalized in {"", "."}:
+            continue
+        name = relative_path.name
+        if "." not in name and name.casefold() not in extensionless_files:
+            continue
+        try:
+            resolved_target = (
+                resolved_root.joinpath(*relative_path.parts).resolve(strict=False)
+            )
+            resolved_target.relative_to(resolved_root)
+            if resolved_target.exists() and not resolved_target.is_file():
+                continue
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if normalized not in paths:
+            paths.append(normalized)
+    return tuple(paths)
+
+
+def _completion_gap_validation_commands(
+    *,
+    row: Mapping[str, Any],
+    receipt: Mapping[str, Any] | None,
+    goal_validation: Sequence[str],
+    default_validation: Sequence[str],
+) -> tuple[str, ...]:
+    values: list[str] = []
+    tiers: list[list[tuple[str, Any]]] = [
+        [
+            ("validation_commands", row.get("validation_commands")),
+            ("validation_command", row.get("validation_command")),
+        ],
+    ]
+    if receipt is not None:
+        tiers.append(
+            [
+                ("validation_commands", receipt.get("validation_commands")),
+                ("validation_command", receipt.get("validation_command")),
+                ("command", receipt.get("command")),
+            ]
+        )
+    for sources in tiers:
+        tier_values: list[str] = []
+        for field_name, raw in sources:
+            if not raw:
+                continue
+            if field_name in {"validation_command", "command"} and isinstance(
+                raw, Sequence
+            ) and not isinstance(raw, (str, bytes)):
+                command = shlex.join(
+                    str(item) for item in raw if str(item).strip()
+                )
+                if command and command not in tier_values:
+                    tier_values.append(command)
+                continue
+            for command in _completion_gap_strings(raw):
+                if command not in tier_values:
+                    tier_values.append(command)
+        if tier_values:
+            values.extend(tier_values)
+            break
+    if not values:
+        values.extend(str(item) for item in goal_validation if str(item).strip())
+    for command in default_validation:
+        normalized = str(command).strip()
+        if normalized and normalized not in values:
+            values.append(normalized)
+    return tuple(values)
+
+
+def _rejected_receipt_channel(
+    receipt: Mapping[str, Any],
+    *,
+    goal_id: str,
+    missing_channels: Sequence[str],
+) -> str:
+    explicit = str(
+        receipt.get("producer_channel")
+        or receipt.get("required_producer_channel")
+        or receipt.get("evidence_channel")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit
+    repository_channel = f"repository-validator:{goal_id}"
+    if repository_channel in missing_channels:
+        return repository_channel
+    return str(missing_channels[0]) if len(missing_channels) == 1 else repository_channel
+
+
+def _documentation_completion_gap_proposals(
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    goal_id: str,
+    goal: Any,
+    record: Mapping[str, Any],
+    default_validation: Sequence[str],
+) -> tuple[ObjectiveWorkProposal, ...]:
+    """Adapt documentation-style unverified rows into direct goal tasks.
+
+    This is intentionally a generation adapter, not a completion-evidence
+    adapter. Rejected receipts contribute bounded repair diagnostics only and
+    are never returned as evidence records.
+    """
+
+    coverage = record.get("coverage")
+    if not isinstance(coverage, Mapping):
+        coverage = {}
+    raw_rows = coverage.get("criteria", ())
+    rows = [
+        dict(item)
+        for item in raw_rows
+        if isinstance(item, Mapping)
+        and (
+            item.get("verified") is False
+            or (
+                item.get("verified") is not True
+                and str(item.get("status") or "").strip().lower()
+                not in {
+                    "complete",
+                    "completed",
+                    "passed",
+                    "satisfied",
+                    "verified",
+                }
+            )
+        )
+    ] if isinstance(raw_rows, Sequence) and not isinstance(raw_rows, (str, bytes)) else []
+    for row in rows:
+        if str(row.get("required_producer_channel") or "").strip():
+            continue
+        criterion = " ".join(str(row.get("criterion") or "").split())
+        criterion_id = str(row.get("criterion_id") or "").strip()
+        if not criterion_id:
+            criterion_id = _stable_completion_gap_key(
+                "criterion/v1",
+                {"criterion": _normalized_completion_gap_text(criterion)},
+            )
+            row["criterion_id"] = criterion_id
+        row["required_producer_channel"] = (
+            f"completion-gate-criterion:{criterion_id}"
+        )
+    missing_channels = sorted(
+        {
+            str(item).strip()
+            for item in record.get("missing_producer_channels", ())
+            if str(item).strip()
+        }
+    ) if isinstance(record.get("missing_producer_channels", ()), Sequence) and not isinstance(record.get("missing_producer_channels", ()), (str, bytes)) else []
+    row_channels = {
+        str(row.get("required_producer_channel") or "").strip()
+        for row in rows
+        if str(row.get("required_producer_channel") or "").strip()
+    }
+    channels = sorted(set(missing_channels) | row_channels)
+
+    rejected_values = record.get("rejected_receipts", ())
+    rejected = [
+        dict(item)
+        for item in rejected_values
+        if isinstance(item, Mapping)
+    ] if isinstance(rejected_values, Sequence) and not isinstance(rejected_values, (str, bytes)) else []
+    receipts_by_channel: dict[str, list[dict[str, Any]]] = {}
+    for receipt in rejected:
+        channel = _rejected_receipt_channel(
+            receipt,
+            goal_id=goal_id,
+            missing_channels=channels,
+        )
+        receipts_by_channel.setdefault(channel, []).append(receipt)
+    channels = sorted(set(channels) | set(receipts_by_channel))
+    if not channels:
+        return ()
+
+    binding: dict[str, Any] = {}
+    for candidate in (record.get("binding"), coverage.get("binding")):
+        if isinstance(candidate, Mapping):
+            for key, value in candidate.items():
+                binding.setdefault(str(key), value)
+    proof_revisions = {
+        key: str(binding.get(key) or "")
+        for key in (
+            "objective_revision",
+            "analyzer_version",
+            "configuration_revision",
+        )
+    }
+    namespace = _stable_completion_gap_key(
+        "objective-namespace/v1",
+        {"objective_path": objective_path.resolve().as_posix()},
+    )
+    fields = goal.fields
+    goal_symbols = tuple(goal.required_evidence)
+    goal_validation = tuple(split_csv([str(fields.get("validation") or "")]))
+    proposals: list[ObjectiveWorkProposal] = []
+
+    work_rows: list[dict[str, Any]] = list(rows)
+    for channel in channels:
+        if channel not in row_channels:
+            missing_channel = channel in missing_channels
+            work_rows.append(
+                {
+                    "criterion": (
+                        f"Align documentation with evidence from {channel}."
+                        if missing_channel
+                        else (
+                            "Align documentation evidence with the rejected "
+                            f"receipt from {channel}."
+                        )
+                    ),
+                    "criterion_id": f"channel:{channel}",
+                    "status": "unverified",
+                    "verified": False,
+                    "reason_codes": [
+                        (
+                            f"missing_producer_channel:{channel}"
+                            if missing_channel
+                            else f"rejected_receipt:{channel}"
+                        ),
+                    ],
+                    "required_producer_channel": channel,
+                }
+            )
+
+    for row in work_rows:
+        channel = str(row.get("required_producer_channel") or "").strip()
+        criterion = " ".join(str(row.get("criterion") or "").split())
+        if not channel or not criterion:
+            continue
+        criterion_id = str(row.get("criterion_id") or "").strip()
+        if not criterion_id:
+            criterion_id = _stable_completion_gap_key(
+                "criterion/v1",
+                {"criterion": _normalized_completion_gap_text(criterion)},
+            )
+        family_key = _stable_completion_gap_key(
+            "objective-family/v1",
+            {
+                "namespace": namespace,
+                "goal_id": goal_id,
+                "criterion_id": criterion_id,
+                "channel": channel,
+            },
+        )
+        channel_receipts = receipts_by_channel.get(channel, [])
+        receipt = channel_receipts[0] if channel_receipts else None
+        row_reasons = sorted(
+            set(_completion_gap_strings(row.get("reason_codes", ())))
+        )
+        receipt_reasons: list[str] = []
+        receipt_diagnostics: list[str] = []
+        receipt_instance: dict[str, Any] = {}
+        for rejected_receipt in channel_receipts:
+            receipt_reasons.extend(
+                _completion_gap_strings(rejected_receipt.get("reason_codes", ()))
+            )
+            for field_name in ("errors", "failed_checks"):
+                receipt_diagnostics.extend(
+                    _completion_gap_strings(rejected_receipt.get(field_name, ()))
+                )
+            path = str(rejected_receipt.get("path") or "").strip()
+            receipt_instance.setdefault("path", path)
+            receipt_instance.setdefault(
+                "status",
+                str(rejected_receipt.get("status") or ""),
+            )
+            receipt_instance.setdefault(
+                "validation_returncode",
+                rejected_receipt.get("validation_returncode"),
+            )
+        receipt_reasons = sorted(set(receipt_reasons))
+        receipt_diagnostics = sorted(set(receipt_diagnostics))
+        alignment_diagnostics = _completion_gap_alignment_diagnostics(
+            row,
+            *channel_receipts,
+            coverage,
+            record,
+        )
+        evidence_path_diagnostics = _completion_gap_evidence_path_diagnostics(
+            row,
+            *channel_receipts,
+        )
+        predicted_files = _completion_gap_precise_files(
+            _completion_gap_explicit_paths(
+                row,
+                *channel_receipts,
+            ),
+            repo_root=repo_root,
+        )
+        manual_review_only = not predicted_files
+        instance_key = _stable_completion_gap_key(
+            "objective-instance/v1",
+            {
+                "family_key": family_key,
+                "proof_revisions": proof_revisions,
+                "row_reason_codes": row_reasons,
+                "receipt": receipt_instance,
+                "receipt_reason_codes": receipt_reasons,
+                "failed_checks": receipt_diagnostics,
+                "alignment_diagnostics": alignment_diagnostics,
+                "affected_paths": predicted_files,
+                "evidence_path_diagnostics": evidence_path_diagnostics,
+            },
+        )
+        delta = tuple(
+            dict.fromkeys(
+                [
+                    (
+                        "Align documentation claims with "
+                        f"{channel} evidence for: {criterion}"
+                    ),
+                    *(
+                        f"Reconcile documentation evidence for gate diagnostic: {item}"
+                        for item in row_reasons
+                    ),
+                    *(
+                        f"Reconcile documentation evidence for rejected-receipt "
+                        f"diagnostic: {item}"
+                        for item in receipt_reasons
+                    ),
+                    *receipt_diagnostics,
+                    *alignment_diagnostics,
+                    *evidence_path_diagnostics,
+                    (
+                        "Treat failed product probes as current-state observations; "
+                        "change product code only when the parent acceptance "
+                        "criterion explicitly requires product repair."
+                    ),
+                    *(
+                        (
+                            "Manual review required: no precise implementation, "
+                            "affected-document, or validator-source file was "
+                            "authorized as an edit target.",
+                        )
+                        if manual_review_only
+                        else ()
+                    ),
+                ]
+            )
+        )
+        predicted_symbols = tuple(
+            dict.fromkeys([*goal_symbols, criterion_id, channel])
+        )
+        validation = _completion_gap_validation_commands(
+            row=row,
+            receipt=receipt,
+            goal_validation=goal_validation,
+            default_validation=default_validation,
+        )
+        if not predicted_symbols or not validation:
+            continue
+        parent_terms = tuple(
+            dict.fromkeys(
+                [
+                    *goal.required_evidence,
+                    criterion,
+                    channel,
+                    "documentation-evidence alignment",
+                ]
+            )
+        )
+        criterion_label = (
+            criterion
+            if len(criterion) <= 96
+            else criterion[:93].rstrip() + "..."
+        )
+        proposals.append(
+            ObjectiveWorkProposal(
+                kind=ObjectiveWorkKind.TASK,
+                title=(
+                    (
+                        "Review documentation evidence for "
+                        if manual_review_only
+                        else "Align documentation evidence for "
+                    )
+                    + f"{criterion_label} [{channel}]: "
+                    f"{goal.title}"
+                ),
+                parent_goal_id=goal_id,
+                parent_objective_terms=parent_terms,
+                expected_evidence_delta=delta,
+                dependencies=tuple(goal.parent_goal_ids),
+                predicted_files=predicted_files,
+                predicted_symbols=predicted_symbols,
+                validation_commands=validation,
+                confidence=1.0,
+                estimated_cost=max(1.0, float(len(delta))),
+                novelty=1.0,
+                depth=1,
+                estimated_tokens=max(128, 64 * len(delta)),
+                source=(
+                    "completion_gate_gap_manual_review"
+                    if manual_review_only
+                    else "completion_gate_gap"
+                ),
+                source_id=instance_key,
+                rationale="; ".join(delta),
+                family_key=family_key,
+                instance_key=instance_key,
+            )
+        )
+    return tuple(proposals)
+
+
+def _completion_decision_gap_proposal(
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    goal_id: str,
+    goal: Any,
+    record: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    reasons: Sequence[str],
+    default_validation: Sequence[str],
+) -> ObjectiveWorkProposal | None:
+    """Adapt a fail-closed completion decision into one bounded gap family."""
+
+    coverage = record.get("coverage")
+    if not isinstance(coverage, Mapping):
+        coverage = {}
+    analysis_result = record.get("analysis_result")
+    if not isinstance(analysis_result, Mapping):
+        analysis_result = {}
+    predicted_files = _completion_gap_precise_files(
+        _completion_gap_explicit_paths(
+            decision,
+            record,
+            coverage,
+            analysis_result,
+        ),
+        repo_root=repo_root,
+    )
+    manual_review_only = not predicted_files
+    namespace = _stable_completion_gap_key(
+        "objective-namespace/v1",
+        {"objective_path": objective_path.resolve().as_posix()},
+    )
+    family_key = _stable_completion_gap_key(
+        "objective-family/v1",
+        {
+            "namespace": namespace,
+            "goal_id": goal_id,
+            "criterion_id": "completion-reconciliation",
+            "channel": "completion-gate-decision",
+        },
+    )
+    binding: dict[str, Any] = {}
+    for surface in (decision, record, coverage):
+        candidate = surface.get("binding")
+        if isinstance(candidate, Mapping):
+            for key, value in candidate.items():
+                binding.setdefault(str(key), value)
+    proof_revisions = {
+        key: str(binding.get(key) or "")
+        for key in (
+            "objective_revision",
+            "analyzer_version",
+            "configuration_revision",
+        )
+    }
+    stable_decision = _stable_completion_gap_diagnostic(
+        {
+            "state": decision.get("state"),
+            "next_state": decision.get("next_state"),
+            "reason_codes": list(reasons),
+            "completion_gate": decision.get("completion_gate"),
+            "validation_results": decision.get("validation_results"),
+        }
+    )
+    instance_key = _stable_completion_gap_key(
+        "objective-instance/v1",
+        {
+            "family_key": family_key,
+            "proof_revisions": proof_revisions,
+            "decision": stable_decision,
+            "affected_paths": predicted_files,
+        },
+    )
+    delta = tuple(
+        dict.fromkeys(
+            [
+                "Reconcile the unverified completion decision with current "
+                f"evidence for: {goal.title}",
+                *(str(item).strip() for item in reasons if str(item).strip()),
+                *(
+                    (
+                        "Manual review required: no precise implementation, "
+                        "affected-document, or validator-source file was "
+                        "authorized as an edit target.",
+                    )
+                    if manual_review_only
+                    else ()
+                ),
+            ]
+        )
+    )
+    goal_validation = tuple(
+        split_csv([str(goal.fields.get("validation") or "")])
+    )
+    validation = _completion_gap_validation_commands(
+        row=decision,
+        receipt=None,
+        goal_validation=goal_validation,
+        default_validation=default_validation,
+    )
+    predicted_symbols = tuple(
+        dict.fromkeys([*goal.required_evidence, "completion-reconciliation"])
+    )
+    if not validation or not predicted_symbols:
+        return None
+    parent_terms = tuple(
+        dict.fromkeys(
+            [
+                *goal.required_evidence,
+                "completion reconciliation",
+                "completion-evidence alignment",
+            ]
+        )
+    )
+    return ObjectiveWorkProposal(
+        kind=ObjectiveWorkKind.TASK,
+        title=(
+            (
+                "Review completion-evidence alignment for "
+                if manual_review_only
+                else "Align completion evidence for decision: "
+            )
+            + goal.title
+        ),
+        parent_goal_id=goal_id,
+        parent_objective_terms=parent_terms,
+        expected_evidence_delta=delta,
+        dependencies=tuple(goal.parent_goal_ids),
+        predicted_files=predicted_files,
+        predicted_symbols=predicted_symbols,
+        validation_commands=validation,
+        confidence=1.0,
+        estimated_cost=max(1.0, float(len(delta))),
+        novelty=1.0,
+        depth=1,
+        estimated_tokens=max(128, 64 * len(delta)),
+        source=(
+            "completion_gate_gap_manual_review"
+            if manual_review_only
+            else "completion_gate_gap"
+        ),
+        source_id=instance_key,
+        rationale="; ".join(delta),
+        family_key=family_key,
+        instance_key=instance_key,
+    )
+
+
+def _objective_generation_board_state(
+    todo_text: str,
+    *,
+    task_prefix: str,
+) -> tuple[set[str], dict[str, int], dict[str, int]]:
+    """Return active, completed, and blocked family counts from a todo board."""
+
+    prefix = str(task_prefix or DEFAULT_TASK_PREFIX).strip()
+    if prefix.startswith("## "):
+        prefix = prefix[3:].strip()
+    blocks = re.split(r"(?=^##\s+)", str(todo_text or ""), flags=re.MULTILINE)
+    active: set[str] = set()
+    completed_counts: dict[str, int] = {}
+    blocked_counts: dict[str, int] = {}
+    for block in blocks:
+        header = block.splitlines()[0] if block.splitlines() else ""
+        if not header.startswith(f"## {prefix}"):
+            continue
+        merge_match = re.search(
+            r"^- Merge key:\s*(.+?)\s*$",
+            block,
+            flags=re.MULTILINE,
+        )
+        if not merge_match or not merge_match.group(1).strip():
+            continue
+        merge_key = merge_match.group(1).strip()
+        status_match = re.search(r"^- Status:\s*(.+?)\s*$", block, flags=re.MULTILINE)
+        status = (
+            " ".join(status_match.group(1).strip().lower().split())
+            if status_match
+            else ""
+        )
+        if status == "completed":
+            completed_counts[merge_key] = completed_counts.get(merge_key, 0) + 1
+            continue
+        if status == "blocked":
+            blocked_counts[merge_key] = blocked_counts.get(merge_key, 0) + 1
+            continue
+        active.add(merge_key)
+    return active, completed_counts, blocked_counts
+
+
+def _active_objective_generation_keys(
+    todo_text: str,
+    *,
+    task_prefix: str,
+) -> set[str]:
+    active, _completed_counts, _blocked_counts = _objective_generation_board_state(
+        todo_text,
+        task_prefix=task_prefix,
+    )
+    return active
+
+
+def active_objective_generation_work(
+    todo_text: str,
+    work_items: Iterable[Mapping[str, Any]],
+    *,
+    task_prefix: str = DEFAULT_TASK_PREFIX,
+) -> list[dict[str, Any]]:
+    """Return generated task records which still have an active board task."""
+
+    active_keys = _active_objective_generation_keys(
+        todo_text,
+        task_prefix=task_prefix,
+    )
+    active: list[dict[str, Any]] = []
+    for raw in work_items:
+        item = dict(raw)
+        identity = str(item.get("family_key") or item.get("semantic_key") or "")
+        if identity in active_keys:
+            active.append(item)
+    return active
+
+
+def blocked_review_objective_generation_families(
+    gap_family_states: Mapping[str, Mapping[str, Any]],
+) -> tuple[str, ...]:
+    """Return unresolved families occupying durable manual-review capacity."""
+
+    return tuple(
+        sorted(
+            str(family_key)
+            for family_key, state in gap_family_states.items()
+            if state.get("resolved") is not True
+            and str(state.get("outcome") or "") == "blocked_review"
+        )
+    )
+
+
 def objective_generation_proposals(
     *,
     objective_path: Path,
+    repo_root: Path | None = None,
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
     completion_decisions: Mapping[str, Mapping[str, Any]] | None = None,
     analysis_escalation: Mapping[str, Any] | None = None,
@@ -1393,11 +2671,15 @@ def objective_generation_proposals(
 ) -> tuple[Any, ...]:
     """Collect deterministic coverage and routed-analysis work candidates."""
 
-    from .goal_coverage import goal_coverage_work_seeds
     from .objective_graph import ObjectiveWorkProposal, parse_goal_heap
     from .plan_evaluator import AnalysisProposal
     from .task_proposal_router import analysis_proposals_to_objective_work
 
+    resolved_repo_root = (
+        repo_root.resolve()
+        if repo_root is not None
+        else objective_path.resolve().parent
+    )
     goals = (
         parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace"))
         if objective_path.exists()
@@ -1409,30 +2691,76 @@ def objective_generation_proposals(
         next((str(goal.goal_id) for goal in goals), "objective-analysis"),
     )
     proposals: list[Any] = []
+    typed_gap_goal_ids: set[str] = set()
     gates = completion_gate_records or {}
     for goal_id in sorted(str(item) for item in gates):
         record = gates.get(goal_id) or {}
         coverage = record.get("coverage")
         if not isinstance(coverage, Mapping):
-            continue
+            coverage = {}
         contradictions = record.get("contradictions", record.get("contradiction_receipts", ()))
         if not isinstance(contradictions, Sequence) or isinstance(contradictions, (str, bytes)):
             contradictions = ()
         goal = goals_by_id.get(goal_id)
-        proposals.extend(
-            goal_coverage_work_seeds(
-                coverage,
-                goals=([goal] if goal is not None else ()),
-                contradictions=contradictions,
+        typed: tuple[ObjectiveWorkProposal, ...] = ()
+        if goal is not None:
+            typed = _documentation_completion_gap_proposals(
+                repo_root=resolved_repo_root,
+                objective_path=objective_path,
+                goal_id=goal_id,
+                goal=goal,
+                record=record,
                 default_validation=default_validation,
             )
-        )
+            if typed:
+                typed_gap_goal_ids.add(goal_id)
+                proposals.extend(typed)
+        if (
+            not typed
+            and coverage
+            and coverage.get("verified") is not True
+            and goal is not None
+        ):
+            coverage_reasons: list[str] = []
+            coverage_reasons.extend(
+                _completion_gap_strings(record.get("reason_codes", ()))
+            )
+            coverage_reasons.extend(
+                _completion_gap_strings(coverage.get("reason_codes", ()))
+            )
+            for contradiction in contradictions:
+                if isinstance(contradiction, Mapping):
+                    coverage_reasons.extend(
+                        _completion_gap_strings(
+                            contradiction.get("reason_codes", ())
+                        )
+                    )
+            reasons = tuple(
+                dict.fromkeys(
+                    coverage_reasons
+                    or ("completion_gate_coverage_unverified",)
+                )
+            )
+            fallback = _completion_decision_gap_proposal(
+                repo_root=resolved_repo_root,
+                objective_path=objective_path,
+                goal_id=goal_id,
+                goal=goal,
+                record=record,
+                decision=coverage,
+                reasons=reasons,
+                default_validation=default_validation,
+            )
+            if fallback is not None:
+                typed_gap_goal_ids.add(goal_id)
+                proposals.append(fallback)
 
     # Completion reconciliation remains fail-closed when a rich coverage map
-    # is unavailable.  Its actionable reasons still become a fully linked
-    # evidence task instead of allowing provisional/inconclusive work to
-    # disappear from the scheduler.
+    # is unavailable. Its actionable reasons use the same stable family
+    # lifecycle and explicit edit-target boundary as typed coverage gaps.
     for goal_id in sorted(str(item) for item in (completion_decisions or {})):
+        if goal_id in typed_gap_goal_ids:
+            continue
         decision = (completion_decisions or {}).get(goal_id) or {}
         if decision.get("verified") is True:
             continue
@@ -1452,36 +2780,18 @@ def objective_generation_proposals(
         )
         if not reasons:
             continue
-        work_terms = completion_gate_work_terms(decision)
-        if not work_terms:
-            continue
-        fields = goal.fields
-        predicted_files = tuple(split_csv([str(fields.get("outputs") or "")]))
-        predicted_symbols = tuple(goal.required_evidence)
-        validation = tuple(split_csv([str(fields.get("validation") or "")]))
-        if not predicted_files or not predicted_symbols or not validation:
-            continue
-        proposals.append(
-            ObjectiveWorkProposal(
-                kind="task",
-                title=f"Produce completion evidence for {goal.title}",
-                parent_goal_id=goal_id,
-                parent_objective_terms=tuple(goal.required_evidence),
-                expected_evidence_delta=work_terms,
-                dependencies=tuple(goal.parent_goal_ids),
-                predicted_files=predicted_files,
-                predicted_symbols=predicted_symbols,
-                validation_commands=validation,
-                confidence=1.0,
-                estimated_cost=max(1.0, float(len(reasons))),
-                novelty=1.0,
-                depth=1,
-                estimated_tokens=128,
-                source="completion_gate",
-                source_id=f"{goal_id}:{decision.get('state') or decision.get('next_state') or 'unverified'}",
-                rationale="; ".join(reasons),
-            )
+        fallback = _completion_decision_gap_proposal(
+            repo_root=resolved_repo_root,
+            objective_path=objective_path,
+            goal_id=goal_id,
+            goal=goal,
+            record=gates.get(goal_id) or {},
+            decision=decision,
+            reasons=reasons,
+            default_validation=default_validation,
         )
+        if fallback is not None:
+            proposals.append(fallback)
 
     escalation = dict(analysis_escalation or {})
     raw_analysis = escalation.get("proposals", ())
@@ -1558,6 +2868,7 @@ def objective_generation_task_findings(
     generation_path: Path,
     seen_fingerprints: Iterable[str] = (),
     open_goal_ids: Iterable[str] = (),
+    gap_family_states: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[ObjectiveFinding, ...]:
     """Convert independent bounded task proposals into taskboard findings.
 
@@ -1578,6 +2889,7 @@ def objective_generation_task_findings(
     objective_relative = repo_relative_path(repo_root, objective_path)
     generation_relative = repo_relative_path(repo_root, generation_path)
     findings: list[ObjectiveFinding] = []
+    family_states = gap_family_states or {}
 
     for raw in work_items:
         try:
@@ -1590,7 +2902,25 @@ def objective_generation_task_findings(
         goal = goals_by_id.get(proposal.parent_goal_id)
         if goal is None or not goal.is_schedulable or goal.goal_id in open_goals:
             continue
-        fingerprint = sha1(proposal.semantic_key.encode("utf-8")).hexdigest()
+        if proposal.family_key:
+            state = family_states.get(proposal.family_key, {})
+            if (
+                state.get("resolved") is True
+                or str(state.get("outcome") or "") == "blocked_review"
+                or str(state.get("instance_key") or "") != proposal.instance_key
+                or str(state.get("canonical_id") or "") != proposal.canonical_id
+            ):
+                continue
+            occurrence = max(1, int(state.get("occurrence", 1) or 1))
+            attempt_count = max(1, int(state.get("attempt_count", 1) or 1))
+            outcome = str(state.get("outcome") or "actionable")
+            fingerprint_material = (
+                f"{proposal.family_key}\0{proposal.instance_key}\0"
+                f"{occurrence}\0{attempt_count}\0{outcome}"
+            )
+        else:
+            fingerprint_material = proposal.semantic_key
+        fingerprint = sha1(fingerprint_material.encode("utf-8")).hexdigest()
         if fingerprint in seen:
             continue
 
@@ -1639,7 +2969,7 @@ def objective_generation_task_findings(
                 ast_query=", ".join(proposal.predicted_symbols),
                 candidate_kind="generated_task",
                 surplus_group=goal.goal_id,
-                merge_key=proposal.semantic_key,
+                merge_key=proposal.family_key or proposal.semantic_key,
                 merge_family=goal.goal_id,
                 merge_role=str(proposal.source or "generated_task"),
                 work_item_count=max(1, len(missing_evidence)),
@@ -1780,17 +3110,129 @@ def discovery_fingerprints(discovery_dir: Path) -> set[str]:
     return fingerprints
 
 
-def load_goal_completion_gate_records(path: Path | None) -> dict[str, dict[str, Any]]:
-    """Load a persisted per-goal gate artifact, failing closed on bad shapes."""
+def _validate_completion_gate_edit_targets(
+    value: Any,
+    *,
+    goal_id: str,
+    repo_root: Path | None,
+    location: str = "record",
+) -> None:
+    """Fail closed on unsafe scoped task fields in one gate record."""
 
-    if path is None or not path.exists():
+    if isinstance(value, Mapping):
+        for raw_key, nested in value.items():
+            key = str(raw_key)
+            nested_location = f"{location}.{key}"
+            if key == "validation_commands":
+                if not isinstance(nested, Sequence) or isinstance(
+                    nested, (str, bytes)
+                ):
+                    raise ValueError(
+                        "goal completion gate record "
+                        f"{goal_id!r} field {nested_location!r} must be a "
+                        "sequence of strings"
+                    )
+                if len(nested) > 8:
+                    raise ValueError(
+                        "goal completion gate record "
+                        f"{goal_id!r} field {nested_location!r} contains too "
+                        "many validation commands"
+                    )
+                for command in nested:
+                    if (
+                        not isinstance(command, str)
+                        or not command.strip()
+                        or command != command.strip()
+                        or len(command) > 512
+                        or any(marker in command for marker in ("\x00", "\r", "\n"))
+                    ):
+                        raise ValueError(
+                            "goal completion gate record "
+                            f"{goal_id!r} field {nested_location!r} contains "
+                            "an invalid validation command"
+                        )
+                continue
+            if key in _COMPLETION_GAP_EDIT_TARGET_FIELDS:
+                if nested in (None, "", (), []):
+                    continue
+                if repo_root is None:
+                    raise ValueError(
+                        "repo_root is required to validate goal completion "
+                        f"gate edit target field {nested_location!r} for "
+                        f"{goal_id!r}"
+                    )
+                if isinstance(nested, str):
+                    raw_targets: Sequence[Any] = (nested,)
+                elif isinstance(nested, Sequence) and not isinstance(
+                    nested, (str, bytes)
+                ):
+                    raw_targets = nested
+                else:
+                    raise ValueError(
+                        "goal completion gate record "
+                        f"{goal_id!r} field {nested_location!r} must be a "
+                        "string or a sequence of strings"
+                    )
+                if any(not isinstance(item, str) for item in raw_targets):
+                    raise ValueError(
+                        "goal completion gate record "
+                        f"{goal_id!r} field {nested_location!r} must contain "
+                        "only strings"
+                    )
+                targets = _completion_gap_paths(nested)
+                for target in targets:
+                    if not _completion_gap_precise_files(
+                        (target,),
+                        repo_root=repo_root,
+                    ):
+                        raise ValueError(
+                            "goal completion gate record "
+                            f"{goal_id!r} field {nested_location!r} contains "
+                            f"an unsafe or imprecise edit target: {target!r}"
+                        )
+                continue
+            _validate_completion_gate_edit_targets(
+                nested,
+                goal_id=goal_id,
+                repo_root=repo_root,
+                location=nested_location,
+            )
+        return
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for index, nested in enumerate(value):
+            _validate_completion_gate_edit_targets(
+                nested,
+                goal_id=goal_id,
+                repo_root=repo_root,
+                location=f"{location}[{index}]",
+            )
+
+
+def load_goal_completion_gate_records(
+    path: Path | None,
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load gate records; edit-target-bearing records require ``repo_root``."""
+
+    if path is None:
         return {}
+    if not path.is_file():
+        raise FileNotFoundError(f"goal completion gate artifact does not exist: {path}")
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError("goal completion gate artifact must be a JSON object")
+    binding = payload.get("binding")
+    if binding is not None and not isinstance(binding, Mapping):
+        raise ValueError("goal completion gate artifact 'binding' must be an object")
+    if binding is not None and not isinstance(payload.get("goals"), Mapping):
+        raise ValueError(
+            "goal completion gate artifact with a binding must contain a 'goals' object"
+        )
     raw = payload.get("goals", payload)
     if not isinstance(raw, Mapping):
         raise ValueError("goal completion gate artifact 'goals' must be an object")
+    validation_root = repo_root.resolve() if repo_root is not None else None
     records: dict[str, dict[str, Any]] = {}
     for goal_id, record in raw.items():
         normalized_goal_id = str(goal_id).strip()
@@ -1801,6 +3243,41 @@ def load_goal_completion_gate_records(path: Path | None) -> dict[str, dict[str, 
                 f"goal completion gate record for {normalized_goal_id!r} must be an object"
             )
         normalized = dict(record)
+        _validate_completion_gate_edit_targets(
+            normalized,
+            goal_id=normalized_goal_id,
+            repo_root=validation_root,
+        )
+        supplied_binding = normalized.get("binding")
+        if supplied_binding is not None and not isinstance(supplied_binding, Mapping):
+            raise ValueError(
+                f"goal completion gate record {normalized_goal_id!r} field "
+                "'binding' must be an object"
+            )
+        quorum_value = normalized.get("exhaustion_quorum")
+        quorum_binding = (
+            quorum_value.get("binding")
+            if isinstance(quorum_value, Mapping)
+            and isinstance(quorum_value.get("binding"), Mapping)
+            else None
+        )
+        # Prefer the binding nearest the goal.  A combined multi-goal bundle
+        # cannot truthfully put one per-goal objective revision in its envelope,
+        # while the quorum is necessarily scoped to exactly one goal.
+        effective_binding = supplied_binding or quorum_binding or binding
+        if isinstance(effective_binding, Mapping):
+            normalized.setdefault("binding", dict(effective_binding))
+            for field_name in ("coverage", "analyzer_health"):
+                surface = normalized.get(field_name)
+                if isinstance(surface, Mapping):
+                    surface = dict(surface)
+                    surface.setdefault("binding", dict(effective_binding))
+                    normalized[field_name] = surface
+            quorum = normalized.get("exhaustion_quorum")
+            if isinstance(quorum, Mapping):
+                quorum = dict(quorum)
+                quorum.setdefault("binding", dict(effective_binding))
+                normalized["exhaustion_quorum"] = quorum
         for field_name in ("coverage", "analyzer_health", "exhaustion_quorum", "analysis_result"):
             value = normalized.get(field_name)
             if value is not None and not isinstance(value, Mapping):
@@ -1817,6 +3294,30 @@ def load_goal_completion_gate_records(path: Path | None) -> dict[str, dict[str, 
                 f"goal completion gate record {normalized_goal_id!r} field "
                 "'child_goals' must be a list of objects"
             )
+        required_child_goal_ids = normalized.get("required_child_goal_ids")
+        if required_child_goal_ids is not None:
+            if (
+                not isinstance(required_child_goal_ids, list)
+                or any(
+                    not isinstance(item, str) or not item.strip()
+                    for item in required_child_goal_ids
+                )
+            ):
+                raise ValueError(
+                    f"goal completion gate record {normalized_goal_id!r} field "
+                    "'required_child_goal_ids' must be a list of non-empty strings"
+                )
+            normalized_child_goal_ids = [
+                item.strip() for item in required_child_goal_ids
+            ]
+            if len(set(normalized_child_goal_ids)) != len(
+                normalized_child_goal_ids
+            ):
+                raise ValueError(
+                    f"goal completion gate record {normalized_goal_id!r} field "
+                    "'required_child_goal_ids' must contain unique strings"
+                )
+            normalized["required_child_goal_ids"] = normalized_child_goal_ids
         if "analysis_inconclusive" in normalized and not isinstance(
             normalized["analysis_inconclusive"], bool
         ):
@@ -1826,6 +3327,291 @@ def load_goal_completion_gate_records(path: Path | None) -> dict[str, dict[str, 
             )
         records[normalized_goal_id] = normalized
     return records
+
+
+def load_goal_completion_evidence_records(
+    path: Path | None,
+) -> dict[str, list[CompletionEvidence]]:
+    """Load canonical external evidence records indexed by objective goal.
+
+    Repository/tree identity may be shared by the envelope.  Goal-specific
+    objective, analyzer, and configuration revisions may live in a per-goal
+    binding so one artifact can safely carry evidence for several goals.
+    Individual records may repeat those fields, but an explicit mismatch is
+    retained and rejected by reconciliation rather than silently overwritten.
+    """
+
+    if path is None:
+        return {}
+    if not path.is_file():
+        raise FileNotFoundError(f"goal completion evidence artifact does not exist: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("goal completion evidence artifact must be a JSON object")
+    schema = str(payload.get("schema") or "")
+    if schema and schema != OBJECTIVE_COMPLETION_EVIDENCE_ARTIFACT_SCHEMA:
+        raise ValueError(f"unsupported goal completion evidence artifact schema: {schema}")
+    binding = payload.get("binding")
+    if not isinstance(binding, Mapping):
+        raise ValueError("goal completion evidence artifact 'binding' must be an object")
+    missing_envelope_binding = [
+        field_name
+        for field_name in ("repository_id", "tree_id")
+        if not str(binding.get(field_name) or "").strip()
+    ]
+    if missing_envelope_binding:
+        raise ValueError(
+            "goal completion evidence artifact binding is missing: "
+            + ", ".join(missing_envelope_binding)
+        )
+    raw = payload.get("goals")
+    if not isinstance(raw, Mapping):
+        raise ValueError("goal completion evidence artifact 'goals' must be an object")
+    records: dict[str, list[CompletionEvidence]] = {}
+    for goal_id, raw_goal_value in raw.items():
+        normalized_goal_id = str(goal_id).strip()
+        if not normalized_goal_id:
+            raise ValueError("goal completion evidence artifact contains an empty goal id")
+        goal_binding: Mapping[str, Any] = {}
+        if isinstance(raw_goal_value, Mapping):
+            supplied_goal_binding = raw_goal_value.get("binding")
+            if not isinstance(supplied_goal_binding, Mapping):
+                raise ValueError(
+                    f"goal completion evidence for {normalized_goal_id!r} "
+                    "must contain a binding object"
+                )
+            goal_binding = supplied_goal_binding
+            for field_name in (
+                "repository_id",
+                "tree_id",
+                "objective_revision",
+                "analyzer_version",
+                "configuration_revision",
+            ):
+                envelope_value = binding.get(
+                    field_name,
+                    binding.get("configuration_id")
+                    if field_name == "configuration_revision"
+                    else "",
+                )
+                goal_value = goal_binding.get(
+                    field_name,
+                    goal_binding.get("configuration_id")
+                    if field_name == "configuration_revision"
+                    else "",
+                )
+                if (
+                    str(envelope_value or "").strip()
+                    and str(goal_value or "").strip()
+                    and str(envelope_value) != str(goal_value)
+                ):
+                    raise ValueError(
+                        f"goal completion evidence for {normalized_goal_id!r} "
+                        f"has conflicting {field_name} bindings"
+                    )
+            has_canonical_records = "completion_evidence_records" in raw_goal_value
+            has_short_records = "records" in raw_goal_value
+            if has_canonical_records == has_short_records:
+                raise ValueError(
+                    f"goal completion evidence for {normalized_goal_id!r} must contain "
+                    "exactly one of 'completion_evidence_records' or 'records'"
+                )
+            raw_records = raw_goal_value.get(
+                "completion_evidence_records"
+                if has_canonical_records
+                else "records"
+            )
+        else:
+            raw_records = raw_goal_value
+        if not isinstance(raw_records, list):
+            raise ValueError(
+                f"goal completion evidence for {normalized_goal_id!r} records must be a list"
+            )
+        typed_records: list[CompletionEvidence] = []
+        for index, raw_record in enumerate(raw_records):
+            if not isinstance(raw_record, Mapping):
+                raise ValueError(
+                    f"goal completion evidence {normalized_goal_id!r}[{index}] "
+                    "must be an object"
+                )
+            record = dict(raw_record)
+            bound_tree = goal_binding.get("tree_id", binding.get("tree_id"))
+            record.setdefault(
+                "repository_id",
+                goal_binding.get("repository_id", binding.get("repository_id")),
+            )
+            record.setdefault(
+                "repository_tree",
+                record.get("tree_id", bound_tree),
+            )
+            record.setdefault(
+                "tree_id",
+                record.get("repository_tree", bound_tree),
+            )
+            record.setdefault(
+                "objective_revision",
+                record.get(
+                    "objective_id",
+                    goal_binding.get(
+                        "objective_revision",
+                        binding.get("objective_revision"),
+                    ),
+                ),
+            )
+            record.setdefault(
+                "analyzer_version",
+                record.get(
+                    "analyzer_revision",
+                    goal_binding.get(
+                        "analyzer_version",
+                        binding.get("analyzer_version"),
+                    ),
+                ),
+            )
+            record.setdefault(
+                "configuration_revision",
+                record.get(
+                    "configuration_id",
+                    goal_binding.get(
+                        "configuration_revision",
+                        goal_binding.get(
+                            "configuration_id",
+                            binding.get(
+                                "configuration_revision",
+                                binding.get("configuration_id"),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            if (
+                str(record.get("repository_tree") or "").strip()
+                != str(record.get("tree_id") or "").strip()
+            ):
+                raise ValueError(
+                    f"goal completion evidence {normalized_goal_id!r}[{index}] "
+                    "has conflicting repository_tree and tree_id values"
+                )
+            required_record_binding = {
+                "repository_id": record.get("repository_id"),
+                "tree_id": record.get(
+                    "repository_tree",
+                    record.get("tree_id"),
+                ),
+                "objective_revision": record.get("objective_revision"),
+                "analyzer_version": record.get("analyzer_version"),
+                "configuration_revision": record.get("configuration_revision"),
+            }
+            missing_record_binding = [
+                field_name
+                for field_name, value in required_record_binding.items()
+                if not str(value or "").strip()
+            ]
+            if missing_record_binding:
+                raise ValueError(
+                    f"goal completion evidence {normalized_goal_id!r}[{index}] "
+                    "binding is missing: "
+                    + ", ".join(missing_record_binding)
+                )
+            try:
+                typed_records.append(CompletionEvidence.from_dict(record))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"goal completion evidence {normalized_goal_id!r}[{index}] "
+                    f"is malformed: {exc}"
+                ) from exc
+        records[normalized_goal_id] = typed_records
+    return records
+
+
+def completion_evidence_records_from_gate_records(
+    gate_records: Mapping[str, Mapping[str, Any]],
+) -> dict[str, list[CompletionEvidence]]:
+    """Extract typed evidence embedded in a combined completion bundle."""
+
+    extracted: dict[str, list[CompletionEvidence]] = {}
+    for goal_id, gate_record in gate_records.items():
+        if "completion_evidence_records" not in gate_record:
+            continue
+        raw_records = gate_record.get("completion_evidence_records")
+        if not isinstance(raw_records, list):
+            raise ValueError(
+                f"goal completion gate record {goal_id!r} field "
+                "'completion_evidence_records' must be a list"
+            )
+        binding = gate_record.get("binding")
+        binding = binding if isinstance(binding, Mapping) else {}
+        typed_records: list[CompletionEvidence] = []
+        for index, raw_record in enumerate(raw_records):
+            if not isinstance(raw_record, Mapping):
+                raise ValueError(
+                    f"goal completion gate evidence {goal_id!r}[{index}] "
+                    "must be an object"
+                )
+            record = dict(raw_record)
+            bound_tree = binding.get("tree_id")
+            record.setdefault("repository_id", binding.get("repository_id"))
+            record.setdefault(
+                "repository_tree",
+                record.get("tree_id", bound_tree),
+            )
+            record.setdefault(
+                "tree_id",
+                record.get("repository_tree", bound_tree),
+            )
+            record.setdefault(
+                "objective_revision",
+                record.get(
+                    "objective_id",
+                    gate_record.get(
+                        "objective_revision",
+                        binding.get("objective_revision"),
+                    ),
+                ),
+            )
+            record.setdefault(
+                "analyzer_version",
+                record.get(
+                    "analyzer_revision",
+                    gate_record.get(
+                        "analyzer_version",
+                        gate_record.get(
+                            "analyzer_revision",
+                            binding.get("analyzer_version"),
+                        ),
+                    ),
+                ),
+            )
+            record.setdefault(
+                "configuration_revision",
+                record.get(
+                    "configuration_id",
+                    gate_record.get(
+                        "configuration_revision",
+                        binding.get(
+                            "configuration_revision",
+                            binding.get("configuration_id"),
+                        ),
+                    ),
+                ),
+            )
+            if (
+                str(record.get("repository_tree") or "").strip()
+                != str(record.get("tree_id") or "").strip()
+            ):
+                raise ValueError(
+                    f"goal completion gate evidence {goal_id!r}[{index}] "
+                    "has conflicting repository_tree and tree_id values"
+                )
+            try:
+                typed_records.append(CompletionEvidence.from_dict(record))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"goal completion gate evidence {goal_id!r}[{index}] "
+                    f"is malformed: {exc}"
+                ) from exc
+        extracted[str(goal_id)] = typed_records
+    return extracted
 
 
 def completion_gate_receipts_from_decisions(
@@ -1973,6 +3759,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="JSON artifact containing coverage, analyzer health, exhaustion quorum, and child proof per goal.",
+    )
+    parser.add_argument(
+        "--objective-goal-completion-evidence-path",
+        type=Path,
+        default=None,
+        help=(
+            "Canonical JSON artifact containing tree- and policy-bound "
+            "CompletionEvidence records per goal."
+        ),
     )
     parser.add_argument(
         "--seed-interoperability-goals",
@@ -2164,7 +3959,41 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     completion_gate_path = getattr(args, "objective_goal_completion_gate_path", None)
     if completion_gate_path is not None and not completion_gate_path.is_absolute():
         completion_gate_path = (repo_root / completion_gate_path).resolve()
-    completion_gate_records = load_goal_completion_gate_records(completion_gate_path)
+    completion_gate_records = load_goal_completion_gate_records(
+        completion_gate_path,
+        repo_root=repo_root,
+    )
+    completion_evidence_path = getattr(
+        args,
+        "objective_goal_completion_evidence_path",
+        None,
+    )
+    if completion_evidence_path is not None and not completion_evidence_path.is_absolute():
+        completion_evidence_path = (repo_root / completion_evidence_path).resolve()
+    embedded_completion_evidence_records = (
+        completion_evidence_records_from_gate_records(completion_gate_records)
+    )
+    completion_evidence_records = load_goal_completion_evidence_records(
+        completion_evidence_path
+    )
+    duplicate_evidence_goal_ids = sorted(
+        set(embedded_completion_evidence_records) & set(completion_evidence_records)
+    )
+    if duplicate_evidence_goal_ids:
+        raise ValueError(
+            "completion evidence is supplied by both gate and evidence artifacts "
+            "for goals: " + ", ".join(duplicate_evidence_goal_ids)
+        )
+    completion_evidence_records = {
+        **embedded_completion_evidence_records,
+        **completion_evidence_records,
+    }
+    completion_control_paths = [
+        path
+        for path in (completion_gate_path, completion_evidence_path)
+        if path is not None
+    ]
+    require_artifact_binding = bool(completion_control_paths)
     goal_completion_todo_boards = parse_goal_completion_todo_boards(
         getattr(args, "objective_goal_completion_todo_board", []) or [],
         repo_root=repo_root,
@@ -2177,7 +4006,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             todo_path=todo_path,
             task_header_prefix=args.task_prefix,
             todo_boards=goal_completion_todo_boards,
+            completion_evidence_records=completion_evidence_records,
             completion_gate_records=completion_gate_records,
+            completion_control_paths=completion_control_paths,
+            require_artifact_binding=require_artifact_binding,
         )
         completed_goal_ids = completion.completed_goal_ids
         objective_completed_goal_count = completion.completed_goal_count
@@ -2359,6 +4191,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                     )
         generation_candidates = objective_generation_proposals(
             objective_path=objective_path,
+            repo_root=repo_root,
             completion_gate_records=completion_gate_records,
             completion_decisions=objective_completion_decisions,
             analysis_escalation=analysis_escalation_payload,
@@ -2383,6 +4216,19 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         configured_open_work = int(
             getattr(args, "objective_generation_current_open_work", -1)
         )
+        todo_board_text = (
+            todo_path.read_text(encoding="utf-8", errors="replace")
+            if todo_path.exists()
+            else ""
+        )
+        (
+            active_generation_keys,
+            completed_generation_counts,
+            blocked_generation_counts,
+        ) = _objective_generation_board_state(
+            todo_board_text,
+            task_prefix=args.task_prefix,
+        )
         if configured_open_work < 0:
             active_goal_count = 0
             if objective_path.exists():
@@ -2394,15 +4240,40 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                     if goal.is_schedulable
                 )
             try:
+                persisted_generation_payload = _load_generation_payload(
+                    objective_generation_path
+                )
+                persisted_work = persisted_generation_payload.get(
+                    "generated_work",
+                    (),
+                )
                 persisted_generated_count = len(
-                    load_objective_generation_work(objective_generation_path)
+                    active_objective_generation_work(
+                        todo_path.read_text(encoding="utf-8", errors="replace")
+                        if todo_path.exists()
+                        else "",
+                        persisted_work,
+                        task_prefix=args.task_prefix,
+                    )
+                )
+                persisted_blocked_review_count = len(
+                    blocked_review_objective_generation_families(
+                        persisted_generation_payload.get(
+                            "gap_family_states",
+                            {},
+                        )
+                    )
                 )
             except (OSError, TypeError, ValueError):
                 # The materialization call below reports the corrupt ledger
                 # and admits no work; this count must not mask that failure.
                 persisted_generated_count = 0
+                persisted_blocked_review_count = 0
             configured_open_work = (
-                active_goal_count + len(records) + persisted_generated_count
+                active_goal_count
+                + len(records)
+                + persisted_generated_count
+                + persisted_blocked_review_count
             )
         evaluation_policy = ObjectiveWorkEvaluationPolicy(
             min_confidence=float(
@@ -2425,6 +4296,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                 current_open_work=configured_open_work,
                 evaluation_policy=evaluation_policy,
                 objective_terms=generation_terms,
+                active_family_keys=active_generation_keys,
+                terminal_family_counts=completed_generation_counts,
+                blocked_family_counts=blocked_generation_counts,
+                observed_gap_goal_ids=completion_gate_records,
             )
         except (OSError, TypeError, ValueError) as exc:
             # A corrupt identity ledger or malformed proposal must fail closed
@@ -2441,9 +4316,20 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                     objective_path=objective_path,
                     generation_path=objective_generation_path,
                     seen_fingerprints=discovery_fingerprints(discovery_dir),
-                    open_goal_ids=open_goal_ids_from_todo_board(
-                        todo_path,
-                        args.task_prefix,
+                    open_goal_ids=(
+                        directly_open_goal_ids_from_todo_board(
+                            todo_path,
+                            args.task_prefix,
+                        )
+                        if seeded_interoperability_goal_ids
+                        else open_goal_ids_from_todo_board(
+                            todo_path,
+                            args.task_prefix,
+                        )
+                    ),
+                    gap_family_states=objective_generation_payload.get(
+                        "gap_family_states",
+                        {},
                     ),
                 )
                 if generated_findings:
@@ -2481,6 +4367,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                         plan_decisions,
                         bundle_index_path=bundle_dir / "index.json",
                     )
+    blocked_review_family_keys = blocked_review_objective_generation_families(
+        (objective_generation_payload or {}).get("gap_family_states", {})
+    )
     graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
 
     bundle_index_path = bundle_dir / "index.json"
@@ -2538,6 +4427,12 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "objective_generation_cycle_accepted_count": len(
             ((objective_generation_payload or {}).get("last_cycle") or {}).get("accepted", ())
         ),
+        "objective_generation_blocked_review_count": len(
+            blocked_review_family_keys
+        ),
+        "objective_generation_blocked_review_family_keys": list(
+            blocked_review_family_keys
+        ),
         "tracking_document_created": tracking_created,
         "ensured_goal_ids": ensured_goal_ids,
         "deduplicated_interoperability_goal_ids": deduplicated_interoperability_goal_ids,
@@ -2554,11 +4449,20 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "objective_completion_validation_results": objective_completion_validation_results,
         "objective_completion_decisions": objective_completion_decisions,
         "objective_completion_gate_inputs": completion_gate_records,
+        "objective_completion_evidence_inputs": {
+            goal_id: [record.to_dict() for record in records]
+            for goal_id, records in completion_evidence_records.items()
+        },
         "objective_completion_gate_receipts": completion_gate_receipts_from_decisions(
             objective_completion_decisions
         ),
         "objective_goal_completion_gate_path": (
             repo_relative_path(repo_root, completion_gate_path) if completion_gate_path else ""
+        ),
+        "objective_goal_completion_evidence_path": (
+            repo_relative_path(repo_root, completion_evidence_path)
+            if completion_evidence_path
+            else ""
         ),
         "refined_goal_ids": refined_goal_ids,
         "objective_goal_count": graph_payload["goal_count"],

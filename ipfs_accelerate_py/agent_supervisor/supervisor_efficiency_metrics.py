@@ -30,6 +30,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, ClassVar
@@ -87,11 +88,11 @@ TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA = (
     "terminal-accepted-work-evidence@1"
 )
 REQUIRED_CONTEXT_PROOF_BINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/required-context-proof-binding@1"
+    "ipfs_accelerate_py/agent-supervisor/required-context-proof-binding@2"
 )
 REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "required-context-promotion-report@2"
+    "required-context-promotion-report@3"
 )
 DELTA_RETRY_PROOF_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@2"
@@ -107,6 +108,27 @@ DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS = 3_500
 # this module must not claim them from token receipts alone.
 TERMINAL_ACCEPTED_WORK_EVIDENCE_ID = (
     "248026856102230635452423769994290240744"
+)
+TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID = "ASI-G093"
+TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA = (
+    "The exact requirement ID is emitted only by a bounded, content-addressed "
+    "benchmark receipt carrying the complete typed baseline and candidate "
+    "receipt populations, one frozen goal/tree/policy binding, the "
+    "independently replayed paired result, source and report identities, a "
+    "deterministic input digest, and a passing accounting result. A completion "
+    "gate verifies the artifact against its independently enumerated benchmark "
+    "cohort, so an omitted, duplicated, reordered, or substituted input is "
+    "either canonicalized to the same evidence identity or fails closed. The "
+    "accepted-task population must be non-empty and identical across arms",
+    "failed-only tasks never enter its denominator",
+    "every supplied failed or retried lifecycle for work that eventually "
+    "reaches acceptance remains charged",
+    "duplicate acceptance, omitted or altered embedded receipts, stale "
+    "bindings, forged totals or terminal IDs, detached cases, and "
+    "serialization tampering fail closed. The separate 35 percent "
+    "token-reduction and full-coverage gate does not redefine the accounting "
+    "proof, but context and delta promotion require both the accepted-work "
+    "witness and their own typed compiler evidence.",
 )
 # Deterministic routing metadata for objective scanners and completion gates.
 # The mapping is not evidence by itself; only the typed, replayable artifact
@@ -129,6 +151,34 @@ REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID = (
 # content-addressed witness carries the same identifier.
 DELTA_RETRY_CONTEXT_EVIDENCE_ID = (
     "306437607356117177048620815571362227127"
+)
+
+TOKEN_EFFICIENCY_OBJECTIVE_ID = "ASI-G010"
+TOKEN_EFFICIENCY_OBJECTIVE_REVISION = "ASI-G010@asi-088"
+TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS = 2
+TOKEN_EFFICIENCY_PRODUCING_TASK_IDS = (
+    "ASI-001",
+    "ASI-005",
+    "ASI-006",
+)
+TOKEN_EFFICIENCY_CHILD_GOAL_IDS = (
+    "ASI-G091",
+    "ASI-G092",
+    "ASI-G093",
+)
+TOKEN_EFFICIENCY_REQUIREMENT_IDS = (
+    REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
+    DELTA_RETRY_CONTEXT_EVIDENCE_ID,
+    TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+)
+TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA = (
+    "Required goal, authority, scope, and acceptance context is never truncated",
+    "optional evidence has deterministic inclusion reasons",
+    "retries use changed evidence rather than full replay",
+    (
+        "paired fixtures reduce median input tokens by at least 35 percent "
+        "without lowering required evidence coverage or safety."
+    ),
 )
 
 # Absolute construction bounds.  They are intentionally generous enough for a
@@ -3107,6 +3157,451 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
 
         return self.paired_report.passed
 
+    def evaluate_objective_completion(
+        self,
+        baseline_receipts: Iterable[
+            EfficiencyReceipt | Mapping[str, Any]
+        ],
+        candidate_receipts: Iterable[
+            EfficiencyReceipt | Mapping[str, Any]
+        ],
+        *,
+        expected_repository_id: str,
+        expected_goal_reference: str,
+        expected_repository_tree_digest: str,
+        expected_policy_digest: str,
+        expected_objective_revision: str,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G093 against an independent current-tree cohort.
+
+        The artifact proves that its embedded populations replay to the
+        accepted-work report.  Completion additionally compares it with the
+        caller's independently enumerated populations and trusted repository
+        binding, then requires fresh per-criterion validations, a complete
+        implementation/validation map, a completion-safe analyzer, and the
+        configured number of independent exhaustive receipts.
+
+        Expected identities and quorum size are trusted completion-gate inputs;
+        none is inferred from the proof or quorum being evaluated.
+        """
+
+        from .goal_completion import evaluate_goal_completion
+
+        configured_receipts = _integer(
+            required_exhaustive_receipts,
+            field_name="required_exhaustive_receipts",
+            minimum=1,
+            maximum=MAX_RECEIPTS_PER_REPORT,
+        )
+        repository_id = _text(
+            expected_repository_id,
+            field_name="expected_repository_id",
+            required=True,
+            max_bytes=MAX_REFERENCE_BYTES,
+        )
+        goal_reference = _text(
+            expected_goal_reference,
+            field_name="expected_goal_reference",
+            required=True,
+            max_bytes=MAX_REFERENCE_BYTES,
+        )
+        repository_tree = _digest(
+            expected_repository_tree_digest,
+            field_name="expected_repository_tree_digest",
+        )
+        policy_revision = _digest(
+            expected_policy_digest,
+            field_name="expected_policy_digest",
+        )
+        objective_revision = _digest(
+            expected_objective_revision,
+            field_name="expected_objective_revision",
+        )
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        population_verified = True
+        try:
+            verify_terminal_accepted_work_evidence(
+                self,
+                baseline_receipts,
+                candidate_receipts,
+                expected_goal_reference=goal_reference,
+                expected_repository_tree_digest=repository_tree,
+                expected_policy_digest=policy_revision,
+            )
+        except ContractValidationError:
+            population_verified = False
+
+        coverage_projection = getattr(
+            coverage,
+            "completion_gate_evidence",
+            None,
+        )
+        if callable(coverage_projection):
+            try:
+                projected_coverage = coverage_projection(
+                    TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID
+                )
+            except (TypeError, ValueError):
+                projected_coverage = {}
+            coverage_value = (
+                dict(projected_coverage)
+                if isinstance(projected_coverage, Mapping)
+                else {}
+            )
+        else:
+            coverage_value = payload(coverage)
+        rows_value = coverage_value.get("criteria")
+        rows = (
+            rows_value
+            if isinstance(rows_value, (list, tuple))
+            else ()
+        )
+        expected_criteria = {
+            " ".join(item.strip().lower().split())
+            for item in TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
+        }
+
+        def criterion_key(row: Mapping[str, Any]) -> str:
+            return " ".join(
+                str(
+                    row.get(
+                        "criterion",
+                        row.get(
+                            "acceptance_criterion",
+                            row.get("acceptance", ""),
+                        ),
+                    )
+                    or ""
+                )
+                .strip()
+                .lower()
+                .split()
+            )
+
+        def populated(row: Mapping[str, Any], *names: str) -> bool:
+            for name in names:
+                value = row.get(name)
+                if isinstance(value, str) and value.strip():
+                    return True
+                if (
+                    isinstance(value, Sequence)
+                    and not isinstance(value, (str, bytes, bytearray))
+                    and any(str(item or "").strip() for item in value)
+                ):
+                    return True
+            return False
+
+        submitted_validation_ids: dict[str, set[str]] = {}
+        for item in evidence:
+            source = item
+            if isinstance(source, Mapping) and isinstance(
+                source.get("evidence"),
+                Mapping,
+            ):
+                source = source["evidence"]
+            identity = (
+                source.get("provenance_cid")
+                if isinstance(source, Mapping)
+                else getattr(source, "provenance_cid", "")
+            )
+            normalized_identity = str(identity or "").strip()
+            criterion = (
+                source.get(
+                    "acceptance_criterion",
+                    source.get("criterion", ""),
+                )
+                if isinstance(source, Mapping)
+                else getattr(source, "acceptance_criterion", "")
+            )
+            normalized_criterion = " ".join(
+                str(criterion or "").strip().lower().split()
+            )
+            if normalized_identity and normalized_criterion:
+                submitted_validation_ids.setdefault(
+                    normalized_criterion,
+                    set(),
+                ).add(normalized_identity)
+
+        def validation_bound(row: Mapping[str, Any]) -> bool:
+            if "validation_receipt_ids" in row:
+                receipt_ids = row.get("validation_receipt_ids")
+                if not (
+                    isinstance(receipt_ids, Sequence)
+                    and not isinstance(
+                        receipt_ids,
+                        (str, bytes, bytearray),
+                    )
+                ):
+                    return False
+                normalized = {
+                    str(item or "").strip()
+                    for item in receipt_ids
+                    if str(item or "").strip()
+                }
+                return bool(
+                    normalized
+                    and normalized.intersection(
+                        submitted_validation_ids.get(
+                            criterion_key(row),
+                            set(),
+                        )
+                    )
+                )
+            # Compatibility with persisted ASI-068 coverage mappings. New
+            # canonical GoalCoverageMap projections always use receipt IDs.
+            return populated(row, "validation")
+
+        mapped_criteria = [
+            criterion_key(row)
+            for row in rows
+            if isinstance(row, Mapping)
+        ]
+        mappings_complete = bool(rows) and (
+            len(mapped_criteria) == len(expected_criteria)
+            and set(mapped_criteria) == expected_criteria
+            and len(mapped_criteria) == len(set(mapped_criteria))
+            and all(
+                isinstance(row, Mapping)
+                and populated(
+                    row,
+                    "implementation",
+                    "changed_files",
+                    "predicted_files",
+                    "ast_symbols",
+                    "interfaces",
+                )
+                and validation_bound(row)
+                for row in rows
+            )
+        )
+        if not mappings_complete or not population_verified:
+            reasons = coverage_value.get("reason_codes")
+            reasons = (
+                list(reasons)
+                if isinstance(reasons, (list, tuple))
+                else []
+            )
+            if not mappings_complete:
+                reasons.append(
+                    "coverage_missing_implementation_validation_binding"
+                )
+            if not population_verified:
+                reasons.append("terminal_population_verification_failed")
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": reasons,
+            }
+
+        from .analyzer_health import AnalyzerHealthReport
+        from .scan_receipts import ExhaustionQuorumResult
+
+        typed_health = isinstance(analyzer_health, AnalyzerHealthReport)
+        evaluated_quorum = isinstance(
+            exhaustion_quorum,
+            ExhaustionQuorumResult,
+        )
+        quorum_value = payload(exhaustion_quorum)
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+
+        health_value = payload(analyzer_health)
+        analyzer_version = str(
+            health_value.get("analyzer_version") or ""
+        ).strip()
+        if typed_health and not analyzer_version:
+            analyzer_version = str(
+                binding_value.get("analyzer_version") or ""
+            ).strip()
+        health_complete = (
+            str(health_value.get("status") or "").strip().lower()
+            == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and bool(analyzer_version)
+        )
+        if not health_complete:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        configuration_revision = str(
+            binding_value.get("configuration_revision") or ""
+        ).strip()
+        canonical_binding = {
+            "repository_id": repository_id,
+            "tree_id": repository_tree,
+            "analyzer_version": analyzer_version,
+            "configuration_revision": configuration_revision,
+            "objective_revision": objective_revision,
+        }
+        artifact_binding = {
+            **canonical_binding,
+            "objective_id": TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
+            "goal_reference": goal_reference,
+            "policy_revision": policy_revision,
+            "requirement_id": TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+            "terminal_evidence_id": self.evidence_id,
+            "paired_report_id": self.report_id,
+            "benchmark_input_digest": self.benchmark_input_digest,
+        }
+        required_binding = (
+            canonical_binding if evaluated_quorum else artifact_binding
+        )
+        binding_complete = bool(configuration_revision) and all(
+            binding_value.get(name) == expected
+            for name, expected in required_binding.items()
+        )
+        members_value = quorum_value.get("members")
+        members = (
+            members_value
+            if isinstance(members_value, (list, tuple))
+            else ()
+        )
+        evaluated_members_complete = bool(
+            evaluated_quorum
+            and quorum_value.get("satisfied") is True
+            and all(
+                isinstance(member, Mapping)
+                and (
+                    "exhaustive"
+                    in str(member.get("scan_mode") or "").strip().lower()
+                    or str(member.get("scan_mode") or "").strip().lower()
+                    == "audit"
+                )
+                for member in members
+            )
+        )
+        members_complete = bool(members) and (
+            evaluated_members_complete
+            or all(
+                isinstance(member, Mapping)
+                and member.get("healthy") is True
+                and member.get("safe_for_completion_reasoning") is True
+                and str(member.get("scan_mode") or "").strip().lower()
+                == "exhaustive"
+                for member in members
+            )
+        ) and all(
+            isinstance(member, Mapping)
+            and isinstance(member.get("binding"), Mapping)
+            and all(
+                member["binding"].get(name) == expected
+                for name, expected in required_binding.items()
+            )
+            for member in members
+        )
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        member_ids = [
+            str(member.get("member_id") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        channels = [
+            str(
+                member.get("evidence_channel")
+                or member.get("independence_key")
+                or ""
+            ).strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        declared_required = quorum_value.get("required_members")
+        declared_count = quorum_value.get("member_count")
+        receipts_independent = (
+            len(receipt_ids) >= configured_receipts
+            and all(receipt_ids)
+            and all(member_ids)
+            and all(channels)
+            and len(receipt_ids) == len(set(receipt_ids))
+            and len(member_ids) == len(set(member_ids))
+            and len(channels) == len(set(channels))
+        )
+        configured_quorum_complete = (
+            not isinstance(declared_required, bool)
+            and declared_required == configured_receipts
+            and not isinstance(declared_count, bool)
+            and declared_count == len(members)
+            and len(members) >= configured_receipts
+        )
+        identity_complete = bool(
+            population_verified
+            and self.goal_reference == goal_reference
+            and self.repository_tree_digest == repository_tree
+            and self.policy_digest == policy_revision
+            and self.proved_requirement_ids
+            == (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
+        )
+        if not (
+            identity_complete
+            and health_complete
+            and binding_complete
+            and members_complete
+            and receipts_independent
+            and configured_quorum_complete
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": (
+                TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
+            ),
+            "evidence": evidence,
+            "tasks_complete": bool(tasks_complete and identity_complete),
+            "repository_tree": repository_tree,
+            "repository_id": repository_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_goals,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
@@ -3236,6 +3731,7 @@ class RequiredContextProofBinding(CanonicalContract):
     required_fields: tuple[str, ...]
     artifact_digest: str
     requirement_id: str = REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID
+    verifier: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         from .context_compiler import (
@@ -3259,7 +3755,19 @@ class RequiredContextProofBinding(CanonicalContract):
             )
         # This performs the strong capsule/receipt/witness/decision/digest
         # cross-check.  A receipt alone is intentionally not sufficient.
-        ContextCompileResult(capsule, receipt, receipt.decisions)
+        structural_result = ContextCompileResult(
+            capsule,
+            receipt,
+            receipt.decisions,
+        )
+        if self.verifier is not None:
+            from .context_compiler import ContextCompiler
+
+            if not isinstance(self.verifier, ContextCompiler):
+                raise ContractValidationError(
+                    "required context proof verifier must be a ContextCompiler"
+                )
+            self.verifier.verify_compile_result(structural_result)
         evidence = receipt.evidence
         if (
             evidence is None
@@ -3409,6 +3917,12 @@ class RequiredContextProofBinding(CanonicalContract):
             self.selected_coverage_ids
         )
 
+    @property
+    def provider_tokens_verified(self) -> bool:
+        from .context_compiler import ContextCompiler
+
+        return isinstance(self.verifier, ContextCompiler)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
@@ -3436,6 +3950,7 @@ class RequiredContextProofBinding(CanonicalContract):
                 self.required_references_preserved
             ),
             "required_coverage_preserved": self.required_coverage_preserved,
+            "provider_tokens_verified": self.provider_tokens_verified,
         }
 
     @classmethod
@@ -3444,7 +3959,7 @@ class RequiredContextProofBinding(CanonicalContract):
         task_reference: str,
         result: Any,
     ) -> "RequiredContextProofBinding":
-        from .context_compiler import ContextCompileResult
+        from .context_compiler import ContextCompiler, ContextCompileResult
 
         if not isinstance(result, ContextCompileResult):
             raise ContractValidationError(
@@ -3452,7 +3967,16 @@ class RequiredContextProofBinding(CanonicalContract):
             )
         # Re-run result validation even if a caller constructed the dataclass
         # before crossing this promotion boundary.
-        ContextCompileResult(result.capsule, result.receipt, result.decisions)
+        if not isinstance(result.verifier, ContextCompiler):
+            raise ContractValidationError(
+                "required context proof requires its provider-token verifier"
+            )
+        ContextCompileResult(
+            result.capsule,
+            result.receipt,
+            result.decisions,
+            result.verifier,
+        )
         evidence = result.receipt.evidence
         if evidence is None:
             raise ContractValidationError(
@@ -3489,14 +4013,21 @@ class RequiredContextProofBinding(CanonicalContract):
             required_fields=evidence.required_fields,
             artifact_digest=evidence.artifact_digest,
             requirement_id=evidence.requirement_id,
+            verifier=result.verifier,
         )
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "RequiredContextProofBinding":
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        verifier: Any = None,
+    ) -> "RequiredContextProofBinding":
         _schema(payload, cls.SCHEMA, "required context proof binding")
         derived = {
             "required_references_preserved",
             "required_coverage_preserved",
+            "provider_tokens_verified",
         }
         _reject_unknown(
             payload,
@@ -3561,6 +4092,7 @@ class RequiredContextProofBinding(CanonicalContract):
             required_fields=tuple(payload.get("required_fields") or ()),
             artifact_digest=payload.get("artifact_digest", ""),
             requirement_id=payload.get("requirement_id", ""),
+            verifier=verifier,
         )
         for name in derived:
             if payload.get(name, getattr(result, name)) != getattr(result, name):
@@ -3705,6 +4237,40 @@ class RequiredContextPromotionReport(CanonicalContract):
         ) and not set(totals).difference(case_by_task)
 
     @property
+    def source_bindings_consistent(self) -> bool:
+        """Require every proof to match its measured task and one objective."""
+
+        from .context_compiler import REQUIRED_CONTEXT_OBJECTIVE_ID
+
+        case_by_task = {
+            item.task_reference: item for item in self.paired_report.cases
+        }
+        if not self.proof_bindings:
+            return False
+        repositories = {item.repository_id for item in self.proof_bindings}
+        policies = {item.policy_id for item in self.proof_bindings}
+        objective_revisions = {
+            item.context_capsule.objective_revision
+            for item in self.proof_bindings
+        }
+        return (
+            len(repositories) == 1
+            and len(policies) == 1
+            and len(objective_revisions) == 1
+            and all(
+                item.task_reference in case_by_task
+                and item.objective_id == REQUIRED_CONTEXT_OBJECTIVE_ID
+                and item.objective_id
+                == case_by_task[item.task_reference].goal_reference
+                and item.tree_id
+                == case_by_task[item.task_reference].repository_tree_digest
+                and item.policy_revision
+                == case_by_task[item.task_reference].policy_digest
+                for item in self.proof_bindings
+            )
+        )
+
+    @property
     def typed_context_gate_passed(self) -> bool:
         return (
             self.proof_population_complete
@@ -3712,9 +4278,11 @@ class RequiredContextPromotionReport(CanonicalContract):
             and all(
                 item.required_references_preserved
                 and item.required_coverage_preserved
+                and item.provider_tokens_verified
                 and item.input_tokens <= item.effective_input_limit
                 for item in self.proof_bindings
             )
+            and self.source_bindings_consistent
             and self.coverage_requirements_consistent
             and self.token_accounting_consistent
         )
@@ -3743,6 +4311,194 @@ class RequiredContextPromotionReport(CanonicalContract):
             return ()
         return (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
 
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G091 with a closed, current-tree completion gate.
+
+        The promotion report proves the runtime and measurement obligation,
+        but it cannot self-supply criterion validations, analyzer health, or
+        exhaustive scan quorum.  This bridge fixes the objective criteria and
+        repository identity from the typed proof population, tightens the
+        generic mapping boundary, and preserves the mandatory two-phase
+        provisional transition.
+        """
+
+        from .context_compiler import (
+            REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA,
+            REQUIRED_CONTEXT_OBJECTIVE_ID,
+        )
+        from .goal_completion import evaluate_goal_completion
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        repositories = {item.repository_id for item in self.proof_bindings}
+        trees = {item.tree_id for item in self.proof_bindings}
+        objectives = {item.objective_id for item in self.proof_bindings}
+        revisions = {
+            item.context_capsule.objective_revision
+            for item in self.proof_bindings
+        }
+        policies = {item.policy_revision for item in self.proof_bindings}
+        identity_complete = bool(
+            self.promotion_eligible
+            and self.source_bindings_consistent
+            and repositories
+            and len(repositories) == 1
+            and len(trees) == 1
+            and objectives == {REQUIRED_CONTEXT_OBJECTIVE_ID}
+            and len(revisions) == 1
+            and len(policies) == 1
+        )
+        repository_id = next(iter(repositories), "")
+        repository_tree = next(iter(trees), "")
+        objective_revision = next(iter(revisions), "")
+        policy_revision = next(iter(policies), "")
+
+        coverage_value = payload(coverage)
+        rows_value = coverage_value.get("criteria")
+        rows = rows_value if isinstance(rows_value, list) else []
+        bindings_complete = bool(rows) and all(
+            isinstance(row, Mapping)
+            and bool(str(row.get("implementation") or "").strip())
+            and bool(str(row.get("validation") or "").strip())
+            for row in rows
+        )
+        if not bindings_complete:
+            reasons = coverage_value.get("reason_codes")
+            reasons = (
+                list(reasons)
+                if isinstance(reasons, (list, tuple))
+                else []
+            )
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": [
+                    *reasons,
+                    "coverage_missing_implementation_validation_binding",
+                ],
+            }
+
+        health_value = payload(analyzer_health)
+        analyzer_version = str(
+            health_value.get("analyzer_version") or ""
+        ).strip()
+        health_complete = (
+            str(health_value.get("status") or "").strip().lower()
+            == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and bool(analyzer_version)
+        )
+        if not health_complete:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        quorum_value = payload(exhaustion_quorum)
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+        configuration_revision = str(
+            binding_value.get("configuration_revision") or ""
+        ).strip()
+        expected_binding = {
+            "repository_id": repository_id,
+            "tree_id": repository_tree,
+            "analyzer_version": analyzer_version,
+            "configuration_revision": configuration_revision,
+            "objective_revision": objective_revision,
+        }
+        binding_complete = bool(configuration_revision) and all(
+            binding_value.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        members_value = quorum_value.get("members")
+        members = members_value if isinstance(members_value, list) else []
+        members_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            and all(
+                isinstance(member.get("binding"), Mapping)
+                and member["binding"].get(name) == expected
+                for name, expected in expected_binding.items()
+            )
+            for member in members
+        )
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        receipts_independent = (
+            bool(receipt_ids)
+            and all(receipt_ids)
+            and len(receipt_ids) == len(set(receipt_ids))
+        )
+        if not (
+            identity_complete
+            and health_complete
+            and binding_complete
+            and members_complete
+            and receipts_independent
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA,
+            "evidence": evidence,
+            "tasks_complete": bool(tasks_complete and identity_complete),
+            "repository_tree": repository_tree,
+            "repository_id": repository_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_goals,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
@@ -3762,6 +4518,7 @@ class RequiredContextPromotionReport(CanonicalContract):
                 self.coverage_requirements_consistent
             ),
             "token_accounting_consistent": self.token_accounting_consistent,
+            "source_bindings_consistent": self.source_bindings_consistent,
             "typed_context_gate_passed": self.typed_context_gate_passed,
             "paired_efficiency_gate_passed": (
                 self.paired_efficiency_gate_passed
@@ -3779,9 +4536,18 @@ class RequiredContextPromotionReport(CanonicalContract):
 
     @classmethod
     def from_dict(
-        cls, payload: Mapping[str, Any]
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        verifiers_by_receipt: Mapping[str, Any] | None = None,
     ) -> "RequiredContextPromotionReport":
         _schema(payload, cls.SCHEMA, "required context promotion report")
+        if verifiers_by_receipt is not None and not isinstance(
+            verifiers_by_receipt, Mapping
+        ):
+            raise ContractValidationError(
+                "verifiers_by_receipt must be an object"
+            )
         derived = {
             "proof_task_references",
             "missing_proof_task_references",
@@ -3790,6 +4556,7 @@ class RequiredContextPromotionReport(CanonicalContract):
             "context_receipt_count",
             "coverage_requirements_consistent",
             "token_accounting_consistent",
+            "source_bindings_consistent",
             "typed_context_gate_passed",
             "paired_efficiency_gate_passed",
             "evidence_claim_references",
@@ -3823,6 +4590,25 @@ class RequiredContextPromotionReport(CanonicalContract):
             raise ContractValidationError(
                 "terminal_work_evidence must be an object"
             )
+        binding_payloads = payload.get("proof_bindings") or ()
+        bindings: list[RequiredContextProofBinding] = []
+        for item in binding_payloads:
+            if not isinstance(item, Mapping):
+                raise ContractValidationError(
+                    "required context proof binding must be an object"
+                )
+            receipt_id = item.get("receipt_id", "")
+            verifier = (
+                verifiers_by_receipt.get(receipt_id)
+                if verifiers_by_receipt is not None
+                else None
+            )
+            bindings.append(
+                RequiredContextProofBinding.from_dict(
+                    item,
+                    verifier=verifier,
+                )
+            )
         result = cls(
             paired_report=PairedEfficiencyReport.from_dict(paired_payload),
             terminal_work_evidence=(
@@ -3832,10 +4618,7 @@ class RequiredContextPromotionReport(CanonicalContract):
                 if terminal_payload is not None
                 else None
             ),
-            proof_bindings=tuple(
-                RequiredContextProofBinding.from_dict(item)
-                for item in payload.get("proof_bindings") or ()
-            ),
+            proof_bindings=tuple(bindings),
         )
         for name in derived:
             claimed = payload.get(name, getattr(result, name))
@@ -3850,10 +4633,14 @@ class RequiredContextPromotionReport(CanonicalContract):
 
     @classmethod
     def from_json(
-        cls, value: str | bytes | bytearray
+        cls,
+        value: str | bytes | bytearray,
+        *,
+        verifiers_by_receipt: Mapping[str, Any] | None = None,
     ) -> "RequiredContextPromotionReport":
         return cls.from_dict(
-            _load_json(value, artifact_name="required context promotion report")
+            _load_json(value, artifact_name="required context promotion report"),
+            verifiers_by_receipt=verifiers_by_receipt,
         )
 
 
@@ -4492,6 +5279,46 @@ class DeltaRetryPromotionReport(CanonicalContract):
         )
 
     @property
+    def source_bindings_consistent(self) -> bool:
+        """Require every retry proof to bind the measured ASI-G092 cohort.
+
+        Construction-time joins already reject stale task identities.  This
+        derived check repeats that authority boundary for decoded reports so a
+        structurally valid proof population cannot be paired with an unrelated
+        goal, tree, policy, repository, or objective revision.
+        """
+
+        from .context_compiler import DELTA_RETRY_OBJECTIVE_ID
+
+        case_by_task = {
+            item.task_reference: item for item in self.paired_report.cases
+        }
+        if not self.proof_bindings:
+            return False
+        repositories = {item.repository_id for item in self.proof_bindings}
+        policies = {item.policy_id for item in self.proof_bindings}
+        objective_revisions = {
+            item.parent_context_capsule.objective_revision
+            for item in self.proof_bindings
+        }
+        return (
+            len(repositories) == 1
+            and len(policies) == 1
+            and len(objective_revisions) == 1
+            and all(
+                item.task_reference in case_by_task
+                and item.objective_id == DELTA_RETRY_OBJECTIVE_ID
+                and item.objective_id
+                == case_by_task[item.task_reference].goal_reference
+                and item.tree_id
+                == case_by_task[item.task_reference].repository_tree_digest
+                and item.policy_revision
+                == case_by_task[item.task_reference].policy_digest
+                for item in self.proof_bindings
+            )
+        )
+
+    @property
     def typed_delta_gate_passed(self) -> bool:
         return (
             self.proof_population_complete
@@ -4508,6 +5335,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
             and self.median_delta_input_token_reduction_bps
             >= self.paired_report.minimum_input_token_reduction_bps
             and self.token_accounting_consistent
+            and self.source_bindings_consistent
         )
 
     @property
@@ -4534,6 +5362,259 @@ class DeltaRetryPromotionReport(CanonicalContract):
     def promotion_eligible(self) -> bool:
         return self.passed
 
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G092 using only current-tree, completion-safe proof.
+
+        The typed report proves the retry-delta implementation and measurement
+        obligation.  Completion additionally requires a fresh validation for
+        each literal objective criterion, a deterministic implementation/test
+        map, an explicitly healthy completion-safe analyzer, and at least the
+        trusted configured number of independent fresh exhaustive receipts.
+        The generic goal lifecycle then enforces a separate provisional
+        transition before verified completion.
+
+        ``required_exhaustive_receipts`` is trusted caller configuration.  It
+        is deliberately not inferred from the submitted quorum, preventing a
+        proof producer from weakening a configured two-receipt gate to one.
+        """
+
+        from .context_compiler import (
+            DELTA_RETRY_ACCEPTANCE_CRITERIA,
+            DELTA_RETRY_OBJECTIVE_ID,
+        )
+        from .goal_completion import evaluate_goal_completion
+
+        configured_receipts = _integer(
+            required_exhaustive_receipts,
+            field_name="required_exhaustive_receipts",
+            minimum=1,
+            maximum=MAX_RECEIPTS_PER_REPORT,
+        )
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        repositories = {item.repository_id for item in self.proof_bindings}
+        trees = {item.tree_id for item in self.proof_bindings}
+        objectives = {item.objective_id for item in self.proof_bindings}
+        revisions = {
+            item.parent_context_capsule.objective_revision
+            for item in self.proof_bindings
+        }
+        policies = {item.policy_revision for item in self.proof_bindings}
+        identity_complete = bool(
+            self.promotion_eligible
+            and self.source_bindings_consistent
+            and repositories
+            and len(repositories) == 1
+            and len(trees) == 1
+            and objectives == {DELTA_RETRY_OBJECTIVE_ID}
+            and len(revisions) == 1
+            and len(policies) == 1
+        )
+        repository_id = next(iter(repositories), "")
+        repository_tree = next(iter(trees), "")
+        objective_revision = next(iter(revisions), "")
+        policy_revision = next(iter(policies), "")
+
+        coverage_value = payload(coverage)
+        rows_value = coverage_value.get("criteria")
+        rows = rows_value if isinstance(rows_value, list) else []
+        expected_criteria = {
+            " ".join(item.strip().lower().split())
+            for item in DELTA_RETRY_ACCEPTANCE_CRITERIA
+        }
+        mapped_criteria = [
+            " ".join(
+                str(row.get("criterion") or "").strip().lower().split()
+            )
+            for row in rows
+            if isinstance(row, Mapping)
+        ]
+        mappings_complete = bool(rows) and (
+            len(mapped_criteria) == len(expected_criteria)
+            and set(mapped_criteria) == expected_criteria
+            and len(mapped_criteria) == len(set(mapped_criteria))
+            and all(
+                isinstance(row, Mapping)
+                and bool(str(row.get("implementation") or "").strip())
+                and bool(str(row.get("validation") or "").strip())
+                for row in rows
+            )
+        )
+        if not mappings_complete:
+            reasons = coverage_value.get("reason_codes")
+            reasons = (
+                list(reasons)
+                if isinstance(reasons, (list, tuple))
+                else []
+            )
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": [
+                    *reasons,
+                    "coverage_missing_implementation_validation_binding",
+                ],
+            }
+
+        health_value = payload(analyzer_health)
+        analyzer_version = str(
+            health_value.get("analyzer_version") or ""
+        ).strip()
+        health_complete = (
+            str(health_value.get("status") or "").strip().lower()
+            == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and bool(analyzer_version)
+        )
+        if not health_complete:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        quorum_value = payload(exhaustion_quorum)
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+        configuration_revision = str(
+            binding_value.get("configuration_revision") or ""
+        ).strip()
+        expected_binding = {
+            "repository_id": repository_id,
+            "tree_id": repository_tree,
+            "objective_id": DELTA_RETRY_OBJECTIVE_ID,
+            "objective_revision": objective_revision,
+            "policy_revision": policy_revision,
+            "requirement_id": DELTA_RETRY_CONTEXT_EVIDENCE_ID,
+            "promotion_report_id": self.report_id,
+            "analyzer_version": analyzer_version,
+            "configuration_revision": configuration_revision,
+        }
+        binding_complete = bool(configuration_revision) and all(
+            binding_value.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        members_value = quorum_value.get("members")
+        members = (
+            members_value
+            if isinstance(members_value, (list, tuple))
+            else []
+        )
+        members_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            and all(
+                isinstance(member.get("binding"), Mapping)
+                and member["binding"].get(name) == expected
+                for name, expected in expected_binding.items()
+            )
+            for member in members
+        )
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        member_ids = [
+            str(member.get("member_id") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        channels = [
+            str(
+                member.get("evidence_channel")
+                or member.get("independence_key")
+                or ""
+            ).strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        declared_required = quorum_value.get("required_members")
+        declared_count = quorum_value.get("member_count")
+        receipts_independent = (
+            len(receipt_ids) >= configured_receipts
+            and all(receipt_ids)
+            and all(member_ids)
+            and all(channels)
+            and len(receipt_ids) == len(set(receipt_ids))
+            and len(member_ids) == len(set(member_ids))
+            and len(channels) == len(set(channels))
+        )
+        configured_quorum_complete = (
+            not isinstance(declared_required, bool)
+            and declared_required == configured_receipts
+            and not isinstance(declared_count, bool)
+            and declared_count == len(members)
+            and len(members) >= configured_receipts
+        )
+        if not (
+            identity_complete
+            and health_complete
+            and binding_complete
+            and members_complete
+            and receipts_independent
+            and configured_quorum_complete
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": DELTA_RETRY_ACCEPTANCE_CRITERIA,
+            "evidence": evidence,
+            "tasks_complete": bool(tasks_complete and identity_complete),
+            "repository_tree": repository_tree,
+            "repository_id": repository_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_goals,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
@@ -4557,6 +5638,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
                 self.median_delta_input_token_reduction_bps
             ),
             "token_accounting_consistent": self.token_accounting_consistent,
+            "source_bindings_consistent": self.source_bindings_consistent,
             "typed_delta_gate_passed": self.typed_delta_gate_passed,
             "paired_efficiency_gate_passed": (
                 self.paired_efficiency_gate_passed
@@ -4596,6 +5678,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
             "median_delta_input_tokens",
             "median_delta_input_token_reduction_bps",
             "token_accounting_consistent",
+            "source_bindings_consistent",
             "typed_delta_gate_passed",
             "paired_efficiency_gate_passed",
             "evidence_claim_references",
@@ -5290,6 +6373,433 @@ def aggregate_efficiency_receipts(
     )
 
 
+def evaluate_token_efficiency_completion(
+    *,
+    repository_id: str,
+    repository_tree: str,
+    producing_tasks: Sequence[Any] = (),
+    child_goals: Sequence[Any] = (),
+    current_state: Any = "active",
+    evidence: Sequence[Any] = (),
+    tasks_complete: bool = False,
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    required_exhaustive_receipts: int = (
+        TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ),
+    policy_revision: str = "",
+    now: Any = None,
+    freshness_seconds: float = 86_400.0,
+    clock_skew_seconds: float = 300.0,
+    analysis_inconclusive: bool = False,
+    blocked_reason: str = "",
+) -> Any:
+    """Evaluate the immutable ASI-G010 parent completion contract.
+
+    Callers cannot narrow the producing tasks, direct child goals, literal
+    criteria, objective revision, or exhaustive-receipt count.  Verified child
+    artifacts remain separate from parent validation, analyzer, and quorum
+    authority.
+    """
+
+    from .analyzer_health import AnalyzerHealthReport
+    from .goal_completion import evaluate_goal_completion
+    from .scan_receipts import ExhaustionQuorumResult
+
+    if (
+        isinstance(required_exhaustive_receipts, bool)
+        or not isinstance(required_exhaustive_receipts, int)
+        or required_exhaustive_receipts
+        != TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ):
+        raise ValueError(
+            "required_exhaustive_receipts must equal the configured ASI-G010 "
+            f"count {TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+        )
+    repository_id = str(repository_id or "").strip()
+    repository_tree = str(repository_tree or "").strip()
+    if not repository_id or not repository_tree:
+        raise ValueError("repository_id and repository_tree must not be empty")
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    def normalized(value: Any) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    def parsed_time(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            result = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                result = datetime.fromisoformat(
+                    value.strip().replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if result.tzinfo is None:
+            result = result.replace(tzinfo=timezone.utc)
+        return result.astimezone(timezone.utc)
+
+    current = parsed_time(now) or datetime.now(timezone.utc)
+    max_age = timedelta(seconds=max(0.0, float(freshness_seconds)))
+    skew = timedelta(seconds=max(0.0, float(clock_skew_seconds)))
+
+    task_values = [payload(item) for item in producing_tasks]
+    task_ids = [
+        str(item.get("task_id", item.get("id", "")) or "").strip()
+        for item in task_values
+    ]
+    successful_states = {
+        "complete",
+        "completed",
+        "passed",
+        "success",
+        "succeeded",
+        "verified",
+        "verified_complete",
+    }
+    producer_population_complete = bool(task_values) and (
+        len(task_ids) == len(set(task_ids))
+        and tuple(sorted(task_ids))
+        == tuple(sorted(TOKEN_EFFICIENCY_PRODUCING_TASK_IDS))
+        and all(
+            normalized(item.get("status", item.get("state", "")))
+            in successful_states
+            for item in task_values
+        )
+    )
+
+    evidence_ids: dict[str, set[str]] = {}
+    for item in evidence:
+        value = payload(item)
+        source = value.get("evidence", value)
+        source = source if isinstance(source, Mapping) else value
+        criterion = normalized(source.get("acceptance_criterion"))
+        receipt_id = str(
+            source.get(
+                "provenance_cid",
+                source.get("receipt_id", source.get("evidence_id", "")),
+            )
+            or ""
+        ).strip()
+        if criterion and receipt_id:
+            evidence_ids.setdefault(criterion, set()).add(receipt_id)
+
+    coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+    expected_criteria = {
+        normalized(item) for item in TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA
+    }
+    row_keys = [
+        normalized(
+            row.get("criterion", row.get("acceptance_criterion", ""))
+        )
+        for row in rows
+        if isinstance(row, Mapping)
+    ]
+
+    def validation_ids(row: Mapping[str, Any]) -> set[str]:
+        values = row.get(
+            "validation_receipt_ids",
+            row.get("validation_receipt_id", ()),
+        )
+        if isinstance(values, str):
+            values = (values,)
+        if not isinstance(values, Sequence):
+            return set()
+        return {
+            str(item or "").strip()
+            for item in values
+            if str(item or "").strip()
+        }
+
+    coverage_bound = (
+        len(row_keys) == len(expected_criteria)
+        and len(row_keys) == len(set(row_keys))
+        and set(row_keys) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and bool(
+                str(row.get("implementation") or "").strip()
+                or str(row.get("implementation_binding") or "").strip()
+                or any(
+                    str(item or "").strip()
+                    for name in (
+                        "changed_files",
+                        "predicted_files",
+                        "ast_symbols",
+                        "interfaces",
+                    )
+                    for item in (
+                        row.get(name)
+                        if isinstance(row.get(name), (list, tuple))
+                        else ()
+                    )
+                )
+            )
+            and bool(
+                validation_ids(row).intersection(
+                    evidence_ids.get(
+                        normalized(
+                            row.get(
+                                "criterion",
+                                row.get("acceptance_criterion", ""),
+                            )
+                        ),
+                        set(),
+                    )
+                )
+            )
+            for row in rows
+        )
+    )
+    if not coverage_bound:
+        reasons = coverage_value.get("reason_codes")
+        reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "reason_codes": list(
+                dict.fromkeys(
+                    [*reasons, "coverage_validation_receipt_unbound"]
+                )
+            ),
+        }
+
+    typed_health = isinstance(analyzer_health, AnalyzerHealthReport)
+    typed_quorum = isinstance(exhaustion_quorum, ExhaustionQuorumResult)
+    quorum_value = payload(exhaustion_quorum)
+    quorum_binding_value = quorum_value.get("binding")
+    quorum_binding = (
+        dict(quorum_binding_value)
+        if isinstance(quorum_binding_value, Mapping)
+        else {}
+    )
+    health_value = payload(analyzer_health)
+    analyzer_version = str(
+        health_value.get("analyzer_version")
+        or quorum_binding.get("analyzer_version")
+        or ""
+    ).strip()
+    health_binding_value = health_value.get("binding")
+    health_binding = (
+        dict(health_binding_value)
+        if isinstance(health_binding_value, Mapping)
+        else {}
+    )
+    if typed_health and typed_quorum:
+        health_binding = {
+            **quorum_binding,
+            "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
+        }
+        health_value = {
+            **health_value,
+            "analyzer_version": analyzer_version,
+            "binding": health_binding,
+        }
+    expected_binding = {
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
+        "objective_revision": TOKEN_EFFICIENCY_OBJECTIVE_REVISION,
+        "analyzer_version": analyzer_version,
+        "configuration_revision": str(
+            health_binding.get("configuration_revision") or ""
+        ).strip(),
+    }
+    if policy_revision:
+        expected_binding["policy_revision"] = str(policy_revision).strip()
+    health_complete = (
+        normalized(health_value.get("status")) == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+        and bool(analyzer_version)
+        and bool(expected_binding["configuration_revision"])
+        and all(
+            health_binding.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+    )
+    if not health_complete:
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    members_value = quorum_value.get("members")
+    members = (
+        members_value
+        if isinstance(members_value, (list, tuple))
+        else []
+    )
+    if typed_quorum:
+        quorum_binding = {
+            **quorum_binding,
+            "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
+        }
+        members = [
+            {
+                **member,
+                "binding": quorum_binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+            }
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        quorum_value = {
+            **quorum_value,
+            "binding": quorum_binding,
+            "members": members,
+        }
+
+    def independent_field(name: str) -> bool:
+        values = [
+            str(member.get(name) or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        return (
+            len(values) == len(members)
+            and all(values)
+            and len(values) == len(set(values))
+        )
+
+    members_complete = bool(members) and all(
+        isinstance(member, Mapping)
+        and member.get("healthy") is True
+        and member.get("safe_for_completion_reasoning") is True
+        and normalized(member.get("scan_mode")) == "exhaustive"
+        and isinstance(member.get("binding"), Mapping)
+        and all(
+            member["binding"].get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        for member in members
+    )
+    quorum_complete = (
+        quorum_value.get("required_members")
+        == TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("member_count") == len(members)
+        and len(members) >= TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("satisfied") is True
+        and quorum_binding == health_binding
+        and members_complete
+        and independent_field("member_id")
+        and independent_field("evidence_channel")
+        and independent_field("receipt_cid")
+    )
+    if not quorum_complete:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    child_values = [payload(item) for item in child_goals]
+    child_ids = [
+        str(item.get("goal_id", item.get("id", "")) or "").strip()
+        for item in child_values
+    ]
+
+    def child_is_current(child: Mapping[str, Any]) -> bool:
+        gate_value = child.get("completion_gate", child.get("gate"))
+        gate = gate_value if isinstance(gate_value, Mapping) else {}
+        evaluated_value = gate.get("evaluated_evidence")
+        evaluated = (
+            evaluated_value if isinstance(evaluated_value, Mapping) else {}
+        )
+        evaluated_at = parsed_time(evaluated.get("evaluated_at"))
+        validations = evaluated.get("validation_evidence")
+        proof_requirements = child.get(
+            "proof_requirements",
+            evaluated.get("proof_requirements", ()),
+        )
+        if isinstance(proof_requirements, Mapping):
+            proof_requirements = (proof_requirements,)
+        return bool(
+            normalized(child.get("state", child.get("next_state", "")))
+            == "verified_complete"
+            and child.get("verified") is True
+            and gate.get("passed") is True
+            and evaluated.get("repository_id") == repository_id
+            and evaluated.get("repository_tree") == repository_tree
+            and evaluated_at is not None
+            and evaluated_at <= current + skew
+            and current - evaluated_at <= max_age
+            and isinstance(validations, list)
+            and bool(validations)
+            and all(
+                isinstance(item, Mapping)
+                and item.get("valid") is True
+                and isinstance(item.get("evidence"), Mapping)
+                and item["evidence"].get("repository_id") == repository_id
+                and item["evidence"].get("repository_tree")
+                == repository_tree
+                for item in validations
+            )
+            and isinstance(proof_requirements, (list, tuple))
+            and bool(proof_requirements)
+        )
+
+    child_population_complete = (
+        len(child_ids) == len(set(child_ids))
+        and tuple(sorted(child_ids))
+        == tuple(sorted(TOKEN_EFFICIENCY_CHILD_GOAL_IDS))
+        and all(child_is_current(item) for item in child_values)
+    )
+    if not child_population_complete:
+        child_values.append(
+            {
+                "goal_id": "ASI-G010-required-descendant-population",
+                "state": "active",
+                "verified": False,
+                "completion_gate": {
+                    "passed": False,
+                    "reason_code": (
+                        "required_descendant_population_or_binding_incomplete"
+                    ),
+                },
+            }
+        )
+
+    return evaluate_goal_completion(
+        current_state=current_state,
+        acceptance_criteria=TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
+        evidence=evidence,
+        tasks_complete=bool(
+            tasks_complete and producer_population_complete
+        ),
+        repository_tree=repository_tree,
+        repository_id=repository_id,
+        now=current,
+        freshness_seconds=freshness_seconds,
+        clock_skew_seconds=clock_skew_seconds,
+        coverage=coverage_value,
+        analyzer_health=health_value,
+        exhaustion_quorum=quorum_value,
+        child_goals=child_values,
+        analysis_result=None,
+        analysis_inconclusive=analysis_inconclusive,
+        blocked_reason=blocked_reason,
+        require_completion_gate=True,
+    )
+
+
 def _fixture_digest(label: str) -> str:
     return "sha256:" + hashlib.sha256(label.encode("utf-8")).hexdigest()
 
@@ -5512,7 +7022,16 @@ __all__ = [
     "SCHEMA_VERSION",
     "STAGE_TIMING_SCHEMA",
     "TERMINAL_ACCEPTANCE_SCHEMA",
+    "TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA",
     "TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA",
+    "TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID",
+    "TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA",
+    "TOKEN_EFFICIENCY_CHILD_GOAL_IDS",
+    "TOKEN_EFFICIENCY_OBJECTIVE_ID",
+    "TOKEN_EFFICIENCY_OBJECTIVE_REVISION",
+    "TOKEN_EFFICIENCY_PRODUCING_TASK_IDS",
+    "TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS",
+    "TOKEN_EFFICIENCY_REQUIREMENT_IDS",
     "TOKEN_USAGE_SCHEMA",
     "WORK_COST_SCHEMA",
     "ArtifactReference",
@@ -5550,6 +7069,7 @@ __all__ = [
     "build_required_context_promotion_report",
     "build_delta_retry_promotion_report",
     "build_efficiency_baseline_fixtures",
+    "evaluate_token_efficiency_completion",
     "compare_paired_efficiency_receipts",
     "make_baseline_fixtures",
     "PairedEfficiencyCase",

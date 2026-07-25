@@ -20,15 +20,21 @@ import fcntl
 import hashlib
 import inspect
 import json
+import marshal
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
+from collections import deque
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Final, Iterator, Mapping, Sequence
 
 from .formal_verification_policy import (
     ChangedScope,
@@ -38,10 +44,665 @@ from .formal_verification_policy import (
     RiskLevel,
     default_formal_verification_policy,
 )
-from .merge_queue import MergeQueue, MergeRequest
+from .merge_queue import MergeQueue, MergeQueueFenceError, MergeRequest
 
 
 MergeCallback = Callable[[MergeRequest], Mapping[str, Any]]
+PreflightCallback = Callable[..., Mapping[str, Any] | bool]
+PostMergeValidationCallback = Callable[..., Mapping[str, Any] | bool]
+
+PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/parallel-acceptance-receipt@1"
+)
+PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1"
+)
+PARALLEL_ACCEPTANCE_EVIDENCE_ID = (
+    "185033715568272291470322170325431455647"
+)
+PARALLEL_EXECUTION_OBJECTIVE_ID: Final = "ASI-G060"
+PARALLEL_EXECUTION_OBJECTIVE_REVISION: Final = "ASI-G060@asi-083"
+PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION: Final = (
+    "parallel-execution-completion@1"
+)
+PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION: Final = (
+    "parallel-execution-completion-policy@1"
+)
+PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
+PARALLEL_EXECUTION_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
+    "ASI-015",
+    "ASI-016",
+    "ASI-017",
+)
+PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "Resource pools expose backpressure and fair admission",
+    "compatible provider work shares model capacity",
+    "independent validation and merge preflight run concurrently",
+    "target-branch mutation remains fenced and serialized",
+    (
+        "paired independent fixtures achieve at least twice single-lane "
+        "throughput without duplicate execution, stale acceptance, resource "
+        "overcommit, or merge-conflict regression"
+    ),
+)
+PARALLEL_GATE_CACHE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/parallel-gate-cache@1"
+)
+_PARALLEL_ACCEPTANCE_RECEIPT_SEAL: Final = object()
+
+
+@dataclass(frozen=True)
+class ParallelAcceptanceReceipt:
+    """Content-addressed proof of the fenced acceptance sequence.
+
+    A successful receipt is constructed and persisted only after the
+    synthesized merged tree has passed its post-merge validator and that exact
+    commit has won the serialized target compare-and-swap.  The queue stores
+    the receipt id when it transitions to ``completed``; therefore parallel
+    preflight completion alone can never confer acceptance authority.
+    """
+
+    request_id: str
+    canonical_task_id: str
+    candidate_commit: str
+    target_commit: str
+    preflight: Mapping[str, Any]
+    integration: Mapping[str, Any]
+    post_merge_validation: Mapping[str, Any]
+    mutation_fence_owner: str
+    mutation_fence_generation: int
+    mutation_fence_token_digest: str
+    accepted: bool
+    validation_receipt_ids: tuple[str, ...] = ()
+    requirement_id: str = PARALLEL_ACCEPTANCE_EVIDENCE_ID
+    schema: str = PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA
+    _producer_seal: object | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+
+    def _content(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "requirement_id": self.requirement_id,
+            "request_id": self.request_id,
+            "canonical_task_id": self.canonical_task_id,
+            "candidate_commit": self.candidate_commit,
+            "target_commit": self.target_commit,
+            "preflight": dict(self.preflight),
+            "integration": dict(self.integration),
+            "post_merge_validation": dict(self.post_merge_validation),
+            "validation_receipt_ids": list(self.validation_receipt_ids),
+            "mutation_fence_owner": self.mutation_fence_owner,
+            "mutation_fence_generation": self.mutation_fence_generation,
+            "mutation_fence_token_digest": self.mutation_fence_token_digest,
+            "accepted": self.accepted,
+            "sequence": (
+                "parallel_preflight",
+                "synthesized_merged_tree",
+                "post_merge_validation",
+                "serialized_target_mutation",
+                "queue_completion_authorized",
+            ),
+        }
+
+    @property
+    def receipt_id(self) -> str:
+        content = json.dumps(
+            self._content(),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"receipt_id": self.receipt_id, **self._content()}
+
+    def verify_integrity(self) -> bool:
+        """Re-derive all authority-bearing fields of this receipt."""
+
+        validation = self.post_merge_validation
+        validated_commit = str(
+            validation.get("validated_commit")
+            or validation.get("target_commit")
+            or ""
+        )
+        return bool(
+            self._producer_seal is _PARALLEL_ACCEPTANCE_RECEIPT_SEAL
+            and self.schema == PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA
+            and self.requirement_id == PARALLEL_ACCEPTANCE_EVIDENCE_ID
+            and self.request_id
+            and self.canonical_task_id
+            and self.candidate_commit
+            and self.target_commit
+            and self.accepted
+            and validation.get("passed") is True
+            and validated_commit == self.target_commit
+            and self.mutation_fence_owner
+            and self.mutation_fence_generation > 0
+            and self.mutation_fence_token_digest.startswith("sha256:")
+            and len(self.mutation_fence_token_digest) == len("sha256:") + 64
+        )
+
+    def proved_requirement_ids_for(
+        self, repository_tree: str
+    ) -> tuple[str, ...]:
+        """Expose authority only for the exact accepted repository tree."""
+
+        if (
+            self.verify_integrity()
+            and self.target_commit == str(repository_tree or "").strip()
+        ):
+            return (self.requirement_id,)
+        return ()
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "ParallelAcceptanceReceipt":
+        """Restore a diagnostic projection and reject identity tampering.
+
+        Restored projections deliberately lack the private producer seal and
+        therefore cannot expose completion authority through
+        :meth:`proved_requirement_ids_for`.
+        """
+
+        if not isinstance(value, Mapping):
+            raise TypeError("parallel acceptance receipt must be a mapping")
+        sequence = value.get("sequence")
+        expected_sequence = (
+            "parallel_preflight",
+            "synthesized_merged_tree",
+            "post_merge_validation",
+            "serialized_target_mutation",
+            "queue_completion_authorized",
+        )
+        if sequence not in (expected_sequence, list(expected_sequence)):
+            raise ValueError("parallel acceptance receipt sequence mismatch")
+        receipt = cls(
+            request_id=str(value.get("request_id") or ""),
+            canonical_task_id=str(value.get("canonical_task_id") or ""),
+            candidate_commit=str(value.get("candidate_commit") or ""),
+            target_commit=str(value.get("target_commit") or ""),
+            preflight=(
+                dict(value["preflight"])
+                if isinstance(value.get("preflight"), Mapping)
+                else {}
+            ),
+            integration=(
+                dict(value["integration"])
+                if isinstance(value.get("integration"), Mapping)
+                else {}
+            ),
+            post_merge_validation=(
+                dict(value["post_merge_validation"])
+                if isinstance(value.get("post_merge_validation"), Mapping)
+                else {}
+            ),
+            validation_receipt_ids=tuple(
+                str(item)
+                for item in value.get("validation_receipt_ids", ())
+            ),
+            mutation_fence_owner=str(
+                value.get("mutation_fence_owner") or ""
+            ),
+            mutation_fence_generation=int(
+                value.get("mutation_fence_generation") or 0
+            ),
+            mutation_fence_token_digest=str(
+                value.get("mutation_fence_token_digest") or ""
+            ),
+            accepted=value.get("accepted") is True,
+            requirement_id=str(value.get("requirement_id") or ""),
+            schema=str(value.get("schema") or ""),
+        )
+        if str(value.get("receipt_id") or "") != receipt.receipt_id:
+            raise ValueError("parallel acceptance receipt identity mismatch")
+        return receipt
+
+
+def evaluate_parallel_execution_completion(
+    *,
+    repository_id: str,
+    repository_tree: str,
+    resource_policy: Any,
+    operational_evidence: Sequence[Any] = (),
+    producing_tasks: Sequence[Any] = (),
+    current_state: Any = "active",
+    evidence: Sequence[Any] = (),
+    tasks_complete: bool = False,
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    required_exhaustive_receipts: int = (
+        PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ),
+    now: Any = None,
+    freshness_seconds: float = 3600.0,
+    clock_skew_seconds: float = 300.0,
+    analysis_inconclusive: bool = False,
+    blocked_reason: str = "",
+) -> Any:
+    """Evaluate the closed ASI-G060 completion boundary.
+
+    Runtime counters and task status are deliberately insufficient.  The
+    immutable parent criteria require all three live typed lane receipts, the
+    exact successful producer population, one fresh passing current-tree
+    validation per criterion, concrete coverage bound to those validation
+    identities, an explicitly healthy completion-safe analyzer, and exactly
+    the configured independent exhaustive quorum.
+    """
+
+    from .goal_completion import evaluate_goal_completion
+    from .provider_batch_scheduler import (
+        PARTIAL_CANCELLATION_REQUIREMENT_ID,
+        ProviderBatchEvidenceReceipt,
+    )
+    from .resource_scheduler import (
+        ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,
+        AdaptiveThroughputBenchmarkReceipt,
+    )
+
+    if (
+        isinstance(required_exhaustive_receipts, bool)
+        or not isinstance(required_exhaustive_receipts, int)
+        or required_exhaustive_receipts
+        != PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ):
+        raise ValueError(
+            "required_exhaustive_receipts must equal the configured "
+            f"ASI-G060 count "
+            f"{PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+        )
+    for name, value in (
+        ("freshness_seconds", freshness_seconds),
+        ("clock_skew_seconds", clock_skew_seconds),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or float(value) < 0
+        ):
+            raise ValueError(f"{name} must be a non-negative number")
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    def normalized(value: Any) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    def parsed_datetime(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            result = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                result = datetime.fromisoformat(
+                    value.strip().replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if result.tzinfo is None:
+            result = result.replace(tzinfo=timezone.utc)
+        return result.astimezone(timezone.utc)
+
+    current = parsed_datetime(now) or datetime.now(timezone.utc)
+    max_age = timedelta(seconds=float(freshness_seconds))
+    clock_skew = timedelta(seconds=float(clock_skew_seconds))
+
+    def fresh(value: Any) -> bool:
+        observed = parsed_datetime(value)
+        return bool(
+            observed is not None
+            and observed <= current + clock_skew
+            and current - observed <= max_age
+        )
+
+    repository_id = str(repository_id or "").strip()
+    repository_tree = str(repository_tree or "").strip()
+    expected_binding = {
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": PARALLEL_EXECUTION_OBJECTIVE_ID,
+        "objective_revision": PARALLEL_EXECUTION_OBJECTIVE_REVISION,
+        "analyzer_version": (
+            PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+
+    lane_receipts = tuple(operational_evidence)
+    adaptive_receipts = tuple(
+        item
+        for item in lane_receipts
+        if type(item) is AdaptiveThroughputBenchmarkReceipt
+    )
+    provider_receipts = tuple(
+        item
+        for item in lane_receipts
+        if type(item) is ProviderBatchEvidenceReceipt
+    )
+    acceptance_receipts = tuple(
+        item
+        for item in lane_receipts
+        if type(item) is ParallelAcceptanceReceipt
+    )
+    try:
+        operational_complete = bool(
+            len(lane_receipts) == 3
+            and len(adaptive_receipts) == 1
+            and len(provider_receipts) == 1
+            and len(acceptance_receipts) == 1
+            and adaptive_receipts[0].proved_requirement_ids_for(
+                policy=resource_policy,
+                repository_tree_id=repository_tree,
+            )
+            == (ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,)
+            and provider_receipts[0].proved_requirement_ids
+            == (PARTIAL_CANCELLATION_REQUIREMENT_ID,)
+            and acceptance_receipts[0].proved_requirement_ids_for(
+                repository_tree
+            )
+            == (PARALLEL_ACCEPTANCE_EVIDENCE_ID,)
+        )
+    except (AttributeError, TypeError, ValueError):
+        # Operational inputs are untrusted persisted evidence.  Malformed
+        # policy/receipt data closes completion but does not crash evaluation.
+        operational_complete = False
+
+    successful_states = frozenset(
+        {
+            "complete",
+            "completed",
+            "passed",
+            "success",
+            "succeeded",
+            "verified",
+            "verified_complete",
+        }
+    )
+    task_values = [payload(item) for item in producing_tasks]
+    task_ids = [
+        str(item.get("task_id", item.get("id", "")) or "").strip()
+        for item in task_values
+    ]
+    producer_population_complete = bool(
+        repository_id
+        and repository_tree
+        and len(task_ids) == len(set(task_ids))
+        and tuple(sorted(task_ids))
+        == tuple(sorted(PARALLEL_EXECUTION_PRODUCING_TASK_IDS))
+        and all(
+            normalized(item.get("status", item.get("state", "")))
+            in successful_states
+            for item in task_values
+        )
+    )
+
+    expected_criteria = {
+        normalized(item) for item in PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA
+    }
+    receipt_ids_by_criterion: dict[str, set[str]] = {}
+    evidence_criteria: list[str] = []
+    for item in evidence:
+        record = payload(item)
+        source_value = record.get("evidence", record)
+        source = (
+            dict(source_value)
+            if isinstance(source_value, Mapping)
+            else record
+        )
+        criterion = normalized(
+            source.get(
+                "acceptance_criterion",
+                source.get("criterion", source.get("acceptance", "")),
+            )
+        )
+        evidence_criteria.append(criterion)
+        receipt_id = str(
+            source.get(
+                "provenance_cid",
+                source.get(
+                    "receipt_id",
+                    source.get(
+                        "evidence_id", source.get("receipt_cid", "")
+                    ),
+                ),
+            )
+            or ""
+        ).strip()
+        if criterion and receipt_id:
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(
+                receipt_id
+            )
+    evidence_population_complete = bool(
+        len(evidence_criteria) == len(expected_criteria)
+        and len(evidence_criteria) == len(set(evidence_criteria))
+        and set(evidence_criteria) == expected_criteria
+        and all(
+            len(receipt_ids_by_criterion.get(criterion, set())) == 1
+            for criterion in expected_criteria
+        )
+    )
+
+    coverage_projection = getattr(coverage, "completion_gate_evidence", None)
+    if callable(coverage_projection):
+        try:
+            projected = coverage_projection(PARALLEL_EXECUTION_OBJECTIVE_ID)
+        except (TypeError, ValueError):
+            projected = {}
+        coverage_value = (
+            dict(projected) if isinstance(projected, Mapping) else {}
+        )
+    else:
+        coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+
+    def criterion_of(row: Mapping[str, Any]) -> str:
+        return normalized(
+            row.get(
+                "criterion",
+                row.get(
+                    "acceptance_criterion",
+                    row.get("acceptance", ""),
+                ),
+            )
+        )
+
+    def implementation_bound(row: Mapping[str, Any]) -> bool:
+        for name in (
+            "implementation",
+            "implementation_binding",
+            "changed_files",
+            "predicted_files",
+            "ast_symbols",
+            "interfaces",
+        ):
+            value = row.get(name)
+            if isinstance(value, str) and value.strip():
+                return True
+            if (
+                isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+                and any(str(item or "").strip() for item in value)
+            ):
+                return True
+        return False
+
+    def validation_ids(row: Mapping[str, Any]) -> set[str]:
+        raw = row.get(
+            "validation_receipt_ids",
+            row.get("validation_receipt_id", ()),
+        )
+        if isinstance(raw, str):
+            raw = (raw,)
+        if not (
+            isinstance(raw, Sequence)
+            and not isinstance(raw, (str, bytes, bytearray))
+        ):
+            return set()
+        return {
+            str(item or "").strip()
+            for item in raw
+            if str(item or "").strip()
+        }
+
+    row_keys = [
+        criterion_of(row) for row in rows if isinstance(row, Mapping)
+    ]
+    coverage_bound = bool(
+        evidence_population_complete
+        and coverage_value.get("verified") is True
+        and coverage_value.get("repository_id") == repository_id
+        and coverage_value.get("repository_tree") == repository_tree
+        and len(row_keys) == len(expected_criteria)
+        and len(row_keys) == len(set(row_keys))
+        and set(row_keys) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and implementation_bound(row)
+            and len(validation_ids(row)) == 1
+            and validation_ids(row)
+            == receipt_ids_by_criterion.get(criterion_of(row), set())
+            for row in rows
+        )
+    )
+    if not coverage_bound:
+        raw_reason_codes = coverage_value.get("reason_codes")
+        prior_reason_codes = (
+            list(raw_reason_codes)
+            if isinstance(raw_reason_codes, (list, tuple))
+            else []
+        )
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "passed": False,
+            "reason_codes": [
+                *prior_reason_codes,
+                (
+                    "validation_evidence_population_incomplete"
+                    if not evidence_population_complete
+                    else "coverage_validation_receipt_unbound"
+                ),
+            ],
+        }
+
+    health_value = payload(analyzer_health)
+    health_binding_value = health_value.get("binding")
+    health_binding = (
+        dict(health_binding_value)
+        if isinstance(health_binding_value, Mapping)
+        else {}
+    )
+    health_valid = bool(
+        all(expected_binding.values())
+        and health_binding == expected_binding
+        and normalized(health_value.get("status")) == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+    )
+    if not health_valid:
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    quorum_value = payload(exhaustion_quorum)
+    members_value = quorum_value.get("members")
+    members = (
+        list(members_value)
+        if isinstance(members_value, Sequence)
+        and not isinstance(members_value, (str, bytes, bytearray))
+        else []
+    )
+    quorum_binding_value = quorum_value.get("binding")
+    quorum_binding = (
+        dict(quorum_binding_value)
+        if isinstance(quorum_binding_value, Mapping)
+        else {}
+    )
+
+    def independent_member_field(name: str) -> bool:
+        values = [
+            str(member.get(name) or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        return bool(
+            len(values) == len(members)
+            and all(values)
+            and len(values) == len(set(values))
+        )
+
+    quorum_valid = bool(
+        quorum_value.get("required_members")
+        == PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("member_count") == len(members)
+        and len(members)
+        == PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("satisfied") is True
+        and quorum_value.get("quorum_met") is True
+        and health_valid
+        and quorum_binding == expected_binding
+        and independent_member_field("member_id")
+        and independent_member_field("evidence_channel")
+        and independent_member_field("receipt_cid")
+        and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and normalized(member.get("scan_mode")) == "exhaustive"
+            and fresh(member.get("finished_at"))
+            and isinstance(member.get("binding"), Mapping)
+            and dict(member["binding"]) == expected_binding
+            for member in members
+        )
+    )
+    if not quorum_valid:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    return evaluate_goal_completion(
+        current_state=current_state,
+        acceptance_criteria=PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA,
+        evidence=evidence,
+        tasks_complete=bool(
+            tasks_complete
+            and producer_population_complete
+            and operational_complete
+        ),
+        repository_tree=repository_tree,
+        repository_id=repository_id,
+        now=current,
+        freshness_seconds=freshness_seconds,
+        clock_skew_seconds=clock_skew_seconds,
+        coverage=coverage_value,
+        analyzer_health=health_value,
+        exhaustion_quorum=quorum_value,
+        child_goals=(),
+        analysis_result=None,
+        analysis_inconclusive=analysis_inconclusive,
+        blocked_reason=blocked_reason,
+        require_completion_gate=True,
+    )
 
 
 def _request_value(request: MergeRequest, name: str, *metadata_names: str) -> str:
@@ -118,6 +779,17 @@ class MergeTrain:
         proof_gate: Callable[..., Any] | None = None,
         proof_gate_callback: Callable[..., Any] | None = None,
         proof_cache_dir: Path | str | None = None,
+        preflight_callback: PreflightCallback | None = None,
+        post_merge_validation: PostMergeValidationCallback | None = None,
+        post_merge_validator: PostMergeValidationCallback | None = None,
+        preflight_workers: int = 1,
+        parallel_workers: int | None = None,
+        preflight_target_sensitive: bool = False,
+        preflight_gate_id: str | None = None,
+        post_merge_gate_id: str | None = None,
+        reuse_gate_receipts: bool = True,
+        max_worktree_disk_bytes: int = 8 * 1024 * 1024 * 1024,
+        max_active_worktrees: int = 1,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.queue = queue
@@ -135,6 +807,77 @@ class MergeTrain:
         self.consumer_lock_path = self.state_dir / "consumer.lock"
         self.git_timeout_seconds = max(1.0, float(git_timeout_seconds))
         self.owner_id = owner_id or f"merge-train:{os.getpid()}:{uuid.uuid4().hex}"
+        if (
+            post_merge_validation is not None
+            and post_merge_validator is not None
+            and post_merge_validation is not post_merge_validator
+        ):
+            raise ValueError(
+                "post_merge_validation and post_merge_validator must refer to "
+                "the same callback"
+            )
+        workers = (
+            parallel_workers
+            if parallel_workers is not None
+            else preflight_workers
+        )
+        if int(workers) <= 0:
+            raise ValueError("preflight_workers must be positive")
+        self.preflight_callback = preflight_callback
+        self.post_merge_validation = (
+            post_merge_validation or post_merge_validator
+        )
+        self.post_merge_validator = self.post_merge_validation
+        self.preflight_workers = int(workers)
+        self.preflight_target_sensitive = bool(preflight_target_sensitive)
+        self.preflight_gate_id = (
+            str(preflight_gate_id).strip()
+            if preflight_gate_id is not None
+            else self._callback_identity(
+                self.preflight_callback, fallback="git-merge-tree@1"
+            )
+        )
+        self.post_merge_gate_id = (
+            str(post_merge_gate_id).strip()
+            if post_merge_gate_id is not None
+            else self._callback_identity(
+                self.post_merge_validation, fallback="none"
+            )
+        )
+        if not self.preflight_gate_id:
+            raise ValueError("preflight_gate_id must not be empty")
+        if not self.post_merge_gate_id:
+            raise ValueError("post_merge_gate_id must not be empty")
+        self.reuse_gate_receipts = bool(reuse_gate_receipts)
+        self.gate_cache_dir = self.state_dir / "gate-cache"
+        self.gate_cache_dir.mkdir(parents=True, exist_ok=True)
+        if int(max_worktree_disk_bytes) <= 0:
+            raise ValueError("max_worktree_disk_bytes must be positive")
+        if int(max_active_worktrees) <= 0:
+            raise ValueError("max_active_worktrees must be positive")
+        configured_worktree_bound = int(max_worktree_disk_bytes)
+        queue_worktree_bound = getattr(
+            self.queue, "max_worktree_bytes", None
+        )
+        self.max_worktree_disk_bytes = (
+            min(configured_worktree_bound, int(queue_worktree_bound))
+            if queue_worktree_bound is not None
+            and int(queue_worktree_bound) > 0
+            else configured_worktree_bound
+        )
+        self.max_active_worktrees = int(max_active_worktrees)
+        self._last_throughput: dict[str, Any] = {
+            "schema": PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA,
+            "lane": "validation-merge-acceptance",
+            "attempted_count": 0,
+            "accepted_count": 0,
+            "elapsed_seconds": 0.0,
+            "accepted_per_second": 0.0,
+            "peak_preflight_parallelism": 0,
+        }
+        self._acceptance_evidence: deque[ParallelAcceptanceReceipt] = deque(
+            maxlen=256
+        )
         if (
             proof_gate is not None
             and proof_gate_callback is not None
@@ -208,9 +951,17 @@ class MergeTrain:
             if not acquired:
                 return None
             self._recover_abandoned_claims()
+            self._cleanup_abandoned_worktrees()
             request = self._dequeue()
             if request is None:
                 return None
+            if (
+                self.preflight_callback is not None
+                or self.post_merge_validation is not None
+            ):
+                target = self._target_commit()
+                preflight = self._run_preflight(request, target_commit=target)
+                return self._process_after_preflight(request, preflight)
             return self._process_claimed(request)
 
     # Widely useful aliases for supervisors that phrase one iteration as a tick.
@@ -226,19 +977,732 @@ class MergeTrain:
 
         if max_items is not None and int(max_items) <= 0:
             return []
+        if self.preflight_workers > 1:
+            return self.drain_parallel(max_items=max_items)
         results: list[dict[str, Any]] = []
         with self._consumer_lease() as acquired:
             if not acquired:
                 return results
             self._recover_abandoned_claims()
+            self._cleanup_abandoned_worktrees()
             while max_items is None or len(results) < int(max_items):
                 request = self._dequeue()
                 if request is None:
                     break
-                results.append(self._process_claimed(request))
+                if (
+                    self.preflight_callback is not None
+                    or self.post_merge_validation is not None
+                ):
+                    preflight = self._run_preflight(
+                        request, target_commit=self._target_commit()
+                    )
+                    results.append(
+                        self._process_after_preflight(request, preflight)
+                    )
+                else:
+                    results.append(self._process_claimed(request))
         return results
 
     run = drain
+
+    def drain_parallel(
+        self, max_items: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Parallelize non-mutating preflight, then accept under one fence.
+
+        Target mutation and post-merge validation intentionally remain in the
+        deterministic queue order.  Parallel mode fails closed before claiming
+        work unless a post-merge validator is configured.
+        """
+
+        if max_items is not None and int(max_items) <= 0:
+            return []
+        if self.post_merge_validation is None:
+            raise RuntimeError(
+                "parallel acceptance requires post_merge_validation"
+            )
+
+        batch_started = time.monotonic()
+        results: list[dict[str, Any]] = []
+        preflight_work_seconds = 0.0
+        stale_preflight_count = 0
+        cancelled_preflight_count = 0
+        peak_parallelism = 0
+        limit = int(max_items) if max_items is not None else None
+
+        with self._consumer_lease() as acquired:
+            if not acquired:
+                return results
+            self._recover_abandoned_claims()
+            self._cleanup_abandoned_worktrees()
+            while limit is None or len(results) < limit:
+                remaining = (
+                    self.preflight_workers
+                    if limit is None
+                    else min(self.preflight_workers, limit - len(results))
+                )
+                requests = self._dequeue_batch(remaining)
+                if not requests:
+                    break
+                snapshot_target = self._target_commit()
+                with ThreadPoolExecutor(
+                    max_workers=self.preflight_workers,
+                    thread_name_prefix="merge-preflight",
+                ) as pool:
+                    futures: list[
+                        tuple[
+                            MergeRequest,
+                            Future[dict[str, Any]],
+                            threading.Event,
+                        ]
+                    ] = []
+                    for request in requests:
+                        cancellation_event = threading.Event()
+                        futures.append(
+                            (
+                                request,
+                                pool.submit(
+                                    self._run_preflight,
+                                    request,
+                                    target_commit=snapshot_target,
+                                    cancellation_event=cancellation_event,
+                                ),
+                                cancellation_event,
+                            )
+                        )
+                    peak_parallelism = max(
+                        peak_parallelism, len(futures)
+                    )
+                    # Resolve in claim order so branch mutation remains
+                    # deterministic even when a later preflight finishes first.
+                    for index, (
+                        request,
+                        future,
+                        cancellation_event,
+                    ) in enumerate(futures):
+                        try:
+                            preflight = future.result()
+                        except CancelledError:
+                            cancelled_preflight_count += 1
+                            preflight = self._run_preflight(
+                                request,
+                                target_commit=self._target_commit(),
+                            )
+                        preflight_work_seconds += float(
+                            preflight.get("elapsed_seconds", 0.0) or 0.0
+                        )
+                        current_target = self._target_commit()
+                        if (
+                            bool(preflight.get("cancelled"))
+                            or (
+                                bool(preflight.get("target_sensitive"))
+                                and str(
+                                    preflight.get("target_commit") or ""
+                                )
+                                != current_target
+                            )
+                        ):
+                            stale_preflight_count += 1
+                            preflight = self._run_preflight(
+                                request, target_commit=current_target
+                            )
+                            preflight_work_seconds += float(
+                                preflight.get("elapsed_seconds", 0.0)
+                                or 0.0
+                            )
+                            preflight["stale_preflight_replaced"] = True
+                        result = self._process_after_preflight(
+                            request, preflight
+                        )
+                        results.append(result)
+                        if bool(result.get("accepted")):
+                            # Advancing the target invalidates all speculative
+                            # work in this batch.  Cooperative gates observe the
+                            # token; not-yet-started futures are cancelled.  A
+                            # target-insensitive completed receipt remains
+                            # usable, while every target-sensitive receipt is
+                            # repaired against the new tip above.
+                            for (
+                                _later_request,
+                                later_future,
+                                later_cancellation,
+                            ) in futures[index + 1 :]:
+                                later_cancellation.set()
+                                later_future.cancel()
+
+        elapsed = max(0.0, time.monotonic() - batch_started)
+        accepted = sum(
+            bool(result.get("accepted")) for result in results
+        )
+        self._last_throughput = {
+            "schema": PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA,
+            "lane": "validation-merge-acceptance",
+            "attempted_count": len(results),
+            "accepted_count": accepted,
+            "rejected_count": len(results) - accepted,
+            "elapsed_seconds": elapsed,
+            "accepted_per_second": (
+                accepted / elapsed if elapsed > 0 else 0.0
+            ),
+            "preflight_work_seconds": preflight_work_seconds,
+            "preflight_speedup": (
+                preflight_work_seconds / elapsed if elapsed > 0 else 0.0
+            ),
+            "peak_preflight_parallelism": peak_parallelism,
+            "stale_preflight_count": stale_preflight_count,
+            "cancelled_preflight_count": cancelled_preflight_count,
+            "mutation_parallelism": 1,
+            "post_merge_gate_required": True,
+            "requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
+        }
+        return results
+
+    run_parallel = drain_parallel
+
+    def _dequeue_batch(self, limit: int) -> tuple[MergeRequest, ...]:
+        dequeue_many = getattr(self.queue, "dequeue_many", None)
+        if callable(dequeue_many):
+            return tuple(
+                dequeue_many(limit, consumer_id=self.owner_id) or ()
+            )
+        claimed: list[MergeRequest] = []
+        for _ in range(max(0, int(limit))):
+            request = self._dequeue()
+            if request is None:
+                break
+            claimed.append(request)
+        return tuple(claimed)
+
+    def _run_preflight(
+        self,
+        request: MergeRequest,
+        *,
+        target_commit: str,
+        cancellation_event: threading.Event | None = None,
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        candidate = _request_value(
+            request,
+            "commit_sha",
+            "commit_sha",
+            "implementation_commit",
+            "commit",
+        )
+        binding = self._gate_cache_binding(
+            kind="preflight",
+            request=request,
+            candidate_commit=candidate,
+            target_commit=target_commit,
+            gate_id=self.preflight_gate_id,
+        )
+        cached = self._read_gate_cache(binding)
+        if cached is not None:
+            return cached
+        if cancellation_event is not None and cancellation_event.is_set():
+            return {
+                "passed": False,
+                "reason": "stale_preflight_cancelled",
+                "retryable": True,
+                "cancelled": True,
+                "target_sensitive": True,
+                "kind": "cancelled",
+                "target_commit": target_commit,
+                "candidate_commit": candidate,
+                "elapsed_seconds": max(
+                    0.0, time.monotonic() - started
+                ),
+            }
+        if self.preflight_callback is None:
+            command = self._git(
+                "merge-tree", "--write-tree", target_commit, candidate
+            )
+            payload: dict[str, Any] = {
+                "passed": command.returncode == 0,
+                "returncode": command.returncode,
+                "merge_tree": command.stdout.strip().splitlines()[0]
+                if command.returncode == 0 and command.stdout.strip()
+                else "",
+                "stderr": command.stderr[-4000:],
+                "kind": "git_merge_tree",
+                "target_sensitive": True,
+            }
+        else:
+            try:
+                raw = self._call_compatible(
+                    self.preflight_callback,
+                    request,
+                    target_commit=target_commit,
+                    candidate_commit=candidate,
+                    repo_root=self.repo_root,
+                    cancellation_event=cancellation_event,
+                    cancel_event=cancellation_event,
+                )
+                payload = self._normalize_gate_result(
+                    raw, default_reason="preflight_failed"
+                )
+            except Exception as exc:
+                payload = {
+                    "passed": False,
+                    "reason": "preflight_exception",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            payload.setdefault(
+                "target_sensitive", self.preflight_target_sensitive
+            )
+            payload.setdefault("kind", "callback")
+        payload.update(
+            {
+                "target_commit": target_commit,
+                "candidate_commit": candidate,
+                "elapsed_seconds": max(
+                    0.0, time.monotonic() - started
+                ),
+            }
+        )
+        # A cooperative callback may finish after its base was invalidated.
+        # Retaining the verdict as non-authoritative lets the ordered consumer
+        # repair it on the new target without caching stale work.
+        if (
+            cancellation_event is not None
+            and cancellation_event.is_set()
+            and bool(payload.get("target_sensitive"))
+        ):
+            payload.update(
+                {
+                    "passed": False,
+                    "reason": "stale_preflight_cancelled",
+                    "retryable": True,
+                    "cancelled": True,
+                }
+            )
+        self._write_gate_cache(binding, payload)
+        return payload
+
+    @staticmethod
+    def _normalize_gate_result(
+        value: Mapping[str, Any] | bool | Any,
+        *,
+        default_reason: str,
+    ) -> dict[str, Any]:
+        if isinstance(value, bool):
+            return {
+                "passed": value,
+                "reason": "" if value else default_reason,
+            }
+        if not isinstance(value, Mapping):
+            return {
+                "passed": False,
+                "reason": default_reason,
+                "error": "gate callback returned no structured verdict",
+            }
+        result = dict(value)
+        if "passed" in result:
+            passed = result.get("passed") is True
+        elif "allowed" in result:
+            passed = result.get("allowed") is True
+        elif "succeeded" in result:
+            passed = result.get("succeeded") is True
+        elif "returncode" in result:
+            try:
+                passed = int(result.get("returncode", 1)) == 0
+            except (TypeError, ValueError):
+                passed = False
+        else:
+            passed = False
+        result["passed"] = passed
+        if not passed:
+            result.setdefault("reason", default_reason)
+        return result
+
+    @staticmethod
+    def _callback_identity(
+        callback: Callable[..., Any] | None,
+        *,
+        fallback: str,
+    ) -> str:
+        """Return a deterministic gate identity suitable for exact reuse.
+
+        An explicit ``*_gate_id`` remains the preferred production spelling
+        when callback configuration can change independently of its code.  The
+        derived identity intentionally includes executable bytecode, constants,
+        defaults, module, and qualified name so a deployment which changes gate
+        logic cannot silently reuse an older verdict.
+        """
+
+        if callback is None:
+            return fallback
+        underlying = getattr(callback, "__func__", callback)
+        code = getattr(underlying, "__code__", None)
+        payload: dict[str, Any] = {
+            "module": getattr(underlying, "__module__", ""),
+            "qualname": getattr(
+                underlying,
+                "__qualname__",
+                getattr(underlying, "__name__", type(callback).__qualname__),
+            ),
+            "defaults": repr(getattr(underlying, "__defaults__", None)),
+            "kwdefaults": repr(getattr(underlying, "__kwdefaults__", None)),
+        }
+        if code is not None:
+            payload.update(
+                {
+                    "code_digest": hashlib.sha256(
+                        marshal.dumps(code)
+                    ).hexdigest(),
+                }
+            )
+        else:
+            payload["callable_type"] = (
+                f"{type(callback).__module__}.{type(callback).__qualname__}"
+            )
+        canonical = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), default=str
+        )
+        return (
+            f"{payload['module']}:{payload['qualname']}:"
+            f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
+        )
+
+    @staticmethod
+    def _validation_receipt_ids(value: Any) -> tuple[str, ...]:
+        """Extract authoritative receipt identities without rewriting them."""
+
+        found: set[str] = set()
+
+        def visit(item: Any, *, depth: int) -> None:
+            if depth > 5:
+                return
+            if isinstance(item, Mapping):
+                receipt_id = item.get("receipt_id")
+                if isinstance(receipt_id, str) and receipt_id.strip():
+                    found.add(receipt_id.strip())
+                direct = item.get("validation_receipt_id")
+                if isinstance(direct, str) and direct.strip():
+                    found.add(direct.strip())
+                direct_many = item.get("validation_receipt_ids")
+                if isinstance(direct_many, Sequence) and not isinstance(
+                    direct_many, (str, bytes, bytearray)
+                ):
+                    found.update(
+                        str(receipt).strip()
+                        for receipt in direct_many
+                        if str(receipt).strip()
+                    )
+                for key in (
+                    "validation_dag_receipt",
+                    "impact_validation_receipt",
+                    "proposal_receipt",
+                    "receipt",
+                    "receipts",
+                ):
+                    if key in item:
+                        visit(item[key], depth=depth + 1)
+            elif isinstance(item, Sequence) and not isinstance(
+                item, (str, bytes, bytearray)
+            ):
+                for nested in item:
+                    visit(nested, depth=depth + 1)
+
+        visit(value, depth=0)
+        return tuple(sorted(found))
+
+    def _gate_cache_binding(
+        self,
+        *,
+        kind: str,
+        request: MergeRequest,
+        candidate_commit: str,
+        target_commit: str,
+        gate_id: str,
+    ) -> dict[str, str]:
+        return {
+            "kind": kind,
+            "request_id": request.request_id,
+            "candidate_commit": candidate_commit,
+            "target_commit": target_commit,
+            "gate_id": gate_id,
+        }
+
+    @staticmethod
+    def _gate_cache_digest(payload: Mapping[str, Any]) -> str:
+        canonical = json.dumps(
+            dict(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _gate_cache_path(self, binding: Mapping[str, str]) -> Path:
+        return self.gate_cache_dir / (
+            f"{binding['kind']}-{self._gate_cache_digest(binding)}.json"
+        )
+
+    def _read_gate_cache(
+        self,
+        binding: Mapping[str, str],
+    ) -> dict[str, Any] | None:
+        if not self.reuse_gate_receipts:
+            return None
+        try:
+            record = json.loads(
+                self._gate_cache_path(binding).read_text(encoding="utf-8")
+            )
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(record, Mapping):
+            return None
+        content = {
+            "schema": record.get("schema"),
+            "binding": record.get("binding"),
+            "result": record.get("result"),
+        }
+        if (
+            content["schema"] != PARALLEL_GATE_CACHE_SCHEMA
+            or content["binding"] != dict(binding)
+            or str(record.get("record_id") or "")
+            != f"sha256:{self._gate_cache_digest(content)}"
+            or not isinstance(content["result"], Mapping)
+        ):
+            return None
+        result = dict(content["result"])
+        # Negative, partial, and malformed receipts never acquire authority.
+        if result.get("passed") is not True:
+            return None
+        return result
+
+    def _write_gate_cache(
+        self,
+        binding: Mapping[str, str],
+        result: Mapping[str, Any],
+    ) -> None:
+        if not self.reuse_gate_receipts or result.get("passed") is not True:
+            return
+        content = {
+            "schema": PARALLEL_GATE_CACHE_SCHEMA,
+            "binding": dict(binding),
+            "result": dict(result),
+        }
+        self._atomic_json(
+            self._gate_cache_path(binding),
+            {
+                **content,
+                "record_id": f"sha256:{self._gate_cache_digest(content)}",
+            },
+        )
+
+    def _process_after_preflight(
+        self,
+        request: MergeRequest,
+        preflight: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        started_at = time.time()
+        if not bool(preflight.get("passed")):
+            return self._finish_failure(
+                request,
+                reason=str(
+                    preflight.get("reason") or "preflight_failed"
+                ),
+                details={"preflight": dict(preflight)},
+                started_at=started_at,
+                retryable=bool(preflight.get("retryable", True)),
+            )
+
+        integration = self._process_claimed(
+            request,
+            defer_completion=True,
+            preflight_receipt=preflight,
+        )
+        if not bool(integration.get("integrated")):
+            return integration
+        return self._post_merge_accept(
+            request,
+            preflight=dict(preflight),
+            integration=integration,
+            started_at=started_at,
+        )
+
+    def _post_merge_accept(
+        self,
+        request: MergeRequest,
+        *,
+        preflight: Mapping[str, Any],
+        integration: dict[str, Any],
+        started_at: float,
+    ) -> dict[str, Any]:
+        canonical = str(integration.get("canonical_task_id") or "")
+        candidate = str(integration.get("commit_sha") or "")
+        target = str(integration.get("target_commit") or "")
+        validation_value = integration.get("post_merge_validation")
+        if not isinstance(validation_value, Mapping):
+            merge_result = integration.get("merge_result")
+            if isinstance(merge_result, Mapping):
+                validation_value = merge_result.get(
+                    "post_merge_validation"
+                )
+        if isinstance(validation_value, Mapping):
+            validation = self._normalize_gate_result(
+                validation_value,
+                default_reason="post_merge_validation_failed",
+            )
+        elif str(integration.get("status") or "") in {
+            "already_merged",
+            "deduplicated",
+        }:
+            validation = self._validate_existing_integrated_commit(
+                request,
+                commit=target,
+                candidate_commit=candidate,
+            )
+        else:
+            validation = {
+                "passed": False,
+                "reason": "post_merge_validation_receipt_missing",
+            }
+        validated_commit = str(
+            validation.get("validated_commit")
+            or validation.get("target_commit")
+            or ""
+        )
+        if validated_commit != target:
+            validation.update(
+                {
+                    "passed": False,
+                    "reason": "post_merge_validation_target_mismatch",
+                    "validated_commit": validated_commit,
+                    "synthesized_commit": target,
+                }
+            )
+        claim_current = self._owns_claim(request)
+        receipt = ParallelAcceptanceReceipt(
+            request_id=request.request_id,
+            canonical_task_id=canonical,
+            candidate_commit=candidate,
+            target_commit=target,
+            preflight=preflight,
+            integration={
+                key: value
+                for key, value in integration.items()
+                if key not in {"preflight", "acceptance_receipt"}
+            },
+            post_merge_validation=validation,
+            mutation_fence_owner=str(
+                getattr(request, "consumer_id", "") or self.owner_id
+            ),
+            mutation_fence_generation=int(
+                getattr(request, "claim_generation", 0) or 0
+            ),
+            mutation_fence_token_digest=(
+                f"sha256:{hashlib.sha256(str(getattr(request, 'claim_token', '') or '').encode('utf-8')).hexdigest()}"
+                if str(getattr(request, "claim_token", "") or "")
+                else ""
+            ),
+            accepted=bool(validation.get("passed")) and claim_current,
+            validation_receipt_ids=self._validation_receipt_ids(validation),
+            _producer_seal=_PARALLEL_ACCEPTANCE_RECEIPT_SEAL,
+        )
+        receipt_payload = receipt.to_dict()
+        self._write_acceptance_receipt(receipt_payload)
+
+        if bool(validation.get("passed")) and not claim_current:
+            fenced = {
+                **integration,
+                "status": "fenced_out",
+                "accepted": False,
+                "acceptance_pending": False,
+                "reason": "merge_queue_claim_fenced",
+                "fence_stage": "before_queue_completion",
+                "post_merge_validation": validation,
+                "acceptance_receipt": receipt_payload,
+                "finished_at": time.time(),
+            }
+            self._write_receipt(
+                f"fenced-{request.request_id}", fenced
+            )
+            return fenced
+
+        if not bool(validation.get("passed")):
+            return self._finish_failure(
+                request,
+                reason=str(
+                    validation.get("reason")
+                    or "post_merge_validation_failed"
+                ),
+                details={
+                    "preflight": dict(preflight),
+                    "integration": dict(integration),
+                    "post_merge_validation": validation,
+                    "acceptance_receipt": receipt_payload,
+                },
+                started_at=started_at,
+                retryable=bool(validation.get("retryable", False)),
+            )
+
+        # The evidence receipt is durable before queue completion.  A crash in
+        # between leaves a recoverable processing claim, never a falsely
+        # completed request.
+        try:
+            self.queue.complete(
+                request,
+                metadata={
+                    "acceptance_receipt_id": receipt.receipt_id,
+                    "requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
+                    "target_commit": target,
+                },
+            )
+        except MergeQueueFenceError as exc:
+            fenced = {
+                **integration,
+                "status": "fenced_out",
+                "accepted": False,
+                "acceptance_pending": False,
+                "reason": "merge_queue_claim_fenced",
+                "fence_error": f"{type(exc).__name__}: {exc}",
+                "post_merge_validation": validation,
+                "acceptance_receipt": receipt_payload,
+                "finished_at": time.time(),
+            }
+            self._write_receipt(
+                f"fenced-{request.request_id}", fenced
+            )
+            return fenced
+        integration.update(
+            {
+                "accepted": True,
+                "acceptance_pending": False,
+                "post_merge_validation": validation,
+                "validation_receipt_ids": list(
+                    receipt.validation_receipt_ids
+                ),
+                "acceptance_receipt": receipt_payload,
+                "finished_at": time.time(),
+            }
+        )
+        self._write_receipt(
+            self._dedupe_key(canonical, candidate), integration
+        )
+        # The live typed object retains producer authority in a bounded
+        # in-memory ledger.  Its JSON projection is durable and
+        # content-addressed, but restoration remains diagnostic so a caller
+        # cannot manufacture completion authority from lookalike JSON.
+        self._acceptance_evidence.append(receipt)
+        return integration
+
+    def _write_acceptance_receipt(
+        self, payload: Mapping[str, Any]
+    ) -> Path:
+        receipt_id = str(payload.get("receipt_id") or "")
+        digest = receipt_id.split(":", 1)[-1]
+        path = self.receipt_dir / f"acceptance-{digest}.json"
+        self._atomic_json(path, payload)
+        return path
+
+    def acceptance_evidence_receipts(
+        self,
+    ) -> tuple[ParallelAcceptanceReceipt, ...]:
+        """Return live producer-sealed receipts retained by this train."""
+
+        return tuple(self._acceptance_evidence)
 
     def _recover_abandoned_claims(self) -> int:
         recover = getattr(self.queue, "recover_abandoned_train_claims", None)
@@ -246,8 +1710,113 @@ class MergeTrain:
             return 0
         return int(recover() or 0)
 
+    def _worktree_disk_usage(self) -> tuple[int, int]:
+        """Return allocated bytes and child count beneath the train root."""
+
+        total = 0
+        children = 0
+        try:
+            roots = list(os.scandir(self.worktree_dir))
+        except OSError:
+            return 0, 0
+        for root in roots:
+            children += 1
+            stack = [root]
+            while stack:
+                entry = stack.pop()
+                try:
+                    if entry.is_symlink():
+                        total += entry.stat(follow_symlinks=False).st_size
+                    elif entry.is_dir(follow_symlinks=False):
+                        stack.extend(os.scandir(entry.path))
+                    else:
+                        stat = entry.stat(follow_symlinks=False)
+                        # st_blocks measures actual disk pressure while
+                        # remaining deterministic enough for a hard bound.
+                        total += max(stat.st_size, stat.st_blocks * 512)
+                except (FileNotFoundError, OSError):
+                    continue
+        return total, children
+
+    def _cleanup_abandoned_worktrees(self) -> int:
+        """Remove crash-left train worktrees while holding the consumer lease."""
+
+        removed = 0
+        root = self.worktree_dir.resolve()
+        listing = self._git("worktree", "list", "--porcelain")
+        if listing.returncode == 0:
+            for line in listing.stdout.splitlines():
+                if not line.startswith("worktree "):
+                    continue
+                candidate = Path(
+                    line.removeprefix("worktree ").strip()
+                ).resolve()
+                try:
+                    candidate.relative_to(root)
+                except ValueError:
+                    continue
+                self._git(
+                    "worktree", "remove", "--force", str(candidate)
+                )
+                shutil.rmtree(candidate, ignore_errors=True)
+                removed += 1
+        try:
+            children = list(self.worktree_dir.iterdir())
+        except OSError:
+            children = []
+        for child in children:
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                try:
+                    child.unlink()
+                except OSError:
+                    continue
+            removed += 1
+        self._git("worktree", "prune", "--expire", "now")
+        return removed
+
+    def _worktree_admission_failure(self) -> dict[str, Any] | None:
+        observed_bytes, active = self._worktree_disk_usage()
+        if active >= self.max_active_worktrees:
+            return {
+                "merged": False,
+                "retryable": True,
+                "reason": "worktree_count_limit_exceeded",
+                "active_worktrees": active,
+                "max_active_worktrees": self.max_active_worktrees,
+                "worktree_disk_bytes": observed_bytes,
+                "max_worktree_disk_bytes": self.max_worktree_disk_bytes,
+            }
+        if observed_bytes >= self.max_worktree_disk_bytes:
+            return {
+                "merged": False,
+                "retryable": True,
+                "reason": "worktree_disk_limit_exceeded",
+                "active_worktrees": active,
+                "max_active_worktrees": self.max_active_worktrees,
+                "worktree_disk_bytes": observed_bytes,
+                "max_worktree_disk_bytes": self.max_worktree_disk_bytes,
+            }
+        return None
+
+    def _check_worktree_disk_bound(self) -> dict[str, Any] | None:
+        observed_bytes, active = self._worktree_disk_usage()
+        if observed_bytes <= self.max_worktree_disk_bytes:
+            return None
+        return {
+            "merged": False,
+            "retryable": True,
+            "reason": "worktree_disk_limit_exceeded",
+            "active_worktrees": active,
+            "max_active_worktrees": self.max_active_worktrees,
+            "worktree_disk_bytes": observed_bytes,
+            "max_worktree_disk_bytes": self.max_worktree_disk_bytes,
+        }
+
     def status(self) -> dict[str, Any]:
         queue_status = self.queue.status() if hasattr(self.queue, "status") else {}
+        worktree_bytes, active_worktrees = self._worktree_disk_usage()
         return {
             "owner_id": self.owner_id,
             "target_branch": self.target_branch,
@@ -260,10 +1829,32 @@ class MergeTrain:
                 else ""
             ),
             "proof_cache_dir": str(self.proof_cache_dir),
+            "preflight_workers": self.preflight_workers,
+            "post_merge_validation_required": (
+                self.post_merge_validation is not None
+            ),
+            "acceptance_requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
+            "throughput": dict(self._last_throughput),
+            "worktree_resources": {
+                "disk_bytes": worktree_bytes,
+                "max_disk_bytes": self.max_worktree_disk_bytes,
+                "active": active_worktrees,
+                "max_active": self.max_active_worktrees,
+                "backpressure": (
+                    worktree_bytes >= self.max_worktree_disk_bytes
+                    or active_worktrees >= self.max_active_worktrees
+                ),
+            },
             "queue": queue_status,
         }
 
-    def _process_claimed(self, request: MergeRequest) -> dict[str, Any]:
+    def _process_claimed(
+        self,
+        request: MergeRequest,
+        *,
+        defer_completion: bool = False,
+        preflight_receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         started_at = time.time()
         canonical = str(getattr(request, "canonical_identity", "") or "") or _request_value(
             request,
@@ -390,6 +1981,8 @@ class MergeTrain:
                             else {}
                         ),
                     },
+                    defer_completion=defer_completion,
+                    preflight_receipt=preflight_receipt,
                 )
 
             if self._is_ancestor(candidate, target):
@@ -408,9 +2001,21 @@ class MergeTrain:
                         if proof_gate_receipt
                         else None
                     ),
+                    defer_completion=defer_completion,
+                    preflight_receipt=preflight_receipt,
                 )
 
         if self.merge_callback is not None:
+            if not self._owns_claim(request):
+                return self._finish_failure(
+                    request,
+                    reason="merge_queue_claim_fenced",
+                    details={
+                        "fence_stage": "before_merge_callback",
+                    },
+                    started_at=started_at,
+                    retryable=True,
+                )
             try:
                 callback_result = dict(self.merge_callback(request) or {})
             except Exception as exc:  # callbacks are an isolation boundary
@@ -421,6 +2026,51 @@ class MergeTrain:
                     started_at=started_at,
                 )
             if callback_result.get("merged") or callback_result.get("already_merged"):
+                if self.post_merge_validation is not None:
+                    callback_validation = self._normalize_gate_result(
+                        callback_result.get("post_merge_validation"),
+                        default_reason=(
+                            "callback_post_merge_validation_missing"
+                        ),
+                    )
+                    callback_target = str(
+                        callback_result.get("target_commit")
+                        or self._target_commit()
+                        or target
+                    )
+                    validated_commit = str(
+                        callback_validation.get("validated_commit")
+                        or callback_validation.get("target_commit")
+                        or ""
+                    )
+                    if validated_commit != callback_target:
+                        callback_validation.update(
+                            {
+                                "passed": False,
+                                "reason": (
+                                    "callback_post_merge_validation_unbound"
+                                ),
+                                "validated_commit": validated_commit,
+                                "synthesized_commit": callback_target,
+                            }
+                        )
+                    if not bool(callback_validation.get("passed")):
+                        return self._finish_failure(
+                            request,
+                            reason=str(
+                                callback_validation.get("reason")
+                                or "callback_post_merge_validation_missing"
+                            ),
+                            details={
+                                "merge_result": callback_result,
+                                "post_merge_validation": callback_validation,
+                            },
+                            started_at=started_at,
+                            retryable=False,
+                        )
+                    callback_result["post_merge_validation"] = (
+                        callback_validation
+                    )
                 return self._finish_success(
                     request,
                     status="merged" if callback_result.get("merged") else "already_merged",
@@ -439,6 +2089,8 @@ class MergeTrain:
                             else {}
                         ),
                     },
+                    defer_completion=defer_completion,
+                    preflight_receipt=preflight_receipt,
                 )
             callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
             retryable = callback_reason not in {
@@ -491,6 +2143,8 @@ class MergeTrain:
                         else {}
                     ),
                 },
+                defer_completion=defer_completion,
+                preflight_receipt=preflight_receipt,
             )
         return self._finish_failure(
             request,
@@ -1055,6 +2709,139 @@ class MergeTrain:
             "cache_hit": False,
         }
 
+    def _validate_synthesized_tree(
+        self,
+        *,
+        request: MergeRequest,
+        workspace: Path,
+        candidate_commit: str,
+        synthesized_commit: str,
+        target_commit_before: str,
+    ) -> dict[str, Any]:
+        """Validate the exact commit that would win the target CAS."""
+
+        validator = self.post_merge_validation
+        if validator is None:
+            return {
+                "passed": False,
+                "reason": "post_merge_validation_not_configured",
+            }
+        binding = self._gate_cache_binding(
+            kind="post-merge",
+            request=request,
+            candidate_commit=candidate_commit,
+            target_commit=synthesized_commit,
+            gate_id=self.post_merge_gate_id,
+        )
+        cached = self._read_gate_cache(binding)
+        if cached is not None:
+            return cached
+        started = time.monotonic()
+        try:
+            raw = self._call_compatible(
+                validator,
+                request,
+                workspace=workspace,
+                target_commit=synthesized_commit,
+                synthesized_commit=synthesized_commit,
+                candidate_commit=candidate_commit,
+                target_commit_before=target_commit_before,
+                repo_root=self.repo_root,
+            )
+            validation = self._normalize_gate_result(
+                raw, default_reason="post_merge_validation_failed"
+            )
+        except Exception as exc:
+            validation = {
+                "passed": False,
+                "reason": "post_merge_validation_exception",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        validation["elapsed_seconds"] = max(
+            0.0, time.monotonic() - started
+        )
+        claimed_commit = str(
+            validation.get("validated_commit")
+            or validation.get("target_commit")
+            or synthesized_commit
+        )
+        validation["validated_commit"] = claimed_commit
+        validation["synthesized_commit"] = synthesized_commit
+        validation["target_commit_before"] = target_commit_before
+        if claimed_commit != synthesized_commit:
+            validation.update(
+                {
+                    "passed": False,
+                    "reason": "post_merge_validation_target_mismatch",
+                }
+            )
+        validation["validation_receipt_ids"] = list(
+            self._validation_receipt_ids(validation)
+        )
+        self._write_gate_cache(binding, validation)
+        return validation
+
+    def _validate_existing_integrated_commit(
+        self,
+        request: MergeRequest,
+        *,
+        commit: str,
+        candidate_commit: str,
+    ) -> dict[str, Any]:
+        """Validate an already-integrated/deduplicated commit in isolation."""
+
+        admission = self._worktree_admission_failure()
+        if admission is not None:
+            return {
+                "passed": False,
+                **{
+                    key: value
+                    for key, value in admission.items()
+                    if key != "merged"
+                },
+                "validated_commit": commit,
+            }
+        workspace = Path(
+            tempfile.mkdtemp(prefix="validation-", dir=self.worktree_dir)
+        )
+        added = False
+        try:
+            add = self._git(
+                "worktree", "add", "--detach", str(workspace), commit
+            )
+            if add.returncode != 0:
+                return {
+                    "passed": False,
+                    "reason": "validation_worktree_add_failed",
+                    "stderr": add.stderr[-4000:],
+                    "validated_commit": commit,
+                }
+            added = True
+            disk_failure = self._check_worktree_disk_bound()
+            if disk_failure is not None:
+                return {
+                    "passed": False,
+                    **{
+                        key: value
+                        for key, value in disk_failure.items()
+                        if key != "merged"
+                    },
+                    "validated_commit": commit,
+                }
+            return self._validate_synthesized_tree(
+                request=request,
+                workspace=workspace,
+                candidate_commit=candidate_commit,
+                synthesized_commit=commit,
+                target_commit_before=commit,
+            )
+        finally:
+            if added:
+                self._git(
+                    "worktree", "remove", "--force", str(workspace)
+                )
+            shutil.rmtree(workspace, ignore_errors=True)
+
     def _rebase_and_integrate(
         self,
         *,
@@ -1064,6 +2851,9 @@ class MergeTrain:
         target: str,
         proof_tree_id: str = "",
     ) -> dict[str, Any]:
+        admission = self._worktree_admission_failure()
+        if admission is not None:
+            return admission
         workspace = Path(tempfile.mkdtemp(prefix="candidate-", dir=self.worktree_dir))
         added = False
         try:
@@ -1071,6 +2861,9 @@ class MergeTrain:
             if add.returncode != 0:
                 return self._command_failure("worktree_add_failed", add)
             added = True
+            disk_failure = self._check_worktree_disk_bound()
+            if disk_failure is not None:
+                return disk_failure
 
             rebase = self._git("rebase", target, cwd=workspace)
             resolver_result: dict[str, Any] = {}
@@ -1135,8 +2928,57 @@ class MergeTrain:
                         "rebased_commit": rebased_commit,
                         "stderr": rebased_tree.stderr[-2000:],
                     }
+            post_merge_validation: dict[str, Any] = {}
+            if self.post_merge_validation is not None:
+                post_merge_validation = self._validate_synthesized_tree(
+                    request=request,
+                    workspace=workspace,
+                    candidate_commit=candidate,
+                    synthesized_commit=rebased_commit,
+                    target_commit_before=target,
+                )
+                if not bool(post_merge_validation.get("passed")):
+                    return {
+                        "merged": False,
+                        "retryable": bool(
+                            post_merge_validation.get("retryable", False)
+                        ),
+                        "reason": str(
+                            post_merge_validation.get("reason")
+                            or "post_merge_validation_failed"
+                        ),
+                        "candidate_commit": candidate,
+                        "rebased_commit": rebased_commit,
+                        "target_commit_before": target,
+                        "post_merge_validation": post_merge_validation,
+                    }
+            disk_failure = self._check_worktree_disk_bound()
+            if disk_failure is not None:
+                return {
+                    **disk_failure,
+                    "candidate_commit": candidate,
+                    "rebased_commit": rebased_commit,
+                    "target_commit_before": target,
+                    **(
+                        {
+                            "post_merge_validation": (
+                                post_merge_validation
+                            )
+                        }
+                        if post_merge_validation
+                        else {}
+                    ),
+                }
             # Compare-and-swap is important even under our lease: a human or a
             # different merge mechanism may legitimately advance the branch.
+            if not self._owns_claim(request):
+                return {
+                    "merged": False,
+                    "retryable": True,
+                    "reason": "merge_queue_claim_fenced",
+                    "fence_stage": "before_target_cas",
+                    "rebased_commit": rebased_commit,
+                }
             update = self._advance_target(rebased_commit, expected_target=target)
             if update.returncode != 0:
                 update_reason = (
@@ -1158,6 +3000,11 @@ class MergeTrain:
                 "target_commit": rebased_commit,
                 "merge_commit": rebased_commit,
                 "resolver": resolver_result,
+                **(
+                    {"post_merge_validation": post_merge_validation}
+                    if post_merge_validation
+                    else {}
+                ),
             }
         finally:
             if added:
@@ -1300,6 +3147,8 @@ class MergeTrain:
         target: str,
         started_at: float,
         extra: Mapping[str, Any] | None = None,
+        defer_completion: bool = False,
+        preflight_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         result: dict[str, Any] = {
             "status": status,
@@ -1319,8 +3168,32 @@ class MergeTrain:
             result.update(extra)
             # Stable public semantics take precedence over callback internals.
             result.update({"status": status, "integrated": True})
+        if preflight_receipt is not None:
+            result["preflight"] = dict(preflight_receipt)
+        if defer_completion:
+            result.update(
+                {
+                    "accepted": False,
+                    "acceptance_pending": True,
+                }
+            )
+            return result
         self._write_receipt(self._dedupe_key(canonical, candidate), result)
-        self.queue.complete(request)
+        try:
+            self.queue.complete(request)
+        except MergeQueueFenceError as exc:
+            result.update(
+                {
+                    "status": "fenced_out",
+                    "accepted": False,
+                    "acceptance_pending": False,
+                    "reason": "merge_queue_claim_fenced",
+                    "fence_error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            self._write_receipt(
+                f"fenced-{request.request_id}", result
+            )
         return result
 
     def _finish_failure(
@@ -1338,6 +3211,8 @@ class MergeTrain:
             "status": "quarantined" if exhausted else "retrying",
             "merged": False,
             "integrated": False,
+            "accepted": False,
+            "acceptance_pending": False,
             "request_id": request.request_id,
             "task_id": _request_value(request, "task_id"),
             "canonical_task_id": str(getattr(request, "canonical_identity", "") or "")
@@ -1353,16 +3228,40 @@ class MergeTrain:
             "finished_at": time.time(),
             **dict(details),
         }
-        if exhausted:
-            quarantine = getattr(self.queue, "quarantine", None)
-            if quarantine is not None:
-                self._call_queue_failure(quarantine, request, reason, result)
+        try:
+            if exhausted:
+                quarantine = getattr(self.queue, "quarantine", None)
+                if quarantine is not None:
+                    self._call_queue_failure(
+                        quarantine, request, reason, result
+                    )
+                else:
+                    self._call_queue_failure(
+                        self.queue.fail,
+                        request,
+                        reason,
+                        result,
+                        retryable=False,
+                    )
+                self._write_receipt(
+                    f"quarantine-{request.request_id}", result
+                )
             else:
-                self._call_queue_failure(self.queue.fail, request, reason, result, retryable=False)
-            self._write_receipt(f"quarantine-{request.request_id}", result)
-        else:
-            requeue = getattr(self.queue, "requeue")
-            self._call_queue_failure(requeue, request, reason, result)
+                requeue = getattr(self.queue, "requeue")
+                self._call_queue_failure(
+                    requeue, request, reason, result
+                )
+        except MergeQueueFenceError as exc:
+            result.update(
+                {
+                    "status": "fenced_out",
+                    "reason": "merge_queue_claim_fenced",
+                    "fence_error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            self._write_receipt(
+                f"fenced-{request.request_id}", result
+            )
         return result
 
     @staticmethod
@@ -1457,6 +3356,24 @@ class MergeTrain:
             pass
         return self.queue.dequeue()
 
+    def _owns_claim(self, request: MergeRequest) -> bool:
+        """Check the durable queue fence immediately before side effects."""
+
+        owns_claim = getattr(self.queue, "owns_claim", None)
+        if not callable(owns_claim):
+            # Compatibility queues without fencing still remain protected by
+            # the repo-wide consumer lease.
+            return True
+        try:
+            signature = inspect.signature(owns_claim)
+            if "consumer_id" in signature.parameters:
+                return bool(
+                    owns_claim(request, consumer_id=self.owner_id)
+                )
+        except (TypeError, ValueError):
+            pass
+        return bool(owns_claim(request))
+
     def _is_ancestor(self, ancestor: str, descendant: str) -> bool:
         return self._git("merge-base", "--is-ancestor", ancestor, descendant).returncode == 0
 
@@ -1525,4 +3442,22 @@ class MergeTrain:
         }
 
 
-__all__ = ["MergeCallback", "MergeTrain", "conflict_fingerprint"]
+__all__ = [
+    "MergeCallback",
+    "MergeTrain",
+    "PARALLEL_ACCEPTANCE_EVIDENCE_ID",
+    "PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA",
+    "PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA",
+    "PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA",
+    "PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION",
+    "PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION",
+    "PARALLEL_EXECUTION_OBJECTIVE_ID",
+    "PARALLEL_EXECUTION_OBJECTIVE_REVISION",
+    "PARALLEL_EXECUTION_PRODUCING_TASK_IDS",
+    "PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS",
+    "ParallelAcceptanceReceipt",
+    "PostMergeValidationCallback",
+    "PreflightCallback",
+    "conflict_fingerprint",
+    "evaluate_parallel_execution_completion",
+]

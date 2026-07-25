@@ -57,8 +57,64 @@ CODE_OBLIGATION_CACHE_KEY_SCHEMA = (
 PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-candidate-non-authority-evidence@1"
 )
+STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "strict-validation-proof-completion-evidence@1"
+)
+STRICT_VALIDATION_PARENT_OBJECTIVE_ID = "ASI-G040"
+STRICT_VALIDATION_PROOF_GATE_KINDS = ("semantic_proof",)
 PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID = (
     "006818797857632260116084792540150258746"
+)
+PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID = "ASI-G102"
+PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION = "ASI-G102@asi-070"
+PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION = (
+    "asi-g102-objective-validation@1"
+)
+PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION = (
+    "strict-proof-candidate-non-authority-completion@1"
+)
+PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA = (
+    (
+        "the accepted proposal and population-complete passing validation DAG "
+        "remain non-authoritative for code proof and completion"
+    ),
+    (
+        "the canonical provider candidate verdict and assurance are "
+        "independently re-derived from typed evidence"
+    ),
+    (
+        "the candidate is rejected against the exact fresh implementation "
+        "obligation and required assurance"
+    ),
+    (
+        "strict completion admission remains closed and replays the candidate "
+        "binding rejection"
+    ),
+    (
+        "tamper, replay, detached summaries, and forged authority fail closed "
+        "across the full current-tree chain"
+    ),
+    (
+        "the exact proof-candidate non-authority requirement is emitted only "
+        "by a tamper-evident current-tree witness"
+    ),
+)
+# Concise public spellings used by the objective-completion bridge.  The
+# longer names preserve the evidence-record namespace and remain the canonical
+# documentation spelling.
+PROOF_CANDIDATE_OBJECTIVE_ID = PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+PROOF_CANDIDATE_OBJECTIVE_REVISION = (
+    PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION
+)
+PROOF_CANDIDATE_COMPLETION_ANALYZER_VERSION = (
+    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+)
+PROOF_CANDIDATE_COMPLETION_CONFIGURATION_REVISION = (
+    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION
+)
+PROOF_CANDIDATE_ACCEPTANCE_CRITERIA = (
+    PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
 )
 
 
@@ -1793,9 +1849,13 @@ class ImplementationResultBinding:
     static_analysis_evidence_ids: tuple[str, ...] = ()
     evidence_digests: Mapping[str, str] = field(default_factory=dict)
     plan_effect_ids: tuple[str, ...] = ()
+    effect_scope_map: Mapping[str, Any] = field(default_factory=dict)
     plan_requirement_ids: tuple[str, ...] = ()
     plan_trace_bound: int | None = None
     task_id: str = ""
+    goal_id: str = ""
+    code_proof_toolchain_id: str = ""
+    code_proof_policy_id: str = ""
     proposal_validation_receipt_id: str = ""
     proposal_accepted: bool | None = None
     binding_id: str = ""
@@ -1809,6 +1869,9 @@ class ImplementationResultBinding:
             "repository_tree_id",
             "changed_scope_set_id",
             "task_id",
+            "goal_id",
+            "code_proof_toolchain_id",
+            "code_proof_policy_id",
             "proposal_validation_receipt_id",
             "validation_dag_receipt_id",
             "validation_policy_id",
@@ -1854,6 +1917,16 @@ class ImplementationResultBinding:
             )
         object.__setattr__(self, "assumptions", _canonical_mapping(self.assumptions))
         object.__setattr__(self, "validation_bounds", _canonical_mapping(self.validation_bounds))
+        effect_scope_map = {
+            str(effect_id).strip(): list(_canonical_strings(scope_ids))
+            for effect_id, scope_ids in dict(self.effect_scope_map or {}).items()
+            if str(effect_id).strip()
+        }
+        object.__setattr__(
+            self,
+            "effect_scope_map",
+            _canonical_mapping(dict(sorted(effect_scope_map.items()))),
+        )
         digests = {
             str(key).strip(): str(value).strip()
             for key, value in dict(self.evidence_digests or {}).items()
@@ -1913,9 +1986,13 @@ class ImplementationResultBinding:
             "static_analysis_evidence_ids": self.static_analysis_evidence_ids,
             "evidence_digests": self.evidence_digests,
             "plan_effect_ids": self.plan_effect_ids,
+            "effect_scope_map": self.effect_scope_map,
             "plan_requirement_ids": self.plan_requirement_ids,
             "plan_trace_bound": self.plan_trace_bound,
             "task_id": self.task_id,
+            "goal_id": self.goal_id,
+            "code_proof_toolchain_id": self.code_proof_toolchain_id,
+            "code_proof_policy_id": self.code_proof_policy_id,
         }
         if self.proposal_validation_receipt_id or self.proposal_accepted is not None:
             payload["proposal_validation_receipt_id"] = (
@@ -1961,10 +2038,17 @@ class ImplementationResultBinding:
             "static_analysis_evidence_ids": self.static_analysis_evidence_ids,
             "evidence_digests": self.evidence_digests,
             "plan_effect_ids": self.plan_effect_ids,
+            "effect_scope_map": self.effect_scope_map,
             "plan_requirement_ids": self.plan_requirement_ids,
             "plan_trace_bound": self.plan_trace_bound,
             "task_id": self.task_id,
         }
+        if self.goal_id:
+            payload["goal_id"] = self.goal_id
+        if self.code_proof_toolchain_id:
+            payload["code_proof_toolchain_id"] = self.code_proof_toolchain_id
+        if self.code_proof_policy_id:
+            payload["code_proof_policy_id"] = self.code_proof_policy_id
         if self.proposal_validation_receipt_id:
             payload["proposal_validation_receipt_id"] = (
                 self.proposal_validation_receipt_id
@@ -2001,9 +2085,21 @@ class ImplementationResultBinding:
             static_analysis_evidence_ids=tuple(payload.get("static_analysis_evidence_ids") or ()),
             evidence_digests=payload.get("evidence_digests") or {},
             plan_effect_ids=tuple(payload.get("plan_effect_ids") or payload.get("planned_effect_ids") or payload.get("effect_ids") or ()),
+            effect_scope_map=payload.get("effect_scope_map") or {},
             plan_requirement_ids=tuple(payload.get("plan_requirement_ids") or ()),
             plan_trace_bound=payload.get("plan_trace_bound"),
             task_id=str(payload.get("task_id") or ""),
+            goal_id=str(payload.get("goal_id") or payload.get("objective_id") or ""),
+            code_proof_toolchain_id=str(
+                payload.get("code_proof_toolchain_id")
+                or payload.get("expected_toolchain_id")
+                or ""
+            ),
+            code_proof_policy_id=str(
+                payload.get("code_proof_policy_id")
+                or payload.get("expected_proof_policy_id")
+                or ""
+            ),
             proposal_validation_receipt_id=str(
                 payload.get("proposal_validation_receipt_id")
                 or payload.get("proposal_receipt_id")
@@ -2214,6 +2310,22 @@ class ImplementationObligationSet:
             "incomplete_reason_codes",
             _canonical_strings(self.incomplete_reason_codes),
         )
+        required_kinds: set[ImplementationObligationKind] = set()
+        if binding.plan_effect_ids or binding.effect_scope_map:
+            required_kinds.add(ImplementationObligationKind.EFFECT)
+        if binding.test_evidence_ids:
+            required_kinds.add(ImplementationObligationKind.TEST)
+        if binding.runtime_evidence_ids:
+            required_kinds.add(ImplementationObligationKind.RUNTIME_EVIDENCE)
+        if binding.static_analysis_evidence_ids:
+            required_kinds.add(ImplementationObligationKind.STATIC_ANALYSIS)
+        present_kinds = {
+            ImplementationObligationKind(value) for value in kinds.values()
+        }
+        if required_kinds - present_kinds:
+            raise ValueError(
+                "implementation obligation population omits a binding-required family"
+            )
         supplied = str(self.set_id or "").strip()
         object.__setattr__(self, "set_id", "")
         derived = content_identity(self._identity_payload())
@@ -2328,9 +2440,13 @@ def derive_fresh_implementation_obligations(
     runtime_evidence: Iterable[ImplementationResultEvidence | Mapping[str, Any]] = (),
     static_analysis_evidence: Iterable[ImplementationResultEvidence | Mapping[str, Any]] = (),
     planned_effect_ids: Iterable[str] = (),
+    effect_scope_map: Mapping[str, Iterable[str]] | None = None,
     plan_requirement_ids: Iterable[str] = (),
     plan_trace_bound: int | None = None,
     task_id: str = "",
+    goal_id: str = "",
+    code_proof_toolchain_id: str = "",
+    code_proof_policy_id: str = "",
     proposal_validation: Any = None,
     validation_dag: Any = None,
     require_validation_dag: bool = False,
@@ -2371,6 +2487,69 @@ def derive_fresh_implementation_obligations(
             for item in plan_effects
         ]
         planned_effect_ids = (*planned_effect_ids, *extracted_effects)
+        plan_goal_ids = _canonical_strings(
+            str(
+                getattr(item, "goal_id", "")
+                or (item.get("goal_id", "") if isinstance(item, Mapping) else "")
+            )
+            for item in (
+                getattr(plan, "goals", ())
+                if not isinstance(plan, Mapping)
+                else plan.get("goals", ())
+            )
+        )
+        if goal_id and plan_goal_ids and goal_id not in plan_goal_ids:
+            raise ValueError("implementation goal does not occur in accepted plan")
+        if not goal_id and len(plan_goal_ids) == 1:
+            goal_id = plan_goal_ids[0]
+        plan_metadata = (
+            getattr(plan, "metadata", {})
+            if not isinstance(plan, Mapping)
+            else plan.get("metadata", {})
+        )
+        if not isinstance(plan_metadata, Mapping):
+            raise ValueError("accepted plan metadata must be a mapping")
+        code_proof_toolchain_id = (
+            code_proof_toolchain_id
+            or str(
+                plan_metadata.get("code_proof_toolchain_id")
+                or plan_metadata.get("toolchain_id")
+                or ""
+            ).strip()
+        )
+        code_proof_policy_id = (
+            code_proof_policy_id
+            or str(
+                plan_metadata.get("code_proof_policy_id")
+                or plan_metadata.get("proof_policy_id")
+                or ""
+            ).strip()
+        )
+        if effect_scope_map is None:
+            plan_effect_scope_map = plan_metadata.get("effect_scope_map")
+            if plan_effect_scope_map is not None:
+                if not isinstance(plan_effect_scope_map, Mapping):
+                    raise ValueError(
+                        "accepted plan effect_scope_map must be a mapping"
+                    )
+                effect_scope_map = plan_effect_scope_map
+        plan_preconditions = (
+            getattr(plan, "preconditions", ())
+            if not isinstance(plan, Mapping)
+            else plan.get("preconditions", ())
+        )
+        extracted_assumptions = [
+            str(
+                getattr(item, "precondition_id", "")
+                or (
+                    item.get("precondition_id", "")
+                    if isinstance(item, Mapping)
+                    else ""
+                )
+            )
+            for item in plan_preconditions
+        ]
+        assumption_ids = (*assumption_ids, *extracted_assumptions)
         trace_bound = (
             getattr(plan, "trace_bound", None)
             if not isinstance(plan, Mapping)
@@ -2433,6 +2612,25 @@ def derive_fresh_implementation_obligations(
             scope_set.changed_paths
         ):
             raise ValueError("proposal and implementation changed scopes do not match")
+        # Paths alone are not a semantic binding.  Recompile the accepted
+        # candidate sources and require the exact AST/interface/effect scope
+        # population supplied to this derivation.
+        accepted_scopes = compile_candidate_proof_scopes(
+            proposal_result.proposal.candidate_diff
+        )
+        if (
+            accepted_scopes.scope_set_id != scope_set.scope_set_id
+            or accepted_scopes.scope_ids != scope_set.scope_ids
+        ):
+            raise ValueError(
+                "proposal and implementation AST/interface/effect scopes do not match"
+            )
+        proposal_goal_id = str(
+            proposal_result.proposal.objective_id or ""
+        ).strip()
+        if goal_id and proposal_goal_id and goal_id != proposal_goal_id:
+            raise ValueError("proposal and implementation goals do not match")
+        goal_id = goal_id or proposal_goal_id
         proposal_receipt_id = proposal_result.receipt.receipt_id
 
     validation_dag_receipt_id = ""
@@ -2546,9 +2744,13 @@ def derive_fresh_implementation_obligations(
             item.evidence_id: item.evidence_digest for item in evidence
         },
         plan_effect_ids=tuple(planned_effect_ids),
+        effect_scope_map=effect_scope_map or {},
         plan_requirement_ids=tuple(plan_requirement_ids),
         plan_trace_bound=plan_trace_bound,
         task_id=task_id,
+        goal_id=goal_id,
+        code_proof_toolchain_id=code_proof_toolchain_id,
+        code_proof_policy_id=code_proof_policy_id,
         proposal_validation_receipt_id=proposal_receipt_id,
         proposal_accepted=proposal_accepted,
         validation_dag_receipt_id=validation_dag_receipt_id,
@@ -2586,6 +2788,23 @@ def derive_fresh_implementation_obligations(
             key=lambda item: item.scope_id,
         )
     )
+    effect_scope_ids = {item.scope_id for item in effects}
+    if binding.plan_effect_ids and not effect_scope_ids:
+        incomplete.append("planned_effect_scope_omitted")
+    if binding.effect_scope_map:
+        mapped_effect_ids = set(binding.effect_scope_map)
+        planned_effect_id_set = set(binding.plan_effect_ids)
+        if mapped_effect_ids != planned_effect_id_set:
+            incomplete.append("planned_effect_coverage_mismatch")
+        mapped_scope_ids = {
+            str(scope_id)
+            for scope_ids in binding.effect_scope_map.values()
+            for scope_id in scope_ids
+        }
+        if not mapped_scope_ids.issubset(effect_scope_ids):
+            incomplete.append("planned_effect_scope_omitted")
+        if not effect_scope_ids.issubset(mapped_scope_ids):
+            incomplete.append("changed_effect_scope_unplanned")
     if symbols:
         groups.append((ImplementationObligationKind.CHANGED_SYMBOL, symbols, ()))
     if interfaces:
@@ -2645,9 +2864,13 @@ def derive_fresh_implementation_obligations(
                 "implementation_binding_id": binding.binding_id,
                 "scope_set_id": binding.changed_scope_set_id,
                 "accepted_plan_id": binding.accepted_plan_id,
+                "goal_id": binding.goal_id,
                 "assumption_ids": binding.assumption_ids,
                 "validation_bounds": binding.validation_bounds,
                 "evidence_ids": evidence_ids,
+                "effect_scope_map": binding.effect_scope_map,
+                "code_proof_toolchain_id": binding.code_proof_toolchain_id,
+                "code_proof_policy_id": binding.code_proof_policy_id,
                 "obligation_kind": kind.value,
                 "subject": subject,
             },
@@ -2664,6 +2887,58 @@ def derive_fresh_implementation_obligations(
         evidence=evidence,
         obligation_kinds=kinds,
         incomplete_reason_codes=tuple(incomplete),
+    )
+
+
+def transitive_impact_blocks_proof_derivation(
+    proposal_validation: Any,
+    validation_dag: Any,
+) -> bool:
+    """Revalidate the G101 adversarial DAG at the code-proof boundary.
+
+    A qualifying transitive-impact witness is deliberately a failed
+    validation DAG.  It proves that the defect was found, but must never
+    authorize fresh implementation obligations or code-proof work.
+    """
+
+    from .proposal_validation import ProposalValidationResult
+    from .validation_scheduler import (
+        REQUIRED_AUTHORITY_GATES,
+        TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        TRANSITIVE_IMPACT_REQUIREMENT_ID,
+        ValidationAuthorityDisposition,
+        ValidationDAGReceipt,
+    )
+
+    proposal = (
+        proposal_validation
+        if isinstance(proposal_validation, ProposalValidationResult)
+        else ProposalValidationResult.from_dict(proposal_validation)
+    )
+    dag = (
+        validation_dag
+        if isinstance(validation_dag, ValidationDAGReceipt)
+        else ValidationDAGReceipt.from_dict(validation_dag)
+    )
+    proposal.require_admitted_binding(
+        repository_tree_id=dag.repository_tree_id,
+        objective_id=dag.objective_id,
+        receipt_id=dag.proposal_receipt_id,
+    )
+    return bool(
+        dag.objective_id == TRANSITIVE_IMPACT_OBJECTIVE_ID
+        and not dag.passed
+        and dag.coverage_complete
+        and not dag.uncovered_impact
+        and dag.transitive_evidence is not None
+        and dag.transitive_evidence.requirement_id
+        == TRANSITIVE_IMPACT_REQUIREMENT_ID
+        and {
+            gate.gate
+            for gate in dag.authority_gates
+            if gate.disposition is ValidationAuthorityDisposition.BLOCKED
+        }
+        == set(REQUIRED_AUTHORITY_GATES)
     )
 
 
@@ -2821,6 +3096,13 @@ def validate_code_proof_receipt_bindings(
         obligation = matches[0] if matches else None
     if isinstance(obligation, Mapping):
         obligation = CodeProofObligation.from_dict(obligation)
+    obligation_belongs_to_set = (
+        obligation_set is None
+        or (
+            obligation is not None
+            and obligation.obligation_id in obligation_set.obligation_ids
+        )
+    )
 
     reasons: list[str] = []
     stale = False
@@ -2847,6 +3129,8 @@ def validate_code_proof_receipt_bindings(
                     or str(code).startswith("failed_")
                 ),
             )
+    if not obligation_belongs_to_set:
+        reject("wrong_theorem_not_in_fresh_obligation_set", is_stale=True)
     if obligation is None:
         reject("receipt_not_required_by_fresh_obligation_set", is_stale=True)
     else:
@@ -2867,6 +3151,16 @@ def validate_code_proof_receipt_bindings(
         reject("proof_repository_mismatch", is_stale=True)
     if proof.repository_tree_id != expected_binding.repository_tree_id:
         reject("proof_tree_mismatch", is_stale=True)
+    if (
+        expected_binding.code_proof_toolchain_id
+        and proof.toolchain_id != expected_binding.code_proof_toolchain_id
+    ):
+        reject("proof_toolchain_mismatch", is_stale=True)
+    if (
+        expected_binding.code_proof_policy_id
+        and proof.policy_id != expected_binding.code_proof_policy_id
+    ):
+        reject("proof_policy_mismatch", is_stale=True)
     if proof.freshness is not EvidenceFreshness.CURRENT:
         reject("stale_proof_receipt", is_stale=True)
         reject("stale_code_proof_receipt", is_stale=True)
@@ -2964,6 +3258,10 @@ class ProofCandidateNonAuthorityEvidence:
         objective_id = str(self.objective_id or "").strip()
         if not objective_id:
             raise ValueError("proof-candidate evidence requires an objective_id")
+        if objective_id != PROOF_CANDIDATE_OBJECTIVE_ID:
+            raise ValueError(
+                "proof-candidate evidence must bind the ASI-G102 objective"
+            )
         object.__setattr__(self, "objective_id", objective_id)
         requirement_id = str(self.requirement_id or "").strip()
         if requirement_id != PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID:
@@ -3103,8 +3401,64 @@ class ProofCandidateNonAuthorityEvidence:
         return False
 
     @property
+    def code_proof_authoritative(self) -> bool:
+        """A rejection witness cannot itself discharge a code obligation."""
+
+        return False
+
+    @property
     def completion_authoritative(self) -> bool:
         return False
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G102 through its closed current-tree proof gate.
+
+        This is intentionally a second phase after the operational
+        candidate-isolation witness.  The witness proves that a provider
+        candidate did not acquire authority; it cannot mark its own objective
+        complete without separately produced, current-tree validation,
+        coverage, analyzer-health, and exhaustive-quorum evidence.
+        """
+
+        return _evaluate_proof_candidate_objective_completion(
+            self,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            required_exhaustive_receipts=required_exhaustive_receipts,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+    def strict_validation_completion_evidence(
+        self,
+    ) -> "StrictValidationProofCompletionEvidence":
+        """Project the proof-owned portion of the ASI-G040 parent join."""
+
+        return StrictValidationProofCompletionEvidence(witness=self)
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
@@ -3136,6 +3490,7 @@ class ProofCandidateNonAuthorityEvidence:
             "validation_dag_receipt_id": self.validation_dag.receipt_id,
             "proved_requirement_ids": self.proved_requirement_ids,
             "proof_authoritative": False,
+            "code_proof_authoritative": False,
             "completion_authoritative": False,
         }
 
@@ -3149,7 +3504,11 @@ class ProofCandidateNonAuthorityEvidence:
         )
         if schema != PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA:
             raise ValueError(f"unsupported proof-candidate evidence schema: {schema}")
-        for name in ("proof_authoritative", "completion_authoritative"):
+        for name in (
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+        ):
             if payload.get(name) not in (None, False):
                 raise ValueError(f"proof-candidate evidence cannot claim {name}")
         result = cls(
@@ -3196,6 +3555,423 @@ class ProofCandidateNonAuthorityEvidence:
         return result
 
 
+@dataclass(frozen=True)
+class StrictValidationProofCompletionEvidence:
+    """Tamper-evident proof-owned input to the ASI-G040 completion join.
+
+    The embedded G102 witness is reconstructed in full, which replays the
+    candidate receipt against its exact fresh implementation obligations and
+    re-derives the closed completion-admission gate.  This projection exposes
+    that semantic/proof boundary to the parent without acquiring completion
+    authority itself.
+    """
+
+    witness: ProofCandidateNonAuthorityEvidence
+    evidence_id: str = ""
+
+    def __post_init__(self) -> None:
+        witness = self.witness
+        if not isinstance(witness, ProofCandidateNonAuthorityEvidence):
+            if not isinstance(witness, Mapping):
+                raise ValueError(
+                    "strict validation proof evidence requires a G102 witness"
+                )
+            witness = ProofCandidateNonAuthorityEvidence.from_dict(witness)
+        object.__setattr__(self, "witness", witness)
+        if (
+            witness.objective_id
+            != PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+            or witness.proved_requirement_ids
+            != (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
+            or witness.binding_result.valid
+            or witness.completion_admission.admitted
+            or witness.code_proof_authoritative
+            or witness.completion_authoritative
+        ):
+            raise ValueError(
+                "G102 witness does not qualify for the strict validation "
+                "proof projection"
+            )
+        claimed = str(self.evidence_id or "").strip()
+        object.__setattr__(self, "evidence_id", "")
+        derived = content_identity(self._identity_payload())
+        if claimed and claimed != derived:
+            raise ValueError(
+                "strict validation proof evidence identity mismatch"
+            )
+        object.__setattr__(self, "evidence_id", derived)
+
+    @property
+    def objective_id(self) -> str:
+        return STRICT_VALIDATION_PARENT_OBJECTIVE_ID
+
+    @property
+    def child_objective_id(self) -> str:
+        return self.witness.objective_id
+
+    @property
+    def repository_id(self) -> str:
+        return self.witness.obligation_set.binding.repository_id
+
+    @property
+    def repository_tree_id(self) -> str:
+        return self.witness.obligation_set.binding.repository_tree_id
+
+    @property
+    def validation_policy_id(self) -> str:
+        return self.witness.validation_dag.policy_id
+
+    @property
+    def operational_receipt_id(self) -> str:
+        return self.witness.evidence_id
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return self.witness.proved_requirement_ids
+
+    @property
+    def gate_kinds(self) -> tuple[str, ...]:
+        return STRICT_VALIDATION_PROOF_GATE_KINDS
+
+    @property
+    def qualifies(self) -> bool:
+        return True
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return False
+
+    @property
+    def proof_authoritative(self) -> bool:
+        return False
+
+    @property
+    def code_proof_authoritative(self) -> bool:
+        return False
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA,
+            "objective_id": self.objective_id,
+            "child_objective_id": self.child_objective_id,
+            "repository_id": self.repository_id,
+            "repository_tree_id": self.repository_tree_id,
+            "validation_policy_id": self.validation_policy_id,
+            "operational_receipt_id": self.operational_receipt_id,
+            "proved_requirement_ids": self.proved_requirement_ids,
+            "gate_kinds": self.gate_kinds,
+            "qualifies": self.qualifies,
+            "proof_authoritative": False,
+            "code_proof_authoritative": False,
+            "completion_authoritative": False,
+            "witness": self.witness.to_dict(),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._identity_payload(), "evidence_id": self.evidence_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "StrictValidationProofCompletionEvidence":
+        required_fields = {
+            "schema",
+            "objective_id",
+            "child_objective_id",
+            "repository_id",
+            "repository_tree_id",
+            "validation_policy_id",
+            "operational_receipt_id",
+            "proved_requirement_ids",
+            "gate_kinds",
+            "qualifies",
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+            "witness",
+            "evidence_id",
+        }
+        supplied_fields = {str(name) for name in payload}
+        if supplied_fields != required_fields:
+            missing = sorted(required_fields - supplied_fields)
+            unknown = sorted(supplied_fields - required_fields)
+            details = []
+            if missing:
+                details.append("missing: " + ", ".join(missing))
+            if unknown:
+                details.append("unknown: " + ", ".join(unknown))
+            raise ValueError(
+                "strict validation proof evidence has an invalid field "
+                "population (" + "; ".join(details) + ")"
+            )
+        if (
+            payload.get("schema")
+            != STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA
+        ):
+            raise ValueError(
+                "unsupported strict validation proof completion schema"
+            )
+        witness_payload = payload.get("witness")
+        if not isinstance(witness_payload, Mapping):
+            raise ValueError(
+                "strict validation proof evidence is missing its witness"
+            )
+        result = cls(
+            witness=ProofCandidateNonAuthorityEvidence.from_dict(
+                witness_payload
+            ),
+            evidence_id=str(payload.get("evidence_id") or ""),
+        )
+        expected = result._identity_payload()
+        for name, value in expected.items():
+            if name == "witness":
+                continue
+            if canonical_json(payload.get(name)) != canonical_json(value):
+                raise ValueError(
+                    "strict validation proof projection is inconsistent"
+                )
+        return result
+
+
+def _evaluate_proof_candidate_objective_completion(
+    witness: ProofCandidateNonAuthorityEvidence,
+    *,
+    current_state: Any,
+    evidence: Sequence[Any],
+    tasks_complete: bool,
+    coverage: Any,
+    analyzer_health: Any,
+    exhaustion_quorum: Any,
+    required_exhaustive_receipts: int,
+    child_goals: Sequence[Any],
+    now: Any,
+    freshness_seconds: float | None,
+    clock_skew_seconds: float | None,
+    analysis_inconclusive: bool,
+    blocked_reason: str,
+) -> Any:
+    """Bridge the replayed G102 witness into the goal-completion lifecycle."""
+
+    from .goal_completion import evaluate_goal_completion
+
+    binding = witness.obligation_set.binding
+    gate = witness.completion_admission
+    result = witness.binding_result
+    operational_complete = bool(
+        witness.objective_id == PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+        and witness.proved_requirement_ids
+        == (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
+        and witness.proposal_validation.accepted
+        and witness.validation_dag.passed
+        and witness.validation_dag.coverage_complete
+        and not witness.validation_dag.uncovered_impact
+        and witness.candidate_receipt.authoritative_assurance
+        is AssuranceLevel.CANDIDATE
+        and witness.candidate_receipt.authoritative_verdict
+        is ProofVerdict.INCONCLUSIVE
+        and not result.valid
+        and result.binding_id == binding.binding_id
+        and result.receipt_id == witness.candidate_receipt.receipt_id
+        and result.obligation_id == witness.candidate_receipt.obligation_id
+        and {
+            "code_proof_not_proved",
+            "required_code_assurance_not_satisfied",
+        }.issubset(result.reason_codes)
+        and not gate.admitted
+        and result.result_id in gate.code_proof_result_ids
+        and witness.candidate_receipt.receipt_id
+        in gate.proof_candidate_receipt_ids
+        and {
+            "code_proof_candidate_only",
+            "code_proof_not_authoritative",
+            "code_proof_binding_rejected",
+        }.issubset(gate.reason_codes)
+    )
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    expected_criteria = {
+        " ".join(item.lower().split())
+        for item in PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
+    }
+    coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+    normalized_rows = [
+        " ".join(
+            str(
+                row.get("criterion", row.get("acceptance_criterion", ""))
+                if isinstance(row, Mapping)
+                else ""
+            )
+            .lower()
+            .split()
+        )
+        for row in rows
+    ]
+    coverage_complete = bool(
+        operational_complete
+        and len(normalized_rows) == len(expected_criteria)
+        and len(normalized_rows) == len(set(normalized_rows))
+        and set(normalized_rows) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and bool(str(row.get("implementation") or "").strip())
+            and bool(str(row.get("validation") or "").strip())
+            for row in rows
+        )
+    )
+
+    evidence_bound = len(evidence) == len(expected_criteria)
+    for item in evidence:
+        record = (
+            item.to_dict()
+            if hasattr(item, "to_dict") and callable(item.to_dict)
+            else dict(item)
+            if isinstance(item, Mapping)
+            else {}
+        )
+        validation = record.get("validation_receipt")
+        validation = validation if isinstance(validation, Mapping) else {}
+        evidence_bound = bool(
+            evidence_bound
+            and validation.get("requirement_id")
+            == PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID
+            and validation.get("objective_id")
+            == PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+            and validation.get("repository_id") == binding.repository_id
+            and validation.get("tree_id") == binding.repository_tree_id
+            and validation.get("operational_receipt_id") == witness.evidence_id
+            and validation.get("validation_policy_id")
+            == witness.validation_dag.policy_id
+        )
+    if not coverage_complete or not evidence_bound:
+        reasons = coverage_value.get("reason_codes")
+        reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+        if not operational_complete:
+            reasons.append("active_operational_evidence_missing")
+        if not coverage_complete:
+            reasons.append("coverage_missing_implementation_validation_binding")
+        if not evidence_bound:
+            reasons.append("validation_not_bound_to_operational_witness")
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "reason_codes": list(dict.fromkeys(reasons)),
+        }
+
+    health_value = payload(analyzer_health)
+    if not (
+        str(health_value.get("status") or "").lower() == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+        and health_value.get("analyzer_version")
+        == PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+    ):
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    expected_binding = {
+        "repository_id": binding.repository_id,
+        "tree_id": binding.repository_tree_id,
+        "objective_id": PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
+        "objective_revision": PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION,
+        "validation_policy_id": witness.validation_dag.policy_id,
+        "operational_receipt_id": witness.evidence_id,
+        "analyzer_version": (
+            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    quorum_value = payload(exhaustion_quorum)
+    quorum_binding = quorum_value.get("binding")
+    quorum_binding = (
+        quorum_binding if isinstance(quorum_binding, Mapping) else {}
+    )
+    members_value = quorum_value.get("members")
+    members = members_value if isinstance(members_value, list) else []
+    member_receipts = [
+        str(member.get("receipt_cid") or "")
+        for member in members
+        if isinstance(member, Mapping)
+    ]
+    channels = [
+        str(member.get("evidence_channel") or "")
+        for member in members
+        if isinstance(member, Mapping)
+    ]
+    quorum_complete = bool(
+        not isinstance(required_exhaustive_receipts, bool)
+        and isinstance(required_exhaustive_receipts, int)
+        and required_exhaustive_receipts >= 2
+        and quorum_value.get("required_members") == required_exhaustive_receipts
+        and len(members) >= required_exhaustive_receipts
+        and all(
+            quorum_binding.get(key) == value
+            for key, value in expected_binding.items()
+        )
+        and len(member_receipts) == len(members) == len(set(member_receipts))
+        and len(channels) == len(members) == len(set(channels))
+        and all(member_receipts)
+        and all(channels)
+        and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").lower() == "exhaustive"
+            and isinstance(member.get("binding"), Mapping)
+            and all(
+                member["binding"].get(key) == value
+                for key, value in expected_binding.items()
+            )
+            for member in members
+        )
+    )
+    if not quorum_complete:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    values: dict[str, Any] = {
+        "current_state": current_state,
+        "acceptance_criteria": (
+            PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
+        ),
+        "evidence": evidence,
+        "tasks_complete": tasks_complete,
+        "repository_tree": binding.repository_tree_id,
+        "now": now,
+        "analysis_inconclusive": analysis_inconclusive,
+        "blocked_reason": blocked_reason,
+        "coverage": coverage_value,
+        "analyzer_health": health_value,
+        "exhaustion_quorum": quorum_value,
+        "child_goals": child_goals,
+        "analysis_result": None,
+        "require_completion_gate": True,
+    }
+    if freshness_seconds is not None:
+        values["freshness_seconds"] = freshness_seconds
+    if clock_skew_seconds is not None:
+        values["clock_skew_seconds"] = clock_skew_seconds
+    return evaluate_goal_completion(**values)
+
+
 def prove_proof_candidate_non_authority(
     candidate_receipt: ProofReceipt | Mapping[str, Any],
     obligation_set: ImplementationObligationSet | Mapping[str, Any],
@@ -3239,8 +4015,21 @@ __all__ = [
     "CODE_OBLIGATION_CACHE_KEY_SCHEMA",
     "CODE_OBLIGATION_REQUEST_SCHEMA",
     "CODE_PROOF_BINDING_RESULT_SCHEMA",
+    "PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA",
+    "PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION",
+    "PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION",
     "PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA",
+    "PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID",
+    "PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION",
     "PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID",
+    "PROOF_CANDIDATE_ACCEPTANCE_CRITERIA",
+    "PROOF_CANDIDATE_COMPLETION_ANALYZER_VERSION",
+    "PROOF_CANDIDATE_COMPLETION_CONFIGURATION_REVISION",
+    "PROOF_CANDIDATE_OBJECTIVE_ID",
+    "PROOF_CANDIDATE_OBJECTIVE_REVISION",
+    "STRICT_VALIDATION_PARENT_OBJECTIVE_ID",
+    "STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA",
+    "STRICT_VALIDATION_PROOF_GATE_KINDS",
     "CandidateChangeKind",
     "CandidateDiffEntry",
     "CandidateFileDiff",
@@ -3264,6 +4053,7 @@ __all__ = [
     "ImplementationResultEvidence",
     "CodeProofReceiptBindingResult",
     "ProofCandidateNonAuthorityEvidence",
+    "StrictValidationProofCompletionEvidence",
     "PROOF_SCOPE_SCHEMA",
     "PROOF_SCOPE_SET_SCHEMA",
     "ProofScopeCompilationStats",
@@ -3291,6 +4081,7 @@ __all__ = [
     "obligation_cache_identity",
     "parse_unified_diff",
     "prove_proof_candidate_non_authority",
+    "transitive_impact_blocks_proof_derivation",
     "validate_code_proof_receipt_binding",
     "validate_code_proof_receipt_bindings",
 ]

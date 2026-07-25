@@ -67,6 +67,14 @@ def _obligation(**overrides):
             "statement_format": "smtlib2",
             "corpus_revision": "corpus:reviewed",
             "upstream_receipt_ids": ["receipt:obligation"],
+            "goal_id": "goal:reviewed",
+            "accepted_plan_id": "plan:reviewed",
+            "assumptions_digest": "assumptions:reviewed",
+            "scope_set_id": "scope-set:reviewed",
+            "effect_scope_map": {
+                "effect:advance": ["src/state.py::advance"],
+            },
+            "code_proof_toolchain_id": "toolchain:reviewed",
         },
     }
     values.update(overrides)
@@ -147,6 +155,17 @@ def test_supported_obligation_is_a_deterministic_explicit_hammer_request():
         "portfolio_policy"
     ]["supervisor_policy_id"]
     assert first["provenance"]["translator_id"] == HAMMER_TRANSLATOR_ID
+    assert first["provenance"]["semantic_bindings"] == {
+        "accepted_plan_id": "plan:reviewed",
+        "assumptions_digest": "assumptions:reviewed",
+        "changed_scope_set_id": "scope-set:reviewed",
+        "effect_scope_map": {
+            "effect:advance": ["src/state.py::advance"],
+        },
+        "goal_id": "goal:reviewed",
+        "policy_id": first["portfolio_policy"]["supervisor_policy_id"],
+        "toolchain_id": "toolchain:reviewed",
+    }
 
 
 def test_all_resource_and_capability_limits_flow_from_supervisor_policy():
@@ -308,3 +327,135 @@ def test_missing_reviewed_lowering_and_premise_overflow_fail_closed():
     )
     assert overflow.error.code is ProviderFailureCode.RESOURCE_EXHAUSTED
     assert overflow.error.details == {"max_premises": 1, "premise_count": 2}
+
+
+def test_timeout_and_missing_reconstructor_remain_explicit():
+    def time_out(_invocation):
+        raise TimeoutError("fixture deadline")
+
+    timed_out = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(
+            _policy(allowed_solvers=("z3",), environment_lock=_lock()),
+            portfolio_runner=time_out,
+        ),
+        _request(
+            operation="prove",
+            supervisor_policy={"allowed_solvers": ["z3"]},
+        ),
+    )
+    assert timed_out.ok is False
+    assert timed_out.error.code is ProviderFailureCode.TIMED_OUT
+    assert timed_out.error.details["status"] == "timed_out"
+    assert timed_out.error.details["proof_success"] is False
+    assert timed_out.error.details["provenance"]["semantic_bindings"][
+        "goal_id"
+    ] == "goal:reviewed"
+
+    unsupported = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(_policy()),
+        _request(operation="reconstruct"),
+    )
+    assert unsupported.ok is False
+    assert unsupported.error.code is ProviderFailureCode.UNSUPPORTED
+    assert unsupported.error.details["status"] == "unsupported"
+    assert (
+        unsupported.error.details["reason_code"]
+        == "independent_kernel_provider_required"
+    )
+
+    def candidate_without_kernel(invocation):
+        attempt_id = f"{invocation.bundle.request_id}:translation:z3:0"
+        return {
+            "request_id": invocation.bundle.request_id,
+            "status": "candidate",
+            "attempts": [
+                {
+                    "attempt_id": attempt_id,
+                    "request_id": invocation.bundle.request_id,
+                    "translation_id": invocation.translations[0].translation_id,
+                    "solver_name": "z3",
+                }
+            ],
+            "proof_candidate": {
+                "candidate_id": "candidate:policy-required",
+                "request_id": invocation.bundle.request_id,
+                "solver_attempt_id": attempt_id,
+                "premise_ids": ["premise:relation"],
+            },
+        }
+
+    required = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(
+            _policy(
+                allowed_solvers=("z3",),
+                environment_lock=_lock(),
+                require_authoritative_reconstruction=True,
+            ),
+            portfolio_runner=candidate_without_kernel,
+        ),
+        _request(
+            operation="prove",
+            supervisor_policy={"allowed_solvers": ["z3"]},
+        ),
+    )
+    assert required.ok is False
+    assert required.error.code is ProviderFailureCode.UNSUPPORTED
+    assert (
+        required.error.details["reason_code"]
+        == "independent_kernel_provider_required"
+    )
+    assert required.error.details["candidate"]["candidate_id"] == (
+        "candidate:policy-required"
+    )
+
+
+def test_reviewed_premise_selection_runs_through_hammer_boundary():
+    from ipfs_datasets_py.logic import hammers
+
+    manifest = hammers.CorpusManifest(manifest_id="manifest:legal-reviewed")
+    manifest.register_source(
+        hammers.CorpusSource(
+            corpus_id="corpus:legal",
+            name="Reviewed legal transition premises",
+            version_ref="commit:reviewed",
+            license_id="CC0-1.0",
+        )
+    )
+    manifest.add_theorem(
+        theorem_id="premise:relation",
+        corpus_id="corpus:legal",
+        statement="Ready may transition only to running.",
+    )
+    manifest.add_theorem(
+        theorem_id="premise:state",
+        corpus_id="corpus:legal",
+        statement="The current state is ready.",
+    )
+    obligation = _obligation(
+        metadata={
+            **dict(_obligation().metadata),
+            "corpus_revision": manifest.revision,
+        }
+    )
+    request = _request(
+        obligation=obligation.to_dict(),
+        premise_selection={"top_k": 2},
+        corpus_manifest=manifest.to_dict(),
+    )
+
+    result = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(_policy()), request
+    ).require_result()
+    repeated = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(_policy()), request
+    ).require_result()
+
+    assert repeated["hammer_request"] == result["hammer_request"]
+    assert set(
+        result["provenance"]["premise_selection"][
+            "selected_premise_ids"
+        ]
+    ) == {"premise:relation", "premise:state"}
+    assert {
+        item["selection_method"] for item in result["premises"]
+    } == {"deterministic-baseline"}

@@ -146,6 +146,41 @@ may propose matches, but only an exact, typed, fresh receipt from an allowed
 producer can discharge a requirement. Objective, plan, task-board, and
 generated-discovery prose are never authoritative completion evidence.
 
+### Root completion is hierarchical and two-phase
+
+ASI-G000 uses a closed completion adapter rather than a caller-assembled
+generic summary. The adapter fixes the complete original producing-task
+population (ASI-001 through ASI-024), the exact nine direct workstream goals
+(ASI-G010 through ASI-G090), the four literal root acceptance clauses, and a
+two-member exhaustive-receipt policy. A caller cannot lower or narrow those
+sets. Every producer must be terminal-successful before root completion can be
+requested.
+
+Every submitted criterion receipt participates in the decision: a passing
+receipt cannot mask a failed, stale, contradictory, malformed, or foreign-tree
+sibling. Each literal criterion needs its own fresh passing receipt and an
+exact current-tree coverage row naming both a concrete implementation and that
+receipt identity. Analyzer health remains a separate authority input and must
+explicitly be healthy and safe for completion reasoning with the repository,
+tree, objective/revision, analyzer version, and configuration revision.
+Operational pipeline output, provider health, or a discovery report cannot
+stand in for analyzer health.
+
+The exhaustion quorum must retain the configured count. Every counted member
+is fresh, healthy, completion-safe, exhaustive, identically bound, and
+independent by member ID, evidence channel, and receipt identity. Every direct
+child must have a fresh passed current-tree completion gate, and recursive
+descendant proof requirements remain proved, current, conclusive,
+uncontradicted, and sufficient for their required assurance. An empty child
+list, a state-only child summary, or a drained todo board is not proof.
+
+Even a fully passing first evaluation can move an active root only to
+`provisionally_complete`. A later, separate evaluation may verify it while all
+bindings and proof remain fresh. Any later task regression, child reopening,
+tree change, failed validation, analyzer degradation, or quorum loss reopens a
+verified root. The ASI-082 discovery file is an audit index for this policy;
+it never performs either lifecycle transition.
+
 ## Workstream A: measurement and token efficiency
 
 Add one supervisor efficiency receipt that joins stage timings, input/output
@@ -377,9 +412,153 @@ the same repositories, goals, provider fixtures, and fault injections.
 | Refill | Novel admitted goals, duplicates, churn, exhaustion behavior | No duplicate generation and idempotent healthy exhaustion |
 | Control | Python/CLI/MCP schema and behavior parity | Contract tests pass for every shared operation |
 
-These are promotion gates, not hard-coded production defaults. A gate failure
-keeps the feature in shadow or assist mode and creates a bounded diagnostic
-task. It must never be hidden by a composite score.
+These are promotion gates, not hard-coded production defaults. A paired-gate
+failure always makes `shadow` the effective mode, even when the requested mode
+was `assist` or `automatic`, and creates bounded diagnostics. It must never be
+hidden by a composite score.
+
+### Paired end-to-end rollout gate
+
+ASI-023 closes the integration gate in
+`agent_supervisor/self_improvement_rollout.py`. The gate consumes bounded
+measurements from the existing analysis, cache, context, planning, validation,
+resource, merge, control, and refill lanes; it does not rerun or replace those
+lanes. Baseline and candidate measurements are paired by a frozen fixture ID,
+fixture revision, input digest, and seeded-defect count. Reports contain
+counts, scores, terminal classifications, and content identities only. Raw
+prompts, model output, patches, proofs, cache values, and artifact bodies do
+not cross this boundary.
+
+The fixture population is closed and non-narrowable:
+
+1. cold and warm execution;
+2. a broad goal;
+3. contradictory input;
+4. malformed provider output;
+5. a stale cache record;
+6. an unavailable optional provider;
+7. independent parallel lanes;
+8. conflicting parallel lanes;
+9. failed validation;
+10. process restart; and
+11. a drained board followed by refill/exhaustion reconciliation.
+
+Each kind occurs exactly once in a report. A missing kind is a failed gate,
+not a smaller benchmark, and duplicate IDs or kinds are malformed input.
+Warm and restart fixtures form the repeated-fixture cache cohort. The
+independent-parallel fixture supplies the paired throughput measurement. The
+conflicting-parallel fixture supplies the merge-conflict comparison. The
+restart fixture binds pre- and post-restart state digests, while the
+drained-refill fixture records duplicate executions and its terminal
+classification.
+
+Promotion requires both gates below:
+
+- **Non-negotiable gate:** the candidate has exactly zero false completions,
+  authority violations, stale authoritative hits, escaped seeded defects,
+  duplicate executions, and unauthorized mutations. Malformed and
+  contradictory fixtures reject, provider unavailability remains degraded,
+  fallback, or rejected, failed validation detects every seeded defect, the
+  restart state digest is stable, and aggregate candidate artifacts remain at
+  or below 256 records and 4 MiB.
+- **Paired gate:** candidate terminal outcomes and accepted work do not regress;
+  evidence coverage, quality, and defect detection do not decrease; false
+  rejection and merge-conflict counts do not increase; median candidate input
+  tokens are at least 35 percent below the paired baseline median; candidate
+  cache reuse across repeated fixtures is at least 70 percent; and accepted
+  work throughput on the independent fixture is at least twice baseline.
+  Planning must also improve by either at least 1,000 basis points in median
+  evidence coverage or at least 2,000 basis points in aggregate
+  invalid-plan-branch reduction.
+
+Threshold configuration may make these requirements stricter but cannot lower
+the token, cache, or throughput minimums, raise artifact bounds, or narrow the
+fixture population. There are no waivers for the non-negotiable gate.
+Performance improvements cannot compensate for a safety, authority, quality,
+validation, restart, merge, or population failure.
+
+The report carries two stable runtime evidence terms. Term
+`109590900757783560279417463762322084165` is the safety/shadow proof: the
+complete seeded population has zero candidate false completions, while any
+seeded false completion fails the non-negotiable gate and forces the effective
+mode to `shadow`. Term
+`146189916032404266364029134505159070240` is affirmative only when the token,
+repeated-cache, planning, and independent-throughput gates all pass.
+`report.evidence_for(requirement_id, repository_id=...,
+repository_tree=...)` returns the bounded typed criterion projection for these
+bindings and derives canonical ASI-G112/ASI-G113 internally. A failed
+supported term returns a negative diagnostic witness; an unsupported term is
+rejected. Serialized evidence is accepted only through
+`PairedRolloutRequirementEvidence.from_dict(payload, report=report)`, which
+re-derives the complete claim and rejects changed or detached content. The
+projection is diagnostic rollout evidence, not completion, proof, merge, or
+mutation authority.
+
+Generated objective scans once allocated the packet labels ASI-G115 and
+ASI-G116 to these two terms. Those labels are stale routing metadata:
+canonical heap children ASI-G112 and ASI-G113 own the safety and efficiency
+terms under ASI-G090, while the current ASI-G115 is unrelated planning work.
+The runtime derives the canonical child from the requirement identifier; an
+operator cannot redirect evidence by supplying a scan label.
+
+Report version 2 carries the explicit invalid-plan-branch counter and component
+gate projections. Version-1 reports remain readable and are re-derived for
+audit, but cannot affirm the efficiency requirement because they lack the
+planning measurement; operators must rerun the current shadow population.
+
+The resulting report is canonical JSON with a stable SHA-256 identity that
+excludes only its observation timestamp. Deserialization recomputes the full
+decision from the embedded typed fixture evidence instead of trusting stored
+summary fields. The append-only report store uses exclusive creation, file and
+directory synchronization, symlink rejection, a 2 MiB hard report bound, and
+idempotent replay. This makes a recovered decision stable across a supervisor
+restart without turning the report into completion evidence.
+
+The paired contracts, schema versions, evidence identifiers, evaluator, and
+report store are enumerated by the stable package-root
+`PAIRED_ROLLOUT_STABLE_EXPORTS` manifest. Import, manifest inspection, and
+capability discovery remain provider-free and process-free; accessing a listed
+export loads only the rollout contract module. Package-owned requirement
+`300500866741873729474343907613893393545`
+(`PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`) fixes canonical ASI-G114 and
+names this import-isolation contract separately from the two report-backed
+requirements. Its producer is the fresh-interpreter surface test: it observes
+cold state, checks the exact unique manifest and object identities, resolves
+every member, and proves the complete optional provider inventory remains
+unloaded. The numeric constant, a partial check, or a warm import is routing
+information rather than evidence.
+
+The deterministic smoke recipe runs that ASI-G114 preflight, then uses fixed
+bindings to seed every forced-shadow path and retain bounded reason codes. The
+production recipe reruns the preflight for the deployed package and provider
+inventory, and persists both paired-report criterion projections with the
+report, profile, capability, repository tree, objective, and policy identities.
+A stale or missing import, package, manifest, provider, or report binding
+returns operation to shadow and requires the applicable fresh evaluation.
+
+### ASI-G090 parent completion gate
+
+Rollout promotion and objective completion are separate decisions. The closed
+`evaluate_paired_rollout_completion` adapter fixes ASI-G090 revision
+`ASI-G090@asi-090`, producing tasks ASI-023 and ASI-024, direct children
+ASI-G112, ASI-G113, and ASI-G114, all five literal parent criteria, and two
+independent exhaustive receipts. The operational report must be fresh,
+recomputed, complete, and passing, and its G112/G113 projections must be
+satisfied on the current repository tree. Neither those artifacts nor the
+G114 import preflight substitute for parent criterion validations.
+
+Each criterion requires exactly one fresh passing current-tree receipt and a
+coverage row naming concrete implementation plus that exact receipt identity.
+Analyzer health must explicitly be healthy and safe for completion reasoning,
+with repository, tree, goal, objective revision, analyzer version, and
+configuration revision bindings. Both quorum members must be fresh, healthy,
+completion-safe, exhaustive, identically bound, and independent by member,
+channel, and receipt identity. The exact producers must be terminal and every
+exact child must remain freshly verified with conclusive current-tree proof
+requirements. Any failed or stale submitted validation, incomplete population,
+reopened child, unsafe analyzer, or non-independent vote keeps G090 actionable.
+A first passing evaluation advances only to provisional completion; a separate
+later evaluation is required for verified completion.
 
 ## Delivery order
 
@@ -414,4 +593,169 @@ Assist mode may present or queue operator-approved proposals. Automatic use
 requires every non-negotiable gate, stable restart recovery, bounded artifacts,
 and a paired improvement. Any false completion, authority violation, stale
 authoritative cache hit, uncontrolled mutation, or idempotency failure rolls
-the affected capability back to shadow.
+the affected capability back to shadow. The paired end-to-end gate also forces
+the effective mode to `shadow` whenever its fixture population is incomplete
+or either gate fails; a requested `assist` or `automatic` mode never survives
+that decision.
+
+## Operator adoption and operating profiles
+
+ASI-024 publishes the reviewed control and rollout boundary for operators
+without turning optional analysis, model, or proof providers into import-time
+dependencies. Stable package exports cover the control service and client,
+canonical request/result and authorization contracts, side-effect-free
+capability and discovery checks, and the paired-rollout contracts. Importing
+the package or inspecting capabilities must neither load an optional provider
+nor start a process. Provider-specific implementations remain behind their
+explicit capability handshakes and are loaded only after policy and resource
+admission select them.
+
+ASI-053 binds that design to the current objective heap. ASI-G114—not the
+scan's stale ASI-G100 label—owns
+`300500866741873729474343907613893393545`; current ASI-G100 remains unrelated
+strict-validation work. No finer child goal is useful because cold import,
+complete-manifest resolution, provider isolation, owner identity,
+benchmark adoption, and migration guidance are one compatibility contract.
+The paired benchmark imports the reviewed contracts through the package root
+and checks canonical parity with the owner module, while the isolated
+end-to-end child process proves that adoption does not make optional providers
+or rollout code eager.
+
+The Python, unified CLI, and MCP surfaces are adapters over the same
+`SupervisorControlService` operation vocabulary and canonical contracts.
+`ipfs-accelerate agent capabilities` is the first operator check; equivalent
+Python and MCP discovery must report the same supported operation set, bounds,
+authority class, dry-run support, and contract versions. The discovery report
+also records whether optional providers were loaded or processes were started,
+so discovery-side effects are observable contract failures rather than hidden
+behavior. Operators must check support instead of inferring it from an import,
+an installed extra, a tool name, or a provider configuration file.
+
+The operating profiles below are normative configuration recipes, not new
+global constructors or implicit environment selection. They use existing
+`context_contracts.ContextBudget`, `analysis_cache.AnalysisCache`,
+`ResourcePolicy`, control bounds, and rollout contracts. Library defaults
+remain conservative: a one-lane, non-adaptive scheduler; explicit repository
+and state allowlists; required provider telemetry; bounded control results; and
+no automatic mutation merely because a provider is available.
+
+| Setting | Production recipe | Deterministic smoke recipe |
+| --- | --- | --- |
+| Purpose | Sustained operation on a reviewed host after paired-gate promotion | Fast, repeatable contract, migration, and recovery checks |
+| Rollout | Begin in `shadow`; request `assist` or `automatic` only from a passing, current paired report | `shadow` only |
+| Context | `context_contracts.ContextBudget` defaults: 8,192 input tokens, 2,048 output reserve, 512 tool reserve, 128 items, and 256 KiB serialized | 2,048 input tokens, 512 output reserve, 128 tool reserve, 32 items, and 64 KiB serialized |
+| Coordinator caches | 512 entries, 32 MiB total, 256 KiB per entry; bind namespace quotas to the profile revision | 64 entries, 4 MiB total, 64 KiB per entry; isolate namespaces per test |
+| Analysis receipt cache | `AnalysisCache` defaults: 512 entries, 32 MiB total, 128 KiB per entry, 96 KiB per receipt, 5-minute negative TTL | 64 entries, 4 MiB total, 64 KiB per entry, 48 KiB per receipt, 60-second negative TTL |
+| Resources | Four-lane ceiling, adaptive admission disabled initially, provider telemetry required; stage ceilings of four analysis, one inference, two proof, two validation, one merge, and one persistence lane. Enable adaptive admission only after its paired parallel gate passes | One lane, adaptive admission disabled, one process and one lane for every stage |
+| Providers | Enable only individually discovered, policy-allowed providers with recorded quota, latency, token, memory, and GPU bounds; preserve deterministic local fallback | Do not load optional providers; capability discovery must still run and explicitly report them unavailable |
+| State | Durable, access-controlled state/cache roots with independent artifact quotas and restart checks | Fresh temporary state/cache roots, frozen fixture IDs and inputs, fixed observation time, and no network/provider dependence |
+| Refill | Enabled only after authorization and a current benchmark population; at most the policy-bounded admitted successor set | Evaluate replay and healthy exhaustion, but do not materialize successor work |
+| Public API preflight | Run the fresh-interpreter ASI-G114 complete-manifest check for the deployed package and provider inventory before shadow evaluation and after upgrades | Run the same isolated check with every optional provider unavailable; a partial or warm import does not qualify |
+
+The production lane count is an upper bound, not a target. Admission still
+reduces it for CPU, RAM, GPU memory, disk pressure, provider capacity, queue
+shape, or merge pressure. Deployments with smaller measured capacity lower the
+ceiling. The smoke profile deliberately fixes concurrency at one and disables
+adaptive/provider variability; it does not weaken schemas, authorization,
+evidence freshness, the closed paired fixture population, or any rollout
+threshold.
+
+### Promotion, authorization, and control operation
+
+The rollout report never promotes itself. An operator or deployment policy
+chooses a desired mode and binds it to a current report:
+
+1. `shadow` evaluates the complete paired population and may persist bounded
+   reports, metrics, diagnostics, and candidate receipts, but grants no
+   canonical mutation authority.
+2. `assist` exposes proposals for explicit approval. It is effective only when
+   the same non-negotiable and paired gates required for automatic operation
+   pass.
+3. `automatic` permits only the operations already allowed by control policy
+   and only while the complete gate passes. It does not bypass per-request
+   authorization, leases, validation, or completion evidence.
+
+Any missing fixture or failed gate makes `shadow` the effective mode regardless
+of the desired mode. A passing report is restart-safe rollout evidence, not
+goal, proof, merge, or completion evidence. Promotion also requires an
+operator-reviewed profile revision and capability snapshot; a changed tree,
+policy, provider capability, or profile makes the prior operational decision
+stale and triggers reevaluation.
+
+Read and proposal operations use their declared read/proposal authority. Every
+real mutation, including objective refinement or reconciliation, backlog
+refill, lifecycle changes, retry, cancel, quarantine, and validation replay,
+requires all of the following:
+
+- an exact permit decision bound to the operation, repository and state roots,
+  repository/tree and objective revisions, policy revision, and caller;
+- declared expected effects within the authorization and root allowlists;
+- a caller-scoped idempotency key; and
+- a live lease identity and fencing epoch checked before dispatch.
+
+Dry-run mutation requests remain proposal-authority operations and never call a
+mutating backend. MCP uses server-configured allowlists and the same service
+boundary; it must not derive authority from tool arguments. CLI and Python
+callers likewise cannot treat possession of a path, package import, rollout
+mode, or capability report as authorization.
+
+For adoption, operators first run capabilities, health, status, and metrics;
+then use objective preview and plan; then exercise refine, reconcile, and
+refill as dry runs. Only after reviewing expected effects should they submit an
+authorized real mutation. The corresponding task-board views and lifecycle
+commands use the same target binding and audit receipts. This replaces direct
+composition of standalone objective, refinery, implementation-daemon, and
+artifact-query scripts while leaving those scripts available as migration
+references until the shared surface has equivalent capability.
+
+### Metrics, recovery, and epoch operation
+
+Production monitoring combines control-plane status, health, metrics, events,
+and audit receipts with the paired rollout report. Alert and roll back on any
+non-zero false completion, authority violation, stale authoritative cache hit,
+escaped defect, duplicate execution, or unauthorized mutation; an unstable
+restart; incomplete fixture coverage; an artifact bound violation; or a
+regression in terminal outcome, accepted work, evidence coverage, quality,
+defect detection, false rejection, or merge conflicts. Track the explicit
+token-reduction, repeated-cache-reuse, planning-coverage-improvement,
+invalid-plan-branch-reduction, and independent-lane-throughput basis points
+plus all four component-gate booleans rather than a composite score. Retain
+the bounded report reason codes for diagnosis.
+
+Recovery is fail-closed and typed:
+
+- an unavailable or unhealthy optional provider selects deterministic local
+  fallback, degradation, or rejection and never claims provider authority;
+- a stale tree, authorization, lease, or fencing epoch rejects before mutation
+  and requires a fresh target binding rather than an in-place retry;
+- an idempotent replay returns its durable result, while a key reused for
+  different effects is a conflict;
+- a stale or corrupt cache entry is invalidated and recomputed and cannot count
+  as authoritative evidence;
+- a validation, authority, population, or paired regression returns the
+  affected behavior to shadow and produces a bounded diagnostic;
+- restart recovery reloads canonical state and append-only rollout reports,
+  recomputes report decisions from fixture evidence, and verifies stable state
+  digests before resuming; and
+- ambiguous or unrepaired work is paused, drained, or quarantined with durable
+  events and receipts rather than silently retried.
+
+A self-refill epoch begins only when the effective task board is drained. Its
+content identity binds the repository and tree, objective and task-board
+revisions, self-improvement policy, capability snapshot, observation window,
+and operator revision. The ledger replay check happens before benchmark or
+proposal callbacks, so the same binding is idempotent across retries and
+restart. The benchmark population covers cache, control, efficiency, planning,
+safety, throughput, and validation through at least two independent evidence
+channels. Failed or partial analysis is an analyzer-health failure and cannot
+authorize successor work.
+
+Only fresh, complete, actionable observations can nominate proposals.
+Proposals must pass the policy's confidence, novelty, quality, refinement,
+depth, breadth, open-goal, and successor-count bounds before one transactional
+objective/task-board materialization. If no proposal survives, the epoch
+persists healthy-exhaustion evidence and waits. Another epoch requires a
+meaningful trigger: a changed repository tree, capability snapshot or policy;
+an operator objective revision; a regression or stale evidence; or a scheduled
+observation window. Queue exhaustion alone never loops, manufactures work, or
+proves the parent goal complete.

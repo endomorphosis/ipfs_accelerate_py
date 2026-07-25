@@ -4,10 +4,13 @@ import hashlib
 import sqlite3
 from pathlib import Path
 
+from ipfs_accelerate_py.agent_supervisor import duckdb_state
 from ipfs_accelerate_py.agent_supervisor.duckdb_state import (
+    DUCKDB_ONLY_ENV,
     initialize_duckdb_database,
     is_sqlite_database,
     open_duckdb_connection,
+    resolve_duckdb_path,
 )
 from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
 from ipfs_accelerate_py.agent_supervisor.merge_resolver import MergeResolverRegistry
@@ -53,6 +56,84 @@ def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(
         ("item-1", "preserved")
     ]
     assert migrations is not None and migrations[0] == 1
+
+
+def test_strict_duckdb_only_mode_never_probes_or_migrates_sqlite(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    legacy = tmp_path / "state.sqlite3"
+    legacy.write_bytes(b"SQLite format 3\0legacy bytes must remain unread")
+    monkeypatch.setenv(DUCKDB_ONLY_ENV, "true")
+
+    original_probe = duckdb_state.is_sqlite_database
+
+    def reject_sqlite_probe(path: Path | str) -> bool:
+        if Path(path) == legacy:
+            raise AssertionError("strict DuckDB-only mode probed a legacy SQLite file")
+        return original_probe(path)
+
+    monkeypatch.setattr(duckdb_state, "is_sqlite_database", reject_sqlite_probe)
+
+    target, source = resolve_duckdb_path(
+        legacy,
+        default_filename="state.duckdb",
+        temporary_prefix="strict-duckdb-",
+    )
+    assert target == legacy.with_suffix(".duckdb")
+    assert source is None
+
+    initialize_duckdb_database(
+        target,
+        schema_sql=(
+            "CREATE TABLE IF NOT EXISTS items "
+            "(item_id TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        ),
+        table_names=("items",),
+        legacy_sqlite_path=legacy,
+    )
+
+    assert legacy.read_bytes() == b"SQLite format 3\0legacy bytes must remain unread"
+    with open_duckdb_connection(target) as connection:
+        rows = connection.execute("SELECT item_id, value FROM items").fetchall()
+        migrations = connection.execute(
+            """
+            SELECT COUNT(*) FROM agent_supervisor_store_metadata
+            WHERE key LIKE 'sqlite_migration:%'
+            """
+        ).fetchone()
+    assert rows == []
+    assert migrations is not None and migrations[0] == 0
+
+
+def test_merge_queue_inherits_strict_duckdb_only_mode(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    queue_dir = tmp_path / "merge-queue"
+    queue_dir.mkdir()
+    legacy = queue_dir / "merge_queue.sqlite3"
+    source = sqlite3.connect(legacy)
+    source.execute("CREATE TABLE legacy_sentinel (value TEXT NOT NULL)")
+    source.execute("INSERT INTO legacy_sentinel VALUES ('do-not-read')")
+    source.commit()
+    source.close()
+    monkeypatch.setenv(DUCKDB_ONLY_ENV, "1")
+
+    original_probe = duckdb_state.is_sqlite_database
+
+    def reject_legacy_probe(path: Path | str) -> bool:
+        if Path(path) == legacy:
+            raise AssertionError("MergeQueue probed its legacy SQLite sibling")
+        return original_probe(path)
+
+    monkeypatch.setattr(duckdb_state, "is_sqlite_database", reject_legacy_probe)
+
+    queue = MergeQueue(queue_dir)
+
+    assert queue.database_path == queue_dir / "merge_queue.duckdb"
+    assert queue.pending_count() == 0
+    assert queue.processing_count() == 0
 
 
 def test_merge_queue_migrates_legacy_sqlite_and_keeps_deduplication(

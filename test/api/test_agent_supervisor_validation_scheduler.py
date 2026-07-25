@@ -1,23 +1,44 @@
 from __future__ import annotations
 
+import os
+import shlex
 import subprocess
+import sys
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import (
+    command_runner_from_legacy_function,
+    run_validation_commands,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTask,
+    TodoImplementationDaemon,
+)
 from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationStage,
     build_validation_commands,
     select_validation_commands,
+)
+from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+    VALIDATION_NPM_CACHE_ENV,
+    VALIDATION_PATH_ENV,
+    VALIDATION_PYTHON_ENV,
+    VALIDATION_PYTHONPATH_ENV,
+    ValidationRuntimeError,
+    build_validation_environment,
+    validation_argv_command,
+    validation_python_executable,
+    validation_shell_command,
 )
 from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ValidationResultCache,
     ValidationScheduler,
     build_validation_cache_key,
     collect_dependency_state,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    PortalTask,
-    TodoImplementationDaemon,
 )
 
 
@@ -50,6 +71,370 @@ def _repo(path: Path) -> str:
     _git(path, "add", "-A")
     _git(path, "commit", "-qm", "baseline")
     return _git(path, "rev-parse", "HEAD")
+
+
+def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
+    tmp_path: Path,
+) -> None:
+    trusted_bin = Path("/usr/bin").resolve()
+    approved_npm_cache = tmp_path / "approved-npm-cache"
+    approved_npm_cache.mkdir()
+    source = {
+        "AWS_SECRET_ACCESS_KEY": "secret",
+        "BASH_ENV": str(tmp_path / "bash-env"),
+        "CARGO_HOME": str(tmp_path / "cargo-home"),
+        "ENV": str(tmp_path / "env"),
+        "GRADLE_USER_HOME": str(tmp_path / "gradle-home"),
+        "HOME": str(tmp_path / "home"),
+        "NPM_CONFIG_CACHE": str(tmp_path / "inherited-npm-cache"),
+        "NPM_CONFIG_OFFLINE": "true",
+        "PATH": str(tmp_path / "hostile-bin"),
+        "PROMPT_COMMAND": "touch compromised",
+        "RUSTUP_HOME": str(tmp_path / "rustup-home"),
+        VALIDATION_NPM_CACHE_ENV: str(approved_npm_cache),
+        VALIDATION_PATH_ENV: str(trusted_bin),
+    }
+
+    environment = build_validation_environment(source)
+
+    assert environment["PATH"] == str(trusted_bin)
+    assert environment["HOME"] == "/nonexistent/ipfs-accelerate-validation"
+    assert environment["XDG_CONFIG_HOME"] == environment["HOME"]
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert environment["NPM_CONFIG_CACHE"] == str(approved_npm_cache.resolve())
+    assert environment["NPM_CONFIG_OFFLINE"] == "true"
+    assert environment["GIT_TERMINAL_PROMPT"] == "0"
+    assert environment["PYTHONHASHSEED"] == "0"
+    assert not {
+        "AWS_SECRET_ACCESS_KEY",
+        "BASH_ENV",
+        "CARGO_HOME",
+        "ENV",
+        "GRADLE_USER_HOME",
+        "PROMPT_COMMAND",
+        "RUSTUP_HOME",
+        VALIDATION_NPM_CACHE_ENV,
+        VALIDATION_PATH_ENV,
+    } & set(environment)
+    shell_command = validation_shell_command("test -f artifact")
+    assert shell_command[:4] == ["/bin/bash", "--noprofile", "--norc", "-c"]
+    assert shell_command[4].endswith(
+        "readonly -f python python3 pytest; test -f artifact"
+    )
+    for nested_shell in (
+        "bash -lc 'python -c \"raise SystemExit(0)\"'",
+        "true && bash -lc 'python -V'",
+        "command bash -lc 'python -V'",
+        ":; /bin/sh -c 'python -V'",
+        "env SAFE=1 /bin/bash -c 'python -V'",
+        "true&&bash -lc 'python -V'",
+        "echo x|bash -lc 'python -V'",
+        "true;/bin/sh -c 'python -V'",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="nested validation shells",
+        ):
+            validation_shell_command(nested_shell)
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="must provide command text with -c",
+    ):
+        validation_argv_command(("/bin/bash", "validation-script.sh"))
+    for wrapped_shell in (
+        ("env", "SAFE=1", "bash", "-lc", "python -V"),
+        ("command", "/bin/sh", "-c", "python -V"),
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="wrapped validation shells",
+        ):
+            validation_argv_command(wrapped_shell)
+    for dynamic_shell in (
+        "echo `bash -lc 'python -V'`",
+        "echo $(bash -lc 'python -V')",
+        "eval \"bash -lc 'python -V'\"",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="dynamic command substitution|dynamic shell evaluation",
+        ):
+            validation_shell_command(dynamic_shell)
+
+    with pytest.raises(ValidationRuntimeError, match="must be absolute"):
+        build_validation_environment({VALIDATION_PATH_ENV: "relative/bin"})
+    writable_bin = tmp_path / "writable-bin"
+    writable_bin.mkdir()
+    with pytest.raises(ValidationRuntimeError, match="must not be writable"):
+        build_validation_environment({VALIDATION_PATH_ENV: str(writable_bin)})
+    replaceable_bin = tmp_path / "replaceable-bin"
+    replaceable_bin.mkdir()
+    replaceable_bin.chmod(0o555)
+    # A user namespace may report the chmod-555 leaf itself as writable due to
+    # its mapped root capability; either the leaf or its replaceable ancestor
+    # must still be rejected.
+    with pytest.raises(ValidationRuntimeError, match="must not be writable"):
+        build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
+
+
+def test_real_validation_runner_ignores_profile_bash_env_and_path_injection(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    hostile_bin = tmp_path / "hostile-bin"
+    hostile_bin.mkdir()
+    profile_marker = tmp_path / "profile-loaded"
+    bash_env_marker = tmp_path / "bash-env-loaded"
+    path_marker = tmp_path / "path-shadow-ran"
+    (home / ".bash_profile").write_text(
+        f"touch {shlex.quote(str(profile_marker))}\n",
+        encoding="utf-8",
+    )
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(bash_env_marker))}\n",
+        encoding="utf-8",
+    )
+    shadow_python = hostile_bin / "python"
+    shadow_python.write_text(
+        f"#!/bin/sh\ntouch {shlex.quote(str(path_marker))}\nexit 97\n",
+        encoding="utf-8",
+    )
+    shadow_python.chmod(0o755)
+    trusted_path = os.pathsep.join(("/usr/bin", "/bin"))
+    hostile_environment = {
+        "BASH_ENV": str(bash_env),
+        "ENV": str(bash_env),
+        "HOME": str(home),
+        "PATH": str(hostile_bin),
+        "VALIDATION_SECRET": "must-not-leak",
+        VALIDATION_PATH_ENV: trusted_path,
+    }
+    command = (
+        f"test ! -e {shlex.quote(str(profile_marker))} "
+        f"&& test ! -e {shlex.quote(str(bash_env_marker))} "
+        '&& test -z "${VALIDATION_SECRET-}" '
+        '&& test "$HOME" = /nonexistent/ipfs-accelerate-validation '
+        '&& test "$XDG_CONFIG_HOME" = "$HOME" '
+        "&& python -c 'raise SystemExit(0)'"
+    )
+
+    report = ValidationScheduler().run(
+        [command],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+        environment=hostile_environment,
+    )
+
+    assert report["passed"] is True
+    assert not profile_marker.exists()
+    assert not bash_env_marker.exists()
+    assert not path_marker.exists()
+    expected_environment = build_validation_environment(hostile_environment)
+    expected_key = build_validation_cache_key(
+        target_commit="test-commit",
+        command=build_validation_commands([command])[0],
+        environment=expected_environment,
+        dependency_state="test-dependencies",
+        relevant_environment_keys=expected_environment,
+    )
+    assert report["results"][0]["cache_key"] == expected_key.digest
+
+
+def test_validation_runtime_reuses_supervisor_python_and_installed_pytest(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    expected_python = str(Path(sys.executable).resolve())
+    command = (
+        "TASK_PREFIX=works python -c 'import os, sys; "
+        "assert os.environ[\"TASK_PREFIX\"] == \"works\"; print(sys.executable)' "
+        "&& python -m pytest --version "
+        "&& pytest --version"
+    )
+
+    report = ValidationScheduler().run(
+        [command],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+    )
+
+    assert report["passed"] is True
+    output = str(report["results"][0]["output"])
+    assert output.splitlines()[0] == expected_python
+    assert output.count("pytest ") == 2
+    environment = build_validation_environment()
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert str(Path(pytest.__file__).parent.parent.resolve()) in environment.get(
+        "PYTHONPATH", ""
+    ).split(os.pathsep)
+
+
+def test_validation_runtime_canonicalizes_replaceable_python_launcher(
+    tmp_path: Path,
+) -> None:
+    interpreter = tmp_path / "replaceable-python"
+    interpreter.symlink_to(Path(sys.executable).resolve())
+    environment = {
+        VALIDATION_PATH_ENV: os.pathsep.join(("/usr/bin", "/bin")),
+        VALIDATION_PYTHON_ENV: str(interpreter),
+    }
+
+    report = ValidationScheduler().run(
+        ["python -c 'import sys; print(sys.executable)'"],
+        workspace_path=tmp_path,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+        environment=environment,
+    )
+
+    assert report["passed"] is True
+    assert str(report["results"][0]["output"]).strip() == str(
+        Path(sys.executable).resolve()
+    )
+    child_environment = build_validation_environment(environment)
+    assert child_environment[
+        "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
+    ] == str(Path(sys.executable).resolve())
+    assert "PYTHONPATH" not in child_environment
+    assert child_environment["PYTHONNOUSERSITE"] == "1"
+    assert validation_python_executable(environment) != str(interpreter)
+
+
+def test_validation_runtime_does_not_reinject_inherited_pythonpath(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hostile = tmp_path / "hostile" / "site-packages"
+    hostile.mkdir(parents=True)
+    monkeypatch.setattr(sys, "path", [str(hostile), *sys.path])
+
+    environment = build_validation_environment()
+
+    assert str(hostile.resolve()) not in environment.get("PYTHONPATH", "").split(
+        os.pathsep
+    )
+    with pytest.raises(ValidationRuntimeError, match="must not be writable"):
+        build_validation_environment(
+            {VALIDATION_PYTHONPATH_ENV: str(hostile)}
+        )
+
+
+def test_legacy_argv_validation_normalizes_login_shell_and_scrubs_bash_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "bash-env-ran"
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(marker))}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BASH_ENV", str(bash_env))
+
+    results = run_validation_commands(
+        repo_root=tmp_path,
+        commands=(
+            (
+                "/bin/bash",
+                "-lc",
+                "python -c 'import sys; print(sys.executable)'",
+            ),
+        ),
+        timeout_seconds=10,
+    )
+
+    assert results[0].ok
+    assert results[0].command[:4] == (
+        "/bin/bash",
+        "--noprofile",
+        "--norc",
+        "-c",
+    )
+    assert results[0].stdout.strip() == str(Path(sys.executable).resolve())
+    assert not marker.exists()
+
+
+def test_legacy_adapter_forwards_sanitized_validation_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "bash-env-ran"
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(marker))}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BASH_ENV", str(bash_env))
+    monkeypatch.setenv("VALIDATION_SECRET", "must-not-leak")
+    captured_environment: dict[str, str] = {}
+
+    def legacy_runner(
+        command,
+        *,
+        cwd,
+        timeout,
+        input_text=None,
+        environment=None,
+    ):
+        assert environment is not None
+        captured_environment.update(
+            {str(key): str(value) for key, value in environment.items()}
+        )
+        completed = subprocess.run(
+            list(command),
+            cwd=cwd,
+            env=captured_environment,
+            input=input_text,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        return {
+            "command": list(command),
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+        }
+
+    results = run_validation_commands(
+        repo_root=tmp_path,
+        commands=(("/bin/bash", "-lc", "python -c 'print(\"safe\")'"),),
+        timeout_seconds=10,
+        run_command_fn=command_runner_from_legacy_function(legacy_runner),
+    )
+
+    assert results[0].ok
+    assert results[0].stdout.strip() == "safe"
+    assert not marker.exists()
+    assert "BASH_ENV" not in captured_environment
+    assert "VALIDATION_SECRET" not in captured_environment
+
+
+def test_legacy_adapter_rejects_runner_without_environment_contract() -> None:
+    def unsafe_legacy_runner(command, *, cwd, timeout, input_text=None):
+        return {
+            "command": command,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="must accept an environment keyword",
+    ):
+        command_runner_from_legacy_function(unsafe_legacy_runner)
 
 
 def test_cheap_checks_run_before_expensive_tests_and_fail_fast(tmp_path: Path) -> None:
@@ -357,3 +742,73 @@ def test_daemon_uses_full_pre_merge_scope_and_preserves_result_contract(tmp_path
     assert report["passed"] is False
     assert report["returncode"] == 6
     assert report["failed_command"] == "git diff --check"
+
+
+def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class Scheduler:
+        def run_validated(self, proposal_validation, commands, **kwargs):
+            captured["proposal_validation"] = proposal_validation
+            captured["commands"] = tuple(commands)
+            captured.update(kwargs)
+            return {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "results": [],
+            }
+
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        validation_scheduler=Scheduler(),  # type: ignore[arg-type]
+    )
+    task = PortalTask(
+        task_id="IRF-010",
+        title="proposal-local validation",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="platform",
+        validation=["python -m pytest tests/unit/test_identity.py -q"],
+    )
+    proposal_validation = SimpleNamespace(
+        accepted=True,
+        findings=(),
+        proposal=SimpleNamespace(
+            proposal_id="proposal:fixture",
+            repository_tree_id="tree:fixture",
+            changed_paths=("src/identity.py", "tests/unit/test_identity.py"),
+        ),
+        policy=SimpleNamespace(policy_id="policy:fixture"),
+        receipt=SimpleNamespace(receipt_id="receipt:fixture"),
+    )
+
+    report = daemon._run_validation_commands(
+        tmp_path,
+        task,
+        tmp_path / "validation.log",
+        proposal_validation=proposal_validation,
+    )
+
+    commands = captured["commands"]
+    graph = captured["impact_graph"]
+    assert captured["require_impact_graph"] is True
+    assert captured["require_full_validation"] is True
+    assert captured["scope"] == "pre_merge"
+    assert len(commands) == 1
+    assert commands[0].validation_id.startswith("declared:")
+    assert graph.graph_version == "declared-validation-plan-v1"
+    assert graph.required_validations(
+        graph.affected_paths(
+            ("src/identity.py", "tests/unit/test_identity.py")
+        )
+    )
+    assert report["passed"] is True
+    assert report["validation_plan_binding"]["graph_id"] == graph.graph_id

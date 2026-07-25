@@ -721,6 +721,10 @@ def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyP
     index.write_text(json.dumps({"bundles": {"objective/test": {
         "shard_path": "test.todo.md", "parallel_lane": "test", "tasks": [{"task_id": "T-1"}]
     }}}), encoding="utf-8")
+    (repo / "test.todo.md").write_text(
+        "## T-1 Planned task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
     lanes = plan_bundle_lanes(
         bundle_index_path=index, repo_root=repo, state_root=repo / "state",
         worktree_root=repo / "worktrees", log_dir=repo / "logs",
@@ -754,12 +758,25 @@ def test_bundle_launcher_propagates_only_the_leased_execution_slice(
     repo.mkdir()
     index = repo / "index.json"
     index.write_text("{}", encoding="utf-8")
+    (repo / "protocol.todo.md").write_text(
+        """## HSSL-BENCH-001 Prerequisite
+
+- Status: todo
+
+## HSSL-BENCH-011 Leased slice
+
+- Status: todo
+""",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: [
             {
                 "bundle_key": "objective/hssl/protocol",
                 "todo_path": "protocol.todo.md",
+                "is_schedulable": True,
+                "review_only": False,
                 "tasks": [
                     {"task_id": "HSSL-BENCH-001"},
                     {"task_id": "HSSL-BENCH-011"},

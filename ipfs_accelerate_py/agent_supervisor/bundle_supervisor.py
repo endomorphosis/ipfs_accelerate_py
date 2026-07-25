@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import logging
 import os
@@ -13,8 +14,9 @@ import sys
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable
 
 from .artifact_store import (
     BUNDLE_INDEX_KIND,
@@ -22,6 +24,7 @@ from .artifact_store import (
     write_scheduler_manifest_artifact,
 )
 from .conflict_graph import materialize_task_conflict_graph
+from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
 from .lease_coordination import LeaseCoordinator, LeaseError
 from .objective_graph import (
     DEFAULT_TASK_PREFIX,
@@ -38,12 +41,15 @@ from .scheduler_metrics import (
     write_scheduler_snapshot,
 )
 from .resource_scheduler import (
+    ADAPTIVE_STAGES,
     AdmissionDecision,
     HostResourceSnapshot,
     LaneResourceRequirements,
+    ResourceAdmissionLease,
     ResourcePolicy,
     ResourceScheduleSnapshot,
     ResourceScheduler,
+    normalize_adaptive_stage,
     sample_host_resources,
 )
 from .todo_daemon.supervisor import active_codex_exec_workers
@@ -53,6 +59,10 @@ logger = logging.getLogger(__name__)
 COORDINATION_COMPACTION_INTERVAL_CYCLES = 10
 COORDINATION_COMPACTION_MIN_BYTES = 64 * 1024 * 1024
 SCHEDULER_GC_INTERVAL_CYCLES = 10
+BUNDLE_TASKBOARD_INPUT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1"
+)
+INTERNAL_EXECUTION_AUTHORITY = "agent-supervisor/v1"
 
 _MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
     {
@@ -188,10 +198,12 @@ def _legacy_completed_member_identities(
 def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, Any]]:
     """Return successful member-task receipts keyed by canonical task identity.
 
-    Bundle boards are mutable projections, so their current status is not a
-    durable completion authority.  The implementation daemon emits terminal
-    events after a successful merge; retain those receipts so a source board
-    can promote the matching canonical task even after a shard is regenerated.
+    Reviewed bundle shards are immutable inputs and bundle boards are mutable
+    operational projections, so their current status is not a durable
+    completion authority.  The implementation daemon writes operational copies
+    and emits terminal events after a successful merge; retain those receipts
+    so a source board can promote the matching canonical task even after a
+    shard is regenerated without rewriting the reviewed shard.
 
     New events carry one canonical ``completion_receipts`` entry per member.
     Legacy packet-aggregate events only carried the primary canonical CID plus
@@ -322,6 +334,8 @@ class BundleLaneSpec:
     conflict_policy: str
     command: list[str]
     log_path: Path
+    runtime_todo_path: Path | None = None
+    source_todo_sha256: str = ""
     source_todo: str = ""
     task_cid: str = ""
     goal_cid: str = ""
@@ -343,11 +357,22 @@ class BundleLaneSpec:
     conflict_decisions: list[dict[str, Any]] = field(default_factory=list)
     conflict_surface: dict[str, Any] = field(default_factory=dict)
     resource_class: str = "cpu-small"
+    resource_stage: str = "analysis"
     required_capabilities: list[str] = field(default_factory=list)
     llm_provider: str = ""
     required_context_tokens: int = 0
     token_budget: int = 0
     max_provider_latency_ms: int = 0
+    memory_bytes: int = 0
+    gpu_memory_bytes: int = 0
+    disk_bytes: int = 0
+    process_slots: int = 1
+    optimizer_bundle_cid: str = ""
+    optimizer_policy_id: str = ""
+    optimizer_execution_wave: int = 0
+    optimization_metrics: dict[str, int] = field(default_factory=dict)
+    planner_comparison: dict[str, Any] = field(default_factory=dict)
+    packet_aggregates: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -358,10 +383,168 @@ class BundleLaneSpec:
             elif isinstance(value, list):
                 value = list(value)
             payload[definition.name] = value
-        for key in ("todo_path", "state_dir", "worktree_root", "log_path"):
+        for key in (
+            "todo_path",
+            "runtime_todo_path",
+            "state_dir",
+            "worktree_root",
+            "log_path",
+        ):
+            if payload[key] is None:
+                continue
             path = Path(payload[key])
-            payload[key] = repo_relative_path(repo_root, path) if repo_root is not None else str(path)
+            payload[key] = (
+                repo_relative_path(repo_root, path)
+                if repo_root is not None
+                else str(path)
+            )
         return payload
+
+
+def _taskboard_sha256(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def bundle_taskboard_input_binding_path(lane: BundleLaneSpec) -> Path:
+    """Return the durable source-to-runtime taskboard binding for one lane."""
+
+    return lane.state_dir / f"{lane.state_prefix}_taskboard_input.json"
+
+
+def _write_bytes_atomically(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_bytes(content)
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def materialize_bundle_lane_taskboard(
+    lane: BundleLaneSpec,
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Copy one digest-bound source shard into lane-owned operational state."""
+
+    runtime_path = lane.runtime_todo_path
+    expected_digest = str(lane.source_todo_sha256 or "").strip().lower()
+    if runtime_path is None:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} has no operational taskboard path"
+        )
+    if len(expected_digest) != 64:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} has no valid source taskboard digest"
+        )
+    source_path = lane.todo_path.resolve()
+    runtime_path = runtime_path.resolve()
+    state_dir = lane.state_dir.resolve()
+    try:
+        runtime_path.relative_to(state_dir)
+    except ValueError as exc:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} runtime taskboard must be inside its state directory"
+        ) from exc
+    if runtime_path == source_path:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} runtime taskboard must not replace its source"
+        )
+    try:
+        content = source_path.read_bytes()
+    except OSError as exc:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} source taskboard is unavailable: {source_path}"
+        ) from exc
+    observed_digest = hashlib.sha256(content).hexdigest()
+    if observed_digest != expected_digest:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} source taskboard digest changed "
+            f"after planning: expected {expected_digest}, observed {observed_digest}"
+        )
+
+    binding_path = bundle_taskboard_input_binding_path(lane)
+    binding_source_path = repo_relative_path(repo_root, source_path)
+    binding_runtime_path = repo_relative_path(repo_root, runtime_path)
+    try:
+        existing_binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        existing_binding = None
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} taskboard input binding is invalid"
+        ) from exc
+    if existing_binding is not None and not isinstance(existing_binding, dict):
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} taskboard input binding is invalid"
+        )
+    if runtime_path.exists() and isinstance(existing_binding, dict):
+        expected_binding = {
+            "schema": BUNDLE_TASKBOARD_INPUT_SCHEMA,
+            "bundle_key": lane.bundle_key,
+            "source_todo_path": binding_source_path,
+            "source_todo_sha256": expected_digest,
+            "runtime_todo_path": binding_runtime_path,
+            "runtime_initial_sha256": expected_digest,
+        }
+        mismatched = [
+            key
+            for key, value in expected_binding.items()
+            if existing_binding.get(key) != value
+        ]
+        if mismatched:
+            raise ValueError(
+                f"bundle lane {lane.bundle_key!r} runtime taskboard is bound "
+                f"to different input fields: {', '.join(mismatched)}"
+            )
+        return {
+            **existing_binding,
+            "materialized": False,
+            "reused": True,
+            "runtime_current_sha256": _taskboard_sha256(runtime_path),
+        }
+    if existing_binding is not None and not runtime_path.exists():
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} runtime taskboard is missing "
+            "for its existing input binding"
+        )
+    if runtime_path.exists() and _taskboard_sha256(runtime_path) != expected_digest:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} has an unbound modified runtime taskboard"
+        )
+
+    _write_bytes_atomically(runtime_path, content)
+    runtime_digest = _taskboard_sha256(runtime_path)
+    if runtime_digest != expected_digest:
+        raise OSError(
+            f"bundle lane {lane.bundle_key!r} runtime taskboard copy failed digest verification"
+        )
+    if _taskboard_sha256(source_path) != expected_digest:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} source taskboard changed during materialization"
+        )
+    binding = {
+        "schema": BUNDLE_TASKBOARD_INPUT_SCHEMA,
+        "bundle_key": lane.bundle_key,
+        "source_todo_path": binding_source_path,
+        "source_todo_sha256": expected_digest,
+        "runtime_todo_path": binding_runtime_path,
+        "runtime_initial_sha256": runtime_digest,
+        "materialized_at": utc_now(),
+        "materialized": True,
+    }
+    _write_bytes_atomically(
+        binding_path,
+        (json.dumps(binding, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
+    return binding
 
 
 def _compact_bundle_manifest_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -440,6 +623,12 @@ class RunningBundleLane:
     grant: Any
     handle: Any
     started_at: str
+    resource_lease: ResourceAdmissionLease | None = None
+    resource_stage_started_at: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.resource_stage_started_at:
+            self.resource_stage_started_at = self.started_at
 
     @property
     def pid(self) -> int | None:
@@ -453,7 +642,21 @@ class RunningBundleLane:
                 "state": "running",
                 "pid": self.pid,
                 "started_at": self.started_at,
+                "resource_stage_started_at": self.resource_stage_started_at,
                 "lease": self.grant.to_dict(),
+                "resource_lease": (
+                    {
+                        "lease_id": self.resource_lease.lease_id,
+                        "lane_id": self.resource_lease.lane_id,
+                        "stage": self.resource_lease.requirement.stage,
+                        "resource_class": self.resource_lease.resource_class,
+                        "resource_pool": self.resource_lease.resource_pool,
+                        "provider_id": self.resource_lease.provider_id,
+                        "acquired_at_ms": self.resource_lease.acquired_at_ms,
+                    }
+                    if self.resource_lease is not None
+                    else None
+                ),
             }
         )
         return payload
@@ -465,7 +668,13 @@ class RunningBundleLane:
                 "state": "running",
                 "pid": self.pid,
                 "started_at": self.started_at,
+                "resource_stage_started_at": self.resource_stage_started_at,
                 "lease": self.grant.to_dict(),
+                "resource_lease": (
+                    self.resource_lease.to_dict()
+                    if self.resource_lease is not None
+                    else None
+                ),
             }
         )
         return payload
@@ -585,6 +794,16 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
         return max(values, default=0)
 
     return {
+        "resource_stage": str(
+            _first_nonempty(
+                sources,
+                "resource_stage",
+                "supervisor_stage",
+                "stage",
+                "active_phase",
+            )
+            or "analysis"
+        ),
         "resource_class": str(
             _first_nonempty(sources, "resource_class", "worker_resource_class") or "cpu-small"
         ),
@@ -616,6 +835,26 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
             "max_provider_latency_ms",
             "max_latency_ms",
             "latency_budget_ms",
+        ),
+        "memory_bytes": maximum(
+            "memory_bytes",
+            "required_memory_bytes",
+            "estimated_memory_bytes",
+        ),
+        "gpu_memory_bytes": maximum(
+            "gpu_memory_bytes",
+            "required_gpu_memory_bytes",
+            "vram_bytes",
+            "required_vram_bytes",
+        ),
+        "disk_bytes": maximum(
+            "disk_bytes",
+            "required_disk_bytes",
+            "estimated_disk_bytes",
+        ),
+        "process_slots": max(
+            1,
+            maximum("process_slots", "required_process_slots", "worker_slots"),
         ),
     }
 
@@ -1073,10 +1312,11 @@ def implementation_supervisor_command(
     watchdog_startup_grace_seconds: float | None,
     max_restarts: int,
     implementation_timeout: float,
+    max_task_attempts: int = 0,
     implementation_command: str = "",
+    merge_target_branch: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
-    merge_target_branch: str = "",
     merge_reconciliation_max_merges: int | None = None,
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str = "",
@@ -1112,16 +1352,20 @@ def implementation_supervisor_command(
         str(check_interval),
         "--max-restarts",
         str(max_restarts),
+        "--max-task-attempts",
+        str(max(0, int(max_task_attempts))),
         "--implementation-timeout",
         str(implementation_timeout),
         "--log-level",
         log_level,
-        # Bundle boards are projections of the canonical taskboard. Keep lane
-        # workers execution-only so they cannot create shard-local task IDs or
-        # mistake valid cross-bundle dependencies for missing prerequisites.
+        # Bundle workers receive a digest-bound operational copy. Keep them
+        # execution-only so refill/repair code cannot revise reviewed inputs
+        # or create shard-local task IDs.
         "--no-retry-budget-guardrail",
         "--no-dependency-guardrail",
         "--no-reconciliation-guardrail",
+        "--no-objective-task-janitor",
+        "--no-objective-goal-migration",
     ]
     if watchdog_startup_grace_seconds is not None:
         command.extend(
@@ -1136,16 +1380,14 @@ def implementation_supervisor_command(
     command.append("--implement" if implement else "--no-implement")
     if implementation_command:
         command.extend(["--implementation-command", implementation_command])
+    if merge_target_branch:
+        command.extend(["--merge-target-branch", merge_target_branch])
     if llm_merge_resolver_command:
         command.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
     if llm_merge_resolver_timeout_seconds is not None:
         command.extend(["--llm-merge-resolver-timeout-seconds", str(llm_merge_resolver_timeout_seconds)])
-    if merge_target_branch:
-        command.extend(["--merge-target-branch", merge_target_branch])
     if merge_reconciliation_max_merges is not None:
         command.extend(["--merge-reconciliation-max-merges", str(merge_reconciliation_max_merges)])
-    if generated_dirty_repair_enabled:
-        command.append("--auto-commit-generated-dirty")
     if generated_dirty_repair_commit_subject:
         command.extend(["--generated-dirty-commit-subject", generated_dirty_repair_commit_subject])
     if not generated_dirty_repair_include_submodule_gitlinks:
@@ -1168,6 +1410,200 @@ def implementation_supervisor_command(
     return command
 
 
+def optimize_bundle_payloads(
+    payloads: Sequence[dict[str, Any]],
+    *,
+    policy: BundleOptimizationPolicy | None = None,
+) -> list[dict[str, Any]]:
+    """Split current-planner payloads into optimized canonical execution units.
+
+    The current planner remains the baseline and source of authority metadata.
+    Optimization only runs when every live member has the canonical identity
+    produced by task admission; legacy or partially migrated payloads pass
+    through unchanged.  Full member rows remain attached for completion and
+    dependency reasoning, while execution-slice fields identify the exact work
+    assigned to each optimized lane.
+    """
+
+    selected_policy = policy or BundleOptimizationPolicy()
+    optimized_payloads: list[dict[str, Any]] = []
+    for original in payloads:
+        payload = dict(original)
+        tasks = _mapping_list(payload.get("tasks"))
+        live_tasks = [
+            task
+            for task in tasks
+            if str(task.get("status") or "").strip().casefold()
+            not in _TERMINAL_CONFLICT_TASK_STATUSES
+        ]
+        if not live_tasks:
+            optimized_payloads.append(payload)
+            continue
+        if any(
+            not str(
+                task.get("canonical_task_cid") or task.get("task_cid") or ""
+            ).strip()
+            or not str(task.get("canonical_task_key") or "").strip()
+            for task in live_tasks
+        ):
+            payload["bundle_optimization"] = {
+                "applied": False,
+                "reason": "canonical_task_identity_required",
+            }
+            optimized_payloads.append(payload)
+            continue
+
+        normalized: list[dict[str, Any]] = []
+        for task in live_tasks:
+            member = dict(task)
+            for key in (
+                "goal_id",
+                "merge_family",
+                "merge_fate",
+                "resource_class",
+                "provider_batch_key",
+                "provider_id",
+                "provider_route",
+                "model_id",
+                "provider_operation",
+                "provider_context_limit",
+                "provider_policy_digest",
+                "provider_generation_digest",
+                "estimated_context_tokens",
+                "context_paths",
+                "validation_commands",
+            ):
+                if member.get(key) in (None, "", [], {}):
+                    fallback = payload.get(key)
+                    if fallback not in (None, "", [], {}):
+                        member[key] = fallback
+            if not member.get("validation_commands") and member.get("validation"):
+                member["validation_commands"] = member["validation"]
+            if not member.get("predicted_paths"):
+                member["predicted_paths"] = (
+                    member.get("predicted_files")
+                    or member.get("outputs")
+                    or member.get("files")
+                    or []
+                )
+            if not member.get("dependencies"):
+                member["dependencies"] = (
+                    member.get("dependency_task_cids")
+                    or member.get("depends_on")
+                    or member.get("graph_parents")
+                    or []
+                )
+            normalized.append(member)
+
+        try:
+            result = optimize_task_bundles(
+                normalized,
+                policy=selected_policy,
+                current_planner_bundles=[
+                    {
+                        "task_cids": [
+                            str(
+                                task.get("canonical_task_cid")
+                                or task.get("task_cid")
+                            )
+                            for task in live_tasks
+                        ],
+                        "execution_wave": max(
+                            _schedule_int(payload, "optimizer_execution_wave"),
+                            _schedule_int(payload, "dependency_depth"),
+                            _schedule_int(payload, "graph_depth"),
+                        ),
+                    }
+                ],
+            )
+        except (TypeError, ValueError) as exc:
+            payload["bundle_optimization"] = {
+                "applied": False,
+                "reason": "invalid_optimizer_input",
+                "error": str(exc),
+            }
+            optimized_payloads.append(payload)
+            continue
+
+        task_by_cid = {
+            str(task.get("canonical_task_cid") or task.get("task_cid")): task
+            for task in live_tasks
+        }
+        base_key = str(payload.get("bundle_key") or "objective/general")
+        result_projection = result.to_dict()
+        for bundle in result.bundles:
+            projected = dict(payload)
+            if len(result.bundles) > 1:
+                source_profile = (
+                    dict(projected.get("profile_g") or {})
+                    if isinstance(projected.get("profile_g"), Mapping)
+                    else {}
+                )
+                if source_profile:
+                    projected["source_profile_g_ref"] = {
+                        key: str(source_profile.get(key) or "")
+                        for key in (
+                            "goal_cid",
+                            "subgoal_cid",
+                            "plan_branch_cid",
+                            "selection_cid",
+                            "task_cid",
+                            "task_spec_cid",
+                        )
+                        if source_profile.get(key)
+                    }
+                # One immutable Profile-G TaskSpec cannot identify multiple
+                # execution slices.  Let the lease adapter derive a distinct
+                # content-addressed chain for each optimized slice.
+                projected.pop("profile_g", None)
+                projected["bundle_key"] = (
+                    f"{base_key}/optimized/{bundle.bundle_cid[-12:]}"
+                )
+                projected["parallel_lane"] = (
+                    f"{str(payload.get('parallel_lane') or base_key)}/"
+                    f"{bundle.bundle_cid[-12:]}"
+                )
+            ids = [
+                str(task_by_cid[cid].get("task_id") or "")
+                for cid in bundle.task_cids
+                if cid in task_by_cid
+            ]
+            projected["execution_slice_task_cids"] = list(bundle.task_cids)
+            projected["execution_slice_task_ids"] = [
+                task_id for task_id in ids if task_id
+            ]
+            projected["dependency_task_cids"] = sorted(
+                set(_string_list(payload.get("dependency_task_cids")))
+                | set(bundle.dependency_task_cids)
+            )
+            projected["optimizer_bundle_cid"] = bundle.bundle_cid
+            projected["optimizer_policy_id"] = result.policy_id
+            projected["optimizer_execution_wave"] = bundle.execution_wave
+            projected["bundle_optimization"] = {
+                "applied": True,
+                "bundle": bundle.to_dict(),
+                "metrics": dict(result.metrics),
+                "comparison": result.comparison.to_dict(),
+                "packet_aggregates": [
+                    aggregate.to_dict()
+                    for aggregate in result.packet_aggregates
+                    if aggregate.aggregate_task_cid in bundle.task_cids
+                ],
+                "result_schema": result_projection["schema"],
+            }
+            projected["critical_path_length"] = max(
+                _schedule_int(payload, "critical_path_length"),
+                int(result.metrics.get("critical_path_wave_count", 0))
+                - bundle.execution_wave,
+            )
+            projected["schedule_rank"] = (
+                bundle.execution_wave * 1_000_000
+                + _schedule_int(payload, "schedule_rank")
+            )
+            optimized_payloads.append(projected)
+    return optimized_payloads
+
+
 def plan_bundle_lanes(
     *,
     bundle_index_path: Path,
@@ -1183,10 +1619,11 @@ def plan_bundle_lanes(
     watchdog_startup_grace_seconds: float | None = None,
     max_restarts: int = 10,
     implementation_timeout: float = 1800.0,
+    max_task_attempts: int = 0,
     implementation_command: str = "",
+    merge_target_branch: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
-    merge_target_branch: str = "",
     merge_reconciliation_max_merges: int | None = None,
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str = "",
@@ -1198,6 +1635,8 @@ def plan_bundle_lanes(
     log_level: str = "INFO",
     max_lanes: int | None = None,
     completion_receipts: Mapping[str, Any] | None = None,
+    optimize_bundles: bool = True,
+    bundle_optimization_policy: BundleOptimizationPolicy | None = None,
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
@@ -1231,7 +1670,14 @@ def plan_bundle_lanes(
         payload
         for payload in bundle_payloads
         if str(payload.get("bundle_key") or "objective/general") not in excluded_bundle_keys
+        and payload.get("is_schedulable") is not False
+        and payload.get("review_only") is not True
     ]
+    if optimize_bundles:
+        bundle_payloads = optimize_bundle_payloads(
+            bundle_payloads,
+            policy=bundle_optimization_policy,
+        )
     conflict_annotations = _bundle_conflict_annotations(
         bundle_payloads,
         bundle_index_path=bundle_index_path,
@@ -1244,6 +1690,10 @@ def plan_bundle_lanes(
         safe_key = safe_bundle_key(bundle_key)
         todo_path = resolve_repo_path(repo_root, str(payload.get("todo_path") or ""))
         state_dir = state_root / safe_key / "state"
+        runtime_todo_path = (
+            state_dir / f"{lane_state_prefix(bundle_key)}_runtime.todo.md"
+        )
+        source_todo_sha256 = _taskboard_sha256(todo_path)
         lane_worktree_root = worktree_root / safe_key
         log_path = log_dir / f"{safe_key}.log"
         state_prefix = lane_state_prefix(bundle_key)
@@ -1280,7 +1730,7 @@ def plan_bundle_lanes(
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
         command = implementation_supervisor_command(
-            todo_path=todo_path,
+            todo_path=runtime_todo_path,
             state_dir=state_dir,
             worktree_root=lane_worktree_root,
             state_prefix=state_prefix,
@@ -1292,10 +1742,11 @@ def plan_bundle_lanes(
             watchdog_startup_grace_seconds=watchdog_startup_grace_seconds,
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
+            max_task_attempts=max_task_attempts,
             implementation_command=implementation_command,
+            merge_target_branch=merge_target_branch,
             llm_merge_resolver_command=llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=llm_merge_resolver_timeout_seconds,
-            merge_target_branch=merge_target_branch,
             merge_reconciliation_max_merges=merge_reconciliation_max_merges,
             generated_dirty_repair_enabled=generated_dirty_repair_enabled,
             generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
@@ -1321,6 +1772,8 @@ def plan_bundle_lanes(
                 conflict_policy=str(payload.get("conflict_policy") or ""),
                 command=command,
                 log_path=log_path,
+                runtime_todo_path=runtime_todo_path,
+                source_todo_sha256=source_todo_sha256,
                 source_todo=str(payload.get("source_todo") or ""),
                 task_cid=str(profile_g.get("task_cid") or ""),
                 goal_cid=str(profile_g.get("goal_cid") or ""),
@@ -1341,11 +1794,117 @@ def plan_bundle_lanes(
                 conflicting_task_ids=_string_list(conflict_annotation.get("conflicting_task_ids")),
                 conflict_decisions=_mapping_list(conflict_annotation.get("conflict_decisions")),
                 conflict_surface=dict(conflict_annotation.get("conflict_surface") or {}),
+                optimizer_bundle_cid=str(payload.get("optimizer_bundle_cid") or ""),
+                optimizer_policy_id=str(payload.get("optimizer_policy_id") or ""),
+                optimizer_execution_wave=_schedule_int(
+                    payload, "optimizer_execution_wave"
+                ),
+                optimization_metrics=dict(
+                    (
+                        payload.get("bundle_optimization") or {}
+                    ).get("metrics")
+                    or {}
+                )
+                if isinstance(payload.get("bundle_optimization"), Mapping)
+                else {},
+                planner_comparison=dict(
+                    (
+                        payload.get("bundle_optimization") or {}
+                    ).get("comparison")
+                    or {}
+                )
+                if isinstance(payload.get("bundle_optimization"), Mapping)
+                else {},
+                packet_aggregates=[
+                    dict(item)
+                    for item in (
+                        (
+                            payload.get("bundle_optimization") or {}
+                        ).get("packet_aggregates")
+                        or []
+                    )
+                    if isinstance(item, Mapping)
+                ]
+                if isinstance(payload.get("bundle_optimization"), Mapping)
+                else [],
                 **resource_fields,
             )
         )
     lanes.sort(key=_lane_schedule_key)
     return lanes[:max_lanes] if max_lanes is not None else lanes
+
+
+def _lane_launch_policy_error(lane: BundleLaneSpec) -> str:
+    """Return why a lane lacks a concrete, schedulable execution slice."""
+
+    payload = lane.queue_payload
+    if not isinstance(payload, dict):
+        return "missing queue payload"
+    execution_authority = str(
+        payload.get("execution_authority") or INTERNAL_EXECUTION_AUTHORITY
+    ).strip()
+    if execution_authority != INTERNAL_EXECUTION_AUTHORITY:
+        return (
+            "bundle requires external execution authority "
+            f"{execution_authority!r}"
+        )
+    if payload.get("is_schedulable") is not True:
+        return "bundle is not schedulable"
+    if payload.get("review_only") is not False:
+        return "bundle is review-only"
+    if not lane.task_ids:
+        return "lane has no execution task ids"
+
+    has_execution_slice = (
+        "execution_slice_task_cids" in payload
+        or "execution_slice_task_ids" in payload
+    )
+    execution_cids = _string_list(payload.get("execution_slice_task_cids"))
+    execution_ids = _string_list(payload.get("execution_slice_task_ids"))
+    if not has_execution_slice or not (execution_cids or execution_ids):
+        return "bundle has no authorized execution slice"
+
+    execution_tasks = _execution_slice_members(
+        payload,
+        _mapping_list(payload.get("tasks")),
+    )
+    if not execution_tasks:
+        return "authorized execution slice has no task records"
+    execution_task_ids = {
+        str(task.get("task_id") or "")
+        for task in execution_tasks
+        if str(task.get("task_id") or "")
+    }
+    if not set(lane.task_ids).issubset(execution_task_ids):
+        return "lane task ids are outside the authorized execution slice"
+    for task in execution_tasks:
+        task_execution_authority = str(
+            task.get("execution_authority") or INTERNAL_EXECUTION_AUTHORITY
+        ).strip()
+        if task_execution_authority != INTERNAL_EXECUTION_AUTHORITY:
+            return (
+                "execution slice requires external execution authority "
+                f"{task_execution_authority!r}"
+            )
+        if not _schedule_bool(task, "is_schedulable", True):
+            return "execution slice contains a non-schedulable task"
+        if _schedule_bool(task, "review_only", False):
+            return "execution slice contains a review-only task"
+        status = str(task.get("status") or "todo").strip().lower()
+        if status in {
+            "blocked",
+            "on_hold",
+            "complete",
+            "completed",
+            "done",
+            "merged",
+            "passed",
+            "success",
+            "succeeded",
+            "verified_complete",
+        }:
+            return f"execution slice contains terminal task status {status}"
+    return ""
 
 
 def launch_bundle_lanes(
@@ -1360,11 +1919,37 @@ def launch_bundle_lanes(
 ) -> list[dict[str, Any]]:
     """Claim and launch lane supervisors under accepted, fenced leases."""
 
+    policy_errors = {
+        id(lane): _lane_launch_policy_error(lane)
+        for lane in lanes
+    }
+    if lanes and all(policy_errors[id(lane)] for lane in lanes):
+        return [
+            {
+                "bundle_key": lane.bundle_key,
+                "accepted": False,
+                "error": policy_errors[id(lane)],
+                "code": "G_EXECUTION_POLICY_DENIED",
+            }
+            for lane in lanes
+        ]
+
     results: list[dict[str, Any]] = []
     active_lanes: list[BundleLaneSpec] = []
     path = coordination_path or default_state_root(repo_root) / "coordination.duckdb"
     with LeaseCoordinator(path) as coordinator:
         for lane in lanes:
+            policy_error = policy_errors[id(lane)]
+            if policy_error:
+                results.append(
+                    {
+                        "bundle_key": lane.bundle_key,
+                        "accepted": False,
+                        "error": policy_error,
+                        "code": "G_EXECUTION_POLICY_DENIED",
+                    }
+                )
+                continue
             blockers = [active.bundle_key for active in active_lanes if _lanes_conflict(lane, active)]
             if blockers:
                 results.append(
@@ -1379,9 +1964,7 @@ def launch_bundle_lanes(
                     }
                 )
                 continue
-            if not lane.queue_payload:
-                results.append({"bundle_key": lane.bundle_key, "accepted": False, "error": "missing queue payload"})
-                continue
+            assert lane.queue_payload is not None
             adapted = coordinator.register_bundle(lane.queue_payload)
             try:
                 grant = coordinator.claim(adapted["task_cid"], claimant_did, requested_lease_ms=lease_ms)
@@ -1479,6 +2062,7 @@ def _spawn_accepted_lane(
     lane.state_dir.mkdir(parents=True, exist_ok=True)
     lane.worktree_root.mkdir(parents=True, exist_ok=True)
     lane.log_path.parent.mkdir(parents=True, exist_ok=True)
+    materialize_bundle_lane_taskboard(lane, repo_root=repo_root)
     guarded_command = [
         sys.executable,
         "-m",
@@ -1692,11 +2276,15 @@ class DynamicBundleScheduler:
             policy_values = dict(resource_policy or {}) if isinstance(resource_policy, dict) else None
             if policy_values is not None:
                 policy_values["max_lanes"] = self.max_lanes
+                policy_values.setdefault("adaptive_enabled", True)
                 policy = ResourcePolicy.from_mapping(policy_values)
             elif isinstance(resource_policy, ResourcePolicy):
                 policy = replace(resource_policy, max_lanes=self.max_lanes)
             else:
-                policy = ResourcePolicy(max_lanes=self.max_lanes)
+                policy = ResourcePolicy(
+                    max_lanes=self.max_lanes,
+                    adaptive_enabled=True,
+                )
             self.resource_scheduler = ResourceScheduler(policy)
         self._host_resource_source = host_resource_source or sample_host_resources
         self._provider_capacity_source = provider_capacity_source
@@ -1785,12 +2373,101 @@ class DynamicBundleScheduler:
         payload.update(
             {
                 "lane_id": lane.task_cid or lane.bundle_key,
+                "stage": lane.resource_stage,
                 "provider_id": lane.llm_provider,
                 "context_tokens": lane.required_context_tokens,
                 "max_provider_latency_ms": lane.max_provider_latency_ms,
+                "memory_bytes": lane.memory_bytes,
+                "gpu_memory_bytes": lane.gpu_memory_bytes,
+                "disk_bytes": lane.disk_bytes,
+                "process_slots": lane.process_slots,
+                "critical_path_length": lane.critical_path_length,
+                "downstream_unlock_value": lane.downstream_unlock_value,
+                "queue_age_ms": max(0, lane.age_seconds) * 1_000,
+                "merge_age_ms": (
+                    max(0, lane.age_seconds) * 1_000
+                    if normalize_adaptive_stage(lane.resource_stage) == "merge"
+                    else 0
+                ),
+                "priority": lane.objective_priority,
             }
         )
         return LaneResourceRequirements.from_mapping(payload)
+
+    @staticmethod
+    def _resource_stage_for_phase(phase: Any) -> str:
+        """Translate durable daemon phases into adaptive resource pools.
+
+        The implementation daemon predates the resource scheduler and uses
+        operational gerunds and queue names in its heartbeat.  Keep that
+        compatibility translation at this boundary so the scheduler only
+        receives canonical pool identities.  Empty, idle, and unknown phases
+        intentionally return an empty string: they must not silently move a
+        live lease out of its last observed working stage.
+        """
+
+        raw = str(phase or "").strip().lower()
+        raw = raw.replace(" ", "_").replace("-", "_")
+        aliases = {
+            "implementing": "inference",
+            "implementation": "inference",
+            "validating": "validation",
+            "merge_queue": "merge",
+            "merge_reconciliation": "merge",
+            "reconciliation": "merge",
+            "merge_resolver": "inference",
+            "resolving": "inference",
+            "cleanup": "persistence",
+            "objective_refill": "analysis",
+            "codebase_refill": "analysis",
+        }
+        normalized = normalize_adaptive_stage(aliases.get(raw, raw))
+        return normalized if normalized in set(ADAPTIVE_STAGES) - {"execution"} else ""
+
+    def _transition_running_resource_stages(
+        self,
+        *,
+        host: HostResourceSnapshot | Mapping[str, Any],
+        providers: Any,
+    ) -> None:
+        """Atomically follow durable child-stage heartbeat transitions.
+
+        A running bundle owns one process slot throughout its lifetime, but
+        provider/GPU/disk and per-stage capacity must follow the work it is
+        actually performing. Failed transitions retain the prior reservation
+        and are retried on the next reconciliation cycle.
+        """
+
+        canonical_stages = set(ADAPTIVE_STAGES)
+        for task_cid, running in list(self._running.items()):
+            lease = running.resource_lease
+            if lease is None:
+                continue
+            event = self._lane_phase_event(running.spec)
+            observed = self._resource_stage_for_phase(event.get("phase"))
+            if observed not in canonical_stages:
+                continue
+            if observed == lease.requirement.stage:
+                continue
+            next_spec = replace(running.spec, resource_stage=observed)
+            next_requirement = self._lane_resource_requirement(next_spec)
+            decision, next_lease = self.resource_scheduler.transition(
+                lease,
+                next_requirement,
+                host=host,
+                providers=providers,
+                path=self.state_root,
+            )
+            if not decision.admitted or next_lease is None:
+                continue
+            self.resource_scheduler.record_stage_completion(
+                lease.requirement.stage,
+                duration_ms=self._running_stage_duration_ms(running),
+                accepted=False,
+            )
+            running.spec = next_spec
+            running.resource_lease = next_lease
+            running.resource_stage_started_at = utc_now()
 
     def _plan_source_revision(self, paths: Sequence[Path]) -> tuple[tuple[str, int, int], ...]:
         """Return the cheap source revision that makes a lane plan reusable."""
@@ -1894,7 +2571,8 @@ class DynamicBundleScheduler:
         if self._plan_cache is None:
             allowed = {
                 "task_prefix", "implement", "daemon_interval", "stale_seconds",
-                "check_interval", "max_restarts", "implementation_timeout",
+                "check_interval", "max_restarts", "max_task_attempts",
+                "implementation_timeout",
                 "implementation_command", "llm_merge_resolver_command",
                 "llm_merge_resolver_timeout_seconds", "merge_target_branch",
                 "merge_reconciliation_max_merges",
@@ -1903,6 +2581,7 @@ class DynamicBundleScheduler:
                 "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
                 "generated_dirty_repair_paths",
                 "worktree_submodule_paths", "log_level",
+                "optimize_bundles", "bundle_optimization_policy",
             }
             options = {key: value for key, value in self.lane_options.items() if key in allowed}
             # Bind the planned slice and its receipt evidence to the same
@@ -1971,14 +2650,21 @@ class DynamicBundleScheduler:
     def _default_lane_disposition(self, lane: BundleLaneSpec) -> str:
         """Project a settled execution slice or shard board to a disposition."""
 
+        operational_todo_path = (
+            lane.runtime_todo_path
+            if lane.runtime_todo_path is not None and lane.runtime_todo_path.exists()
+            else lane.todo_path
+        )
         try:
-            markdown = lane.todo_path.read_text(encoding="utf-8")
+            markdown = operational_todo_path.read_text(encoding="utf-8")
         except OSError:
             markdown = ""
         from .todo_daemon.implementation_daemon import parse_task_file
 
         task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
-        portal_tasks = parse_task_file(lane.todo_path, task_prefix) if markdown else []
+        portal_tasks = (
+            parse_task_file(operational_todo_path, task_prefix) if markdown else []
+        )
         portal_task_ids = {str(task.task_id) for task in portal_tasks}
 
         state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
@@ -1999,7 +2685,7 @@ class DynamicBundleScheduler:
             }
             try:
                 state_mtime_ns = state_path.stat().st_mtime_ns
-                board_mtime_ns = lane.todo_path.stat().st_mtime_ns
+                board_mtime_ns = operational_todo_path.stat().st_mtime_ns
             except OSError:
                 state_covers_current_board = True
             else:
@@ -2201,6 +2887,26 @@ class DynamicBundleScheduler:
                 failure_class="blocked",
             )
 
+    @staticmethod
+    def _running_stage_duration_ms(running: RunningBundleLane) -> int:
+        """Return a non-negative duration for the lane's current resource stage."""
+
+        try:
+            started = datetime.fromisoformat(
+                (
+                    running.resource_stage_started_at
+                    or running.started_at
+                ).strip().replace("Z", "+00:00")
+            )
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+        except (AttributeError, TypeError, ValueError):
+            return 0
+        return max(
+            0,
+            int((datetime.now(timezone.utc) - started.astimezone(timezone.utc)).total_seconds() * 1_000),
+        )
+
     def _reconcile_untracked_terminal_leases(
         self,
         coordinator: LeaseCoordinator,
@@ -2378,6 +3084,14 @@ class DynamicBundleScheduler:
                     coordinator.release(running.grant, reason="worker drained or exited")
             except LeaseError:
                 pass
+            if running.resource_lease is not None:
+                self.resource_scheduler.release(running.resource_lease)
+                self.resource_scheduler.record_stage_completion(
+                    running.resource_lease.requirement.stage,
+                    duration_ms=self._running_stage_duration_ms(running),
+                    accepted=disposition == "completed",
+                    cancelled=not bool(disposition),
+                )
             del self._running[task_cid]
             reaped.append(task_cid)
         return reaped
@@ -2519,6 +3233,14 @@ class DynamicBundleScheduler:
                 }
             )
             events.append(lane_event)
+        if self._last_resource_snapshot is not None:
+            events.append(
+                {
+                    "type": "resource_schedule_observed",
+                    "timestamp": projection_timestamp,
+                    "resource_schedule": self._last_resource_snapshot.to_dict(),
+                }
+            )
         return scheduler_snapshot(events, now=projection_timestamp)
 
     def _write_live_manifest(
@@ -2829,13 +3551,48 @@ class DynamicBundleScheduler:
                 except Exception:
                     logger.exception("Provider capacity sampling failed")
                     provider_capacities = ()
+                self._transition_running_resource_stages(
+                    host=host_resources,
+                    providers=provider_capacities,
+                )
                 resource_requirements = {
                     lane.task_cid: self._lane_resource_requirement(lane)
                     for lane in resource_candidates
                 }
+                # Evaluate the complete ready set once. Adaptive fairness may
+                # reorder decisions, so all consumers address decisions by
+                # canonical lane identity rather than positional coincidence.
+                candidate_schedule = self.resource_scheduler.schedule(
+                    resource_requirements.values(),
+                    host=host_resources,
+                    providers=provider_capacities,
+                    path=self.state_root,
+                    active_workers=len(self._running),
+                )
                 confirmed_requirements: list[LaneResourceRequirements] = []
                 resource_cycle_decisions: list[AdmissionDecision] = []
-                for lane in registered:
+                admission_slot_reopened = False
+                candidate_rank = {
+                    decision.lane_id: index
+                    for index, decision in enumerate(candidate_schedule.decisions)
+                }
+                ordered_registered = [
+                    lane
+                    for _index, lane in sorted(
+                        enumerate(registered),
+                        key=lambda item: (
+                            (
+                                0,
+                                candidate_rank[
+                                    resource_requirements[item[1].task_cid].lane_id
+                                ],
+                            )
+                            if item[1].task_cid in resource_requirements
+                            else (1, item[0])
+                        ),
+                    )
+                ]
+                for lane in ordered_registered:
                     if lane.task_cid in self._running:
                         decisions.append({
                             "task_cid": lane.task_cid,
@@ -2900,18 +3657,34 @@ class DynamicBundleScheduler:
                         })
                         continue
                     requirement = resource_requirements.get(lane.task_cid)
-                    if requirement is None:
-                        admission = None
-                    else:
-                        candidate_schedule = self.resource_scheduler.schedule(
-                            [*confirmed_requirements, requirement],
+                    admission = (
+                        candidate_schedule.decision_for(requirement.lane_id)
+                        if requirement is not None
+                        else None
+                    )
+                    resource_decision_index = len(resource_cycle_decisions)
+                    if admission is not None:
+                        resource_cycle_decisions.append(admission)
+                    resource_lease: ResourceAdmissionLease | None = None
+                    if (
+                        requirement is not None
+                        and admission_slot_reopened
+                        and (admission is None or not admission.admitted)
+                    ):
+                        # A coordination lease race after the batch preview
+                        # returns its resource slot immediately. Recheck later
+                        # candidates so a single lost claim cannot leave the
+                        # pool idle until the next polling cycle.
+                        admission, resource_lease = self.resource_scheduler.acquire(
+                            requirement,
                             host=host_resources,
                             providers=provider_capacities,
                             path=self.state_root,
-                            active_workers=len(self._running),
                         )
-                        admission = candidate_schedule.decisions[-1]
-                        resource_cycle_decisions.append(admission)
+                        if resource_decision_index == len(resource_cycle_decisions):
+                            resource_cycle_decisions.append(admission)
+                        else:
+                            resource_cycle_decisions[resource_decision_index] = admission
                     if admission is None or not admission.admitted:
                         evidence = admission.to_dict() if admission is not None else {}
                         reasons = list(admission.reasons) if admission is not None else ["resource_capacity"]
@@ -2925,12 +3698,39 @@ class DynamicBundleScheduler:
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
                         continue
+                    # A schedule is an explainable preview; acquire is the
+                    # atomic reservation boundary. It rechecks live active
+                    # leases so concurrent supervisor stages cannot over-admit.
+                    if resource_lease is None:
+                        live_admission, resource_lease = self.resource_scheduler.acquire(
+                            requirement,
+                            host=host_resources,
+                            providers=provider_capacities,
+                            path=self.state_root,
+                        )
+                        if resource_lease is None:
+                            admission_slot_reopened = True
+                            resource_cycle_decisions[-1] = live_admission
+                            decisions.append({
+                                "task_cid": lane.task_cid,
+                                "bundle_key": lane.bundle_key,
+                                "decision": "deferred",
+                                "reason": live_admission.reason or "resource_capacity",
+                                "backpressure_reasons": list(live_admission.reasons),
+                                "resource_admission": live_admission.to_dict(),
+                                "snapshot_id": decision_snapshot.snapshot_id,
+                            })
+                            continue
+                        admission = live_admission
+                        resource_cycle_decisions[-1] = admission
                     grant = coordinator.claim_ready(
                         self.claimant_did,
                         requested_lease_ms=self.lease_ms,
                         eligible_task_cids=(lane.task_cid,),
                     )
                     if grant is None:
+                        self.resource_scheduler.release(resource_lease)
+                        admission_slot_reopened = True
                         resource_cycle_decisions[-1] = replace(
                             admission,
                             admitted=False,
@@ -2952,6 +3752,8 @@ class DynamicBundleScheduler:
                     try:
                         handle = self._launcher(lane, grant)
                     except Exception:
+                        self.resource_scheduler.release(resource_lease)
+                        admission_slot_reopened = True
                         try:
                             coordinator.release(grant, reason="launch failed")
                         except LeaseError:
@@ -2978,6 +3780,7 @@ class DynamicBundleScheduler:
                         grant=grant,
                         handle=handle,
                         started_at=utc_now(),
+                        resource_lease=resource_lease,
                     )
                     confirmed_requirements.append(requirement)
                     launched.append(lane.task_cid)
@@ -2990,13 +3793,6 @@ class DynamicBundleScheduler:
                         "snapshot_id": decision_snapshot.snapshot_id,
                     })
 
-                resource_snapshot = self.resource_scheduler.schedule(
-                    confirmed_requirements,
-                    host=host_resources,
-                    providers=provider_capacities,
-                    path=self.state_root,
-                    active_workers=len(self._running) - len(confirmed_requirements),
-                )
                 resource_backpressure = tuple(
                     dict.fromkeys(
                         reason
@@ -3005,11 +3801,24 @@ class DynamicBundleScheduler:
                         for reason in decision.reasons
                     )
                 )
+                resource_backpressure_counts = {
+                    reason: sum(
+                        1
+                        for decision in resource_cycle_decisions
+                        if not decision.admitted and reason in decision.reasons
+                    )
+                    for reason in resource_backpressure
+                }
                 self._last_resource_snapshot = replace(
-                    resource_snapshot,
+                    candidate_schedule,
                     decisions=tuple(resource_cycle_decisions),
                     admitted_count=len(confirmed_requirements),
                     backpressure_reasons=resource_backpressure,
+                    adaptive_metrics=self.resource_scheduler.metrics_snapshot(
+                        observed_at_ms=candidate_schedule.observed_at_ms,
+                    ),
+                    active_lease_count=len(self.resource_scheduler.active_leases),
+                    backpressure_counts=resource_backpressure_counts,
                 )
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
@@ -3102,6 +3911,11 @@ class DynamicBundleScheduler:
                         coordinator.release(running.grant, reason="scheduler stopped")
                 except LeaseError:
                     pass
+                if running.resource_lease is not None:
+                    self.resource_scheduler.cancel(
+                        running.resource_lease,
+                        reason="scheduler_stopped",
+                    )
             self._running.clear()
             projection = coordinator.list_tasks()
         try:
@@ -3139,18 +3953,27 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-interval", type=float, default=60.0)
     parser.add_argument("--watchdog-startup-grace-seconds", type=float, default=None)
     parser.add_argument("--max-restarts", type=int, default=0)
+    parser.add_argument(
+        "--max-task-attempts",
+        type=int,
+        default=0,
+        help=(
+            "Maximum implementation attempts per canonical task identity in each lane. "
+            "Zero disables the limit."
+        ),
+    )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
-    parser.add_argument("--llm-merge-resolver-command", default="")
-    parser.add_argument("--llm-merge-resolver-timeout-seconds", type=float, default=None)
     parser.add_argument(
         "--merge-target-branch",
         default="",
         help=(
-            "Branch that receives isolated implementation merges. The branch "
-            "is forwarded to every bundle lane."
+            "Existing branch that receives each isolated lane merge. When omitted, "
+            "the child supervisor retains its main/master/current-branch fallback."
         ),
     )
+    parser.add_argument("--llm-merge-resolver-command", default="")
+    parser.add_argument("--llm-merge-resolver-timeout-seconds", type=float, default=None)
     parser.add_argument("--merge-reconciliation-max-merges", type=int, default=None)
     parser.add_argument("--auto-commit-generated-dirty", dest="generated_dirty_repair_enabled", action="store_true")
     parser.set_defaults(generated_dirty_repair_enabled=False)
@@ -3215,11 +4038,12 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         check_interval=args.check_interval,
         watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
+        max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,
+        merge_target_branch=args.merge_target_branch,
         llm_merge_resolver_command=args.llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
-        merge_target_branch=getattr(args, "merge_target_branch", ""),
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
         generated_dirty_repair_enabled=args.generated_dirty_repair_enabled,
         generated_dirty_repair_commit_subject=args.generated_dirty_commit_subject,

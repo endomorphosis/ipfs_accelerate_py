@@ -3,24 +3,46 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import re
+import subprocess
 import sys
 import time
+import queue
+import threading
+import uuid
 from contextlib import redirect_stdout
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .context_compiler import (
+    ContextCompileResult,
+    ContextCompiler,
+    build_text_context_references,
+    render_context_capsule,
+)
+from .context_contracts import ContextBudget
 from .plan_evaluator import (
     ANALYSIS_PROPOSAL_JSON_SCHEMA,
     PLAN_BRANCH_JSON_SCHEMA,
     AnalysisProposal,
     AnalysisProposalEvaluation,
+    EvidenceAwarePlanCandidate,
+    EvidenceAwarePlanPolicy,
     PlanBranch,
     PlanBranchValidationError,
     evaluate_analysis_proposals,
+)
+from .provider_batch_scheduler import (
+    ProviderBatchRequest,
+    ProviderBatchResult,
+    ProviderBatchScheduler,
 )
 
 
@@ -28,10 +50,95 @@ PromptBuilder = Callable[[object, str], str]
 BootstrapCallback = Callable[[], None]
 DEFAULT_OPEN_TASK_STATUSES = ("to" "do", "ready")
 DEFAULT_TASK_PROPOSAL_TEST_OUTPUT = "tests and fixtures needed"
+TASK_IMPLEMENTATION_PROPOSAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-implementation-proposal@1"
+)
+TASK_PROPOSAL_MAX_RESPONSE_BYTES = 256_000
+TASK_PROPOSAL_MAX_JSON_DEPTH = 12
+TASK_PROPOSAL_MAX_FILES = 256
+TASK_PROPOSAL_OPERATIONS = frozenset({"add", "modify", "delete", "rename"})
+DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS = 12_288
+DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE = 512
+
+TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "schema",
+        "proposal_version",
+        "task_id",
+        "repository_tree_id",
+        "context_id",
+        "files",
+        "validation_plan",
+        "risks",
+        "authority_claims",
+    ],
+    "properties": {
+        "schema": {"const": TASK_IMPLEMENTATION_PROPOSAL_SCHEMA},
+        "proposal_version": {"const": "1"},
+        "task_id": {"type": "string", "minLength": 1},
+        "repository_tree_id": {"type": "string", "minLength": 1},
+        "context_id": {"type": "string", "minLength": 1},
+        "files": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": TASK_PROPOSAL_MAX_FILES,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["path", "operation", "rationale_references"],
+                "properties": {
+                    "path": {"type": "string", "minLength": 1},
+                    "operation": {
+                        "enum": sorted(TASK_PROPOSAL_OPERATIONS)
+                    },
+                    "rationale_references": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+        },
+        "validation_plan": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+        },
+        "risks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1},
+        },
+        "authority_claims": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "allowed_paths",
+                "validation_commands_only",
+                "proof_authoritative",
+                "completion_authoritative",
+            ],
+            "properties": {
+                "allowed_paths": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "validation_commands_only": {"const": True},
+                "proof_authoritative": {"const": False},
+                "completion_authoritative": {"const": False},
+            },
+        },
+    },
+}
 
 
 class TaskProposalRouterError(RuntimeError):
     """Raised when a task proposal cannot be prepared."""
+
+    def __init__(self, message: str, *, reason_code: str = "proposal_router_error") -> None:
+        super().__init__(message)
+        self.reason_code = str(reason_code or "proposal_router_error")
 
 
 @dataclass(frozen=True)
@@ -47,6 +154,16 @@ class TaskProposalRouterConfig:
     no_open_task_message: str = "No open task found."
     open_statuses: Sequence[str] = field(default_factory=lambda: DEFAULT_OPEN_TASK_STATUSES)
     plan_char_limit: int = 40000
+    context_max_input_tokens: int | None = None
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE
+    provider_context_window: int | None = None
+    provider_max_input_tokens: int | None = None
+    context_tokenizer: Any = field(default=None, repr=False, compare=False)
+    provider_batch_scheduler: ProviderBatchScheduler | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -109,6 +226,16 @@ class TaskProposalRouteSpec:
     runtime_env_var: str = "PYTHONPATH"
     open_statuses: Sequence[str] = field(default_factory=lambda: DEFAULT_OPEN_TASK_STATUSES)
     plan_char_limit: int = 40000
+    context_max_input_tokens: int | None = None
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE
+    provider_context_window: int | None = None
+    provider_max_input_tokens: int | None = None
+    context_tokenizer: Any = field(default=None, repr=False, compare=False)
+    provider_batch_scheduler: ProviderBatchScheduler | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER"
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL"
     default_model: str = "gpt-5.3-codex-spark"
@@ -185,7 +312,13 @@ def build_task_proposal_prompt(
     requested_outputs: Sequence[str],
     plan_char_limit: int = 40000,
 ) -> str:
-    """Build a standard proposal prompt with project-specific framing."""
+    """Build project-specific framing without selecting roadmap evidence.
+
+    ``plan_char_limit`` is retained as a compatibility hint for router
+    configuration.  The live router translates it into a token budget; this
+    formatter deliberately keeps the supplied artifact complete so it never
+    creates an unaudited partial roadmap.
+    """
 
     output_lines = [f"{index}. {item}" for index, item in enumerate(requested_outputs, start=1)]
     return "\n".join(
@@ -196,7 +329,7 @@ def build_task_proposal_prompt(
             *task_metadata_lines(task),
             "",
             "Roadmap context:",
-            plan_text[: max(0, plan_char_limit)],
+            plan_text,
             "",
             "Return a concise implementation proposal with:",
             *output_lines,
@@ -257,6 +390,12 @@ def build_task_proposal_router_cli_config(
     bootstrap: BootstrapCallback | None = None,
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -280,6 +419,12 @@ def build_task_proposal_router_cli_config(
             no_open_task_message=no_open_task_message,
             open_statuses=open_statuses,
             plan_char_limit=plan_char_limit,
+            context_max_input_tokens=context_max_input_tokens,
+            context_reserved_tool_tokens=context_reserved_tool_tokens,
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            context_tokenizer=context_tokenizer,
+            provider_batch_scheduler=provider_batch_scheduler,
         ),
         description=description,
         task_id_help=task_id_help,
@@ -314,6 +459,12 @@ def run_configured_task_proposal_router_cli(
     bootstrap: BootstrapCallback | None = None,
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -340,6 +491,12 @@ def run_configured_task_proposal_router_cli(
             bootstrap=bootstrap,
             open_statuses=open_statuses,
             plan_char_limit=plan_char_limit,
+            context_max_input_tokens=context_max_input_tokens,
+            context_reserved_tool_tokens=context_reserved_tool_tokens,
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            context_tokenizer=context_tokenizer,
+            provider_batch_scheduler=provider_batch_scheduler,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -380,6 +537,12 @@ def build_configured_task_proposal_router_runner(
     bootstrap: BootstrapCallback | None = None,
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -406,6 +569,12 @@ def build_configured_task_proposal_router_runner(
             bootstrap=bootstrap,
             open_statuses=open_statuses,
             plan_char_limit=plan_char_limit,
+            context_max_input_tokens=context_max_input_tokens,
+            context_reserved_tool_tokens=context_reserved_tool_tokens,
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            context_tokenizer=context_tokenizer,
+            provider_batch_scheduler=provider_batch_scheduler,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -437,6 +606,12 @@ def build_repo_task_proposal_router_runner(
     runtime_env_var: str = "PYTHONPATH",
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -474,6 +649,12 @@ def build_repo_task_proposal_router_runner(
         bootstrap=effective_bootstrap,
         open_statuses=open_statuses,
         plan_char_limit=plan_char_limit,
+        context_max_input_tokens=context_max_input_tokens,
+        context_reserved_tool_tokens=context_reserved_tool_tokens,
+        provider_context_window=provider_context_window,
+        provider_max_input_tokens=provider_max_input_tokens,
+        context_tokenizer=context_tokenizer,
+        provider_batch_scheduler=provider_batch_scheduler,
         provider_env=provider_env,
         model_env=model_env,
         default_model=default_model,
@@ -512,6 +693,12 @@ def build_repo_task_proposal_route_runner(
     runtime_env_var: str = "PYTHONPATH",
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -571,6 +758,12 @@ def build_repo_task_proposal_route_runner(
         runtime_env_var=runtime_env_var,
         open_statuses=open_statuses,
         plan_char_limit=plan_char_limit,
+        context_max_input_tokens=context_max_input_tokens,
+        context_reserved_tool_tokens=context_reserved_tool_tokens,
+        provider_context_window=provider_context_window,
+        provider_max_input_tokens=provider_max_input_tokens,
+        context_tokenizer=context_tokenizer,
+        provider_batch_scheduler=provider_batch_scheduler,
         provider_env=provider_env,
         model_env=model_env,
         default_model=default_model,
@@ -616,6 +809,12 @@ def build_repo_task_proposal_route_runner_from_spec(
         runtime_env_var=route_spec.runtime_env_var,
         open_statuses=route_spec.open_statuses,
         plan_char_limit=route_spec.plan_char_limit,
+        context_max_input_tokens=route_spec.context_max_input_tokens,
+        context_reserved_tool_tokens=route_spec.context_reserved_tool_tokens,
+        provider_context_window=route_spec.provider_context_window,
+        provider_max_input_tokens=route_spec.provider_max_input_tokens,
+        context_tokenizer=route_spec.context_tokenizer,
+        provider_batch_scheduler=route_spec.provider_batch_scheduler,
         provider_env=route_spec.provider_env,
         model_env=route_spec.model_env,
         default_model=route_spec.default_model,
@@ -653,6 +852,512 @@ def _artifact_relative_path(output_path: Path, repo_root: Path) -> str:
         return str(output_path)
 
 
+def _router_tree_id(repo_root: Path, *, fallback_material: str) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    value = str(result.stdout or "").strip()
+    if result.returncode == 0 and value:
+        return value
+    return "tree:sha256:" + hashlib.sha256(
+        fallback_material.encode("utf-8")
+    ).hexdigest()
+
+
+def _router_repository_id(repo_root: Path) -> str:
+    """Return a stable, non-secret repository identity for context receipts."""
+
+    resolved = repo_root.resolve()
+    git_dir = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"],
+        cwd=resolved,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    raw_git_dir = str(git_dir.stdout or "").strip()
+    material = str(
+        (
+            Path(raw_git_dir)
+            if Path(raw_git_dir).is_absolute()
+            else resolved / raw_git_dir
+        ).resolve()
+    ) if git_dir.returncode == 0 and raw_git_dir else str(resolved)
+    return "repository:sha256:" + hashlib.sha256(
+        material.encode("utf-8")
+    ).hexdigest()
+
+
+def _context_artifact_path(path: Path, repo_root: Path) -> str:
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        # Absolute paths are never copied into provider references or receipts.
+        return ""
+
+
+def compile_task_proposal_context(
+    config: TaskProposalRouterConfig,
+    *,
+    task: object,
+    plan_text: str,
+    repository_tree_id: str,
+    context_id: str,
+    max_new_tokens: int,
+) -> ContextCompileResult:
+    """Compile one immutable planning core plus ranked roadmap chunks."""
+
+    if not isinstance(plan_text, str):
+        raise TaskProposalRouterError("plan text must be a string")
+    task_id = _task_value(task, "task_id")
+    allowed_paths = tuple(
+        sorted(
+            {
+                _normalize_proposal_path(path)
+                for path in _task_values(task, "outputs")
+            }
+        )
+    )
+    validation_commands = tuple(_task_values(task, "validation"))
+    # Existing wrappers own their domain-specific wording.  Calling them with
+    # no roadmap material captures that policy without allowing the wrapper's
+    # historical character slice to select evidence.
+    planning_policy = config.prompt_builder(task, "").strip()
+    policy_payload = {
+        "instructions": planning_policy,
+        "response_contract": TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+        "schema": TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
+    }
+    policy_revision = "sha256:" + hashlib.sha256(
+        json.dumps(
+            policy_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    repository_id = _router_repository_id(config.repo_root)
+    roadmap_references = build_text_context_references(
+        plan_text,
+        reference_prefix="roadmap",
+        kind="roadmap-chunk",
+        path=_context_artifact_path(config.plan_path, config.repo_root),
+        repository_id=repository_id,
+        tree_id=repository_tree_id,
+        priority=100,
+        chunk_bytes=6_144,
+        coverage_ids=(task_id,),
+    )
+    configured_input = config.context_max_input_tokens
+    if configured_input is None:
+        legacy_hint = max(0, int(config.plan_char_limit))
+        configured_input = max(
+            2_048,
+            min(
+                DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS,
+                (legacy_hint + 3) // 4 + 2_048,
+            ),
+        )
+    budget = ContextBudget(
+        max_input_tokens=max(1, int(configured_input)),
+        reserved_output_tokens=max(0, int(max_new_tokens)),
+        reserved_tool_tokens=max(
+            0, int(config.context_reserved_tool_tokens)
+        ),
+        max_items=256,
+        max_item_bytes=16_384,
+        max_serialized_bytes=262_144,
+        max_depth=12,
+        max_text_bytes=8_192,
+    )
+    compiler = ContextCompiler(
+        budget,
+        tokenizer=config.context_tokenizer,
+        provider_context_window=config.provider_context_window,
+        provider_max_input_tokens=config.provider_max_input_tokens,
+    )
+    return compiler.compile(
+        repository_id=repository_id,
+        tree_id=repository_tree_id,
+        objective_id=task_id,
+        objective_revision=context_id,
+        policy_id="policy:task-proposal-router",
+        policy_revision=policy_revision,
+        caller="agent-supervisor:task-proposal-router",
+        stage="planning",
+        goal={
+            "task_id": task_id,
+            "title": _task_value(task, "title"),
+            "priority": _task_value(task, "priority"),
+            "track": _task_value(task, "track"),
+            "planning_policy": planning_policy,
+        },
+        authority={
+            "repository_tree_id": repository_tree_id,
+            "context_id": context_id,
+            "allowed_paths": allowed_paths,
+            "validation_commands": validation_commands,
+            "validation_commands_only": True,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        },
+        scope={
+            "depends_on": tuple(_task_values(task, "depends_on")),
+            "outputs": allowed_paths,
+        },
+        acceptance={
+            "criteria": _task_value(task, "acceptance") or "none listed",
+            "validation_commands": validation_commands,
+            "response_rules": (
+                "Return exactly one JSON object with no Markdown or extra fields.",
+                "Files and validation commands must exactly match frozen authority.",
+            ),
+            "response_schema": TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
+        },
+        evidence=roadmap_references,
+    )
+
+
+def _proposal_json_depth(value: Any, depth: int = 0) -> int:
+    if isinstance(value, Mapping):
+        return max(
+            (depth, *(_proposal_json_depth(item, depth + 1) for item in value.values()))
+        )
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return max(
+            (depth, *(_proposal_json_depth(item, depth + 1) for item in value))
+        )
+    return depth
+
+
+def _normalize_proposal_path(value: Any) -> str:
+    path = str(value or "").strip().replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    if (
+        not path
+        or path.startswith("/")
+        or "\0" in path
+        or ".." in Path(path).parts
+        or path == ".git"
+        or path.startswith(".git/")
+    ):
+        raise TaskProposalRouterError(
+            "proposal contains an unsafe path",
+            reason_code="unsafe_path",
+        )
+    return path
+
+
+def parse_task_implementation_proposal(
+    text: str,
+    *,
+    expected_task_id: str,
+    expected_repository_tree_id: str,
+    expected_context_id: str,
+    allowed_paths: Sequence[str],
+    allowed_validation_commands: Sequence[str],
+) -> dict[str, Any]:
+    """Parse and fail-close one provider proposal before artifact persistence."""
+
+    if not isinstance(text, str) or not text.strip():
+        raise TaskProposalRouterError(
+            "llm_router returned an empty proposal",
+            reason_code="invalid_schema",
+        )
+    if len(text.encode("utf-8", errors="surrogatepass")) > TASK_PROPOSAL_MAX_RESPONSE_BYTES:
+        raise TaskProposalRouterError(
+            "llm_router proposal exceeds the output bound",
+            reason_code="output_too_large",
+        )
+
+    def reject_duplicate_fields(
+        pairs: list[tuple[str, Any]],
+    ) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate JSON field {key!r}")
+            value[key] = item
+        return value
+
+    try:
+        payload = json.loads(
+            text,
+            object_pairs_hook=reject_duplicate_fields,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON number {value}")
+            ),
+        )
+    except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+        raise TaskProposalRouterError(
+            "llm_router proposal is not strict JSON",
+            reason_code="invalid_schema",
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise TaskProposalRouterError(
+            "llm_router proposal must be a JSON object",
+            reason_code="invalid_schema",
+        )
+    if _proposal_json_depth(payload) > TASK_PROPOSAL_MAX_JSON_DEPTH:
+        raise TaskProposalRouterError(
+            "llm_router proposal exceeds the nesting bound",
+            reason_code="output_too_deep",
+        )
+    required = set(TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA["required"])
+    fields = {str(key) for key in payload}
+    if fields != required:
+        reason = "missing_required_field" if required - fields else "invalid_schema"
+        raise TaskProposalRouterError(
+            "llm_router proposal fields do not match the versioned schema",
+            reason_code=reason,
+        )
+    if (
+        payload.get("schema") != TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
+        or str(payload.get("proposal_version") or "") != "1"
+    ):
+        raise TaskProposalRouterError(
+            "unsupported task implementation proposal version",
+            reason_code="invalid_schema",
+        )
+    for field_name, expected, reason_code in (
+        ("task_id", expected_task_id, "authority_mismatch"),
+        (
+            "repository_tree_id",
+            expected_repository_tree_id,
+            "stale_baseline",
+        ),
+        ("context_id", expected_context_id, "context_mismatch"),
+    ):
+        if str(payload.get(field_name) or "") != str(expected):
+            raise TaskProposalRouterError(
+                f"proposal {field_name} does not match frozen authority",
+                reason_code=reason_code,
+            )
+
+    normalized_allowed = tuple(
+        sorted({_normalize_proposal_path(path) for path in allowed_paths})
+    )
+    raw_files = payload.get("files")
+    if (
+        not isinstance(raw_files, list)
+        or not raw_files
+        or len(raw_files) > TASK_PROPOSAL_MAX_FILES
+    ):
+        raise TaskProposalRouterError(
+            "proposal files must be a bounded non-empty array",
+            reason_code="missing_required_field",
+        )
+    normalized_files: list[dict[str, Any]] = []
+    for item in raw_files:
+        if not isinstance(item, Mapping) or set(item) != {
+            "path",
+            "operation",
+            "rationale_references",
+        }:
+            raise TaskProposalRouterError(
+                "proposal file operations do not match the schema",
+                reason_code="invalid_schema",
+            )
+        path = _normalize_proposal_path(item.get("path"))
+        operation = str(item.get("operation") or "").strip().lower()
+        references = item.get("rationale_references")
+        if operation not in TASK_PROPOSAL_OPERATIONS:
+            raise TaskProposalRouterError(
+                "proposal contains an unsupported file operation",
+                reason_code="operation_mismatch",
+            )
+        if operation == "delete" and (
+            path.startswith(("test/", "tests/"))
+            or path.rsplit("/", 1)[-1].startswith("test_")
+        ):
+            raise TaskProposalRouterError(
+                "proposal cannot delete tests",
+                reason_code="test_deletion_forbidden",
+            )
+        if (
+            not isinstance(references, list)
+            or not references
+            or any(not isinstance(value, str) or not value.strip() for value in references)
+        ):
+            raise TaskProposalRouterError(
+                "every file operation requires rationale references",
+                reason_code="missing_required_field",
+            )
+        normalized_files.append(
+            {
+                "path": path,
+                "operation": operation,
+                "rationale_references": sorted(
+                    {str(value).strip() for value in references}
+                ),
+            }
+        )
+    proposed_paths = tuple(sorted(item["path"] for item in normalized_files))
+    if len(set(proposed_paths)) != len(proposed_paths) or proposed_paths != normalized_allowed:
+        raise TaskProposalRouterError(
+            "proposal files do not exactly match task-owned outputs",
+            reason_code="path_outside_scope",
+        )
+
+    validation_plan = payload.get("validation_plan")
+    if (
+        not isinstance(validation_plan, list)
+        or any(not isinstance(value, str) or not value.strip() for value in validation_plan)
+        or tuple(str(value).strip() for value in validation_plan)
+        != tuple(str(value).strip() for value in allowed_validation_commands)
+    ):
+        raise TaskProposalRouterError(
+            "proposal validation plan differs from task authority",
+            reason_code="command_forbidden",
+        )
+    risks = payload.get("risks")
+    if (
+        not isinstance(risks, list)
+        or not risks
+        or any(not isinstance(value, str) or not value.strip() for value in risks)
+    ):
+        raise TaskProposalRouterError(
+            "proposal requires a bounded risk assessment",
+            reason_code="missing_required_field",
+        )
+    claims = payload.get("authority_claims")
+    expected_claims = {
+        "allowed_paths": list(normalized_allowed),
+        "validation_commands_only": True,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    if not isinstance(claims, Mapping) or dict(claims) != expected_claims:
+        raise TaskProposalRouterError(
+            "proposal contains detached or forged authority claims",
+            reason_code="forged_authority_claim",
+        )
+    return {
+        "schema": TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+        "proposal_version": "1",
+        "task_id": expected_task_id,
+        "repository_tree_id": expected_repository_tree_id,
+        "context_id": expected_context_id,
+        "files": sorted(normalized_files, key=lambda item: item["path"]),
+        "validation_plan": list(allowed_validation_commands),
+        "risks": [str(value).strip() for value in risks],
+        "authority_claims": expected_claims,
+    }
+
+
+def build_task_implementation_proposal_contract(
+    *,
+    task: object,
+    repository_tree_id: str,
+    context_id: str,
+) -> str:
+    allowed_paths = tuple(
+        sorted({_normalize_proposal_path(path) for path in _task_values(task, "outputs")})
+    )
+    authority = {
+        "task_id": _task_value(task, "task_id"),
+        "repository_tree_id": repository_tree_id,
+        "context_id": context_id,
+        "allowed_paths": allowed_paths,
+        "validation_commands": _task_values(task, "validation"),
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    return "\n".join(
+        (
+            "",
+            "Strict proposal envelope:",
+            "Return exactly one JSON object. Do not return Markdown, prose, comments, shell wrappers, or extra fields.",
+            "Files must exactly equal the frozen allowed_paths. Every file needs an operation and rationale references.",
+            "validation_plan must exactly equal the frozen validation commands; do not invent or combine commands.",
+            "Authority claims must repeat allowed_paths, set validation_commands_only=true, and set proof_authoritative=false and completion_authoritative=false.",
+            "Frozen authority:",
+            json.dumps(authority, indent=2, sort_keys=True),
+            "Required JSON schema:",
+            json.dumps(
+                TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
+                indent=2,
+                sort_keys=True,
+            ),
+        )
+    )
+
+
+def _call_text_provider(
+    prompt: str,
+    invocation: Any,
+    *,
+    scheduler: ProviderBatchScheduler | None,
+    route: str,
+    operation: str,
+    context_limit: int,
+    response_contract: str,
+    provenance: Mapping[str, Any] | None = None,
+) -> tuple[str, ProviderBatchResult | None]:
+    """Dispatch text directly or through the shared admitted provider stream."""
+
+    from .todo_daemon.llm import call_llm_router
+
+    if scheduler is None:
+        return call_llm_router(prompt, invocation), None
+    prompt_bytes = prompt.encode("utf-8", errors="surrogatepass")
+    result = scheduler.execute(
+        ProviderBatchRequest(
+            request_id=f"{route}:{uuid.uuid4().hex}",
+            payload=prompt,
+            provider_id=str(invocation.provider or "llm_router:auto"),
+            route=route,
+            model=str(invocation.model_name),
+            operation=operation,
+            context_limit=max(0, int(context_limit)),
+            policy={
+                "allow_local_fallback": bool(
+                    invocation.allow_local_fallback
+                ),
+                "reject_effective_provider_name": (
+                    invocation.reject_effective_provider_name
+                ),
+                "required_effective_providers": tuple(
+                    invocation.required_effective_providers
+                ),
+                "response_contract": response_contract,
+            },
+            generation_settings={
+                "temperature": float(invocation.temperature),
+                "backend": str(invocation.backend_default),
+            },
+            token_budget=max(0, int(invocation.max_new_tokens)),
+            timeout_ms=max(1, int(invocation.timeout_seconds) * 1_000),
+            provenance={
+                **dict(provenance or {}),
+                "route": route,
+                "response_contract": response_contract,
+                "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                "prompt_bytes": len(prompt_bytes),
+            },
+        )
+    )
+    if not result.successful:
+        raise TaskProposalRouterError(
+            "shared provider dispatch failed: "
+            f"{result.status.value}: {result.error or 'no provider result'}",
+            reason_code=f"provider_batch_{result.status.value}",
+        )
+    if not isinstance(result.output, str):
+        raise TaskProposalRouterError(
+            "shared provider returned a non-text result",
+            reason_code="provider_batch_non_text",
+        )
+    return result.output, result
+
+
 def run_task_proposal_router(
     config: TaskProposalRouterConfig,
     *,
@@ -667,7 +1372,7 @@ def run_task_proposal_router(
     """Prepare or generate an LLM implementation proposal for one task."""
 
     from .todo_daemon.implementation_daemon import parse_task_file
-    from .todo_daemon.llm import LlmRouterInvocation, call_llm_router
+    from .todo_daemon.llm import LlmRouterInvocation
 
     tasks = parse_task_file(config.task_board_path, config.task_header_prefix)
     selected = select_proposal_task(
@@ -676,8 +1381,31 @@ def run_task_proposal_router(
         open_statuses=config.open_statuses,
         no_open_task_message=config.no_open_task_message,
     )
-    plan_text = config.plan_path.read_text(encoding="utf-8")[: max(0, int(config.plan_char_limit))]
-    prompt = config.prompt_builder(selected, plan_text)
+    plan_text = config.plan_path.read_text(encoding="utf-8")
+    context_id = str(
+        getattr(selected, "canonical_task_cid", "")
+        or getattr(selected, "canonical_task_key", "")
+        or _task_value(selected, "task_id")
+    ).strip()
+    repository_tree_id = _router_tree_id(
+        config.repo_root,
+        fallback_material="\0".join(
+            (
+                _task_value(selected, "task_id"),
+                context_id,
+                plan_text,
+            )
+        ),
+    )
+    compiled_context = compile_task_proposal_context(
+        config,
+        task=selected,
+        plan_text=plan_text,
+        repository_tree_id=repository_tree_id,
+        context_id=context_id,
+        max_new_tokens=max_new_tokens,
+    )
+    prompt = render_context_capsule(compiled_context.capsule)
     payload: dict[str, object] = {
         "task_id": _task_value(selected, "task_id"),
         "title": _task_value(selected, "title"),
@@ -686,6 +1414,17 @@ def run_task_proposal_router(
         "prompt_chars": len(prompt),
         "generate": bool(generate),
         "llm_router_importable": True,
+        "context_capsule_id": compiled_context.capsule.capsule_id,
+        "context_input_tokens": compiled_context.capsule.input_tokens,
+        "context_input_limit": compiled_context.receipt.effective_input_limit,
+        "context_truncated": compiled_context.capsule.truncated,
+        "context_estimator": compiled_context.receipt.estimator_name,
+        "context_estimator_error_bps": (
+            compiled_context.receipt.estimator_error_bps
+        ),
+        "context_decisions": [
+            decision.to_dict() for decision in compiled_context.decisions
+        ],
     }
     if not generate:
         return payload
@@ -699,12 +1438,83 @@ def run_task_proposal_router(
         max_new_tokens=int(max_new_tokens),
         reject_effective_provider_name=None if allow_local_fallback else "local_hf",
     )
-    proposal = call_llm_router(prompt, invocation)
+    raw_proposal, batch_result = _call_text_provider(
+        prompt,
+        invocation,
+        scheduler=config.provider_batch_scheduler,
+        route="task-proposal-router",
+        operation="task_implementation_proposal.v1",
+        context_limit=compiled_context.receipt.effective_input_limit,
+        response_contract=TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+        provenance={
+            "task_id": _task_value(selected, "task_id"),
+            "repository_tree_id": repository_tree_id,
+            "context_id": context_id,
+            "context_capsule_id": compiled_context.capsule.capsule_id,
+        },
+    )
+    if batch_result is not None:
+        payload["provider_batch"] = batch_result.to_dict()
     config.artifact_dir.mkdir(parents=True, exist_ok=True)
     task_name = (_task_value(selected, "task_id") or "task").lower()
-    output_path = config.artifact_dir / f"{task_name}-proposal.md"
-    output_path.write_text(proposal, encoding="utf-8")
+    context_receipt_path = (
+        config.artifact_dir / f"{task_name}-context-receipt.json"
+    )
+    context_receipt_path.write_text(
+        compiled_context.receipt.to_json() + "\n",
+        encoding="utf-8",
+    )
+    payload["context_receipt"] = _artifact_relative_path(
+        context_receipt_path, config.repo_root
+    )
+    try:
+        proposal = parse_task_implementation_proposal(
+            raw_proposal,
+            expected_task_id=_task_value(selected, "task_id"),
+            expected_repository_tree_id=repository_tree_id,
+            expected_context_id=context_id,
+            allowed_paths=_task_values(selected, "outputs"),
+            allowed_validation_commands=_task_values(selected, "validation"),
+        )
+    except TaskProposalRouterError as exc:
+        rejection_path = (
+            config.artifact_dir / f"{task_name}-proposal-rejection.json"
+        )
+        rejection_path.write_text(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "task-proposal-rejection@1"
+                    ),
+                    "accepted": False,
+                    "task_id": _task_value(selected, "task_id"),
+                    "repository_tree_id": repository_tree_id,
+                    "context_id": context_id,
+                    "reason_codes": [exc.reason_code],
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        raise TaskProposalRouterError(
+            f"{exc}; compact rejection: "
+            f"{_artifact_relative_path(rejection_path, config.repo_root)}",
+            reason_code=exc.reason_code,
+        ) from exc
+    output_path = config.artifact_dir / f"{task_name}-proposal.json"
+    output_path.write_text(
+        json.dumps(proposal, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     payload["artifact"] = _artifact_relative_path(output_path, config.repo_root)
+    payload["proposal_schema"] = TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
+    payload["repository_tree_id"] = repository_tree_id
+    payload["context_id"] = context_id
     return payload
 
 
@@ -789,6 +1599,16 @@ class StructuredPlanRouterConfig:
     timeout_seconds: int = 300
     allow_local_fallback: bool = False
     temperature: float = 0.1
+    context_max_input_tokens: int = DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE
+    provider_context_window: int | None = None
+    provider_max_input_tokens: int | None = None
+    context_tokenizer: Any = field(default=None, repr=False, compare=False)
+    provider_batch_scheduler: ProviderBatchScheduler | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if int(self.branch_count) < 1:
@@ -797,6 +1617,10 @@ class StructuredPlanRouterConfig:
             raise ValueError("max_new_tokens must be at least 1")
         if int(self.timeout_seconds) < 1:
             raise ValueError("timeout_seconds must be at least 1")
+        if int(self.context_max_input_tokens) < 1:
+            raise ValueError("context_max_input_tokens must be at least 1")
+        if int(self.context_reserved_tool_tokens) < 0:
+            raise ValueError("context_reserved_tool_tokens must be non-negative")
         if not 0.0 <= float(self.temperature) <= 2.0:
             raise ValueError("temperature must be in [0, 2]")
 
@@ -809,6 +1633,11 @@ class PlanRoutingResult:
     used_fallback: bool
     router_error: str | None = None
     raw_response: str | None = None
+    batch_result: ProviderBatchResult | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not self.branches:
@@ -820,12 +1649,27 @@ class PlanRoutingResult:
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         encode = PlanBranch.to_profile_g_dict if profile_g else PlanBranch.to_dict
+        response_bytes = (
+            self.raw_response.encode("utf-8", errors="surrogatepass")
+            if self.raw_response is not None
+            else b""
+        )
         return {
             "branches": [encode(branch) for branch in self.branches],
             "used_fallback": self.used_fallback,
             "router_succeeded": self.router_succeeded,
             "router_error": self.router_error,
-            "raw_response": self.raw_response,
+            "batch_result": (
+                None
+                if self.batch_result is None
+                else self.batch_result.to_dict()
+            ),
+            "response_bytes": len(response_bytes),
+            "response_sha256": (
+                "sha256:" + hashlib.sha256(response_bytes).hexdigest()
+                if self.raw_response is not None
+                else ""
+            ),
         }
 
     def to_profile_g_dict(self) -> dict[str, Any]:
@@ -848,6 +1692,11 @@ class AnalysisProposalRoutingResult:
     raw_responses: tuple[str, ...] = ()
     router_call_timestamps: tuple[float, ...] = ()
     limit_reason: str = ""
+    batch_results: tuple[ProviderBatchResult, ...] = field(
+        default_factory=tuple,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def router_succeeded(self) -> bool:
@@ -862,6 +1711,10 @@ class AnalysisProposalRoutingResult:
         return self.evaluation.rejected
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        response_bytes = tuple(
+            item.encode("utf-8", errors="surrogatepass")
+            for item in self.raw_responses
+        )
         return {
             "proposals": [item.to_dict(profile_g=profile_g) for item in self.proposals],
             "evaluation": self.evaluation.to_dict(profile_g=profile_g),
@@ -877,9 +1730,17 @@ class AnalysisProposalRoutingResult:
             "router_retries": self.router_retries,
             "reserved_tokens": self.reserved_tokens,
             "router_error": self.router_error,
-            "raw_responses": list(self.raw_responses),
+            "response_count": len(response_bytes),
+            "response_bytes": sum(len(item) for item in response_bytes),
+            "response_sha256": [
+                "sha256:" + hashlib.sha256(item).hexdigest()
+                for item in response_bytes
+            ],
             "router_call_timestamps": list(self.router_call_timestamps),
             "limit_reason": self.limit_reason,
+            "batch_results": [
+                item.to_dict() for item in self.batch_results
+            ],
         }
 
 
@@ -940,29 +1801,158 @@ def _jsonable_subgoal(subgoal: object) -> dict[str, Any]:
     return {name: source[name] for name in names if name in source}
 
 
-def build_structured_plan_prompt(subgoal: object, branch_count: int = 3) -> str:
-    """Build the strict JSON request used for objective branch generation."""
+def _planning_capsule_prompt(
+    *,
+    config: StructuredPlanRouterConfig,
+    objective_id: str,
+    goal: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    scope: Mapping[str, Any],
+    acceptance: Mapping[str, Any],
+    evidence: Sequence[Any] = (),
+    evidence_text: str = "",
+    evidence_kind: str = "planning-evidence",
+    evidence_coverage_ids: Sequence[str] = (),
+    policy_id: str,
+) -> str:
+    """Compile the canonical provider input shared by planning routes."""
+
+    repository_id = _router_repository_id(config.repo_root)
+    invariant = {
+        "goal": goal,
+        "authority": authority,
+        "scope": scope,
+        "acceptance": acceptance,
+    }
+    revision = "sha256:" + hashlib.sha256(
+        json.dumps(
+            invariant,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    tree_id = _router_tree_id(
+        config.repo_root,
+        fallback_material=revision,
+    )
+    policy_revision = "sha256:" + hashlib.sha256(
+        json.dumps(
+            {
+                "authority": authority,
+                "acceptance": acceptance,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    ranked_evidence = tuple(evidence)
+    if evidence_text:
+        ranked_evidence = (
+            *ranked_evidence,
+            *build_text_context_references(
+                evidence_text,
+                reference_prefix="planning-evidence",
+                kind=evidence_kind,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                priority=100,
+                chunk_bytes=6_144,
+                coverage_ids=evidence_coverage_ids,
+            ),
+        )
+    compiler = ContextCompiler(
+        ContextBudget(
+            max_input_tokens=int(config.context_max_input_tokens),
+            reserved_output_tokens=int(config.max_new_tokens),
+            reserved_tool_tokens=int(config.context_reserved_tool_tokens),
+            max_items=256,
+            max_item_bytes=16_384,
+            max_serialized_bytes=262_144,
+            max_depth=12,
+            max_text_bytes=8_192,
+        ),
+        tokenizer=config.context_tokenizer,
+        provider_context_window=config.provider_context_window,
+        provider_max_input_tokens=config.provider_max_input_tokens,
+    )
+    result = compiler.compile(
+        repository_id=repository_id,
+        tree_id=tree_id,
+        objective_id=objective_id,
+        objective_revision=revision,
+        policy_id=policy_id,
+        policy_revision=policy_revision,
+        caller="agent-supervisor:structured-planning-router",
+        stage="planning",
+        goal=goal,
+        authority=authority,
+        scope=scope,
+        acceptance=acceptance,
+        evidence=ranked_evidence,
+    )
+    return render_context_capsule(result.capsule)
+
+
+def build_structured_plan_prompt(
+    subgoal: object,
+    branch_count: int = 3,
+    *,
+    config: StructuredPlanRouterConfig | None = None,
+) -> str:
+    """Build a token-budgeted strict request for objective branch generation."""
 
     count = int(branch_count)
     if count < 1:
         raise ValueError("branch_count must be at least 1")
     context = _jsonable_subgoal(subgoal)
-    return "\n".join(
-        (
-            "Generate alternative implementation plan branches for this scheduler subgoal.",
-            f"Return exactly {count} materially distinct branches.",
-            "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
-            "All files must be repository-relative. source must be 'llm_router'.",
-            "estimated_cost is a non-negative relative work estimate; risk and "
-            "expected_objective_delta are numbers from 0 through 1.",
-            "validation_proof must state the observable success evidence expected from the commands.",
-            "",
-            "Subgoal:",
-            json.dumps(context, indent=2, sort_keys=True, default=str),
-            "",
-            "Required JSON schema:",
-            json.dumps(PLAN_BRANCH_JSON_SCHEMA, indent=2, sort_keys=True),
-        )
+    objective_id = str(
+        context.get("task_id")
+        or context.get("goal_id")
+        or context.get("subgoal_cid")
+        or "structured-plan"
+    )
+    instructions = (
+        "Generate alternative implementation plan branches for this scheduler subgoal.",
+        f"Return exactly {count} materially distinct branches.",
+        "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
+        "All files must be repository-relative and source must be 'llm_router'.",
+        "estimated_cost is non-negative; risk and expected_objective_delta are in [0, 1].",
+        "validation_proof states observable success evidence expected from the commands.",
+    )
+    return _planning_capsule_prompt(
+        config=config or StructuredPlanRouterConfig(branch_count=count),
+        objective_id=objective_id,
+        policy_id="policy:structured-plan-branch-router",
+        goal={
+            "subgoal": context,
+            "requested_branch_count": count,
+        },
+        authority={
+            "instructions": instructions,
+            "provider_source": "llm_router",
+            "repository_relative_files_only": True,
+            "completion_authoritative": False,
+        },
+        scope={
+            "predicted_files": context.get(
+                "predicted_files", context.get("outputs", ())
+            ),
+            "predicted_symbols": context.get(
+                "predicted_symbols", context.get("ast_symbols", ())
+            ),
+            "dependencies": context.get(
+                "dependencies", context.get("depends_on", ())
+            ),
+        },
+        acceptance={
+            "response_schema": PLAN_BRANCH_JSON_SCHEMA,
+            "exact_branch_count": count,
+            "strict_json_only": True,
+        },
     )
 
 
@@ -1061,14 +2051,74 @@ def parse_structured_plan_branches(text: str) -> tuple[PlanBranch, ...]:
     return branches
 
 
+def _compact_ast_planning_evidence(
+    ast_evidence: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Allowlist bounded AST coverage facts without source or graph bodies."""
+
+    if not isinstance(ast_evidence, Mapping):
+        return {}
+    scalar_fields = (
+        "analyzer_version",
+        "healthy",
+        "complete",
+        "expected_file_count",
+        "scanned_file_count",
+        "parsed_file_count",
+        "reused_file_count",
+        "parse_failure_count",
+        "source_bytes",
+        "ast_truncated_count",
+        "confidence",
+        "novelty",
+        "limit_reason",
+        "elapsed_seconds",
+    )
+    sequence_fields = ("covered_terms", "uncovered_terms", "objective_terms")
+    compact: dict[str, Any] = {
+        name: ast_evidence[name]
+        for name in scalar_fields
+        if isinstance(ast_evidence.get(name), (str, int, float, bool))
+    }
+    for name in sequence_fields:
+        raw = ast_evidence.get(name)
+        if isinstance(raw, Sequence) and not isinstance(
+            raw, (str, bytes, bytearray)
+        ):
+            compact[name] = [
+                str(item) for item in raw if isinstance(item, (str, int, float))
+            ]
+    pipeline = ast_evidence.get("analysis_pipeline")
+    if isinstance(pipeline, Mapping):
+        pipeline_fields = (
+            "status",
+            "reason_code",
+            "error_type",
+            "result_id",
+            "cache_status",
+            "cache_lookup_status",
+            "ast_index_id",
+            "retrieval_response_id",
+            "safe_for_completion_reasoning",
+            "nomination_only",
+        )
+        compact["analysis_pipeline"] = {
+            name: pipeline[name]
+            for name in pipeline_fields
+            if isinstance(pipeline.get(name), (str, int, float, bool))
+        }
+    return compact
+
+
 def build_analysis_proposal_prompt(
     context: object,
     *,
     objective_terms: Sequence[str],
     ast_evidence: Mapping[str, Any] | None = None,
     proposal_count: int = 3,
+    config: StructuredPlanRouterConfig | None = None,
 ) -> str:
-    """Build the schema-constrained goal-directed analysis request."""
+    """Build a token-budgeted, schema-constrained analysis request."""
 
     count = int(proposal_count)
     if count < 1:
@@ -1076,31 +2126,66 @@ def build_analysis_proposal_prompt(
     terms = tuple(dict.fromkeys(str(item).strip() for item in objective_terms if str(item).strip()))
     if not terms:
         raise ValueError("objective_terms must contain at least one term")
-    ast_payload = dict(ast_evidence or {})
-    # Full source/AST blobs can exceed router context and are unnecessary for
-    # the planning boundary. The AST scanner supplies compact coverage fields.
-    ast_payload.pop("records", None)
-    return "\n".join(
-        (
-            "Propose bounded implementation tasks for objective terms that remain uncovered after static and AST analysis.",
-            f"Return between 1 and {count} materially distinct proposals.",
-            "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
-            "Each nested branch source must be 'llm_router'. Confidence and novelty are numbers from 0 through 1.",
-            "Only list objective_terms from the supplied terms and include repository-relative predicted files.",
-            "Do not claim that the objective or repository is exhausted.",
-            "",
-            "Objective terms:",
-            json.dumps(list(terms), indent=2, sort_keys=True),
-            "",
-            "Planning context:",
-            json.dumps(_jsonable_subgoal(context), indent=2, sort_keys=True, default=str),
-            "",
-            "Exhaustive AST coverage summary:",
-            json.dumps(ast_payload, indent=2, sort_keys=True, default=str),
-            "",
-            "Required JSON schema:",
-            json.dumps(ANALYSIS_PROPOSAL_JSON_SCHEMA, indent=2, sort_keys=True),
+    planning_context = _jsonable_subgoal(context)
+    objective_id = str(
+        planning_context.get("task_id")
+        or planning_context.get("goal_id")
+        or planning_context.get("subgoal_cid")
+        or "analysis-proposal"
+    )
+    instructions = (
+        "Propose bounded tasks for objective terms still uncovered after static and AST analysis.",
+        f"Return between 1 and {count} materially distinct proposals.",
+        "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
+        "Each nested branch source must be 'llm_router'; confidence and novelty are in [0, 1].",
+        "Use only supplied objective terms and repository-relative predicted files.",
+        "Do not claim that the objective or repository is exhausted.",
+    )
+    compact_ast = _compact_ast_planning_evidence(ast_evidence)
+    evidence_text = (
+        json.dumps(
+            compact_ast,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
         )
+        if compact_ast
+        else ""
+    )
+    return _planning_capsule_prompt(
+        config=config or StructuredPlanRouterConfig(branch_count=count),
+        objective_id=objective_id,
+        policy_id="policy:analysis-proposal-router",
+        goal={
+            "planning_context": planning_context,
+            "objective_terms": terms,
+            "maximum_proposal_count": count,
+        },
+        authority={
+            "instructions": instructions,
+            "provider_source": "llm_router",
+            "repository_relative_files_only": True,
+            "completion_authoritative": False,
+            "exhaustion_authoritative": False,
+        },
+        scope={
+            "objective_terms": terms,
+            "predicted_files": planning_context.get(
+                "predicted_files", planning_context.get("outputs", ())
+            ),
+            "predicted_symbols": planning_context.get(
+                "predicted_symbols",
+                planning_context.get("ast_symbols", ()),
+            ),
+        },
+        acceptance={
+            "response_schema": ANALYSIS_PROPOSAL_JSON_SCHEMA,
+            "proposal_count": {"minimum": 1, "maximum": count},
+            "strict_json_only": True,
+        },
+        evidence_text=evidence_text,
+        evidence_kind="ast-coverage-summary",
+        evidence_coverage_ids=terms,
     )
 
 
@@ -1209,8 +2294,13 @@ def deterministic_plan_branches(
 def _default_structured_router(
     prompt: str,
     config: StructuredPlanRouterConfig,
+    *,
+    route: str = "structured-plan-router",
+    operation: str = "structured_plan.v1",
+    response_contract: str = "plan-branches",
+    batch_results: list[ProviderBatchResult] | None = None,
 ) -> str:
-    from .todo_daemon.llm import LlmRouterInvocation, call_llm_router
+    from .todo_daemon.llm import LlmRouterInvocation
 
     invocation = LlmRouterInvocation(
         repo_root=config.repo_root,
@@ -1224,7 +2314,33 @@ def _default_structured_router(
             None if config.allow_local_fallback else "local_hf"
         ),
     )
-    return call_llm_router(prompt, invocation)
+    context_limits = [int(config.context_max_input_tokens)]
+    if config.provider_max_input_tokens is not None:
+        context_limits.append(int(config.provider_max_input_tokens))
+    if config.provider_context_window is not None:
+        context_limits.append(
+            max(
+                0,
+                int(config.provider_context_window)
+                - int(config.max_new_tokens),
+            )
+        )
+    response, batch_result = _call_text_provider(
+        prompt,
+        invocation,
+        scheduler=config.provider_batch_scheduler,
+        route=route,
+        operation=operation,
+        context_limit=min(context_limits),
+        response_contract=response_contract,
+        provenance={
+            "repo_root": str(config.repo_root),
+            "branch_count": config.branch_count,
+        },
+    )
+    if batch_result is not None and batch_results is not None:
+        batch_results.append(batch_result)
+    return response
 
 
 def generate_structured_plan_branches(
@@ -1243,13 +2359,25 @@ def generate_structured_plan_branches(
     )
     if count < 1:
         raise ValueError("branch_count must be at least 1")
-    prompt = build_structured_plan_prompt(subgoal, count)
+    prompt = build_structured_plan_prompt(
+        subgoal,
+        count,
+        config=resolved_config,
+    )
     raw_response: str | None = None
+    batch_results: list[ProviderBatchResult] = []
     try:
         raw_response = (
             router(prompt)
             if router is not None
-            else _default_structured_router(prompt, resolved_config)
+            else _default_structured_router(
+                prompt,
+                resolved_config,
+                route="structured-plan-router",
+                operation="structured_plan.v1",
+                response_contract="plan-branches@1",
+                batch_results=batch_results,
+            )
         )
         branches = parse_structured_plan_branches(raw_response)
         if len(branches) != count:
@@ -1260,6 +2388,7 @@ def generate_structured_plan_branches(
             branches=branches,
             used_fallback=False,
             raw_response=raw_response,
+            batch_result=batch_results[-1] if batch_results else None,
         )
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"[:1000]
@@ -1279,6 +2408,7 @@ def generate_structured_plan_branches(
             used_fallback=True,
             router_error=error,
             raw_response=raw_response,
+            batch_result=batch_results[-1] if batch_results else None,
         )
 
 
@@ -1392,6 +2522,7 @@ def generate_analysis_proposals(
         objective_terms=objective_terms,
         ast_evidence=ast_evidence,
         proposal_count=desired,
+        config=resolved,
     )
     now_epoch = float(time.time() if now is None else now)
     historical_timestamps: list[float] = []
@@ -1416,6 +2547,7 @@ def generate_analysis_proposals(
     attempt_limit = min(1 + limits.max_router_retries, calls_remaining, token_limited_calls)
     errors: list[str] = []
     raw_responses: list[str] = []
+    batch_results: list[ProviderBatchResult] = []
     calls = 0
     last_evaluation = AnalysisProposalEvaluation((), (), None)
     proposals: tuple[AnalysisProposal, ...] = ()
@@ -1434,6 +2566,10 @@ def generate_analysis_proposals(
                 else _default_structured_router(
                     prompt,
                     replace(resolved, max_new_tokens=token_cost),
+                    route="analysis-proposal-router",
+                    operation="analysis_proposal.v1",
+                    response_contract="analysis-proposals@1",
+                    batch_results=batch_results,
                 )
             )
             raw_responses.append(str(raw))
@@ -1462,6 +2598,7 @@ def generate_analysis_proposals(
                     reserved_tokens=calls * token_cost,
                     raw_responses=tuple(raw_responses),
                     router_call_timestamps=tuple([*historical_timestamps, *([now_epoch] * calls)]),
+                    batch_results=tuple(batch_results),
                 )
             reasons = ", ".join(item.reason for item in last_evaluation.rejected)
             errors.append(f"all router proposals rejected: {reasons or 'no accepted proposals'}")
@@ -1519,4 +2656,930 @@ def generate_analysis_proposals(
         raw_responses=tuple(raw_responses),
         router_call_timestamps=tuple([*historical_timestamps, *([now_epoch] * calls)]),
         limit_reason=limit_reason,
+        batch_results=tuple(batch_results),
+    )
+
+
+# Evidence-aware adaptive candidate routing ----------------------------------
+
+ADAPTIVE_CANDIDATE_ROUTER_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/adaptive-candidate-routing@1"
+)
+
+
+class AdaptiveCandidateProviderKind(str, Enum):
+    """Closed, stable ordering of candidate sources supported by ASI-008."""
+
+    DETERMINISTIC = "deterministic_baseline"
+    LLM = "llm"
+    LEANSTRAL = "leanstral"
+    IPFS_DATASETS = "ipfs_datasets_py"
+
+
+class CandidateProviderStatus(str, Enum):
+    SUCCEEDED = "succeeded"
+    UNAVAILABLE = "unavailable"
+    TIMED_OUT = "timed_out"
+    FAILED = "failed"
+    MALFORMED = "malformed"
+    BUDGET_REJECTED = "budget_rejected"
+
+
+@dataclass(frozen=True)
+class CandidateGenerationBounds:
+    """Finite per-provider limits; optional providers may never expand these."""
+
+    max_candidates_per_provider: int = 4
+    max_total_candidates: int = 16
+    max_input_tokens: int = DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS
+    max_output_tokens: int = 4096
+    max_response_bytes: int = TASK_PROPOSAL_MAX_RESPONSE_BYTES
+    timeout_seconds: float = 30.0
+    max_estimated_tokens_per_candidate: int = 1_000_000
+    max_estimated_runtime_seconds_per_candidate: float = 86_400.0
+    max_estimated_resource_cost_per_candidate: float = 1_000_000.0
+
+    def __post_init__(self) -> None:
+        integer_fields = (
+            "max_candidates_per_provider",
+            "max_total_candidates",
+            "max_input_tokens",
+            "max_output_tokens",
+            "max_response_bytes",
+            "max_estimated_tokens_per_candidate",
+        )
+        for name in integer_fields:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        for name in (
+            "timeout_seconds",
+            "max_estimated_runtime_seconds_per_candidate",
+            "max_estimated_resource_cost_per_candidate",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a positive finite number")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= 0:
+                raise ValueError(f"{name} must be a positive finite number")
+            object.__setattr__(self, name, numeric)
+        if self.max_total_candidates < 1:
+            raise ValueError("max_total_candidates must reserve the baseline")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateGenerationBounds":
+        allowed = set(cls.__dataclass_fields__)
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown candidate-generation bound fields: " + ", ".join(unknown)
+            )
+        return cls(**dict(payload))
+
+
+def _canonical_payload(value: Any) -> Any:
+    """Return a detached JSON value or fail before a provider sees context."""
+
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        value = value.to_dict()
+
+    def plain(item: Any) -> Any:
+        if isinstance(item, Mapping):
+            result: dict[str, Any] = {}
+            for key, nested in item.items():
+                if not isinstance(key, str):
+                    raise TypeError("JSON object keys must be strings")
+                result[key] = plain(nested)
+            return result
+        if isinstance(item, (list, tuple)):
+            return [plain(nested) for nested in item]
+        return item
+
+    try:
+        encoded = json.dumps(
+            plain(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        return json.loads(encoded)
+    except (TypeError, ValueError) as exc:
+        raise PlanBranchValidationError(
+            "adaptive planning context must be finite JSON data"
+        ) from exc
+
+
+def _deep_freeze_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _deep_freeze_json(item) for key, item in value.items()}
+        )
+    if isinstance(value, list):
+        return tuple(_deep_freeze_json(item) for item in value)
+    return value
+
+
+def _payload_identity(value: Any) -> str:
+    encoded = json.dumps(
+        _canonical_payload(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+@dataclass(frozen=True)
+class FrozenCandidateGenerationRequest:
+    """The exact immutable capsule passed unchanged to every provider."""
+
+    goal_id: str
+    goal_content_id: str
+    repository_tree_id: str
+    policy_digest: str
+    context_id: str
+    policy: Mapping[str, Any]
+    context: Mapping[str, Any]
+    bounds: CandidateGenerationBounds
+
+    def __post_init__(self) -> None:
+        for name in (
+            "goal_id",
+            "goal_content_id",
+            "repository_tree_id",
+            "policy_digest",
+            "context_id",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value or "\x00" in value:
+                raise ValueError(f"{name} must be a non-empty safe string")
+            object.__setattr__(self, name, value)
+        context = _canonical_payload(self.context)
+        if not isinstance(context, dict):
+            raise ValueError("context must be a JSON object")
+        policy = _canonical_payload(self.policy)
+        if not isinstance(policy, dict):
+            raise ValueError("policy must be a JSON object")
+        if self.context_id != _payload_identity(context):
+            raise ValueError("context_id does not match the frozen context")
+        object.__setattr__(self, "context", _deep_freeze_json(context))
+        object.__setattr__(self, "policy", _deep_freeze_json(policy))
+        if not isinstance(self.bounds, CandidateGenerationBounds):
+            object.__setattr__(
+                self, "bounds", CandidateGenerationBounds(**dict(self.bounds))
+            )
+
+    @classmethod
+    def freeze(
+        cls,
+        frozen_goal: object,
+        context: Mapping[str, Any],
+        *,
+        bounds: CandidateGenerationBounds | None = None,
+    ) -> "FrozenCandidateGenerationRequest":
+        def value(name: str) -> Any:
+            if isinstance(frozen_goal, Mapping):
+                return frozen_goal.get(name)
+            return getattr(frozen_goal, name, None)
+
+        policy = value("policy")
+        policy_digest = value("policy_digest")
+        if callable(policy_digest):
+            policy_digest = policy_digest()
+        if not policy_digest:
+            policy_digest = _payload_identity(policy)
+        detached = _canonical_payload(context)
+        resolved_bounds = bounds or CandidateGenerationBounds()
+        context_bytes = json.dumps(
+            detached,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        # This boundary has no provider tokenizer.  Four UTF-8 bytes per token
+        # is a conservative, deterministic capsule estimate; provider-specific
+        # adapters remain responsible for applying their stricter tokenizer.
+        if len(context_bytes) > resolved_bounds.max_input_tokens * 4:
+            raise TaskProposalRouterError(
+                "frozen adaptive planning context exceeds the input-token bound",
+                reason_code="context_token_budget_exceeded",
+            )
+        return cls(
+            goal_id=str(value("goal_id") or ""),
+            goal_content_id=str(
+                value("goal_content_id") or value("frozen_goal_id") or ""
+            ),
+            repository_tree_id=str(value("repository_tree_id") or ""),
+            policy_digest=str(policy_digest or ""),
+            context_id=_payload_identity(detached),
+            policy=_canonical_payload(policy),
+            context=detached,
+            bounds=resolved_bounds,
+        )
+
+    @property
+    def request_id(self) -> str:
+        return _payload_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "goal_id": self.goal_id,
+            "goal_content_id": self.goal_content_id,
+            "repository_tree_id": self.repository_tree_id,
+            "policy_digest": self.policy_digest,
+            "context_id": self.context_id,
+            "policy": _canonical_payload(self.policy),
+            "context": _canonical_payload(self.context),
+            "bounds": self.bounds.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "FrozenCandidateGenerationRequest":
+        allowed = {
+            "goal_id",
+            "goal_content_id",
+            "repository_tree_id",
+            "policy_digest",
+            "context_id",
+            "policy",
+            "context",
+            "bounds",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown frozen candidate-request fields: " + ", ".join(unknown)
+            )
+        missing = sorted(allowed - set(payload))
+        if missing:
+            raise ValueError(
+                "missing frozen candidate-request fields: " + ", ".join(missing)
+            )
+        return cls(
+            goal_id=payload["goal_id"],
+            goal_content_id=payload["goal_content_id"],
+            repository_tree_id=payload["repository_tree_id"],
+            policy_digest=payload["policy_digest"],
+            context_id=payload["context_id"],
+            policy=payload["policy"],
+            context=payload["context"],
+            bounds=CandidateGenerationBounds.from_dict(payload["bounds"]),
+        )
+
+
+@dataclass(frozen=True)
+class CandidateProviderOutcome:
+    """One bounded provider attempt, including explicit degradation."""
+
+    provider_kind: AdaptiveCandidateProviderKind
+    status: CandidateProviderStatus
+    request_id: str
+    candidate_ids: tuple[str, ...] = ()
+    reason_code: str = ""
+    detail: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    runtime_milliseconds: int = 0
+    resource_cost_millionths: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "provider_kind", AdaptiveCandidateProviderKind(self.provider_kind)
+        )
+        object.__setattr__(self, "status", CandidateProviderStatus(self.status))
+        request_id = str(self.request_id or "").strip()
+        if not request_id:
+            raise ValueError("provider outcome requires request_id")
+        object.__setattr__(self, "request_id", request_id)
+        ids = tuple(sorted({str(item).strip() for item in self.candidate_ids}))
+        if any(not item for item in ids):
+            raise ValueError("candidate_ids must not contain empty values")
+        object.__setattr__(self, "candidate_ids", ids)
+        for name in (
+            "input_tokens",
+            "output_tokens",
+            "runtime_milliseconds",
+            "resource_cost_millionths",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if self.status is CandidateProviderStatus.SUCCEEDED and not ids:
+            raise ValueError("a successful provider outcome requires candidates")
+        if self.status is not CandidateProviderStatus.SUCCEEDED and ids:
+            raise ValueError("a degraded provider outcome cannot claim candidates")
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        object.__setattr__(self, "detail", str(self.detail or "").strip()[:1000])
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "provider_kind": self.provider_kind.value,
+            "status": self.status.value,
+            "request_id": self.request_id,
+            "candidate_ids": list(self.candidate_ids),
+            "reason_code": self.reason_code,
+            "detail": self.detail,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "runtime_milliseconds": self.runtime_milliseconds,
+            "resource_cost_millionths": self.resource_cost_millionths,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateProviderOutcome":
+        allowed = set(cls.__dataclass_fields__)
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown provider-outcome fields: " + ", ".join(unknown)
+            )
+        return cls(**dict(payload))
+
+
+def _decode_profile_evidence_candidate(
+    payload: Mapping[str, Any],
+) -> EvidenceAwarePlanCandidate:
+    values = dict(payload)
+    values.pop("candidate_id", None)
+    branch = dict(values.pop("branch"))
+    branch["estimated_cost"] = branch.pop("estimated_cost_millionths") / 1_000_000
+    branch["risk"] = branch.pop("risk_millionths") / 1_000_000
+    branch["expected_objective_delta"] = (
+        branch.pop("expected_objective_delta_millionths") / 1_000_000
+    )
+    values["novelty"] = values.pop("novelty_millionths") / 1_000_000
+    values["estimated_resource_cost"] = (
+        values.pop("estimated_resource_cost_millionths") / 1_000_000
+    )
+    values["estimated_runtime_seconds"] = (
+        values.pop("estimated_runtime_milliseconds", 0) / 1_000
+    )
+    return EvidenceAwarePlanCandidate.from_dict({"branch": branch, **values})
+
+
+@dataclass(frozen=True)
+class AdaptiveCandidateRoutingResult:
+    request: FrozenCandidateGenerationRequest
+    candidates: tuple[EvidenceAwarePlanCandidate, ...]
+    outcomes: tuple[CandidateProviderOutcome, ...]
+
+    def __post_init__(self) -> None:
+        candidates = tuple(
+            item
+            if isinstance(item, EvidenceAwarePlanCandidate)
+            else EvidenceAwarePlanCandidate.from_dict(item)
+            for item in self.candidates
+        )
+        if not candidates:
+            raise ValueError("adaptive routing must retain a deterministic baseline")
+        if candidates[0].branch.source != AdaptiveCandidateProviderKind.DETERMINISTIC.value:
+            raise ValueError("the first adaptive candidate must be the deterministic baseline")
+        ids = [item.candidate_id for item in candidates]
+        if len(ids) != len(set(ids)):
+            raise ValueError("adaptive routed candidate ids must be unique")
+        if len(candidates) > self.request.bounds.max_total_candidates:
+            raise ValueError("adaptive routed candidates exceed the total bound")
+        object.__setattr__(self, "candidates", candidates)
+        outcomes = tuple(self.outcomes)
+        expected = tuple(AdaptiveCandidateProviderKind)
+        if tuple(item.provider_kind for item in outcomes) != expected:
+            raise ValueError("provider outcomes must use the complete fixed provider order")
+        if any(item.request_id != self.request.request_id for item in outcomes):
+            raise ValueError("provider outcome is not bound to the frozen request")
+        object.__setattr__(self, "outcomes", outcomes)
+
+    @property
+    def used_fallback(self) -> bool:
+        return all(
+            item.status is not CandidateProviderStatus.SUCCEEDED
+            for item in self.outcomes[1:]
+        )
+
+    @property
+    def routing_id(self) -> str:
+        return _payload_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": ADAPTIVE_CANDIDATE_ROUTER_SCHEMA,
+            "request": self.request.to_dict(),
+            "candidates": [item.to_dict(profile_g=True) for item in self.candidates],
+            "outcomes": [item.to_dict() for item in self.outcomes],
+            "used_fallback": self.used_fallback,
+        }
+        if include_identity:
+            payload["routing_id"] = self.routing_id
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "AdaptiveCandidateRoutingResult":
+        allowed = {
+            "schema",
+            "routing_id",
+            "request",
+            "candidates",
+            "outcomes",
+            "used_fallback",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown adaptive-routing fields: " + ", ".join(unknown)
+            )
+        if payload.get("schema") != ADAPTIVE_CANDIDATE_ROUTER_SCHEMA:
+            raise ValueError("unsupported adaptive-candidate routing schema")
+        result = cls(
+            request=FrozenCandidateGenerationRequest.from_dict(payload["request"]),
+            candidates=tuple(
+                _decode_profile_evidence_candidate(item)
+                for item in payload.get("candidates") or ()
+            ),
+            outcomes=tuple(
+                CandidateProviderOutcome.from_dict(item)
+                for item in payload.get("outcomes") or ()
+            ),
+        )
+        if bool(payload.get("used_fallback")) != result.used_fallback:
+            raise ValueError("adaptive routing fallback projection is inconsistent")
+        claimed = str(payload.get("routing_id") or "")
+        if claimed and claimed != result.routing_id:
+            raise ValueError("adaptive routing identity does not match content")
+        return result
+
+
+def deterministic_evidence_aware_candidate(
+    frozen_goal: object,
+    context: Mapping[str, Any],
+) -> EvidenceAwarePlanCandidate:
+    """Construct the mandatory baseline solely from frozen trusted inputs."""
+
+    policy_value = (
+        frozen_goal.get("policy")
+        if isinstance(frozen_goal, Mapping)
+        else getattr(frozen_goal, "policy", None)
+    )
+    policy = (
+        policy_value
+        if isinstance(policy_value, EvidenceAwarePlanPolicy)
+        else EvidenceAwarePlanPolicy.from_dict(policy_value or {})
+    )
+    goal_id = str(
+        (
+            frozen_goal.get("goal_id")
+            if isinstance(frozen_goal, Mapping)
+            else getattr(frozen_goal, "goal_id", "")
+        )
+        or "goal"
+    )
+    detached = _canonical_payload(context)
+    subgoal = {
+        "goal_id": goal_id,
+        "title": detached.get("title") or detached.get("goal") or goal_id,
+        "outputs": detached.get("outputs")
+        or detached.get("predicted_files")
+        or ("objective-plan.unspecified",),
+        "predicted_symbols": detached.get("predicted_symbols")
+        or detached.get("symbols")
+        or ("adaptive_plan",),
+        "dependencies": detached.get("dependencies")
+        or detached.get("depends_on")
+        or policy.satisfied_dependencies,
+        "validation_commands": detached.get("validation_commands")
+        or detached.get("validation")
+        or ("git diff --check",),
+    }
+    fallback = deterministic_plan_branches(subgoal, 1)[0]
+    safe_goal = re.sub(r"[^A-Za-z0-9._:-]+", "-", goal_id).strip("-.") or "goal"
+    branch = replace(
+        fallback,
+        branch_id=f"baseline:{safe_goal}",
+        source=AdaptiveCandidateProviderKind.DETERMINISTIC.value,
+    )
+    runtime = float(detached.get("estimated_runtime_seconds", branch.estimated_cost))
+    tokens = int(detached.get("estimated_tokens", 0))
+    resource_cost = float(
+        detached.get("estimated_resource_cost", branch.estimated_cost)
+    )
+    return EvidenceAwarePlanCandidate(
+        branch=branch,
+        covered_acceptance_criteria=policy.acceptance_criteria,
+        covered_evidence_terms=policy.evidence_terms,
+        assumptions=policy.trusted_assumptions,
+        validated_assumptions=policy.trusted_assumptions,
+        semantic_requirements=policy.supported_semantics,
+        supported_semantics=policy.supported_semantics,
+        dependencies=tuple(branch.dependencies),
+        critical_path=tuple(branch.dependencies),
+        unresolved_conflicts=(),
+        changed_scopes=policy.allowed_scopes or ("scope:baseline",),
+        authorized_scopes=policy.allowed_scopes or ("scope:baseline",),
+        authority_violations=(),
+        validation_feasible=bool(branch.validation_commands),
+        proof_feasible=bool(branch.validation_proof),
+        novelty=max(policy.min_novelty, 0.5),
+        resource_classes=tuple(
+            detached.get("resource_classes") or policy.available_resource_classes
+        ),
+        estimated_resource_cost=resource_cost,
+        estimated_tokens=tokens,
+        estimated_runtime_seconds=runtime,
+    )
+
+
+def _provider_result_candidates(value: Any) -> tuple[Any, ...]:
+    if isinstance(value, EvidenceAwarePlanCandidate):
+        return (value,)
+    if isinstance(value, Mapping):
+        if "candidates" in value:
+            raw = value["candidates"]
+        elif "candidate" in value:
+            raw = (value["candidate"],)
+        else:
+            raw = (value,)
+    elif hasattr(value, "candidates"):
+        raw = getattr(value, "candidates")
+    elif hasattr(value, "candidate"):
+        raw = (getattr(value, "candidate"),)
+    else:
+        raw = value
+    if isinstance(raw, (str, bytes, bytearray)) or not isinstance(raw, Iterable):
+        raise PlanBranchValidationError("provider result must contain candidates")
+    return tuple(raw)
+
+
+def _provider_metric(value: Any, *names: str) -> int:
+    for name in names:
+        observed = (
+            value.get(name)
+            if isinstance(value, Mapping)
+            else getattr(value, name, None)
+        )
+        if observed is None:
+            continue
+        try:
+            result = int(observed)
+        except (TypeError, ValueError):
+            continue
+        return max(0, result)
+    return 0
+
+
+def _provider_declared_degradation(
+    value: Any,
+) -> tuple[CandidateProviderStatus, str] | None:
+    observed = (
+        value.get("status")
+        if isinstance(value, Mapping)
+        else getattr(value, "status", None)
+    )
+    if isinstance(observed, Enum):
+        observed = observed.value
+    status = str(observed or "").strip().casefold()
+    reason = (
+        value.get("reason_code")
+        if isinstance(value, Mapping)
+        else getattr(value, "reason_code", "")
+    )
+    reason_code = str(reason or status or "provider_degraded").strip()
+    unavailable = {
+        "unavailable",
+        "unsupported",
+        "overloaded",
+        "deterministic_fallback",
+        "not_available",
+    }
+    timed_out = {"timeout", "timed_out", "cancelled", "canceled"}
+    malformed = {"malformed", "malformed_output", "invalid"}
+    failed = {"failed", "error", "inconclusive"}
+    if status in unavailable:
+        return CandidateProviderStatus.UNAVAILABLE, reason_code
+    if status in timed_out:
+        return CandidateProviderStatus.TIMED_OUT, reason_code
+    if status in malformed:
+        return CandidateProviderStatus.MALFORMED, reason_code
+    if status in failed:
+        return CandidateProviderStatus.FAILED, reason_code
+    return None
+
+
+def _call_bounded_provider(
+    provider: Callable[[FrozenCandidateGenerationRequest], Any],
+    request: FrozenCandidateGenerationRequest,
+) -> tuple[bool, Any, int]:
+    started = time.monotonic()
+    output: "queue.Queue[tuple[bool, Any]]" = queue.Queue(maxsize=1)
+
+    def invoke() -> None:
+        try:
+            output.put_nowait((True, provider(request)))
+        except BaseException as exc:  # provider isolation boundary
+            output.put_nowait((False, exc))
+
+    worker = threading.Thread(
+        target=invoke,
+        name="adaptive-candidate-provider",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(request.bounds.timeout_seconds)
+    elapsed = max(0, round((time.monotonic() - started) * 1000))
+    if worker.is_alive():
+        return False, TimeoutError("candidate provider exceeded timeout"), elapsed
+    try:
+        succeeded, value = output.get_nowait()
+    except queue.Empty:
+        return False, RuntimeError("candidate provider returned no result"), elapsed
+    return succeeded, value, elapsed
+
+
+def route_adaptive_plan_candidates(
+    frozen_goal: object,
+    context: Mapping[str, Any],
+    *,
+    providers: Mapping[
+        AdaptiveCandidateProviderKind | str,
+        Callable[[FrozenCandidateGenerationRequest], Any] | None,
+    ] | None = None,
+    bounds: CandidateGenerationBounds | None = None,
+    baseline_factory: Callable[
+        [object, Mapping[str, Any]], EvidenceAwarePlanCandidate | Mapping[str, Any]
+    ] = deterministic_evidence_aware_candidate,
+) -> AdaptiveCandidateRoutingResult:
+    """Route one frozen capsule through fixed, bounded, failure-isolated lanes."""
+
+    request = FrozenCandidateGenerationRequest.freeze(
+        frozen_goal, context, bounds=bounds
+    )
+    baseline_value = baseline_factory(frozen_goal, request.context)
+    baseline = (
+        baseline_value
+        if isinstance(baseline_value, EvidenceAwarePlanCandidate)
+        else EvidenceAwarePlanCandidate.from_dict(baseline_value)
+    )
+    if baseline.branch.source != AdaptiveCandidateProviderKind.DETERMINISTIC.value:
+        baseline = replace(
+            baseline,
+            branch=replace(
+                baseline.branch,
+                source=AdaptiveCandidateProviderKind.DETERMINISTIC.value,
+            ),
+        )
+    if (
+        baseline.estimated_tokens
+        > request.bounds.max_estimated_tokens_per_candidate
+        or baseline.estimated_runtime_seconds
+        > request.bounds.max_estimated_runtime_seconds_per_candidate
+        or baseline.estimated_resource_cost
+        > request.bounds.max_estimated_resource_cost_per_candidate
+    ):
+        raise TaskProposalRouterError(
+            "deterministic baseline exceeds candidate generation bounds",
+            reason_code="baseline_budget_exceeded",
+        )
+
+    configured: dict[AdaptiveCandidateProviderKind, Any] = {}
+    for key, provider in (providers or {}).items():
+        kind = AdaptiveCandidateProviderKind(key)
+        if kind is AdaptiveCandidateProviderKind.DETERMINISTIC:
+            raise ValueError("the deterministic provider is supplied by baseline_factory")
+        configured[kind] = provider
+
+    candidates: list[EvidenceAwarePlanCandidate] = [baseline]
+    outcomes: list[CandidateProviderOutcome] = [
+        CandidateProviderOutcome(
+            provider_kind=AdaptiveCandidateProviderKind.DETERMINISTIC,
+            status=CandidateProviderStatus.SUCCEEDED,
+            request_id=request.request_id,
+            candidate_ids=(baseline.candidate_id,),
+            reason_code="mandatory_baseline",
+        )
+    ]
+    identities = {
+        _payload_identity(
+            {
+                **baseline.to_dict(),
+                "candidate_id": None,
+                "branch": {
+                    **baseline.branch.to_dict(),
+                    "branch_id": None,
+                    "source": None,
+                },
+            }
+        )
+    }
+    observed_ids = {baseline.candidate_id}
+
+    for kind in tuple(AdaptiveCandidateProviderKind)[1:]:
+        provider = configured.get(kind)
+        if provider is None:
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.UNAVAILABLE,
+                    request_id=request.request_id,
+                    reason_code="provider_not_configured",
+                )
+            )
+            continue
+        succeeded, raw, elapsed_ms = _call_bounded_provider(provider, request)
+        if not succeeded:
+            status = (
+                CandidateProviderStatus.TIMED_OUT
+                if isinstance(raw, TimeoutError)
+                else CandidateProviderStatus.FAILED
+            )
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=status,
+                    request_id=request.request_id,
+                    reason_code=(
+                        "provider_timeout"
+                        if status is CandidateProviderStatus.TIMED_OUT
+                        else "provider_exception"
+                    ),
+                    detail=f"{type(raw).__name__}: {raw}",
+                    runtime_milliseconds=elapsed_ms,
+                )
+            )
+            continue
+        declared_degradation = _provider_declared_degradation(raw)
+        if (
+            _provider_metric(raw, "input_tokens", "prompt_tokens")
+            > request.bounds.max_input_tokens
+            or _provider_metric(raw, "output_tokens", "completion_tokens")
+            > request.bounds.max_output_tokens
+        ):
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.BUDGET_REJECTED,
+                    request_id=request.request_id,
+                    reason_code="provider_token_budget_exceeded",
+                    detail="provider reported token use beyond frozen bounds",
+                    runtime_milliseconds=elapsed_ms,
+                )
+            )
+            continue
+        if declared_degradation is not None:
+            status, reason_code = declared_degradation
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=status,
+                    request_id=request.request_id,
+                    reason_code=reason_code,
+                    detail="provider returned a typed degraded result",
+                    input_tokens=_provider_metric(raw, "input_tokens", "prompt_tokens"),
+                    output_tokens=_provider_metric(raw, "output_tokens", "completion_tokens"),
+                    runtime_milliseconds=max(
+                        elapsed_ms,
+                        _provider_metric(raw, "runtime_milliseconds", "elapsed_ms"),
+                    ),
+                    resource_cost_millionths=_provider_metric(
+                        raw, "resource_cost_millionths"
+                    ),
+                )
+            )
+            continue
+        try:
+            if _provider_metric(raw, "input_tokens", "prompt_tokens") > (
+                request.bounds.max_input_tokens
+            ):
+                raise OverflowError("provider input-token count exceeds bound")
+            raw_candidates = _provider_result_candidates(raw)
+            if not raw_candidates:
+                raise PlanBranchValidationError("provider returned no candidates")
+            if len(raw_candidates) > request.bounds.max_candidates_per_provider:
+                raise OverflowError("provider candidate count exceeds bound")
+            normalized = tuple(
+                item
+                if isinstance(item, EvidenceAwarePlanCandidate)
+                else EvidenceAwarePlanCandidate.from_dict(item)
+                for item in raw_candidates
+            )
+            # Source provenance belongs to the router lane, never to an
+            # untrusted provider declaration.
+            normalized = tuple(
+                (
+                    item
+                    if item.branch.source == kind.value
+                    else replace(
+                        item,
+                        branch=replace(item.branch, source=kind.value),
+                    )
+                )
+                for item in normalized
+            )
+            encoded_size = len(
+                json.dumps(
+                    [item.to_dict() for item in normalized],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
+            )
+            if encoded_size > request.bounds.max_response_bytes:
+                raise OverflowError("provider response exceeds byte bound")
+            if _provider_metric(raw, "output_tokens", "completion_tokens") > (
+                request.bounds.max_output_tokens
+            ):
+                raise OverflowError("provider output-token count exceeds bound")
+            accepted: list[EvidenceAwarePlanCandidate] = []
+            for item in sorted(normalized, key=lambda candidate: candidate.candidate_id):
+                if (
+                    item.estimated_tokens
+                    > request.bounds.max_estimated_tokens_per_candidate
+                    or item.estimated_runtime_seconds
+                    > request.bounds.max_estimated_runtime_seconds_per_candidate
+                    or item.estimated_resource_cost
+                    > request.bounds.max_estimated_resource_cost_per_candidate
+                ):
+                    raise OverflowError("provider candidate exceeds cost bound")
+                if item.candidate_id in observed_ids:
+                    raise PlanBranchValidationError(
+                        "provider candidate id collides with another lane"
+                    )
+                identity = _payload_identity(
+                    {
+                        **item.to_dict(),
+                        "candidate_id": None,
+                        "branch": {
+                            **item.branch.to_dict(),
+                            "branch_id": None,
+                            "source": None,
+                        },
+                    }
+                )
+                if identity in identities:
+                    continue
+                if len(candidates) + len(accepted) >= request.bounds.max_total_candidates:
+                    raise OverflowError("total adaptive candidate bound reached")
+                identities.add(identity)
+                observed_ids.add(item.candidate_id)
+                accepted.append(item)
+            if not accepted:
+                raise PlanBranchValidationError(
+                    "provider returned only duplicate candidates"
+                )
+            candidates.extend(accepted)
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.SUCCEEDED,
+                    request_id=request.request_id,
+                    candidate_ids=tuple(item.candidate_id for item in accepted),
+                    reason_code="bounded_provider_result",
+                    input_tokens=_provider_metric(raw, "input_tokens", "prompt_tokens"),
+                    output_tokens=_provider_metric(raw, "output_tokens", "completion_tokens"),
+                    runtime_milliseconds=max(
+                        elapsed_ms,
+                        _provider_metric(raw, "runtime_milliseconds", "elapsed_ms"),
+                    ),
+                    resource_cost_millionths=_provider_metric(
+                        raw, "resource_cost_millionths"
+                    ),
+                )
+            )
+        except OverflowError as exc:
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.BUDGET_REJECTED,
+                    request_id=request.request_id,
+                    reason_code="provider_budget_exceeded",
+                    detail=str(exc),
+                    runtime_milliseconds=elapsed_ms,
+                )
+            )
+        except Exception as exc:
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.MALFORMED,
+                    request_id=request.request_id,
+                    reason_code="malformed_provider_result",
+                    detail=f"{type(exc).__name__}: {exc}",
+                    runtime_milliseconds=elapsed_ms,
+                )
+            )
+
+    return AdaptiveCandidateRoutingResult(
+        request=request,
+        candidates=tuple(candidates),
+        outcomes=tuple(outcomes),
     )

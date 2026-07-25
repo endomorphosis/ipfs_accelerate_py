@@ -81,6 +81,10 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             objective_todo_vector_index_path=tmp_path / "bundles" / "todo_vector_index.json",
             objective_surplus_findings_per_goal=4,
             objective_surplus_min_terms_per_todo=2,
+            objective_goal_completion_gate_path=tmp_path / "completion-gate.json",
+            objective_goal_completion_evidence_path=tmp_path / "completion-evidence.json",
+            objective_goal_completion_artifact_refresh_command="python refresh.py",
+            objective_goal_completion_artifact_refresh_timeout_seconds=45,
             objective_interoperability_focus=("hallucinate_app",),
             objective_goal_migration_preview=True,
             objective_goal_migration_batch_size=7,
@@ -93,6 +97,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             codebase_scan_max_findings=5,
             codebase_scan_cooldown_seconds=120,
             codebase_scan_skip_prefixes=("data/state/", "scripts/"),
+            allow_unscoped_codebase_refill=True,
         ),
     )
 
@@ -100,6 +105,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert args[args.index("--objective-scan-max-findings") + 1] == "99"
     assert args.count("--worktree-submodule-path") == 2
     assert args.count("--codebase-scan-skip-prefix") == 2
+    assert args.count("--allow-unscoped-codebase-refill") == 1
     assert "--objective-refill-scan" in args
     assert "--objective-seed-interoperability-goals" in args
     assert "--objective-goal-migration-preview" in args
@@ -111,7 +117,18 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert parsed.objective_scan_max_findings == 99
     assert parsed.objective_goal_migration_preview is True
     assert parsed.objective_goal_migration_batch_size == 7
+    assert parsed.objective_goal_completion_gate_path == tmp_path / "completion-gate.json"
+    assert (
+        parsed.objective_goal_completion_evidence_path
+        == tmp_path / "completion-evidence.json"
+    )
+    assert (
+        parsed.objective_goal_completion_artifact_refresh_command
+        == "python refresh.py"
+    )
+    assert parsed.objective_goal_completion_artifact_refresh_timeout_seconds == 45
     assert parsed.codebase_scan_cooldown_seconds == 120
+    assert parsed.allow_unscoped_codebase_refill is True
     assert parsed.generated_dirty_repair_enabled is True
     assert parsed.generated_dirty_commit_subject == "EX: commit generated outputs"
     assert parsed.generated_dirty_max_paths == 17
@@ -126,6 +143,8 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
         "dataset_dir": tmp_path / "datasets",
         "discovery_dir": tmp_path / "discovery",
         "todo_vector_index_path": tmp_path / "bundles" / "todo_vector_index.json",
+        "completion_gate_path": tmp_path / "completion-gate.json",
+        "completion_evidence_path": tmp_path / "completion-evidence.json",
     }
 
     objective_factory = build_objective_refill_defaults_factory(
@@ -136,6 +155,10 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
         objective_discovery_dir_key="discovery_dir",
         objective_discovery_output_path_factory=lambda resolved: f"out/{Path(resolved['discovery_dir']).name}",
         objective_todo_vector_index_path_key="todo_vector_index_path",
+        objective_goal_completion_gate_path_key="completion_gate_path",
+        objective_goal_completion_evidence_path_key="completion_evidence_path",
+        objective_goal_completion_artifact_refresh_command="python refresh.py",
+        objective_goal_completion_artifact_refresh_timeout_seconds=60,
         objective_interoperability_focus=("hallucinate_app",),
         objective_scan_max_findings=11,
         seed_interoperability_goals=True,
@@ -144,6 +167,7 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
         codebase_scan_discovery_dir_key="discovery_dir",
         codebase_scan_discovery_output_path_factory=lambda resolved: f"scan/{Path(resolved['discovery_dir']).name}",
         codebase_scan_skip_prefixes=("data/state/",),
+        allow_unscoped_codebase_refill=True,
     )
 
     objective = objective_factory(paths)
@@ -155,12 +179,20 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
     assert objective.objective_dataset_dir == paths["dataset_dir"]
     assert objective.objective_discovery_output_path == "out/discovery"
     assert objective.objective_todo_vector_index_path == paths["todo_vector_index_path"]
+    assert objective.objective_goal_completion_gate_path == paths["completion_gate_path"]
+    assert (
+        objective.objective_goal_completion_evidence_path
+        == paths["completion_evidence_path"]
+    )
+    assert objective.objective_goal_completion_artifact_refresh_command == "python refresh.py"
+    assert objective.objective_goal_completion_artifact_refresh_timeout_seconds == 60
     assert objective.objective_interoperability_focus == ("hallucinate_app",)
     assert objective.objective_scan_max_findings == 11
     assert objective.seed_interoperability_goals is True
     assert codebase.codebase_scan_discovery_dir == paths["discovery_dir"]
     assert codebase.codebase_scan_discovery_output_path == "scan/discovery"
     assert codebase.codebase_scan_skip_prefixes == ("data/state/",)
+    assert codebase.allow_unscoped_codebase_refill is True
 
 
 def test_build_portal_implementation_supervisor_from_args_applies_defaults(tmp_path: Path):
@@ -1021,6 +1053,7 @@ def test_build_supervisor_context_refill_callbacks(tmp_path: Path):
     codebase_hook = build_supervisor_codebase_scan_refill_callback(
         recorder("codebase"),
         discovery_dir=tmp_path / "discovery",
+        objective_path=tmp_path / "objective.md",
         repo_root=tmp_path,
     )
     retry_hook = build_supervisor_retry_budget_refill_callback(
@@ -1035,7 +1068,9 @@ def test_build_supervisor_context_refill_callbacks(tmp_path: Path):
     assert captured["objective"]["bundle_dir"] == tmp_path / "bundles"
     assert captured["objective"]["surplus_findings_per_goal"] == 4
     assert captured["codebase"]["bundle_dir"] == tmp_path / "bundles"
+    assert captured["codebase"]["objective_path"] == tmp_path / "objective.md"
     assert captured["codebase"]["max_findings"] == 5
+    assert captured["codebase"]["objective_path"] == tmp_path / "objective.md"
     assert captured["retry"]["events_path"] == tmp_path / "daemon-events.jsonl"
     assert captured["retry"]["task_header_prefix"] == "## EX-"
 
@@ -1171,6 +1206,7 @@ def test_build_supervisor_refill_hooks_factory_from_recorders(tmp_path: Path):
     assert hooks[2].callback(context) == ["retry"]
     assert captured["objective"]["objective_path"] == paths["objective_path"]
     assert captured["codebase"]["discovery_dir"] == paths["discovery_dir"]
+    assert captured["codebase"]["objective_path"] == paths["objective_path"]
     assert captured["retry"]["discovery_output_path"] == "data/discovery"
 
 

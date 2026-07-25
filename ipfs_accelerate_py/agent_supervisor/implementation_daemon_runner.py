@@ -87,6 +87,7 @@ class ConfiguredImplementationDaemonRunner:
     repo_root: Path
     logger: logging.Logger
     default_worktree_submodule_paths: Sequence[str] | None = None
+    default_implementation_protected_paths: Sequence[str] | None = None
     default_objective_path: Path | None = None
     default_objective_bundle_dir: Path | None = None
     pass_complete_message: str = "Portal implementation daemon pass complete: %s"
@@ -105,6 +106,7 @@ class ConfiguredImplementationDaemonRunner:
             repo_root=self.repo_root,
             logger=self.logger,
             default_worktree_submodule_paths=self.default_worktree_submodule_paths,
+            default_implementation_protected_paths=self.default_implementation_protected_paths,
             default_objective_path=self.default_objective_path,
             default_objective_bundle_dir=self.default_objective_bundle_dir,
             hooks=hooks,
@@ -385,6 +387,7 @@ def build_configured_implementation_daemon_runner(
     repo_root: Path | str,
     logger: logging.Logger,
     default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | str | None = None,
     default_objective_bundle_dir: Path | str | None = None,
     pass_complete_message: str = "Portal implementation daemon pass complete: %s",
@@ -397,6 +400,11 @@ def build_configured_implementation_daemon_runner(
         default_worktree_submodule_paths=(
             tuple(default_worktree_submodule_paths)
             if default_worktree_submodule_paths is not None
+            else None
+        ),
+        default_implementation_protected_paths=(
+            tuple(default_implementation_protected_paths)
+            if default_implementation_protected_paths is not None
             else None
         ),
         default_objective_path=(
@@ -419,6 +427,7 @@ def build_namespace_configured_implementation_daemon_runner(
     logger: logging.Logger,
     namespace_paths: AgentSupervisorNamespacePaths,
     default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | str | None = None,
     default_objective_bundle_dir: Path | str | None = None,
     pass_complete_message: str = "Portal implementation daemon pass complete: %s",
@@ -429,6 +438,7 @@ def build_namespace_configured_implementation_daemon_runner(
         repo_root=repo_root,
         logger=logger,
         default_worktree_submodule_paths=default_worktree_submodule_paths,
+        default_implementation_protected_paths=default_implementation_protected_paths,
         default_objective_path=default_objective_path,
         default_objective_bundle_dir=(
             default_objective_bundle_dir
@@ -448,6 +458,7 @@ def build_namespace_daemon_bootstrap_runner(
     task_prefix: str,
     state_prefix: str,
     default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | str | None = None,
     default_objective_bundle_dir: Path | str | None = None,
     pass_complete_message: str = "Portal implementation daemon pass complete: %s",
@@ -476,6 +487,7 @@ def build_namespace_daemon_bootstrap_runner(
         logger=logger,
         namespace_paths=namespace_paths,
         default_worktree_submodule_paths=default_worktree_submodule_paths,
+        default_implementation_protected_paths=default_implementation_protected_paths,
         default_objective_path=default_objective_path,
         default_objective_bundle_dir=default_objective_bundle_dir,
         pass_complete_message=pass_complete_message,
@@ -792,6 +804,7 @@ def build_daemon_codebase_scan_refill_callback(
     callback: DaemonRefillRecordCallback,
     *,
     discovery_dir: Path,
+    objective_path: Path | None = None,
     repo_root: Path | None = None,
     extra_kwargs: dict[str, Any] | None = None,
 ) -> DaemonLoopHookCallback:
@@ -807,6 +820,9 @@ def build_daemon_codebase_scan_refill_callback(
         }
         if repo_root is not None:
             kwargs["repo_root"] = repo_root
+        resolved_objective_path = getattr(ctx.parsed, "objective_path", None) or objective_path
+        if resolved_objective_path is not None:
+            kwargs["objective_path"] = resolved_objective_path
         bundle_dir = getattr(ctx.parsed, "objective_bundle_dir", None)
         if bundle_dir is not None:
             kwargs["bundle_dir"] = bundle_dir
@@ -888,6 +904,7 @@ def build_daemon_refill_hooks_from_recorders(
                 build_daemon_codebase_scan_refill_callback(
                     codebase_scan_recorder,
                     discovery_dir=discovery_dir,
+                    objective_path=objective_path,
                     repo_root=repo_root,
                     extra_kwargs=codebase_scan_extra_kwargs,
                 ),
@@ -1060,6 +1077,7 @@ def build_portal_implementation_daemon_from_args(
     *,
     repo_root: Path,
     default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
 ) -> tuple[object, ImplementationDaemonRunContext]:
@@ -1077,6 +1095,11 @@ def build_portal_implementation_daemon_from_args(
         or default_worktree_submodule_paths
         or None
     )
+    implementation_protected_paths = (
+        getattr(parsed, "implementation_protected_path", None)
+        or default_implementation_protected_paths
+        or None
+    )
     daemon = PortalImplementationDaemon(
         todo_path=parsed.todo_path,
         state_path=state_paths["state_path"],
@@ -1090,6 +1113,7 @@ def build_portal_implementation_daemon_from_args(
         use_ephemeral_worktree=parsed.implement and not parsed.no_ephemeral_worktree,
         worktree_root=parsed.worktree_root,
         worktree_submodule_paths=worktree_submodule_paths,
+        implementation_protected_paths=implementation_protected_paths,
         objective_path=parsed.objective_path or default_objective_path,
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
         execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),
@@ -1196,6 +1220,7 @@ def run_configured_portal_implementation_daemon(
     repo_root: Path,
     logger: logging.Logger,
     default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
     hooks: Sequence[DaemonLoopHook] = (),
@@ -1211,6 +1236,7 @@ def run_configured_portal_implementation_daemon(
         parsed,
         repo_root=repo_root,
         default_worktree_submodule_paths=default_worktree_submodule_paths,
+        default_implementation_protected_paths=default_implementation_protected_paths,
         default_objective_path=default_objective_path,
         default_objective_bundle_dir=default_objective_bundle_dir,
     )

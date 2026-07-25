@@ -1,15 +1,25 @@
 from __future__ import annotations
 
+import copy
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+    AnalyzerHealthReport,
+    AnalyzerHealthStatus,
+    AnalyzerHealthThresholds,
+)
 from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     ADAPTIVE_GOAL_REFINER_VERSION,
+    ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
     NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
     NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA,
+    UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA,
+    UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA,
+    UNCHANGED_FAILURE_BACKOFF_GOAL_ID,
     UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
     AdaptiveGoalRefinementError,
     AdaptiveGoalRefiner,
@@ -18,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     AdaptiveRefinementReceipt,
     AdaptiveRefinementRequest,
     GoalDebtKind,
+    GoalDebtRecord,
     GoalQualityRecord,
     InMemoryRefinementStore,
     JsonlRefinementStore,
@@ -25,6 +36,20 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     RefinementProducerKind,
     RefinementSignal,
     RefinementSignalKind,
+    UnchangedFailureBackoffEvidence,
+)
+from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
+    AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,
+    EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
+    EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS,
+    EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION,
+    EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS,
+    AdaptivePlannerValidationError,
+    EvidenceAwarePlanningCompletionEvidence,
+    FrozenPlanningGoal,
+    HardPlanConstraint,
+    deterministic_hard_gate_receipts,
+    plan_adaptively,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     Actor,
@@ -33,12 +58,41 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     Goal,
     PlanTask,
 )
+from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
+    ResponsiveReplanDecision,
+    ReplanStopReason,
+    UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
+)
 from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
     FrozenRefinementContext,
 )
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
+)
+from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+    EvidenceAwarePlanCandidate,
+    EvidenceAwarePlanPolicy,
+    PlanBranch,
+    PlanEvaluationDimension,
+)
+from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+    AdaptiveCandidateProviderKind,
+)
+from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+    ObjectiveGoalQualityReport,
+    build_objective_goal_quality_report,
+    load_objective_goal_quality_report,
+    write_objective_goal_quality_report,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+    AcceptanceCoverage,
+    CoverageStatus,
+    GoalCoverageMap,
+)
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    ExhaustionBinding,
+    evaluate_exhaustion_quorum,
 )
 
 
@@ -155,6 +209,96 @@ def _verification(
     )
 
 
+def _g030_planning_run():
+    policy = EvidenceAwarePlanPolicy(
+        acceptance_criteria=("acceptance:planning-complete",),
+        evidence_terms=(AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,),
+        trusted_assumptions=("assumption:frozen",),
+        supported_semantics=("semantics:typed",),
+        satisfied_dependencies=("dependency:context",),
+        allowed_scopes=("scope:planner",),
+        available_resource_classes=("cpu",),
+        max_estimated_resource_cost=100,
+        max_estimated_tokens=100_000,
+    )
+    goal = FrozenPlanningGoal(
+        goal_id="ASI-G030",
+        goal_content_id="goal:g030:asi-080",
+        repository_tree_id="tree:one",
+        policy=policy,
+    )
+    cheap = EvidenceAwarePlanCandidate(
+        branch=PlanBranch(
+            branch_id="cheap-unsafe",
+            summary="A cheaper plan whose authority gate rejects it.",
+            predicted_files=("src/planner.py",),
+            predicted_symbols=("Planner.select",),
+            dependencies=("dependency:context",),
+            validation_commands=("pytest test_planner.py -q",),
+            validation_proof=("selection is observed",),
+            estimated_cost=0.01,
+            risk=0.0,
+            expected_objective_delta=1.0,
+            source=AdaptiveCandidateProviderKind.LLM.value,
+        ),
+        covered_acceptance_criteria=("acceptance:planning-complete",),
+        covered_evidence_terms=(AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,),
+        assumptions=("assumption:frozen",),
+        validated_assumptions=("assumption:frozen",),
+        semantic_requirements=("semantics:typed",),
+        supported_semantics=("semantics:typed",),
+        dependencies=("dependency:context",),
+        critical_path=("dependency:context",),
+        unresolved_conflicts=(),
+        changed_scopes=("scope:planner",),
+        authorized_scopes=("scope:planner",),
+        authority_violations=(),
+        validation_feasible=True,
+        proof_feasible=True,
+        novelty=1.0,
+        resource_classes=("cpu",),
+        estimated_resource_cost=0.01,
+        estimated_tokens=1,
+    )
+    context = {
+        "title": "Complete ASI-G030",
+        "outputs": ["src/planner.py", "test_planner.py"],
+        "predicted_symbols": ["Planner.select"],
+        "dependencies": ["dependency:context"],
+        "validation_commands": ["pytest test_planner.py -q"],
+        "estimated_tokens": 100,
+        "estimated_runtime_seconds": 1.0,
+        "estimated_resource_cost": 1.0,
+        "resource_classes": ["cpu"],
+    }
+
+    def gates(plan, frozen_goal, request):
+        receipts = deterministic_hard_gate_receipts(
+            plan, frozen_goal, request
+        )
+        if plan.candidate_id != cheap.candidate_id:
+            return receipts
+        return tuple(
+            replace(
+                receipt,
+                passed=False,
+                reason_codes=("authorization_denied",),
+            )
+            if receipt.constraint is HardPlanConstraint.AUTHORITY
+            else receipt
+            for receipt in receipts
+        )
+
+    return plan_adaptively(
+        goal,
+        context,
+        providers={
+            AdaptiveCandidateProviderKind.LLM: lambda _request: (cheap,)
+        },
+        hard_gate_evaluator=gates,
+    )
+
+
 def test_new_counterexample_triggers_exactly_one_bounded_verified_refinement() -> None:
     """Proves objective evidence 003778425160038348524906247302938706902."""
 
@@ -209,7 +353,7 @@ def test_new_counterexample_triggers_exactly_one_bounded_verified_refinement() -
 
 
 def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
-    """ASI-058: runtime admission stays separate from objective completion."""
+    """ASI-073: every completion proof class is explicit and fail-closed."""
 
     result = AdaptiveGoalRefiner(
         _candidate,
@@ -223,7 +367,7 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     evidence = tuple(
         CompletionEvidence(
             acceptance_criterion=criterion,
-            producing_task_or_scan="ASI-058",
+            producing_task_or_scan="ASI-073",
             producer_kind="task",
             validation_receipt={
                 "status": "passed",
@@ -237,7 +381,7 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
             repository_tree=tree_id,
             freshness={"fresh": True},
             observed_at=now,
-            provenance_cid=f"validation:asi-058:{index}",
+            provenance_cid=f"validation:asi-073:{index}",
             metadata={
                 "evidence_source_policy": {
                     "satisfies": True,
@@ -264,21 +408,31 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
                     "test/api/test_agent_supervisor_"
                     "adaptive_goal_refiner.py"
                 ),
+                "validation_receipt_ids": [
+                    f"validation:asi-073:{index}"
+                ],
             }
-            for criterion in criteria
+            for index, criterion in enumerate(criteria, start=1)
         ],
     }
     health = {
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
-        "analyzer_version": "asi-058-completion-analyzer@1",
+        "analyzer_version": "asi-073-completion-analyzer@1",
     }
+    typed_health = AnalyzerHealthReport(
+        status=AnalyzerHealthStatus.HEALTHY,
+        reasons=(),
+        thresholds=AnalyzerHealthThresholds(),
+        metrics={"objective_id": "ASI-G098", "repository_tree": tree_id},
+    )
     binding = {
+        "repository_id": "repository:adaptive-goal-refiner",
         "tree_id": tree_id,
-        "analyzer_version": "asi-058-completion-analyzer@1",
-        "configuration_revision": "asi-058-completion-policy@1",
-        "objective_revision": "ASI-G098@asi-058",
+        "analyzer_version": "asi-073-completion-analyzer@1",
+        "configuration_revision": "asi-073-completion-policy@1",
+        "objective_revision": "ASI-G098@asi-073",
     }
     quorum = {
         "required_members": 2,
@@ -288,9 +442,9 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
         "binding": binding,
         "members": [
             {
-                "member_id": "asi-058-exhaustive-implementation",
+                "member_id": "asi-073-exhaustive-implementation",
                 "evidence_channel": "implementation-validation",
-                "receipt_cid": "scan:asi-058:implementation",
+                "receipt_cid": "scan:asi-073:implementation",
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -298,9 +452,9 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
                 "finished_at": now.isoformat(),
             },
             {
-                "member_id": "asi-058-exhaustive-receipt-audit",
+                "member_id": "asi-073-exhaustive-receipt-audit",
                 "evidence_channel": "receipt-replay-audit",
-                "receipt_cid": "scan:asi-058:receipt-audit",
+                "receipt_cid": "scan:asi-073:receipt-audit",
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -351,6 +505,81 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     assert verified.verified
     assert verified.gate is not None and verified.gate.passed
 
+    # Canonical analyzer and coverage producers can be passed directly; the
+    # bridge narrows a repository-wide map to ASI-G098 before checking that
+    # each row binds implementation surfaces and validation receipts.
+    typed_coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"ASI-G098:{index}",
+                goal_id="ASI-G098",
+                criterion=criterion,
+                status=CoverageStatus.VERIFIED,
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "adaptive_goal_refiner.py"
+                ],
+                validation_receipt_ids=[
+                    f"validation:asi-073:{index}"
+                ],
+            )
+            for index, criterion in enumerate(criteria, start=1)
+        ],
+        edges=[],
+        receipts=[],
+        finding_assignments=[],
+        registered_goal_ids=["ASI-G098"],
+        evaluated_at=now.isoformat(),
+        repository_tree=tree_id,
+    )
+    typed_binding = ExhaustionBinding(
+        repository_id=binding["repository_id"],
+        tree_id=tree_id,
+        analyzer_version=binding["analyzer_version"],
+        configuration_revision=binding["configuration_revision"],
+        objective_revision=binding["objective_revision"],
+    )
+    typed_quorum = evaluate_exhaustion_quorum(
+        (
+            {
+                "receipt_cid": "scan:asi-073:typed-implementation",
+                "terminal_reason": "exhausted",
+                "scan_mode": "exhaustive",
+                "finished_at": now.isoformat(),
+                "metadata": {
+                    "analyzer_health": {"status": "healthy"},
+                    "coverage_complete": True,
+                    "evidence_channel": "typed-implementation-validation",
+                },
+            },
+            {
+                "receipt_cid": "scan:asi-073:typed-audit",
+                "terminal_reason": "exhausted",
+                "scan_mode": "audit",
+                "finished_at": now.isoformat(),
+                "metadata": {
+                    "analyzer_health": {"status": "healthy"},
+                    "coverage_complete": True,
+                    "evidence_channel": "typed-receipt-replay-audit",
+                },
+            },
+        ),
+        binding=typed_binding,
+        required_members=2,
+    )
+    assert typed_quorum.satisfied
+    typed_proof = result.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": typed_coverage,
+            "analyzer_health": typed_health,
+            "exhaustion_quorum": typed_quorum,
+        },
+    )
+    assert typed_proof.state is GoalState.VERIFIED_COMPLETE
+    assert typed_proof.gate is not None and typed_proof.gate.passed
+
     # An omitted mandatory record cannot narrow the bridge's closed criterion
     # set, and an extra failed or stale submission cannot be masked by a pass.
     missing = result.evaluate_objective_completion(
@@ -390,59 +619,134 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     assert stale_submission.state is GoalState.PROVISIONALLY_COMPLETE
     assert "stale_evidence" in stale_submission.reason_codes
 
-    # Health must say both healthy and completion-safe explicitly.
-    implicit_health = result.evaluate_objective_completion(
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{**values, "analyzer_health": {"status": "healthy"}},
-    )
-    assert implicit_health.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "analyzer_unhealthy" in implicit_health.reason_codes
+    # A summary cannot claim criterion coverage without every exact row and
+    # both its implementation surface and validation proof binding.
+    missing_implementation = copy.deepcopy(coverage)
+    missing_implementation["criteria"][0]["implementation"] = ""
+    missing_validation = copy.deepcopy(coverage)
+    missing_validation["criteria"][0]["validation"] = ""
+    missing_validation["criteria"][0]["validation_receipt_ids"] = []
+    unbound_validation = copy.deepcopy(coverage)
+    unbound_validation["criteria"][0]["validation_receipt_ids"] = [
+        "validation:foreign-tree"
+    ]
+    for invalid_coverage in (
+        missing_implementation,
+        missing_validation,
+        unbound_validation,
+        {**coverage, "criteria": coverage["criteria"][:-1]},
+    ):
+        coverage_gap = result.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "coverage": invalid_coverage},
+        )
+        assert coverage_gap.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not coverage_gap.verified
+        assert any(
+            code in coverage_gap.reason_codes
+            for code in ("coverage_unverified", "coverage_missing")
+        )
 
-    unsafe_health = result.evaluate_objective_completion(
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{
-            **values,
-            "analyzer_health": {
-                **health,
-                "safe_for_completion_reasoning": False,
-            },
+    # Health must say healthy and completion-safe explicitly. A typed healthy
+    # AnalyzerHealthReport above is accepted; partial mappings cannot infer it.
+    for invalid_health in (
+        {"status": "healthy"},
+        {**health, "healthy": False},
+        {**health, "safe_for_completion_reasoning": False},
+    ):
+        unhealthy = result.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "analyzer_health": invalid_health},
+        )
+        assert unhealthy.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not unhealthy.verified
+        assert "analyzer_unhealthy" in unhealthy.reason_codes
+
+    # Quorum proof requires the configured number of unique members, receipt
+    # CIDs, and evidence channels. Every member is fresh, healthy,
+    # completion-safe, exhaustive, and bound to this exact tree.
+    invalid_quorums = (
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "evidence_channel": "implementation-validation",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "receipt_cid": "scan:asi-073:implementation",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "scan_mode": "partial"},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "healthy": False},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "safe_for_completion_reasoning": False,
+                },
+            ],
+        },
+        {
+            **quorum,
+            "member_count": 1,
+            "members": [quorum["members"][0]],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "finished_at": "2026-07-24T12:00:00+00:00",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "binding": {**binding, "tree_id": "tree:foreign"},
+                },
+            ],
         },
     )
-    assert unsafe_health.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "analyzer_unhealthy" in unsafe_health.reason_codes
-
-    # Quorum proof requires distinct channels and explicit healthy exhaustive
-    # members, all fresh and bound to this exact tree.
-    duplicate_channel = {
-        **quorum,
-        "members": [
-            quorum["members"][0],
-            {
-                **quorum["members"][1],
-                "evidence_channel": "implementation-validation",
-            },
-        ],
-    }
-    non_independent = result.evaluate_objective_completion(
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{**values, "exhaustion_quorum": duplicate_channel},
-    )
-    assert non_independent.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "exhaustion_quorum_inconsistent" in non_independent.reason_codes
-
-    unhealthy_quorum = {
-        **quorum,
-        "members": [
-            quorum["members"][0],
-            {**quorum["members"][1], "healthy": False},
-        ],
-    }
-    unhealthy_receipt = result.evaluate_objective_completion(
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{**values, "exhaustion_quorum": unhealthy_quorum},
-    )
-    assert unhealthy_receipt.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "exhaustion_quorum_unsatisfied" in unhealthy_receipt.reason_codes
+    for invalid_quorum in invalid_quorums:
+        no_quorum = result.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "exhaustion_quorum": invalid_quorum},
+        )
+        assert no_quorum.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not no_quorum.verified
+        assert any(
+            code.startswith("exhaustion_quorum")
+            for code in no_quorum.reason_codes
+        )
 
     foreign = replace(
         evidence[0],
@@ -456,6 +760,336 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     )
     assert wrong_tree.state is GoalState.PROVISIONALLY_COMPLETE
     assert "repository_tree_mismatch" in wrong_tree.reason_codes
+
+
+def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -> None:
+    """ASI-080: the parent stays actionable until every proof surface closes."""
+
+    planning_run = _g030_planning_run()
+    assert planning_run.selection.evaluation.covers_every_planning_dimension
+    assert all(
+        {item.dimension for item in evaluated.dimensions}
+        == set(PlanEvaluationDimension)
+        for evaluated in planning_run.selection.evaluation.ranked
+    )
+
+    changed = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, request: _verification(request),
+        clock=lambda: 100,
+    ).refine(_request())
+    retry_now = [100]
+    retry_request = _request(
+        _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
+    )
+    retry_controller = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, request: _verification(
+            request, verified=False
+        ),
+        policy=AdaptiveRefinementPolicy(
+            initial_backoff_seconds=30,
+            max_backoff_seconds=120,
+        ),
+        clock=lambda: retry_now[0],
+    )
+    failed = retry_controller.refine(retry_request)
+    retry_now[0] = 110
+    backed_off = retry_controller.refine(
+        replace(retry_request, cycle_id="cycle:g030-backoff")
+    )
+    cohort = EvidenceAwarePlanningCompletionEvidence(
+        planning_run=planning_run,
+        changed_refinement_receipt=changed.receipt,
+        backoff_source_receipt=failed.receipt,
+        unchanged_backoff_receipt=backed_off.receipt,
+    )
+    assert cohort.requirement_ids == tuple(
+        sorted(
+            (
+                AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,
+                NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
+                UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
+            )
+        )
+    )
+    assert not cohort.completion_authority
+    assert not cohort.safe_for_completion_reasoning
+    assert (
+        EvidenceAwarePlanningCompletionEvidence.from_dict(cohort.to_dict())
+        == cohort
+    )
+    assert changed.planning_completion_witness["completion_authority"] is False
+    assert backed_off.planning_completion_witness["requirement_ids"] == [
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+    ]
+
+    now = datetime(2026, 7, 24, 22, 0, tzinfo=timezone.utc)
+    tree_id = cohort.repository_tree_id
+    command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_adaptive_planner.py "
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py -q"
+    )
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-080",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": tree_id,
+                "command": command,
+            },
+            validation_passed=True,
+            repository_id="repository:ipfs-accelerate",
+            repository_tree=tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-080:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "adaptive_planner.py"
+                        if index <= 2
+                        else "adaptive_goal_refiner.py"
+                    )
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_"
+                    + (
+                        "adaptive_planner.py"
+                        if index <= 2
+                        else "adaptive_goal_refiner.py"
+                    )
+                ),
+                "validation_receipt_id": evidence[
+                    index - 1
+                ].provenance_cid,
+            }
+            for index, criterion in enumerate(
+                EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    binding = {
+        "repository_id": "repository:ipfs-accelerate",
+        "tree_id": tree_id,
+        "objective_id": "ASI-G030",
+        "objective_revision": EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION,
+        "analyzer_version": "asi-080-completion-analyzer@1",
+        "configuration_revision": "asi-080-completion-policy@1",
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": binding["analyzer_version"],
+        "binding": binding,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-080-planner-exhaustion",
+                "evidence_channel": "planner-validation",
+                "receipt_cid": "scan:asi-080:planner",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-080-refiner-exhaustion",
+                "evidence_channel": "refiner-validation",
+                "receipt_cid": "scan:asi-080:refiner",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    producing_tasks = tuple(
+        {"task_id": task_id, "status": "completed"}
+        for task_id in EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS
+    )
+
+    def child(goal_id: str) -> dict:
+        return {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "completion_gate": {
+                "passed": True,
+                "evaluated_evidence": {
+                    "repository_tree": tree_id,
+                    "evaluated_at": now.isoformat(),
+                },
+            },
+            "proof_requirements": [
+                {
+                    "goal_id": goal_id,
+                    "acceptance_criterion": f"{goal_id} proof",
+                    "obligation_id": f"obligation:{goal_id}",
+                    "proof_receipt_id": f"proof:{goal_id}",
+                    "required_assurance": "kernel_verified",
+                    "authoritative_assurance": "kernel_verified",
+                    "proof_verdict": "proved",
+                    "freshness": "current",
+                    "assurance_satisfied": True,
+                    "contradicted": False,
+                    "reason_codes": [],
+                }
+            ],
+        }
+
+    children = tuple(
+        child(goal_id)
+        for goal_id in EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS
+    )
+    values = {
+        "producing_tasks": producing_tasks,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "child_goals": children,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+    provisional = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.gate is not None and provisional.gate.passed
+    assert provisional.acceptance_criteria == (
+        EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate.evaluated_evidence["analysis_result"] == {}
+
+    verified = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    incomplete = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "producing_tasks": producing_tasks[:-1]},
+    )
+    assert not incomplete.verified
+    assert "tasks_incomplete" in incomplete.reason_codes
+
+    missing_child = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "child_goals": children[:-1]},
+    )
+    assert not missing_child.verified
+    assert "child_unverified" in missing_child.reason_codes
+
+    stale_children = copy.deepcopy(children)
+    stale_children[0]["proof_requirements"][0]["freshness"] = "stale"
+    stale = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "child_goals": stale_children},
+    )
+    assert not stale.verified
+    assert "child_proof_stale" in stale.reason_codes
+
+    unbound_coverage = copy.deepcopy(coverage)
+    unbound_coverage["criteria"][0][
+        "validation_receipt_id"
+    ] = "validation:foreign"
+    no_coverage = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "coverage": unbound_coverage},
+    )
+    assert not no_coverage.verified
+    assert "coverage_unverified" in no_coverage.reason_codes
+
+    unsafe = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": {
+                **health,
+                "safe_for_completion_reasoning": False,
+            },
+        },
+    )
+    assert not unsafe.verified
+    assert "analyzer_unhealthy" in unsafe.reason_codes
+
+    duplicate_quorum = {
+        **quorum,
+        "members": [
+            quorum["members"][0],
+            {
+                **quorum["members"][1],
+                "receipt_cid": quorum["members"][0]["receipt_cid"],
+            },
+        ],
+    }
+    no_quorum = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "exhaustion_quorum": duplicate_quorum},
+    )
+    assert not no_quorum.verified
+    assert any(
+        reason.startswith("exhaustion_quorum")
+        for reason in no_quorum.reason_codes
+    )
+
+    with pytest.raises(ValueError, match="configured ASI-G030 count"):
+        cohort.evaluate_evidence_aware_planning_completion(
+            required_exhaustive_receipts=1,
+            **values,
+        )
+
+    reopened = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.VERIFIED_COMPLETE,
+        **{**values, "child_goals": children[:-1]},
+    )
+    assert reopened.state is GoalState.REOPENED
+
+    tampered = cohort.to_dict()
+    tampered["planning_run"]["selection"]["frozen_goal"][
+        "repository_tree_id"
+    ] = "tree:foreign"
+    with pytest.raises(AdaptivePlannerValidationError):
+        EvidenceAwarePlanningCompletionEvidence.from_dict(tampered)
 
 
 def test_replayed_admitted_evidence_is_idempotent_without_more_model_calls() -> None:
@@ -518,14 +1152,38 @@ def test_unchanged_failure_signature_backs_off_without_another_model_call() -> N
     )
 
     assert failed.decision is RefinementDecision.VERIFICATION_FAILED
+    assert failed.receipt.requirement_ids == ()
+    assert failed.receipt.evidence_ids == ()
     assert backed_off.decision is RefinementDecision.BACKED_OFF
     assert not backed_off.model_called
     assert backed_off.receipt.retry_after == 130
     assert calls == {"generator": 1, "verifier": 1}
-    assert (
-        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
-        in backed_off.receipt.requirement_ids
+    receipt = backed_off.receipt
+    assert receipt.requirement_ids == (
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
     )
+    assert receipt.proved_requirement_ids == receipt.requirement_ids
+    witness = receipt.unchanged_failure_backoff_evidence
+    assert isinstance(witness, UnchangedFailureBackoffEvidence)
+    assert witness.repeated_failure_signal_id == request.signals[0].evidence_id
+    assert witness.failure_signature == request.signals[0].failure_signature
+    assert witness.source_failure_receipt_id == failed.receipt.receipt_id
+    assert witness.source_failure_decision == failed.decision.value
+    assert witness.source_failure_model_called
+    assert witness.source_failure_attempted_at == 100
+    assert witness.source_failure_retry_after == 130
+    assert witness.source_failure_attempt_index == 1
+    assert witness.suppressed_attempt_index == 2
+    assert witness.request_id == backed_off.receipt.request_id
+    assert witness.cycle_id == "cycle:unchanged"
+    assert witness.evidence_fingerprint == request.evidence_fingerprint
+    assert witness.root_goal_content_id == request.root_goal_content_id
+    assert witness.repository_tree_id == request.repository_tree_id
+    assert witness.policy_id == controller.policy.content_id
+    assert witness.previous_plan_id == request.plan.content_id
+    assert witness.model_call_suppressed
+    assert receipt.evidence_ids == (witness.evidence_id,)
+    assert AdaptiveRefinementReceipt.from_dict(receipt.to_dict()) == receipt
 
 
 def test_changed_evidence_bypasses_old_backoff_in_the_next_cycle() -> None:
@@ -555,6 +1213,151 @@ def test_changed_evidence_bypasses_old_backoff_in_the_next_cycle() -> None:
     assert (
         first.receipt.evidence_fingerprint
         != changed.receipt.evidence_fingerprint
+    )
+
+
+def test_changed_plan_state_cannot_replay_an_old_failure_backoff() -> None:
+    calls = 0
+    store = InMemoryRefinementStore()
+    signal = _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
+
+    def generate(request: AdaptiveRefinementRequest) -> AdaptiveRefinementCandidate:
+        nonlocal calls
+        calls += 1
+        return _candidate(request)
+
+    controller = AdaptiveGoalRefiner(
+        generate,
+        lambda candidate, request: _verification(request, verified=False),
+        store=store,
+        clock=lambda: 101,
+    )
+    first = controller.refine(_request(signal))
+    changed_plan = _plan(with_child=True)
+    changed = controller.refine(
+        replace(
+            _request(signal, plan=changed_plan),
+            cycle_id="cycle:changed-plan",
+        )
+    )
+
+    assert first.decision is RefinementDecision.VERIFICATION_FAILED
+    assert changed.decision is not RefinementDecision.BACKED_OFF
+    assert changed.model_called
+    assert changed.receipt.previous_plan_id == changed_plan.content_id
+    assert calls == 2
+
+
+def test_retry_deadline_reopens_generation_without_stale_backoff_authority() -> None:
+    now = [100]
+    calls = 0
+
+    def generate(request: AdaptiveRefinementRequest) -> AdaptiveRefinementCandidate:
+        nonlocal calls
+        calls += 1
+        return _candidate(request)
+
+    controller = AdaptiveGoalRefiner(
+        generate,
+        lambda candidate, request: _verification(request, verified=False),
+        policy=AdaptiveRefinementPolicy(
+            initial_backoff_seconds=10, max_backoff_seconds=40
+        ),
+        clock=lambda: now[0],
+    )
+    request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
+    first = controller.refine(request)
+    now[0] = first.receipt.retry_after
+    retry = controller.refine(replace(request, cycle_id="cycle:deadline"))
+
+    assert retry.decision is RefinementDecision.VERIFICATION_FAILED
+    assert retry.model_called
+    assert retry.receipt.requirement_ids == ()
+    assert retry.receipt.evidence_ids == ()
+    assert retry.receipt.unchanged_failure_backoff_evidence is None
+    assert retry.receipt.retry_after == now[0] + 20
+    assert calls == 2
+
+
+def test_suppressed_polls_do_not_inflate_exponential_failure_backoff() -> None:
+    now = [100]
+    request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
+    controller = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(current, verified=False),
+        policy=AdaptiveRefinementPolicy(
+            initial_backoff_seconds=10, max_backoff_seconds=80
+        ),
+        clock=lambda: now[0],
+    )
+    first = controller.refine(request)
+    assert first.receipt.retry_after == 110
+    for index, timestamp in enumerate((101, 102, 103), start=1):
+        now[0] = timestamp
+        poll = controller.refine(
+            replace(request, cycle_id=f"cycle:poll:{index}")
+        )
+        assert poll.decision is RefinementDecision.BACKED_OFF
+        assert poll.receipt.retry_after == 110
+
+    now[0] = 110
+    second_failure = controller.refine(
+        replace(request, cycle_id="cycle:second-failure")
+    )
+    assert second_failure.decision is RefinementDecision.VERIFICATION_FAILED
+    assert second_failure.receipt.attempt_index == 5
+    assert second_failure.receipt.retry_after == 130
+
+
+def test_jsonl_restart_suppresses_unchanged_failure_without_generator_call(
+    tmp_path,
+) -> None:
+    path = tmp_path / "failure-backoff.jsonl"
+    signal = _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
+    request = _request(signal)
+    first_calls = 0
+
+    def first_generate(
+        current: AdaptiveRefinementRequest,
+    ) -> AdaptiveRefinementCandidate:
+        nonlocal first_calls
+        first_calls += 1
+        return _candidate(current)
+
+    failed = AdaptiveGoalRefiner(
+        first_generate,
+        lambda candidate, current: _verification(current, verified=False),
+        store=JsonlRefinementStore(path),
+        policy=AdaptiveRefinementPolicy(initial_backoff_seconds=30),
+        clock=lambda: 100,
+    ).refine(request)
+    restarted_calls = {"generator": 0, "verifier": 0}
+
+    def restarted_generate(current: AdaptiveRefinementRequest):
+        restarted_calls["generator"] += 1
+        return _candidate(current)
+
+    def restarted_verify(candidate, current):
+        restarted_calls["verifier"] += 1
+        return _verification(current)
+
+    backed_off = AdaptiveGoalRefiner(
+        restarted_generate,
+        restarted_verify,
+        store=JsonlRefinementStore(path),
+        policy=AdaptiveRefinementPolicy(initial_backoff_seconds=30),
+        clock=lambda: 110,
+    ).refine(replace(request, cycle_id="cycle:restart"))
+
+    assert first_calls == 1
+    assert restarted_calls == {"generator": 0, "verifier": 0}
+    assert backed_off.decision is RefinementDecision.BACKED_OFF
+    witness = backed_off.receipt.unchanged_failure_backoff_evidence
+    assert witness is not None
+    assert witness.source_failure_receipt_id == failed.receipt.receipt_id
+    assert JsonlRefinementStore(path).receipts() == (
+        failed.receipt,
+        backed_off.receipt,
     )
 
 
@@ -751,6 +1554,159 @@ def test_counterexample_witness_tampering_fails_closed() -> None:
         AdaptiveRefinementReceipt.from_dict(payload)
 
 
+def test_backoff_witness_tampering_and_detached_sources_fail_closed() -> None:
+    now = [100]
+    store = InMemoryRefinementStore()
+    request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
+    controller = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(current, verified=False),
+        store=store,
+        clock=lambda: now[0],
+    )
+    failed = controller.refine(request)
+    now[0] = 110
+    backed_off = controller.refine(replace(request, cycle_id="cycle:backoff"))
+    payload = backed_off.receipt.to_dict()
+
+    missing = copy.deepcopy(payload)
+    missing["unchanged_failure_backoff_evidence"] = None
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="missing its causal witness"
+    ):
+        AdaptiveRefinementReceipt.from_dict(missing)
+
+    tampered = copy.deepcopy(payload)
+    tampered["unchanged_failure_backoff_evidence"]["retry_after"] += 1
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="backoff deadline|identity"
+    ):
+        AdaptiveRefinementReceipt.from_dict(tampered)
+
+    unknown = copy.deepcopy(payload)
+    unknown["unchanged_failure_backoff_evidence"]["unreviewed_claim"] = True
+    with pytest.raises(
+        AdaptiveGoalRefinementError,
+        match="unknown unchanged-failure backoff evidence",
+    ):
+        AdaptiveRefinementReceipt.from_dict(unknown)
+
+    unsupported = copy.deepcopy(payload)
+    unsupported["unchanged_failure_backoff_evidence"]["schema"] = (
+        UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA + "/future"
+    )
+    with pytest.raises(
+        AdaptiveGoalRefinementError,
+        match="unsupported unchanged-failure backoff evidence schema",
+    ):
+        AdaptiveRefinementReceipt.from_dict(unsupported)
+
+    witness = backed_off.receipt.unchanged_failure_backoff_evidence
+    assert witness is not None
+    detached = replace(witness, source_failure_receipt_id="receipt:detached")
+    detached_receipt = replace(
+        backed_off.receipt,
+        unchanged_failure_backoff_evidence=detached,
+    )
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="source failure is absent"
+    ):
+        InMemoryRefinementStore((failed.receipt, detached_receipt))
+
+
+def test_only_typed_repeated_failure_backoff_can_claim_asi_g115() -> None:
+    calls = 0
+    now = [100]
+    request = _request(_signal(kind=RefinementSignalKind.COUNTEREXAMPLE))
+
+    def generate(current):
+        nonlocal calls
+        calls += 1
+        return _candidate(current)
+
+    controller = AdaptiveGoalRefiner(
+        generate,
+        lambda candidate, current: _verification(current, verified=False),
+        clock=lambda: now[0],
+    )
+    controller.refine(request)
+    now[0] = 101
+    backed_off = controller.refine(replace(request, cycle_id="cycle:replay"))
+
+    assert backed_off.decision is RefinementDecision.BACKED_OFF
+    assert not backed_off.model_called
+    assert calls == 1
+    assert backed_off.receipt.requirement_ids == ()
+    assert backed_off.receipt.proved_requirement_ids == ()
+    assert backed_off.receipt.evidence_ids == ()
+    assert backed_off.receipt.unchanged_failure_backoff_evidence is None
+
+
+def test_g115_completion_bridge_fixes_goal_and_closed_criterion_population() -> None:
+    now = [100]
+    request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
+    controller = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(current, verified=False),
+        clock=lambda: now[0],
+    )
+    controller.refine(request)
+    now[0] = 101
+    backed_off = controller.refine(replace(request, cycle_id="cycle:backoff"))
+    projected_goal_ids: list[str] = []
+
+    class _CoverageProbe:
+        def completion_gate_evidence(self, goal_id: str):
+            projected_goal_ids.append(goal_id)
+            return {"verified": False, "criteria": []}
+
+    decision = backed_off.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        tasks_complete=True,
+        coverage=_CoverageProbe(),
+        analyzer_health={},
+        exhaustion_quorum={},
+    )
+
+    assert UNCHANGED_FAILURE_BACKOFF_GOAL_ID == "ASI-G115"
+    assert projected_goal_ids == [UNCHANGED_FAILURE_BACKOFF_GOAL_ID]
+    assert not decision.verified
+    assert decision.acceptance_criteria == (
+        UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA
+    )
+    assert set((*decision.missing_criteria, *decision.invalid_criteria)) == set(
+        UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA
+    )
+
+
+def test_formal_unchanged_routing_names_g115_without_claiming_evidence() -> None:
+    decision = ResponsiveReplanDecision(
+        counterexample_id="counterexample:same",
+        previous_counterexample_id="counterexample:same",
+        changed=False,
+        stop_reason=ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF,
+        result=None,
+        backoff_attempt=2,
+        backoff_seconds=4,
+    )
+
+    assert UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID == (
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+    )
+    assert decision.requirement_ids == (
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
+    )
+    assert decision.evidence_ids == ()
+    payload = decision.to_dict()
+    assert payload["requirement_ids"] == [
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+    ]
+    assert payload["completion_evidence_roles"] == []
+    assert payload["completion_authority"] is False
+    assert payload["safe_for_completion_reasoning"] is False
+    assert decision.to_dict()["evidence_ids"] == []
+
+
 def test_persisted_objective_receipts_fail_closed_on_unreviewed_shape() -> None:
     result = AdaptiveGoalRefiner(
         _candidate,
@@ -760,7 +1716,7 @@ def test_persisted_objective_receipts_fail_closed_on_unreviewed_shape() -> None:
     payload = result.receipt.to_dict()
 
     unsupported = dict(payload)
-    unsupported["version"] = ADAPTIVE_GOAL_REFINER_VERSION + 1
+    unsupported["version"] = ADAPTIVE_REFINEMENT_RECEIPT_VERSION + 1
     with pytest.raises(AdaptiveGoalRefinementError, match="receipt version"):
         AdaptiveRefinementReceipt.from_dict(unsupported)
 
@@ -966,3 +1922,212 @@ def test_policy_and_signal_validation_fail_closed() -> None:
         )
     with pytest.raises(AdaptiveGoalRefinementError, match="independent"):
         AdaptiveGoalRefiner(_candidate, None)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("spelling", "expected"),
+    [
+        ("stale_receipt", RefinementSignalKind.STALE_EVIDENCE),
+        (
+            "repeated_validation_signature",
+            RefinementSignalKind.REPEATED_FAILURE,
+        ),
+        ("unavailable_capability", RefinementSignalKind.CAPABILITY_CHANGE),
+        ("unavailable_provider", RefinementSignalKind.CAPABILITY_CHANGE),
+        ("changed_interface", RefinementSignalKind.INTERFACE_CHANGE),
+        ("conflict", RefinementSignalKind.SCOPE_CONFLICT),
+        ("infeasible_resources", RefinementSignalKind.RESOURCE_INFEASIBLE),
+    ],
+)
+def test_task_language_signal_spellings_normalize_to_closed_kinds(
+    spelling: str,
+    expected: RefinementSignalKind,
+) -> None:
+    signal = RefinementSignal(
+        kind=spelling,  # type: ignore[arg-type]
+        subject_id="goal:root",
+        evidence_revision=f"{spelling}:v1",
+        observed_at=100,
+        failure_signature=(
+            "pytest::test_contract/assertion"
+            if expected is RefinementSignalKind.REPEATED_FAILURE
+            else ""
+        ),
+    )
+    assert signal.kind is expected
+    assert RefinementSignal.from_dict(signal.to_dict()) == signal
+
+
+def _complete_quality() -> GoalQualityRecord:
+    return GoalQualityRecord(
+        goal_id="goal:root",
+        outcome="Ship a verified child refinement.",
+        scope_ids=("src/refiner.py",),
+        assumption_ids=("assumption:frozen",),
+        non_goals=("operator-authorized root revision",),
+        acceptance_criteria=("The child implies the frozen parent.",),
+        evidence_producer_ids=("pytest:refinement",),
+        validation_ids=("pytest test_refinement.py -q",),
+        freshness_horizon_seconds=300,
+        resource_envelope={"tokens": 1024, "runtime_seconds": 30},
+        refinement_budget={"max_depth": 2, "max_children": 3},
+        breadth=1,
+        max_breadth=3,
+    )
+
+
+def test_goal_quality_and_debt_records_round_trip_fail_closed() -> None:
+    complete = _complete_quality()
+    assert complete.debt == ()
+    assert complete.debt_records == ()
+    assert GoalQualityRecord.from_dict(complete.to_dict()) == complete
+
+    incomplete = replace(
+        complete,
+        ambiguities=("Which interface version is authoritative?",),
+        stale_evidence_ids=("receipt:old",),
+        uncovered_acceptance_criteria=("The child is independently proved.",),
+        unsupported_semantics=("natural-language implication",),
+        breadth=4,
+    )
+    restored = GoalQualityRecord.from_dict(incomplete.to_dict())
+
+    assert restored == incomplete
+    assert all(
+        GoalDebtRecord.from_dict(item.to_dict()) == item
+        for item in restored.debt_records
+    )
+    assert {item.kind for item in restored.debt_records} == {
+        GoalDebtKind.AMBIGUOUS,
+        GoalDebtKind.STALE_EVIDENCE,
+        GoalDebtKind.UNCOVERED_ACCEPTANCE,
+        GoalDebtKind.UNSUPPORTED_SEMANTICS,
+        GoalDebtKind.EXCESSIVE_BREADTH,
+    }
+
+    tampered = copy.deepcopy(incomplete.to_dict())
+    tampered["debt_records"][0]["quality_id"] = complete.content_id
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="identity|do not match"
+    ):
+        GoalQualityRecord.from_dict(tampered)
+
+
+def test_refinement_request_binds_exact_quality_and_debt_snapshot() -> None:
+    quality = replace(
+        _complete_quality(),
+        stale_evidence_ids=("receipt:stale",),
+    )
+    request = replace(_request(), quality=quality)
+    payload = request.to_dict()
+
+    assert payload["quality_id"] == quality.content_id
+    assert payload["goal_debt_ids"] == tuple(
+        item.content_id for item in quality.debt_records
+    )
+
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="quality assumptions"
+    ):
+        replace(
+            request,
+            quality=replace(
+                quality, assumption_ids=("assumption:invented",)
+            ),
+        )
+
+
+def test_changed_quality_debt_bypasses_unchanged_failure_backoff() -> None:
+    now = [100]
+    calls = 0
+    signal = _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
+    first_quality = replace(
+        _complete_quality(), stale_evidence_ids=("receipt:stale-v1",)
+    )
+
+    def generate(request):
+        nonlocal calls
+        calls += 1
+        return _candidate(request)
+
+    controller = AdaptiveGoalRefiner(
+        generate,
+        lambda candidate, request: _verification(request, verified=False),
+        clock=lambda: now[0],
+    )
+    first_request = replace(_request(signal), quality=first_quality)
+    failed = controller.refine(first_request)
+    now[0] = 101
+    changed_request = replace(
+        first_request,
+        cycle_id="cycle:quality-v2",
+        quality=replace(
+            first_quality, stale_evidence_ids=("receipt:stale-v2",)
+        ),
+    )
+    changed = controller.refine(changed_request)
+
+    assert failed.decision is RefinementDecision.VERIFICATION_FAILED
+    assert changed.decision is RefinementDecision.VERIFICATION_FAILED
+    assert failed.receipt.evidence_fingerprint != (
+        changed.receipt.evidence_fingerprint
+    )
+    assert calls == 2
+
+
+def test_objective_tracker_persists_idempotent_quality_and_debt_report(
+    tmp_path,
+) -> None:
+    objective_text = """# Objective Heap
+
+## goal:root Responsive refinement
+- Outcome: Ship a bounded verified child refinement
+- Scope IDs JSON: ["src/refiner.py", "test/test_refiner.py"]
+- Assumptions JSON: ["assumption:frozen"]
+- Non Goals JSON: ["root revision"]
+- Acceptance Criteria JSON: ["child implies parent"]
+- Evidence Producer IDs JSON: ["pytest:refinement"]
+- Validation Policy JSON: ["pytest test_refinement.py -q"]
+- Freshness Horizon Seconds: 300
+- Resource Envelope JSON: {"tokens": 1024, "runtime_seconds": 30}
+- Refinement Budget JSON: {"max_depth": 2, "max_children": 3}
+- Max Breadth: 3
+
+## goal:child Missing runtime proof
+- Parent: goal:root
+- Outcome: Produce runtime proof
+- Scope: src/runtime.py
+- Assumptions: assumption:frozen
+- Acceptance: proof is current
+- Validation: pytest test_runtime.py -q
+"""
+    report = build_objective_goal_quality_report(objective_text)
+    root = next(
+        item for item in report.quality_records if item.goal_id == "goal:root"
+    )
+
+    assert root.debt == ()
+    assert root.breadth == 1
+    assert report.debt_records
+    assert ObjectiveGoalQualityReport.from_dict(report.to_dict()) == report
+
+    objective_path = tmp_path / "objectives.md"
+    report_path = tmp_path / "goal-quality.json"
+    objective_path.write_text(objective_text, encoding="utf-8")
+    first = write_objective_goal_quality_report(objective_path, report_path)
+    first_bytes = report_path.read_bytes()
+    second = write_objective_goal_quality_report(objective_path, report_path)
+
+    assert second == first
+    assert report_path.read_bytes() == first_bytes
+    assert load_objective_goal_quality_report(
+        report_path, objective_path=objective_path
+    ) == first
+
+    objective_path.write_text(
+        objective_text + "\n<!-- changed heap -->\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="stale"):
+        load_objective_goal_quality_report(
+            report_path, objective_path=objective_path
+        )

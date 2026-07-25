@@ -19,10 +19,12 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from hashlib import sha1
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
+
+from .task_identity import canonical_content_cid, canonical_json_bytes
 
 
 DEFAULT_SURFACE_WEIGHTS: dict[str, float] = {
@@ -34,9 +36,16 @@ DEFAULT_SURFACE_WEIGHTS: dict[str, float] = {
     "generated_artifacts": 9.0,
 }
 CONFLICT_RECEIPT_STATUSES = frozenset(
-    {"conflict", "conflicted", "failed", "merge_conflict", "quarantined", "rejected", "resolved"}
+    {"conflict", "conflicted", "merge_conflict", "resolved"}
 )
 AST_BLOB_RECORD_SCHEMA_VERSION = 1
+MAX_CONFLICT_HISTORY_EVIDENCE_IDS = 4096
+_ADMISSION_TASK_WORK_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-work-contract@1"
+)
+TASK_PLANNING_WORK_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-planning-work-contract@1"
+)
 _DERIVED_CONFLICT_METADATA_FIELDS = frozenset(
     {
         "conflict_decisions",
@@ -481,6 +490,481 @@ def _field_items(sources: Sequence[Mapping[str, Any]], names: Sequence[str]) -> 
     return values
 
 
+def _contract_integer(
+    sources: Sequence[Mapping[str, Any]],
+    names: Sequence[str],
+) -> int:
+    """Return one consistent non-negative integer declared by task metadata."""
+
+    values: list[int] = []
+    for source in sources:
+        for name in names:
+            if name not in source or source[name] in (None, ""):
+                continue
+            value = source[name]
+            if isinstance(value, bool):
+                raise ValueError(f"{name} must be a non-negative integer")
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"{name} must be a non-negative integer"
+                ) from exc
+            if parsed < 0 or str(value).strip() not in {
+                str(parsed),
+                f"{parsed}.0",
+            }:
+                raise ValueError(f"{name} must be a non-negative integer")
+            values.append(parsed)
+    if len(set(values)) > 1:
+        raise ValueError(
+            f"task work contract contains inconsistent {names[0]} values"
+        )
+    return values[0] if values else 0
+
+
+@dataclass(frozen=True)
+class TaskWorkContract:
+    """Canonical acceptance/effect, predicted-scope, and cost binding.
+
+    This is planning evidence, not completion authority.  Its purpose is to
+    prevent task admission, conflict planning, vector compaction, and bundle
+    execution from silently projecting different work.
+    """
+
+    canonical_task_cid: str
+    canonical_task_key: str
+    goal_id: str
+    acceptance: tuple[str, ...]
+    effects: tuple[str, ...]
+    evidence_subset: tuple[str, ...]
+    predicted_paths: tuple[str, ...]
+    predicted_symbols: tuple[str, ...]
+    context_paths: tuple[str, ...]
+    estimated_context_tokens: int
+    estimated_tokens: int
+    estimated_validation_seconds: int
+    resource_class: str
+    token_class: str
+    dependency_count: int
+    conflict_count: int
+    preconditions: tuple[str, ...]
+    dependencies: tuple[str, ...]
+    conflicts: tuple[str, ...]
+    validation_commands: tuple[str, ...]
+    merge_fate: str
+    work_contract_id: str
+    task_work_contract_id: str
+
+    def _material(self) -> dict[str, Any]:
+        normalize_semantic = lambda value: " ".join(
+            re.findall(r"[a-z0-9]+", str(value or "").casefold())
+        )
+        return {
+            "schema": _ADMISSION_TASK_WORK_CONTRACT_SCHEMA,
+            "goal_id": normalize_semantic(self.goal_id),
+            "acceptance_effect_subset": {
+                "acceptance": sorted(
+                    normalize_semantic(value) for value in self.acceptance
+                ),
+                "effects": sorted(
+                    normalize_semantic(value) for value in self.effects
+                ),
+                "evidence_subset": sorted(
+                    normalize_semantic(value)
+                    for value in self.evidence_subset
+                ),
+            },
+            "predicted_scope": {
+                "paths": list(self.predicted_paths),
+                "symbols": sorted(
+                    normalize_semantic(value)
+                    for value in self.predicted_symbols
+                ),
+                "context_paths": list(self.context_paths),
+            },
+            "predicted_costs": {
+                "context_tokens": self.estimated_context_tokens,
+                "validation_seconds": self.estimated_validation_seconds,
+                "task_tokens": self.estimated_tokens,
+                "resource_class": self.resource_class,
+                "token_class": self.token_class,
+                "dependency_count": self.dependency_count,
+                "conflict_count": self.conflict_count,
+            },
+            "execution_boundary": {
+                "preconditions": sorted(
+                    normalize_semantic(value) for value in self.preconditions
+                ),
+                "dependencies": list(self.dependencies),
+                "conflicts": list(self.conflicts),
+                "validation_commands": list(self.validation_commands),
+                "merge_fate": normalize_semantic(self.merge_fate),
+            },
+        }
+
+    @property
+    def acceptance_subset(self) -> tuple[str, ...]:
+        return self.acceptance
+
+    @property
+    def effect_subset(self) -> tuple[str, ...]:
+        return self.effects
+
+    @property
+    def contract_id(self) -> str:
+        """Compatibility alias for the producer-owned identity spelling."""
+
+        return self.work_contract_id
+
+    def verify_integrity(self) -> bool:
+        return (
+            self.work_contract_id == canonical_content_cid(self._material())
+            and self.task_work_contract_id
+            == canonical_content_cid(self._binding_material())
+        )
+
+    def _binding_material(self) -> dict[str, Any]:
+        return {
+            "schema": TASK_PLANNING_WORK_CONTRACT_SCHEMA,
+            "canonical_task_cid": self.canonical_task_cid,
+            "canonical_task_key": self.canonical_task_key,
+            "work_contract_id": self.work_contract_id,
+            "work_contract": self._material(),
+            "acceptance_subset": list(self.acceptance),
+            "effect_subset": list(self.effects),
+            "evidence_subset": list(self.evidence_subset),
+            "predicted_paths": list(self.predicted_paths),
+            "predicted_symbols": list(self.predicted_symbols),
+            "context_paths": list(self.context_paths),
+            "estimated_costs": {
+                "context_tokens": self.estimated_context_tokens,
+                "task_tokens": self.estimated_tokens,
+                "validation_seconds": self.estimated_validation_seconds,
+            },
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._binding_material(),
+            "task_work_contract_id": self.task_work_contract_id,
+        }
+
+    @classmethod
+    def from_task(cls, task: Any) -> "TaskWorkContract":
+        sources = _sources(task)
+        root = sources[0]
+        canonical_task_cid = str(
+            root.get("canonical_task_cid")
+            or root.get("task_cid")
+            # ``build_conflict_surface`` uses the public task identifier as
+            # the compatibility CID when a producer has not emitted a
+            # separate content identity.  Derive the contract with the same
+            # rule so reconstructing it from the surface is stable.
+            or root.get("task_id")
+            or root.get("id")
+            or root.get("canonical_task_id")
+            or ""
+        ).strip()
+        canonical_task_key = str(
+            root.get("canonical_task_key") or ""
+        ).strip()
+        normalize_semantic = lambda value: " ".join(
+            re.findall(r"[a-z0-9]+", str(value or "").casefold())
+        )
+        normalize_display = lambda value: " ".join(
+            str(value or "").split()
+        )
+        acceptance = tuple(
+            sorted(
+                {
+                    normalize_display(value)
+                    for value in _field_items(
+                    sources,
+                    (
+                        "acceptance_subset",
+                        "acceptance_criteria",
+                        "acceptance",
+                    ),
+                )
+                    if normalize_display(value)
+                }
+            )
+        )
+        effects = tuple(
+            sorted(
+                {
+                    normalize_display(value)
+                    for value in
+                _field_items(
+                    sources,
+                    ("effect_subset", "effects", "expected_effects"),
+                )
+                    if normalize_display(value)
+                }
+            )
+        )
+        evidence_subset = tuple(
+            sorted(
+                {
+                    normalize_display(value)
+                    for value in _field_items(
+                        sources,
+                        (
+                            "evidence_subset",
+                            "missing_evidence",
+                            "expected_evidence_delta",
+                        ),
+                    )
+                    if normalize_display(value)
+                }
+            )
+        )
+        has_declared_paths = any(
+            name in source
+            for source in sources
+            for name in ("predicted_paths", "predicted_files", "outputs")
+        )
+        declared_paths = _field_items(
+            sources,
+            ("predicted_paths", "predicted_files", "outputs"),
+        )
+        predicted_paths = tuple(
+            sorted(
+                {
+                    path.casefold()
+                    for path in _normalized_paths(
+                    declared_paths
+                    if has_declared_paths
+                    else _field_items(sources, ("files",)),
+                    None,
+                )
+                }
+            )
+        )
+        has_declared_symbols = any(
+            "predicted_symbols" in source for source in sources
+        )
+        declared_symbols = _field_items(sources, ("predicted_symbols",))
+        predicted_symbols = tuple(
+            sorted(
+                {
+                    normalize_display(value)
+                    for value in (
+                        declared_symbols
+                        if has_declared_symbols
+                        else _field_items(
+                            sources,
+                            ("ast_symbols", "symbols", "ast_query"),
+                        )
+                    )
+                    if normalize_display(value)
+                }
+            )
+        )
+        context_paths = tuple(
+            sorted(
+                {
+                    path.casefold()
+                    for path in _normalized_paths(
+                    _field_items(
+                        sources,
+                        ("context_paths", "context_keys", "context_files"),
+                    ),
+                    None,
+                )
+                }
+            )
+        )
+        context_tokens = _contract_integer(
+            sources,
+            ("estimated_context_tokens", "context_tokens"),
+        )
+        task_tokens = _contract_integer(
+            sources,
+            ("estimated_tokens", "token_cost"),
+        )
+        validation_seconds = _contract_integer(
+            sources,
+            (
+                "estimated_validation_seconds",
+                "validation_seconds",
+                "validation_cost",
+            ),
+        )
+        dependencies = tuple(
+            sorted(
+                set(
+                    _field_items(
+                        sources,
+                        (
+                            "dependencies",
+                            "depends_on",
+                            "dependency_task_cids",
+                        ),
+                    )
+                )
+            )
+        )
+        conflicts = tuple(
+            sorted(
+                set(
+                    _field_items(
+                        sources,
+                        ("conflicts", "conflict_keys"),
+                    )
+                )
+            )
+        )
+        preconditions = tuple(
+            sorted(
+                {
+                    normalize_semantic(value)
+                    for value in _field_items(
+                        sources,
+                        ("preconditions", "required_preconditions"),
+                    )
+                    if normalize_semantic(value)
+                }
+            )
+        )
+        validation_commands = tuple(
+            sorted(
+                set(
+                    _field_items(
+                        sources,
+                        ("validation_commands", "validation"),
+                    )
+                )
+            )
+        )
+        goal_id = normalize_display(
+            next(
+                (
+                    source.get("goal_id")
+                    for source in sources
+                    if source.get("goal_id")
+                ),
+                "",
+            )
+        )
+        resource_class = str(
+            next(
+                (
+                    source.get("resource_class")
+                    for source in sources
+                    if source.get("resource_class")
+                ),
+                "",
+            )
+        ).strip().casefold()
+        token_class = str(
+            next(
+                (
+                    source.get("token_class")
+                    for source in sources
+                    if source.get("token_class")
+                ),
+                "",
+            )
+        ).strip().casefold()
+        merge_fate = normalize_display(
+            next(
+                (
+                    source.get("merge_fate")
+                    or source.get("merge_family")
+                    or source.get("merge_key")
+                    for source in sources
+                    if source.get("merge_fate")
+                    or source.get("merge_family")
+                    or source.get("merge_key")
+                ),
+                "",
+            )
+        )
+        draft = cls(
+            canonical_task_cid=canonical_task_cid,
+            canonical_task_key=canonical_task_key,
+            goal_id=goal_id,
+            acceptance=acceptance,
+            effects=effects,
+            evidence_subset=evidence_subset,
+            predicted_paths=predicted_paths,
+            predicted_symbols=predicted_symbols,
+            context_paths=context_paths,
+            estimated_context_tokens=context_tokens,
+            estimated_tokens=task_tokens,
+            estimated_validation_seconds=validation_seconds,
+            resource_class=resource_class,
+            token_class=token_class,
+            dependency_count=len(dependencies),
+            conflict_count=len(conflicts),
+            preconditions=preconditions,
+            dependencies=dependencies,
+            conflicts=conflicts,
+            validation_commands=validation_commands,
+            merge_fate=merge_fate,
+            work_contract_id="",
+            task_work_contract_id="",
+        )
+        work_contract_id = canonical_content_cid(draft._material())
+        result = replace(
+            draft,
+            work_contract_id=work_contract_id,
+        )
+        result = replace(
+            result,
+            task_work_contract_id=canonical_content_cid(
+                result._binding_material()
+            ),
+        )
+
+        admission_contract = root.get("work_contract")
+        if admission_contract not in (None, {}):
+            if not isinstance(admission_contract, Mapping):
+                raise ValueError("work_contract must be a mapping")
+            if canonical_json_bytes(
+                dict(admission_contract)
+            ) != canonical_json_bytes(result._material()):
+                raise ValueError(
+                    "work_contract does not match canonical task fields"
+                )
+        explicit = root.get("task_work_contract")
+        if explicit not in (None, {}):
+            if not isinstance(explicit, Mapping):
+                raise ValueError("task_work_contract must be a mapping")
+            if canonical_json_bytes(dict(explicit)) != canonical_json_bytes(
+                result.to_dict()
+            ):
+                raise ValueError(
+                    "task_work_contract does not match canonical task fields"
+                )
+        supplied_id = str(
+            root.get("work_contract_id") or ""
+        ).strip()
+        if supplied_id and supplied_id != result.work_contract_id:
+            raise ValueError(
+                "work_contract_id does not match canonical task fields"
+            )
+        supplied_binding_id = str(
+            root.get("task_work_contract_id") or ""
+        ).strip()
+        if (
+            supplied_binding_id
+            and supplied_binding_id != result.task_work_contract_id
+        ):
+            raise ValueError(
+                "task_work_contract_id does not match canonical task fields"
+            )
+        return result
+
+
+def build_task_work_contract(task: Any) -> TaskWorkContract:
+    """Build and verify the canonical work contract for one task projection."""
+
+    return TaskWorkContract.from_task(task)
+
+
 def normalize_repo_path(value: str, *, repo_root: Path | None = None) -> str:
     """Normalize a repository path without requiring that it already exists."""
 
@@ -552,6 +1036,29 @@ class ConflictSurface:
 
     task_id: str
     task_cid: str = ""
+    canonical_task_key: str = ""
+    semantic_identity: str = ""
+    goal_id: str = ""
+    acceptance_subset: list[str] = field(default_factory=list)
+    effect_subset: list[str] = field(default_factory=list)
+    evidence_subset: list[str] = field(default_factory=list)
+    predicted_paths: list[str] = field(default_factory=list)
+    predicted_symbols: list[str] = field(default_factory=list)
+    context_paths: list[str] = field(default_factory=list)
+    estimated_context_tokens: int = 0
+    estimated_tokens: int = 0
+    estimated_validation_seconds: int = 0
+    resource_class: str = ""
+    token_class: str = ""
+    preconditions: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
+    conflicts: list[str] = field(default_factory=list)
+    validation_commands: list[str] = field(default_factory=list)
+    merge_fate: str = ""
+    work_contract: dict[str, Any] = field(default_factory=dict)
+    work_contract_id: str = ""
+    task_work_contract: dict[str, Any] = field(default_factory=dict)
+    task_work_contract_id: str = ""
     files: list[str] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
     ast_symbols: list[str] = field(default_factory=list)
@@ -569,6 +1076,15 @@ class ConflictSurface:
             object.__setattr__(self, "task_cid", self.task_id)
         if self.global_ast_symbols is None:
             object.__setattr__(self, "global_ast_symbols", list(self.ast_symbols))
+        if self.work_contract or self.task_work_contract:
+            canonical = build_task_work_contract(self)
+            if (
+                canonical._material() != self.work_contract
+                or canonical.to_dict() != self.task_work_contract
+            ):
+                raise ValueError(
+                    "conflict surface work contract is inconsistent"
+                )
 
     @property
     def all_paths(self) -> list[str]:
@@ -617,12 +1133,38 @@ def build_conflict_surface(
         task = task.to_dict()
     sources = _sources(task)
     root = sources[0]
+    work_contract = build_task_work_contract(task)
     task_id = str(root.get("task_id") or root.get("id") or root.get("canonical_task_id") or "").strip()
     task_cid = str(
         root.get("task_cid")
         or root.get("canonical_task_cid")
         or next((source.get("task_cid") for source in sources[1:] if source.get("task_cid")), "")
         or task_id
+    ).strip()
+    canonical_task_key = str(
+        root.get("canonical_task_key")
+        or next(
+            (
+                source.get("canonical_task_key")
+                for source in sources[1:]
+                if source.get("canonical_task_key")
+            ),
+            "",
+        )
+    ).strip()
+    semantic_identity = str(
+        root.get("canonical_semantic_identity")
+        or root.get("semantic_identity")
+        or next(
+            (
+                source.get("canonical_semantic_identity")
+                or source.get("semantic_identity")
+                for source in sources[1:]
+                if source.get("canonical_semantic_identity")
+                or source.get("semantic_identity")
+            ),
+            "",
+        )
     ).strip()
     if not task_id:
         task_id = task_cid
@@ -772,6 +1314,31 @@ def build_conflict_surface(
     return ConflictSurface(
         task_id=task_id,
         task_cid=task_cid,
+        canonical_task_key=canonical_task_key,
+        semantic_identity=semantic_identity,
+        goal_id=work_contract.goal_id,
+        acceptance_subset=list(work_contract.acceptance_subset),
+        effect_subset=list(work_contract.effect_subset),
+        evidence_subset=list(work_contract.evidence_subset),
+        predicted_paths=list(work_contract.predicted_paths),
+        predicted_symbols=list(work_contract.predicted_symbols),
+        context_paths=list(work_contract.context_paths),
+        estimated_context_tokens=work_contract.estimated_context_tokens,
+        estimated_tokens=work_contract.estimated_tokens,
+        estimated_validation_seconds=(
+            work_contract.estimated_validation_seconds
+        ),
+        resource_class=work_contract.resource_class,
+        token_class=work_contract.token_class,
+        preconditions=list(work_contract.preconditions),
+        dependencies=list(work_contract.dependencies),
+        conflicts=list(work_contract.conflicts),
+        validation_commands=list(work_contract.validation_commands),
+        merge_fate=work_contract.merge_fate,
+        work_contract=work_contract._material(),
+        work_contract_id=work_contract.work_contract_id,
+        task_work_contract=work_contract.to_dict(),
+        task_work_contract_id=work_contract.task_work_contract_id,
         files=files,
         changed_paths=normalized_changed_paths,
         ast_symbols=ast_symbols,
@@ -797,6 +1364,13 @@ def build_conflict_surface(
                     "global_ast_symbols", "interfaces",
                     "submodules", "generated_artifacts", "allow_concurrent_with",
                     "ast_records", "ast_blob_records", "python_ast_records", "blob_identities",
+                    "acceptance_subset", "acceptance_criteria", "acceptance",
+                    "effect_subset", "effects", "expected_effects",
+                    "estimated_context_tokens", "context_tokens",
+                    "estimated_tokens", "token_cost",
+                    "estimated_validation_seconds", "validation_seconds",
+                    "validation_cost", "task_work_contract", "work_contract",
+                    "work_contract_id", "task_work_contract_id",
                 }
                 | _DERIVED_CONFLICT_METADATA_FIELDS
             )
@@ -812,6 +1386,26 @@ def _merge_duplicate_surfaces(
 
     if left.task_cid != right.task_cid:
         raise ValueError("cannot merge conflict surfaces with different task CIDs")
+    canonical_keys = {
+        value for value in (left.canonical_task_key, right.canonical_task_key) if value
+    }
+    if len(canonical_keys) > 1:
+        raise ValueError(
+            "one canonical task CID cannot project multiple canonical task keys"
+        )
+    semantic_identities = {
+        value for value in (left.semantic_identity, right.semantic_identity) if value
+    }
+    if len(semantic_identities) > 1:
+        raise ValueError(
+            "one canonical task CID cannot project multiple semantic identities"
+        )
+    if canonical_json_bytes(left.task_work_contract) != canonical_json_bytes(
+        right.task_work_contract
+    ):
+        raise ValueError(
+            "one canonical task CID cannot project multiple task work contracts"
+        )
 
     ordered = sorted(
         (left, right),
@@ -832,6 +1426,31 @@ def _merge_duplicate_surfaces(
     return ConflictSurface(
         task_id=representative.task_id,
         task_cid=representative.task_cid,
+        canonical_task_key=next(iter(canonical_keys), ""),
+        semantic_identity=next(iter(semantic_identities), ""),
+        goal_id=representative.goal_id,
+        acceptance_subset=list(representative.acceptance_subset),
+        effect_subset=list(representative.effect_subset),
+        evidence_subset=list(representative.evidence_subset),
+        predicted_paths=list(representative.predicted_paths),
+        predicted_symbols=list(representative.predicted_symbols),
+        context_paths=list(representative.context_paths),
+        estimated_context_tokens=representative.estimated_context_tokens,
+        estimated_tokens=representative.estimated_tokens,
+        estimated_validation_seconds=(
+            representative.estimated_validation_seconds
+        ),
+        resource_class=representative.resource_class,
+        token_class=representative.token_class,
+        preconditions=list(representative.preconditions),
+        dependencies=list(representative.dependencies),
+        conflicts=list(representative.conflicts),
+        validation_commands=list(representative.validation_commands),
+        merge_fate=representative.merge_fate,
+        work_contract=dict(representative.work_contract),
+        work_contract_id=representative.work_contract_id,
+        task_work_contract=dict(representative.task_work_contract),
+        task_work_contract_id=representative.task_work_contract_id,
         files=sorted(set(left.files) | set(right.files)),
         changed_paths=sorted(set(left.changed_paths) | set(right.changed_paths)),
         ast_symbols=sorted(set(left.ast_symbols) | set(right.ast_symbols)),
@@ -877,25 +1496,93 @@ class ConflictWeightHistory:
     artifact_weights: dict[str, float] = field(default_factory=dict)
     pair_weights: dict[str, float] = field(default_factory=dict)
     observation_count: int = 0
+    observed_evidence_ids: list[str] = field(default_factory=list)
 
     def observe_diff(self, task_cid: str, paths: Iterable[str], *, repo_root: Path | None = None) -> None:
         observed = _normalized_paths(paths, repo_root)
+        evidence_id = "diff:" + hashlib.sha256(
+            json.dumps(
+                {"task_cid": str(task_cid), "paths": observed},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if not observed or evidence_id in self.observed_evidence_ids:
+            return
+        self.observed_evidence_ids.append(evidence_id)
+        del self.observed_evidence_ids[:-MAX_CONFLICT_HISTORY_EVIDENCE_IDS]
         for path in observed:
             self.path_weights[path] = self.path_weights.get(path, 0.0) + 1.0
-        if observed:
-            self.observation_count += 1
+        self.observation_count += 1
 
     def observe_receipt(self, receipt: Mapping[str, Any], *, repo_root: Path | None = None) -> None:
+        explicit_id = str(
+            receipt.get("receipt_cid")
+            or receipt.get("evidence_id")
+            or receipt.get("receipt_id")
+            or ""
+        ).strip()
+        evidence_id = "receipt:" + (
+            explicit_id
+            or hashlib.sha256(
+                json.dumps(
+                    dict(receipt),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        if evidence_id in self.observed_evidence_ids:
+            return
         left, right = _receipt_pair(receipt)
         severity = _receipt_severity(receipt)
+        paths = _receipt_paths(receipt, repo_root=repo_root)
+        symbols = _field_items(
+            [receipt], ("ast_symbols", "symbols", "conflicting_symbols")
+        )
+        interfaces = _field_items(
+            [receipt], ("interfaces", "conflicting_interfaces")
+        )
+        submodules = _normalized_paths(
+            _field_items(
+                [receipt], ("submodules", "submodule_paths", "conflicting_submodules")
+            ),
+            repo_root,
+        )
+        artifacts = _normalized_paths(
+            _field_items(
+                [receipt],
+                (
+                    "generated_artifacts",
+                    "artifacts",
+                    "conflicting_artifacts",
+                ),
+            ),
+            repo_root,
+        )
         if left and right and severity:
             key = _pair_key(left, right)
             self.pair_weights[key] = self.pair_weights.get(key, 0.0) + severity
-        for path in _receipt_paths(receipt, repo_root=repo_root):
+        for path in paths:
             self.path_weights[path] = self.path_weights.get(path, 0.0) + max(1.0, severity)
-        for symbol in _field_items([receipt], ("ast_symbols", "symbols", "conflicting_symbols")):
+        for symbol in symbols:
             self.symbol_weights[symbol] = self.symbol_weights.get(symbol, 0.0) + max(1.0, severity)
-        if left or right or _receipt_paths(receipt, repo_root=repo_root):
+        for interface in interfaces:
+            self.interface_weights[interface] = (
+                self.interface_weights.get(interface, 0.0) + max(1.0, severity)
+            )
+        for submodule in submodules:
+            self.submodule_weights[submodule] = (
+                self.submodule_weights.get(submodule, 0.0) + max(1.0, severity)
+            )
+        for artifact in artifacts:
+            self.artifact_weights[artifact] = (
+                self.artifact_weights.get(artifact, 0.0) + max(1.0, severity)
+            )
+        if left or right or paths or symbols or interfaces or submodules or artifacts:
+            self.observed_evidence_ids.append(evidence_id)
+            del self.observed_evidence_ids[:-MAX_CONFLICT_HISTORY_EVIDENCE_IDS]
             self.observation_count += 1
 
     def to_dict(self) -> dict[str, Any]:
@@ -909,6 +1596,13 @@ class ConflictWeightHistory:
             value = source.get(name)
             kwargs[name] = {str(key): float(weight) for key, weight in value.items()} if isinstance(value, Mapping) else {}
         kwargs["observation_count"] = int(source.get("observation_count") or 0)
+        kwargs["observed_evidence_ids"] = sorted(
+            {
+                str(item)
+                for item in (source.get("observed_evidence_ids") or [])
+                if str(item)
+            }
+        )[-MAX_CONFLICT_HISTORY_EVIDENCE_IDS:]
         return cls(**kwargs)
 
     @classmethod
@@ -1015,6 +1709,21 @@ class TaskConflictGraph:
     def colors(self) -> dict[str, int]:
         return {assignment.task_cid: assignment.color for assignment in self.assignments}
 
+    @property
+    def canonical_lanes(self) -> tuple[tuple[str, ...], ...]:
+        """Return conflict-free lanes ordered by color and canonical task CID."""
+
+        return tuple(
+            tuple(sorted(self.lanes[color]))
+            for color in sorted(self.lanes)
+        )
+
+    @property
+    def independent_width(self) -> int:
+        """Return the largest conflict-free task population in one lane."""
+
+        return max((len(lane) for lane in self.canonical_lanes), default=0)
+
     def edge_for(self, left: str, right: str) -> ConflictEdge | None:
         pair = _pair_key(left, right)
         return next(
@@ -1035,12 +1744,166 @@ class TaskConflictGraph:
             "assignments": [assignment.to_dict() for assignment in self.assignments],
             "decisions": [decision.to_dict() for decision in self.decisions],
             "lanes": {str(key): list(value) for key, value in sorted(self.lanes.items())},
+            "canonical_lanes": [list(lane) for lane in self.canonical_lanes],
+            "independent_width": self.independent_width,
             "history": self.history.to_dict(),
         }
 
 
 # A concise alias used by callers that do not need the task qualifier.
 ConflictGraph = TaskConflictGraph
+
+
+@dataclass(frozen=True)
+class ConflictWaveProjection:
+    """Deterministic conflict coloring for one dependency-ready task wave."""
+
+    dependency_wave: int
+    task_cids: tuple[str, ...]
+    blocking_conflict_pairs: tuple[tuple[str, str], ...]
+    color_by_task_cid: Mapping[str, int]
+    independent_lanes: tuple[tuple[str, ...], ...]
+
+    @property
+    def independent_width(self) -> int:
+        return max((len(lane) for lane in self.independent_lanes), default=0)
+
+    @property
+    def color_count(self) -> int:
+        return len(self.independent_lanes)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "dependency_wave": self.dependency_wave,
+            "task_cids": list(self.task_cids),
+            "blocking_conflict_pairs": [
+                list(pair) for pair in self.blocking_conflict_pairs
+            ],
+            "color_by_task_cid": dict(sorted(self.color_by_task_cid.items())),
+            "independent_lanes": [
+                list(lane) for lane in self.independent_lanes
+            ],
+            "independent_width": self.independent_width,
+            "color_count": self.color_count,
+        }
+
+    def matches_canonical_replay(self) -> bool:
+        """Return whether every serialized field matches a fresh projection.
+
+        Width projections are copied through objective indexes and execution
+        packets, so consumers need a cheap way to distinguish canonical
+        scheduler output from caller-authored lane metadata.  Replaying from
+        the projection's task/pair population catches duplicate lanes and
+        non-deterministic color assignments; its owner remains responsible for
+        comparing that pair population with the complete conflict graph.
+        """
+
+        try:
+            replayed = project_conflict_free_wave(
+                self.task_cids,
+                self.blocking_conflict_pairs,
+                dependency_wave=self.dependency_wave,
+            )
+        except (TypeError, ValueError):
+            return False
+        return replayed.to_dict() == self.to_dict()
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ConflictWaveProjection":
+        """Decode and validate one canonical serialized width projection."""
+
+        projection = cls(
+            dependency_wave=int(value.get("dependency_wave") or 0),
+            task_cids=tuple(str(item) for item in value.get("task_cids", ())),
+            blocking_conflict_pairs=tuple(
+                tuple(str(item) for item in pair)
+                for pair in value.get("blocking_conflict_pairs", ())
+            ),
+            color_by_task_cid={
+                str(task_cid): int(color)
+                for task_cid, color in dict(
+                    value.get("color_by_task_cid") or {}
+                ).items()
+            },
+            independent_lanes=tuple(
+                tuple(str(item) for item in lane)
+                for lane in value.get("independent_lanes", ())
+            ),
+        )
+        if not projection.matches_canonical_replay():
+            raise ValueError(
+                "conflict wave projection does not match canonical replay"
+            )
+        if int(value.get("independent_width") or 0) != projection.independent_width:
+            raise ValueError("conflict wave independent width does not match lanes")
+        if int(value.get("color_count") or 0) != projection.color_count:
+            raise ValueError("conflict wave color count does not match lanes")
+        return projection
+
+
+def project_conflict_free_wave(
+    task_cids: Iterable[str],
+    blocking_conflict_pairs: Iterable[Iterable[str]],
+    *,
+    dependency_wave: int = 0,
+) -> ConflictWaveProjection:
+    """Color one ready wave without inventing ordering between independent work.
+
+    The highest-degree-first coloring is deliberately local to a dependency
+    wave.  Orienting blocking edges by these colors lets a scheduler serialize
+    true conflicts while tasks in the same lane retain their original
+    critical-path width.
+    """
+
+    nodes = tuple(sorted({str(value) for value in task_cids if str(value)}))
+    node_set = set(nodes)
+    pairs: set[tuple[str, str]] = set()
+    for raw_pair in blocking_conflict_pairs:
+        values = tuple(sorted({str(value) for value in raw_pair if str(value)}))
+        if len(values) != 2:
+            raise ValueError("blocking conflict pairs must contain two task CIDs")
+        if not set(values).issubset(node_set):
+            raise ValueError(
+                "blocking conflict pairs must remain inside one dependency wave"
+            )
+        pairs.add((values[0], values[1]))
+
+    adjacency = {
+        cid: {
+            peer
+            for pair in pairs
+            if cid in pair
+            for peer in pair
+            if peer != cid
+        }
+        for cid in nodes
+    }
+    colors: dict[str, int] = {}
+    for cid in sorted(nodes, key=lambda item: (-len(adjacency[item]), item)):
+        unavailable = {
+            colors[peer] for peer in adjacency[cid] if peer in colors
+        }
+        color = 0
+        while color in unavailable:
+            color += 1
+        colors[cid] = color
+
+    lanes = tuple(
+        tuple(sorted(cid for cid, assigned in colors.items() if assigned == color))
+        for color in range(max(colors.values(), default=-1) + 1)
+    )
+    if any(
+        colors[left] == colors[right]
+        for left, right in pairs
+    ):
+        raise RuntimeError("conflict coloring placed a blocking edge in one lane")
+    return ConflictWaveProjection(
+        dependency_wave=max(0, int(dependency_wave)),
+        task_cids=nodes,
+        blocking_conflict_pairs=tuple(sorted(pairs)),
+        color_by_task_cid=dict(sorted(colors.items())),
+        independent_lanes=lanes,
+    )
 
 
 @dataclass(frozen=True)
@@ -1628,11 +2491,30 @@ def _receipt_severity(receipt: Mapping[str, Any]) -> float:
                 return base
         except (TypeError, ValueError):
             pass
-    status = " ".join(
+    status_values = {
+        re.sub(r"[\s-]+", "_", str(receipt.get(key) or "").strip().lower())
+        for key in ("status", "result", "outcome")
+    }
+    diagnostic = " ".join(
         str(receipt.get(key) or "").lower()
-        for key in ("status", "reason", "result", "outcome", "stderr")
+        for key in ("reason", "stderr")
     )
-    if any(marker in status for marker in CONFLICT_RECEIPT_STATUSES):
+    conflict_diagnostic = any(
+        marker in diagnostic
+        for marker in (
+            "merge conflict",
+            "content conflict",
+            "conflicting path",
+            "conflicting file",
+            "conflict in ",
+            "automatic merge failed",
+        )
+    )
+    if (
+        bool(receipt.get("merge_conflict") or receipt.get("conflicted"))
+        or bool(status_values & CONFLICT_RECEIPT_STATUSES)
+        or conflict_diagnostic
+    ):
         try:
             return 5.0 * max(1, int(receipt.get("count") or 1))
         except (TypeError, ValueError):
@@ -1730,7 +2612,18 @@ def _make_edge(
     cross_paths = sorted(set(all_path_overlap) - counted_paths)
     if cross_paths:
         overlaps["cross_surface_paths"] = cross_paths
-        predicted += float(weights["files"]) * len(cross_paths)
+        observed_cross_paths = {
+            path
+            for path in cross_paths
+            if any(
+                _under(path, changed) or _under(changed, path)
+                for changed in (*left.changed_paths, *right.changed_paths)
+            )
+        }
+        observed += float(weights["changed_paths"]) * len(observed_cross_paths)
+        predicted += float(weights["files"]) * (
+            len(cross_paths) - len(observed_cross_paths)
+        )
 
     # Auto-discovered AST terms are local to the Python files from which they
     # were parsed.  A shared non-code path (for example a plan document or a
@@ -1761,8 +2654,23 @@ def _make_edge(
     path_history = _history_path_weight(history_paths, history)
     symbol_history = sum(history.symbol_weights.get(symbol, 0.0) for symbol in overlaps.get("ast_symbols", []))
     interface_history = sum(history.interface_weights.get(name, 0.0) for name in overlaps.get("interfaces", []))
+    submodule_history = sum(
+        history.submodule_weights.get(path, 0.0)
+        for path in overlaps.get("submodules", [])
+    )
+    artifact_history = sum(
+        history.artifact_weights.get(path, 0.0)
+        for path in overlaps.get("generated_artifacts", [])
+    )
     pair_history = history.pair_weights.get(_pair_key(left.task_cid, right.task_cid), 0.0)
-    observed += path_history + symbol_history + interface_history + pair_history
+    observed += (
+        path_history
+        + symbol_history
+        + interface_history
+        + submodule_history
+        + artifact_history
+        + pair_history
+    )
     if pair_history:
         overlaps["historical_task_pair"] = [f"{left.task_cid}<->{right.task_cid}"]
 
@@ -2050,6 +2958,7 @@ __all__ = [
     "ConflictEdge",
     "ConflictGraph",
     "ConflictSurface",
+    "ConflictWaveProjection",
     "ConflictWeightHistory",
     "LaneAssignment",
     "LaneDecision",
@@ -2058,8 +2967,11 @@ __all__ = [
     "SurfaceEvidenceComparison",
     "SurfaceEvidenceEdge",
     "TaskConflictGraph",
+    "TASK_PLANNING_WORK_CONTRACT_SCHEMA",
+    "TaskWorkContract",
     "build_conflict_graph",
     "build_conflict_surface",
+    "build_task_work_contract",
     "build_python_ast_blob_record",
     "color_conflict_graph",
     "compare_surface_evidence",
@@ -2068,5 +2980,6 @@ __all__ = [
     "index_ast_blob_records",
     "materialize_task_conflict_graph",
     "normalize_repo_path",
+    "project_conflict_free_wave",
     "update_conflict_weights",
 ]

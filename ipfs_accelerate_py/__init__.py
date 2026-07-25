@@ -381,34 +381,50 @@ if not SKIP_CORE:
     try:
         from .embeddings_router import (
             embed_texts,
+            embed_texts_batched,
             embed_text,
             get_embeddings_provider,
+            get_embedding_progress,
+            get_last_embedding_trace,
             register_embeddings_provider,
             clear_embeddings_router_caches,
+            EmbeddingsRouterError,
             EmbeddingsProvider,
         )
 
         export["embed_texts"] = embed_texts
+        export["embed_texts_batched"] = embed_texts_batched
         export["embed_text"] = embed_text
         export["get_embeddings_provider"] = get_embeddings_provider
+        export["get_embedding_progress"] = get_embedding_progress
+        export["get_last_embedding_trace"] = get_last_embedding_trace
         export["register_embeddings_provider"] = register_embeddings_provider
         export["clear_embeddings_router_caches"] = clear_embeddings_router_caches
+        export["EmbeddingsRouterError"] = EmbeddingsRouterError
         export["EmbeddingsProvider"] = EmbeddingsProvider
         embeddings_router_available = True
     except ImportError:
         embed_texts = None
+        embed_texts_batched = None
         embed_text = None
         get_embeddings_provider = None
+        get_embedding_progress = None
+        get_last_embedding_trace = None
         register_embeddings_provider = None
         clear_embeddings_router_caches = None
+        EmbeddingsRouterError = None
         EmbeddingsProvider = None
         embeddings_router_available = False
 else:
     embed_texts = None
+    embed_texts_batched = None
     embed_text = None
     get_embeddings_provider = None
+    get_embedding_progress = None
+    get_last_embedding_trace = None
     register_embeddings_provider = None
     clear_embeddings_router_caches = None
+    EmbeddingsRouterError = None
     EmbeddingsProvider = None
     embeddings_router_available = False
 
@@ -598,8 +614,10 @@ __all__ = [
     'clear_llm_router_caches', 'LLMProvider', 'RouterDeps',
     'MistralVibeInstallResult', 'ensure_mistral_vibe',
     'get_default_router_deps', 'set_default_router_deps', 'llm_router_available',
-    'embed_texts', 'embed_text', 'get_embeddings_provider', 'register_embeddings_provider',
-    'clear_embeddings_router_caches', 'EmbeddingsProvider', 'embeddings_router_available',
+    'embed_texts', 'embed_texts_batched', 'embed_text', 'get_embeddings_provider',
+    'get_embedding_progress', 'get_last_embedding_trace', 'register_embeddings_provider',
+    'clear_embeddings_router_caches', 'EmbeddingsRouterError', 'EmbeddingsProvider',
+    'embeddings_router_available',
     'generate_multimodal', 'get_multimodal_provider', 'register_multimodal_provider',
     'clear_multimodal_router_caches', 'MultimodalProvider', 'multimodal_router_available',
     'text_to_speech', 'get_tts_provider', 'register_tts_provider',

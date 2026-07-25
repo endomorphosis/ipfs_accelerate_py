@@ -27,7 +27,6 @@ from .server_context import UnifiedServerContext
 from .wave_a_loaders import configure_wave_a_loaders
 from .tools.idl import load_idl_tools
 from .tools.admin_tools import register_native_admin_tools
-from .tools.agent_supervisor_tools import register_native_agent_supervisor_tools
 from .tools.alert_tools import register_native_alert_tools
 from .tools.analysis_tools import register_native_analysis_tools
 from .tools.auth_tools import register_native_auth_tools
@@ -147,6 +146,29 @@ def get_unified_supported_profiles() -> list[str]:
         "mcp++/p2p-transport",
         "mcp++/risk-scheduling",
     ]
+
+
+def configure_agent_supervisor_tools(manager: HierarchicalToolManager) -> None:
+    """Attach the policy-controlled supervisor category through a lazy import.
+
+    Importing the MCP server and listing its categories must remain a pure
+    discovery operation. The supervisor contracts and control service are
+    therefore imported only if a caller asks for this category's tool schemas
+    or dispatches one of its tools. The category loader itself never resolves
+    a service, initializes a provider, or starts a supervisor.
+    """
+
+    def load_agent_supervisor_tools(value: HierarchicalToolManager) -> None:
+        from .tools.agent_supervisor_tools import (  # noqa: PLC0415
+            register_native_agent_supervisor_tools,
+        )
+
+        register_native_agent_supervisor_tools(value)
+
+    manager.register_category_loader(
+        "agent_supervisor",
+        load_agent_supervisor_tools,
+    )
 
 
 def _parse_preload_categories(value: str | None) -> list[str]:
@@ -341,10 +363,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         except Exception as exc:
             secrets_status["error"] = str(exc)
     configure_wave_a_loaders(manager)
-    manager.register_category_loader(
-        "agent_supervisor",
-        lambda mgr: register_native_agent_supervisor_tools(mgr),
-    )
+    configure_agent_supervisor_tools(manager)
     manager.register_category_loader(
         "admin_tools",
         lambda mgr: register_native_admin_tools(mgr),

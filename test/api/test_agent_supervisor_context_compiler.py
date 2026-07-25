@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import json
 
 import pytest
@@ -16,13 +17,17 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     InclusionReason,
     RequiredContextBudgetEvidence,
     RequiredContextOverflowError,
+    build_text_context_references,
     compile_context_capsule,
+    render_context_capsule,
 )
 from ipfs_accelerate_py.agent_supervisor.context_contracts import (
     ContextBudget,
+    ContextBudgetResolution,
     ContextContractError,
     ContextReference,
     ContextTier,
+    canonical_context_json_bytes,
 )
 
 
@@ -148,6 +153,44 @@ def test_provider_window_subtracts_output_and_tool_reserves() -> None:
     )
     assert direct_ceiling.effective_input_limit == 111
 
+    constrained = ContextCompiler(
+        budget,
+        tokenizer=_tokenizer,
+        provider_context_window=420,
+        provider_max_input_tokens=310,
+        reserved_output_tokens=70,
+        reserved_tool_tokens=20,
+    )
+    result = constrained.compile(**BINDING, **CORE)
+    resolution = result.receipt.budget_resolution
+    assert resolution == result.receipt.evidence.budget_resolution
+    assert resolution.supervisor_max_input_tokens == 500
+    assert resolution.provider_context_window == 420
+    assert resolution.provider_max_input_tokens == 310
+    assert resolution.reserved_output_tokens == 70
+    assert resolution.reserved_tool_tokens == 20
+    assert resolution.effective_input_limit == 310
+    assert result.capsule.budget.reserved_output_tokens == 70
+    assert result.capsule.budget.reserved_tool_tokens == 20
+    assert ContextBudgetResolution.from_json(resolution.to_json()) == resolution
+
+    forged = resolution.to_dict()
+    forged["effective_input_limit"] = 311
+    with pytest.raises(ContextContractError, match="negotiated limits"):
+        ContextBudgetResolution.from_dict(forged)
+
+    with pytest.raises(
+        RequiredContextOverflowError,
+        match="no usable input budget",
+    ):
+        ContextCompiler(
+            budget,
+            tokenizer=_tokenizer,
+            provider_context_window=90,
+            reserved_output_tokens=70,
+            reserved_tool_tokens=20,
+        )
+
 
 def test_required_context_fails_closed_instead_of_truncating() -> None:
     tiny = ContextCompiler(
@@ -200,6 +243,66 @@ def test_canonical_provider_input_defeats_forged_reference_token_count() -> None
         valid.capsule.input_tokens
     )
     assert dict(valid.capsule.provider_input_payload)["evidence"]
+
+
+def test_provider_verifier_rejects_rebuilt_understated_base_context() -> None:
+    required = _reference(
+        "understated",
+        1,
+        required=True,
+        summary="x" * 8_000,
+    )
+    compiler = ContextCompiler(
+        _budget(max_input_tokens=1_000),
+        tokenizer=_tokenizer,
+    )
+    result = compiler.compile(
+        **BINDING,
+        **CORE,
+        evidence=(required,),
+    )
+    assert result.receipt.input_tokens > 1
+
+    capsule = replace(result.capsule, input_tokens=1)
+    assert result.receipt.evidence is not None
+    witness = replace(
+        result.receipt.evidence,
+        capsule_id=capsule.capsule_id,
+        input_tokens=1,
+        artifact_digest=(
+            "sha256:"
+            + hashlib.sha256(
+                canonical_context_json_bytes(capsule.to_record())
+            ).hexdigest()
+        ),
+    )
+    receipt = replace(
+        result.receipt,
+        capsule_id=capsule.capsule_id,
+        input_tokens=1,
+        evidence=witness,
+    )
+    structurally_rebuilt = ContextCompileResult(
+        capsule,
+        receipt,
+        receipt.decisions,
+    )
+
+    with pytest.raises(
+        ContextCompilationError,
+        match="token accounting is not reproducible",
+    ):
+        compiler.verify_compile_result(structurally_rebuilt)
+    with pytest.raises(
+        ContextCompilationError,
+        match="token accounting is not reproducible",
+    ):
+        ContextCompileResult(
+            capsule,
+            receipt,
+            receipt.decisions,
+            compiler,
+        )
 
 
 def test_optional_evidence_has_deterministic_ranking_and_decisions() -> None:
@@ -406,3 +509,137 @@ def test_top_level_compiler_wrapper_preserves_contract_and_rejects_bad_inputs() 
                 replace(_reference("duplicate", 10), summary="different"),
             )
         )
+
+
+def test_text_artifact_chunks_are_complete_content_addressed_expansion_units() -> None:
+    text = "\n\n".join(
+        f"Section {index}: " + ("evidence " * 12)
+        for index in range(8)
+    )
+    references = build_text_context_references(
+        text,
+        reference_prefix="roadmap",
+        kind="roadmap-chunk",
+        path="docs/plan.md",
+        repository_id=BINDING["repository_id"],
+        tree_id=BINDING["tree_id"],
+        chunk_bytes=96,
+        priority=25,
+    )
+
+    assert len(references) > 2
+    assert all(item.path == "docs/plan.md" for item in references)
+    assert all(item.byte_count <= 96 for item in references)
+    assert all(
+        item.referenced_content_id
+        == "sha256:"
+        + hashlib.sha256(item.summary.encode("utf-8")).hexdigest()
+        for item in references
+    )
+    assert {
+        item.metadata["artifact_content_id"] for item in references
+    } == {references[0].metadata["artifact_content_id"]}
+
+    result = _compile(
+        budget=_budget(190),
+        evidence=references,
+        provider_context_window=240,
+    )
+    assert result.capsule.expansion_references
+    assert all(
+        item.tier is ContextTier.EXPANSION
+        for item in result.capsule.expansion_references
+    )
+    assert all(
+        item.path == "docs/plan.md"
+        for item in result.capsule.expansion_references
+    )
+    receipt = result.receipt.to_json()
+    assert "Section 0" not in receipt
+    assert "evidence evidence" not in receipt
+    assert all(
+        decision.reason
+        in {
+            InclusionReason.RANKED_FIT,
+            ExclusionReason.TOKEN_BUDGET,
+        }
+        for decision in result.decisions
+    )
+
+
+def test_canonical_capsule_renderer_emits_only_measured_provider_input() -> None:
+    reference = _reference(
+        "selected",
+        12,
+        priority=5,
+        summary="bounded selected evidence",
+    )
+    compiler = ContextCompiler(
+        _budget(),
+        tokenizer=_tokenizer,
+        provider_context_window=270,
+    )
+    result = compiler.compile(
+        **BINDING,
+        **CORE,
+        evidence=(reference,),
+    )
+
+    rendered = render_context_capsule(result.capsule)
+    payload = json.loads(rendered)
+
+    assert payload["goal"] == CORE["goal"]
+    assert payload["authority"] == CORE["authority"]
+    assert payload["scope"] == CORE["scope"]
+    assert payload["acceptance"] == CORE["acceptance"]
+    assert payload["evidence"][0]["reference_id"] == "selected"
+    assert "receipt_id" not in payload
+    assert "decisions" not in payload
+    assert "omissions" not in payload
+    assert compiler.estimator.estimate(rendered) <= result.capsule.input_tokens
+
+
+def test_compiler_normalizes_core_before_measuring_provider_input() -> None:
+    compiler = ContextCompiler(
+        _budget(),
+        provider_context_window=270,
+    )
+    result = compiler.compile(
+        **BINDING,
+        goal={"summary": " goal with caller whitespace \n"},
+        authority={"mode": " proposal "},
+        scope={"paths": ["src/context.py"]},
+        acceptance={"criteria": [" complete exactly \n"]},
+    )
+
+    assert result.capsule.goal["summary"] == "goal with caller whitespace"
+    assert result.capsule.authority["mode"] == "proposal"
+    assert result.capsule.acceptance["criteria"] == ("complete exactly",)
+    assert (
+        compiler.estimate_capsule_input(result.capsule)
+        == result.capsule.input_tokens
+    )
+
+
+def test_invariant_core_identity_cannot_be_described_as_truncated() -> None:
+    optional = _reference(
+        "large-optional",
+        20_000,
+        priority=1,
+        summary="optional evidence that must be deferred",
+    )
+    result = _compile(evidence=(optional,))
+    capsule = result.capsule
+
+    assert result.required_context_preserved
+    assert capsule.truncated
+    assert capsule.omitted_reference_ids == ("large-optional",)
+    assert capsule.invariant_core_id == type(capsule).from_dict(
+        capsule.to_dict()
+    ).invariant_core_id
+
+    with pytest.raises(
+        ContextContractError,
+        match="invariant context fields|every expansion reference",
+    ):
+        replace(capsule, omissions=("goal:token_budget",))

@@ -8,6 +8,7 @@ from dataclasses import replace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import (
+    IPFS_DATASETS_COMPLETION_ACCEPTANCE_CRITERION,
     IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY,
     MAX_CONCURRENT_PROVIDER_DISPATCHES,
@@ -110,6 +111,24 @@ def test_construction_and_capability_declaration_do_not_import() -> None:
     )
     assert pure.to_dict() == reordered.to_dict()
     assert pure.capability_id == reordered.capability_id
+
+
+def test_g020_provider_criterion_never_promotes_optional_health_to_analyzer_health() -> None:
+    assert IPFS_DATASETS_COMPLETION_ACCEPTANCE_CRITERION == (
+        "optional datasets capabilities degrade explicitly"
+    )
+    capability = AnalysisProviderCapability(
+        health=AnalysisProviderHealth.HEALTHY,
+        operations=(AnalysisProviderOperation.GRAPH_RETRIEVAL,),
+        imported=True,
+        reason_code="healthy",
+        provider_version="fixture@1",
+    )
+    record = capability.to_dict()
+    assert record["health"] == "healthy"
+    assert record["completion_authority"] is False
+    assert record["proof_success"] is False
+    assert capability.non_authoritative
 
 
 def test_missing_optional_module_degrades_explicitly_with_typed_evidence() -> None:

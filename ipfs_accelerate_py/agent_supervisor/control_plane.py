@@ -15,6 +15,7 @@ APIs they operate; an unregistered mutation fails closed as ``unavailable``.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import heapq
 import json
@@ -23,8 +24,10 @@ import re
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field, is_dataclass
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -34,6 +37,7 @@ from typing import Any, Final, Protocol, Union
 from .control_contracts import (
     CONTROL_CONTRACT_VERSION,
     MUTATION_OPERATIONS,
+    PROPOSAL_OPERATIONS,
     READ_OPERATIONS,
     AuthorizationBindingError,
     CapabilityReport,
@@ -59,6 +63,7 @@ from .control_contracts import (
     OperationStatus,
     PathEscapeError,
     canonical_control_json_bytes,
+    decode_operation_request,
 )
 
 
@@ -69,9 +74,69 @@ CONTROL_AUDIT_RECEIPT_SCHEMA: Final[str] = (
 CONTROL_BACKEND_RESPONSE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-backend-response@1"
 )
+LIFECYCLE_STATUS_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/lifecycle-status@1"
+)
+LIFECYCLE_EVENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/lifecycle-event@1"
+)
+CONTROL_MUTATION_EVENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-event@1"
+)
 DEFAULT_QUERY_LIMIT: Final[int] = 50
 DEFAULT_MAX_QUERY_ITEMS: Final[int] = 256
 DEFAULT_MAX_OFFSET: Final[int] = 1_000_000
+DEFAULT_MAX_CONTROL_EVENTS: Final[int] = 256
+CONTROL_REDACTION_MARKER: Final[str] = "[REDACTED]"
+CONTROL_SENSITIVE_FIELD_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "authorization",
+        "client_secret",
+        "cookie",
+        "credential",
+        "credentials",
+        "password",
+        "passwd",
+        "private_key",
+        "refresh_token",
+        "secret",
+        "session_token",
+        "set_cookie",
+        "ssh_key",
+        "token",
+    }
+)
+_CONTROL_SENSITIVE_FIELD_SUFFIXES: Final[tuple[str, ...]] = (
+    "_api_key",
+    "_credential",
+    "_credentials",
+    "_password",
+    "_private_key",
+    "_secret",
+    "_token",
+)
+_CONTROL_SENSITIVE_ASSIGNMENT_RE: Final[re.Pattern[str]] = re.compile(
+    r"""(?ix)
+    (
+        \b(?:access[_-]?token|api[_-]?key|authorization|client[_-]?secret|
+        cookie|credentials?|password|passwd|private[_-]?key|refresh[_-]?token|
+        secret|session[_-]?token|set[_-]?cookie|ssh[_-]?key|token)\b
+        \s*[:=]\s*
+    )
+    (?:
+        "(?:\\.|[^"\\])*"
+        |
+        '(?:\\.|[^'\\])*'
+        |
+        [^\s,;]+
+    )
+    """
+)
+_CONTROL_BEARER_CREDENTIAL_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"
+)
 CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES: Final[tuple[str, ...]] = (
     "ipfs_datasets_py",
     "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_",
@@ -122,6 +187,442 @@ class BackendCancelledError(SupervisorControlError):
 
 class BackendTimeoutError(SupervisorControlError):
     """Backend execution exceeded its bound."""
+
+
+class InvalidLifecycleTransitionError(BackendConflictError):
+    """A lifecycle command is not legal from the authoritative state."""
+
+
+class SupervisorLifecycleState(str, Enum):
+    """Closed supervisor lifecycle vocabulary shared by every control surface."""
+
+    STOPPED = "stopped"
+    STARTING = "starting"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    PAUSED = "paused"
+    DRAINING = "draining"
+    BLOCKED = "blocked"
+    STOPPING = "stopping"
+    FAILED = "failed"
+
+    @property
+    def terminal(self) -> bool:
+        return self in {
+            SupervisorLifecycleState.STOPPED,
+            SupervisorLifecycleState.FAILED,
+        }
+
+    @property
+    def accepts_new_work(self) -> bool:
+        return self in {
+            SupervisorLifecycleState.HEALTHY,
+            SupervisorLifecycleState.DEGRADED,
+        }
+
+
+LEGAL_LIFECYCLE_TRANSITIONS: Final[
+    Mapping[SupervisorLifecycleState, frozenset[SupervisorLifecycleState]]
+] = MappingProxyType(
+    {
+        SupervisorLifecycleState.STOPPED: frozenset(
+            {SupervisorLifecycleState.STARTING}
+        ),
+        SupervisorLifecycleState.STARTING: frozenset(
+            {
+                SupervisorLifecycleState.HEALTHY,
+                SupervisorLifecycleState.DEGRADED,
+                SupervisorLifecycleState.BLOCKED,
+                SupervisorLifecycleState.STOPPING,
+                SupervisorLifecycleState.FAILED,
+            }
+        ),
+        SupervisorLifecycleState.HEALTHY: frozenset(
+            {
+                SupervisorLifecycleState.DEGRADED,
+                SupervisorLifecycleState.PAUSED,
+                SupervisorLifecycleState.DRAINING,
+                SupervisorLifecycleState.BLOCKED,
+                SupervisorLifecycleState.STOPPING,
+                SupervisorLifecycleState.FAILED,
+            }
+        ),
+        SupervisorLifecycleState.DEGRADED: frozenset(
+            {
+                SupervisorLifecycleState.HEALTHY,
+                SupervisorLifecycleState.PAUSED,
+                SupervisorLifecycleState.DRAINING,
+                SupervisorLifecycleState.BLOCKED,
+                SupervisorLifecycleState.STOPPING,
+                SupervisorLifecycleState.FAILED,
+            }
+        ),
+        SupervisorLifecycleState.PAUSED: frozenset(
+            {
+                SupervisorLifecycleState.HEALTHY,
+                SupervisorLifecycleState.DRAINING,
+                SupervisorLifecycleState.BLOCKED,
+                SupervisorLifecycleState.STOPPING,
+                SupervisorLifecycleState.FAILED,
+            }
+        ),
+        SupervisorLifecycleState.DRAINING: frozenset(
+            {
+                SupervisorLifecycleState.STOPPED,
+                SupervisorLifecycleState.BLOCKED,
+                SupervisorLifecycleState.STOPPING,
+                SupervisorLifecycleState.FAILED,
+            }
+        ),
+        SupervisorLifecycleState.BLOCKED: frozenset(
+            {
+                SupervisorLifecycleState.STARTING,
+                SupervisorLifecycleState.STOPPING,
+                SupervisorLifecycleState.FAILED,
+            }
+        ),
+        SupervisorLifecycleState.STOPPING: frozenset(
+            {
+                SupervisorLifecycleState.STOPPED,
+                SupervisorLifecycleState.FAILED,
+            }
+        ),
+        SupervisorLifecycleState.FAILED: frozenset(
+            {
+                SupervisorLifecycleState.STARTING,
+                SupervisorLifecycleState.STOPPING,
+                SupervisorLifecycleState.STOPPED,
+            }
+        ),
+    }
+)
+
+
+def lifecycle_transition_is_legal(
+    previous: Union[SupervisorLifecycleState, str],
+    requested: Union[SupervisorLifecycleState, str],
+) -> bool:
+    """Return whether a transition is legal, including idempotent self-edges."""
+
+    source = (
+        previous
+        if isinstance(previous, SupervisorLifecycleState)
+        else SupervisorLifecycleState(str(previous))
+    )
+    target = (
+        requested
+        if isinstance(requested, SupervisorLifecycleState)
+        else SupervisorLifecycleState(str(requested))
+    )
+    return source is target or target in LEGAL_LIFECYCLE_TRANSITIONS[source]
+
+
+def _lifecycle_text_tuple(value: Iterable[Any]) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes, bytearray, Mapping)):
+        raise ValueError("lifecycle collection must be an array")
+    result = tuple(
+        sorted({str(item).strip() for item in value if str(item).strip()})
+    )
+    if len(result) > DEFAULT_MAX_CONTROL_EVENTS:
+        raise ControlBoundsError("lifecycle collection exceeds 256 items")
+    if any(len(item.encode("utf-8")) > 2048 for item in result):
+        raise ControlBoundsError("lifecycle collection item exceeds 2048 bytes")
+    return result
+
+
+def _bounded_lifecycle_text(value: Any, name: str) -> str:
+    result = str(value).strip()
+    if len(result.encode("utf-8")) > 2048:
+        raise ControlBoundsError(f"{name} exceeds 2048 bytes")
+    return result
+
+
+def _lifecycle_record_int(
+    payload: Mapping[str, Any],
+    name: str,
+    *,
+    default: int = 0,
+    nullable: bool = False,
+) -> Union[int, None]:
+    value = payload.get(name)
+    if value in (None, "") and nullable:
+        return None
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return value
+
+
+@dataclass(frozen=True)
+class LifecycleStatus:
+    """One canonical status/health snapshot for a supervisor target."""
+
+    target_id: str
+    state: SupervisorLifecycleState = SupervisorLifecycleState.STOPPED
+    phase: str = "stopped"
+    heartbeat_at_ms: int = 0
+    pid: Union[int, None] = None
+    active_leases: tuple[str, ...] = ()
+    refill_state: str = "idle"
+    backpressure: bool = False
+    backpressure_reasons: tuple[str, ...] = ()
+    terminal_reason: str = ""
+    transition_id: str = ""
+    generation: int = 0
+    fencing_epoch: Union[int, None] = None
+    updated_at_ms: int = 0
+
+    def __post_init__(self) -> None:
+        target_id = _bounded_lifecycle_text(self.target_id, "target_id")
+        if not target_id:
+            raise ValueError("lifecycle target_id is required")
+        object.__setattr__(self, "target_id", target_id)
+        state = (
+            self.state
+            if isinstance(self.state, SupervisorLifecycleState)
+            else SupervisorLifecycleState(str(self.state))
+        )
+        object.__setattr__(self, "state", state)
+        phase = _bounded_lifecycle_text(self.phase, "phase") or state.value
+        object.__setattr__(self, "phase", phase)
+        for name in ("heartbeat_at_ms", "generation", "updated_at_ms"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if self.pid is not None and (
+            isinstance(self.pid, bool)
+            or not isinstance(self.pid, int)
+            or self.pid <= 0
+        ):
+            raise ValueError("pid must be a positive integer or null")
+        if self.fencing_epoch is not None and (
+            isinstance(self.fencing_epoch, bool)
+            or not isinstance(self.fencing_epoch, int)
+            or self.fencing_epoch < 0
+        ):
+            raise ValueError("fencing_epoch must be a non-negative integer or null")
+        if not isinstance(self.backpressure, bool):
+            raise ValueError("backpressure must be boolean")
+        object.__setattr__(
+            self, "active_leases", _lifecycle_text_tuple(self.active_leases)
+        )
+        object.__setattr__(
+            self,
+            "backpressure_reasons",
+            _lifecycle_text_tuple(self.backpressure_reasons),
+        )
+        object.__setattr__(
+            self,
+            "refill_state",
+            _bounded_lifecycle_text(self.refill_state, "refill_state") or "idle",
+        )
+        object.__setattr__(
+            self,
+            "terminal_reason",
+            _bounded_lifecycle_text(self.terminal_reason, "terminal_reason"),
+        )
+        object.__setattr__(
+            self,
+            "transition_id",
+            _bounded_lifecycle_text(self.transition_id, "transition_id"),
+        )
+
+    @property
+    def heartbeat_at(self) -> str:
+        return _utc_timestamp(self.heartbeat_at_ms) if self.heartbeat_at_ms else ""
+
+    @property
+    def updated_at(self) -> str:
+        return _utc_timestamp(self.updated_at_ms) if self.updated_at_ms else ""
+
+    @property
+    def healthy(self) -> bool:
+        return self.state is SupervisorLifecycleState.HEALTHY
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": LIFECYCLE_STATUS_SCHEMA,
+            "target_id": self.target_id,
+            "state": self.state.value,
+            "phase": self.phase,
+            "heartbeat_at_ms": self.heartbeat_at_ms,
+            "heartbeat_at": self.heartbeat_at,
+            "pid": self.pid,
+            "active_leases": list(self.active_leases),
+            "active_lease_count": len(self.active_leases),
+            "refill_state": self.refill_state,
+            "backpressure": self.backpressure,
+            "backpressure_reasons": list(self.backpressure_reasons),
+            "terminal_reason": self.terminal_reason,
+            "transition_id": self.transition_id,
+            "generation": self.generation,
+            "fencing_epoch": self.fencing_epoch,
+            "updated_at_ms": self.updated_at_ms,
+            "updated_at": self.updated_at,
+        }
+
+    to_record = to_dict
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "LifecycleStatus":
+        schema = str(payload.get("schema") or "")
+        if schema and schema != LIFECYCLE_STATUS_SCHEMA:
+            raise ValueError("unsupported lifecycle status schema")
+        active_leases = payload.get("active_leases") or ()
+        backpressure_reasons = payload.get("backpressure_reasons") or ()
+        if not isinstance(active_leases, (list, tuple)):
+            raise ValueError("active_leases must be an array")
+        if not isinstance(backpressure_reasons, (list, tuple)):
+            raise ValueError("backpressure_reasons must be an array")
+        return cls(
+            target_id=str(payload.get("target_id") or ""),
+            state=SupervisorLifecycleState(str(payload.get("state") or "")),
+            phase=str(payload.get("phase") or ""),
+            heartbeat_at_ms=_lifecycle_record_int(
+                payload, "heartbeat_at_ms"
+            )
+            or 0,
+            pid=_lifecycle_record_int(payload, "pid", nullable=True),
+            active_leases=tuple(active_leases),
+            refill_state=str(payload.get("refill_state") or "idle"),
+            backpressure=payload.get("backpressure", False),
+            backpressure_reasons=tuple(backpressure_reasons),
+            terminal_reason=str(payload.get("terminal_reason") or ""),
+            transition_id=str(payload.get("transition_id") or ""),
+            generation=_lifecycle_record_int(payload, "generation") or 0,
+            fencing_epoch=_lifecycle_record_int(
+                payload, "fencing_epoch", nullable=True
+            ),
+            updated_at_ms=_lifecycle_record_int(payload, "updated_at_ms")
+            or 0,
+        )
+
+
+@dataclass(frozen=True)
+class LifecycleEvent:
+    """Bounded, replayable record of one lifecycle state decision."""
+
+    sequence: int
+    target_id: str
+    action: str
+    accepted: bool
+    previous_state: SupervisorLifecycleState
+    state: SupervisorLifecycleState
+    reason: str
+    request_id: str
+    occurred_at_ms: int
+    changed: bool = False
+    replayed: bool = False
+    recovered: bool = False
+    fencing_epoch: Union[int, None] = None
+    event_id: str = ""
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.sequence, bool)
+            or not isinstance(self.sequence, int)
+            or self.sequence < 1
+        ):
+            raise ValueError("lifecycle event sequence must be positive")
+        if (
+            isinstance(self.occurred_at_ms, bool)
+            or not isinstance(self.occurred_at_ms, int)
+            or self.occurred_at_ms < 0
+        ):
+            raise ValueError("occurred_at_ms must be a non-negative integer")
+        if self.fencing_epoch is not None and (
+            isinstance(self.fencing_epoch, bool)
+            or not isinstance(self.fencing_epoch, int)
+            or self.fencing_epoch < 0
+        ):
+            raise ValueError("fencing_epoch must be non-negative or null")
+        for name in ("accepted", "changed", "replayed", "recovered"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be boolean")
+        for value, name in (
+            (self.target_id, "target_id"),
+            (self.action, "action"),
+            (self.reason, "reason"),
+            (self.request_id, "request_id"),
+        ):
+            bounded = _bounded_lifecycle_text(value, name)
+            if name in {"target_id", "action"} and not bounded:
+                raise ValueError(f"{name} is required")
+        previous = (
+            self.previous_state
+            if isinstance(self.previous_state, SupervisorLifecycleState)
+            else SupervisorLifecycleState(str(self.previous_state))
+        )
+        current = (
+            self.state
+            if isinstance(self.state, SupervisorLifecycleState)
+            else SupervisorLifecycleState(str(self.state))
+        )
+        object.__setattr__(self, "previous_state", previous)
+        object.__setattr__(self, "state", current)
+        payload = self._payload()
+        expected = _content_id(payload)
+        if self.event_id and self.event_id != expected:
+            raise ValueError("lifecycle event identity does not match")
+        object.__setattr__(self, "event_id", expected)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": LIFECYCLE_EVENT_SCHEMA,
+            "sequence": self.sequence,
+            "target_id": self.target_id,
+            "action": self.action,
+            "accepted": self.accepted,
+            "changed": self.changed,
+            "replayed": self.replayed,
+            "recovered": self.recovered,
+            "previous_state": self.previous_state.value,
+            "state": self.state.value,
+            "reason": self.reason,
+            "request_id": self.request_id,
+            "fencing_epoch": self.fencing_epoch,
+            "occurred_at_ms": self.occurred_at_ms,
+            "occurred_at": _utc_timestamp(self.occurred_at_ms),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "event_id": self.event_id}
+
+    to_record = to_dict
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "LifecycleEvent":
+        schema = str(payload.get("schema") or "")
+        if schema and schema != LIFECYCLE_EVENT_SCHEMA:
+            raise ValueError("unsupported lifecycle event schema")
+        for name in ("accepted", "changed", "replayed", "recovered"):
+            value = payload.get(name, False)
+            if not isinstance(value, bool):
+                raise ValueError(f"{name} must be boolean")
+        return cls(
+            sequence=_lifecycle_record_int(payload, "sequence") or 0,
+            target_id=str(payload.get("target_id") or ""),
+            action=str(payload.get("action") or ""),
+            accepted=payload.get("accepted", False),
+            changed=payload.get("changed", False),
+            replayed=payload.get("replayed", False),
+            recovered=payload.get("recovered", False),
+            previous_state=SupervisorLifecycleState(
+                str(payload.get("previous_state") or "")
+            ),
+            state=SupervisorLifecycleState(str(payload.get("state") or "")),
+            reason=str(payload.get("reason") or ""),
+            request_id=str(payload.get("request_id") or ""),
+            fencing_epoch=_lifecycle_record_int(
+                payload, "fencing_epoch", nullable=True
+            ),
+            occurred_at_ms=_lifecycle_record_int(
+                payload, "occurred_at_ms"
+            )
+            or 0,
+            event_id=str(payload.get("event_id") or ""),
+        )
 
 
 def _now_ms() -> int:
@@ -238,6 +739,65 @@ def _canonical_json_value(value: Any) -> Any:
     )
 
 
+def _normalized_control_field_name(value: Any) -> str:
+    """Normalize a structured result field for conservative secret matching."""
+
+    return re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
+
+
+def _is_sensitive_control_field(value: Any) -> bool:
+    normalized = _normalized_control_field_name(value)
+    return normalized in CONTROL_SENSITIVE_FIELD_NAMES or normalized.endswith(
+        _CONTROL_SENSITIVE_FIELD_SUFFIXES
+    )
+
+
+def redact_control_text(value: str) -> str:
+    """Redact common credential assignments in untrusted backend text.
+
+    Free-form values cannot be classified perfectly, so the control boundary
+    redacts only explicit credential assignments. Structured result fields
+    receive the stronger key-based treatment in :func:`redact_control_data`.
+    """
+
+    if not isinstance(value, str):
+        raise TypeError("control text must be a string")
+    value = _CONTROL_BEARER_CREDENTIAL_RE.sub(
+        f"Bearer {CONTROL_REDACTION_MARKER}",
+        value,
+    )
+    return _CONTROL_SENSITIVE_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}{CONTROL_REDACTION_MARKER}",
+        value,
+    )
+
+
+def redact_control_data(value: Any) -> Any:
+    """Return a recursively redacted JSON-compatible control result.
+
+    This function runs after backend values have been projected to canonical
+    JSON types. It preserves collection shape and non-sensitive values so the
+    normal request bounds and canonical result identity remain authoritative.
+    """
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): (
+                CONTROL_REDACTION_MARKER
+                if _is_sensitive_control_field(key)
+                else redact_control_data(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_control_data(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(redact_control_data(item) for item in value)
+    if isinstance(value, str):
+        return redact_control_text(value)
+    return value
+
+
 def _content_id(payload: Mapping[str, Any]) -> str:
     digest = hashlib.sha256(canonical_control_json_bytes(payload)).hexdigest()
     return f"sha256:{digest}"
@@ -351,6 +911,1016 @@ class BackendResponse:
         )
 
 
+_ACTION_REQUESTED_STATE: Final[Mapping[Operation, SupervisorLifecycleState]] = (
+    MappingProxyType(
+        {
+            Operation.START: SupervisorLifecycleState.STARTING,
+            Operation.PAUSE: SupervisorLifecycleState.PAUSED,
+            Operation.RESUME: SupervisorLifecycleState.HEALTHY,
+            Operation.DRAIN: SupervisorLifecycleState.DRAINING,
+            Operation.STOP: SupervisorLifecycleState.STOPPING,
+            Operation.RETRY: SupervisorLifecycleState.STARTING,
+            Operation.CANCEL: SupervisorLifecycleState.STOPPING,
+            Operation.QUARANTINE: SupervisorLifecycleState.BLOCKED,
+        }
+    )
+)
+_LIFECYCLE_UNSET: Final[object] = object()
+
+
+class InMemoryLifecycleStore:
+    """Thread-safe authoritative lifecycle snapshots and bounded event replay."""
+
+    def __init__(
+        self,
+        initial_status: Union[LifecycleStatus, None] = None,
+        *,
+        max_events: int = DEFAULT_MAX_CONTROL_EVENTS,
+    ) -> None:
+        if (
+            isinstance(max_events, bool)
+            or not isinstance(max_events, int)
+            or max_events < 1
+            or max_events > 4096
+        ):
+            raise ValueError("max_events must be an integer in [1, 4096]")
+        self._lock = threading.RLock()
+        self._max_events = max_events
+        self._statuses: dict[str, LifecycleStatus] = {}
+        self._events: deque[LifecycleEvent] = deque(maxlen=max_events)
+        self._sequence = 0
+        if initial_status is not None:
+            self._statuses[initial_status.target_id] = initial_status
+
+    @property
+    def max_events(self) -> int:
+        return self._max_events
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        with self._lock:
+            yield
+
+    def _default(self, target_id: str, now_ms: int) -> LifecycleStatus:
+        return LifecycleStatus(
+            target_id=target_id,
+            heartbeat_at_ms=now_ms,
+            updated_at_ms=now_ms,
+        )
+
+    def _append_event_locked(
+        self,
+        *,
+        target_id: str,
+        action: str,
+        accepted: bool,
+        previous_state: SupervisorLifecycleState,
+        state: SupervisorLifecycleState,
+        reason: str,
+        request_id: str,
+        occurred_at_ms: int,
+        changed: bool,
+        replayed: bool = False,
+        recovered: bool = False,
+        fencing_epoch: Union[int, None] = None,
+    ) -> LifecycleEvent:
+        self._sequence += 1
+        event = LifecycleEvent(
+            sequence=self._sequence,
+            target_id=target_id,
+            action=action,
+            accepted=accepted,
+            previous_state=previous_state,
+            state=state,
+            reason=str(reason).strip(),
+            request_id=str(request_id).strip(),
+            occurred_at_ms=occurred_at_ms,
+            changed=changed,
+            replayed=replayed,
+            recovered=recovered,
+            fencing_epoch=fencing_epoch,
+        )
+        self._events.append(event)
+        return event
+
+    def seed(self, status: LifecycleStatus) -> None:
+        """Install a snapshot for migration/recovery tests and process handoff."""
+
+        if not isinstance(status, LifecycleStatus):
+            raise TypeError("status must be a LifecycleStatus")
+        with self._lock:
+            self._statuses[status.target_id] = status
+
+    def _recover_locked(
+        self,
+        status: LifecycleStatus,
+        *,
+        now_ms: int,
+        pid_alive: Callable[[int], bool],
+        stale_after_ms: int,
+    ) -> LifecycleStatus:
+        if status.pid is None:
+            return status
+        heartbeat_stale = (
+            status.heartbeat_at_ms <= 0
+            or now_ms - status.heartbeat_at_ms >= stale_after_ms
+        )
+        try:
+            alive = bool(pid_alive(status.pid))
+        except Exception:
+            alive = False
+        if alive:
+            if (
+                heartbeat_stale
+                and status.state is SupervisorLifecycleState.HEALTHY
+            ):
+                degraded = replace(
+                    status,
+                    state=SupervisorLifecycleState.DEGRADED,
+                    phase="heartbeat_stale",
+                    transition_id=_content_id(
+                        {
+                            "target_id": status.target_id,
+                            "from": status.state.value,
+                            "to": SupervisorLifecycleState.DEGRADED.value,
+                            "reason": "heartbeat_stale",
+                            "at": now_ms,
+                        }
+                    ),
+                    updated_at_ms=now_ms,
+                )
+                self._statuses[status.target_id] = degraded
+                self._append_event_locked(
+                    target_id=status.target_id,
+                    action="recover",
+                    accepted=True,
+                    previous_state=status.state,
+                    state=degraded.state,
+                    reason="heartbeat_stale",
+                    request_id="",
+                    occurred_at_ms=now_ms,
+                    changed=True,
+                    recovered=True,
+                    fencing_epoch=status.fencing_epoch,
+                )
+                return degraded
+            return status
+        if status.state is SupervisorLifecycleState.STARTING:
+            recovered_state = SupervisorLifecycleState.STOPPED
+            terminal_reason = "interrupted_start_stale_pid"
+        elif status.state is SupervisorLifecycleState.STOPPING:
+            recovered_state = SupervisorLifecycleState.STOPPED
+            terminal_reason = "stop_completed_after_stale_pid"
+        elif status.state is SupervisorLifecycleState.DRAINING:
+            recovered_state = SupervisorLifecycleState.FAILED
+            terminal_reason = "drain_interrupted_stale_pid"
+        elif status.state in {
+            SupervisorLifecycleState.HEALTHY,
+            SupervisorLifecycleState.DEGRADED,
+            SupervisorLifecycleState.PAUSED,
+            SupervisorLifecycleState.BLOCKED,
+        }:
+            recovered_state = SupervisorLifecycleState.FAILED
+            terminal_reason = "runtime_stale_pid"
+        else:
+            return status
+        recovered = replace(
+            status,
+            state=recovered_state,
+            phase="recovered",
+            pid=None,
+            active_leases=(),
+            terminal_reason=terminal_reason,
+            transition_id=_content_id(
+                {
+                    "target_id": status.target_id,
+                    "from": status.state.value,
+                    "to": recovered_state.value,
+                    "reason": terminal_reason,
+                    "at": now_ms,
+                }
+            ),
+            updated_at_ms=now_ms,
+        )
+        self._statuses[status.target_id] = recovered
+        self._append_event_locked(
+            target_id=status.target_id,
+            action="recover",
+            accepted=True,
+            previous_state=status.state,
+            state=recovered_state,
+            reason=terminal_reason,
+            request_id="",
+            occurred_at_ms=now_ms,
+            changed=True,
+            recovered=True,
+            fencing_epoch=status.fencing_epoch,
+        )
+        return recovered
+
+    def snapshot(
+        self,
+        target_id: str,
+        *,
+        now_ms: int,
+        pid_alive: Callable[[int], bool],
+        stale_after_ms: int,
+        recover: bool = True,
+    ) -> LifecycleStatus:
+        target = str(target_id).strip()
+        if not target:
+            raise ValueError("target_id is required")
+        with self._lock:
+            status = self._statuses.get(target) or self._default(target, now_ms)
+            self._statuses.setdefault(target, status)
+            if recover:
+                status = self._recover_locked(
+                    status,
+                    now_ms=now_ms,
+                    pid_alive=pid_alive,
+                    stale_after_ms=stale_after_ms,
+                )
+            return status
+
+    @staticmethod
+    def _idempotent_action(
+        operation: Operation, state: SupervisorLifecycleState
+    ) -> bool:
+        return (
+            (operation is Operation.START and state in {
+                SupervisorLifecycleState.STARTING,
+                SupervisorLifecycleState.HEALTHY,
+                SupervisorLifecycleState.DEGRADED,
+            })
+            or (operation is Operation.PAUSE and state is SupervisorLifecycleState.PAUSED)
+            or (
+                operation is Operation.RESUME
+                and state is SupervisorLifecycleState.HEALTHY
+            )
+            or (operation is Operation.DRAIN and state in {
+                SupervisorLifecycleState.DRAINING,
+                SupervisorLifecycleState.STOPPED,
+            })
+            or (operation in {Operation.STOP, Operation.CANCEL} and state in {
+                SupervisorLifecycleState.STOPPING,
+                SupervisorLifecycleState.STOPPED,
+            })
+            or (operation is Operation.RETRY and state is SupervisorLifecycleState.STARTING)
+            or (
+                operation is Operation.QUARANTINE
+                and state is SupervisorLifecycleState.BLOCKED
+            )
+        )
+
+    def transition(
+        self,
+        request: OperationRequest,
+        *,
+        now_ms: int,
+        pid_alive: Callable[[int], bool],
+        stale_after_ms: int,
+    ) -> tuple[LifecycleStatus, LifecycleStatus, LifecycleEvent]:
+        operation = request.operation
+        if operation not in _ACTION_REQUESTED_STATE:
+            raise ValueError("request is not a lifecycle operation")
+        target_id = str(request.parameters.get("target_id") or "supervisor").strip()
+        reason = str(request.parameters.get("reason") or operation.value).strip()
+        requested = _ACTION_REQUESTED_STATE[operation]
+        requested_value = str(
+            request.parameters.get("requested_state") or ""
+        ).strip()
+        if requested_value and requested_value not in {
+            requested.value,
+            operation.value,
+        }:
+            raise InvalidLifecycleTransitionError(
+                f"{operation.value} requests {requested.value}, not "
+                f"{requested_value}"
+            )
+        with self._lock:
+            original = self._statuses.get(target_id) or self._default(
+                target_id, now_ms
+            )
+            self._statuses.setdefault(target_id, original)
+            for prior_event in reversed(self._events):
+                if (
+                    prior_event.request_id == request.request_id
+                    and prior_event.action == operation.value
+                    and prior_event.accepted
+                ):
+                    return original, original, prior_event
+            previous = self._recover_locked(
+                original,
+                now_ms=now_ms,
+                pid_alive=pid_alive,
+                stale_after_ms=stale_after_ms,
+            )
+            recovered = previous is not original
+            if (
+                previous.fencing_epoch is not None
+                and request.fencing_epoch is not None
+                and request.fencing_epoch < previous.fencing_epoch
+            ):
+                event = self._append_event_locked(
+                    target_id=target_id,
+                    action=operation.value,
+                    accepted=False,
+                    previous_state=previous.state,
+                    state=previous.state,
+                    reason=(
+                        f"stale fencing epoch {request.fencing_epoch}; "
+                        f"current epoch is {previous.fencing_epoch}"
+                    ),
+                    request_id=request.request_id,
+                    occurred_at_ms=now_ms,
+                    changed=False,
+                    fencing_epoch=request.fencing_epoch,
+                )
+                raise StaleLeaseError(event.reason)
+            if self._idempotent_action(operation, previous.state):
+                status = previous
+                if (
+                    request.fencing_epoch is not None
+                    and (
+                        previous.fencing_epoch is None
+                        or request.fencing_epoch > previous.fencing_epoch
+                    )
+                ):
+                    status = replace(
+                        previous,
+                        fencing_epoch=request.fencing_epoch,
+                        updated_at_ms=now_ms,
+                    )
+                    self._statuses[target_id] = status
+                event = self._append_event_locked(
+                    target_id=target_id,
+                    action=operation.value,
+                    accepted=True,
+                    previous_state=previous.state,
+                    state=status.state,
+                    reason=reason,
+                    request_id=request.request_id,
+                    occurred_at_ms=now_ms,
+                    changed=False,
+                    replayed=True,
+                    recovered=recovered,
+                    fencing_epoch=request.fencing_epoch,
+                )
+                return previous, status, event
+            if not lifecycle_transition_is_legal(previous.state, requested):
+                event = self._append_event_locked(
+                    target_id=target_id,
+                    action=operation.value,
+                    accepted=False,
+                    previous_state=previous.state,
+                    state=previous.state,
+                    reason=(
+                        f"invalid transition {previous.state.value}"
+                        f" -> {requested.value}: {reason}"
+                    ),
+                    request_id=request.request_id,
+                    occurred_at_ms=now_ms,
+                    changed=False,
+                    fencing_epoch=request.fencing_epoch,
+                )
+                raise InvalidLifecycleTransitionError(event.reason)
+            generation = previous.generation
+            if operation in {Operation.START, Operation.RETRY}:
+                generation += 1
+            phase = str(request.parameters.get("phase") or requested.value).strip()
+            pid_value = request.parameters.get("pid")
+            pid = previous.pid
+            if pid_value not in (None, ""):
+                pid = int(pid_value)
+            if requested is SupervisorLifecycleState.STARTING:
+                # A recovered start must never retain the stale predecessor.
+                pid = None if pid_value in (None, "") else pid
+            status = replace(
+                previous,
+                state=requested,
+                phase=phase,
+                pid=pid,
+                refill_state=(
+                    "paused"
+                    if operation is Operation.PAUSE
+                    else "draining"
+                    if operation is Operation.DRAIN
+                    else "idle"
+                    if operation in {
+                        Operation.START,
+                        Operation.RESUME,
+                        Operation.RETRY,
+                    }
+                    else previous.refill_state
+                ),
+                backpressure=operation
+                in {
+                    Operation.PAUSE,
+                    Operation.DRAIN,
+                    Operation.STOP,
+                    Operation.CANCEL,
+                    Operation.QUARANTINE,
+                },
+                backpressure_reasons=(
+                    (operation.value,)
+                    if operation
+                    in {
+                        Operation.PAUSE,
+                        Operation.DRAIN,
+                        Operation.STOP,
+                        Operation.CANCEL,
+                        Operation.QUARANTINE,
+                    }
+                    else ()
+                ),
+                terminal_reason=(
+                    reason
+                    if requested
+                    in {
+                        SupervisorLifecycleState.STOPPING,
+                        SupervisorLifecycleState.FAILED,
+                    }
+                    else ""
+                ),
+                transition_id=_content_id(
+                    {
+                        "request_id": request.request_id,
+                        "target_id": target_id,
+                        "from": previous.state.value,
+                        "to": requested.value,
+                        "generation": generation,
+                    }
+                ),
+                generation=generation,
+                fencing_epoch=request.fencing_epoch,
+                heartbeat_at_ms=now_ms,
+                updated_at_ms=now_ms,
+            )
+            self._statuses[target_id] = status
+            event = self._append_event_locked(
+                target_id=target_id,
+                action=operation.value,
+                accepted=True,
+                previous_state=previous.state,
+                state=status.state,
+                reason=reason,
+                request_id=request.request_id,
+                occurred_at_ms=now_ms,
+                changed=True,
+                recovered=recovered,
+                fencing_epoch=request.fencing_epoch,
+            )
+            return previous, status, event
+
+    def heartbeat(
+        self,
+        target_id: str,
+        *,
+        now_ms: int,
+        state: Union[SupervisorLifecycleState, str, None] = None,
+        phase: Union[str, None] = None,
+        pid: Any = _LIFECYCLE_UNSET,
+        active_leases: Union[Iterable[str], None] = None,
+        refill_state: Union[str, None] = None,
+        backpressure: Union[bool, None] = None,
+        backpressure_reasons: Union[Iterable[str], None] = None,
+        terminal_reason: Union[str, None] = None,
+    ) -> LifecycleStatus:
+        """Record liveness and operational dimensions in the same schema."""
+
+        target = str(target_id).strip()
+        with self._lock:
+            previous = self._statuses.get(target) or self._default(target, now_ms)
+            requested = previous.state if state is None else (
+                state
+                if isinstance(state, SupervisorLifecycleState)
+                else SupervisorLifecycleState(str(state))
+            )
+            if requested is not previous.state and not lifecycle_transition_is_legal(
+                previous.state, requested
+            ):
+                raise InvalidLifecycleTransitionError(
+                    f"invalid heartbeat transition {previous.state.value}"
+                    f" -> {requested.value}"
+                )
+            leases = (
+                previous.active_leases
+                if active_leases is None
+                else _lifecycle_text_tuple(active_leases)
+            )
+            effective_pid = previous.pid if pid is _LIFECYCLE_UNSET else pid
+            if (
+                previous.state is SupervisorLifecycleState.DRAINING
+                and not leases
+                and requested is SupervisorLifecycleState.DRAINING
+            ):
+                requested = (
+                    SupervisorLifecycleState.STOPPED
+                    if effective_pid is None
+                    else SupervisorLifecycleState.STOPPING
+                )
+                terminal_reason = terminal_reason or previous.terminal_reason or (
+                    "drained"
+                    if requested is SupervisorLifecycleState.STOPPED
+                    else "drain_complete_stopping"
+                )
+            if (
+                previous.state is SupervisorLifecycleState.STOPPING
+                and requested is SupervisorLifecycleState.STOPPING
+                and not leases
+                and pid is None
+            ):
+                requested = SupervisorLifecycleState.STOPPED
+                terminal_reason = (
+                    terminal_reason or previous.terminal_reason or "stopped"
+                )
+            status = replace(
+                previous,
+                state=requested,
+                phase=str(phase or requested.value).strip(),
+                heartbeat_at_ms=now_ms,
+                pid=(
+                    None
+                    if requested
+                    in {
+                        SupervisorLifecycleState.STOPPED,
+                        SupervisorLifecycleState.FAILED,
+                    }
+                    else effective_pid
+                ),
+                active_leases=leases,
+                refill_state=(
+                    previous.refill_state
+                    if refill_state is None
+                    else str(refill_state)
+                ),
+                backpressure=(
+                    previous.backpressure
+                    if backpressure is None
+                    else backpressure
+                ),
+                backpressure_reasons=(
+                    previous.backpressure_reasons
+                    if backpressure_reasons is None
+                    else tuple(backpressure_reasons)
+                ),
+                terminal_reason=(
+                    str(terminal_reason or "")
+                    if requested.terminal
+                    or requested is SupervisorLifecycleState.STOPPING
+                    else ""
+                ),
+                transition_id=(
+                    _content_id(
+                        {
+                            "target_id": target,
+                            "from": previous.state.value,
+                            "to": requested.value,
+                            "reason": str(terminal_reason or "heartbeat"),
+                            "at": now_ms,
+                        }
+                    )
+                    if requested is not previous.state
+                    else previous.transition_id
+                ),
+                updated_at_ms=now_ms,
+            )
+            self._statuses[target] = status
+            if requested is not previous.state:
+                self._append_event_locked(
+                    target_id=target,
+                    action="heartbeat",
+                    accepted=True,
+                    previous_state=previous.state,
+                    state=requested,
+                    reason=status.terminal_reason or "runtime heartbeat",
+                    request_id="",
+                    occurred_at_ms=now_ms,
+                    changed=True,
+                    fencing_epoch=status.fencing_epoch,
+                )
+            return status
+
+    def record_decision(
+        self,
+        request: OperationRequest,
+        *,
+        now_ms: int,
+        accepted: bool,
+        reason: str,
+        replayed: bool = False,
+    ) -> LifecycleEvent:
+        """Record a service-level denial or exact replay without changing state."""
+
+        target_id = str(request.parameters.get("target_id") or "supervisor").strip()
+        with self._lock:
+            current = self._statuses.get(target_id) or self._default(
+                target_id, now_ms
+            )
+            self._statuses.setdefault(target_id, current)
+            # Invalid transition is already recorded by ``transition``.
+            if (
+                not accepted
+                and self._events
+                and self._events[-1].request_id == request.request_id
+                and self._events[-1].action == request.operation.value
+                and not self._events[-1].accepted
+            ):
+                return self._events[-1]
+            return self._append_event_locked(
+                target_id=target_id,
+                action=request.operation.value,
+                accepted=accepted,
+                previous_state=current.state,
+                state=current.state,
+                reason=reason,
+                request_id=request.request_id,
+                occurred_at_ms=now_ms,
+                changed=False,
+                replayed=replayed,
+                fencing_epoch=request.fencing_epoch,
+            )
+
+    def events(
+        self,
+        *,
+        target_id: str = "",
+        limit: int = DEFAULT_QUERY_LIMIT,
+        offset: int = 0,
+        after_sequence: int = 0,
+    ) -> tuple[LifecycleEvent, ...]:
+        if limit < 1 or limit > self._max_events:
+            raise ControlBoundsError("lifecycle event limit exceeds store bound")
+        if offset < 0 or after_sequence < 0:
+            raise ControlBoundsError("event offset/cursor must be non-negative")
+        with self._lock:
+            items = [
+                event
+                for event in self._events
+                if event.sequence > after_sequence
+                and (not target_id or event.target_id == target_id)
+            ]
+            return tuple(items[offset : offset + limit])
+
+
+class JsonLifecycleStore(InMemoryLifecycleStore):
+    """Crash-safe lifecycle state with a bounded JSONL event replay window."""
+
+    def __init__(
+        self,
+        state_root: Union[str, Path],
+        *,
+        filename: str = "supervisor-lifecycle.json",
+        events_filename: str = "supervisor-lifecycle-events.jsonl",
+        max_events: int = DEFAULT_MAX_CONTROL_EVENTS,
+    ) -> None:
+        self._state_root = _normalized_absolute(state_root, label="state_root")
+        for value, label in (
+            (filename, "lifecycle filename"),
+            (events_filename, "lifecycle events filename"),
+        ):
+            path = Path(value)
+            if path.is_absolute() or ".." in path.parts or path == Path("."):
+                raise ValueError(f"{label} must be a contained relative path")
+        self._state_path = self._state_root / filename
+        self._events_path = self._state_root / events_filename
+        self._lock_path = self._state_root / ".supervisor-lifecycle.lock"
+        super().__init__(max_events=max_events)
+        self._state_root.mkdir(parents=True, exist_ok=True)
+        with self._file_guard():
+            self._load_locked()
+
+    @contextmanager
+    def _file_guard(self) -> Iterator[None]:
+        self._state_root.mkdir(parents=True, exist_ok=True)
+        with self._lock_path.open("a+", encoding="utf-8") as stream:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+    def _load_locked(self) -> None:
+        statuses: dict[str, LifecycleStatus] = {}
+        state_corrupt = False
+        if self._state_path.exists():
+            try:
+                payload = json.loads(self._state_path.read_text(encoding="utf-8"))
+                if not isinstance(payload, Mapping):
+                    raise ValueError("lifecycle state root must be an object")
+                raw_statuses = payload.get("statuses")
+                if not isinstance(raw_statuses, Mapping):
+                    raise ValueError("lifecycle statuses must be an object")
+                if isinstance(raw_statuses, Mapping):
+                    for target_id, item in raw_statuses.items():
+                        if isinstance(item, Mapping):
+                            status = LifecycleStatus.from_dict(item)
+                            if status.target_id == target_id:
+                                statuses[target_id] = status
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                # An interrupted state write is recoverable from the last
+                # valid event prefix; never trust a partially decoded state.
+                statuses = {}
+                state_corrupt = True
+        events: deque[LifecycleEvent] = deque(maxlen=self._max_events)
+        sequence = 0
+        if self._events_path.exists():
+            try:
+                with self._events_path.open("r", encoding="utf-8") as stream:
+                    for line in stream:
+                        try:
+                            item = json.loads(line)
+                            if not isinstance(item, Mapping):
+                                continue
+                            event = LifecycleEvent.from_dict(item)
+                        except (ValueError, TypeError, json.JSONDecodeError):
+                            continue
+                        events.append(event)
+                        sequence = max(sequence, event.sequence)
+            except OSError:
+                events.clear()
+        if state_corrupt:
+            targets = sorted({event.target_id for event in events if event.target_id})
+            for target_id in targets or ["supervisor"]:
+                latest = next(
+                    (
+                        event
+                        for event in reversed(events)
+                        if event.target_id == target_id
+                    ),
+                    None,
+                )
+                occurred_at_ms = (
+                    latest.occurred_at_ms if latest is not None else _now_ms()
+                )
+                statuses[target_id] = LifecycleStatus(
+                    target_id=target_id,
+                    state=SupervisorLifecycleState.FAILED,
+                    phase="state_recovery",
+                    heartbeat_at_ms=occurred_at_ms,
+                    terminal_reason="lifecycle_state_corrupt",
+                    generation=0,
+                    fencing_epoch=(
+                        latest.fencing_epoch if latest is not None else None
+                    ),
+                    updated_at_ms=occurred_at_ms,
+                )
+        self._statuses = statuses
+        self._events = events
+        self._sequence = sequence
+
+    def _persist_locked(self) -> None:
+        payload = {
+            "schema": LIFECYCLE_STATUS_SCHEMA,
+            "statuses": {
+                target: status.to_dict()
+                for target, status in sorted(self._statuses.items())
+            },
+        }
+        temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
+        encoded_state = (
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+        with temporary.open("w", encoding="utf-8") as stream:
+            stream.write(encoded_state)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, self._state_path)
+        events_temporary = self._events_path.with_suffix(
+            self._events_path.suffix + ".tmp"
+        )
+        with events_temporary.open("w", encoding="utf-8") as stream:
+            for event in self._events:
+                stream.write(
+                    json.dumps(
+                        event.to_dict(),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(events_temporary, self._events_path)
+
+    def seed(self, status: LifecycleStatus) -> None:
+        with self._file_guard(), self._lock:
+            self._load_locked()
+            super().seed(status)
+            self._persist_locked()
+
+    def snapshot(self, *args: Any, **kwargs: Any) -> LifecycleStatus:
+        with self._file_guard(), self._lock:
+            self._load_locked()
+            result = super().snapshot(*args, **kwargs)
+            self._persist_locked()
+            return result
+
+    def transition(
+        self, request: OperationRequest, **kwargs: Any
+    ) -> tuple[LifecycleStatus, LifecycleStatus, LifecycleEvent]:
+        with self._file_guard(), self._lock:
+            self._load_locked()
+            try:
+                result = super().transition(request, **kwargs)
+            finally:
+                self._persist_locked()
+            return result
+
+    def heartbeat(self, *args: Any, **kwargs: Any) -> LifecycleStatus:
+        with self._file_guard(), self._lock:
+            self._load_locked()
+            result = super().heartbeat(*args, **kwargs)
+            self._persist_locked()
+            return result
+
+    def events(self, **kwargs: Any) -> tuple[LifecycleEvent, ...]:
+        with self._file_guard(), self._lock:
+            self._load_locked()
+            return super().events(**kwargs)
+
+    def record_decision(
+        self, request: OperationRequest, **kwargs: Any
+    ) -> LifecycleEvent:
+        with self._file_guard(), self._lock:
+            self._load_locked()
+            result = super().record_decision(request, **kwargs)
+            self._persist_locked()
+            return result
+
+
+def _default_pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+class SupervisorLifecycleBackend:
+    """Authoritative lifecycle/status backend for :class:`SupervisorControlService`."""
+
+    def __init__(
+        self,
+        state_store: Union[InMemoryLifecycleStore, None] = None,
+        *,
+        clock_ms: Callable[[], int] = _now_ms,
+        pid_alive: Callable[[int], bool] = _default_pid_alive,
+        stale_after_ms: int = 60_000,
+        max_events: int = DEFAULT_MAX_CONTROL_EVENTS,
+    ) -> None:
+        if (
+            isinstance(stale_after_ms, bool)
+            or not isinstance(stale_after_ms, int)
+            or stale_after_ms < 1
+        ):
+            raise ValueError("stale_after_ms must be a positive integer")
+        self.state_store = state_store or InMemoryLifecycleStore(
+            max_events=max_events
+        )
+        self._clock_ms = clock_ms
+        self._pid_alive = pid_alive
+        self._stale_after_ms = stale_after_ms
+        self.optional_providers_loaded = False
+        self.processes_started = False
+
+    @property
+    def registered_operations(self) -> tuple[Operation, ...]:
+        return tuple(
+            sorted(
+                {
+                    Operation.STATUS,
+                    Operation.HEALTH,
+                    Operation.EVENTS,
+                    *tuple(_ACTION_REQUESTED_STATE),
+                },
+                key=lambda item: item.value,
+            )
+        )
+
+    @staticmethod
+    def _target_id(request: OperationRequest) -> str:
+        return str(request.parameters.get("target_id") or "supervisor").strip()
+
+    def status(self, target_id: str = "supervisor") -> LifecycleStatus:
+        return self.state_store.snapshot(
+            target_id,
+            now_ms=self._clock_ms(),
+            pid_alive=self._pid_alive,
+            stale_after_ms=self._stale_after_ms,
+            recover=True,
+        )
+
+    def heartbeat(self, target_id: str = "supervisor", **values: Any) -> LifecycleStatus:
+        return self.state_store.heartbeat(
+            target_id, now_ms=self._clock_ms(), **values
+        )
+
+    def _status_is_healthy(self, status: LifecycleStatus) -> bool:
+        if status.state is not SupervisorLifecycleState.HEALTHY:
+            return False
+        now_ms = self._clock_ms()
+        if (
+            status.heartbeat_at_ms <= 0
+            or status.heartbeat_at_ms > now_ms
+            or now_ms - status.heartbeat_at_ms >= self._stale_after_ms
+        ):
+            return False
+        if status.pid is None:
+            return False
+        try:
+            return bool(self._pid_alive(status.pid))
+        except Exception:
+            return False
+
+    def record_rejection(
+        self, request: OperationRequest, error: OperationError
+    ) -> LifecycleEvent:
+        return self.state_store.record_decision(
+            request,
+            now_ms=self._clock_ms(),
+            accepted=False,
+            reason=f"{error.code.value}: {error.message}",
+        )
+
+    def record_replay(self, request: OperationRequest) -> LifecycleEvent:
+        return self.state_store.record_decision(
+            request,
+            now_ms=self._clock_ms(),
+            accepted=True,
+            reason="exact idempotent replay",
+            replayed=True,
+        )
+
+    def execute(self, request: OperationRequest) -> BackendResponse:
+        if request.operation in {Operation.STATUS, Operation.HEALTH}:
+            status = self.status(self._target_id(request))
+            data = status.to_dict()
+            if request.operation is Operation.HEALTH:
+                data["healthy"] = self._status_is_healthy(status)
+            return BackendResponse(data=data)
+        if request.operation is Operation.EVENTS:
+            limit, offset = _bounded_window(request)
+            after_sequence = int(request.parameters.get("after_sequence") or 0)
+            events = self.state_store.events(
+                target_id=self._target_id(request)
+                if request.parameters.get("target_id")
+                else "",
+                limit=min(limit, self.state_store.max_events),
+                offset=offset,
+                after_sequence=after_sequence,
+            )
+            return BackendResponse(
+                data={
+                    "items": [item.to_dict() for item in events],
+                    "count": len(events),
+                    "limit": limit,
+                    "offset": offset,
+                    "after_sequence": after_sequence,
+                    "truncated": len(events) == limit,
+                }
+            )
+        if request.operation not in _ACTION_REQUESTED_STATE:
+            raise OperationUnavailableError(
+                f"operation {request.operation.value} is not implemented"
+            )
+        previous, status, event = self.state_store.transition(
+            request,
+            now_ms=self._clock_ms(),
+            pid_alive=self._pid_alive,
+            stale_after_ms=self._stale_after_ms,
+        )
+        return BackendResponse(
+            data={
+                "status": status.to_dict(),
+                "event": event.to_dict(),
+                "previous_state": event.previous_state.value,
+                "state": status.state.value,
+                "accepted": True,
+                "idempotent": not event.changed,
+            },
+            changed=event.changed,
+            applied_effect_ids=(
+                tuple(item.effect_id for item in request.expected_effects)
+                if event.changed
+                else ()
+            ),
+        )
+
+
 OperationHandler = Callable[[OperationRequest], Union[BackendResponse, Mapping[str, Any], Any]]
 
 
@@ -441,6 +2011,9 @@ class ControlAuditReceipt:
 class ControlStateStore(Protocol):
     """Persistence boundary for idempotency results and audit records."""
 
+    def transaction(self, request: OperationRequest) -> Any:
+        ...
+
     def get_idempotent(
         self, request: OperationRequest
     ) -> Union[tuple[str, OperationResult], None]:
@@ -469,6 +2042,14 @@ class InMemoryControlStateStore:
         self._lock = threading.RLock()
         self._idempotency: dict[str, tuple[str, OperationResult]] = {}
         self._receipts: list[dict[str, Any]] = []
+
+    @contextmanager
+    def transaction(self, request: OperationRequest) -> Iterator[None]:
+        """Serialize a mutation decision through dispatch and persistence."""
+
+        del request
+        with self._lock:
+            yield
 
     @staticmethod
     def _key(request: OperationRequest) -> str:
@@ -556,6 +2137,18 @@ class JsonlControlStateStore(InMemoryControlStateStore):
             "operation": request.operation.value,
             "idempotency_key": request.idempotency_key,
         }
+
+    @contextmanager
+    def transaction(self, request: OperationRequest) -> Iterator[None]:
+        lock_path = Path(request.state_root) / ".control-transaction.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as stream:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            try:
+                with self._lock:
+                    yield
+            finally:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
     def get_idempotent(
         self, request: OperationRequest
@@ -1370,12 +2963,13 @@ class SupervisorControlService:
             raise ControlContractError(
                 "backend cannot apply effects while reporting no change"
             )
+        canonical_data = _canonical_json_value(response.data)
         return BackendResponse(
-            data=_canonical_json_value(response.data),
+            data=redact_control_data(canonical_data),
             changed=response.changed,
             applied_effect_ids=response.applied_effect_ids,
-            warnings=response.warnings,
-            checks=response.checks,
+            warnings=tuple(redact_control_text(item) for item in response.warnings),
+            checks=tuple(redact_control_text(item) for item in response.checks),
         )
 
     def _dispatch(self, request: OperationRequest) -> BackendResponse:
@@ -1455,6 +3049,8 @@ class SupervisorControlService:
             exc, FileNotFoundError
         ):
             code = ErrorCode.NOT_FOUND
+        elif isinstance(exc, InvalidLifecycleTransitionError):
+            code = ErrorCode.INVALID_LIFECYCLE_TRANSITION
         elif isinstance(exc, BackendConflictError):
             code = ErrorCode.CONFLICT
         elif isinstance(exc, BackendCancelledError):
@@ -1476,6 +3072,7 @@ class SupervisorControlService:
         else:
             code = ErrorCode.INTERNAL_ERROR
             message = "control operation failed"
+        message = redact_control_text(message)
         return OperationError(
             code=code,
             message=message[:2048],
@@ -1579,7 +3176,7 @@ class SupervisorControlService:
         if request.dry_run and request.operation in MUTATION_OPERATIONS:
             preview = self._preview(request, response)
             authority = OperationAuthority.PROPOSAL
-        elif request.operation is Operation.OBJECTIVE_PREVIEW:
+        elif request.operation in PROPOSAL_OPERATIONS:
             preview = self._preview(request, response)
         result = OperationResult(
             request_id=request.request_id,
@@ -1646,22 +3243,51 @@ class SupervisorControlService:
             pass
         return result
 
+    def _preflight_dispatch_boundary(
+        self, request: OperationRequest
+    ) -> Union[OperationResult, None]:
+        """Apply every runtime guard before a mutating adapter can dispatch.
+
+        Structural authorization, idempotency scope, declared effects, and
+        path containment have already been checked by ``OperationRequest``.
+        This boundary adds deployment allowlists, current identity and
+        authorization checks, replay/conflict detection, and the live
+        lease/fencing decision.  CLI and MCP decode before resolving their
+        service, then converge here with direct Python calls.
+        """
+
+        self._check_target(request)
+        self._check_bounds(request)
+        self._check_authorization(request)
+        replay = self._check_idempotency(request)
+        if replay is not None:
+            return replay
+        self._check_lease(request)
+        return None
+
     def execute(
         self, request: Union[OperationRequest, Mapping[str, Any]]
     ) -> OperationResult:
         """Validate, dispatch, audit, and return one typed operation result."""
 
         if not isinstance(request, OperationRequest):
-            request = OperationRequest.from_dict(request)
-        with self._lock:
+            request = decode_operation_request(request)
+        transaction = getattr(self._state_store, "transaction", None)
+
+        @contextmanager
+        def no_transaction() -> Iterator[None]:
+            yield
+
+        guard = transaction(request) if callable(transaction) else no_transaction()
+        with self._lock, guard:
+            backend_accepted = False
             try:
-                self._check_target(request)
-                self._check_bounds(request)
-                self._check_authorization(request)
-                replay = self._check_idempotency(request)
+                replay = self._preflight_dispatch_boundary(request)
                 if replay is not None:
+                    hook = getattr(self._backend, "record_replay", None)
+                    if callable(hook) and request.operation in MUTATION_OPERATIONS:
+                        hook(request)
                     return replay
-                self._check_lease(request)
                 if request.dry_run and request.operation in MUTATION_OPERATIONS:
                     # A dry run never invokes a mutating adapter.
                     response = BackendResponse(
@@ -1671,9 +3297,22 @@ class SupervisorControlService:
                     )
                 else:
                     response = self._dispatch(request)
+                    backend_accepted = True
                 return self._success_result(request, response)
             except Exception as exc:
-                return self._error_result(request, exc)
+                result = self._error_result(request, exc)
+                hook = getattr(self._backend, "record_rejection", None)
+                if (
+                    callable(hook)
+                    and request.operation in MUTATION_OPERATIONS
+                    and not backend_accepted
+                ):
+                    try:
+                        if result.error is not None:
+                            hook(request, result.error)
+                    except Exception:
+                        pass
+                return result
 
     handle = execute
     dispatch = execute
@@ -2015,8 +3654,15 @@ ControlService = SupervisorControlService
 __all__ = [
     "CONTROL_AUDIT_RECEIPT_SCHEMA",
     "CONTROL_BACKEND_RESPONSE_SCHEMA",
+    "CONTROL_MUTATION_EVENT_SCHEMA",
     "CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES",
+    "CONTROL_REDACTION_MARKER",
+    "CONTROL_SENSITIVE_FIELD_NAMES",
     "CONTROL_SERVICE_VERSION",
+    "DEFAULT_MAX_CONTROL_EVENTS",
+    "LEGAL_LIFECYCLE_TRANSITIONS",
+    "LIFECYCLE_EVENT_SCHEMA",
+    "LIFECYCLE_STATUS_SCHEMA",
     "BackendCancelledError",
     "BackendConflictError",
     "BackendNotFoundError",
@@ -2027,7 +3673,12 @@ __all__ = [
     "ControlStateStore",
     "IdempotencyConflictError",
     "InMemoryControlStateStore",
+    "InMemoryLifecycleStore",
+    "InvalidLifecycleTransitionError",
+    "JsonLifecycleStore",
     "JsonlControlStateStore",
+    "LifecycleEvent",
+    "LifecycleStatus",
     "LeaseFenceValidator",
     "LeaseValidationError",
     "OperationHandler",
@@ -2040,9 +3691,14 @@ __all__ = [
     "SupervisorClient",
     "SupervisorControlError",
     "SupervisorControlService",
+    "SupervisorLifecycleBackend",
+    "SupervisorLifecycleState",
     "SupervisorReadClient",
     "SupervisorTarget",
     "TargetNotAllowedError",
     "TargetIdentityValidator",
     "capture_control_discovery_runtime_state",
+    "lifecycle_transition_is_legal",
+    "redact_control_data",
+    "redact_control_text",
 ]

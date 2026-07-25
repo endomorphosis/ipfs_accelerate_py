@@ -194,6 +194,38 @@ def test_rate_limit_prevents_router_call_but_still_returns_fallback(tmp_path: Pa
     assert routed.limit_reason == "router_rate_or_call_limit_reached"
 
 
+def test_analysis_routing_receipt_keeps_only_decoded_response_digests(
+    tmp_path: Path,
+) -> None:
+    decoded = json.dumps({"proposals": [_proposal("private-decoded-body")]})
+    routed = generate_analysis_proposals(
+        {
+            "task_id": "DIGEST-1",
+            "predicted_files": ["src/private-decoded-body.py"],
+        },
+        objective_terms=["prove cache invalidation"],
+        router=lambda _prompt: decoded,
+        config=StructuredPlanRouterConfig(
+            repo_root=tmp_path,
+            branch_count=1,
+            max_new_tokens=64,
+        ),
+        policy=AnalysisEscalationPolicy(
+            max_router_retries=0,
+            min_confidence=0.5,
+            min_novelty=0.5,
+        ),
+    )
+
+    assert routed.raw_responses == (decoded,)
+    receipt = routed.to_dict()
+    assert "raw_responses" not in receipt
+    assert decoded not in json.dumps(receipt)
+    assert receipt["response_count"] == 1
+    assert receipt["response_bytes"] == len(decoded.encode("utf-8"))
+    assert receipt["response_sha256"][0].startswith("sha256:")
+
+
 def test_exhaustive_ast_coverage_uses_real_python_ast_and_reports_parse_health(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     source = tmp_path / "service.py"

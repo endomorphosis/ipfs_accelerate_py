@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Mapping
 from threading import RLock
+from types import MappingProxyType
 from typing import Any
 
 from ....agent_supervisor.control_contracts import (
@@ -19,6 +20,7 @@ from ....agent_supervisor.control_contracts import (
     ControlSurface,
     Operation,
     OperationRequest,
+    decode_operation_request,
     operation_request_json_schema,
     operation_result_json_schema,
 )
@@ -113,7 +115,9 @@ async def execute_agent_supervisor_operation(
     """Decode, dispatch, and return the canonical shared result record."""
 
     selected = operation if isinstance(operation, Operation) else Operation(operation)
-    decoded = OperationRequest.from_dict(request)
+    # Decode before resolving server policy/service state. Unsafe mutation
+    # payloads therefore cannot trigger a service factory or backend.
+    decoded = decode_operation_request(request)
     if decoded.operation is not selected:
         raise ValueError(
             "request operation does not match the selected MCP tool"
@@ -127,7 +131,7 @@ async def agent_supervisor_control(
 ) -> dict[str, Any]:
     """Generic canonical adapter, useful for direct embedding and tests."""
 
-    decoded = OperationRequest.from_dict(request)
+    decoded = decode_operation_request(request)
     return _resolve_service(decoded).execute(decoded).to_record()
 
 
@@ -143,23 +147,38 @@ def _operation_tool(operation: Operation) -> Callable[..., Any]:
     return tool
 
 
-AGENT_SUPERVISOR_OPERATION_TOOLS: dict[Operation, Callable[..., Any]] = {
-    operation: _operation_tool(operation)
-    for operation in sorted(Operation, key=lambda item: item.value)
-}
+AGENT_SUPERVISOR_OPERATION_TOOLS: Mapping[
+    Operation, Callable[..., Any]
+] = MappingProxyType(
+    {
+        operation: _operation_tool(operation)
+        for operation in sorted(Operation, key=lambda item: item.value)
+    }
+)
 for _operation, _tool in AGENT_SUPERVISOR_OPERATION_TOOLS.items():
     globals()[_tool.__name__] = _tool
 
 
 def _tool_input_schema(operation: Operation) -> dict[str, Any]:
+    request_schema = operation_request_json_schema(operation)
+    result_schema = operation_result_json_schema(operation)
     return {
         "type": "object",
         "properties": {
-            "request": operation_request_json_schema(operation),
+            "request": request_schema,
         },
         "required": ["request"],
         "additionalProperties": False,
-        "x-output-schema": operation_result_json_schema(operation),
+        "x-output-schema": result_schema,
+        # These canonical identities let clients and completion analyzers prove
+        # that discovery described the same transport-neutral schemas as the
+        # Python and CLI surfaces without trusting a tool name or description.
+        "x-agent-supervisor-contract": {
+            "surface": ControlSurface.MCP.value,
+            "operation": operation.value,
+            "request_schema_id": content_identity(request_schema),
+            "result_schema_id": content_identity(result_schema),
+        },
     }
 
 
@@ -208,6 +227,24 @@ def register_native_agent_supervisor_tools(manager: Any) -> None:
     """Register all closed-vocabulary operations without resolving a service."""
 
     for operation, tool in AGENT_SUPERVISOR_OPERATION_TOOLS.items():
+        tags = [
+            "native",
+            "agent-supervisor",
+            operation.authority.value,
+            "policy-controlled",
+            "bounded",
+            "redacted",
+        ]
+        if operation.mutating:
+            tags.extend(
+                [
+                    "authorization-required",
+                    "audit-receipt",
+                    "dry-run",
+                    "idempotent",
+                    "lease-fenced",
+                ]
+            )
         manager.register_tool(
             category=AGENT_SUPERVISOR_MCP_CATEGORY,
             name=operation.value,
@@ -218,12 +255,7 @@ def register_native_agent_supervisor_tools(manager: Any) -> None:
             ),
             input_schema=_tool_input_schema(operation),
             runtime="fastapi",
-            tags=[
-                "native",
-                "agent-supervisor",
-                operation.authority.value,
-                "policy-controlled",
-            ],
+            tags=tags,
         )
 
 
