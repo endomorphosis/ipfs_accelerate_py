@@ -16,6 +16,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .adaptive_goal_refiner import GoalDebtRecord, GoalQualityRecord
 from .goal_completion import (
+    DEFAULT_CLOCK_SKEW_SECONDS,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     GOAL_COMPLETION_SCHEMA_VERSION,
     GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION,
@@ -75,11 +76,239 @@ TASK_GOAL_METADATA_KEYS = (
 OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/objective-goal-quality-report@1"
 )
+_COMPLETION_GATE_REQUIRED_CHECK_NAMES = frozenset(
+    {
+        "mandatory_coverage",
+        "required_validations",
+        "analyzer_health",
+        "exhaustion_quorum",
+        "analysis_terminal_state",
+        "child_goals",
+    }
+)
+
+
+def _completion_gate_projection_is_current(
+    payload: Mapping[str, Any],
+    *,
+    repository_id: str = "",
+    repository_tree: str = "",
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
+) -> bool:
+    """Validate a serialized completion decision before backlog suppression.
+
+    A durable summary is less trusted than the evaluator object that produced
+    it.  Requiring the complete canonical projection prevents a skeletal
+    ``verified`` mapping, an old passing decision, or a foreign-tree decision
+    from silently removing its parent from supervisor refill.
+    """
+
+    required_fields = {
+        "schema_version",
+        "state",
+        "verified",
+        "tasks_complete",
+        "acceptance_criteria",
+        "missing_criteria",
+        "invalid_criteria",
+        "reason_codes",
+        "actionable_reasons",
+        "evidence_results",
+        "completion_gate",
+    }
+    if not required_fields.issubset(payload):
+        return False
+    if payload.get("schema_version") != GOAL_COMPLETION_SCHEMA_VERSION:
+        return False
+    if payload.get("tasks_complete") is not True:
+        return False
+
+    def sequence(value: Any) -> list[Any] | None:
+        if not isinstance(value, (list, tuple)):
+            return None
+        return list(value)
+
+    criteria = sequence(payload.get("acceptance_criteria"))
+    missing = sequence(payload.get("missing_criteria"))
+    invalid = sequence(payload.get("invalid_criteria"))
+    reason_codes = sequence(payload.get("reason_codes"))
+    actionable = sequence(payload.get("actionable_reasons"))
+    results = sequence(payload.get("evidence_results"))
+    if any(
+        item is None
+        for item in (
+            criteria,
+            missing,
+            invalid,
+            reason_codes,
+            actionable,
+            results,
+        )
+    ):
+        return False
+    assert criteria is not None
+    assert missing is not None
+    assert invalid is not None
+    assert reason_codes is not None
+    assert actionable is not None
+    assert results is not None
+    criterion_keys = [
+        " ".join(str(item or "").strip().lower().split())
+        for item in criteria
+    ]
+    if (
+        not criterion_keys
+        or any(not item for item in criterion_keys)
+        or len(criterion_keys) != len(set(criterion_keys))
+        or missing
+        or invalid
+        or reason_codes
+        or actionable
+    ):
+        return False
+
+    result_keys: list[str] = []
+    for result in results:
+        if not isinstance(result, Mapping) or result.get("valid") is not True:
+            return False
+        evidence = result.get("evidence")
+        if not isinstance(evidence, Mapping):
+            return False
+        criterion = " ".join(
+            str(evidence.get("acceptance_criterion") or "")
+            .strip()
+            .lower()
+            .split()
+        )
+        if not criterion:
+            return False
+        result_keys.append(criterion)
+    if (
+        len(result_keys) != len(criterion_keys)
+        or len(result_keys) != len(set(result_keys))
+        or set(result_keys) != set(criterion_keys)
+    ):
+        return False
+
+    gate_value = payload.get("completion_gate")
+    if not isinstance(gate_value, Mapping):
+        return False
+    gate = dict(gate_value)
+    if (
+        gate.get("schema_version") != GOAL_COMPLETION_SCHEMA_VERSION
+        or gate.get("passed") is not True
+        or sequence(gate.get("reason_codes")) != []
+        or sequence(gate.get("fail_reason_codes")) != []
+        or sequence(gate.get("actionable_reasons")) != []
+    ):
+        return False
+    checks = sequence(gate.get("checks"))
+    if checks is None:
+        return False
+    check_names = [
+        str(check.get("name") or "").strip()
+        for check in checks
+        if isinstance(check, Mapping)
+    ]
+    if (
+        len(check_names) != len(checks)
+        or len(check_names) != len(set(check_names))
+        or not _COMPLETION_GATE_REQUIRED_CHECK_NAMES.issubset(check_names)
+        or any(check.get("passed") is not True for check in checks)
+    ):
+        return False
+
+    evaluated_value = gate.get("evaluated_evidence")
+    if not isinstance(evaluated_value, Mapping):
+        return False
+    evaluated = dict(evaluated_value)
+    evaluated_criteria = sequence(evaluated.get("acceptance_criteria"))
+    evaluated_results = sequence(evaluated.get("validation_evidence"))
+    if evaluated_criteria is None or evaluated_results is None:
+        return False
+    evaluated_keys = [
+        " ".join(str(item or "").strip().lower().split())
+        for item in evaluated_criteria
+    ]
+    if evaluated_keys != criterion_keys or evaluated_results != results:
+        return False
+    for required_payload in (
+        "coverage",
+        "analyzer_health",
+        "exhaustion_quorum",
+    ):
+        if (
+            not isinstance(evaluated.get(required_payload), Mapping)
+            or not evaluated[required_payload]
+        ):
+            return False
+
+    evaluated_repository_id = str(evaluated.get("repository_id") or "").strip()
+    evaluated_tree = str(evaluated.get("repository_tree") or "").strip()
+    if not evaluated_repository_id or not evaluated_tree:
+        return False
+    if repository_id and evaluated_repository_id != str(repository_id):
+        return False
+    if repository_tree and evaluated_tree != str(repository_tree):
+        return False
+
+    def timestamp(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            parsed = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                parsed = datetime.fromisoformat(
+                    value.strip().replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+
+    current = timestamp(now) if now is not None else datetime.now(timezone.utc)
+    evaluated_at = timestamp(evaluated.get("evaluated_at"))
+    if current is None or evaluated_at is None:
+        return False
+    if (
+        isinstance(freshness_seconds, bool)
+        or not isinstance(freshness_seconds, (int, float))
+        or float(freshness_seconds) < 0
+        or isinstance(clock_skew_seconds, bool)
+        or not isinstance(clock_skew_seconds, (int, float))
+        or float(clock_skew_seconds) < 0
+    ):
+        return False
+    declared_freshness = evaluated.get("freshness_seconds")
+    if (
+        isinstance(declared_freshness, bool)
+        or not isinstance(declared_freshness, (int, float))
+        or float(declared_freshness) < 0
+    ):
+        return False
+    max_age = timedelta(
+        seconds=min(float(freshness_seconds), float(declared_freshness))
+    )
+    skew = timedelta(seconds=float(clock_skew_seconds))
+    return bool(
+        evaluated_at <= current + skew
+        and current - evaluated_at <= max_age
+    )
 
 
 def completion_gate_actionable_goal_ids(
     goal_id: str,
     decision: GoalCompletionDecision | Mapping[str, Any] | None,
+    *,
+    repository_id: str = "",
+    repository_tree: str = "",
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
 ) -> tuple[str, ...]:
     """Project an incomplete completion gate back into objective scheduling.
 
@@ -108,11 +337,18 @@ def completion_gate_actionable_goal_ids(
         payload.get("state", payload.get("next_state", ""))
         or ""
     ).strip().lower()
-    verified = (
+    verified = bool(
         state == GoalState.VERIFIED_COMPLETE.value
         and payload.get("verified") is True
         and gate.get("passed") is True
-        and not payload.get("actionable_reasons")
+        and _completion_gate_projection_is_current(
+            payload,
+            repository_id=repository_id,
+            repository_tree=repository_tree,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+        )
     )
     return () if verified else (normalized_goal_id,)
 

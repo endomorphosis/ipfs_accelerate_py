@@ -301,7 +301,26 @@ def evaluate_self_improvement_completion(
         )
     )
 
-    coverage_value = payload(coverage)
+    coverage_value = {
+        **payload(coverage),
+        # Retain the specialized producer-closure derivation in the durable
+        # gate projection.  ``tasks_complete`` alone is insufficient audit
+        # evidence because it does not identify the population that was
+        # closed before ASI-G080 requested completion.
+        "producing_task_closure": {
+            "required_task_ids": list(
+                SELF_IMPROVEMENT_PRODUCING_TASK_IDS
+            ),
+            "submitted_task_ids": task_ids,
+            "submitted_task_statuses": [
+                str(item.get("status", item.get("state", "")) or "")
+                for item in task_values
+            ],
+            "population_complete": producers_complete,
+            "caller_tasks_complete": tasks_complete is True,
+            "satisfied": bool(tasks_complete is True and producers_complete),
+        },
+    }
     rows_value = coverage_value.get("criteria")
     rows = rows_value if isinstance(rows_value, list) else []
     row_keys = [
@@ -571,7 +590,7 @@ def evaluate_self_improvement_completion(
         current_state=current_state,
         acceptance_criteria=SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA,
         evidence=evidence_records,
-        tasks_complete=bool(tasks_complete and producers_complete),
+        tasks_complete=bool(tasks_complete is True and producers_complete),
         repository_tree=repository_tree,
         repository_id=repository_id,
         now=current,
