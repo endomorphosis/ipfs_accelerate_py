@@ -191,4 +191,4 @@ As browser WebGPU support evolves, we will continue to enhance the compatibility
 
 WebGPU support varies significantly across browsers, with Safari requiring the most specialized handling. The fallback system provided in `fixed_web_platform/unified_framework/fallback_manager.py` ensures optimal performance across all browsers by adapting strategies based on browser capabilities and operation characteristics.
 
-For Safari-specific details, see the detailed [Safari WebGPU Fallback Guide](../api_reference/safari_webgpu_fallback.md).
+For Safari-specific details, see the detailed [Safari WebGPU Fallback Guide](api_reference/safari_webgpu_fallback.md).
