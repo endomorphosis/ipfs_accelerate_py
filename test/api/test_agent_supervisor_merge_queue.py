@@ -1,0 +1,259 @@
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.merge_queue import (
+    MergeQueue,
+    MergeQueueFenceError,
+    MergeQueueFullError,
+)
+
+
+def _enqueue(
+    queue: MergeQueue,
+    ordinal: int,
+    *,
+    priority: str = "P2",
+    worktree_bytes: int = 0,
+):
+    metadata = {"worktree_bytes": worktree_bytes} if worktree_bytes else {}
+    return queue.enqueue(
+        branch_name=f"candidate/{ordinal}",
+        task_id=f"TASK-{ordinal}",
+        canonical_task_id=f"canonical-task-{ordinal}",
+        commit_sha=f"{ordinal + 1:040x}",
+        priority=priority,
+        metadata=metadata,
+    )
+
+
+def test_batch_claims_have_a_deterministic_total_order_and_unique_fences(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(
+        tmp_path / "queue",
+        clock=lambda: 100.0,
+        max_processing=8,
+        priority_aging_seconds=0,
+    )
+    low = _enqueue(queue, 0, priority="P3")
+    high_b = _enqueue(queue, 1, priority="P0")
+    high_a = _enqueue(queue, 2, priority="P0")
+    medium = _enqueue(queue, 3, priority="P1")
+
+    claimed = queue.dequeue_many(8, consumer_id="merge-train:deterministic")
+
+    same_priority = sorted((high_a.request_id, high_b.request_id))
+    assert [request.request_id for request in claimed] == [
+        *same_priority,
+        medium.request_id,
+        low.request_id,
+    ]
+    assert all(request.consumer_id == "merge-train:deterministic" for request in claimed)
+    assert all(request.claim_token for request in claimed)
+    assert all(request.claim_generation == 1 for request in claimed)
+    assert len({request.claim_token for request in claimed}) == len(claimed)
+
+
+@pytest.mark.parametrize(
+    "stale_request",
+    (
+        lambda claimed: replace(claimed, consumer_id="merge-train:impostor"),
+        lambda claimed: replace(claimed, claim_token="stale-token"),
+        lambda claimed: replace(
+            claimed, claim_generation=max(0, claimed.claim_generation - 1)
+        ),
+    ),
+    ids=("wrong-owner", "wrong-token", "stale-generation"),
+)
+def test_completion_requires_the_exact_current_claim_fence(
+    tmp_path: Path, stale_request
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:owner")
+    assert claimed is not None
+
+    with pytest.raises(MergeQueueFenceError):
+        queue.complete(stale_request(claimed))
+
+    stored = queue.get(pending.request_id)
+    assert stored is not None
+    assert stored.status == "processing"
+    assert stored.consumer_id == claimed.consumer_id
+    assert stored.claim_token == claimed.claim_token
+    queue.complete(claimed, metadata={"validated": True})
+    assert queue.get(pending.request_id).status == "completed"  # type: ignore[union-attr]
+
+
+def test_recovered_claim_increments_generation_and_fences_crashed_worker(
+    tmp_path: Path,
+) -> None:
+    now = [10.0]
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        clock=lambda: now[0],
+        max_age_seconds=5,
+        max_attempts=3,
+    )
+    pending = _enqueue(queue, 0)
+    crashed_claim = queue.dequeue(consumer_id="worker:crashed")
+    assert crashed_claim is not None
+
+    now[0] = 20.0
+    restarted = MergeQueue(
+        queue_path,
+        clock=lambda: now[0],
+        max_age_seconds=5,
+        max_attempts=3,
+    )
+    replacement = restarted.dequeue(consumer_id="worker:replacement")
+    assert replacement is not None
+    assert replacement.request_id == pending.request_id
+    assert replacement.claim_generation > crashed_claim.claim_generation
+    assert replacement.claim_token != crashed_claim.claim_token
+
+    with pytest.raises(MergeQueueFenceError):
+        restarted.complete(crashed_claim)
+    assert restarted.get(pending.request_id).status == "processing"  # type: ignore[union-attr]
+
+    restarted.complete(replacement)
+    durable = MergeQueue(queue_path).get(pending.request_id)
+    assert durable is not None
+    assert durable.status == "completed"
+    assert durable.claim_generation == replacement.claim_generation + 1
+    assert durable.claim_token == ""
+
+
+def test_capacity_merge_debt_and_worktree_disk_admission_are_bounded(
+    tmp_path: Path,
+) -> None:
+    observed_worktree_bytes = [0]
+    queue = MergeQueue(
+        tmp_path / "queue",
+        max_queue_size=3,
+        max_processing=2,
+        max_worktree_bytes=10,
+        worktree_usage=lambda: observed_worktree_bytes[0],
+    )
+    requests = [_enqueue(queue, ordinal, worktree_bytes=6) for ordinal in range(3)]
+    with pytest.raises(MergeQueueFullError):
+        _enqueue(queue, 3, worktree_bytes=1)
+
+    first_batch = queue.dequeue_many(3, consumer_id="merge-train:first")
+    assert len(first_batch) == 1
+    assert queue.dequeue_many(1, consumer_id="merge-train:blocked") == ()
+    observed_worktree_bytes[0] = 10
+    status = queue.status()
+    assert status["merge_debt"] == 1
+    assert status["max_processing"] == 2
+    assert status["reserved_worktree_bytes"] == 6
+    assert status["max_worktree_bytes"] == 10
+    assert status["disk_backpressure"] is True
+    assert status["backpressure"] is True
+
+    queue.complete(first_batch[0])
+    observed_worktree_bytes[0] = 0
+    second = queue.dequeue(consumer_id="merge-train:second")
+    assert second is not None
+    assert second.request_id in {
+        requests[1].request_id,
+        requests[2].request_id,
+    }
+    assert queue.status()["reserved_worktree_bytes"] == 6
+
+
+def test_merge_debt_stops_additional_claims_until_a_slot_is_released(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue", max_processing=2)
+    for ordinal in range(4):
+        _enqueue(queue, ordinal)
+
+    claimed = queue.dequeue_many(4, consumer_id="merge-train:batch")
+
+    assert len(claimed) == 2
+    assert queue.dequeue(consumer_id="merge-train:other") is None
+    status = queue.status()
+    assert status["merge_debt"] == status["max_processing"] == 2
+    assert status["backpressure"] is True
+
+    queue.complete(claimed[0])
+    replacement = queue.dequeue(consumer_id="merge-train:other")
+    assert replacement is not None
+    assert replacement.request_id not in {
+        request.request_id for request in claimed
+    }
+    assert queue.status()["merge_debt"] == 2
+
+
+def test_failed_validation_is_quarantined_with_a_durable_receipt(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:validator")
+    assert claimed is not None
+
+    receipt_path = queue.fail(
+        claimed,
+        reason="post-merge validation failed",
+        metadata={"validation_receipt_id": "sha256:failed"},
+    )
+
+    assert receipt_path is not None
+    assert receipt_path.parent == queue.quarantine_dir
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert payload["request_id"] == pending.request_id
+    assert payload["status"] == "quarantined"
+    assert payload["failure_reason"] == "post-merge validation failed"
+    assert payload["receipt_type"] == "merge_quarantine"
+    assert payload["metadata"]["quarantine"] == {
+        "validation_receipt_id": "sha256:failed"
+    }
+
+    restarted = MergeQueue(queue_path)
+    stored = restarted.get(pending.request_id)
+    assert stored is not None
+    assert stored.status == "quarantined"
+    assert restarted.dequeue(consumer_id="merge-train:restart") is None
+    assert restarted.status()["quarantined"] == 1
+    duplicate = restarted.enqueue(
+        branch_name="candidate/duplicate",
+        task_id="TASK-ALIAS",
+        canonical_task_id=pending.canonical_task_id,
+        commit_sha=pending.commit_sha,
+    )
+    assert duplicate.request_id == pending.request_id
+
+
+def test_cancelled_work_is_fenced_and_survives_restart(tmp_path: Path) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:obsolete-base")
+    assert claimed is not None
+
+    cancelled = queue.cancel(
+        claimed,
+        reason="base advanced while preflight was running",
+        metadata={"replacement_base": "b" * 40},
+    )
+
+    assert cancelled is not None
+    assert cancelled.status == "cancelled"
+    with pytest.raises(MergeQueueFenceError):
+        queue.complete(claimed)
+    restarted = MergeQueue(queue_path)
+    durable = restarted.get(pending.request_id)
+    assert durable is not None
+    assert durable.status == "cancelled"
+    assert durable.failure_reason == "base advanced while preflight was running"
+    assert restarted.status()["cancelled"] == 1
+    assert restarted.dequeue(consumer_id="merge-train:restart") is None
