@@ -338,7 +338,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-019 Add an ipfs-accelerate agent CLI group
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: control
