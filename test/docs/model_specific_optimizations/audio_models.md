@@ -428,7 +428,7 @@ For web-based audio processing:
 
 ## Related Documentation
 
-- [WebGPU Audio Compute Shader Documentation](../WEB_PLATFORM_AUDIO_TESTING_GUIDE.md)
-- [Audio Model Benchmarking Guide](../WEB_BROWSER_AUDIO_PERFORMANCE.md)
-- [Qualcomm Implementation Guide](../QUALCOMM_IMPLEMENTATION_GUIDE.md)
+- [WebGPU Audio Compute Shader Documentation](../../WEB_PLATFORM_AUDIO_TESTING_GUIDE.md)
+- [Audio Model Benchmarking Guide](../../WEB_BROWSER_AUDIO_PERFORMANCE.md)
+- [Qualcomm Integration Guide](../../QUALCOMM_INTEGRATION_GUIDE.md)
 - [Firefox Audio Optimization Guide](../WEB_PLATFORM_FIREFOX_AUDIO_GUIDE.md)
