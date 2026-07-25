@@ -60,7 +60,7 @@ def get_current_wind_speed(location: str) -> float:
 tools = [get_current_temperature, get_current_wind_speed]
 ```
 
-Load a model and tokenizer that supports tool-use like [NousResearch/Hermes-2-Pro-Llama-3-8B](https://hf.co/NousResearch/Hermes-2-Pro-Llama-3-8B), but you can also consider a larger model like [Command-R](./model_doc/cohere) and [Mixtral-8x22B](./model_doc/mixtral) if your hardware can support it.
+Load a model and tokenizer that supports tool-use like [NousResearch/Hermes-2-Pro-Llama-3-8B](https://hf.co/NousResearch/Hermes-2-Pro-Llama-3-8B), but you can also consider a larger model like [Command-R](./model_doc/cohere.md) and [Mixtral-8x22B](./model_doc/mixtral.md) if your hardware can support it.
 
 ```py
 import torch
@@ -126,7 +126,7 @@ The temperature in Paris, France right now is approximately 12°C (53.6°F).<|im
 </hfoption>
 <hfoption id="Mistral/Mixtral">
 
-For [Mistral](./model_doc/mistral) and [Mixtral](./model_doc/mixtral) models, you need an additional `tool_call_id`. The `tool_call_id` is 9 randomly generated alphanumeric characters assigned to the `id` key in the `tool_call` dictionary.
+For [Mistral](./model_doc/mistral.md) and [Mixtral](./model_doc/mixtral.md) models, you need an additional `tool_call_id`. The `tool_call_id` is 9 randomly generated alphanumeric characters assigned to the `id` key in the `tool_call` dictionary.
 
 ```py
 tool_call_id = "9Ae3bDc2F"
