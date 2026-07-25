@@ -29,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
     REPAIR_TRANSITION_SCHEMA,
     RESPONSIVE_REPLAN_DECISION_SCHEMA,
     CodexRepairPacket,
+    DiagnosticReceipt,
     FormalReplanner,
     RepairCandidateStatus,
     RepairOperation,
@@ -610,3 +611,80 @@ def test_changed_but_unadmitted_replan_does_not_emit_objective_evidence() -> Non
     assert not decision.result.admitted
     assert decision.evidence_ids == ()
     assert decision.to_dict()["evidence_ids"] == []
+
+
+def test_identical_failure_reuses_diagnostic_then_escalates_at_bound() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+    replanner = FormalReplanner()
+
+    first = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id="sha256:older",
+        prior_decision_id="decision:root",
+        candidate_repairs=(),
+        max_identical_failures=2,
+    )
+    assert isinstance(first.diagnostic_receipt, DiagnosticReceipt)
+    assert not first.diagnostic_reused
+
+    repeated = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id=counterexample.semantic_id,
+        previous_trigger_evidence_id=counterexample.semantic_id,
+        prior_decision_id="decision:root",
+        previous_diagnostic_receipt_id=first.diagnostic_receipt_id,
+        max_identical_failures=2,
+    )
+    assert repeated.stop_reason is (
+        ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
+    )
+    assert repeated.diagnostic_reused
+    assert repeated.diagnostic_receipt_id == first.diagnostic_receipt_id
+
+    escalated = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id=counterexample.semantic_id,
+        previous_trigger_evidence_id=counterexample.semantic_id,
+        prior_decision_id="decision:root",
+        previous_diagnostic_receipt_id=first.diagnostic_receipt_id,
+        backoff_attempt=repeated.backoff_attempt,
+        max_identical_failures=2,
+    )
+    assert escalated.escalated
+    assert escalated.stop_reason is ReplanStopReason.IDENTICAL_FAILURE_ESCALATED
+    assert escalated.diagnostic_reused
+    assert escalated.diagnostic_receipt_id == first.diagnostic_receipt_id
+    assert not escalated.model_call_required
+
+
+def test_cancellation_stops_before_compile_and_before_admission() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+    compiler = _CountingCompiler()
+    replanner = _CountingReplanner(compiler=compiler)
+
+    cancelled = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id="sha256:older",
+        cancelled=True,
+    )
+    assert cancelled.cancelled
+    assert cancelled.result is None
+    assert cancelled.requirement_ids == ()
+    assert compiler.calls == replanner.replan_calls == 0
+
+    checks = iter((False, True))
+    cancelled_during_entry = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id="sha256:older",
+        cancelled=lambda: next(checks),
+    )
+    assert cancelled_during_entry.cancelled
+    assert cancelled_during_entry.result is None
+    assert compiler.calls == 0

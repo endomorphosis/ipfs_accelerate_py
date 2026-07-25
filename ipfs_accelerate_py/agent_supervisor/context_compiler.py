@@ -110,6 +110,9 @@ CONTEXT_COMPILATION_RECEIPT_SCHEMA = (
 CONTEXT_DELTA_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/context-delta-receipt@1"
 )
+RETRY_CONTEXT_CAPSULE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/retry-context-capsule@1"
+)
 REQUIRED_CONTEXT_BUDGET_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "required-context-budget-evidence@2"
@@ -133,6 +136,22 @@ class RequiredContextOverflowError(ContextCompilationError):
 
 class ContextDeltaError(ContextCompilationError):
     """A retry delta is stale, lossy, unchanged, or not token efficient."""
+
+
+class ContextExpansionError(ContextDeltaError):
+    """An on-demand context expansion could not be verified."""
+
+
+class MissingContextReferenceError(ContextExpansionError):
+    """A requested handle or its content-addressed object is unavailable."""
+
+
+class ChangedTreeContextError(ContextExpansionError):
+    """A parent capsule belongs to a repository tree that is no longer current."""
+
+
+class ContextExpansionCancelled(ContextExpansionError):
+    """Expansion was cancelled before a complete verified result was built."""
 
 
 class InclusionReason(str, Enum):
@@ -279,6 +298,23 @@ def _as_expansion(reference: ContextReference) -> ContextReference:
     )
 
 
+def _cancelled(value: Any) -> bool:
+    """Evaluate a bool, event, or zero-argument cancellation predicate."""
+
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if callable(value):
+        return bool(value())
+    checker = getattr(value, "is_set", None)
+    if callable(checker):
+        return bool(checker())
+    raise ContextExpansionError(
+        "cancelled must be a boolean, predicate, event, or None"
+    )
+
+
 def _utf8_chunks(value: str, *, max_bytes: int) -> tuple[str, ...]:
     """Split text at semantic boundaries without dropping or corrupting bytes.
 
@@ -399,6 +435,396 @@ def build_text_context_references(
     return tuple(result)
 
 
+class ContentAddressedContextStore:
+    """Bounded in-memory artifact store for verified progressive disclosure.
+
+    The store is deliberately a resolver, not a cache of prompt envelopes.
+    Handles remain in :class:`ContextCapsule`; artifact bytes are fetched only
+    when their reference IDs are explicitly requested.  Every fetch verifies
+    the SHA-256 target in the handle and its repository/tree binding before a
+    descriptor can enter a retry delta.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_artifact_bytes: int = 1_048_576,
+        max_artifacts: int = MAX_DECISIONS,
+    ) -> None:
+        self.max_artifact_bytes = _integer(
+            max_artifact_bytes, "max_artifact_bytes", minimum=1
+        )
+        self.max_artifacts = _integer(
+            max_artifacts, "max_artifacts", minimum=1
+        )
+        self._objects: dict[str, bytes] = {}
+
+    @staticmethod
+    def content_id(content: str | bytes) -> str:
+        if isinstance(content, str):
+            raw = content.encode("utf-8")
+        elif isinstance(content, bytes):
+            raw = content
+        else:
+            raise ContextExpansionError("context artifact must be text or bytes")
+        return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+    def put(self, content: str | bytes) -> str:
+        """Store an immutable object and return its content identity."""
+
+        raw = content.encode("utf-8") if isinstance(content, str) else content
+        if not isinstance(raw, bytes):
+            raise ContextExpansionError("context artifact must be text or bytes")
+        if len(raw) > self.max_artifact_bytes:
+            raise ContextExpansionError("context artifact exceeds its byte limit")
+        content_id = self.content_id(raw)
+        if content_id not in self._objects and len(self._objects) >= self.max_artifacts:
+            raise ContextExpansionError("context artifact store is full")
+        self._objects.setdefault(content_id, raw)
+        return content_id
+
+    def get(self, content_id: str) -> bytes:
+        """Return an object by exact identity or fail with a typed miss."""
+
+        identity = _digest(content_id, "content_id")
+        try:
+            raw = self._objects[identity]
+        except KeyError as exc:
+            raise MissingContextReferenceError(
+                f"context artifact {identity!r} is unavailable"
+            ) from exc
+        if self.content_id(raw) != identity:
+            # Defensive even for an in-memory store: callers may provide a
+            # custom mutable mapping in tests or a future persistent backend.
+            raise ContextExpansionError(
+                "stored context artifact does not match its content identity"
+            )
+        return raw
+
+    def make_reference(
+        self,
+        content: str,
+        *,
+        reference_id: str,
+        kind: str,
+        repository_id: str,
+        tree_id: str,
+        path: str = "",
+        priority: int = 0,
+        coverage_ids: Iterable[str] = (),
+    ) -> ContextReference:
+        """Store text and return a compact expansion handle for it."""
+
+        if not isinstance(content, str):
+            raise ContextExpansionError("expandable context must be UTF-8 text")
+        target = self.put(content)
+        return ContextReference(
+            reference_id=reference_id,
+            kind=kind,
+            tier=ContextTier.EXPANSION,
+            referenced_content_id=target,
+            repository_id=repository_id,
+            tree_id=tree_id,
+            path=path,
+            byte_count=len(content.encode("utf-8")),
+            metadata={
+                "priority": priority,
+                "coverage_ids": _strings(
+                    coverage_ids, "coverage_ids", maximum=MAX_DECISIONS
+                ),
+            },
+        )
+
+    def resolve(
+        self,
+        handle: ContextReference,
+        *,
+        cancelled: Any = None,
+    ) -> ContextReference:
+        """Resolve one expansion handle and verify its complete binding."""
+
+        if _cancelled(cancelled):
+            raise ContextExpansionCancelled("context expansion was cancelled")
+        if not isinstance(handle, ContextReference):
+            raise ContextExpansionError("expansion handle must be a ContextReference")
+        if handle.tier is not ContextTier.EXPANSION:
+            raise ContextExpansionError("only expansion-tier handles can be resolved")
+        raw = self.get(handle.referenced_content_id)
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ContextExpansionError(
+                "model-facing context artifact is not UTF-8 text"
+            ) from exc
+        if handle.byte_count not in (0, len(raw)):
+            raise ContextExpansionError(
+                "expansion handle byte count does not match its artifact"
+            )
+        if _cancelled(cancelled):
+            raise ContextExpansionCancelled("context expansion was cancelled")
+        return ContextReference(
+            reference_id=handle.reference_id,
+            kind=handle.kind,
+            tier=ContextTier.EVIDENCE,
+            referenced_content_id=handle.referenced_content_id,
+            repository_id=handle.repository_id,
+            tree_id=handle.tree_id,
+            path=handle.path,
+            summary=text,
+            byte_count=len(raw),
+            # The handle's token count can describe a larger source artifact.
+            # The compiler independently tokenizes this exact resolved
+            # descriptor, so carrying that coarse hint would make a bounded
+            # on-demand fragment impossible to select.
+            token_count=0,
+            metadata=handle.metadata,
+        )
+
+    def expand(
+        self,
+        compiler: "ContextCompiler",
+        parent: ContextCapsule,
+        reference_ids: Iterable[str],
+        *,
+        repository_id: str | None = None,
+        tree_id: str | None = None,
+        cancelled: Any = None,
+    ) -> "ContextDeltaResult":
+        """Resolve named parent handles and compile one lossless retry delta."""
+
+        if not isinstance(compiler, ContextCompiler):
+            raise ContextExpansionError("compiler must be a ContextCompiler")
+        if not isinstance(parent, ContextCapsule):
+            raise ContextExpansionError("parent must be a ContextCapsule")
+        if _cancelled(cancelled):
+            raise ContextExpansionCancelled("context expansion was cancelled")
+        current_repository = _text(
+            repository_id or parent.repository_id, "repository_id"
+        )
+        current_tree = _text(tree_id or parent.tree_id, "tree_id")
+        if current_repository != parent.repository_id:
+            raise ChangedTreeContextError(
+                "parent repository identity is no longer current"
+            )
+        if current_tree != parent.tree_id:
+            raise ChangedTreeContextError(
+                "parent repository tree changed; compile a new base context"
+            )
+        requested = _strings(reference_ids, "reference_ids")
+        if not requested:
+            raise MissingContextReferenceError(
+                "at least one expansion reference ID is required"
+            )
+        handles = {
+            item.reference_id: item for item in parent.expansion_references
+        }
+        missing = set(requested).difference(handles)
+        if missing:
+            raise MissingContextReferenceError(
+                "requested context handle is not present in the parent capsule: "
+                + ", ".join(sorted(missing))
+            )
+        resolved: list[ContextReference] = []
+        for reference_id in requested:
+            if _cancelled(cancelled):
+                raise ContextExpansionCancelled("context expansion was cancelled")
+            item = self.resolve(handles[reference_id], cancelled=cancelled)
+            if (
+                item.referenced_content_id
+                != handles[reference_id].referenced_content_id
+            ):
+                raise ContextExpansionError(
+                    "resolved context does not match its expansion handle"
+                )
+            resolved.append(item)
+        if _cancelled(cancelled):
+            raise ContextExpansionCancelled("context expansion was cancelled")
+        return compiler.compile_delta(
+            parent,
+            evidence=(*parent.evidence, *resolved),
+            requested_reference_ids=requested,
+        )
+
+
+@dataclass(frozen=True)
+class RetryContextCapsule(CanonicalContract):
+    """Model-facing semantic envelope for one implementation repair.
+
+    It authenticates the existing low-level context delta while making the
+    retry semantics explicit.  The original goal, policy prose, authority,
+    scope, and acceptance bodies are absent; they are inherited through the
+    exact parent context identity.
+    """
+
+    SCHEMA: ClassVar[str] = RETRY_CONTEXT_CAPSULE_SCHEMA
+
+    prior_decision_id: str
+    diagnostic_receipt_id: str
+    repository_id: str
+    tree_id: str
+    delta_capsule: ContextDeltaCapsule
+    failure_evidence_ids: tuple[str, ...]
+    counterexample_evidence_ids: tuple[str, ...] = ()
+    changed_files: tuple[str, ...] = ()
+    changed_symbols: tuple[str, ...] = ()
+    unresolved_requirement_ids: tuple[str, ...] = ()
+    repair_round: int = 1
+    max_repair_rounds: int = 3
+
+    def __post_init__(self) -> None:
+        for name in (
+            "prior_decision_id",
+            "diagnostic_receipt_id",
+            "repository_id",
+            "tree_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        delta = self.delta_capsule
+        if isinstance(delta, Mapping):
+            delta = ContextDeltaCapsule.from_dict(delta)
+        if not isinstance(delta, ContextDeltaCapsule):
+            raise ContextDeltaError(
+                "retry delta_capsule must be a ContextDeltaCapsule"
+            )
+        object.__setattr__(self, "delta_capsule", delta)
+        for name in (
+            "failure_evidence_ids",
+            "counterexample_evidence_ids",
+            "changed_files",
+            "changed_symbols",
+            "unresolved_requirement_ids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(getattr(self, name), name, maximum=MAX_DECISIONS),
+            )
+        if not self.failure_evidence_ids and not self.counterexample_evidence_ids:
+            raise ContextDeltaError(
+                "retry context requires new failure or counterexample evidence"
+            )
+        for path in self.changed_files:
+            if path.startswith("/") or ".." in path.split("/"):
+                raise ContextDeltaError(
+                    "changed_files must contain repository-relative paths"
+                )
+        repair_round = _integer(self.repair_round, "repair_round", minimum=1)
+        maximum = _integer(
+            self.max_repair_rounds, "max_repair_rounds", minimum=1
+        )
+        if repair_round > maximum:
+            raise ContextDeltaError("retry repair round exceeds its bound")
+        object.__setattr__(self, "repair_round", repair_round)
+        object.__setattr__(self, "max_repair_rounds", maximum)
+
+    @property
+    def parent_capsule_id(self) -> str:
+        return self.delta_capsule.parent_capsule_id
+
+    @property
+    def capsule_id(self) -> str:
+        return self.content_id
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTEXT_COMPILER_VERSION,
+            "prior_decision_id": self.prior_decision_id,
+            "diagnostic_receipt_id": self.diagnostic_receipt_id,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "delta_capsule": self.delta_capsule.to_record(),
+            "failure_evidence_ids": self.failure_evidence_ids,
+            "counterexample_evidence_ids": self.counterexample_evidence_ids,
+            "changed_files": self.changed_files,
+            "changed_symbols": self.changed_symbols,
+            "unresolved_requirement_ids": self.unresolved_requirement_ids,
+            "repair_round": self.repair_round,
+            "max_repair_rounds": self.max_repair_rounds,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RetryContextCapsule":
+        _schema(payload, cls.SCHEMA, "retry context capsule")
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "content_id",
+                "contract_version",
+                "prior_decision_id",
+                "diagnostic_receipt_id",
+                "repository_id",
+                "tree_id",
+                "delta_capsule",
+                "failure_evidence_ids",
+                "counterexample_evidence_ids",
+                "changed_files",
+                "changed_symbols",
+                "unresolved_requirement_ids",
+                "repair_round",
+                "max_repair_rounds",
+            },
+            "retry context capsule",
+        )
+        delta = payload.get("delta_capsule")
+        result = cls(
+            prior_decision_id=payload.get("prior_decision_id", ""),
+            diagnostic_receipt_id=payload.get("diagnostic_receipt_id", ""),
+            repository_id=payload.get("repository_id", ""),
+            tree_id=payload.get("tree_id", ""),
+            delta_capsule=(
+                ContextDeltaCapsule.from_dict(delta)
+                if isinstance(delta, Mapping)
+                else delta
+            ),
+            failure_evidence_ids=tuple(payload.get("failure_evidence_ids", ())),
+            counterexample_evidence_ids=tuple(
+                payload.get("counterexample_evidence_ids", ())
+            ),
+            changed_files=tuple(payload.get("changed_files", ())),
+            changed_symbols=tuple(payload.get("changed_symbols", ())),
+            unresolved_requirement_ids=tuple(
+                payload.get("unresolved_requirement_ids", ())
+            ),
+            repair_round=payload.get("repair_round", 1),
+            max_repair_rounds=payload.get("max_repair_rounds", 3),
+        )
+        _check_identity(payload, result.content_id, "retry context capsule")
+        return result
+
+
+@dataclass(frozen=True)
+class RetryContextResult:
+    """Verified semantic retry capsule plus its exact reconstruction."""
+
+    capsule: RetryContextCapsule
+    delta_result: "ContextDeltaResult"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.capsule, RetryContextCapsule):
+            raise ContextDeltaError("retry capsule has an invalid type")
+        if not isinstance(self.delta_result, ContextDeltaResult):
+            raise ContextDeltaError("retry delta result has an invalid type")
+        if self.capsule.delta_capsule != self.delta_result.delta_capsule:
+            raise ContextDeltaError("retry capsule is not bound to its delta result")
+        parent = self.delta_result.parent_capsule
+        if (
+            self.capsule.repository_id != parent.repository_id
+            or self.capsule.tree_id != parent.tree_id
+        ):
+            raise ChangedTreeContextError(
+                "retry capsule repository tree does not match its parent"
+            )
+
+    @property
+    def reconstructed_capsule(self) -> ContextCapsule:
+        return self.delta_result.reconstructed_capsule
+
+    @property
+    def receipt(self) -> "ContextDeltaReceipt":
+        return self.delta_result.receipt
+
+
 def render_context_capsule(capsule: ContextCapsule) -> str:
     """Render exactly the canonical provider input measured by the compiler.
 
@@ -426,6 +852,14 @@ def render_context_capsule(capsule: ContextCapsule) -> str:
             evidence=capsule.evidence,
         )
     ).decode("utf-8")
+
+
+def render_retry_context(capsule: RetryContextCapsule) -> str:
+    """Render only the canonical semantic delta sent for a repair round."""
+
+    if not isinstance(capsule, RetryContextCapsule):
+        raise ContextDeltaError("capsule must be a RetryContextCapsule")
+    return canonical_context_json_bytes(capsule.to_record()).decode("utf-8")
 
 
 @dataclass(frozen=True)
@@ -2427,10 +2861,109 @@ def expand_context(
     )
 
 
+def expand_context_references(
+    compiler: ContextCompiler,
+    parent: ContextCapsule,
+    reference_ids: Iterable[str],
+    resolver: ContentAddressedContextStore,
+    *,
+    repository_id: str | None = None,
+    tree_id: str | None = None,
+    cancelled: Any = None,
+) -> ContextDeltaResult:
+    """Resolve parent handles by content identity and compile their delta."""
+
+    if not isinstance(resolver, ContentAddressedContextStore):
+        raise ContextExpansionError(
+            "resolver must be a ContentAddressedContextStore"
+        )
+    return resolver.expand(
+        compiler,
+        parent,
+        reference_ids,
+        repository_id=repository_id,
+        tree_id=tree_id,
+        cancelled=cancelled,
+    )
+
+
+def compile_retry_context(
+    compiler: ContextCompiler,
+    parent: ContextCapsule,
+    *,
+    prior_decision_id: str,
+    diagnostic_receipt_id: str,
+    evidence: Iterable[ContextReference | Mapping[str, Any]],
+    failure_evidence_ids: Iterable[str],
+    counterexample_evidence_ids: Iterable[str] = (),
+    changed_files: Iterable[str] = (),
+    changed_symbols: Iterable[str] = (),
+    unresolved_requirement_ids: Iterable[str] = (),
+    repair_round: int = 1,
+    max_repair_rounds: int = 3,
+    repository_id: str | None = None,
+    tree_id: str | None = None,
+    cancelled: Any = None,
+) -> RetryContextResult:
+    """Compile a semantic repair capsule without replaying the base prompt."""
+
+    if not isinstance(compiler, ContextCompiler):
+        raise ContextDeltaError("compiler must be a ContextCompiler")
+    if not isinstance(parent, ContextCapsule):
+        raise ContextDeltaError("parent must be a ContextCapsule")
+    if _cancelled(cancelled):
+        raise ContextExpansionCancelled("retry context compilation was cancelled")
+    current_repository = _text(
+        repository_id or parent.repository_id, "repository_id"
+    )
+    current_tree = _text(tree_id or parent.tree_id, "tree_id")
+    if current_repository != parent.repository_id or current_tree != parent.tree_id:
+        raise ChangedTreeContextError(
+            "retry parent was invalidated by a changed repository tree"
+        )
+    references = _coerce_references(evidence)
+    failure_ids = _strings(failure_evidence_ids, "failure_evidence_ids")
+    counterexample_ids = _strings(
+        counterexample_evidence_ids, "counterexample_evidence_ids"
+    )
+    semantic_ids = set(failure_ids) | set(counterexample_ids)
+    candidate_ids = {item.reference_id for item in references}
+    if not semantic_ids.issubset(candidate_ids):
+        raise ContextDeltaError(
+            "retry failure/counterexample IDs must name supplied evidence"
+        )
+    delta_result = compiler.compile_delta(parent, evidence=references)
+    transmitted_ids = {
+        item.reference_id for item in delta_result.delta_capsule.evidence
+    }
+    if not semantic_ids.issubset(transmitted_ids):
+        raise ContextDeltaError(
+            "retry failure/counterexample evidence must be new or changed"
+        )
+    if _cancelled(cancelled):
+        raise ContextExpansionCancelled("retry context compilation was cancelled")
+    capsule = RetryContextCapsule(
+        prior_decision_id=prior_decision_id,
+        diagnostic_receipt_id=diagnostic_receipt_id,
+        repository_id=current_repository,
+        tree_id=current_tree,
+        delta_capsule=delta_result.delta_capsule,
+        failure_evidence_ids=failure_ids,
+        counterexample_evidence_ids=counterexample_ids,
+        changed_files=tuple(changed_files),
+        changed_symbols=tuple(changed_symbols),
+        unresolved_requirement_ids=tuple(unresolved_requirement_ids),
+        repair_round=repair_round,
+        max_repair_rounds=max_repair_rounds,
+    )
+    return RetryContextResult(capsule, delta_result)
+
+
 build_context_capsule = compile_context_capsule
 build_context_delta = compile_context_delta
 ContextCompilationResult = ContextCompileResult
 ContextRetryResult = ContextDeltaResult
+ContextArtifactStore = ContentAddressedContextStore
 reconstruct_context_capsule = reconstruct_context
 
 
@@ -2439,6 +2972,7 @@ __all__ = [
     "CONTEXT_COMPILER_VERSION",
     "CONTEXT_DELTA_RECEIPT_SCHEMA",
     "CONTEXT_EVIDENCE_PRODUCERS",
+    "RETRY_CONTEXT_CAPSULE_SCHEMA",
     "DELTA_RETRY_ACCEPTANCE_CRITERIA",
     "DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA",
     "DELTA_RETRY_EVIDENCE_ID",
@@ -2457,20 +2991,31 @@ __all__ = [
     "ContextDeltaReceipt",
     "ContextDeltaResult",
     "ContextRetryResult",
+    "ContextExpansionCancelled",
+    "ContextExpansionError",
+    "ChangedTreeContextError",
+    "ContentAddressedContextStore",
+    "ContextArtifactStore",
     "DeltaRetryContextEvidence",
     "EvidenceSelectionDecision",
     "ExclusionReason",
     "InclusionReason",
     "RequiredContextBudgetEvidence",
     "RequiredContextOverflowError",
+    "MissingContextReferenceError",
+    "RetryContextCapsule",
+    "RetryContextResult",
     "build_text_context_references",
     "build_context_capsule",
     "build_context_delta",
     "compile_context_capsule",
     "compile_context_delta",
+    "compile_retry_context",
     "context_provider_input_payload",
     "expand_context",
+    "expand_context_references",
     "render_context_capsule",
+    "render_retry_context",
     "reconstruct_context",
     "reconstruct_context_capsule",
 ]

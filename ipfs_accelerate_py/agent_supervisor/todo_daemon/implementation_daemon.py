@@ -19,12 +19,19 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from ..context_compiler import (
+    ContextCompilationReceipt,
     ContextCompileResult,
     ContextCompiler,
+    ContextDeltaResult,
+    ContextExpansionCancelled,
+    RetryContextResult,
     build_text_context_references,
+    compile_retry_context,
     render_context_capsule,
+    render_retry_context,
 )
-from ..context_contracts import ContextBudget
+from ..context_contracts import ContextBudget, ContextCapsule
+from ..formal_verification_contracts import canonical_json, content_identity
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
@@ -649,6 +656,134 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
 
 
 @dataclass(frozen=True)
+class ImplementationDiagnosticReceipt:
+    """Content-addressed, replay-safe diagnosis for one failed attempt."""
+
+    prior_decision_id: str
+    repository_id: str
+    tree_id: str
+    failure: Mapping[str, Any]
+    changed_files: tuple[str, ...] = ()
+    changed_symbols: tuple[str, ...] = ()
+    unresolved_requirements: tuple[str, ...] = ()
+
+    SCHEMA = (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "implementation-diagnostic-receipt@1"
+    )
+
+    def __post_init__(self) -> None:
+        for name in ("prior_decision_id", "repository_id", "tree_id"):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise ValueError(f"{name} is required")
+            object.__setattr__(self, name, value)
+        if not isinstance(self.failure, Mapping) or not self.failure:
+            raise ValueError("failure must be a non-empty mapping")
+        # Canonical serialization rejects non-JSON values and mutable aliases.
+        failure = json.loads(canonical_json(dict(self.failure)))
+        object.__setattr__(self, "failure", failure)
+        for name in (
+            "changed_files",
+            "changed_symbols",
+            "unresolved_requirements",
+        ):
+            values = tuple(
+                sorted(
+                    {
+                        str(item).strip()
+                        for item in getattr(self, name)
+                        if str(item).strip()
+                    }
+                )
+            )
+            if len(values) > 256:
+                raise ValueError(f"{name} exceeds its item limit")
+            object.__setattr__(self, name, values)
+        if any(
+            path.startswith("/") or ".." in path.split("/")
+            for path in self.changed_files
+        ):
+            raise ValueError(
+                "changed_files must contain repository-relative paths"
+            )
+
+    @property
+    def receipt_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    @property
+    def failure_id(self) -> str:
+        return content_identity(self.failure)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "prior_decision_id": self.prior_decision_id,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "failure": dict(self.failure),
+            "failure_id": self.failure_id,
+            "changed_files": list(self.changed_files),
+            "changed_symbols": list(self.changed_symbols),
+            "unresolved_requirements": list(self.unresolved_requirements),
+        }
+
+    def to_record(self) -> dict[str, Any]:
+        return {**self.to_dict(), "receipt_id": self.receipt_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ImplementationDiagnosticReceipt":
+        if not isinstance(payload, Mapping):
+            raise ValueError("implementation diagnostic receipt must be an object")
+        allowed = {
+            "schema",
+            "receipt_id",
+            "prior_decision_id",
+            "repository_id",
+            "tree_id",
+            "failure",
+            "failure_id",
+            "changed_files",
+            "changed_symbols",
+            "unresolved_requirements",
+        }
+        if set(payload).difference(allowed):
+            raise ValueError(
+                "implementation diagnostic receipt contains unsupported fields"
+            )
+        if payload.get("schema") != cls.SCHEMA:
+            raise ValueError("implementation diagnostic receipt schema is unsupported")
+        result = cls(
+            prior_decision_id=str(payload.get("prior_decision_id") or ""),
+            repository_id=str(payload.get("repository_id") or ""),
+            tree_id=str(payload.get("tree_id") or ""),
+            failure=payload.get("failure") or {},
+            changed_files=tuple(payload.get("changed_files") or ()),
+            changed_symbols=tuple(payload.get("changed_symbols") or ()),
+            unresolved_requirements=tuple(
+                payload.get("unresolved_requirements") or ()
+            ),
+        )
+        if payload.get("failure_id") not in (None, "", result.failure_id):
+            raise ValueError("implementation diagnostic failure identity is forged")
+        if payload.get("receipt_id") not in (None, "", result.receipt_id):
+            raise ValueError("implementation diagnostic receipt identity is forged")
+        return result
+
+
+class ImplementationRetryDeferred(RuntimeError):
+    """A typed retry lifecycle stop raised before provider dispatch."""
+
+    def __init__(self, reason: str, *, backoff_seconds: int = 0) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.backoff_seconds = backoff_seconds
+
+
+@dataclass(frozen=True)
 class PortalTask:
     task_id: str
     title: str
@@ -1065,6 +1200,8 @@ class PortalImplementationDaemon:
         implementation_context_tokenizer: Any = None,
         implementation_provider_context_window: int | None = None,
         implementation_provider_max_input_tokens: int | None = None,
+        implementation_max_repair_rounds: int = 3,
+        implementation_cancelled: Any = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -1085,7 +1222,31 @@ class PortalImplementationDaemon:
         self.implementation_provider_max_input_tokens = (
             implementation_provider_max_input_tokens
         )
-        self._last_implementation_context: ContextCompileResult | None = None
+        if (
+            isinstance(implementation_max_repair_rounds, bool)
+            or not isinstance(implementation_max_repair_rounds, int)
+            or implementation_max_repair_rounds < 1
+        ):
+            raise ValueError(
+                "implementation_max_repair_rounds must be a positive integer"
+            )
+        self.implementation_max_repair_rounds = (
+            implementation_max_repair_rounds
+        )
+        self.implementation_cancelled = implementation_cancelled
+        self._last_implementation_context: (
+            ContextCompileResult | ContextDeltaResult
+        ) | None = None
+        self._last_implementation_retry: RetryContextResult | None = None
+        self._implementation_base_contexts: dict[str, ContextCompileResult] = {}
+        self._implementation_loaded_parents: dict[
+            str, tuple[ContextCapsule, str]
+        ] = {}
+        self._implementation_diagnostics: dict[
+            str, ImplementationDiagnosticReceipt
+        ] = {}
+        self._implementation_diagnostic_repeats: dict[str, int] = {}
+        self._implementation_retry_not_before: dict[str, float] = {}
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
@@ -2079,7 +2240,30 @@ class PortalImplementationDaemon:
         lock_fd: int | None = None
         acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
-        prompt = self._build_implementation_prompt(task, attempt)
+        try:
+            prompt = self._build_implementation_prompt(task, attempt)
+        except ImplementationRetryDeferred as exc:
+            result = {
+                "skipped": True,
+                "reason": exc.reason.replace(" ", "_"),
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "backoff_seconds": exc.backoff_seconds,
+                "diagnostic_receipt_id": (
+                    self._implementation_diagnostics[
+                        self._canonical_ref(task)
+                    ].receipt_id
+                    if self._canonical_ref(task)
+                    in self._implementation_diagnostics
+                    else ""
+                ),
+            }
+            self._record_event("implementation_retry_deferred", result)
+            if task_claim_fd is not None:
+                os.close(task_claim_fd)
+                task_claim_fd = None
+            task_claim_path.unlink(missing_ok=True)
+            return result
         workspace_path = self.repo_root
         baseline_ref = ""
         command: list[str] = []
@@ -2236,6 +2420,13 @@ class PortalImplementationDaemon:
             if termination_result:
                 result["termination_result"] = termination_result
                 self._record_implementation_termination(task, attempt, termination_result)
+            diagnostic = self._record_failed_attempt_retry_context(
+                task,
+                returncode=effective_returncode,
+                validation_result=validation_result,
+            )
+            if diagnostic is not None:
+                result["diagnostic_receipt_id"] = diagnostic.receipt_id
             if todo_update_result:
                 result["todo_update_result"] = todo_update_result
             self._record_event("implementation_finished", result)
@@ -2261,6 +2452,13 @@ class PortalImplementationDaemon:
                     str(context_receipt_path) if context_receipt_path else ""
                 ),
             }
+            diagnostic = self._record_failed_attempt_retry_context(
+                task,
+                returncode=124,
+                validation_result=validation_result,
+            )
+            if diagnostic is not None:
+                result["diagnostic_receipt_id"] = diagnostic.receipt_id
             self._record_implementation_termination(task, attempt, result["termination_result"])
             self._record_event("implementation_finished", result)
             return result
@@ -2292,6 +2490,14 @@ class PortalImplementationDaemon:
                     str(context_receipt_path) if context_receipt_path else ""
                 ),
             }
+            diagnostic = self._record_failed_attempt_retry_context(
+                task,
+                returncode=1,
+                validation_result=validation_result,
+                exception_result=exception_result,
+            )
+            if diagnostic is not None:
+                result["diagnostic_receipt_id"] = diagnostic.receipt_id
             self._record_event(
                 "implementation_exception",
                 {"task_id": task.task_id, "attempt": attempt, **exception_result},
@@ -4020,6 +4226,14 @@ class PortalImplementationDaemon:
             result["exception_result"] = exception_result
         if timeout_result:
             result["timeout_result"] = timeout_result
+        diagnostic = self._record_failed_attempt_retry_context(
+            task,
+            returncode=returncode,
+            validation_result=validation_result,
+            exception_result=exception_result,
+        )
+        if diagnostic is not None:
+            result["diagnostic_receipt_id"] = diagnostic.receipt_id
         if todo_update_result:
             result["todo_update_result"] = todo_update_result
         self._record_event("implementation_finished", result)
@@ -11791,6 +12005,381 @@ class PortalImplementationDaemon:
             ).hexdigest()
         return repository_id, tree_id
 
+    def _implementation_cancel_requested(self) -> bool:
+        value = self.implementation_cancelled
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        if callable(value):
+            return bool(value())
+        checker = getattr(value, "is_set", None)
+        if callable(checker):
+            return bool(checker())
+        raise TypeError(
+            "implementation_cancelled must be a boolean, predicate, event, or None"
+        )
+
+    @staticmethod
+    def _normalize_implementation_failure(
+        failure: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Project a failure to stable diagnostic evidence without raw logs."""
+
+        if not isinstance(failure, Mapping):
+            raise TypeError("implementation failure must be a mapping")
+        selected: dict[str, Any] = {}
+        for key in (
+            "kind",
+            "reason",
+            "returncode",
+            "exception_type",
+            "phase",
+            "counterexample_id",
+            "counterexample_ids",
+            "reason_codes",
+            "failed_commands",
+            "failing_checks",
+            "missing_outputs",
+        ):
+            value = failure.get(key)
+            if value not in (None, "", (), [], {}):
+                selected[key] = value
+        validation = failure.get("validation_result")
+        if isinstance(validation, Mapping):
+            selected["validation"] = {
+                key: validation[key]
+                for key in (
+                    "passed",
+                    "returncode",
+                    "reason",
+                    "reason_codes",
+                    "failed_commands",
+                )
+                if validation.get(key) not in (None, "", (), [], {})
+            }
+            proposal = validation.get("proposal_gate")
+            if isinstance(proposal, Mapping):
+                selected["proposal_gate"] = {
+                    key: proposal[key]
+                    for key in (
+                        "reason_codes",
+                        "proposal_id",
+                        "policy_id",
+                        "receipt_id",
+                        "repository_tree_id",
+                    )
+                    if proposal.get(key) not in (None, "", (), [], {})
+                }
+        if not selected:
+            selected = {"kind": "implementation_failure", "reason": "unknown"}
+        encoded = canonical_json(selected).encode("utf-8")
+        if len(encoded) > 16_384:
+            raise ValueError("normalized implementation failure exceeds 16 KiB")
+        return selected
+
+    @staticmethod
+    def _implementation_context_file_stem(task: PortalTask) -> str:
+        return (
+            re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-")
+            or "task"
+        )
+
+    def _load_implementation_retry_state(self, task: PortalTask) -> None:
+        """Load the last safe parent and diagnosis after a daemon restart."""
+
+        key = self._canonical_ref(task)
+        stem = self._implementation_context_file_stem(task)
+        if key not in self._implementation_base_contexts:
+            capsule_payload = load_json_dict(
+                self.implementation_log_dir
+                / f"{stem}-base-context-capsule.json"
+            )
+            base_receipt_path = (
+                self.implementation_log_dir
+                / f"{stem}-base-context-receipt.json"
+            )
+            if capsule_payload is not None and base_receipt_path.exists():
+                try:
+                    parent = ContextCapsule.from_dict(capsule_payload)
+                    receipt_payload = load_json_dict(base_receipt_path)
+                    if receipt_payload is None:
+                        raise ValueError("base context receipt is unavailable")
+                    receipt = ContextCompilationReceipt.from_dict(
+                        receipt_payload
+                    )
+                    if (
+                        receipt.capsule_id != parent.capsule_id
+                        or receipt.repository_id != parent.repository_id
+                        or receipt.tree_id != parent.tree_id
+                    ):
+                        raise ValueError(
+                            "persisted base context is not receipt-bound"
+                        )
+                    self._implementation_loaded_parents[key] = (
+                        parent,
+                        receipt.receipt_id,
+                    )
+                except (TypeError, ValueError):
+                    # A malformed/stale sidecar is an invalidation, never an
+                    # excuse to dispatch unverified inherited context.
+                    self._implementation_loaded_parents.pop(key, None)
+        diagnostic_payload = load_json_dict(
+            self.implementation_log_dir
+            / f"{stem}-diagnostic-receipt.json"
+        )
+        if diagnostic_payload is not None:
+            try:
+                diagnostic = ImplementationDiagnosticReceipt.from_dict(
+                    diagnostic_payload
+                )
+                self._implementation_diagnostics[key] = diagnostic
+                repeats = 1
+                not_before = 0.0
+                state_payload = load_json_dict(
+                    self.implementation_log_dir
+                    / f"{stem}-diagnostic-state.json"
+                )
+                if (
+                    state_payload is not None
+                    and state_payload.get("diagnostic_receipt_id")
+                    == diagnostic.receipt_id
+                ):
+                    candidate_repeats = state_payload.get("repeat_count")
+                    candidate_not_before = state_payload.get("not_before")
+                    if (
+                        isinstance(candidate_repeats, int)
+                        and not isinstance(candidate_repeats, bool)
+                        and candidate_repeats >= 1
+                    ):
+                        repeats = candidate_repeats
+                    if (
+                        isinstance(candidate_not_before, (int, float))
+                        and not isinstance(candidate_not_before, bool)
+                        and candidate_not_before >= 0
+                    ):
+                        not_before = float(candidate_not_before)
+                self._implementation_diagnostic_repeats.setdefault(key, repeats)
+                if not_before:
+                    self._implementation_retry_not_before.setdefault(
+                        key, not_before
+                    )
+            except (TypeError, ValueError):
+                self._implementation_diagnostics.pop(key, None)
+
+    def _implementation_parent(
+        self, task: PortalTask
+    ) -> tuple[ContextCapsule, str] | None:
+        key = self._canonical_ref(task)
+        base = self._implementation_base_contexts.get(key)
+        if base is not None:
+            return base.capsule, base.receipt.receipt_id
+        return self._implementation_loaded_parents.get(key)
+
+    def record_implementation_failure_context(
+        self,
+        task: PortalTask,
+        failure: Mapping[str, Any],
+        *,
+        changed_files: Sequence[str] = (),
+        changed_symbols: Sequence[str] = (),
+        unresolved_requirements: Sequence[str] = (),
+    ) -> ImplementationDiagnosticReceipt:
+        """Persist and return a reusable content-addressed retry diagnosis."""
+
+        key = self._canonical_ref(task)
+        parent = self._implementation_parent(task)
+        if parent is None:
+            raise RuntimeError(
+                "cannot record retry diagnosis without a compiled base context"
+            )
+        capsule, decision_id = parent
+        receipt = ImplementationDiagnosticReceipt(
+            prior_decision_id=decision_id,
+            repository_id=capsule.repository_id,
+            tree_id=capsule.tree_id,
+            failure=self._normalize_implementation_failure(failure),
+            changed_files=tuple(changed_files),
+            changed_symbols=tuple(changed_symbols),
+            unresolved_requirements=tuple(unresolved_requirements),
+        )
+        previous = self._implementation_diagnostics.get(key)
+        if previous is not None and previous.receipt_id == receipt.receipt_id:
+            self._implementation_diagnostic_repeats[key] = (
+                self._implementation_diagnostic_repeats.get(key, 1) + 1
+            )
+            receipt = previous
+            repeats = self._implementation_diagnostic_repeats[key]
+            self._implementation_retry_not_before[key] = time.time() + min(
+                300, 2 ** min(max(0, repeats - 2), 8)
+            )
+        else:
+            self._implementation_diagnostic_repeats[key] = 1
+            self._implementation_retry_not_before.pop(key, None)
+        self._implementation_diagnostics[key] = receipt
+        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+        path = self.implementation_log_dir / (
+            re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-")
+            + "-diagnostic-receipt.json"
+        )
+        _shared_atomic_write_json(path, receipt.to_record())
+        state_path = self.implementation_log_dir / (
+            self._implementation_context_file_stem(task)
+            + "-diagnostic-state.json"
+        )
+        _shared_atomic_write_json(
+            state_path,
+            {
+                "schema": "implementation-diagnostic-state.v1",
+                "diagnostic_receipt_id": receipt.receipt_id,
+                "repeat_count": self._implementation_diagnostic_repeats[key],
+                "not_before": self._implementation_retry_not_before.get(
+                    key, 0.0
+                ),
+            },
+        )
+        return receipt
+
+    def _record_failed_attempt_retry_context(
+        self,
+        task: PortalTask,
+        *,
+        returncode: int,
+        validation_result: Mapping[str, Any] | None = None,
+        exception_result: Mapping[str, Any] | None = None,
+    ) -> ImplementationDiagnosticReceipt | None:
+        if returncode == 0:
+            return None
+        validation = (
+            validation_result if isinstance(validation_result, Mapping) else {}
+        )
+        changed_files: set[str] = set()
+        proposal = validation.get("proposal_gate")
+        if isinstance(proposal, Mapping):
+            for item in proposal.get("changed_paths") or ():
+                if isinstance(item, str) and item.strip():
+                    changed_files.add(item.strip())
+        selection = validation.get("selection")
+        if isinstance(selection, Mapping):
+            for item in selection.get("changed_files") or ():
+                if isinstance(item, str) and item.strip():
+                    changed_files.add(item.strip())
+        changed_symbols = tuple(
+            self._compact_value_list(
+                task.metadata.get("ast symbols", ""),
+                limit=256,
+            )
+        )
+        unresolved = tuple(
+            content_identity({"task_id": task.task_id, "requirement": value})
+            for value in (
+                *((task.acceptance,) if task.acceptance else ()),
+                *task.validation,
+            )
+        )
+        failure: dict[str, Any] = {
+            "kind": (
+                "validation_failure"
+                if validation.get("attempted")
+                else "implementation_failure"
+            ),
+            "returncode": int(returncode),
+            "validation_result": validation,
+        }
+        if isinstance(exception_result, Mapping):
+            failure.update(
+                {
+                    key: exception_result[key]
+                    for key in ("exception_type", "phase")
+                    if exception_result.get(key)
+                }
+            )
+        return self.record_implementation_failure_context(
+            task,
+            failure,
+            changed_files=tuple(sorted(changed_files)),
+            changed_symbols=changed_symbols,
+            unresolved_requirements=unresolved,
+        )
+
+    def _compile_implementation_retry_context(
+        self,
+        task: PortalTask,
+        attempt: int,
+        diagnostic: ImplementationDiagnosticReceipt,
+    ) -> RetryContextResult:
+        """Compile one bounded semantic delta from the retained base context."""
+
+        parent = self._implementation_parent(task)
+        if parent is None:
+            raise RuntimeError("retry base context is unavailable")
+        parent_capsule, prior_decision_id = parent
+        if attempt <= 1:
+            raise ValueError("retry context requires attempt greater than one")
+        repair_round = attempt - 1
+        if repair_round > self.implementation_max_repair_rounds:
+            raise ImplementationRetryDeferred(
+                "implementation repair round budget exhausted"
+            )
+        if self._implementation_cancel_requested():
+            raise ImplementationRetryDeferred(
+                "implementation retry cancelled before compilation"
+            )
+        repository_id, tree_id = self._implementation_repository_and_tree_ids(task)
+        if (
+            repository_id != parent_capsule.repository_id
+            or tree_id != parent_capsule.tree_id
+        ):
+            raise RuntimeError(
+                "implementation retry parent invalidated by changed repository tree"
+            )
+        failure_text = canonical_json(diagnostic.to_record())
+        failure_references = build_text_context_references(
+            failure_text,
+            reference_prefix=f"retry-failure-{repair_round}",
+            kind="implementation-failure",
+            repository_id=repository_id,
+            tree_id=tree_id,
+            priority=1_000,
+            chunk_bytes=8_192,
+            coverage_ids=diagnostic.unresolved_requirements,
+        )
+        configured_budget = (
+            self.implementation_context_budget or parent_capsule.budget
+        )
+        compiler = ContextCompiler(
+            configured_budget,
+            tokenizer=self.implementation_context_tokenizer,
+            provider_context_window=self.implementation_provider_context_window,
+            provider_max_input_tokens=self.implementation_provider_max_input_tokens,
+        )
+        try:
+            result = compile_retry_context(
+                compiler,
+                parent_capsule,
+                prior_decision_id=prior_decision_id,
+                diagnostic_receipt_id=diagnostic.receipt_id,
+                evidence=(*parent_capsule.evidence, *failure_references),
+                failure_evidence_ids=tuple(
+                    item.reference_id for item in failure_references
+                ),
+                changed_files=diagnostic.changed_files,
+                changed_symbols=diagnostic.changed_symbols,
+                unresolved_requirement_ids=diagnostic.unresolved_requirements,
+                repair_round=repair_round,
+                max_repair_rounds=self.implementation_max_repair_rounds,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                cancelled=self.implementation_cancelled,
+            )
+        except ContextExpansionCancelled as exc:
+            raise ImplementationRetryDeferred(
+                "implementation retry cancelled during compilation"
+            ) from exc
+        self._last_implementation_context = result.delta_result
+        self._last_implementation_retry = result
+        return result
+
     def _compile_implementation_context(
         self, task: PortalTask, attempt: int
     ) -> ContextCompileResult:
@@ -11927,6 +12516,8 @@ class PortalImplementationDaemon:
             evidence=evidence,
         )
         self._last_implementation_context = result
+        self._last_implementation_retry = None
+        self._implementation_base_contexts[self._canonical_ref(task)] = result
         return result
 
     def _persist_implementation_context_receipt(
@@ -11950,9 +12541,72 @@ class PortalImplementationDaemon:
             / f"{safe_task_id}-attempt-{int(attempt)}-context-receipt.json"
         )
         _shared_atomic_write_json(path, result.receipt.to_dict())
+        if isinstance(result, ContextCompileResult):
+            capsule_path = (
+                self.implementation_log_dir
+                / f"{safe_task_id}-base-context-capsule.json"
+            )
+            _shared_atomic_write_json(capsule_path, result.capsule.to_record())
+            base_receipt_path = (
+                self.implementation_log_dir
+                / f"{safe_task_id}-base-context-receipt.json"
+            )
+            _shared_atomic_write_json(
+                base_receipt_path, result.receipt.to_dict()
+            )
+        if self._last_implementation_retry is not None:
+            retry_path = (
+                self.implementation_log_dir
+                / f"{safe_task_id}-attempt-{int(attempt)}-retry-capsule.json"
+            )
+            _shared_atomic_write_json(
+                retry_path,
+                self._last_implementation_retry.capsule.to_record(),
+            )
         return path
 
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
+        if self._implementation_cancel_requested():
+            raise ImplementationRetryDeferred("implementation dispatch cancelled")
+        if attempt > 1:
+            if attempt - 1 > self.implementation_max_repair_rounds:
+                raise ImplementationRetryDeferred(
+                    "implementation repair round budget exhausted"
+                )
+            key = self._canonical_ref(task)
+            self._load_implementation_retry_state(task)
+            diagnostic = self._implementation_diagnostics.get(key)
+            if diagnostic is not None:
+                repository_id, tree_id = self._implementation_repository_and_tree_ids(
+                    task
+                )
+                parent = self._implementation_parent(task)
+                if parent is None or (
+                    parent[0].repository_id != repository_id
+                    or parent[0].tree_id != tree_id
+                    or diagnostic.prior_decision_id != parent[1]
+                ):
+                    self._implementation_diagnostics.pop(key, None)
+                    self._implementation_diagnostic_repeats.pop(key, None)
+                    self._implementation_retry_not_before.pop(key, None)
+                    self._implementation_loaded_parents.pop(key, None)
+                    result = self._compile_implementation_context(task, attempt)
+                    return render_context_capsule(result.capsule)
+                repeats = self._implementation_diagnostic_repeats.get(key, 1)
+                if repeats >= self.implementation_max_repair_rounds:
+                    raise ImplementationRetryDeferred(
+                        "identical implementation failure escalated"
+                    )
+                not_before = self._implementation_retry_not_before.get(key, 0.0)
+                if not_before > time.time():
+                    raise ImplementationRetryDeferred(
+                        "identical implementation failure backoff",
+                        backoff_seconds=max(1, int(not_before - time.time() + 0.999)),
+                    )
+                result = self._compile_implementation_retry_context(
+                    task, attempt, diagnostic
+                )
+                return render_retry_context(result.capsule)
         result = self._compile_implementation_context(task, attempt)
         return render_context_capsule(result.capsule)
 
