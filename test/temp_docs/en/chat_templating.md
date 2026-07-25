@@ -16,7 +16,7 @@ rendered properly in your Markdown viewer.
 
 # Templates
 
-The [chat pipeline](./conversations) guide introduced [`TextGenerationPipeline`] and the concept of a chat prompt or chat template for conversing with a model. Underlying this high-level pipeline is the [`apply_chat_template`] method. A chat template is a part of the tokenizer and it specifies how to convert conversations into a single tokenizable string in the expected model format.
+The [chat pipeline](./conversations.md) guide introduced [`TextGenerationPipeline`] and the concept of a chat prompt or chat template for conversing with a model. Underlying this high-level pipeline is the [`apply_chat_template`] method. A chat template is a part of the tokenizer and it specifies how to convert conversations into a single tokenizable string in the expected model format.
 
 In the example below, Mistral-7B-Instruct and Zephyr-7B are finetuned from the same base model but they’re trained with different chat formats. Without chat templates, you have to manually write formatting code for each model and even minor errors can hurt performance. Chat templates offer a universal way to format chat inputs to any model.
 
@@ -109,7 +109,7 @@ Matey, I'm afraid I must inform ye that humans cannot eat helicopters. Helicopte
 ### add_generation_prompt
 The [add_generation_prompt](https://huggingface.co/docs/transformers/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template.add_generation_prompt) parameter adds tokens that indicate the start of a response. This ensures the chat model generates a system response instead of continuing a users message.
 
-Not all models require generation prompts, and some models, like [Llama](./model_doc/llama), don’t have any special tokens before the system response. In this case, [add_generation_prompt](https://huggingface.co/docs/transformers/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template.add_generation_prompt) has no effect.
+Not all models require generation prompts, and some models, like [Llama](./model_doc/llama.md), don’t have any special tokens before the system response. In this case, [add_generation_prompt](https://huggingface.co/docs/transformers/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template.add_generation_prompt) has no effect.
 
 ```py
 tokenized_chat = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
@@ -218,7 +218,7 @@ Which is bigger, the moon or the sun?</s>
 The sun.</s>
 ```
 
-After this step, you can continue following the [training recipe](./tasks/language_modeling) for causal language models using the `formatted_chat` column.
+After this step, you can continue following the [training recipe](./tasks/language_modeling.md) for causal language models using the `formatted_chat` column.
 
 Some tokenizers add special `<bos>` and `<eos>` tokens. Chat templates should already include all the necessary special tokens, and adding additional special tokens is often incorrect or duplicated, hurting model performance. When you format text with `apply_chat_template(tokenize=False)`, make sure you set `add_special_tokens=False` as well to avoid duplicating them.
 
