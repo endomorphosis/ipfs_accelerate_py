@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
@@ -11,17 +13,21 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     task_ids_from_todo_text,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    EvidenceSourcePolicy,
     next_task_id as next_objective_task_id,
     normalize_task_id_prefix as normalize_objective_task_id_prefix,
     task_markdown_heading_prefix,
 )
 from ipfs_accelerate_py.agent_supervisor.task_quality import (
+    TASK_SPLIT_REFILL_REQUIREMENT_ID,
     TaskCandidate,
     TaskQualityPolicy,
+    TaskSplitRefillEvidence,
     admit_task_candidate,
     can_coalesce_tasks,
     canonical_semantic_identity,
     coalesce_task_candidates,
+    prove_task_split_refill,
     refine_task_candidates,
     score_task_candidate,
     split_task_candidate,
@@ -399,6 +405,135 @@ def test_refinement_projection_retains_all_sources_when_tiny_tasks_coalesce():
     assert result.to_dict()["decisions"][0]["source_identities"] == list(
         decision.source_identities
     )
+
+
+def test_broad_split_refill_evidence_proves_zero_duplicate_admission():
+    broad = _candidate(
+        source_id="ASI-034",
+        acceptance_criteria=[f"criterion-{index}" for index in range(6)],
+        effects=[f"effect-{index}" for index in range(6)],
+        evidence_subset=[f"evidence-{index}" for index in range(6)],
+        context_paths=[f"src/part_{index}.py" for index in range(6)],
+        outputs=[f"src/part_{index}.py" for index in range(6)],
+        predicted_paths=[f"src/part_{index}.py" for index in range(6)],
+        predicted_symbols=[f"Part{index}.run" for index in range(6)],
+        estimated_tokens=12_000,
+    )
+    policy = TaskQualityPolicy(
+        max_predicted_paths=2,
+        max_predicted_symbols=2,
+        max_acceptance_criteria=2,
+        max_effects=2,
+        max_evidence_items=2,
+        max_context_paths=2,
+        max_estimated_tokens=4_000,
+        max_new_work=8,
+        coalesce_tiny=False,
+    )
+
+    evidence = prove_task_split_refill(
+        broad,
+        policy=policy,
+        initial_open_work=3,
+        repository_tree="git-tree-asi-034",
+    )
+    repeated = prove_task_split_refill(
+        broad.to_dict(),
+        policy=policy,
+        initial_open_work=3,
+        repository_tree="git-tree-asi-034",
+    )
+
+    assert evidence.verify_integrity()
+    assert evidence.evidence_id == repeated.evidence_id
+    assert evidence.proved_requirement_ids == (
+        TASK_SPLIT_REFILL_REQUIREMENT_ID,
+    )
+    first = evidence.first_admission
+    refill = evidence.refill_admission
+    assert len(first["accepted"]) == 3
+    assert refill["accepted"] == []
+    assert refill["initial_open_work"] == first["final_open_work"]
+    assert refill["final_open_work"] == first["final_open_work"]
+    assert {
+        item["candidate"]["canonical_task_cid"]
+        for item in refill["decisions"]
+    } == {
+        item["canonical_task_cid"] for item in first["accepted"]
+    }
+    assert all(
+        {
+            rejection["reason"]
+            for rejection in item["rejections"]
+        }
+        & {"historical_duplicate", "duplicate_semantic_identity"}
+        for item in refill["decisions"]
+    )
+
+    decision = EvidenceSourcePolicy().validate_completion_evidence(
+        TASK_SPLIT_REFILL_REQUIREMENT_ID,
+        evidence,
+        repository_tree="git-tree-asi-034",
+        policy_id=policy.policy_id,
+    )
+    assert decision.satisfies is True
+
+
+def test_broad_split_refill_evidence_fails_closed_for_partial_or_forged_receipts():
+    broad = _candidate(
+        acceptance_criteria=[f"criterion-{index}" for index in range(4)],
+        effects=[f"effect-{index}" for index in range(4)],
+        evidence_subset=[f"evidence-{index}" for index in range(4)],
+        context_paths=[f"src/part_{index}.py" for index in range(4)],
+        outputs=[f"src/part_{index}.py" for index in range(4)],
+        predicted_paths=[f"src/part_{index}.py" for index in range(4)],
+        predicted_symbols=[f"Part{index}.run" for index in range(4)],
+        estimated_tokens=8_000,
+    )
+    complete_policy = TaskQualityPolicy(
+        max_predicted_paths=2,
+        max_predicted_symbols=2,
+        max_acceptance_criteria=2,
+        max_effects=2,
+        max_evidence_items=2,
+        max_context_paths=2,
+        max_estimated_tokens=4_000,
+        max_new_work=4,
+        coalesce_tiny=False,
+    )
+    valid = TaskSplitRefillEvidence.create(
+        broad,
+        policy=complete_policy,
+        repository_tree="git-tree-asi-034",
+    )
+    capacity_limited = TaskSplitRefillEvidence.create(
+        broad,
+        policy=TaskQualityPolicy(
+            max_predicted_paths=2,
+            max_predicted_symbols=2,
+            max_acceptance_criteria=2,
+            max_effects=2,
+            max_evidence_items=2,
+            max_context_paths=2,
+            max_estimated_tokens=4_000,
+            max_new_work=1,
+            coalesce_tiny=False,
+        ),
+        repository_tree="git-tree-asi-034",
+    )
+
+    assert valid.proved_requirement_ids
+    assert capacity_limited.proved_requirement_ids == ()
+    restored = TaskSplitRefillEvidence.from_dict(valid.to_dict())
+    assert restored.verify_integrity()
+    assert restored.proved_requirement_ids == ()
+
+    tampered = copy.deepcopy(valid.to_dict())
+    tampered["refill_admission"]["accepted"].append(
+        tampered["first_admission"]["accepted"][0]
+    )
+    with pytest.raises(ValueError, match="digest mismatch"):
+        TaskSplitRefillEvidence.from_dict(tampered)
 
 
 def test_legacy_heading_prefix_is_normalized_once_and_ids_remain_monotonic():

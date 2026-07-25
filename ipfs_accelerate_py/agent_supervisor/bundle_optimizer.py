@@ -21,12 +21,21 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Final
 
-from .conflict_graph import ConflictEdge, TaskConflictGraph, materialize_task_conflict_graph
+from .conflict_graph import (
+    ConflictEdge,
+    ConflictWaveProjection,
+    TaskConflictGraph,
+    materialize_task_conflict_graph,
+    project_conflict_free_wave,
+)
 from .task_identity import canonical_content_cid, canonical_json_bytes
 
 
 PACKET_COMPLETION_BINDING_REQUIREMENT_ID: Final = (
     "187052702852200236079602798955260586139"
+)
+CRITICAL_PATH_WIDTH_REQUIREMENT_ID: Final = (
+    "061582446926920746660485801841658333166"
 )
 BUNDLE_OPTIMIZER_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/bundle-optimization@1"
@@ -34,7 +43,11 @@ BUNDLE_OPTIMIZER_SCHEMA: Final = (
 PACKET_COMPLETION_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/packet-completion-binding-evidence@1"
 )
+CRITICAL_PATH_WIDTH_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/critical-path-width-evidence@1"
+)
 _PACKET_COMPLETION_EVIDENCE_SEAL: Final = object()
+_CRITICAL_PATH_WIDTH_EVIDENCE_SEAL: Final = object()
 
 
 def _strings(value: Any) -> tuple[str, ...]:
@@ -520,26 +533,14 @@ def _conflict_color_order(
     """Color one independent dependency wave without destroying graph width."""
 
     nodes = set(task_cids)
-    adjacency = {
-        cid: {
-            peer
-            for pair in conflict_pairs
-            if cid in pair
-            for peer in pair
-            if peer != cid and peer in nodes
-        }
-        for cid in nodes
-    }
-    colors: dict[str, int] = {}
-    # Highest-degree-first prevents the common A-B-C path from becoming the
-    # artificial chain A->B->C.  The CID is only a deterministic final tie.
-    for cid in sorted(nodes, key=lambda item: (-len(adjacency[item]), item)):
-        unavailable = {colors[peer] for peer in adjacency[cid] if peer in colors}
-        color = 0
-        while color in unavailable:
-            color += 1
-        colors[cid] = color
-    return colors
+    pairs = (
+        tuple(sorted(pair))
+        for pair in conflict_pairs
+        if pair.issubset(nodes)
+    )
+    return dict(
+        project_conflict_free_wave(nodes, pairs).color_by_task_cid
+    )
 
 
 @dataclass(frozen=True)
@@ -1246,6 +1247,547 @@ def optimize_task_bundles(
     )
 
 
+def _critical_path_width_material(
+    *,
+    tasks: Sequence[_CanonicalTask],
+    plan: BundleOptimizationResult,
+    repository_tree: str,
+) -> dict[str, Any]:
+    base_waves, dependencies = _dependency_waves(tasks)
+    graph_tasks: list[dict[str, Any]] = []
+    for task in tasks:
+        graph_task = dict(task.payload)
+        if task.conflict_keys:
+            graph_task["interfaces"] = [
+                *_strings(_value(graph_task, "interfaces")),
+                *[
+                    f"bundle-conflict-key:{key}"
+                    for key in task.conflict_keys
+                ],
+            ]
+        graph_tasks.append(graph_task)
+    graph = materialize_task_conflict_graph(graph_tasks, max_lanes=None)
+    conflict_pairs, _edges = _conflict_pairs(graph, tasks)
+
+    projections: list[ConflictWaveProjection] = []
+    colors_by_cid: dict[str, int] = {}
+    for wave in sorted(set(base_waves.values())):
+        wave_cids = [
+            cid for cid, assigned_wave in base_waves.items()
+            if assigned_wave == wave
+        ]
+        projection = project_conflict_free_wave(
+            wave_cids,
+            (
+                tuple(sorted(pair))
+                for pair in conflict_pairs
+                if pair.issubset(set(wave_cids))
+            ),
+            dependency_wave=wave,
+        )
+        projections.append(projection)
+        colors_by_cid.update(projection.color_by_task_cid)
+
+    serialized_dependencies = {
+        cid: set(prerequisites) for cid, prerequisites in dependencies.items()
+    }
+    for pair in conflict_pairs:
+        left, right = sorted(pair)
+        if base_waves[left] != base_waves[right]:
+            left, right = sorted(
+                pair, key=lambda cid: (base_waves[cid], cid)
+            )
+        else:
+            left, right = sorted(
+                pair, key=lambda cid: (colors_by_cid[cid], cid)
+            )
+        serialized_dependencies[right].add(left)
+    effective_waves = _waves_from_dependencies(
+        serialized_dependencies,
+        minimum_waves={
+            task.canonical_task_cid: task.dependency_depth for task in tasks
+        },
+    )
+    planned_task_waves = {
+        cid: bundle.execution_wave
+        for bundle in plan.bundles
+        for cid in bundle.task_cids
+    }
+    return {
+        "schema": CRITICAL_PATH_WIDTH_EVIDENCE_SCHEMA,
+        "requirement_id": CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
+        "repository_tree": str(repository_tree),
+        "policy_id": plan.policy_id,
+        "task_population": [
+            {
+                "canonical_task_cid": task.canonical_task_cid,
+                "canonical_task_key": task.canonical_task_key,
+                "semantic_identity": task.semantic_identity,
+                "display_task_id": task.task_id,
+            }
+            for task in tasks
+        ],
+        "dependency_task_cids": {
+            cid: sorted(prerequisites)
+            for cid, prerequisites in sorted(dependencies.items())
+        },
+        "base_dependency_waves": dict(sorted(base_waves.items())),
+        "blocking_conflict_pairs": [
+            list(sorted(pair))
+            for pair in sorted(conflict_pairs, key=lambda value: tuple(sorted(value)))
+        ],
+        "conflict_wave_projections": [
+            projection.to_dict() for projection in projections
+        ],
+        "serialized_dependencies": {
+            cid: sorted(prerequisites)
+            for cid, prerequisites in sorted(serialized_dependencies.items())
+        },
+        "effective_task_waves": dict(sorted(effective_waves.items())),
+        "planned_task_waves": dict(sorted(planned_task_waves.items())),
+        "bundle_population": [
+            {
+                "bundle_cid": bundle.bundle_cid,
+                "execution_wave": bundle.execution_wave,
+                "task_cids": list(bundle.task_cids),
+            }
+            for bundle in plan.bundles
+        ],
+        "independent_width_by_dependency_wave": {
+            str(projection.dependency_wave): projection.independent_width
+            for projection in projections
+        },
+    }
+
+
+def _critical_path_width_qualifies(material: Mapping[str, Any]) -> bool:
+    """Validate exact conflict serialization and a preserved width witness."""
+
+    try:
+        if not str(material.get("repository_tree") or "").strip():
+            return False
+        if not str(material.get("policy_id") or "").strip():
+            return False
+        population = material.get("task_population")
+        if not isinstance(population, list) or len(population) < 2:
+            return False
+        cids = [
+            str(item.get("canonical_task_cid") or "")
+            for item in population
+            if isinstance(item, Mapping)
+            and str(item.get("canonical_task_cid") or "")
+            and str(item.get("canonical_task_key") or "")
+        ]
+        if len(cids) != len(population) or len(set(cids)) != len(cids):
+            return False
+        cid_set = set(cids)
+
+        def dependency_map(name: str) -> dict[str, set[str]]:
+            raw = material.get(name)
+            if not isinstance(raw, Mapping) or set(raw) != cid_set:
+                raise ValueError(f"{name} must cover the canonical population")
+            result = {
+                str(cid): {
+                    str(value) for value in values if str(value)
+                }
+                for cid, values in raw.items()
+                if isinstance(values, Sequence)
+                and not isinstance(values, (str, bytes, bytearray))
+            }
+            if set(result) != cid_set or any(
+                not prerequisites.issubset(cid_set - {cid})
+                for cid, prerequisites in result.items()
+            ):
+                raise ValueError(f"{name} contains an invalid dependency")
+            return result
+
+        dependencies = dependency_map("dependency_task_cids")
+        serialized = dependency_map("serialized_dependencies")
+        base_waves = {
+            str(cid): int(wave)
+            for cid, wave in dict(
+                material.get("base_dependency_waves") or {}
+            ).items()
+        }
+        effective_waves = {
+            str(cid): int(wave)
+            for cid, wave in dict(
+                material.get("effective_task_waves") or {}
+            ).items()
+        }
+        planned_waves = {
+            str(cid): int(wave)
+            for cid, wave in dict(
+                material.get("planned_task_waves") or {}
+            ).items()
+        }
+        if (
+            set(base_waves) != cid_set
+            or set(effective_waves) != cid_set
+            or planned_waves != effective_waves
+        ):
+            return False
+        if any(
+            base_waves[parent] >= base_waves[child]
+            or effective_waves[parent] >= effective_waves[child]
+            for child, parents in dependencies.items()
+            for parent in parents
+        ):
+            return False
+        if any(
+            effective_waves[parent] >= effective_waves[child]
+            for child, parents in serialized.items()
+            for parent in parents
+        ):
+            return False
+
+        raw_pairs = material.get("blocking_conflict_pairs")
+        if not isinstance(raw_pairs, list):
+            return False
+        conflict_pairs = {
+            tuple(str(value) for value in pair)
+            for pair in raw_pairs
+            if isinstance(pair, list)
+            and len(pair) == 2
+            and pair[0] != pair[1]
+            and set(str(value) for value in pair).issubset(cid_set)
+        }
+        if len(conflict_pairs) != len(raw_pairs):
+            return False
+        if any(
+            effective_waves[left] == effective_waves[right]
+            for left, right in conflict_pairs
+        ):
+            return False
+
+        projections = material.get("conflict_wave_projections")
+        if not isinstance(projections, list) or not projections:
+            return False
+        projected_cids: set[str] = set()
+        projected_colors: dict[str, int] = {}
+        preserved_width_witness = False
+        expected_width_by_wave: dict[str, int] = {}
+        for raw_projection in projections:
+            if not isinstance(raw_projection, Mapping):
+                return False
+            wave = int(raw_projection.get("dependency_wave") or 0)
+            members = tuple(
+                str(value) for value in raw_projection.get("task_cids", [])
+            )
+            if (
+                not members
+                or len(set(members)) != len(members)
+                or not set(members).issubset(cid_set)
+                or any(base_waves[cid] != wave for cid in members)
+            ):
+                return False
+            if projected_cids.intersection(members):
+                return False
+            lanes = raw_projection.get("independent_lanes")
+            colors = raw_projection.get("color_by_task_cid")
+            if not isinstance(lanes, list) or not isinstance(colors, Mapping):
+                return False
+            flat_lanes = [
+                str(cid) for lane in lanes for cid in lane
+                if isinstance(lane, list)
+            ]
+            if sorted(flat_lanes) != sorted(members):
+                return False
+            independent_width = max(
+                (len(lane) for lane in lanes if isinstance(lane, list)),
+                default=0,
+            )
+            if int(raw_projection.get("independent_width") or 0) != independent_width:
+                return False
+            expected_width_by_wave[str(wave)] = independent_width
+            widest_lane_preserved = independent_width <= 1
+            for color, lane in enumerate(lanes):
+                if not isinstance(lane, list):
+                    return False
+                lane_set = {str(cid) for cid in lane}
+                if any(set(pair).issubset(lane_set) for pair in conflict_pairs):
+                    return False
+                if len(lane_set) >= 2 and len(
+                    {effective_waves[cid] for cid in lane_set}
+                ) == 1:
+                    preserved_width_witness = True
+                    if len(lane_set) == independent_width:
+                        widest_lane_preserved = True
+                for cid in lane_set:
+                    if int(colors.get(cid, -1)) != color:
+                        return False
+                    projected_colors[cid] = color
+            if not widest_lane_preserved:
+                return False
+            projected_cids.update(members)
+        if projected_cids != cid_set or not preserved_width_witness:
+            return False
+        recorded_widths = {
+            str(wave): int(width)
+            for wave, width in dict(
+                material.get("independent_width_by_dependency_wave") or {}
+            ).items()
+        }
+        if recorded_widths != expected_width_by_wave:
+            return False
+
+        expected_serialized = {
+            cid: set(parents) for cid, parents in dependencies.items()
+        }
+        for left, right in conflict_pairs:
+            if base_waves[left] != base_waves[right]:
+                before, after = sorted(
+                    (left, right), key=lambda cid: (base_waves[cid], cid)
+                )
+            else:
+                before, after = sorted(
+                    (left, right), key=lambda cid: (projected_colors[cid], cid)
+                )
+            expected_serialized[after].add(before)
+        if serialized != expected_serialized:
+            return False
+
+        bundles = material.get("bundle_population")
+        if not isinstance(bundles, list) or not bundles:
+            return False
+        bundled_cids: list[str] = []
+        for bundle in bundles:
+            if not isinstance(bundle, Mapping):
+                return False
+            wave = int(bundle.get("execution_wave") or 0)
+            members = [str(value) for value in bundle.get("task_cids", [])]
+            if not members or any(planned_waves[cid] != wave for cid in members):
+                return False
+            if any(set(pair).issubset(set(members)) for pair in conflict_pairs):
+                return False
+            bundled_cids.extend(members)
+        return sorted(bundled_cids) == sorted(cids) and len(bundled_cids) == len(
+            set(bundled_cids)
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+@dataclass(frozen=True)
+class CriticalPathWidthEvidence:
+    """Content-addressed proof that bundling retains conflict-free width."""
+
+    repository_tree: str
+    policy_id: str
+    task_population: tuple[Mapping[str, Any], ...]
+    dependency_task_cids: Mapping[str, tuple[str, ...]]
+    base_dependency_waves: Mapping[str, int]
+    blocking_conflict_pairs: tuple[tuple[str, str], ...]
+    conflict_wave_projections: tuple[Mapping[str, Any], ...]
+    serialized_dependencies: Mapping[str, tuple[str, ...]]
+    effective_task_waves: Mapping[str, int]
+    planned_task_waves: Mapping[str, int]
+    bundle_population: tuple[Mapping[str, Any], ...]
+    independent_width_by_dependency_wave: Mapping[str, int]
+    evidence_id: str
+    integrity_digest: str
+    _producer_seal: Any = field(default=None, compare=False, repr=False)
+
+    @classmethod
+    def create(
+        cls,
+        admitted_tasks: Any,
+        *,
+        policy: BundleOptimizationPolicy | None = None,
+        current_planner_bundles: Sequence[Any] | None = None,
+        repository_tree: str = "in-memory",
+    ) -> "CriticalPathWidthEvidence":
+        """Run the optimizer and bind its complete dependency/conflict witness."""
+
+        selected = policy or BundleOptimizationPolicy()
+        tasks = _canonical_tasks(admitted_tasks)
+        plan = optimize_task_bundles(
+            [task.payload for task in tasks],
+            policy=selected,
+            current_planner_bundles=current_planner_bundles,
+        )
+        material = _critical_path_width_material(
+            tasks=tasks,
+            plan=plan,
+            repository_tree=repository_tree,
+        )
+        digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+        return cls._from_material(
+            material,
+            evidence_id=canonical_content_cid(material),
+            integrity_digest=digest,
+            producer_seal=_CRITICAL_PATH_WIDTH_EVIDENCE_SEAL,
+        )
+
+    @classmethod
+    def _from_material(
+        cls,
+        material: Mapping[str, Any],
+        *,
+        evidence_id: str,
+        integrity_digest: str,
+        producer_seal: Any,
+    ) -> "CriticalPathWidthEvidence":
+        return cls(
+            repository_tree=str(material.get("repository_tree") or ""),
+            policy_id=str(material.get("policy_id") or ""),
+            task_population=tuple(
+                dict(item) for item in material.get("task_population", [])
+            ),
+            dependency_task_cids={
+                str(cid): tuple(str(value) for value in values)
+                for cid, values in dict(
+                    material.get("dependency_task_cids") or {}
+                ).items()
+            },
+            base_dependency_waves={
+                str(cid): int(wave)
+                for cid, wave in dict(
+                    material.get("base_dependency_waves") or {}
+                ).items()
+            },
+            blocking_conflict_pairs=tuple(
+                tuple(str(value) for value in pair)
+                for pair in material.get("blocking_conflict_pairs", [])
+            ),
+            conflict_wave_projections=tuple(
+                dict(item)
+                for item in material.get("conflict_wave_projections", [])
+            ),
+            serialized_dependencies={
+                str(cid): tuple(str(value) for value in values)
+                for cid, values in dict(
+                    material.get("serialized_dependencies") or {}
+                ).items()
+            },
+            effective_task_waves={
+                str(cid): int(wave)
+                for cid, wave in dict(
+                    material.get("effective_task_waves") or {}
+                ).items()
+            },
+            planned_task_waves={
+                str(cid): int(wave)
+                for cid, wave in dict(
+                    material.get("planned_task_waves") or {}
+                ).items()
+            },
+            bundle_population=tuple(
+                dict(item) for item in material.get("bundle_population", [])
+            ),
+            independent_width_by_dependency_wave={
+                str(wave): int(width)
+                for wave, width in dict(
+                    material.get("independent_width_by_dependency_wave") or {}
+                ).items()
+            },
+            evidence_id=str(evidence_id),
+            integrity_digest=str(integrity_digest),
+            _producer_seal=producer_seal,
+        )
+
+    def _material(self) -> dict[str, Any]:
+        return {
+            "schema": CRITICAL_PATH_WIDTH_EVIDENCE_SCHEMA,
+            "requirement_id": CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
+            "repository_tree": self.repository_tree,
+            "policy_id": self.policy_id,
+            "task_population": [dict(item) for item in self.task_population],
+            "dependency_task_cids": {
+                cid: list(values)
+                for cid, values in sorted(self.dependency_task_cids.items())
+            },
+            "base_dependency_waves": dict(
+                sorted(self.base_dependency_waves.items())
+            ),
+            "blocking_conflict_pairs": [
+                list(pair) for pair in self.blocking_conflict_pairs
+            ],
+            "conflict_wave_projections": [
+                dict(item) for item in self.conflict_wave_projections
+            ],
+            "serialized_dependencies": {
+                cid: list(values)
+                for cid, values in sorted(self.serialized_dependencies.items())
+            },
+            "effective_task_waves": dict(
+                sorted(self.effective_task_waves.items())
+            ),
+            "planned_task_waves": dict(sorted(self.planned_task_waves.items())),
+            "bundle_population": [
+                dict(item) for item in self.bundle_population
+            ],
+            "independent_width_by_dependency_wave": dict(
+                sorted(self.independent_width_by_dependency_wave.items())
+            ),
+        }
+
+    def verify_integrity(self) -> bool:
+        material = self._material()
+        return (
+            self.integrity_digest
+            == hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+            and self.evidence_id == canonical_content_cid(material)
+        )
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        if (
+            self._producer_seal is _CRITICAL_PATH_WIDTH_EVIDENCE_SEAL
+            and self.verify_integrity()
+            and _critical_path_width_qualifies(self._material())
+        ):
+            return (CRITICAL_PATH_WIDTH_REQUIREMENT_ID,)
+        return ()
+
+    def to_dict(self) -> dict[str, Any]:
+        material = self._material()
+        qualifies = bool(self.proved_requirement_ids)
+        material.update(
+            {
+                "evidence_id": self.evidence_id,
+                "integrity_digest": self.integrity_digest,
+                "proved_requirement_ids": list(self.proved_requirement_ids),
+                "status": "passed" if qualifies else "diagnostic",
+                "complete": qualifies,
+                "coverage_complete": qualifies,
+                "source_tier": "validation",
+            }
+        )
+        return material
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "CriticalPathWidthEvidence":
+        evidence = cls._from_material(
+            payload,
+            evidence_id=str(payload.get("evidence_id") or ""),
+            integrity_digest=str(payload.get("integrity_digest") or ""),
+            producer_seal=None,
+        )
+        if not evidence.verify_integrity():
+            raise ValueError("critical-path width evidence digest mismatch")
+        return evidence
+
+
+def prove_critical_path_width(
+    admitted_tasks: Any,
+    *,
+    policy: BundleOptimizationPolicy | None = None,
+    current_planner_bundles: Sequence[Any] | None = None,
+    repository_tree: str = "in-memory",
+) -> CriticalPathWidthEvidence:
+    """Produce a canonical conflict-aware critical-path width receipt."""
+
+    return CriticalPathWidthEvidence.create(
+        admitted_tasks,
+        policy=policy,
+        current_planner_bundles=current_planner_bundles,
+        repository_tree=repository_tree,
+    )
+
+
 def _completion_material(
     *,
     tasks: Sequence[_CanonicalTask],
@@ -1514,16 +2056,20 @@ def propagate_goal_packet_completion(
 
 __all__ = [
     "BUNDLE_OPTIMIZER_SCHEMA",
+    "CRITICAL_PATH_WIDTH_EVIDENCE_SCHEMA",
+    "CRITICAL_PATH_WIDTH_REQUIREMENT_ID",
     "PACKET_COMPLETION_BINDING_REQUIREMENT_ID",
     "PACKET_COMPLETION_EVIDENCE_SCHEMA",
     "BundleOptimizationPolicy",
     "BundleOptimizationResult",
     "BundlePlanComparison",
+    "CriticalPathWidthEvidence",
     "OptimizedTaskBundle",
     "PacketAggregateProjection",
     "PacketCompletionBindingEvidence",
     "PacketCompletionResult",
     "compare_bundle_plan_metrics",
     "optimize_task_bundles",
+    "prove_critical_path_width",
     "propagate_goal_packet_completion",
 ]

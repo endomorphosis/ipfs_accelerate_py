@@ -18,7 +18,11 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .conflict_graph import build_conflict_surface, materialize_task_conflict_graph
+from .conflict_graph import (
+    build_conflict_surface,
+    materialize_task_conflict_graph,
+    project_conflict_free_wave,
+)
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
 from .objective_graph import (
     DEFAULT_EMBEDDING_DIMENSIONS,
@@ -29,6 +33,7 @@ from .objective_graph import (
     repo_relative_path_safe,
     safe_bundle_key,
     symbol_terms,
+    task_generation_evidence_producer_bindings,
     text_embedding,
 )
 from .validation_commands import split_validation_commands
@@ -1629,6 +1634,11 @@ def build_execution_packet(
         "task_summaries": [_compact_record_summary(record) for record in selected_records],
         "raw_prompt_tokens": sum(record.token_count for record in selected_records),
     }
+    packet["evidence_producer_bindings"] = (
+        task_generation_evidence_producer_bindings(
+            packet["missing_evidence"]
+        )
+    )
     packet_conflict_graph = materialize_task_conflict_graph(
         [record.to_dict() for record in selected_records],
         max_lanes=None,
@@ -1649,6 +1659,37 @@ def build_execution_packet(
     packet["conflict_lane_by_task_cid"] = {
         assignment.task_cid: assignment.lane_color
         for assignment in packet_conflict_graph.assignments
+    }
+    width_projections = []
+    for dependency_wave in sorted(
+        {record.graph_depth for record in selected_records}
+    ):
+        wave_cids = {
+            record.task_cid or record.task_id
+            for record in selected_records
+            if record.graph_depth == dependency_wave
+            and (record.task_cid or record.task_id)
+        }
+        if not wave_cids:
+            continue
+        width_projections.append(
+            project_conflict_free_wave(
+                wave_cids,
+                (
+                    (edge.left_task_cid, edge.right_task_cid)
+                    for edge in blocking_edges
+                    if {
+                        edge.left_task_cid,
+                        edge.right_task_cid,
+                    }.issubset(wave_cids)
+                ),
+                dependency_wave=dependency_wave,
+            ).to_dict()
+        )
+    packet["conflict_width_projections"] = width_projections
+    packet["independent_width_by_dependency_wave"] = {
+        str(projection["dependency_wave"]): projection["independent_width"]
+        for projection in width_projections
     }
     if blocking_edges:
         packet["merge_ready"] = False
