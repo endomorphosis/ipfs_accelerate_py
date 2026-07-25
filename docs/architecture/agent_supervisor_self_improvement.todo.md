@@ -356,7 +356,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-020 Add policy-controlled agent-supervisor MCP tools
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: control
