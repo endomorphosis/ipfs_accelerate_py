@@ -115,7 +115,7 @@ const result = manager.optimizeMemoryUsage();
 For detailed information on the tensor sharing implementation, refer to:
 
 - [shared_tensor.ts](../ipfs_accelerate_js/src/tensor/shared_tensor.ts) - Core implementation
-- [tensor_sharing_example.ts](../ipfs_accelerate_js/src/examples/tensor_sharing_example.ts) - Usage example
+- [tensor_sharing.ts](../ipfs_accelerate_js/src/tensor/tensor_sharing.ts) - Tensor-sharing API and usage implementation
 
 The implementation is based on the Python implementation in:
 - [cross_model_tensor_sharing.py](./fixed_web_platform/cross_model_tensor_sharing.py)
