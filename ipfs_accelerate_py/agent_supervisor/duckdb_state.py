@@ -3,7 +3,7 @@
 DuckDB permits only one external writer process. Supervisor stores therefore
 use short-lived connections protected by a process-shared file lock. Legacy
 SQLite databases are copied table-by-table into the new DuckDB file and are
-left untouched as rollback evidence.
+left untouched as rollback evidence unless strict DuckDB-only mode is enabled.
 """
 
 from __future__ import annotations
@@ -20,10 +20,22 @@ from typing import Any, Callable
 
 DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
 DEFAULT_MEMORY_LIMIT = "256MB"
+DUCKDB_ONLY_ENV = "IPFS_ACCELERATE_DUCKDB_ONLY"
 SQLITE_MAGIC = b"SQLite format 3\0"
 
 _THREAD_LOCKS: dict[str, threading.RLock] = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
+
+
+def duckdb_only_enabled() -> bool:
+    """Return whether legacy SQLite discovery and migration are disabled."""
+
+    return os.environ.get(DUCKDB_ONLY_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 class DuckDBRow(Mapping[str, Any]):
@@ -150,6 +162,7 @@ def resolve_duckdb_path(
     if not default_filename.endswith(".duckdb"):
         raise ValueError("default_filename must end in .duckdb")
     legacy_filename = f"{Path(default_filename).stem}.sqlite3"
+    strict_duckdb_only = duckdb_only_enabled()
     if path is None:
         import tempfile
 
@@ -160,14 +173,22 @@ def resolve_duckdb_path(
     suffix = supplied.suffix.lower()
     if suffix in {".sqlite", ".sqlite3", ".db"}:
         target = supplied.with_suffix(".duckdb")
-        legacy = supplied if is_sqlite_database(supplied) else None
+        legacy = (
+            None
+            if strict_duckdb_only
+            else supplied if is_sqlite_database(supplied) else None
+        )
         return target, legacy
     if suffix == ".duckdb":
+        if strict_duckdb_only:
+            return supplied, None
         legacy_candidate = supplied.with_suffix(".sqlite3")
         return supplied, (
             legacy_candidate if is_sqlite_database(legacy_candidate) else None
         )
     target = supplied / default_filename
+    if strict_duckdb_only:
+        return target, None
     legacy_candidate = supplied / legacy_filename
     return target, (
         legacy_candidate if is_sqlite_database(legacy_candidate) else None
@@ -350,7 +371,11 @@ def initialize_duckdb_database(
 
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    legacy = Path(legacy_sqlite_path) if legacy_sqlite_path is not None else None
+    legacy = (
+        Path(legacy_sqlite_path)
+        if legacy_sqlite_path is not None and not duckdb_only_enabled()
+        else None
+    )
     if legacy is not None and not is_sqlite_database(legacy):
         legacy = None
 

@@ -34,7 +34,13 @@ from .scan_receipts import (
     canonical_revision,
     scan_identity,
 )
-from .task_identity import TaskIdentity, canonical_bundle_identity, canonical_task_identity
+from .task_identity import (
+    TaskIdentity,
+    canonical_bundle_identity,
+    canonical_task_identity,
+    normalize_identity_path,
+    normalize_identity_text,
+)
 from .taskboard_store import (
     locked_taskboard,
     replace_locked_taskboard,
@@ -1076,6 +1082,7 @@ class ObjectiveFinding:
     gap_task: str = ""
     parent_goal_ids: list[str] = field(default_factory=list)
     graph_depth: int = 0
+    objective_heap_index: int = 0
     bundle_key: str = "objective/general"
     parallel_lane: str = "objective/general"
     bundle_explicit: bool = False
@@ -1105,6 +1112,9 @@ class ObjectiveFinding:
     generated_artifacts: list[str] = field(default_factory=list)
     allow_concurrent_with: list[str] = field(default_factory=list)
     dedupe_key: str = ""
+    status: str = "todo"
+    is_schedulable: bool = True
+    review_only: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -3900,7 +3910,16 @@ def tracked_files(git_root: Path) -> list[Path]:
 
 
 def scan_candidate(path: Path, *, repo_root: Path, objective_path: Path) -> bool:
-    if path.resolve() == objective_path.resolve():
+    resolved_root = repo_root.resolve()
+    resolved_path = path.resolve()
+    try:
+        resolved_path.relative_to(resolved_root)
+    except ValueError:
+        # Tracked symlinks may point outside the reviewed repository.  Do not
+        # let objective evidence or incremental cache rows depend on mutable
+        # host files that are not part of the Git tree being scanned.
+        return False
+    if resolved_path == objective_path.resolve():
         return False
     root_relative = repo_relative_path(repo_root, path)
     parts = set(Path(root_relative).parts)
@@ -5066,6 +5085,42 @@ def _task_record_mapping(task: Any) -> dict[str, Any]:
     }
 
 
+def _task_record_flag(
+    task: Mapping[str, Any],
+    name: str,
+    default: bool,
+) -> bool:
+    """Read a persisted task boolean without treating ``"false"`` as true."""
+
+    value = task.get(name, default)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+    return bool(value)
+
+
+def _task_record_scheduling_allowed(task: Mapping[str, Any]) -> bool:
+    """Return whether policy allows a task to participate in scheduling."""
+
+    return _task_record_flag(
+        task,
+        "is_schedulable",
+        True,
+    ) and not _task_record_flag(task, "review_only", False)
+
+
+def _task_record_is_schedulable(task: Mapping[str, Any]) -> bool:
+    """Return whether a task may enter the current execution slice."""
+
+    status = str(task.get("status") or "todo").strip().lower()
+    if status in {*SUCCESSFUL_MERGE_RECEIPT_STATUSES, "blocked", "on_hold"}:
+        return False
+    return _task_record_scheduling_allowed(task)
+
+
 def _dependency_values(task: Mapping[str, Any], *names: str) -> list[str]:
     normalized = {
         re.sub(r"[^a-z0-9]+", "_", str(key).strip().lower()).strip("_"): value
@@ -5304,6 +5359,7 @@ def critical_path_schedule(
             cid not in invalid
             and cid not in succeeded
             and node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            and _task_record_is_schedulable({**node.metadata, "status": node.status})
             and not blockers
         )
         critical_length = longest_to_finish.get(cid, 0)
@@ -5756,6 +5812,21 @@ def interoperability_pair_schedule_key(goal: ObjectiveGoal) -> str:
     return "\0".join(pair_terms)
 
 
+def _objective_heap_sort_key(
+    goal: ObjectiveGoal,
+    graph: Mapping[str, Any],
+) -> tuple[Any, ...]:
+    """Return the canonical heap position for schedulable and review goals."""
+
+    return (
+        goal.priority[0],
+        priority_rank(str(goal.fields.get("priority") or "P2")),
+        -objective_goal_work_surface(goal),
+        int(graph["depths"].get(goal.goal_id, 0)),
+        goal.goal_id,
+    )
+
+
 def objective_heap_schedule(goals: Sequence[ObjectiveGoal]) -> list[ObjectiveHeapRecord]:
     """Return schedulable goals in Fibonacci-priority heap order.
 
@@ -5776,17 +5847,7 @@ def objective_heap_schedule(goals: Sequence[ObjectiveGoal]) -> list[ObjectiveHea
             if interoperability_key in seen_interoperability_pairs:
                 continue
             seen_interoperability_pairs.add(interoperability_key)
-        fib_priority = goal.priority[0]
-        rank = priority_rank(str(goal.fields.get("priority") or "P2"))
-        work_surface = objective_goal_work_surface(goal)
-        graph_depth = int(graph["depths"].get(goal.goal_id, 0))
-        sort_key = (
-            fib_priority,
-            rank,
-            -work_surface,
-            graph_depth,
-            goal.goal_id,
-        )
+        sort_key = _objective_heap_sort_key(goal, graph)
         heapq.heappush(heap, (sort_key, goal))
 
     records: list[ObjectiveHeapRecord] = []
@@ -6171,6 +6232,16 @@ def add_goal_packet_aggregate_findings(
             group_findings,
             key=lambda item: (item.priority, item.goal_id, item.candidate_kind, item.fingerprint),
         )
+        scheduling_classes = {
+            (finding.status, finding.is_schedulable, finding.review_only)
+            for finding in sorted_group
+        }
+        if len(scheduling_classes) != 1:
+            # A packet aggregate is itself one execution contract. Combining
+            # active work with a blocked review record would either schedule
+            # the blocked scope or suppress the active scope, so retain the
+            # independently classified member findings instead.
+            continue
         goal_ids = _unique_strings(finding.goal_id for finding in sorted_group)
         if len(goal_ids) < 2:
             continue
@@ -6217,6 +6288,9 @@ def add_goal_packet_aggregate_findings(
             ),
             parent_goal_ids=parent_goal_ids,
             graph_depth=min(finding.graph_depth for finding in sorted_group),
+            objective_heap_index=min(
+                finding.objective_heap_index for finding in sorted_group
+            ),
             bundle_key=anchor.bundle_key,
             parallel_lane=anchor.parallel_lane,
             bundle_explicit=anchor.bundle_explicit,
@@ -6279,6 +6353,9 @@ def add_goal_packet_aggregate_findings(
                     ).encode("utf-8")
                 ).hexdigest()
             ),
+            status=anchor.status,
+            is_schedulable=anchor.is_schedulable,
+            review_only=anchor.review_only,
         )
         planned.append(aggregate)
         seen.add(fingerprint)
@@ -6323,6 +6400,7 @@ def prioritize_larger_work_surface_findings(
         packet_work_items = finding.goal_packet_work_item_count or 0
         work_items = finding.work_item_count or len(finding.missing_evidence)
         return (
+            finding.objective_heap_index,
             candidate_rank(finding),
             -packet_goal_count,
             -packet_work_items,
@@ -6521,7 +6599,18 @@ def scan_objective_gaps(
     if max_findings <= 0 or not objective_path.exists():
         return []
     all_goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
-    goals = [goal for goal in all_goals if goal.is_schedulable]
+    forced_goal_ids = {
+        str(item).strip() for item in force_goal_ids if str(item).strip()
+    }
+    goals = [
+        goal
+        for goal in all_goals
+        if goal.is_schedulable
+        or (
+            goal.goal_id in forced_goal_ids
+            and goal.lifecycle_state_value == "blocked"
+        )
+    ]
     if not goals:
         return []
     graph = goal_graph(all_goals)
@@ -6716,7 +6805,6 @@ def scan_objective_gaps(
         policy_id=evidence_policy_id,
     )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
-    forced_goal_ids = {str(item) for item in force_goal_ids if str(item).strip()}
     findings: list[ObjectiveFinding] = []
     candidate_limit = objective_scan_candidate_limit(
         max_findings=max_findings,
@@ -6724,26 +6812,55 @@ def scan_objective_gaps(
     )
 
     goals_by_id = {goal.goal_id: goal for goal in goals}
-    scheduled_goals = [goals_by_id[record.goal_id] for record in objective_heap_schedule(goals) if record.goal_id in goals_by_id]
+    heap_scheduled_goals = [
+        goals_by_id[record.goal_id]
+        for record in objective_heap_schedule(goals)
+        if record.goal_id in goals_by_id
+    ]
+    forced_review_goals = [
+        goal
+        for goal in goals
+        if goal.goal_id in forced_goal_ids
+        and goal.lifecycle_state_value == "blocked"
+    ]
+    forced_review_goal_ids = {goal.goal_id for goal in forced_review_goals}
+    scheduled_goals = sorted(
+        [
+            *forced_review_goals,
+            *[
+                goal
+                for goal in heap_scheduled_goals
+                if goal.goal_id not in forced_review_goal_ids
+            ],
+        ],
+        key=lambda goal: _objective_heap_sort_key(goal, graph),
+    )
     evidence_owners = objective_evidence_owner_by_requirement(goals, graph)
-    for goal in scheduled_goals:
+    for objective_heap_index, goal in enumerate(scheduled_goals):
         if goal.lifecycle_state_value == "provisionally_complete":
             # A provisional goal has left the implementation stage.  Missing
             # completion proof belongs to the typed completion gate, not an
             # ordinary implementation refill.
             continue
         terms = goal.required_evidence
-        all_missing_terms = [term for term in terms if not evidence.get(term)]
-        missing_terms = [
-            term
-            for term in all_missing_terms
-            if goal.goal_id
-            in evidence_owners.get(
-                normalize_objective_evidence_requirement(term),
-                (),
-            )
-        ]
         forced_goal = goal.goal_id in forced_goal_ids
+        forced_review_only = (
+            forced_goal and goal.lifecycle_state_value == "blocked"
+        )
+        all_missing_terms = [term for term in terms if not evidence.get(term)]
+        missing_terms = (
+            all_missing_terms
+            if forced_review_only
+            else [
+                term
+                for term in all_missing_terms
+                if goal.goal_id
+                in evidence_owners.get(
+                    normalize_objective_evidence_requirement(term),
+                    (),
+                )
+            ]
+        )
         validation_gap = False
         if not missing_terms:
             if all_missing_terms:
@@ -6752,6 +6869,8 @@ def scan_objective_gaps(
             if not forced_goal:
                 continue
             missing_terms = objective_goal_validation_gap_terms(goal)
+            if not missing_terms and forced_review_only:
+                missing_terms = ["blocked goal review"]
             if not missing_terms:
                 continue
             validation_gap = True
@@ -6798,6 +6917,7 @@ def scan_objective_gaps(
                 ),
                 parent_goal_ids=goal.parent_goal_ids,
                 graph_depth=int(graph["depths"].get(goal.goal_id, 0)),
+                objective_heap_index=objective_heap_index,
                 bundle_key=bundle_key,
                 parallel_lane=str(fields.get("parallel_lane") or bundle_key),
                 bundle_explicit=explicit_bundle,
@@ -6880,6 +7000,9 @@ def scan_objective_gaps(
                     graph=graph,
                     candidate_kind=candidate_kind,
                 ),
+                status="blocked" if forced_review_only else "todo",
+                is_schedulable=not forced_review_only,
+                review_only=forced_review_only,
             )
             findings.append(finding)
             if not forced_goal:
@@ -7109,8 +7232,12 @@ Goal title: {finding.title}
 Objective heap: {finding.objective_path}
 Priority: {finding.priority}
 Track: {finding.track}
+Status: {finding.status}
+Schedulable: {str(finding.is_schedulable).lower()}
+Review only: {str(finding.review_only).lower()}
 Parent goals: {parents}
 Graph depth: {finding.graph_depth}
+Objective heap index: {finding.objective_heap_index}
 Bundle: {finding.bundle_key}
 Parallel lane: {finding.parallel_lane}
 Bundle strategy: {finding.bundle_strategy}
@@ -7150,16 +7277,71 @@ Allow concurrent with: {", ".join(finding.allow_concurrent_with) or "none"}
     return path
 
 
+def _objective_finding_task_contract(finding: ObjectiveFinding) -> dict[str, Any]:
+    """Return stable execution-contract material for one objective finding.
+
+    Discovery locations and objective-heap paths are provenance, so they are
+    deliberately absent.  The remaining fields come from the source goal or
+    its deterministic execution projection and must invalidate prior task
+    receipts when the work or acceptance contract changes.
+    """
+
+    def text(value: Any) -> str:
+        return normalize_identity_text(value)
+
+    def texts(values: Sequence[Any]) -> list[str]:
+        return sorted({text(value) for value in values if text(value)})
+
+    def paths(values: Sequence[Any]) -> list[str]:
+        return sorted(
+            {
+                normalize_identity_path(value)
+                for value in values
+                if normalize_identity_path(value)
+            }
+        )
+
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/objective-finding-task-contract@1",
+        "finding_fingerprint": text(finding.fingerprint),
+        "goal_id": text(finding.goal_id),
+        "title": text(finding.title),
+        "goal": text(finding.goal),
+        "refinement": text(finding.refinement),
+        "gap_task": text(finding.gap_task),
+        "missing_evidence": texts(finding.missing_evidence),
+        "outputs": paths(finding.outputs),
+        "validation": text(finding.validation),
+        "parent_goal_ids": texts(finding.parent_goal_ids),
+        "predicted_files": paths(finding.predicted_files),
+        "interfaces": texts(finding.interfaces),
+        "submodules": paths(finding.submodules),
+        "generated_artifacts": paths(finding.generated_artifacts),
+        "conflict_policy": text(finding.conflict_policy),
+        "allow_concurrent_with": texts(finding.allow_concurrent_with),
+        "status": text(finding.status),
+        "is_schedulable": bool(finding.is_schedulable),
+        "review_only": bool(finding.review_only),
+    }
+
+
 def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> TaskIdentity:
-    """Return the stable work identity for an objective finding."""
+    """Return the revision-bound work identity for an objective finding."""
+
+    contract = _objective_finding_task_contract(finding)
+    contract_fingerprint = sha256(
+        json.dumps(
+            contract,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
 
     return canonical_task_identity(
         {
             "task_id": task_id,
-            "dedupe_key": (
-                finding.dedupe_key
-                or f"objective-finding:{finding.fingerprint}"
-            ),
+            "dedupe_key": f"objective-finding-contract/v1/{contract_fingerprint}",
         },
         board_namespace="objective-graph",
         source_path=finding.objective_path,
@@ -7185,6 +7367,9 @@ def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -
         "generated_artifacts": _unique_strings(finding.generated_artifacts),
         "allow_concurrent_with": _unique_strings(finding.allow_concurrent_with),
         "conflict_policy": finding.conflict_policy,
+        "status": finding.status,
+        "is_schedulable": finding.is_schedulable,
+        "review_only": finding.review_only,
     }
 
 
@@ -7214,8 +7399,10 @@ def render_task_block(
     bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     return f"""## {task_id} {finding.summary}
 
-- Status: todo
+- Status: {finding.status}
 - Completion: manual
+- Is schedulable: {str(finding.is_schedulable).lower()}
+- Review only: {str(finding.review_only).lower()}
 - Priority: {finding.priority}
 - Track: {finding.track}
 - Depends on: {", ".join(depends_on)}
@@ -7226,6 +7413,7 @@ def render_task_block(
 - Bundle strategy: {finding.bundle_strategy}
 - Graph parents: {parents}
 - Graph depth: {finding.graph_depth}
+- Objective heap index: {finding.objective_heap_index}
 - Parallel lane: {finding.parallel_lane}
 - Conflict policy: {finding.conflict_policy}
 - Predicted files: {", ".join(finding.predicted_files or finding.outputs)}
@@ -7283,9 +7471,12 @@ def write_bundle_shards(
                 "goal_id": record.finding.goal_id,
                 "parent_goal_ids": record.finding.parent_goal_ids,
                 "priority": record.finding.priority,
+                "objective_heap_index": record.finding.objective_heap_index,
                 "outputs": record.finding.outputs,
                 "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
-                "status": "todo",
+                "status": record.finding.status,
+                "is_schedulable": record.finding.is_schedulable,
+                "review_only": record.finding.review_only,
             }
             for record in records
         ]
@@ -7351,6 +7542,7 @@ def write_bundle_shards(
                 "canonical_task_cid": identity.canonical_task_cid,
                 "goal_id": record.finding.goal_id,
                 "graph_depth": record.finding.graph_depth,
+                "objective_heap_index": record.finding.objective_heap_index,
                 "parent_goal_ids": record.finding.parent_goal_ids,
                 "missing_evidence": record.finding.missing_evidence,
                 "discovery_path": repo_relative_path(repo_root, record.discovery_path),
@@ -7375,16 +7567,25 @@ def write_bundle_shards(
                 "objective_priority": schedule_record.objective_priority if schedule_record else 0,
             }
             existing_status = str(existing_task.get("status") or "").strip()
-            if existing_status:
+            if existing_status and record.finding.is_schedulable:
                 task_payload["status"] = existing_status
             task_map[record.task_id] = task_payload
+        indexed_tasks = [task_map[task_id] for task_id in sorted(task_map)]
         bundles[key] = {
             "bundle_key": key,
             "shard_path": repo_relative_path(repo_root, bundle_path(bundle_dir, key)),
             "parallel_lane": bundle_records[0].finding.parallel_lane,
             "bundle_strategy": bundle_records[0].finding.bundle_strategy,
             "conflict_policy": bundle_records[0].finding.conflict_policy,
-            "tasks": [task_map[task_id] for task_id in sorted(task_map)],
+            "is_schedulable": any(
+                _task_record_scheduling_allowed(item) for item in indexed_tasks
+            ),
+            "review_only": bool(indexed_tasks)
+            and all(
+                _task_record_flag(item, "review_only", False)
+                for item in indexed_tasks
+            ),
+            "tasks": indexed_tasks,
         }
 
     all_index_tasks = [
@@ -7883,12 +8084,36 @@ def build_bundle_task_payloads(
     for key, info in sorted(bundles.items()):
         if not isinstance(info, Mapping):
             continue
+        raw_tasks = [
+            dict(item)
+            for item in info.get("tasks", [])
+            if isinstance(item, Mapping)
+        ]
         task_payload = {
             "bundle_key": str(key),
             "todo_path": info.get("shard_path", ""),
             "parallel_lane": info.get("parallel_lane", key),
             "conflict_policy": info.get("conflict_policy", ""),
-            "tasks": info.get("tasks", []),
+            "execution_authority": str(
+                info.get("execution_authority") or "agent-supervisor/v1"
+            ),
+            "is_schedulable": (
+                _task_record_flag(info, "is_schedulable", True)
+                if "is_schedulable" in info
+                else any(
+                    _task_record_scheduling_allowed(item) for item in raw_tasks
+                )
+            ),
+            "review_only": (
+                _task_record_flag(info, "review_only", False)
+                if "review_only" in info
+                else bool(raw_tasks)
+                and all(
+                    _task_record_flag(item, "review_only", False)
+                    for item in raw_tasks
+                )
+            ),
+            "tasks": raw_tasks,
             "source_todo": payload.get("source_todo", ""),
             "objective_bundle_index": str(bundle_index_path),
         }
@@ -7986,6 +8211,8 @@ def build_bundle_task_payloads(
                     }
                 ).canonical_task_cid
             item["canonical_task_cid"] = cid
+            item["is_schedulable"] = _task_record_scheduling_allowed(item)
+            item["review_only"] = _task_record_flag(item, "review_only", False)
             member_bundle[cid] = bundle_key
             item["dependency_task_cids"] = sorted(incoming.get(cid, set()))
             scheduled = schedule_by_cid.get(cid)
@@ -8035,9 +8262,30 @@ def build_bundle_task_payloads(
             and graph.nodes[cid].status in {"blocked", "on_hold"}
         }
         unfinished_member_cids = member_cids - completed_member_cids
+        scheduling_allowed_member_cids = {
+            cid
+            for cid in member_cids
+            if cid in graph.nodes
+            and _task_record_scheduling_allowed(graph.nodes[cid].metadata)
+        }
+        schedulable_member_cids = {
+            cid
+            for cid in member_cids
+            if cid in graph.nodes
+            and _task_record_is_schedulable(
+                {
+                    **graph.nodes[cid].metadata,
+                    "status": graph.nodes[cid].status,
+                }
+            )
+        }
         ready_member_cids = {
             cid
-            for cid in unfinished_member_cids - active_member_cids - blocked_member_cids
+            for cid in (
+                (unfinished_member_cids & schedulable_member_cids)
+                - active_member_cids
+                - blocked_member_cids
+            )
             if cid in schedule_by_cid and schedule_by_cid[cid].claimable
         }
         # Until member leases are shared across serial and bundle schedulers,
@@ -8046,7 +8294,10 @@ def build_bundle_task_payloads(
         execution_member_cids = (
             set()
             if active_member_cids
-            else (ready_member_cids or unfinished_member_cids)
+            else (
+                ready_member_cids
+                or (unfinished_member_cids & schedulable_member_cids)
+            )
         )
         deferred_member_cids = unfinished_member_cids - ready_member_cids
         schedule_order = {
@@ -8150,7 +8401,8 @@ def build_bundle_task_payloads(
             ],
         }
         claimable = (
-            not active_member_cids
+            bool(scheduling_allowed_member_cids)
+            and not active_member_cids
             and (
                 not unfinished_member_cids
                 or bool(ready_member_cids)
@@ -8167,6 +8419,18 @@ def build_bundle_task_payloads(
                 "dependency_task_cids": dependency_task_cids,
                 "blocking_task_cids": external_blockers,
                 "claimable": claimable,
+                "is_schedulable": bool(scheduling_allowed_member_cids),
+                "review_only": bool(member_cids)
+                and member_cids.isdisjoint(scheduling_allowed_member_cids)
+                and all(
+                    _task_record_flag(
+                        graph.nodes[cid].metadata,
+                        "review_only",
+                        False,
+                    )
+                    for cid in member_cids
+                    if cid in graph.nodes
+                ),
                 "ready_member_task_cids": ordered(ready_member_cids),
                 "ready_member_task_ids": task_ids(ready_member_cids),
                 "deferred_member_task_cids": ordered(deferred_member_cids),
@@ -8218,10 +8482,14 @@ def build_bundle_task_payloads(
     )
     for rank, task_payload in enumerate(task_payloads):
         task_payload["schedule_rank"] = rank
-        task_payload["profile_g"] = adapt_goal_bundle(
-            _profile_g_safe_planning_value(task_payload),
-            created_at_ms=profile_created_at_ms,
-        )
+        if (
+            task_payload.get("is_schedulable") is True
+            and task_payload.get("review_only") is False
+        ):
+            task_payload["profile_g"] = adapt_goal_bundle(
+                _profile_g_safe_planning_value(task_payload),
+                created_at_ms=profile_created_at_ms,
+            )
     return task_payloads
 
 
@@ -8245,6 +8513,11 @@ def submit_bundle_tasks(
         queue = TaskQueue(path=queue_path)
     task_ids: list[str] = []
     for payload in build_bundle_task_payloads(bundle_index_path):
+        if (
+            payload.get("is_schedulable") is not True
+            or payload.get("review_only") is not False
+        ):
+            continue
         task_ids.append(
             queue.submit(
                 task_type=task_type,

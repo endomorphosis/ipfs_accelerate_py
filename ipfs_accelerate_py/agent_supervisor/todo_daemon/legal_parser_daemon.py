@@ -31,7 +31,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ipfs_datasets_py.logic.deontic.metrics import summarize_parser_elements
 from ipfs_datasets_py.logic.deontic.exports import active_repair_details_from_parser_elements
@@ -4765,12 +4765,18 @@ def _run_command(
     cwd: Path,
     input_text: Optional[str] = None,
     timeout: int = 60,
+    environment: Optional[Mapping[str, object]] = None,
 ) -> Dict[str, Any]:
     started = time.time()
     try:
         proc = subprocess.run(
             list(cmd),
             cwd=str(cwd),
+            env=(
+                None
+                if environment is None
+                else {str(key): str(value) for key, value in environment.items()}
+            ),
             input=input_text,
             text=True,
             capture_output=True,

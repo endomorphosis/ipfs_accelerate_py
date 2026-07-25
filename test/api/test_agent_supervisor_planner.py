@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -448,23 +449,283 @@ def test_truncated_graph_repairs_still_block_every_invalid_bundle(
 
 def _lane(tmp_path: Path, bundle: dict[str, object]) -> BundleLaneSpec:
     key = str(bundle["bundle_key"])
-    adapted = adapt_goal_bundle(bundle, created_at_ms=1_783_872_000_000)
-    payload = {**bundle, "profile_g": adapted}
+    task_id = str(bundle["tasks"][0]["task_id"])  # type: ignore[index]
+    payload = {
+        **bundle,
+        "is_schedulable": True,
+        "review_only": False,
+        "execution_slice_task_ids": [task_id],
+        "execution_slice_task_cids": [],
+    }
+    adapted = adapt_goal_bundle(payload, created_at_ms=1_783_872_000_000)
+    payload["profile_g"] = adapted
+    todo_path = tmp_path / f"{key.replace('/', '-')}.md"
+    todo_path.write_text(
+        f"## {task_id} Planned task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state" / key.replace("/", "-")
     return BundleLaneSpec(
         bundle_key=key,
         parallel_lane=key,
-        todo_path=tmp_path / f"{key.replace('/', '-')}.md",
-        state_dir=tmp_path / "state" / key.replace("/", "-"),
+        todo_path=todo_path,
+        state_dir=state_dir,
         worktree_root=tmp_path / "worktrees" / key.replace("/", "-"),
         state_prefix=key.replace("/", "_"),
-        task_ids=[str(bundle["tasks"][0]["task_id"])],  # type: ignore[index]
+        task_ids=[task_id],
         conflict_policy="",
         command=["worker", key],
         log_path=tmp_path / "logs" / f"{key.replace('/', '-')}.log",
+        runtime_todo_path=state_dir / "runtime.todo.md",
+        source_todo_sha256=hashlib.sha256(todo_path.read_bytes()).hexdigest(),
         task_cid=str(adapted["task_cid"]),
         queue_payload=payload,
         dependency_task_cids=list(bundle.get("dependency_task_cids", [])),  # type: ignore[arg-type]
     )
+
+
+@pytest.mark.parametrize(
+    ("payload_updates", "lane_task_ids", "drop_execution_slice"),
+    [
+        ({"is_schedulable": False}, ["TASK"], False),
+        ({"is_schedulable": "true"}, ["TASK"], False),
+        ({"review_only": True}, ["TASK"], False),
+        ({"review_only": "false"}, ["TASK"], False),
+        (
+            {
+                "execution_slice_task_ids": [],
+                "execution_slice_task_cids": [],
+            },
+            ["TASK"],
+            False,
+        ),
+        (
+            {
+                "execution_slice_task_ids": ["TASK"],
+                "execution_slice_task_cids": [],
+            },
+            [],
+            False,
+        ),
+        (
+            {
+                "tasks": [
+                    {
+                        "task_id": "TASK",
+                        "review_only": True,
+                        "is_schedulable": False,
+                    }
+                ]
+            },
+            ["TASK"],
+            False,
+        ),
+        ({}, ["TASK"], True),
+    ],
+)
+def test_bundle_launcher_rejects_non_executable_lanes_before_registration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    payload_updates: dict[str, object],
+    lane_task_ids: list[str],
+    drop_execution_slice: bool,
+) -> None:
+    lane = _lane(
+        tmp_path,
+        {
+            "bundle_key": "bundle/policy-denied",
+            "tasks": [{"task_id": "TASK", "goal": "must remain bounded"}],
+        },
+    )
+    queue_payload = {**lane.queue_payload, **payload_updates}
+    if drop_execution_slice:
+        queue_payload.pop("execution_slice_task_ids", None)
+        queue_payload.pop("execution_slice_task_cids", None)
+    lane = replace(
+        lane,
+        task_ids=lane_task_ids,
+        queue_payload=queue_payload,
+    )
+
+    def unexpected_registration(*_args, **_kwargs):
+        raise AssertionError("denied lane reached coordination registration")
+
+    monkeypatch.setattr(LeaseCoordinator, "register_bundle", unexpected_registration)
+
+    result = launch_bundle_lanes(
+        [lane],
+        repo_root=tmp_path,
+        coordination_path=tmp_path / "coordination.duckdb",
+    )
+
+    assert len(result) == 1
+    assert result[0]["bundle_key"] == "bundle/policy-denied"
+    assert result[0]["accepted"] is False
+    assert result[0]["error"]
+    assert result[0]["code"] == "G_EXECUTION_POLICY_DENIED"
+
+
+def test_completed_bundle_remains_plannable_for_settlement_but_cannot_launch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    todo_path = tmp_path / "completed.todo.md"
+    todo_path.write_text(
+        "## TASK Completed task\n\n- Status: completed\n",
+        encoding="utf-8",
+    )
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": str(todo_path),
+                "bundles": {
+                    "bundle/completed": {
+                        "shard_path": str(todo_path),
+                        "tasks": [
+                            {
+                                "task_id": "TASK",
+                                "task_cid": "cid-task",
+                                "status": "completed",
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+    assert len(lanes) == 1
+    assert lanes[0].task_ids == []
+    assert lanes[0].queue_payload["profile_g"]["task_cid"]
+
+    def unexpected_registration(*_args, **_kwargs):
+        raise AssertionError("settled lane reached launch registration")
+
+    monkeypatch.setattr(LeaseCoordinator, "register_bundle", unexpected_registration)
+    result = launch_bundle_lanes(
+        lanes,
+        repo_root=tmp_path,
+        coordination_path=tmp_path / "coordination.duckdb",
+    )
+
+    assert result[0]["accepted"] is False
+    assert result[0]["code"] == "G_EXECUTION_POLICY_DENIED"
+    assert result[0]["error"] == "lane has no execution task ids"
+
+
+@pytest.mark.parametrize("authority_location", ["bundle", "task"])
+def test_external_authority_bundle_is_rejected_before_coordination_creation(
+    tmp_path: Path,
+    authority_location: str,
+) -> None:
+    lane = _lane(
+        tmp_path,
+        {
+            "bundle_key": "worldcoin-human-aid/zkp-toolchain-bootstrap",
+            "tasks": [
+                {
+                    "task_id": "WORLDCOIN-G039",
+                    "goal": "operator-owned offline smoke",
+                }
+            ],
+        },
+    )
+    queue_payload = dict(lane.queue_payload)
+    if authority_location == "bundle":
+        queue_payload["execution_authority"] = "operator-gate-first/v1"
+    else:
+        tasks = [dict(item) for item in queue_payload["tasks"]]
+        tasks[0]["execution_authority"] = "operator-gate-first/v1"
+        queue_payload["tasks"] = tasks
+    lane = replace(lane, queue_payload=queue_payload)
+    coordination_path = tmp_path / "must-not-exist.duckdb"
+
+    result = launch_bundle_lanes(
+        [lane],
+        repo_root=tmp_path,
+        coordination_path=coordination_path,
+    )
+
+    assert result == [
+        {
+            "bundle_key": lane.bundle_key,
+            "accepted": False,
+            "error": (
+                "bundle requires external execution authority "
+                "'operator-gate-first/v1'"
+                if authority_location == "bundle"
+                else "execution slice requires external execution authority "
+                "'operator-gate-first/v1'"
+            ),
+            "code": "G_EXECUTION_POLICY_DENIED",
+        }
+    ]
+    assert not coordination_path.exists()
+
+
+def test_planner_preserves_external_execution_authority_for_launch_policy(
+    tmp_path: Path,
+) -> None:
+    todo_path = tmp_path / "g039.todo.md"
+    todo_path.write_text(
+        "## WORLDCOIN-G039 Native smoke\n\n- Status: reopened\n",
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "g038-g040.index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": str(todo_path),
+                "bundles": {
+                    "worldcoin-human-aid/zkp-toolchain-bootstrap": {
+                        "shard_path": str(todo_path),
+                        "execution_authority": "operator-gate-first/v1",
+                        "is_schedulable": True,
+                        "review_only": False,
+                        "tasks": [
+                            {
+                                "task_id": "WORLDCOIN-G039",
+                                "task_cid": "cid-g039",
+                                "status": "reopened",
+                                "is_schedulable": True,
+                                "review_only": False,
+                                "execution_authority": "operator-gate-first/v1",
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+    assert len(lanes) == 1
+    assert (
+        lanes[0].queue_payload["execution_authority"]
+        == "operator-gate-first/v1"
+    )
+    coordination_path = tmp_path / "must-not-exist.duckdb"
+    result = launch_bundle_lanes(
+        lanes,
+        repo_root=tmp_path,
+        coordination_path=coordination_path,
+    )
+    assert result[0]["code"] == "G_EXECUTION_POLICY_DENIED"
+    assert not coordination_path.exists()
 
 
 def test_bundle_launcher_surfaces_dependency_evidence_and_unblocks_after_successful_receipt(

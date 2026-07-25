@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -25,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     bundle_member_completion_receipts,
     build_arg_parser as build_bundle_arg_parser,
     launch_bundle_lanes,
+    materialize_bundle_lane_taskboard,
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
@@ -117,7 +119,9 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_namespace_objective_refill_defaults_factory,
     build_objective_refill_defaults_from_paths,
 )
+from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
+from ipfs_accelerate_py.agent_supervisor.git_gc import GitGarbageCollector
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -1239,8 +1243,49 @@ def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path)
     assert first.git_gc.state_path == expected
     assert second.git_gc.state_path == expected
     assert second.git_gc.state.last_gc_time == 123.0
+    assert first.git_gc.state_path != repo / "data" / "agent_supervisor" / "gc_state.json"
+    assert second.git_gc.state_path != linked / "data" / "agent_supervisor" / "gc_state.json"
+    assert first.git_gc.needs_aggressive_gc() is False
+    assert second.git_gc.needs_aggressive_gc() is False
     assert _git(repo, "status", "--porcelain") == ""
     assert _git(linked, "status", "--porcelain") == ""
+
+
+def test_git_gc_first_run_establishes_baseline_without_aggressive_repack(
+    tmp_path,
+    monkeypatch,
+):
+    collector = GitGarbageCollector(
+        repo_root=tmp_path,
+        state_path=tmp_path / "gc-state.json",
+    )
+    monkeypatch.setattr(git_gc_module, "count_loose_objects", lambda _root: 0)
+    monkeypatch.setattr(
+        collector,
+        "_prune_worktrees",
+        lambda: {"step": "prune_worktrees", "success": True},
+    )
+    monkeypatch.setattr(
+        collector,
+        "_expire_reflogs",
+        lambda **_kwargs: {"step": "expire_reflogs", "success": True},
+    )
+    monkeypatch.setattr(
+        collector,
+        "_run_git_gc",
+        lambda **_kwargs: {"step": "git_gc", "success": True},
+    )
+
+    result = collector.run_if_needed()
+
+    assert result["type"] == "standard"
+    assert collector.state.last_gc_time > 0
+    assert collector.state.last_aggressive_gc_time == collector.state.last_gc_time
+    reloaded = GitGarbageCollector(
+        repo_root=tmp_path,
+        state_path=collector.state_path,
+    )
+    assert reloaded.needs_aggressive_gc() is False
 
 
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
@@ -5983,6 +6028,12 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     repo.mkdir()
     log_path = repo / "validation.log"
     captured: dict[str, object] = {}
+    hostile_bin = tmp_path / "hostile-bin"
+    hostile_bin.mkdir()
+    monkeypatch.setenv("BASH_ENV", str(tmp_path / "hostile-bash-env"))
+    monkeypatch.setenv("ENV", str(tmp_path / "hostile-env"))
+    monkeypatch.setenv("VALIDATION_SECRET", "must-not-leak")
+    monkeypatch.setenv("PATH", f"{hostile_bin}{os.pathsep}{os.environ['PATH']}")
 
     def fake_run(*args, **kwargs):
         captured["args"] = args
@@ -6014,8 +6065,21 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     result = daemon._run_validation_commands(repo, task, log_path)
 
     assert result["passed"] is True
+    assert captured["args"][0][:4] == [
+        "/bin/bash",
+        "--noprofile",
+        "--norc",
+        "-c",
+    ]
+    assert captured["args"][0][4].endswith(
+        f"readonly -f python python3 pytest; {task.validation[0]}"
+    )
     assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
     assert captured["kwargs"]["timeout"] == 1
+    environment = captured["kwargs"]["env"]
+    assert isinstance(environment, dict)
+    assert hostile_bin.as_posix() not in environment["PATH"].split(os.pathsep)
+    assert not {"BASH_ENV", "ENV", "VALIDATION_SECRET"} & set(environment)
 
 
 def test_implementation_daemon_selects_only_configured_task_shard(tmp_path):
@@ -6408,6 +6472,160 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     assert state.task_statuses["ACCEL-001"] == "completed"
     assert state.task_statuses["ACCEL-002"] == "waiting"
     assert state.task_statuses["ACCEL-003"] == "ready"
+
+
+def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_completion(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shard_path = repo / "generated" / "g002.todo.md"
+    shard_path.parent.mkdir()
+    shard_path.write_text(
+        """# Reviewed bundle input
+
+## ACCEL-001 Completed in another lane
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Reopens after dependency completion
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+""",
+        encoding="utf-8",
+    )
+    source_digest = hashlib.sha256(shard_path.read_bytes()).hexdigest()
+    index_path = repo / "generated" / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "objective/world-aid/g002": {
+                        "shard_path": "generated/g002.todo.md",
+                        "parallel_lane": "objective/world-aid/g002",
+                        "tasks": [
+                            {"task_id": "ACCEL-001"},
+                            {"task_id": "ACCEL-002"},
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    lane = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "runtime",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="ACCEL-",
+    )[0]
+
+    binding = materialize_bundle_lane_taskboard(lane, repo_root=repo)
+
+    assert binding["source_todo_sha256"] == source_digest
+    assert lane.runtime_todo_path is not None
+    assert lane.runtime_todo_path.read_bytes() == shard_path.read_bytes()
+    queue = MergeQueue(repo / "merge-queue")
+    daemon = TodoImplementationDaemon(
+        todo_path=lane.runtime_todo_path,
+        state_path=lane.state_dir / "task_state.json",
+        strategy_path=lane.state_dir / "strategy.json",
+        events_path=lane.state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        merge_queue=queue,
+    )
+    tasks = {
+        task.task_id: task
+        for task in parse_task_file(lane.runtime_todo_path, "## ACCEL-")
+    }
+    request = queue.enqueue(
+        branch_name="implementation/accel-001",
+        task_id="OTHER-001",
+        canonical_task_id=daemon._canonical_ref(tasks["ACCEL-001"]),
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.complete(claimed)
+    daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+
+    assert hashlib.sha256(shard_path.read_bytes()).hexdigest() == source_digest
+    assert [task.status for task in parse_task_file(shard_path, "## ACCEL-")] == [
+        "todo",
+        "blocked",
+    ]
+    assert [
+        task.status
+        for task in parse_task_file(lane.runtime_todo_path, "## ACCEL-")
+    ] == ["completed", "todo"]
+    assert result["shared_completed_task_ids"] == ["ACCEL-001"]
+    assert result["merged_status_repair"]["updated_task_ids"] == ["ACCEL-001"]
+    state = TodoTaskState.load(daemon.state_path)
+    assert state.task_statuses["ACCEL-001"] == "completed"
+    assert state.task_statuses["ACCEL-002"] == "ready"
+    runtime_after_completion = lane.runtime_todo_path.read_bytes()
+
+    reused = materialize_bundle_lane_taskboard(lane, repo_root=repo)
+
+    assert reused["reused"] is True
+    assert reused["materialized"] is False
+    assert lane.runtime_todo_path.read_bytes() == runtime_after_completion
+    assert hashlib.sha256(shard_path.read_bytes()).hexdigest() == source_digest
+
+
+def test_bundle_runtime_taskboard_rejects_source_digest_change_after_planning(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shard_path = repo / "g002.todo.md"
+    shard_path.write_text(
+        "## ACCEL-001 Reviewed task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    index_path = repo / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "objective/world-aid/g002": {
+                        "shard_path": "g002.todo.md",
+                        "tasks": [{"task_id": "ACCEL-001"}],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    lane = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "runtime",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+    )[0]
+    shard_path.write_text(
+        "## ACCEL-001 Mutated after review\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="source taskboard digest changed"):
+        materialize_bundle_lane_taskboard(lane, repo_root=repo)
+
+    assert lane.runtime_todo_path is not None
+    assert not lane.runtime_todo_path.exists()
 
 
 def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
@@ -7522,7 +7740,9 @@ def test_implementation_supervisor_ignores_stale_agent_log_during_active_merge_r
     assert reason == ""
 
 
-def test_implementation_supervisor_keeps_quiet_live_agent_worker(tmp_path, monkeypatch):
+def test_implementation_supervisor_keeps_quiet_live_agent_subprocess(
+    tmp_path, monkeypatch
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     implementation_log = repo / "implementation.log"
@@ -7540,7 +7760,11 @@ def test_implementation_supervisor_keeps_quiet_live_agent_worker(tmp_path, monke
         implementation_log_stall_seconds=300,
     )
     supervisor = TodoImplementationSupervisor(config)
-    monkeypatch.setattr(supervisor, "_active_agent_subprocess_exists", lambda: True)
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda: [{"pid": 1234, "cmdline": ("codex", "exec")}],
+    )
     now = datetime.now(timezone.utc)
     state = TodoTaskState(
         active_task_id="AUTO-001",
@@ -7927,6 +8151,48 @@ def test_supervisor_worker_watchdog_detects_active_merge_resolver_without_worker
     assert status["phase"] == "merge_resolver"
     assert status["active_worker_count"] == 0
     assert status["stalled_without_active_worker"] is True
+
+
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        (
+            "/usr/local/bin/codex --ask-for-approval never --disable apps "
+            "--disable browser_use -c 'web_search=\"disabled\"' exec "
+            "--ephemeral --sandbox workspace-write -"
+        ),
+        (
+            "node /usr/local/bin/codex --ask-for-approval never --disable apps "
+            "-c 'web_search=\"disabled\"' exec --ephemeral "
+            "--sandbox workspace-write -"
+        ),
+    ],
+)
+def test_supervisor_worker_watchdog_recognizes_codex_exec_with_global_options(
+    monkeypatch,
+    cmdline,
+):
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(minutes=10)
+    monkeypatch.setattr(
+        todo_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [{"pid": 4319, "cmdline": cmdline}],
+    )
+
+    status = worktree_phase_worker_status(
+        {
+            "active_phase": "implementing",
+            "active_phase_started_at": old.isoformat(),
+        },
+        daemon_pid=1234,
+        threshold_seconds=60,
+        now=now,
+    )
+
+    assert status["active_worker_count"] == 1
+    assert status["active_worker_pids"] == [4319]
+    assert status["stalled_without_active_worker"] is False
 
 
 def test_supervisor_worker_watchdog_recognizes_llm_router_merge_resolver(monkeypatch):
@@ -10851,6 +11117,32 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert '"embedding"' not in prompt
 
 
+def test_implementation_prompt_can_disable_unavailable_subagents(monkeypatch, tmp_path):
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS", "1")
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Create several outputs without collaboration",
+        status="todo",
+        completion="",
+        priority="P1",
+        track="runtime",
+        outputs=["src/a.py", "src/b.py", "src/c.py", "src/d.py"],
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## ACCEL-",
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=1)
+
+    assert "Do not invoke collaboration or sub-agent tools" in prompt
+    assert "Use sub-agents or parallel execution" not in prompt
+
+
 def test_implementation_daemon_budgets_todo_vector_context_packet_first(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11625,6 +11917,64 @@ def test_run_goal_validation_preserves_quoted_validation_semicolons(tmp_path):
     assert [item["command"] for item in result["results"]] == [inline_python, "test -f src/config.yml"]
 
 
+def test_run_goal_validation_scrubs_profile_bash_env_secret_and_path_injection(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    hostile_bin = tmp_path / "hostile-bin"
+    hostile_bin.mkdir()
+    profile_marker = tmp_path / "profile-loaded"
+    bash_env_marker = tmp_path / "bash-env-loaded"
+    path_marker = tmp_path / "path-shadow-ran"
+    (home / ".bash_profile").write_text(
+        f"touch {shlex.quote(str(profile_marker))}\n",
+        encoding="utf-8",
+    )
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(bash_env_marker))}\n",
+        encoding="utf-8",
+    )
+    shadow_python = hostile_bin / "python3"
+    shadow_python.write_text(
+        f"#!/bin/sh\ntouch {shlex.quote(str(path_marker))}\nexit 97\n",
+        encoding="utf-8",
+    )
+    shadow_python.chmod(0o755)
+    inherited_path = os.environ["PATH"]
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("BASH_ENV", str(bash_env))
+    monkeypatch.setenv("ENV", str(bash_env))
+    monkeypatch.setenv("VALIDATION_SECRET", "must-not-leak")
+    monkeypatch.setenv("PATH", f"{hostile_bin}{os.pathsep}{inherited_path}")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PATH",
+        os.pathsep.join(("/usr/bin", "/bin")),
+    )
+    command = (
+        f"test ! -e {shlex.quote(str(profile_marker))} "
+        f"&& test ! -e {shlex.quote(str(bash_env_marker))} "
+        '&& test -z "${VALIDATION_SECRET-}" '
+        "&& python3 -c 'raise SystemExit(0)'"
+    )
+    goal = ObjectiveGoal(
+        goal_id="VAIOS-G002",
+        title="Validate isolated runtime",
+        fields={"validation": command},
+    )
+
+    result = run_goal_validation(repo_root=repo, goal=goal)
+
+    assert result["passed"] is True
+    assert not profile_marker.exists()
+    assert not bash_env_marker.exists()
+    assert not path_marker.exists()
+
+
 def test_objective_daemon_materializes_completion_proof_work_without_receipts(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11861,7 +12211,8 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
     assert "hallucinate_app/interfaces/control_surface.idl" in objective_text
     assert "swissknife/mcp/orb_descriptor.json" in objective_text
     assert payload["objective_heap_schedule_count"] >= 1
-    assert payload["generated_count"] == 2
+    assert payload["generated_count"] == 3
+    assert payload["objective_generation_materialized_count"] == 1
     graph = json.loads((repo / "data" / "agent_supervisor" / "objective_graph.json").read_text(encoding="utf-8"))
     thought_kinds = {node["kind"] for node in graph["thought_graph"]["nodes"]}
     assert "interoperability_pair" in thought_kinds
@@ -12400,6 +12751,16 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
     assert all(receipt["status"] == "succeeded" for receipt in receipts.values())
 
     bundle_index = repo / "bundle-index.json"
+    (repo / "downstream.todo.md").write_text(
+        """# Downstream packet
+
+## T-DOWNSTREAM Downstream task
+
+- Status: todo
+- Completion: manual
+""",
+        encoding="utf-8",
+    )
     bundle_index.write_text(
         json.dumps(
             {
@@ -12550,6 +12911,16 @@ def test_legacy_aggregate_member_ids_release_downstream_lane(
     assert receipts["cid-legacy-covered-b"]["status"] == "succeeded"
 
     bundle_index = repo / "legacy-bundle-index.json"
+    (repo / "legacy-downstream.todo.md").write_text(
+        """# Legacy downstream board
+
+## T-LEGACY-DOWNSTREAM Legacy downstream task
+
+- Status: todo
+- Completion: manual
+""",
+        encoding="utf-8",
+    )
     bundle_index.write_text(
         json.dumps(
             {
@@ -12656,6 +13027,15 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         ),
         encoding="utf-8",
     )
+    mobile_shard = index_path.parent / "mobile.todo.md"
+    mobile_shard.write_text(
+        "## ACCEL-002 Mobile task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    (index_path.parent / "runtime.todo.md").write_text(
+        "## ACCEL-001 Runtime task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
 
     lanes = plan_bundle_lanes(
         bundle_index_path=index_path,
@@ -12667,10 +13047,10 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         implement=True,
         watchdog_startup_grace_seconds=420,
         implementation_command="codex exec --full-auto",
+        merge_target_branch="world-aid-duckdb-supervisor",
         llm_merge_resolver_command="python resolver.py",
         generated_dirty_repair_enabled=True,
         generated_dirty_repair_paths=(repo / "docs" / "generated-taskboard.md",),
-        merge_target_branch="benchmark-plan",
         worktree_submodule_paths=("ipfs_datasets_py/ipfs_accelerate_py",),
         log_level="DEBUG",
         max_lanes=None,
@@ -12681,6 +13061,15 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         "objective/runtime/kernel",
     ]
     assert lanes[0].todo_path == repo / "data/agent_supervisor/objective_bundles/mobile.todo.md"
+    assert lanes[0].runtime_todo_path == (
+        lanes[0].state_dir / f"{lanes[0].state_prefix}_runtime.todo.md"
+    )
+    assert lanes[0].source_todo_sha256 == hashlib.sha256(
+        mobile_shard.read_bytes()
+    ).hexdigest()
+    assert lanes[0].command[lanes[0].command.index("--todo-path") + 1] == str(
+        lanes[0].runtime_todo_path
+    )
     assert lanes[0].state_dir != lanes[1].state_dir
     assert lanes[0].worktree_root != lanes[1].worktree_root
     assert lanes[0].task_ids == ["ACCEL-002"]
@@ -12688,21 +13077,25 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor" in lanes[0].command
     assert "--implementation-command" in lanes[0].command
     assert lanes[0].command[
+        lanes[0].command.index("--merge-target-branch") + 1
+    ] == "world-aid-duckdb-supervisor"
+    assert lanes[0].command[
         lanes[0].command.index("--watchdog-startup-grace-seconds") + 1
     ] == "420"
     assert lanes[0].command[lanes[0].command.index("--log-level") + 1] == "DEBUG"
     assert "--no-retry-budget-guardrail" in lanes[0].command
     assert "--no-dependency-guardrail" in lanes[0].command
     assert "--no-reconciliation-guardrail" in lanes[0].command
+    assert "--no-objective-task-janitor" in lanes[0].command
+    assert "--no-objective-goal-migration" in lanes[0].command
     assert lanes[0].command[lanes[0].command.index("--llm-merge-resolver-command") + 1] == "python resolver.py"
-    assert "--auto-commit-generated-dirty" in lanes[0].command
+    assert "--auto-commit-generated-dirty" not in lanes[0].command
     assert lanes[0].command.count("--generated-dirty-path") == 1
     assert lanes[0].command[lanes[0].command.index("--generated-dirty-path") + 1] == str(
         repo / "docs" / "generated-taskboard.md"
     )
     assert lanes[0].command.count("--worktree-submodule-path") == 1
     assert "ipfs_datasets_py/ipfs_accelerate_py" in lanes[0].command
-    assert lanes[0].command[lanes[0].command.index("--merge-target-branch") + 1] == "benchmark-plan"
 
 
 def test_bundle_lane_pythonpath_prefers_running_supervisor_package(tmp_path):
@@ -12738,6 +13131,11 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
         ),
         encoding="utf-8",
     )
+    source_shard = index_path.parent / "root.todo.md"
+    source_shard.write_text(
+        "## ACCEL-009 Root task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
     manifest_path = repo / "manifest.json"
     args = build_bundle_arg_parser().parse_args(
         [
@@ -12760,6 +13158,12 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
     assert payload["started_count"] == 0
     assert manifest["lanes"][0]["bundle_key"] == "objective/ops/root"
     assert manifest["lanes"][0]["todo_path"] == "objective_bundles/root.todo.md"
+    assert manifest["lanes"][0]["runtime_todo_path"].endswith(
+        "/state/agent_objective_ops_root_runtime.todo.md"
+    )
+    assert manifest["lanes"][0]["source_todo_sha256"] == hashlib.sha256(
+        source_shard.read_bytes()
+    ).hexdigest()
     assert "--no-implement" in manifest["lanes"][0]["command"]
 
 

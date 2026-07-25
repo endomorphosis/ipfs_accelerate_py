@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import difflib
+import inspect
 import json
 import os
 import re
-import signal
 import shutil
+import signal
 import subprocess
 import time
 import uuid
@@ -18,7 +19,11 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence
 
 from ..event_log import unique_backup_path
-
+from ..validation_runtime import (
+    ValidationRuntimeError,
+    build_validation_environment,
+    validation_argv_command,
+)
 
 DEFAULT_CHECKBOX_RE = re.compile(r"^(?P<prefix>\s*-\s+\[)(?P<mark>[ xX~!])(?P<suffix>\]\s+)(?P<title>.+)$")
 JSON_BLOCK_RE = re.compile(r"```json\s*([\s\S]*?)\s*```", re.IGNORECASE)
@@ -153,7 +158,29 @@ def command_runner_from_legacy_function(
     timeout_parameter: str = "timeout",
     stdin_parameter: str = "input_text",
 ) -> Callable[..., CommandResult]:
-    """Adapt a dict/object-returning command runner to the shared command-runner API."""
+    """Adapt an environment-aware legacy runner to the shared runner API.
+
+    Silently omitting the sanitized environment would reintroduce inherited
+    hooks and secrets.  Reject older runner signatures at adapter creation so
+    the required migration is explicit rather than failing later or running
+    unsafely.
+    """
+
+    try:
+        parameters = inspect.signature(run_command_fn).parameters.values()
+    except (TypeError, ValueError) as exc:
+        raise ValidationRuntimeError(
+            "legacy validation runner signature cannot be inspected"
+        ) from exc
+    supports_environment = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        or parameter.name == "environment"
+        for parameter in parameters
+    )
+    if not supports_environment:
+        raise ValidationRuntimeError(
+            "legacy validation runner must accept an environment keyword"
+        )
 
     def run_command_adapter(
         command: Sequence[str],
@@ -162,11 +189,14 @@ def command_runner_from_legacy_function(
         timeout_seconds: int = 60,
         stdin: str | None = None,
         input_text: str | None = None,
+        environment: Mapping[str, object] | None = None,
     ) -> CommandResult:
         kwargs: dict[str, Any] = {"cwd": cwd, timeout_parameter: timeout_seconds}
         stdin_value = input_text if input_text is not None else stdin
         if stdin_parameter and stdin_value is not None:
             kwargs[stdin_parameter] = stdin_value
+        if environment is not None:
+            kwargs["environment"] = environment
         return command_result_from_object(run_command_fn(command, **kwargs))
 
     return run_command_adapter
@@ -620,6 +650,7 @@ def run_command(
     timeout: Optional[int] = None,
     timeout_seconds: Optional[int] = None,
     stdin: Optional[str] = None,
+    environment: Optional[Mapping[str, object]] = None,
 ) -> CommandResult:
     """Run a command with captured output and process-group timeout cleanup."""
 
@@ -631,6 +662,11 @@ def run_command(
         process = subprocess.Popen(
             list(command),
             cwd=str(cwd),
+            env=(
+                None
+                if environment is None
+                else {str(key): str(value) for key, value in environment.items()}
+            ),
             stdin=subprocess.PIPE if stdin is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -711,15 +747,29 @@ def run_validation_commands(
     """Run validation commands with the shared timeout-aware command runner."""
 
     results: list[CommandResult] = []
+    environment = build_validation_environment()
     for command in commands:
+        normalized_command = validation_argv_command(command)
         try:
             results.append(
-                run_command_fn(tuple(command), cwd=repo_root, timeout_seconds=timeout_seconds)
+                run_command_fn(
+                    tuple(normalized_command),
+                    cwd=repo_root,
+                    timeout_seconds=timeout_seconds,
+                    environment=environment,
+                )
             )
         except TypeError as exc:
             if "timeout_seconds" not in str(exc):
                 raise
-            results.append(run_command_fn(tuple(command), cwd=repo_root, timeout=timeout_seconds))
+            results.append(
+                run_command_fn(
+                    tuple(normalized_command),
+                    cwd=repo_root,
+                    timeout=timeout_seconds,
+                    environment=environment,
+                )
+            )
         if stop_on_failure and not results[-1].ok:
             break
     return results

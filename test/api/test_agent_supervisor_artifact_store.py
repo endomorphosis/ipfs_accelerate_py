@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -426,6 +427,65 @@ def test_json_changes_refresh_the_query_sidecar(tmp_path: Path) -> None:
     )
 
     assert refreshed["rows"] == [{"task_id": "T-3"}]
+
+
+def test_same_metadata_json_drift_refreshes_by_content_digest(
+    tmp_path: Path,
+) -> None:
+    json_path = tmp_path / "index.json"
+    write_bundle_index_artifact(json_path, _bundle_index())
+    before = json_path.stat()
+    original = json_path.read_text(encoding="utf-8")
+    assert '"title": "First task"' in original
+    changed = original.replace(
+        '"title": "First task"',
+        '"title": "Other task"',
+        1,
+    )
+    assert len(changed) == len(original)
+    json_path.write_text(changed, encoding="utf-8")
+    os.utime(
+        json_path,
+        ns=(before.st_atime_ns, before.st_mtime_ns),
+    )
+
+    refreshed = read_bundle_index_projection(json_path)
+
+    assert (
+        refreshed["bundles"]["objective/test/one"]["tasks"][0]["title"]
+        == "Other task"
+    )
+
+
+def test_direct_duckdb_rejects_paired_json_digest_or_table_drift(
+    tmp_path: Path,
+) -> None:
+    json_path = tmp_path / "index.json"
+    write_bundle_index_artifact(json_path, _bundle_index())
+    duckdb_path = json_path.with_suffix(".duckdb")
+    original = json_path.read_text(encoding="utf-8")
+    changed = original.replace(
+        '"title": "First task"',
+        '"title": "Other task"',
+        1,
+    )
+    json_path.write_text(changed, encoding="utf-8")
+    with pytest.raises(ValueError, match="source digest mismatch"):
+        read_bundle_index_projection(duckdb_path)
+
+    json_path.write_text(original, encoding="utf-8")
+    duckdb = artifact_store._duckdb_module()
+    connection = duckdb.connect(str(duckdb_path))
+    try:
+        connection.execute(
+            "UPDATE bundle_tasks SET payload_json = "
+            "json_merge_patch(payload_json, '{\"title\":\"Tampered\"}') "
+            "WHERE task_id = 'T-1'"
+        )
+    finally:
+        connection.close()
+    with pytest.raises(ValueError, match="bundle projection mismatch"):
+        read_bundle_index_projection(duckdb_path)
 
 
 def test_concurrent_sidecar_refresh_is_coalesced(

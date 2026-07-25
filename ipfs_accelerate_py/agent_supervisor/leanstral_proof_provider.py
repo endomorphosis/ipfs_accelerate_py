@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import json
 import math
 import os
@@ -63,6 +64,12 @@ from .proof_context import (
     ProofContextError,
     build_leanstral_proof_context,
     estimate_context_tokens,
+)
+from .validation_runtime import (
+    ValidationRuntimeError,
+    build_validation_environment,
+    validation_argv_command,
+    validation_shell_command,
 )
 
 LEANSTRAL_PROOF_PROVIDER_ID: Final = "leanstral"
@@ -1225,13 +1232,29 @@ def _execute_patch_command(
     runner: Callable[..., Any] | None,
     max_output_bytes: int,
 ) -> dict[str, Any]:
+    validation_environment = build_validation_environment()
     if runner is not None:
+        try:
+            parameters = inspect.signature(runner).parameters.values()
+        except (TypeError, ValueError) as exc:
+            raise ValidationRuntimeError(
+                "Leanstral command runner signature cannot be inspected"
+            ) from exc
+        if not any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            or parameter.name == "environment"
+            for parameter in parameters
+        ):
+            raise ValidationRuntimeError(
+                "Leanstral command runner must accept an environment keyword"
+            )
         try:
             raw = runner(
                 tuple(command),
                 cwd=cwd,
                 timeout_seconds=timeout_seconds,
                 input_text=input_text,
+                environment=validation_environment,
             )
         except TypeError:
             raw = runner(
@@ -1239,6 +1262,7 @@ def _execute_patch_command(
                 cwd=cwd,
                 timeout=timeout_seconds,
                 stdin=input_text,
+                environment=validation_environment,
             )
         return _command_payload(
             raw, command=command, max_output_bytes=max_output_bytes
@@ -1253,7 +1277,7 @@ def _execute_patch_command(
             stderr=subprocess.PIPE,
             timeout=timeout_seconds,
             check=False,
-            env={**os.environ, "NO_COLOR": "1"},
+            env=validation_environment,
         )
         raw_result: Mapping[str, Any] = {
             "returncode": completed.returncode,
@@ -1414,9 +1438,9 @@ def check_leanstral_patch_proposal(
                 )
         for configured in effective_policy.validation_commands:
             command = (
-                ("/bin/bash", "-lc", configured)
+                validation_shell_command(configured)
                 if isinstance(configured, str)
-                else configured
+                else validation_argv_command(configured)
             )
             result = _execute_patch_command(
                 command,

@@ -27,6 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     main as merge_resolver_main,
     run_configured_merge_resolver_cli,
 )
+from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import plan_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.goal_completion import CompletionEvidence
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
     build_goal_completion_projection,
@@ -40,10 +41,13 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     materialize_task_planning_graph,
     objective_fingerprint,
     objective_finding_conflict_record,
+    objective_finding_task_identity,
     write_bundle_shards,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+    build_arg_parser as build_objective_daemon_arg_parser,
     completion_gate_work_terms,
+    run_objective_daemon,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     append_refinement_goals,
@@ -433,6 +437,98 @@ def test_objective_goal_heap_accepts_package_specific_goal_ids():
     assert len(goals) == 1
     assert goals[0].goal_id == "APP.GOAL-001"
     assert goals[0].title == "Package-specific proof"
+
+
+def test_objective_finding_task_identity_binds_source_contract_not_alias_or_provenance():
+    finding = ObjectiveFinding(
+        fingerprint="finding:world-aid-storage",
+        goal_id="WORLDCOIN-G002",
+        title="Freeze the storage integration boundary",
+        summary="Close objective gap: Freeze the storage integration boundary",
+        priority="P0",
+        track="world-aid-discovery",
+        missing_evidence=["objective validation repair"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="docs/planning/WORLDCOIN_HUMAN_AID_OBJECTIVE_HEAP.md",
+        outputs=["docs/reports/audit.md", "data/worldcoin/audit.json"],
+        validation="python -m pytest -q tests/world_aid/test_audit.py",
+        goal="Record the reviewed storage integration boundary.",
+        refinement="Inventory Python/DuckDB inputs and preserve the single-writer boundary.",
+        gap_task="Repair the objective validation evidence.",
+        parent_goal_ids=["WORLDCOIN-G001"],
+        predicted_files=["docs/reports/audit.md", "data/worldcoin/audit.json"],
+        interfaces=["WorldAidDuckDBWriter", "wallet repository"],
+        submodules=["ipfs_datasets_py"],
+        generated_artifacts=["data/worldcoin/audit.json"],
+        conflict_policy="Keep unrelated wallet work intact.",
+        allow_concurrent_with=["WORLDCOIN-G041"],
+    )
+
+    original = objective_finding_task_identity("WORLDCOIN-AUTO-001", finding)
+    alias = objective_finding_task_identity(
+        "LOCAL-999",
+        replace(
+            finding,
+            objective_path=(
+                "/tmp/generated-root/discovery/"
+                "WORLDCOIN_HUMAN_AID_OBJECTIVE_HEAP.md"
+            ),
+            outputs=list(reversed(finding.outputs)),
+            missing_evidence=["  OBJECTIVE   validation repair  "],
+        ),
+    )
+    revised = objective_finding_task_identity(
+        "WORLDCOIN-AUTO-001",
+        replace(
+            finding,
+            refinement=(
+                "Inventory Python/PostgreSQL inputs and preserve the "
+                "service boundary."
+            ),
+        ),
+    )
+
+    assert alias.canonical_task_key == original.canonical_task_key
+    assert alias.canonical_task_cid == original.canonical_task_cid
+    assert alias.namespaced_alias != original.namespaced_alias
+    assert revised.canonical_task_key != original.canonical_task_key
+    assert revised.canonical_task_cid != original.canonical_task_cid
+    assert finding.fingerprint == "finding:world-aid-storage"
+
+
+def test_objective_finding_task_identity_changes_with_execution_contract():
+    finding = ObjectiveFinding(
+        fingerprint="finding:runtime-contract",
+        goal_id="G-RUNTIME",
+        title="Verify the runtime",
+        summary="Close objective gap: Verify the runtime",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["runtime receipt"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="docs/objectives.md",
+        outputs=["runtime.lock"],
+        validation="python -m pytest -q tests/test_runtime.py",
+        refinement="Verify the selected runtime offline.",
+    )
+    original = objective_finding_task_identity("AUTO-001", finding)
+
+    changed_output = objective_finding_task_identity(
+        "AUTO-001",
+        replace(finding, outputs=["runtime-v2.lock"]),
+    )
+    changed_validation = objective_finding_task_identity(
+        "AUTO-001",
+        replace(
+            finding,
+            validation="python -m pytest -q tests/test_runtime_v2.py",
+        ),
+    )
+
+    assert changed_output.canonical_task_cid != original.canonical_task_cid
+    assert changed_validation.canonical_task_cid != original.canonical_task_cid
 
 
 def test_objective_heap_schedule_uses_fibonacci_then_work_surface():
@@ -953,6 +1049,340 @@ def test_changed_tree_reopens_goal_and_refills_despite_historical_fingerprint(tm
     assert [record.finding.fingerprint for record in refilled] == [historical_fingerprint]
     assert [record.finding.goal_id for record in refilled] == ["G10.S4"]
     assert "## REFILL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
+
+
+def test_forced_blocked_goal_materializes_review_only_without_submission_or_lane(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    discovery_dir = repo / "discovery"
+    bundle_dir = repo / "objective-bundles"
+    todo_path.write_text("# Review taskboard\n", encoding="utf-8")
+    objective_path.write_text(
+        """# Objective Heap
+
+## G-BLOCKED Gate 0B review preparation
+
+- Status: blocked
+- Parent:
+- Fib priority: 1
+- Priority: P0
+- Track: gate-review
+- Bundle: objective/gate/review
+- Goal: Preserve the review record without authorizing execution.
+- Evidence: signed Gate 0B approval
+- Outputs: data/gate0b/review.json
+- Validation: test -f data/gate0b/review.json
+
+## G-DONE Verified implementation
+
+- Status: verified_complete
+- Parent:
+- Fib priority: 2
+- Priority: P1
+- Track: gate-review
+- Bundle: objective/gate/done
+- Goal: Keep verified work excluded from regeneration.
+- Evidence: verified completion receipt
+- Outputs: data/gate0b/completed.json
+- Validation: test -f data/gate0b/completed.json
+""",
+        encoding="utf-8",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="GATE-",
+        max_findings=2,
+        force_goal_ids=["G-BLOCKED", "G-DONE"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert [record.finding.goal_id for record in records] == ["G-BLOCKED"]
+    assert records[0].finding.status == "blocked"
+    assert records[0].finding.is_schedulable is False
+    assert records[0].finding.review_only is True
+    taskboard = todo_path.read_text(encoding="utf-8")
+    assert "- Status: blocked" in taskboard
+    assert "- Is schedulable: false" in taskboard
+    assert "- Review only: true" in taskboard
+
+    index_path = bundle_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    bundle = index["bundles"]["objective/gate/review"]
+    indexed_task = bundle["tasks"][0]
+    assert bundle["is_schedulable"] is False
+    assert bundle["review_only"] is True
+    assert indexed_task["status"] == "blocked"
+    assert indexed_task["is_schedulable"] is False
+    assert indexed_task["review_only"] is True
+
+    payload = build_bundle_task_payloads(index_path)[0]
+    assert payload["is_schedulable"] is False
+    assert payload["review_only"] is True
+    assert payload["claimable"] is False
+    assert payload["ready_member_task_ids"] == []
+    assert payload["execution_slice_task_ids"] == []
+    assert payload["tasks"][0]["is_schedulable"] is False
+    assert "profile_g" not in payload
+    graph = materialize_task_dependency_dag(payload["tasks"], now=0)
+    assert graph.schedule[0].claimable is False
+
+    class RecordingQueue:
+        def __init__(self):
+            self.submissions = []
+
+        def submit(self, **kwargs):
+            self.submissions.append(kwargs)
+            return "should-not-submit"
+
+    queue = RecordingQueue()
+    assert submit_bundle_tasks(index_path, queue=queue) == []
+    assert queue.submissions == []
+    assert plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="GATE-",
+        implement=True,
+    ) == []
+
+    assert scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        force_goal_ids=["G-DONE"],
+    ) == []
+
+
+def test_forced_blocked_goal_keeps_its_natural_objective_heap_position(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## G-ACTIVE Earlier active work
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Priority: P2
+- Track: ordering
+- Goal: Preserve canonical heap order.
+- Evidence: active evidence
+- Outputs: data/active.json
+- Validation: test -f data/active.json
+
+## G-BLOCKED Later review work
+
+- Status: blocked
+- Parent:
+- Fib priority: 5
+- Priority: P0
+- Track: ordering
+- Goal: Project this record at its natural heap position.
+- Evidence: blocked review evidence
+- Outputs: data/blocked.json
+- Validation: test -f data/blocked.json
+""",
+        encoding="utf-8",
+    )
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=2,
+        force_goal_ids=["G-BLOCKED"],
+        surplus_findings_per_goal=1,
+    )
+
+    assert [finding.goal_id for finding in findings] == [
+        "G-ACTIVE",
+        "G-BLOCKED",
+    ]
+    assert [finding.objective_heap_index for finding in findings] == [0, 1]
+    assert findings[0].is_schedulable is True
+    assert findings[1].is_schedulable is False
+
+
+def test_objective_daemon_force_goal_id_projects_37_of_40_terminal_statuses_safely(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "objective.todo.md"
+    discovery_dir = repo / "state" / "discovery"
+    bundle_dir = repo / "state" / "bundles"
+    graph_path = repo / "state" / "objective_graph.json"
+    queue_path = repo / "state" / "queue.duckdb"
+    sections = ["# Objective Heap"]
+    for index in range(1, 38):
+        goal_id = f"G{index:03d}"
+        sections.append(
+            f"""## {goal_id} Verified goal {index}
+
+- Status: verified_complete
+- Parent:
+- Fib priority: 1
+- Priority: P1
+- Track: gate-review
+- Bundle: objective/gate/{goal_id.lower()}
+- Goal: Preserve verified terminal evidence.
+- Evidence: verified completion receipt {index}
+- Outputs: receipts/{goal_id.lower()}.json
+- Validation: true
+"""
+        )
+    for goal_id, fib_priority in (("G038", 8), ("G039", 2), ("G040", 5)):
+        sections.append(
+            f"""## {goal_id} Blocked gate review
+
+- Status: blocked
+- Parent:
+- Fib priority: {fib_priority}
+- Priority: P1
+- Track: gate-review
+- Bundle: objective/gate/{goal_id.lower()}
+- Goal: Materialize terminal review evidence without execution.
+- Evidence: blocked gate review {goal_id}
+- Outputs: reviews/{goal_id.lower()}.json
+- Validation: true
+"""
+        )
+    objective_path.write_text("\n".join(sections), encoding="utf-8")
+
+    args = build_objective_daemon_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--discovery-dir",
+            str(discovery_dir),
+            "--bundle-dir",
+            str(bundle_dir),
+            "--graph-path",
+            str(graph_path),
+            "--task-prefix",
+            "GATE-",
+            "--max-findings",
+            "4",
+            "--surplus-findings-per-goal",
+            "1",
+            "--force-goal-id",
+            "G038",
+            "--force-goal-id",
+            "G001",
+            "--force-goal-id",
+            "G040",
+            "--force-goal-id",
+            "G039",
+            "--no-reconcile-goal-completion",
+            "--no-persist-ast-dataset",
+            "--no-todo-vector-index",
+            "--no-generate-bounded-work",
+            "--submit-bundles",
+            "--queue-path",
+            str(queue_path),
+        ]
+    )
+
+    result = run_objective_daemon(args)
+
+    assert result["objective_goal_count"] == 40
+    assert result["objective_completed_goal_count"] == 37
+    assert result["objective_active_goal_count"] == 0
+    assert result["generated_count"] == 3
+    assert result["submitted_bundle_task_ids"] == []
+    index_path = bundle_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    indexed_tasks = sorted(
+        (
+            task
+            for bundle in index["bundles"].values()
+            for task in bundle["tasks"]
+        ),
+        key=lambda task: task["task_id"],
+    )
+    assert [task["goal_id"] for task in indexed_tasks] == [
+        "G039",
+        "G040",
+        "G038",
+    ]
+    assert [task["objective_heap_index"] for task in indexed_tasks] == [0, 1, 2]
+    assert {task["status"] for task in indexed_tasks} == {"blocked"}
+    assert all(task["is_schedulable"] is False for task in indexed_tasks)
+    assert all(task["review_only"] is True for task in indexed_tasks)
+    assert plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state" / "lanes",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="GATE-",
+        implement=True,
+    ) == []
+
+
+def test_goal_packet_aggregate_does_not_mix_active_and_review_only_scope():
+    active = ObjectiveFinding(
+        fingerprint="active-finding",
+        goal_id="G-ACTIVE",
+        title="Active work",
+        summary="Active work",
+        priority="P1",
+        track="gate",
+        missing_evidence=["active evidence"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="objective.md",
+        outputs=["active.json"],
+        validation="test -f active.json",
+        goal_packet_key="goal_packet/gate/shared",
+        goal_packet_goal_ids=["G-ACTIVE", "G-BLOCKED"],
+    )
+    review = replace(
+        active,
+        fingerprint="review-finding",
+        goal_id="G-BLOCKED",
+        title="Blocked review",
+        summary="Blocked review",
+        missing_evidence=["review evidence"],
+        outputs=["review.json"],
+        status="blocked",
+        is_schedulable=False,
+        review_only=True,
+    )
+
+    findings = add_goal_packet_aggregate_findings(
+        [active, review],
+        max_findings=3,
+    )
+
+    assert findings == [active, review]
+    assert not any(
+        finding.candidate_kind == "goal_packet_aggregate"
+        for finding in findings
+    )
 
 
 def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):

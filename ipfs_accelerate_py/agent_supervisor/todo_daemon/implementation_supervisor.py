@@ -15,8 +15,6 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-REPO_ROOT = Path.cwd()
-
 from ..checkout_lock import (
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
@@ -43,6 +41,7 @@ from .implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
+    consume_stale_active_attempt,
     load_json_dict,
     normalize_focus_tracks,
     normalize_relative_path_list,
@@ -61,6 +60,8 @@ from .supervisor import (
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
+
+REPO_ROOT = Path.cwd()
 
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
 
@@ -214,6 +215,7 @@ class PortalSupervisorConfig:
     check_interval: float = 60.0
     watchdog_startup_grace_seconds: float | None = None
     max_restarts: int = 10
+    max_task_attempts: int = 0
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
@@ -1037,6 +1039,7 @@ class PortalImplementationSupervisor:
                 "state_path": str(self.config.state_path),
                 "task_prefix": self.config.task_prefix,
                 "state_prefix": self.config.state_prefix,
+                "max_task_attempts": max(0, int(self.config.max_task_attempts)),
                 "worktree_no_child_stall_seconds": max(
                     0.0,
                     float(self.config.implementation_log_stall_seconds),
@@ -1323,6 +1326,7 @@ class PortalImplementationSupervisor:
             }
 
         repaired_at = utc_now()
+        recovered_attempt = consume_stale_active_attempt(state)
         state.active_attempt = 0
         state.active_phase = ""
         state.active_phase_started_at = ""
@@ -1339,6 +1343,7 @@ class PortalImplementationSupervisor:
             "reason": "managed_daemon_process_missing",
             "daemon_pid": daemon_pid or 0,
             "repaired_at": repaired_at,
+            "attempt_recovery": recovered_attempt,
             **active_fields,
         }
         self._record_event("stale_active_execution_state_repaired", result)
@@ -2673,6 +2678,7 @@ class PortalImplementationSupervisor:
             implement=False,
             implementation_command=self.config.implementation_command,
             implementation_timeout=self.config.implementation_timeout,
+            max_task_attempts=self.config.max_task_attempts,
             use_ephemeral_worktree=False,
             worktree_root=self.config.worktree_root,
             worktree_submodule_paths=self.config.worktree_submodule_paths,
@@ -5269,7 +5275,14 @@ class PortalImplementationSupervisor:
             "implementation_in_progress": state.implementation_in_progress,
         }
         repaired_at = utc_now()
+        recovered_attempt = (
+            consume_stale_active_attempt(state)
+            if state.implementation_in_progress
+            else {"consumed": False, "reason": "no_inflight_attempt"}
+        )
         state.active_task_id = ""
+        state.active_task_key = ""
+        state.active_task_cid = ""
         state.active_task_title = ""
         state.active_task_track = ""
         state.active_task_started_at = ""
@@ -5291,6 +5304,7 @@ class PortalImplementationSupervisor:
             "reason": "stale_active_state",
             "stuck_reason": reason,
             "repaired_at": repaired_at,
+            "attempt_recovery": recovered_attempt,
             **previous,
         }
         self._record_event("blocked_progress_state_repaired", result)
@@ -5386,6 +5400,8 @@ class PortalImplementationSupervisor:
                 self.config.task_prefix,
                 "--state-prefix",
                 self.config.state_prefix,
+                "--max-task-attempts",
+                str(max(0, int(self.config.max_task_attempts))),
             ]
         )
         for path in self.config.generated_dirty_repair_paths:
@@ -5763,6 +5779,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--max-restarts", type=int, default=10)
+    parser.add_argument(
+        "--max-task-attempts",
+        type=int,
+        default=0,
+        help=(
+            "Maximum implementation attempts per canonical task identity. "
+            "Zero disables the limit."
+        ),
+    )
     parser.add_argument("--daemon-interval", type=float, default=300.0)
     parser.add_argument(
         "--task-prefix",
@@ -6372,6 +6397,7 @@ def supervisor_config_from_args(
         check_interval=args.check_interval,
         watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
+        max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
