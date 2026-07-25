@@ -9,17 +9,24 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY,
+    filter_self_improvement_successor_candidates,
     load_strategy,
+    record_self_improvement_successor_admission,
     self_improvement_epoch_wait_active,
 )
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     validate_completion_evidence,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    EvidenceMatchKind,
+    EvidenceSourcePolicy,
     ObjectiveWorkProposal,
     completion_evidence_source_decision,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+    SelfImprovementGoalEvidenceReconciliation,
+    reconcile_self_improvement_goal_evidence,
     resolve_objective_evidence_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement import (
@@ -132,7 +139,7 @@ def _observations(
         for dimension in dimensions:
             reasons = (
                 (f"{dimension} regression exceeded its policy gate",)
-                if disposition.actionable
+                if disposition is not BenchmarkDisposition.HEALTHY
                 else ()
             )
             result.append(
@@ -165,6 +172,9 @@ def _successor_proposal(
     title: str = "Repair measured cache regression",
     evidence: str = "successor-runtime-proof-unique",
     source_id: str = "benchmark-gap:cache",
+    confidence: float = 0.95,
+    novelty: float = 0.95,
+    depth: int = 2,
 ) -> ObjectiveWorkProposal:
     return ObjectiveWorkProposal(
         kind="subgoal",
@@ -176,13 +186,79 @@ def _successor_proposal(
         predicted_files=("src/successor.py",),
         predicted_symbols=("repair_successor",),
         validation_commands=("python -m pytest tests/test_successor.py -q",),
-        confidence=0.95,
+        confidence=confidence,
         estimated_cost=1.0,
-        novelty=0.95,
-        depth=2,
+        novelty=novelty,
+        depth=depth,
         estimated_tokens=200,
         source="self-improvement-benchmark",
         source_id=source_id,
+    )
+
+
+def _typed_opaque_receipts(
+    tmp_path: Path,
+) -> tuple[
+    tuple[HealthyExhaustionEvidence, SuccessorRefillEvidence, EpochReplayEvidence],
+    str,
+    str,
+]:
+    healthy_paths = _paths(tmp_path / "healthy")
+    healthy = run_self_improvement_epoch(
+        **healthy_paths,
+        observation_provider=lambda binding: _observations(binding),
+        capability_snapshot_id="capabilities:reconciliation-healthy-v1",
+        observation_window="window:reconciliation-healthy",
+        observed_at=NOW,
+    )
+    assert healthy.evidence is not None
+    healthy_replay = run_self_improvement_epoch(
+        **healthy_paths,
+        observation_provider=lambda _binding: pytest.fail(
+            "exact replay must not invoke the benchmark provider"
+        ),
+        capability_snapshot_id="capabilities:reconciliation-healthy-v1",
+        observation_window="window:reconciliation-healthy",
+        observed_at=NOW + timedelta(minutes=1),
+    )
+    replay = healthy_replay.replay_evidence
+    assert replay is not None
+
+    actionable_paths = _paths(tmp_path / "actionable")
+    actionable_kwargs = {
+        **actionable_paths,
+        "observation_provider": lambda binding: _observations(
+            binding, disposition=BenchmarkDisposition.REGRESSION
+        ),
+        "proposal_provider": lambda _binding, _observations: (
+            _successor_proposal(source_id="reconciliation:successor"),
+        ),
+        "capability_snapshot_id": "capabilities:reconciliation-actionable-v1",
+        "observation_window": "window:reconciliation-actionable",
+        "observed_at": NOW,
+        "materialization_journal_path": (
+            tmp_path / "actionable" / "state" / "materialization.json"
+        ),
+        "discovery_dir": tmp_path / "actionable" / "discovery",
+        "bundle_dir": tmp_path / "actionable" / "bundles",
+    }
+    successor_run = run_self_improvement_epoch(**actionable_kwargs)
+    successor = successor_run.receipt.successor_evidence
+    assert successor is not None
+    assert (
+        healthy.evidence.binding.repository_tree
+        == successor.binding.repository_tree
+        == replay.binding.repository_tree
+    )
+    assert (
+        healthy.evidence.binding.policy_id
+        == successor.binding.policy_id
+        == replay.binding.policy_id
+    )
+    return (
+        (healthy.evidence, successor, replay),
+        healthy.evidence.binding.repository_tree,
+        healthy.evidence.binding.policy_id,
     )
 
 
@@ -227,6 +303,15 @@ def test_healthy_no_gap_epoch_proves_requirement_and_creates_no_busywork(
     assert evidence.admitted_count == 0
     assert evidence.materialized_count == 0
     assert evidence.taskboard_write_count == 0
+    assert set(evidence.next_triggers) == {
+        "capability_snapshot_changed",
+        "operator_objective_revision",
+        "policy_changed",
+        "regression_observed",
+        "repository_tree_changed",
+        "scheduled_observation_window",
+        "stale_evidence_observed",
+    }
 
     strategy = load_strategy(paths["strategy_path"])
     assert self_improvement_epoch_wait_active(
@@ -713,3 +798,635 @@ def test_successor_policy_bounds_batch_and_foreign_actionable_fails_closed(
     assert "benchmark_binding_mismatch" in foreign.receipt.blocker_codes
     assert foreign_proposal_calls == 0
     assert not foreign.receipt.created_goal_ids
+
+
+def test_complete_benchmark_population_emits_fresh_content_addressed_receipts(
+    tmp_path: Path,
+) -> None:
+    paths = _paths(tmp_path)
+
+    run = run_self_improvement_epoch(
+        **paths,
+        observation_provider=lambda binding: _observations(binding),
+        capability_snapshot_id="capabilities:typed-receipts-v1",
+        observation_window="window:typed-receipts",
+        observed_at=NOW,
+    )
+
+    assert run.evidence is not None
+    observations = run.evidence.observations
+    assert len(observations) == 2 * len(DEFAULT_BENCHMARK_DIMENSIONS)
+    assert {
+        observation.dimension for observation in observations
+    } == set(DEFAULT_BENCHMARK_DIMENSIONS)
+    assert {
+        observation.evidence_channel for observation in observations
+    } == {"paired-benchmark-a", "paired-benchmark-b"}
+    assert len({observation.receipt_id for observation in observations}) == len(
+        observations
+    )
+    for observation in observations:
+        payload = observation.to_dict()
+        assert payload["producer_kind"] == "benchmark"
+        assert payload["repository_tree"] == run.evidence.binding.repository_tree
+        assert payload["policy_id"] == run.evidence.binding.policy_id
+        assert payload["capability_snapshot_id"] == (
+            run.evidence.binding.capability_snapshot_id
+        )
+        assert payload["command"].startswith("python -m benchmark --dimension ")
+        assert payload["toolchain"] == "pytest+benchmark-harness/v1"
+        assert payload["scope"]
+        assert payload["result"] == {"gate": "passed", "sample_count": 3}
+        assert payload["artifact_digest"].startswith("sha256:")
+        assert payload["receipt_id"]
+        assert observation.observed_at <= NOW <= observation.fresh_until
+        assert BenchmarkObservation.from_dict(payload).receipt_id == (
+            observation.receipt_id
+        )
+
+    original = observations[0]
+    changed_result = original.to_dict()
+    changed_result["result"] = {"gate": "passed", "sample_count": 4}
+    changed_result["receipt_id"] = ""
+    changed_artifact = original.to_dict()
+    changed_artifact["artifact_digest"] = _digest("different-artifact")
+    changed_artifact["receipt_id"] = ""
+    assert BenchmarkObservation.from_dict(changed_result).receipt_id != (
+        original.receipt_id
+    )
+    assert BenchmarkObservation.from_dict(changed_artifact).receipt_id != (
+        original.receipt_id
+    )
+
+
+def test_all_opaque_refill_requirements_have_authoritative_typed_receipts(
+    tmp_path: Path,
+) -> None:
+    healthy_paths = _paths(tmp_path / "healthy")
+    healthy = run_self_improvement_epoch(
+        **healthy_paths,
+        observation_provider=lambda binding: _observations(binding),
+        capability_snapshot_id="capabilities:opaque-healthy-v1",
+        observation_window="window:opaque-healthy",
+        observed_at=NOW,
+    )
+    assert healthy.evidence is not None
+
+    actionable_paths = _paths(tmp_path / "actionable")
+    actionable_kwargs = {
+        **actionable_paths,
+        "observation_provider": lambda binding: _observations(
+            binding, disposition=BenchmarkDisposition.REGRESSION
+        ),
+        "proposal_provider": lambda _binding, _observations: (
+            _successor_proposal(),
+        ),
+        "capability_snapshot_id": "capabilities:opaque-actionable-v1",
+        "observation_window": "window:opaque-actionable",
+        "observed_at": NOW,
+        "materialization_journal_path": (
+            tmp_path / "actionable" / "state" / "materialization.json"
+        ),
+        "discovery_dir": tmp_path / "actionable" / "discovery",
+        "bundle_dir": tmp_path / "actionable" / "bundles",
+    }
+    successor = run_self_improvement_epoch(**actionable_kwargs)
+    assert successor.receipt.successor_evidence is not None
+    replay = run_self_improvement_epoch(
+        **{**actionable_kwargs, "observed_at": NOW + timedelta(minutes=1)}
+    )
+    assert replay.replayed
+    assert replay.replay_evidence is not None
+
+    typed_receipts = (
+        healthy.evidence,
+        successor.receipt.successor_evidence,
+        replay.replay_evidence,
+    )
+    assert {
+        receipt.requirement_id for receipt in typed_receipts
+    } == {
+        HEALTHY_EXHAUSTION_REQUIREMENT_ID,
+        SUCCESSOR_REFILL_REQUIREMENT_ID,
+        EPOCH_IDEMPOTENCY_REQUIREMENT_ID,
+    }
+    for receipt in typed_receipts:
+        payload = receipt.to_dict()
+        assert payload["producer_kind"] in {"benchmark", "runtime"}
+        assert payload["repository_tree"] == receipt.binding.repository_tree
+        assert payload["policy_id"] == receipt.binding.policy_id
+        assert payload["artifact_digest"] == receipt.evidence_id
+        assert payload["receipt_id"] == receipt.evidence_id
+        decision = completion_evidence_source_decision(
+            payload,
+            requirement=receipt.requirement_id,
+            repository_tree=receipt.binding.repository_tree,
+            policy_id=receipt.binding.policy_id,
+        )
+        assert decision.satisfies, decision.reason_codes
+        completion = receipt.completion_evidence()
+        validation = validate_completion_evidence(
+            completion,
+            repository_id=receipt.binding.repository_id,
+            repository_tree=receipt.binding.repository_tree,
+            now=(
+                receipt.replayed_at
+                if isinstance(receipt, EpochReplayEvidence)
+                else receipt.observed_at
+            ),
+        )
+        assert validation.valid, validation.reason_codes
+
+
+def test_opaque_requirement_text_or_similarity_is_proposal_evidence_only() -> None:
+    policy = EvidenceSourcePolicy()
+
+    for requirement_id in (
+        HEALTHY_EXHAUSTION_REQUIREMENT_ID,
+        SUCCESSOR_REFILL_REQUIREMENT_ID,
+        EPOCH_IDEMPOTENCY_REQUIREMENT_ID,
+    ):
+        textual = policy.evaluate(
+            requirement_id,
+            match_kind=EvidenceMatchKind.EXACT_TEXT,
+            source_path="docs/architecture/objectives.md",
+        )
+        semantic = policy.evaluate(
+            requirement_id,
+            match_kind=EvidenceMatchKind.SEMANTIC,
+            source_path="ipfs_accelerate_py/agent_supervisor/self_improvement.py",
+        )
+        assert not textual.satisfies
+        assert "proposal_source_forbidden" in textual.reason_codes
+        assert not semantic.satisfies
+        assert "semantic_match_nomination_only" in semantic.reason_codes
+
+
+@pytest.mark.parametrize(
+    "disposition",
+    [
+        BenchmarkDisposition.REGRESSION,
+        BenchmarkDisposition.UNCOVERED,
+        BenchmarkDisposition.STALE,
+        BenchmarkDisposition.BOTTLENECK,
+        BenchmarkDisposition.UNSUPPORTED,
+    ],
+)
+def test_only_supported_measured_gaps_enter_successor_generation(
+    tmp_path: Path,
+    disposition: BenchmarkDisposition,
+) -> None:
+    paths = _paths(tmp_path)
+    proposal_calls = 0
+
+    def proposals(_binding, _observations):
+        nonlocal proposal_calls
+        proposal_calls += 1
+        return (_successor_proposal(source_id=f"gap:{disposition.value}"),)
+
+    run = run_self_improvement_epoch(
+        **paths,
+        observation_provider=lambda binding: _observations(
+            binding, disposition=disposition
+        ),
+        proposal_provider=proposals,
+        capability_snapshot_id=f"capabilities:{disposition.value}",
+        observation_window=f"window:{disposition.value}",
+        observed_at=NOW,
+        materialization_journal_path=tmp_path / "state" / "materialization.json",
+        discovery_dir=tmp_path / "discovery",
+        bundle_dir=tmp_path / "bundles",
+    )
+
+    assert run.status is SelfImprovementEpochStatus.SUCCESSORS_CREATED
+    assert proposal_calls == 1
+    assert run.receipt.actionable_dimensions == DEFAULT_BENCHMARK_DIMENSIONS
+    assert len(run.receipt.created_goal_ids) == 1
+
+
+@pytest.mark.parametrize(
+    "disposition",
+    [BenchmarkDisposition.FAILED, BenchmarkDisposition.PARTIAL],
+)
+def test_failed_or_partial_measurements_never_authorize_successor_writes(
+    tmp_path: Path,
+    disposition: BenchmarkDisposition,
+) -> None:
+    paths = _paths(tmp_path)
+    objective_before = paths["objective_path"].read_bytes()
+    todo_before = paths["todo_path"].read_bytes()
+    proposal_calls = 0
+
+    def proposals(_binding, _observations):
+        nonlocal proposal_calls
+        proposal_calls += 1
+        return (_successor_proposal(source_id=f"invalid:{disposition.value}"),)
+
+    run = run_self_improvement_epoch(
+        **paths,
+        observation_provider=lambda binding: _observations(
+            binding, disposition=disposition
+        ),
+        proposal_provider=proposals,
+        capability_snapshot_id=f"capabilities:{disposition.value}",
+        observation_window=f"window:{disposition.value}",
+        observed_at=NOW,
+        materialization_journal_path=tmp_path / "state" / "materialization.json",
+        discovery_dir=tmp_path / "discovery",
+        bundle_dir=tmp_path / "bundles",
+    )
+
+    assert run.status is SelfImprovementEpochStatus.INELIGIBLE
+    assert proposal_calls == 0
+    assert not run.proved_requirement_ids
+    assert not run.receipt.created_goal_ids
+    assert paths["objective_path"].read_bytes() == objective_before
+    assert paths["todo_path"].read_bytes() == todo_before
+
+
+@pytest.mark.parametrize(
+    ("proposal", "error"),
+    [
+        (
+            _successor_proposal(
+                source_id="quality:confidence",
+                confidence=0.49,
+            ),
+            "quality",
+        ),
+        (
+            _successor_proposal(
+                source_id="quality:novelty",
+                novelty=0.49,
+            ),
+            "quality",
+        ),
+        (
+            _successor_proposal(
+                source_id="refinement:depth",
+                depth=4,
+            ),
+            "admissible",
+        ),
+    ],
+)
+def test_successor_quality_and_refinement_fail_before_transactional_writes(
+    tmp_path: Path,
+    proposal: ObjectiveWorkProposal,
+    error: str,
+) -> None:
+    paths = _paths(tmp_path)
+    objective_before = paths["objective_path"].read_bytes()
+    todo_before = paths["todo_path"].read_bytes()
+
+    with pytest.raises(ValueError, match=error):
+        run_self_improvement_epoch(
+            **paths,
+            observation_provider=lambda binding: _observations(
+                binding, disposition=BenchmarkDisposition.REGRESSION
+            ),
+            proposal_provider=lambda _binding, _observations: (proposal,),
+            capability_snapshot_id=f"capabilities:{proposal.source_id}",
+            observation_window=f"window:{proposal.source_id}",
+            observed_at=NOW,
+            materialization_journal_path=(
+                tmp_path / "state" / "materialization.json"
+            ),
+            discovery_dir=tmp_path / "discovery",
+            bundle_dir=tmp_path / "bundles",
+        )
+
+    assert paths["objective_path"].read_bytes() == objective_before
+    assert paths["todo_path"].read_bytes() == todo_before
+    assert not paths["ledger_path"].exists()
+
+
+def test_tracker_reconciles_three_typed_receipts_to_unique_leaf_owners(
+    tmp_path: Path,
+) -> None:
+    receipts, repository_tree, policy_id = _typed_opaque_receipts(tmp_path)
+    requirement_ids = (
+        SUCCESSOR_REFILL_REQUIREMENT_ID,
+        EPOCH_IDEMPOTENCY_REQUIREMENT_ID,
+        HEALTHY_EXHAUSTION_REQUIREMENT_ID,
+    )
+
+    result = reconcile_self_improvement_goal_evidence(
+        _objective_heap(),
+        typed_receipts=receipts,
+        requirement_ids=requirement_ids,
+        repository_tree=repository_tree,
+        policy_id=policy_id,
+        now=NOW + timedelta(minutes=1),
+    )
+
+    assert result.satisfied
+    assert result.authoritative_requirement_ids == tuple(
+        sorted(requirement_ids)
+    )
+    assert not result.rejected_requirement_ids
+    assert not result.proposal_only_requirement_ids
+    assert not result.missing_requirement_ids
+    authoritative = {
+        binding.requirement_id: binding
+        for binding in result.bindings
+        if binding.authoritative
+    }
+    assert {
+        requirement: binding.goal_projection.goal_id
+        for requirement, binding in authoritative.items()
+    } == {
+        SUCCESSOR_REFILL_REQUIREMENT_ID: "ASI-G109",
+        EPOCH_IDEMPOTENCY_REQUIREMENT_ID: "ASI-G110",
+        HEALTHY_EXHAUSTION_REQUIREMENT_ID: "ASI-G111",
+    }
+    assert len(
+        {binding.receipt_id for binding in authoritative.values()}
+    ) == 3
+    assert len(
+        {binding.receipt_content_id for binding in authoritative.values()}
+    ) == 3
+    assert all(
+        binding.binding_id and binding.receipt_content_id
+        for binding in authoritative.values()
+    )
+    restored = SelfImprovementGoalEvidenceReconciliation.from_dict(
+        result.to_dict()
+    )
+    assert restored.reconciliation_id == result.reconciliation_id
+
+
+def test_tracker_keeps_text_only_requirement_as_proposal_evidence() -> None:
+    requirement_id = HEALTHY_EXHAUSTION_REQUIREMENT_ID
+
+    result = reconcile_self_improvement_goal_evidence(
+        _objective_heap(),
+        requirement_ids=(requirement_id,),
+        proposal_evidence={
+            requirement_id: (
+                "docs/architecture/objectives.md#text-match",
+                "embedding:similarity/0.99",
+            )
+        },
+        repository_tree="sha256:" + "1" * 64,
+        policy_id="sha256:" + "2" * 64,
+        now=NOW,
+    )
+
+    assert not result.satisfied
+    assert not result.authoritative_requirement_ids
+    assert result.proposal_only_requirement_ids == (requirement_id,)
+    assert not result.bindings
+    assert result.proposal_evidence[requirement_id] == (
+        "docs/architecture/objectives.md#text-match",
+        "embedding:similarity/0.99",
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("command", None),
+        ("toolchain", ""),
+        ("scope", []),
+        ("result", {}),
+        ("repository_tree", "sha256:" + "3" * 64),
+        ("policy_id", "sha256:" + "4" * 64),
+    ],
+)
+def test_tracker_rejects_tampered_or_incomplete_typed_receipts(
+    tmp_path: Path,
+    field: str,
+    replacement: object,
+) -> None:
+    receipts, repository_tree, policy_id = _typed_opaque_receipts(tmp_path)
+    payload = receipts[0].to_dict()
+    if replacement is None:
+        payload.pop(field)
+    else:
+        payload[field] = replacement
+
+    result = reconcile_self_improvement_goal_evidence(
+        _objective_heap(),
+        typed_receipts=(payload,),
+        requirement_ids=(HEALTHY_EXHAUSTION_REQUIREMENT_ID,),
+        repository_tree=repository_tree,
+        policy_id=policy_id,
+        now=NOW,
+    )
+
+    assert not result.satisfied
+    assert result.rejected_requirement_ids == (
+        HEALTHY_EXHAUSTION_REQUIREMENT_ID,
+    )
+    assert len(result.bindings) == 1
+    binding = result.bindings[0]
+    assert not binding.authoritative
+    assert {
+        "receipt_integrity_invalid",
+        "receipt_canonical_projection_mismatch",
+    } & set(binding.reason_codes)
+
+
+def test_tracker_rejects_stale_typed_receipt(tmp_path: Path) -> None:
+    receipts, repository_tree, policy_id = _typed_opaque_receipts(tmp_path)
+
+    result = reconcile_self_improvement_goal_evidence(
+        _objective_heap(),
+        typed_receipts=(receipts[0],),
+        requirement_ids=(HEALTHY_EXHAUSTION_REQUIREMENT_ID,),
+        repository_tree=repository_tree,
+        policy_id=policy_id,
+        now=NOW + timedelta(days=2),
+    )
+
+    assert not result.satisfied
+    assert result.rejected_requirement_ids == (
+        HEALTHY_EXHAUSTION_REQUIREMENT_ID,
+    )
+    assert len(result.bindings) == 1
+    assert "receipt_stale" in result.bindings[0].reason_codes
+
+
+def test_tracker_rejects_distinct_receipts_for_one_requirement(
+    tmp_path: Path,
+) -> None:
+    first_paths = _paths(tmp_path / "first")
+    second_paths = _paths(tmp_path / "second")
+    first = run_self_improvement_epoch(
+        **first_paths,
+        observation_provider=lambda binding: _observations(binding),
+        capability_snapshot_id="capabilities:duplicate-a",
+        observation_window="window:duplicate-a",
+        observed_at=NOW,
+    )
+    second = run_self_improvement_epoch(
+        **second_paths,
+        observation_provider=lambda binding: _observations(binding),
+        capability_snapshot_id="capabilities:duplicate-b",
+        observation_window="window:duplicate-b",
+        observed_at=NOW,
+    )
+    assert first.evidence is not None
+    assert second.evidence is not None
+    assert (
+        first.evidence.binding.repository_tree
+        == second.evidence.binding.repository_tree
+    )
+    assert first.evidence.binding.policy_id == second.evidence.binding.policy_id
+    assert first.evidence.evidence_id != second.evidence.evidence_id
+
+    result = reconcile_self_improvement_goal_evidence(
+        _objective_heap(),
+        typed_receipts=(first.evidence, second.evidence),
+        requirement_ids=(HEALTHY_EXHAUSTION_REQUIREMENT_ID,),
+        repository_tree=first.evidence.binding.repository_tree,
+        policy_id=first.evidence.binding.policy_id,
+        now=NOW,
+    )
+
+    assert not result.satisfied
+    assert len(result.bindings) == 2
+    assert all(not binding.authoritative for binding in result.bindings)
+    assert all(
+        "duplicate_requirement_receipts" in binding.reason_codes
+        for binding in result.bindings
+    )
+
+
+@pytest.mark.parametrize("defect", ["expired", "incomplete", "future"])
+def test_nonstale_actionable_measurements_must_be_fresh_and_complete(
+    tmp_path: Path,
+    defect: str,
+) -> None:
+    paths = _paths(tmp_path)
+    proposal_calls = 0
+
+    def observations(binding):
+        records = []
+        for item in _observations(
+            binding,
+            disposition=BenchmarkDisposition.REGRESSION,
+        ):
+            payload = item.to_dict()
+            payload["receipt_id"] = ""
+            if defect == "expired":
+                payload["fresh_until"] = (
+                    NOW - timedelta(seconds=1)
+                ).isoformat()
+            elif defect == "incomplete":
+                payload["complete"] = False
+                payload["coverage_complete"] = False
+            else:
+                payload["observed_at"] = (
+                    NOW + timedelta(seconds=1)
+                ).isoformat()
+                payload["fresh_until"] = (
+                    NOW + timedelta(hours=1)
+                ).isoformat()
+            records.append(BenchmarkObservation.from_dict(payload))
+        return tuple(records)
+
+    def proposals(_binding, _observations):
+        nonlocal proposal_calls
+        proposal_calls += 1
+        return (_successor_proposal(),)
+
+    run = run_self_improvement_epoch(
+        **paths,
+        observation_provider=observations,
+        proposal_provider=proposals,
+        capability_snapshot_id=f"capabilities:invalid-{defect}",
+        observation_window=f"window:invalid-{defect}",
+        observed_at=NOW,
+    )
+
+    assert run.status is SelfImprovementEpochStatus.INELIGIBLE
+    assert "benchmark_not_fresh_and_complete" in run.receipt.blocker_codes
+    assert proposal_calls == 0
+    assert not run.receipt.created_goal_ids
+
+
+def test_successor_filter_covers_terminal_lifecycle_and_durable_cooldown(
+    tmp_path: Path,
+) -> None:
+    proposal = _successor_proposal()
+    terminal_heap = _objective_heap() + f"""
+
+## ASI-G199 Historical equivalent successor
+
+- Status: verified_complete
+- Parent: ASI-G080
+- Goal: Historical equivalent work remains deduplication authority
+- Evidence: historical-successor-proof
+- Canonical proposal ID: {proposal.canonical_id}
+- Semantic key: {proposal.semantic_key}
+"""
+    lifecycle = filter_self_improvement_successor_candidates(
+        (proposal,),
+        objective_text=terminal_heap,
+        strategy={},
+        observed_at=NOW,
+    )
+    assert not lifecycle.eligible
+    assert [item.reason for item in lifecycle.rejected] == [
+        "lifecycle_duplicate"
+    ]
+
+    strategy_path = tmp_path / "strategy.json"
+    record_self_improvement_successor_admission(
+        strategy_path,
+        epoch_id="epoch:rejected",
+        proposals=(proposal,),
+        rejection_reasons={proposal.canonical_id: "quality_rejected"},
+        recorded_at=NOW,
+        cooldown_seconds=60,
+    )
+    active = filter_self_improvement_successor_candidates(
+        (proposal,),
+        objective_text=_objective_heap(),
+        strategy=load_strategy(strategy_path),
+        observed_at=NOW + timedelta(seconds=30),
+    )
+    assert not active.eligible
+    assert [item.reason for item in active.rejected] == ["successor_cooldown"]
+
+    expired = filter_self_improvement_successor_candidates(
+        (proposal,),
+        objective_text=_objective_heap(),
+        strategy=load_strategy(strategy_path),
+        observed_at=NOW + timedelta(seconds=61),
+    )
+    assert expired.eligible == (proposal,)
+
+    record_self_improvement_successor_admission(
+        strategy_path,
+        epoch_id="epoch:admitted",
+        proposals=(proposal,),
+        admitted_proposal_ids=(proposal.canonical_id,),
+        transaction_id="transaction:committed",
+        recorded_at=NOW + timedelta(seconds=61),
+    )
+    record_self_improvement_successor_admission(
+        strategy_path,
+        epoch_id="epoch:later-rejection",
+        proposals=(proposal,),
+        rejection_reasons={proposal.canonical_id: "duplicate"},
+        recorded_at=NOW + timedelta(days=1),
+    )
+    strategy = load_strategy(strategy_path)
+    record = strategy[SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY][
+        proposal.canonical_id
+    ]
+    assert record["status"] == "admitted"
+    assert record["transaction_id"] == "transaction:committed"
+    permanent = filter_self_improvement_successor_candidates(
+        (proposal,),
+        objective_text=_objective_heap(),
+        strategy=strategy,
+        observed_at=NOW + timedelta(days=365),
+    )
+    assert not permanent.eligible
+    assert [item.reason for item in permanent.rejected] == [
+        "prior_admission_duplicate"
+    ]
