@@ -111,12 +111,14 @@ class EvidenceCheckStatus(str, Enum):
 
 
 class InvalidationCause(str, Enum):
+    GOAL_CHANGED = "goal_changed"
     PLAN_CHANGED = "plan_changed"
     POLICY_CHANGED = "policy_changed"
     REPOSITORY_TREE_CHANGED = "repository_tree_changed"
     AST_CHANGED = "ast_changed"
     PREMISE_CHANGED = "premise_changed"
     COUNTEREXAMPLE_CHANGED = "counterexample_changed"
+    TOOLCHAIN_CHANGED = "toolchain_changed"
 
 
 _KIND_ALIASES: Final[Mapping[str, CompletionEvidenceKind]] = {
@@ -286,6 +288,8 @@ class ConformanceBinding:
     plan_id: str
     policy_id: str
     repository_tree_id: str
+    goal_id: str = ""
+    toolchain_id: str = ""
     ast_scope_ids: tuple[str, ...] = ()
     premise_ids: tuple[str, ...] = ()
     counterexample_ids: tuple[str, ...] = ()
@@ -294,6 +298,10 @@ class ConformanceBinding:
         for name in ("plan_id", "policy_id", "repository_tree_id"):
             object.__setattr__(
                 self, name, _text(getattr(self, name), field_name=name, required=True)
+            )
+        for name in ("goal_id", "toolchain_id"):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), field_name=name)
             )
         for name in ("ast_scope_ids", "premise_ids", "counterexample_ids"):
             object.__setattr__(self, name, _strings(getattr(self, name)))
@@ -308,9 +316,11 @@ class ConformanceBinding:
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
+            "goal_id": self.goal_id,
             "plan_id": self.plan_id,
             "policy_id": self.policy_id,
             "repository_tree_id": self.repository_tree_id,
+            "toolchain_id": self.toolchain_id,
             "ast_scope_ids": list(self.ast_scope_ids),
             "premise_ids": list(self.premise_ids),
             "counterexample_ids": list(self.counterexample_ids),
@@ -329,11 +339,13 @@ class ConformanceBinding:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ConformanceBinding":
         result = cls(
+            goal_id=payload.get("goal_id", payload.get("objective_id", "")),
             plan_id=payload.get("plan_id", ""),
             policy_id=payload.get("policy_id", ""),
             repository_tree_id=payload.get(
                 "repository_tree_id", payload.get("tree_id", "")
             ),
+            toolchain_id=payload.get("toolchain_id", ""),
             ast_scope_ids=tuple(
                 payload.get("ast_scope_ids", payload.get("ast_ids", ())) or ()
             ),
@@ -473,6 +485,8 @@ def binding_for_plan(
     policy: CompletionPolicy,
     *,
     repository_tree_id: str | None = None,
+    goal_id: str = "",
+    toolchain_id: str = "",
     ast_scope_ids: Sequence[str] = (),
     premise_ids: Sequence[str] = (),
     counterexample_ids: Sequence[str] = (),
@@ -480,9 +494,21 @@ def binding_for_plan(
     """Create the exact semantic binding used by a completion evaluation."""
 
     return ConformanceBinding(
+        goal_id=(
+            goal_id
+            or (
+                plan.goals[0].goal_id
+                if len(plan.goals) == 1
+                else ""
+            )
+        ),
         plan_id=plan.plan_id,
         policy_id=policy.policy_id,
         repository_tree_id=repository_tree_id or plan.repository_tree_id,
+        toolchain_id=(
+            toolchain_id
+            or str(policy.metadata.get("toolchain_id") or "").strip()
+        ),
         ast_scope_ids=tuple(ast_scope_ids),
         premise_ids=tuple(premise_ids),
         counterexample_ids=tuple(counterexample_ids),
@@ -704,12 +730,14 @@ def changed_bindings(
 
     causes: list[InvalidationCause] = []
     comparisons = (
+        ("goal_id", InvalidationCause.GOAL_CHANGED),
         ("plan_id", InvalidationCause.PLAN_CHANGED),
         ("policy_id", InvalidationCause.POLICY_CHANGED),
         ("repository_tree_id", InvalidationCause.REPOSITORY_TREE_CHANGED),
         ("ast_scope_ids", InvalidationCause.AST_CHANGED),
         ("premise_ids", InvalidationCause.PREMISE_CHANGED),
         ("counterexample_ids", InvalidationCause.COUNTEREXAMPLE_CHANGED),
+        ("toolchain_id", InvalidationCause.TOOLCHAIN_CHANGED),
     )
     for field_name, cause in comparisons:
         if getattr(prior, field_name) != getattr(current, field_name):
@@ -915,9 +943,11 @@ class FormalPlanConformanceEvaluator:
         policy: CompletionPolicy | Mapping[str, Any] | None = None,
         binding: ConformanceBinding | Mapping[str, Any] | None = None,
         prior: PlanConformanceResult | Mapping[str, Any] | None = None,
-        ast_scope_ids: Sequence[str] = (),
-        premise_ids: Sequence[str] = (),
-        counterexample_ids: Sequence[str] = (),
+        goal_id: str = "",
+        toolchain_id: str = "",
+        ast_scope_ids: Sequence[str] | None = None,
+        premise_ids: Sequence[str] | None = None,
+        counterexample_ids: Sequence[str] | None = None,
         repository_tree_id: str | None = None,
     ) -> PlanConformanceResult:
         if not isinstance(plan, FormalWorkPlan):
@@ -931,9 +961,11 @@ class FormalPlanConformanceEvaluator:
                 plan,
                 policy,
                 repository_tree_id=repository_tree_id,
-                ast_scope_ids=ast_scope_ids,
-                premise_ids=premise_ids,
-                counterexample_ids=counterexample_ids,
+                goal_id=goal_id,
+                toolchain_id=toolchain_id,
+                ast_scope_ids=ast_scope_ids or (),
+                premise_ids=premise_ids or (),
+                counterexample_ids=counterexample_ids or (),
             )
         elif not isinstance(binding, ConformanceBinding):
             binding = ConformanceBinding.from_dict(binding)
@@ -945,9 +977,23 @@ class FormalPlanConformanceEvaluator:
             plan,
             policy,
             repository_tree_id=repository_tree_id or binding.repository_tree_id,
-            ast_scope_ids=binding.ast_scope_ids,
-            premise_ids=binding.premise_ids,
-            counterexample_ids=binding.counterexample_ids,
+            goal_id=goal_id or binding.goal_id,
+            toolchain_id=toolchain_id or binding.toolchain_id,
+            ast_scope_ids=(
+                tuple(ast_scope_ids)
+                if ast_scope_ids is not None
+                else binding.ast_scope_ids
+            ),
+            premise_ids=(
+                tuple(premise_ids)
+                if premise_ids is not None
+                else binding.premise_ids
+            ),
+            counterexample_ids=(
+                tuple(counterexample_ids)
+                if counterexample_ids is not None
+                else binding.counterexample_ids
+            ),
         )
         invalidations.extend(changed_bindings(binding, expected_binding))
         binding = expected_binding
@@ -989,6 +1035,13 @@ class FormalPlanConformanceEvaluator:
                 )
             )
 
+        accepted_goal_ids = {item.goal_id for item in plan.goals}
+        if binding.goal_id and binding.goal_id not in accepted_goal_ids:
+            add(
+                TransitionDisposition.UNAUTHORIZED,
+                reason="conformance binding names a goal outside the accepted plan",
+            )
+
         for observed_position, actual in enumerate(observed):
             reference = actual.plan_event_id
             if not reference and actual.event_id in expected_by_id:
@@ -1013,6 +1066,24 @@ class FormalPlanConformanceEvaluator:
 
             if override_reference:
                 planned = expected_by_id.get(override_reference)
+                authorized_override = (
+                    planned is not None
+                    and actual.plan_id == binding.plan_id
+                    and actual.repository_tree_id == binding.repository_tree_id
+                    and actual.task_id == planned.task_id
+                    and actual.actor_id == planned.actor_id
+                    and actual.actor_id in task_actors.get(planned.task_id, set())
+                    and actual.authorized is not False
+                )
+                if not authorized_override:
+                    add(
+                        TransitionDisposition.UNAUTHORIZED,
+                        actual,
+                        planned,
+                        "override is not exactly bound to an authorized accepted transition",
+                        observed_position,
+                    )
+                    continue
                 add(
                     TransitionDisposition.OVERRIDDEN,
                     actual,
@@ -1025,6 +1096,24 @@ class FormalPlanConformanceEvaluator:
                 continue
             if supersede_reference:
                 planned = expected_by_id.get(supersede_reference)
+                authorized_supersede = (
+                    planned is not None
+                    and actual.plan_id == binding.plan_id
+                    and actual.repository_tree_id == binding.repository_tree_id
+                    and actual.task_id == planned.task_id
+                    and actual.actor_id == planned.actor_id
+                    and actual.actor_id in task_actors.get(planned.task_id, set())
+                    and actual.authorized is not False
+                )
+                if not authorized_supersede:
+                    add(
+                        TransitionDisposition.UNAUTHORIZED,
+                        actual,
+                        planned,
+                        "supersession is not exactly bound to an authorized accepted transition",
+                        observed_position,
+                    )
+                    continue
                 add(
                     TransitionDisposition.SUPERSEDED,
                     actual,
@@ -1052,6 +1141,29 @@ class FormalPlanConformanceEvaluator:
                     ]
                     planned = (actor_matches or candidates)[0]
 
+            if planned is not None and actual.task_id != planned.task_id:
+                add(
+                    TransitionDisposition.UNAUTHORIZED,
+                    actual,
+                    planned,
+                    "execution event task does not match the accepted transition",
+                    observed_position,
+                )
+                continue
+            if (
+                planned is not None
+                and actual.kind != planned.kind.value
+                and actual.kind != EventKind.FAILED.value
+                and actual_status not in _FAIL_VERDICTS
+            ):
+                add(
+                    TransitionDisposition.UNAUTHORIZED,
+                    actual,
+                    planned,
+                    "execution event kind does not match the accepted transition",
+                    observed_position,
+                )
+                continue
             if actual.plan_id and actual.plan_id != binding.plan_id:
                 add(
                     TransitionDisposition.UNAUTHORIZED,
@@ -2143,9 +2255,10 @@ def evaluate_formal_goal_completion(
     prior_conformance: PlanConformanceResult | Mapping[str, Any] | None = None,
     evaluated_at: datetime | str | int | float | None = None,
     repository_tree_id: str | None = None,
-    ast_scope_ids: Sequence[str] = (),
-    premise_ids: Sequence[str] = (),
-    counterexample_ids: Sequence[str] = (),
+    toolchain_id: str = "",
+    ast_scope_ids: Sequence[str] | None = None,
+    premise_ids: Sequence[str] | None = None,
+    counterexample_ids: Sequence[str] | None = None,
     plan_consistency: Any = "",
     proposal_validation: Any = None,
     validation_dag: Any = None,
@@ -2174,9 +2287,11 @@ def evaluate_formal_goal_completion(
             plan,
             policy,
             repository_tree_id=repository_tree_id,
-            ast_scope_ids=ast_scope_ids,
-            premise_ids=premise_ids,
-            counterexample_ids=counterexample_ids,
+            goal_id=goal_id,
+            toolchain_id=toolchain_id,
+            ast_scope_ids=ast_scope_ids or (),
+            premise_ids=premise_ids or (),
+            counterexample_ids=counterexample_ids or (),
         )
     elif not isinstance(binding, ConformanceBinding):
         binding = ConformanceBinding.from_dict(binding)
@@ -2191,7 +2306,12 @@ def evaluate_formal_goal_completion(
         policy=policy,
         binding=binding,
         prior=prior_conformance,
+        goal_id=goal_id,
+        toolchain_id=toolchain_id,
         repository_tree_id=repository_tree_id,
+        ast_scope_ids=ast_scope_ids,
+        premise_ids=premise_ids,
+        counterexample_ids=counterexample_ids,
     )
     evidence_result = evaluate_completion_evidence(
         goal_id,

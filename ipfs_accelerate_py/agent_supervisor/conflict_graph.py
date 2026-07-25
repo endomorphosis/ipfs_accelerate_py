@@ -655,7 +655,16 @@ class TaskWorkContract:
         sources = _sources(task)
         root = sources[0]
         canonical_task_cid = str(
-            root.get("canonical_task_cid") or root.get("task_cid") or ""
+            root.get("canonical_task_cid")
+            or root.get("task_cid")
+            # ``build_conflict_surface`` uses the public task identifier as
+            # the compatibility CID when a producer has not emitted a
+            # separate content identity.  Derive the contract with the same
+            # rule so reconstructing it from the surface is stable.
+            or root.get("task_id")
+            or root.get("id")
+            or root.get("canonical_task_id")
+            or ""
         ).strip()
         canonical_task_key = str(
             root.get("canonical_task_key") or ""
@@ -711,6 +720,11 @@ class TaskWorkContract:
                 }
             )
         )
+        has_declared_paths = any(
+            name in source
+            for source in sources
+            for name in ("predicted_paths", "predicted_files", "outputs")
+        )
         declared_paths = _field_items(
             sources,
             ("predicted_paths", "predicted_files", "outputs"),
@@ -719,9 +733,13 @@ class TaskWorkContract:
             path.casefold()
             for path in _normalized_paths(
                     declared_paths
-                    or _field_items(sources, ("files",)),
+                    if has_declared_paths
+                    else _field_items(sources, ("files",)),
                     None,
                 )
+        )
+        has_declared_symbols = any(
+            "predicted_symbols" in source for source in sources
         )
         declared_symbols = _field_items(sources, ("predicted_symbols",))
         predicted_symbols = tuple(
@@ -730,7 +748,8 @@ class TaskWorkContract:
                     normalize_display(value)
                     for value in (
                         declared_symbols
-                        or _field_items(
+                        if has_declared_symbols
+                        else _field_items(
                             sources,
                             ("ast_symbols", "symbols", "ast_query"),
                         )

@@ -31,6 +31,7 @@ import hashlib
 import importlib
 import json
 import math
+import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -195,6 +196,60 @@ def _digest(value: Mapping[str, Any], *, prefix: str) -> str:
     return f"{prefix}:sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
+def _semantic_binding_projection(
+    obligation: CodeProofObligation,
+    payload: Mapping[str, Any],
+    *,
+    policy_id: str,
+    environment_lock_id: str,
+) -> dict[str, Any]:
+    """Project supervisor semantic bindings explicitly across Hammer.
+
+    The obligation identity already covers metadata, but carrying these
+    dimensions as first-class provenance prevents consumers from relying on
+    opaque content-ID transitivity when deciding freshness.
+    """
+
+    metadata = obligation.metadata
+    toolchain_id = str(
+        payload.get("toolchain_id")
+        or metadata.get("code_proof_toolchain_id")
+        or metadata.get("toolchain_id")
+        or environment_lock_id
+    ).strip()
+    return {
+        "goal_id": str(
+            payload.get("goal_id")
+            or metadata.get("goal_id")
+            or metadata.get("objective_id")
+            or ""
+        ).strip(),
+        "accepted_plan_id": str(
+            payload.get("accepted_plan_id")
+            or metadata.get("accepted_plan_id")
+            or ""
+        ).strip(),
+        "assumptions_digest": str(
+            payload.get("assumptions_digest")
+            or metadata.get("assumptions_digest")
+            or ""
+        ).strip(),
+        "toolchain_id": toolchain_id,
+        "changed_scope_set_id": str(
+            payload.get("changed_scope_set_id")
+            or metadata.get("scope_set_id")
+            or metadata.get("changed_scope_set_id")
+            or ""
+        ).strip(),
+        "effect_scope_map": _provider_safe(
+            payload.get("effect_scope_map")
+            or metadata.get("effect_scope_map")
+            or {}
+        ),
+        "policy_id": policy_id,
+    }
+
+
 def _minimum_positive(*values: int) -> int:
     positive = [value for value in values if value > 0]
     return min(positive) if positive else 0
@@ -280,6 +335,7 @@ class HammerSupervisorPolicy:
     fallback_checks: tuple[str, ...] = ()
     environment_lock: Mapping[str, Any] = field(default_factory=dict)
     target_itp: str = "lean"
+    require_authoritative_reconstruction: bool = False
     # Compatibility input spellings matching Hammer's public policy.  The
     # canonical supervisor projection always uses integer ms/bytes.
     timeout_seconds: int | None = None
@@ -346,6 +402,10 @@ class HammerSupervisorPolicy:
             _positive_int(getattr(self, name), field_name=name)
         if not isinstance(self.network_allowed, bool):
             raise ValueError("network_allowed must be a boolean")
+        if not isinstance(self.require_authoritative_reconstruction, bool):
+            raise ValueError(
+                "require_authoritative_reconstruction must be a boolean"
+            )
         target_itp = _text(self.target_itp, field_name="target_itp").lower()
         if target_itp == "lean4":
             target_itp = "lean"
@@ -381,6 +441,9 @@ class HammerSupervisorPolicy:
             "fallback_checks": list(self.fallback_checks),
             "environment_lock": dict(self.environment_lock),
             "target_itp": self.target_itp,
+            "require_authoritative_reconstruction": (
+                self.require_authoritative_reconstruction
+            ),
         }
 
 
@@ -735,7 +798,7 @@ def _premise_payloads(
             "corpus_revision": corpus_revision,
             "rank": rank,
             "score": 0,
-            "selection_method": HAMMER_TRANSLATOR_ID,
+            "selection_method": "supervisor-explicit-premises@1",
             "content_digest": item.get("content_digest"),
         }
         premise_records.append(record)
@@ -753,6 +816,135 @@ def _premise_payloads(
         tuple(premise_records),
         tuple(sorted(all_receipts)),
         premise_provenance,
+    )
+
+
+def _hammer_selected_premise_payloads(
+    hammer: Any,
+    obligation: CodeProofObligation,
+    payload: Mapping[str, Any],
+    *,
+    corpus_revision: str,
+    itp: str,
+    max_premises: int,
+    hammer_policy: Any,
+) -> tuple[
+    tuple[dict[str, Any], ...],
+    tuple[str, ...],
+    dict[str, Any],
+    dict[str, Any],
+] | None:
+    """Delegate reviewed deterministic premise selection to Hammer.
+
+    Selection may rank a pinned corpus, but it cannot mutate the theorem:
+    selected premise identities must already be frozen into the canonical
+    obligation.  This prevents a cache hit or selector update from silently
+    changing the theorem being attempted.
+    """
+
+    selection_config = payload.get("premise_selection")
+    if selection_config is None:
+        return None
+    config = _strict_mapping(
+        selection_config, field_name="premise_selection"
+    )
+    manifest_payload = payload.get("corpus_manifest")
+    if not isinstance(manifest_payload, Mapping):
+        raise ProofProviderError(
+            ProviderFailureCode.MALFORMED_REQUEST,
+            "Hammer premise selection requires a pinned corpus_manifest",
+            details={"reason_code": "premise_corpus_manifest_missing"},
+        )
+    manifest = hammer.CorpusManifest.from_dict(dict(manifest_payload))
+    manifest.validate()
+    if manifest.revision != corpus_revision:
+        raise ProofProviderError(
+            ProviderFailureCode.MALFORMED_REQUEST,
+            "premise corpus manifest revision does not match the request",
+            details={
+                "expected_corpus_revision": corpus_revision,
+                "manifest_revision": manifest.revision,
+            },
+        )
+    top_k = config.get("top_k", len(obligation.premise_ids))
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError("premise_selection.top_k must be a positive integer")
+    if top_k > max_premises:
+        raise ProofProviderError(
+            ProviderFailureCode.RESOURCE_EXHAUSTED,
+            "premise selection exceeds the supervisor premise bound",
+            details={"top_k": top_k, "max_premises": max_premises},
+        )
+    goal = hammer.GoalFeatures.from_statement(
+        obligation.statement,
+        theorem_id=str(config.get("theorem_id") or "") or None,
+        imports=_strings(
+            config.get("imports"), field_name="premise_selection.imports"
+        ),
+        extra_symbols=_strings(
+            config.get("extra_symbols"),
+            field_name="premise_selection.extra_symbols",
+        ),
+        extra_types=_strings(
+            config.get("extra_types"),
+            field_name="premise_selection.extra_types",
+        ),
+    )
+    selection = hammer.select_premises(
+        manifest,
+        goal,
+        top_k=top_k,
+        policy=hammer_policy,
+        exclude_theorem_ids=_strings(
+            config.get("exclude_theorem_ids"),
+            field_name="premise_selection.exclude_theorem_ids",
+        ),
+    )
+    selection.validate()
+    records = tuple(item.to_dict() for item in selection.selected)
+    selected_ids = {str(item["premise_id"]) for item in records}
+    declared_ids = set(obligation.premise_ids)
+    if selected_ids != declared_ids:
+        raise ProofProviderError(
+            ProviderFailureCode.MALFORMED_REQUEST,
+            "Hammer-selected premises do not match canonical obligation premise_ids",
+            details={
+                "missing_premise_ids": sorted(declared_ids - selected_ids),
+                "unexpected_premise_ids": sorted(selected_ids - declared_ids),
+            },
+        )
+    receipts = set(
+        _strings(
+            payload.get("upstream_receipt_ids"),
+            field_name="upstream_receipt_ids",
+        )
+    )
+    receipts.update(
+        _strings(
+            obligation.metadata.get("upstream_receipt_ids"),
+            field_name="obligation.metadata.upstream_receipt_ids",
+        )
+    )
+    provenance = {
+        str(item["premise_id"]): {
+            "rank": item["rank"],
+            "content_digest": item.get("content_digest"),
+            "selection_method": item["selection_method"],
+            "corpus_revision": item["corpus_revision"],
+            "upstream_receipt_ids": sorted(receipts),
+        }
+        for item in records
+    }
+    selection_projection = _provider_safe(selection.to_dict())
+    # Hammer records wall-clock creation time for diagnostics.  It is not a
+    # semantic selector input and must not perturb the canonical request.
+    selection_projection.pop("created_at", None)
+    selection_projection["selected_premise_ids"] = sorted(selected_ids)
+    return (
+        records,
+        tuple(sorted(receipts)),
+        provenance,
+        selection_projection,
     )
 
 
@@ -851,12 +1043,14 @@ def translate_obligation_to_hammer_request(
 
 
 def _status_from_hammer(value: Any) -> HammerAdapterStatus:
-    raw = str(getattr(value, "value", value)).lower()
+    raw = str(getattr(value, "value", value)).strip().lower()
     return {
         "candidate": HammerAdapterStatus.CANDIDATE,
         "counterexample": HammerAdapterStatus.COUNTEREXAMPLE,
         "timeout": HammerAdapterStatus.TIMED_OUT,
+        "timed_out": HammerAdapterStatus.TIMED_OUT,
         "unavailable": HammerAdapterStatus.UNAVAILABLE,
+        "unsupported": HammerAdapterStatus.UNSUPPORTED,
         "unsupported_translation": HammerAdapterStatus.UNSUPPORTED,
         "policy_denied": HammerAdapterStatus.POLICY_DENIED,
     }.get(raw, HammerAdapterStatus.UNKNOWN)
@@ -895,6 +1089,14 @@ def adapt_hammer_result(
         attempts = raw.get("attempts", ())
     candidate = raw.get("proof_candidate")
     status = _status_from_hammer(raw.get("status", "unknown"))
+    if candidate is not None and status is not HammerAdapterStatus.CANDIDATE:
+        raise ValueError(
+            "Hammer proof candidate is inconsistent with the portfolio status"
+        )
+    if candidate is None and status is HammerAdapterStatus.CANDIDATE:
+        raise ValueError(
+            "Hammer candidate status requires an exact proof candidate record"
+        )
     provenance = dict(bundle.provenance)
     attempt_provenance: dict[str, Any] = {}
     for attempt in attempts or ():
@@ -981,6 +1183,7 @@ class IpfsDatasetsLogicProvider:
         verification_cache: FormalVerificationCache | None = None,
         proof_cache: FormalVerificationCache | None = None,
         cache: FormalVerificationCache | None = None,
+        kernel_verifier: Any = None,
     ) -> None:
         self.policy = policy or HammerSupervisorPolicy()
         if not isinstance(self.policy, HammerSupervisorPolicy):
@@ -1005,6 +1208,13 @@ class IpfsDatasetsLogicProvider:
                 "verification_cache must be a FormalVerificationCache"
             )
         self._portfolio_runner = portfolio_runner
+        if kernel_verifier is not None and not callable(
+            getattr(kernel_verifier, "reconstruct_and_verify", None)
+        ):
+            raise ValueError(
+                "kernel_verifier must expose reconstruct_and_verify"
+            )
+        self.kernel_verifier = kernel_verifier
         self.verification_cache = selected_cache
         self.proof_cache = selected_cache
 
@@ -1017,6 +1227,14 @@ class IpfsDatasetsLogicProvider:
                 ProofProviderOperation.CAPABILITY,
                 ProofProviderOperation.TRANSLATE,
                 ProofProviderOperation.PROVE,
+                *(
+                    (
+                        ProofProviderOperation.RECONSTRUCT,
+                        ProofProviderOperation.VERIFY,
+                    )
+                    if self.kernel_verifier is not None
+                    else ()
+                ),
             ),
             isolation=(
                 ProofProviderIsolation.IN_PROCESS,
@@ -1033,6 +1251,9 @@ class IpfsDatasetsLogicProvider:
                 "max_premises": self.policy.max_premises,
                 "candidate_authoritative": False,
                 "kernel_reconstruction_required": True,
+                "kernel_reconstruction_available": (
+                    self.kernel_verifier is not None
+                ),
                 "trust_aware_cache_enabled": self.verification_cache is not None,
                 "cross_process_single_flight": self.verification_cache is not None,
                 "proof_attempted": False,
@@ -1091,13 +1312,6 @@ class IpfsDatasetsLogicProvider:
             or obligation.metadata.get("corpus_revision")
             or obligation.repository_tree_id
         ).strip()
-        premise_dicts, upstream_receipts, premise_provenance = _premise_payloads(
-            obligation,
-            payload,
-            corpus_revision=corpus_revision,
-            itp=itp,
-            max_premises=policy.max_premises,
-        )
         hammer = _load_hammer()
         lock_record, lock_dict = _environment_lock(
             hammer,
@@ -1124,11 +1338,49 @@ class IpfsDatasetsLogicProvider:
             allow_llm_decomposition_hints=False,
         )
         hammer_policy.validate()
+        selected = _hammer_selected_premise_payloads(
+            hammer,
+            obligation,
+            payload,
+            corpus_revision=corpus_revision,
+            itp=itp,
+            max_premises=policy.max_premises,
+            hammer_policy=hammer_policy,
+        )
+        if selected is None:
+            premise_dicts, upstream_receipts, premise_provenance = (
+                _premise_payloads(
+                    obligation,
+                    payload,
+                    corpus_revision=corpus_revision,
+                    itp=itp,
+                    max_premises=policy.max_premises,
+                )
+            )
+            premise_selection: dict[str, Any] = {
+                "selection_method": "supervisor-explicit-premises@1",
+                "selected_premise_ids": list(obligation.premise_ids),
+            }
+        else:
+            (
+                premise_dicts,
+                upstream_receipts,
+                premise_provenance,
+                premise_selection,
+            ) = selected
+        semantic_bindings = _semantic_binding_projection(
+            obligation,
+            payload,
+            policy_id=policy.policy_id,
+            environment_lock_id=lock_dict["lock_id"],
+        )
         request_identity = {
             "obligation_id": obligation.obligation_id,
             "repository_tree_id": obligation.repository_tree_id,
+            "semantic_bindings": semantic_bindings,
             "translation_family": family,
-            "premises": list(premise_dicts),
+            "premises": _provider_safe(premise_dicts),
+            "premise_selection": premise_selection,
             "upstream_receipt_ids": list(upstream_receipts),
             "environment_lock": lock_dict,
             "policy_id": policy.policy_id,
@@ -1149,6 +1401,8 @@ class IpfsDatasetsLogicProvider:
                 "repository_tree_id": obligation.repository_tree_id,
                 "ast_scope_ids": list(obligation.ast_scope_ids),
                 "premise_ids": list(obligation.premise_ids),
+                "premise_selection": premise_selection,
+                "semantic_bindings": semantic_bindings,
                 "translation_family": family,
                 "environment_lock_id": lock_dict["lock_id"],
                 "policy_id": policy.policy_id,
@@ -1171,7 +1425,9 @@ class IpfsDatasetsLogicProvider:
             "repository_tree_id": obligation.repository_tree_id,
             "ast_scope_ids": list(obligation.ast_scope_ids),
             "premise_ids": list(obligation.premise_ids),
+            "semantic_bindings": semantic_bindings,
             "premises": premise_provenance,
+            "premise_selection": premise_selection,
             "upstream_receipt_ids": list(upstream_receipts),
             "environment_lock_id": lock_dict["lock_id"],
             "policy_id": policy.policy_id,
@@ -1337,7 +1593,13 @@ class IpfsDatasetsLogicProvider:
     ) -> tuple[Any, ...]:
         raw = payload.get("translations")
         if raw is None:
+            # Legal/logic lowerers must still cross the Hammer typed boundary;
+            # this is an input alias, not a parallel supervisor proof path.
+            raw = payload.get("legal_logic_translations")
+        if raw is None:
             raw = obligation.metadata.get("hammer_translations")
+        if raw is None:
+            raw = obligation.metadata.get("legal_logic_translations")
         if raw is None:
             target = _FAMILY_TARGET.get(bundle.translation_family)
             statement_format = str(
@@ -1466,6 +1728,7 @@ class IpfsDatasetsLogicProvider:
     ) -> Mapping[str, Any] | ProviderResponse:
         obligation: CodeProofObligation | None = None
         effective: EffectiveHammerPolicy | None = None
+        bundle: HammerRequestBundle | None = None
         try:
             obligation = _obligation(request.payload.get("obligation"))
             bundle = self._build_bundle(request)
@@ -1524,21 +1787,93 @@ class IpfsDatasetsLogicProvider:
                 return projected
 
             if self.verification_cache is None:
-                return execute_portfolio()
-            cache_key = self._cache_key(request, bundle, effective)
-            shared = self.verification_cache.single_flight(
-                cache_key,
-                execute_portfolio,
-                lease_seconds=max(
-                    1, (effective.timeout_ms + 999) // 1000 + 5
-                ),
-                wait_timeout_seconds=max(
-                    1, (effective.timeout_ms + 999) // 1000 + 30
-                ),
+                projected_result = execute_portfolio()
+            else:
+                cache_key = self._cache_key(request, bundle, effective)
+                shared = self.verification_cache.single_flight(
+                    cache_key,
+                    execute_portfolio,
+                    lease_seconds=max(
+                        1, (effective.timeout_ms + 999) // 1000 + 5
+                    ),
+                    wait_timeout_seconds=max(
+                        1, (effective.timeout_ms + 999) // 1000 + 30
+                    ),
+                )
+                if not isinstance(shared, Mapping):
+                    raise ValueError("shared Hammer result must be an object")
+                projected_result = dict(shared)
+
+            projected_result["authoritative_reconstruction_required"] = (
+                self.policy.require_authoritative_reconstruction
             )
-            if not isinstance(shared, Mapping):
-                raise ValueError("shared Hammer result must be an object")
-            return dict(shared)
+            if (
+                self.policy.require_authoritative_reconstruction
+                and projected_result.get("status")
+                == HammerAdapterStatus.CANDIDATE.value
+            ):
+                candidate = (
+                    projected_result.get("hammer_result", {}).get(
+                        "proof_candidate"
+                    )
+                    if isinstance(
+                        projected_result.get("hammer_result"), Mapping
+                    )
+                    else None
+                )
+                if self.kernel_verifier is None:
+                    return ProviderResponse.failure(
+                        request,
+                        ProviderFailureCode.UNSUPPORTED,
+                        "policy requires independent kernel reconstruction",
+                        details={
+                            "status": HammerAdapterStatus.UNSUPPORTED.value,
+                            "reason_code": (
+                                "independent_kernel_provider_required"
+                            ),
+                            "candidate": _provider_safe(candidate),
+                            "provenance": dict(bundle.provenance),
+                            "proof_success": False,
+                            "authoritative_assurance": "unverified",
+                        },
+                        provider_id=self.provider_id,
+                        provider_version=self.provider_version,
+                    )
+                if (
+                    not isinstance(candidate, Mapping)
+                    or not request.payload.get("goal_snapshot")
+                    or not request.payload.get("native_source")
+                    or not request.payload.get("kernel_id")
+                ):
+                    return ProviderResponse.failure(
+                        request,
+                        ProviderFailureCode.UNSUPPORTED,
+                        "policy-required reconstruction inputs are missing",
+                        details={
+                            "status": HammerAdapterStatus.UNSUPPORTED.value,
+                            "reason_code": (
+                                "authoritative_reconstruction_inputs_required"
+                            ),
+                            "candidate": _provider_safe(candidate),
+                            "provenance": dict(bundle.provenance),
+                            "proof_success": False,
+                            "authoritative_assurance": "unverified",
+                        },
+                        provider_id=self.provider_id,
+                        provider_version=self.provider_version,
+                    )
+                reconstruction_payload = dict(request.payload)
+                reconstruction_payload["proof_candidate"] = dict(candidate)
+                reconstruction_request = ProviderRequest(
+                    request_id=request.request_id,
+                    operation=request.operation,
+                    payload=reconstruction_payload,
+                    resource_budget=request.resource_budget,
+                    network_allowed=request.network_allowed,
+                    deadline_unix_ms=request.deadline_unix_ms,
+                )
+                return self.reconstruct(reconstruction_request)
+            return projected_result
         except ProofProviderError as exc:
             if exc.code is ProviderFailureCode.UNSUPPORTED:
                 return self._unsupported(
@@ -1548,27 +1883,214 @@ class IpfsDatasetsLogicProvider:
                     policy=effective,
                 )
             raise
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            details: dict[str, Any] = {
+                "status": HammerAdapterStatus.TIMED_OUT.value,
+                "reason_code": "hammer_execution_timed_out",
+                "proof_success": False,
+                "authoritative_assurance": "unverified",
+                "fallback_checks": sorted(
+                    set(self.policy.fallback_checks)
+                    | set(obligation.fallback_checks if obligation else ())
+                    | set(effective.fallback_checks if effective else ())
+                ),
+            }
+            if bundle is not None:
+                details.update(
+                    {
+                        "hammer_request_id": bundle.request_id,
+                        "provenance": dict(bundle.provenance),
+                    }
+                )
+            return ProviderResponse.failure(
+                request,
+                ProviderFailureCode.TIMED_OUT,
+                f"Hammer portfolio timed out: {exc}",
+                retryable=True,
+                details=details,
+                provider_id=self.provider_id,
+                provider_version=self.provider_version,
+            )
         except (TypeError, ValueError, KeyError) as exc:
             raise ProofProviderError(
                 ProviderFailureCode.MALFORMED_REQUEST,
                 f"invalid Hammer portfolio request or result: {exc}",
             ) from exc
 
-    def reconstruct(self, request: ProviderRequest) -> ProviderResponse:
+    def reconstruct(
+        self, request: ProviderRequest
+    ) -> Mapping[str, Any] | ProviderResponse:
+        """Independently reconstruct one untrusted Hammer candidate."""
+
+        if self.kernel_verifier is None:
+            return ProviderResponse.failure(
+                request,
+                ProviderFailureCode.UNSUPPORTED,
+                "independent kernel reconstruction is unavailable",
+                details={
+                    "status": HammerAdapterStatus.UNSUPPORTED.value,
+                    "reason_code": "independent_kernel_provider_required",
+                    "proof_success": False,
+                    "authoritative_assurance": "unverified",
+                },
+                provider_id=self.provider_id,
+                provider_version=self.provider_version,
+            )
+
+        bundle: HammerRequestBundle | None = None
+        try:
+            bundle = self._build_bundle(request)
+            (
+                hammer,
+                obligation,
+                effective,
+                hammer_request,
+                _premises,
+                environment_lock,
+                _hammer_policy,
+                _portfolio_policy,
+            ) = bundle._runtime
+            candidate_raw = request.payload.get("proof_candidate")
+            snapshot_raw = request.payload.get("goal_snapshot")
+            native_source = _text(
+                request.payload.get("native_source"),
+                field_name="native_source",
+            )
+            if not isinstance(candidate_raw, Mapping):
+                raise ValueError("proof_candidate must be an object")
+            if not isinstance(snapshot_raw, Mapping):
+                raise ValueError("goal_snapshot must be an object")
+            candidate = hammer.ProofCandidateRecord.from_dict(
+                dict(candidate_raw)
+            )
+            candidate.validate()
+            if candidate.request_id != bundle.request_id:
+                raise ValueError(
+                    "proof_candidate.request_id does not match Hammer request"
+                )
+            snapshot = hammer.GoalSnapshot.from_dict(dict(snapshot_raw))
+            snapshot.validate()
+            if snapshot.goal_text.strip() != obligation.statement.strip():
+                raise ValueError(
+                    "goal_snapshot.goal_text does not match the obligation"
+                )
+
+            semantic_bindings = dict(
+                bundle.provenance.get("semantic_bindings") or {}
+            )
+            toolchain_id = _text(
+                request.payload.get("toolchain_id")
+                or semantic_bindings.get("toolchain_id"),
+                field_name="toolchain_id",
+            )
+            kernel_id = _text(
+                request.payload.get("kernel_id"),
+                field_name="kernel_id",
+            )
+            from .kernel_verification import (
+                KernelVerificationBindings,
+                KernelVerificationResult,
+            )
+
+            bindings = KernelVerificationBindings(
+                obligation_id=obligation.obligation_id,
+                request_id=bundle.request_id,
+                candidate_id=candidate.candidate_id,
+                kernel_id=kernel_id,
+                toolchain_id=toolchain_id,
+                expected_statement=obligation.statement,
+                expected_statement_digest=str(
+                    request.payload.get("expected_statement_digest") or ""
+                ),
+                expected_checked_source_digest=str(
+                    request.payload.get("expected_checked_source_digest") or ""
+                ),
+                expected_native_source=native_source,
+            )
+            result = self.kernel_verifier.reconstruct_and_verify(
+                request=hammer_request,
+                candidate=candidate,
+                goal_snapshot=snapshot,
+                native_source=native_source,
+                bindings=bindings,
+                environment_lock=environment_lock,
+                timeout=max(0.001, effective.timeout_ms / 1000.0),
+                provider_status=HammerAdapterStatus.CANDIDATE.value,
+            )
+            if not isinstance(result, KernelVerificationResult):
+                raise ValueError(
+                    "kernel verifier returned an invalid result record"
+                )
+            if (
+                result.obligation_id != obligation.obligation_id
+                or result.request_id != bundle.request_id
+                or result.candidate_id != candidate.candidate_id
+                or result.kernel_id != kernel_id
+                or result.toolchain_id != toolchain_id
+            ):
+                raise ValueError(
+                    "kernel verification result is not bound to the request"
+                )
+            return {
+                "schema_version": HAMMER_ADAPTER_SCHEMA_VERSION,
+                "status": result.status.value,
+                "kernel_verification": result.to_dict(),
+                "provenance": {
+                    **dict(bundle.provenance),
+                    "candidate_id": candidate.candidate_id,
+                    "kernel_id": kernel_id,
+                    "toolchain_id": toolchain_id,
+                    "kernel_receipt_id": result.kernel_receipt_id,
+                },
+                "authoritative_verdict": result.verdict.value,
+                "authoritative_assurance": result.assurance.value,
+                "kernel_checked": (
+                    result.assurance.value == "kernel_verified"
+                ),
+                "proof_success": result.accepted,
+            }
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            return ProviderResponse.failure(
+                request,
+                ProviderFailureCode.TIMED_OUT,
+                f"kernel reconstruction timed out: {exc}",
+                retryable=True,
+                details={
+                    "status": HammerAdapterStatus.TIMED_OUT.value,
+                    "reason_code": "kernel_reconstruction_timed_out",
+                    "proof_success": False,
+                    "authoritative_assurance": "unverified",
+                    "provenance": (
+                        dict(bundle.provenance) if bundle is not None else {}
+                    ),
+                },
+                provider_id=self.provider_id,
+                provider_version=self.provider_version,
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ProofProviderError(
+                ProviderFailureCode.MALFORMED_REQUEST,
+                f"invalid independent reconstruction request or result: {exc}",
+            ) from exc
+
+    def verify(
+        self, request: ProviderRequest
+    ) -> Mapping[str, Any] | ProviderResponse:
+        return self.reconstruct(request)
+
+    def attest(self, request: ProviderRequest) -> ProviderResponse:
         return ProviderResponse.failure(
             request,
             ProviderFailureCode.UNSUPPORTED,
-            "independent kernel reconstruction is not implemented by this adapter",
+            "the Hammer adapter does not issue attestations",
             details={
-                "reason_code": "independent_kernel_provider_required",
+                "status": HammerAdapterStatus.UNSUPPORTED.value,
+                "reason_code": "attestation_not_supported",
                 "proof_success": False,
             },
             provider_id=self.provider_id,
             provider_version=self.provider_version,
         )
-
-    verify = reconstruct
-    attest = reconstruct
 
 
 # Conventional class aliases used by entry-point declarations.
@@ -1583,6 +2105,7 @@ def create_ipfs_datasets_logic_provider(
     verification_cache: FormalVerificationCache | None = None,
     proof_cache: FormalVerificationCache | None = None,
     cache: FormalVerificationCache | None = None,
+    kernel_verifier: Any = None,
 ) -> IpfsDatasetsLogicProvider:
     """Entry-point-friendly provider factory without importing Hammer."""
 
@@ -1592,6 +2115,7 @@ def create_ipfs_datasets_logic_provider(
         verification_cache=verification_cache,
         proof_cache=proof_cache,
         cache=cache,
+        kernel_verifier=kernel_verifier,
     )
 
 
