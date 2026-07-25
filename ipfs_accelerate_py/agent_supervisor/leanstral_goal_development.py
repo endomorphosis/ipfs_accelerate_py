@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib
 import json
 import math
 import queue
 import threading
 import time
+import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -53,6 +55,13 @@ from .leanstral_proof_provider import (
     _default_llm_generate,
 )
 from .proof_context import estimate_context_tokens
+from .provider_batch_scheduler import (
+    ProviderBatchRequest,
+    ProviderBatchResult,
+    ProviderBatchScheduler,
+    ProviderBatchSchedulerConfig,
+    ProviderBatchStatus,
+)
 
 
 LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID: Final = "leanstral-goal-development"
@@ -113,6 +122,7 @@ _FORBIDDEN_RESPONSE_KEYS = frozenset(
 )
 
 LLMGenerate = Callable[..., str]
+LLMBatchGenerate = Callable[..., Sequence[str]]
 
 
 def _text(
@@ -1141,6 +1151,11 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
     provider_version: str = LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_VERSION
     operation: str = LEANSTRAL_GOAL_DEVELOPMENT_OPERATION
     schema: str = LEANSTRAL_GOAL_DEVELOPMENT_RESULT_SCHEMA
+    batch_result: ProviderBatchResult | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1162,6 +1177,14 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
         )
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "fallback_reason", reason)
+        if self.batch_result is not None and not isinstance(
+            self.batch_result, ProviderBatchResult
+        ):
+            object.__setattr__(
+                self,
+                "batch_result",
+                ProviderBatchResult.from_dict(self.batch_result),
+            )
         if status is GoalDevelopmentResultStatus.DRAFT:
             if not isinstance(self.draft, GoalDecompositionDraft) or reason is not None:
                 raise ContractValidationError("draft result has invalid payload")
@@ -1217,6 +1240,8 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
         }
         if include_id:
             payload["result_id"] = self.result_id
+        if self.batch_result is not None:
+            payload["batch_result"] = self.batch_result.to_dict()
         return payload
 
     def __getitem__(self, key: str) -> Any:
@@ -1259,6 +1284,7 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
                 "can_mutate_root",
                 "can_mutate_canonical_source",
                 "can_execute_commands",
+                "batch_result",
             },
             field_name="goal-development result",
         )
@@ -1308,6 +1334,11 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
                 else GoalDecompositionDraft.from_dict(value["draft"])
             ),
             fallback_reason=reason,
+            batch_result=(
+                None
+                if value.get("batch_result") is None
+                else ProviderBatchResult.from_dict(value["batch_result"])
+            ),
         )
         if value.get("deterministic_fallback", result.used_fallback) is not (
             result.used_fallback
@@ -1483,14 +1514,26 @@ class LeanstralGoalDevelopmentProvider:
         config: LeanstralGoalDevelopmentProviderConfig | None = None,
         *,
         llm_generate: LLMGenerate | None = None,
+        batch_scheduler: ProviderBatchScheduler | None = None,
     ) -> None:
         self.config = config or LeanstralGoalDevelopmentProviderConfig()
         if llm_generate is not None and not callable(llm_generate):
             raise ContractValidationError("llm_generate must be callable")
+        if batch_scheduler is not None and not isinstance(
+            batch_scheduler, ProviderBatchScheduler
+        ):
+            raise ContractValidationError(
+                "batch_scheduler must be ProviderBatchScheduler"
+            )
         self._llm_generate = llm_generate
+        self._batch_scheduler = batch_scheduler
         self._capacity = threading.BoundedSemaphore(
             self.config.max_concurrent_requests
         )
+
+    @property
+    def batch_scheduler(self) -> ProviderBatchScheduler | None:
+        return self._batch_scheduler
 
     @property
     def model_resource_class(self) -> str:
@@ -1668,11 +1711,73 @@ class LeanstralGoalDevelopmentProvider:
         self,
         invocation: LeanstralGoalDevelopmentInvocation,
         reason: GoalDevelopmentFallbackReason,
+        *,
+        batch_result: ProviderBatchResult | None = None,
     ) -> GoalDevelopmentProviderResult:
         return GoalDevelopmentProviderResult(
             request_id=invocation.request.request_id,
             status=GoalDevelopmentResultStatus.DETERMINISTIC_FALLBACK,
             fallback_reason=reason,
+            batch_result=batch_result,
+        )
+
+    def _invoke_shared(
+        self,
+        prompt: str,
+        invocation: LeanstralGoalDevelopmentInvocation,
+        *,
+        timeout: float,
+        token_budget: int,
+        cancellation: CancellationToken | Any | None,
+    ) -> ProviderBatchResult:
+        scheduler = self._batch_scheduler
+        if scheduler is None:  # pragma: no cover - guarded by the caller
+            raise RuntimeError("shared provider scheduler is not configured")
+        member_id = (
+            f"leanstral-goal:{invocation.request.request_id}:"
+            f"{uuid.uuid4().hex}"
+        )
+        return scheduler.execute(
+            ProviderBatchRequest(
+                request_id=member_id,
+                payload=prompt,
+                provider_id=self.config.llm_provider,
+                route=LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
+                model=self.config.model,
+                operation=LEANSTRAL_GOAL_DEVELOPMENT_OPERATION,
+                context_limit=self.config.max_context_tokens,
+                policy={
+                    "operation_schema": LEANSTRAL_GOAL_DEVELOPMENT_REQUEST_SCHEMA,
+                    "output_schema": LEANSTRAL_GOAL_DEVELOPMENT_OUTPUT_SCHEMA,
+                    "policy_digest": invocation.policy.policy_digest,
+                    "network_allowed": invocation.network_allowed,
+                    "network_access_required": (
+                        self.config.network_access_required
+                    ),
+                    "provider_version": self.provider_version,
+                },
+                generation_settings={
+                    "allow_local_fallback": False,
+                    "disable_model_retry": True,
+                    "temperature": self.config.temperature,
+                    "mistral_vibe_agent": self.config.vibe_agent,
+                },
+                token_budget=token_budget,
+                timeout_ms=max(1, int(math.ceil(timeout * 1_000))),
+                provenance={
+                    "logical_request_id": invocation.request.request_id,
+                    "root_goal_id": invocation.request.root_goal_id,
+                    "repository_tree_id": (
+                        invocation.request.repository_tree_id
+                    ),
+                    "policy_digest": invocation.policy.policy_digest,
+                    "resource_budget": invocation.resource_budget.to_dict(),
+                    "provider_id": self.provider_id,
+                    "provider_version": self.provider_version,
+                    "operation": self.operation,
+                },
+                cancellation_token=cancellation,
+            )
         )
 
     def _invoke_bounded(
@@ -1939,6 +2044,94 @@ class LeanstralGoalDevelopmentProvider:
             prompt = self.build_prompt(call)
         except ContractValidationError:
             return self._fallback(call, GoalDevelopmentFallbackReason.OVERLOADED)
+        if self._batch_scheduler is not None:
+            batch_result: ProviderBatchResult | None = None
+            try:
+                batch_result = self._invoke_shared(
+                    prompt,
+                    call,
+                    timeout=timeout,
+                    token_budget=token_budget,
+                    cancellation=cancellation,
+                )
+                if batch_result.status is ProviderBatchStatus.CANCELLED:
+                    return self._fallback(
+                        call,
+                        GoalDevelopmentFallbackReason.CANCELLED,
+                        batch_result=batch_result,
+                    )
+                if batch_result.status is ProviderBatchStatus.TIMED_OUT:
+                    return self._fallback(
+                        call,
+                        GoalDevelopmentFallbackReason.TIMEOUT,
+                        batch_result=batch_result,
+                    )
+                if not batch_result.successful:
+                    message = batch_result.error.casefold()
+                    reason = (
+                        GoalDevelopmentFallbackReason.OVERLOADED
+                        if any(
+                            marker in message
+                            for marker in (
+                                "overload",
+                                "capacity",
+                                "resource",
+                                "queue",
+                                "too many",
+                                "429",
+                            )
+                        )
+                        else GoalDevelopmentFallbackReason.UNAVAILABLE
+                    )
+                    return self._fallback(
+                        call, reason, batch_result=batch_result
+                    )
+                draft = self._parse_response(
+                    batch_result.output,
+                    call,
+                    token_budget=token_budget,
+                )
+            except OverflowError:
+                return self._fallback(
+                    call,
+                    GoalDevelopmentFallbackReason.OVERLOADED,
+                    batch_result=batch_result,
+                )
+            except (ContractValidationError, ValueError, TypeError, json.JSONDecodeError):
+                return self._fallback(
+                    call,
+                    GoalDevelopmentFallbackReason.MALFORMED_OUTPUT,
+                    batch_result=batch_result,
+                )
+            except BaseException as exc:
+                message = str(exc).casefold()
+                if _cancelled(cancellation):
+                    reason = GoalDevelopmentFallbackReason.CANCELLED
+                elif isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+                    reason = GoalDevelopmentFallbackReason.TIMEOUT
+                elif any(
+                    marker in message
+                    for marker in (
+                        "overload",
+                        "capacity",
+                        "resource",
+                        "queue",
+                        "too many",
+                        "429",
+                    )
+                ):
+                    reason = GoalDevelopmentFallbackReason.OVERLOADED
+                else:
+                    reason = GoalDevelopmentFallbackReason.UNAVAILABLE
+                return self._fallback(
+                    call, reason, batch_result=batch_result
+                )
+            return GoalDevelopmentProviderResult(
+                request_id=call.request.request_id,
+                status=GoalDevelopmentResultStatus.DRAFT,
+                draft=draft,
+                batch_result=batch_result,
+            )
         if not self._capacity.acquire(blocking=False):
             return self._fallback(call, GoalDevelopmentFallbackReason.OVERLOADED)
         worker_started = False
@@ -2004,12 +2197,122 @@ class LeanstralGoalDevelopmentProvider:
     develop_goals = develop
 
 
+def build_leanstral_goal_development_batch_dispatch(
+    config: LeanstralGoalDevelopmentProviderConfig | None = None,
+    *,
+    llm_generate: LLMGenerate | None = None,
+    llm_generate_batch: LLMBatchGenerate | None = None,
+) -> Callable[[Sequence[ProviderBatchRequest]], Sequence[str]]:
+    """Build an admitted physical dispatch for a shared Leanstral scheduler.
+
+    The default path resolves ``llm_router.generate_text_batch`` only when the
+    scheduler calls this function, which is after provider/GPU admission.  The
+    router resolves one backend instance for the whole prompt batch.  Custom
+    deployments can inject a native batch callback; a scalar-only callback
+    degrades safely to independent calls while single-flight still removes
+    exact duplicate work.
+    """
+
+    resolved = config or LeanstralGoalDevelopmentProviderConfig()
+    if llm_generate is not None and not callable(llm_generate):
+        raise ContractValidationError("llm_generate must be callable")
+    if llm_generate_batch is not None and not callable(llm_generate_batch):
+        raise ContractValidationError("llm_generate_batch must be callable")
+
+    def dispatch(requests: Sequence[ProviderBatchRequest]) -> Sequence[str]:
+        members = tuple(requests)
+        if not members:
+            return ()
+        prompts = tuple(str(item.payload) for item in members)
+        token_limit = max(item.token_budget for item in members)
+        timeout = max(
+            (
+                item.timeout_ms / 1_000
+                for item in members
+                if item.timeout_ms
+            ),
+            default=resolved.timeout_seconds,
+        )
+        kwargs = {
+            "provider": resolved.llm_provider,
+            "model_name": resolved.model,
+            "timeout": timeout,
+            "max_new_tokens": token_limit,
+            "allow_local_fallback": False,
+            "disable_model_retry": True,
+            "temperature": resolved.temperature,
+            "mistral_vibe_agent": resolved.vibe_agent,
+        }
+        batch_generate = llm_generate_batch
+        if batch_generate is None and llm_generate is None:
+            try:
+                router = importlib.import_module("ipfs_accelerate_py.llm_router")
+                batch_generate = getattr(router, "generate_text_batch", None)
+            except (ImportError, ModuleNotFoundError) as exc:
+                raise ProofProviderError(
+                    ProviderFailureCode.UNAVAILABLE,
+                    "llm_router batch inference is unavailable",
+                ) from exc
+        if callable(batch_generate):
+            # llm_router names its outer batch timeout ``timeout_s`` while the
+            # per-generation timeout remains a backend kwarg.
+            batch_kwargs = dict(kwargs)
+            batch_kwargs["timeout_s"] = timeout
+            outputs = batch_generate(prompts, **batch_kwargs)
+            if isinstance(outputs, (str, bytes)) or not isinstance(
+                outputs, Sequence
+            ):
+                raise ProofProviderError(
+                    ProviderFailureCode.MALFORMED_RESPONSE,
+                    "batch generator returned a non-sequence result",
+                )
+            return tuple(str(item) for item in outputs)
+        generate = llm_generate
+        if generate is None:  # pragma: no cover - guarded by resolution above
+            raise ProofProviderError(
+                ProviderFailureCode.UNAVAILABLE,
+                "no Leanstral generator is available",
+            )
+        return tuple(generate(prompt, **kwargs) for prompt in prompts)
+
+    return dispatch
+
+
+def create_leanstral_goal_development_batch_scheduler(
+    config: LeanstralGoalDevelopmentProviderConfig | None = None,
+    *,
+    scheduler_config: ProviderBatchSchedulerConfig | None = None,
+    llm_generate: LLMGenerate | None = None,
+    llm_generate_batch: LLMBatchGenerate | None = None,
+    capacity_supplier: Callable[[str], Any] | None = None,
+    admission: Callable[..., Any] | None = None,
+) -> ProviderBatchScheduler:
+    """Create a shareable scheduler backed by native batch inference."""
+
+    resolved = config or LeanstralGoalDevelopmentProviderConfig()
+    return ProviderBatchScheduler(
+        build_leanstral_goal_development_batch_dispatch(
+            resolved,
+            llm_generate=llm_generate,
+            llm_generate_batch=llm_generate_batch,
+        ),
+        config=scheduler_config,
+        capacity_supplier=capacity_supplier,
+        admission=admission,
+    )
+
+
 def create_leanstral_goal_development_provider(
     config: LeanstralGoalDevelopmentProviderConfig | None = None,
     *,
     llm_generate: LLMGenerate | None = None,
+    batch_scheduler: ProviderBatchScheduler | None = None,
 ) -> LeanstralGoalDevelopmentProvider:
-    return LeanstralGoalDevelopmentProvider(config, llm_generate=llm_generate)
+    return LeanstralGoalDevelopmentProvider(
+        config,
+        llm_generate=llm_generate,
+        batch_scheduler=batch_scheduler,
+    )
 
 
 __all__ = [
@@ -2045,6 +2348,8 @@ __all__ = [
     "LeanstralGoalDevelopmentProviderConfig",
     "PriorCounterexampleRecord",
     "ReusableReceiptRecord",
+    "build_leanstral_goal_development_batch_dispatch",
     "build_leanstral_goal_development_context",
+    "create_leanstral_goal_development_batch_scheduler",
     "create_leanstral_goal_development_provider",
 ]

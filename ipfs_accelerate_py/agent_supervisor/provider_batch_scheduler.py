@@ -32,7 +32,7 @@ import uuid
 from collections import OrderedDict, deque
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from enum import Enum
 from typing import Any, Final
 
@@ -71,7 +71,19 @@ def _canonical(value: Any) -> Any:
             normalized,
             key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")),
         )
-    return {"type": type(value).__name__}
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return _canonical(to_dict())
+    if is_dataclass(value) and not isinstance(value, type):
+        return _canonical(asdict(value))
+    # Unknown opaque objects must never all collapse to the same single-flight
+    # identity merely because they share a class.  The process-local identity
+    # is intentionally not durable evidence, but it safely prevents a false
+    # cache/single-flight hit while retaining a JSON-safe diagnostic value.
+    return {
+        "type": f"{type(value).__module__}.{type(value).__qualname__}",
+        "process_identity": id(value),
+    }
 
 
 def _canonical_json(value: Any) -> str:
@@ -367,7 +379,7 @@ class ProviderBatchSchedulerConfig:
 
 
 @dataclass(frozen=True)
-class ProviderBatchResult:
+class ProviderBatchResult(Mapping[str, Any]):
     """Member-local result, even when execution was shared."""
 
     request_id: str
@@ -406,6 +418,109 @@ class ProviderBatchResult:
             "provenance": _canonical(self.provenance),
             "singleflight_shared": self.singleflight_shared,
         }
+
+    def __getitem__(self, key: str) -> Any:
+        return self.to_dict()[key]
+
+    def __iter__(self):
+        return iter(self.to_dict())
+
+    def __len__(self) -> int:
+        return len(self.to_dict())
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ProviderBatchResult":
+        if not isinstance(value, Mapping):
+            raise TypeError("provider batch result must be a mapping")
+        allowed = {
+            "request_id",
+            "status",
+            "output",
+            "error",
+            "batch_id",
+            "provider_id",
+            "execution_id",
+            "receipt_id",
+            "token_budget",
+            "timeout_ms",
+            "queue_wait_ms",
+            "execution_ms",
+            "provenance",
+            "singleflight_shared",
+        }
+        unknown = sorted(str(key) for key in value if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown provider batch result fields: " + ", ".join(unknown)
+            )
+        return cls(
+            request_id=str(value.get("request_id") or ""),
+            status=ProviderBatchStatus(str(value.get("status") or "")),
+            output=value.get("output"),
+            error=str(value.get("error") or ""),
+            batch_id=str(value.get("batch_id") or ""),
+            provider_id=str(value.get("provider_id") or ""),
+            execution_id=str(value.get("execution_id") or ""),
+            receipt_id=str(value.get("receipt_id") or ""),
+            token_budget=int(value.get("token_budget") or 0),
+            timeout_ms=int(value.get("timeout_ms") or 0),
+            queue_wait_ms=int(value.get("queue_wait_ms") or 0),
+            execution_ms=int(value.get("execution_ms") or 0),
+            provenance=(
+                value.get("provenance")
+                if isinstance(value.get("provenance"), Mapping)
+                else {}
+            ),
+            singleflight_shared=bool(value.get("singleflight_shared", False)),
+        )
+
+
+@dataclass
+class ProviderBatchAdmissionGrant:
+    """One pre-dispatch admission decision with an optional resource lease.
+
+    ``release`` is invoked exactly once after the physical provider call (or
+    after a launch failure).  This is deliberately opaque: callers can bind a
+    :class:`resource_scheduler.ResourceAdmissionLease`, a provider semaphore,
+    or another reclaimable capacity grant without coupling this module to its
+    implementation.
+    """
+
+    admitted: bool
+    release: Callable[[], Any] | None = field(default=None, repr=False)
+    reason: str = ""
+    lease: Any = field(default=None, repr=False)
+    _released: bool = field(default=False, init=False, repr=False)
+    _release_lock: threading.Lock = field(
+        default_factory=threading.Lock,
+        init=False,
+        repr=False,
+    )
+
+    @classmethod
+    def from_value(cls, value: Any) -> "ProviderBatchAdmissionGrant":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, tuple) and len(value) == 2:
+            decision, lease = value
+            return cls(
+                admitted=bool(getattr(decision, "admitted", decision)),
+                reason=str(getattr(decision, "reason", "") or ""),
+                lease=lease,
+            )
+        return cls(
+            admitted=bool(getattr(value, "admitted", value)),
+            reason=str(getattr(value, "reason", "") or ""),
+            lease=getattr(value, "lease", None),
+        )
+
+    def release_once(self) -> None:
+        with self._release_lock:
+            if self._released:
+                return
+            self._released = True
+        if self.release is not None:
+            self.release()
 
 
 @dataclass(frozen=True)
@@ -541,6 +656,8 @@ class ProviderBatchMetrics:
     provider_calls_avoided: int
     fallback_requests: int
     admission_deferrals: int
+    capacity_errors: int
+    admission_errors: int
     max_queue_depth: int
     max_observed_batch_size: int
     total_queue_wait_ms: int
@@ -560,9 +677,7 @@ class ProviderBatchMetrics:
     def average_members_per_call_millionths(self) -> int:
         if self.provider_calls <= 0:
             return 0
-        return (
-            self.completed_requests + self.cancelled_requests
-        ) * 1_000_000 // self.provider_calls
+        return self.completed_requests * 1_000_000 // self.provider_calls
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -583,6 +698,8 @@ class ProviderBatchMetrics:
                 "provider_calls_avoided",
                 "fallback_requests",
                 "admission_deferrals",
+                "capacity_errors",
+                "admission_errors",
                 "max_queue_depth",
                 "max_observed_batch_size",
                 "total_queue_wait_ms",
@@ -623,6 +740,8 @@ class _ExecutionGroup:
     subscribers: list[_Subscriber]
     queued_at_ms: int
     running: bool = False
+    accepting_subscribers: bool = True
+    completed: bool = False
 
 
 ProviderBatchDispatch = Callable[
@@ -633,6 +752,104 @@ ProviderCapacitySupplier = Callable[[str], ProviderBatchCapacity | Mapping[str, 
 ProviderAdmission = Callable[
     [ProviderBatchKey, Sequence[ProviderBatchRequest], ProviderBatchCapacity], Any
 ]
+
+
+class ResourceSchedulerBatchAdmission:
+    """Adapt the supervisor resource scheduler to physical provider batches.
+
+    One lease represents one provider call, not every logical subscriber.
+    Token demand is summed across the unique execution groups while context and
+    model-memory requirements are maxima/shared load costs.  The adapter is
+    intentionally callable so it can be passed directly as ``admission=``.
+    """
+
+    def __init__(
+        self,
+        scheduler: Any,
+        *,
+        host_supplier: Any = None,
+        provider_supplier: Any = None,
+        budget: Any = None,
+        path: Any = ".",
+        resource_class: str = "llm-proof-draft",
+        memory_bytes: int = 0,
+        gpu_memory_bytes: int = 0,
+        required_capabilities: Sequence[str] = (),
+    ) -> None:
+        acquire = getattr(scheduler, "acquire", None)
+        release = getattr(scheduler, "release", None)
+        if not callable(acquire) or not callable(release):
+            raise TypeError("resource scheduler must provide acquire and release")
+        self.scheduler = scheduler
+        self.host_supplier = host_supplier
+        self.provider_supplier = provider_supplier
+        self.budget = budget
+        self.path = path
+        self.resource_class = str(resource_class or "llm-proof-draft")
+        self.memory_bytes = _positive_integer(
+            memory_bytes, "memory_bytes", allow_zero=True
+        )
+        self.gpu_memory_bytes = _positive_integer(
+            gpu_memory_bytes, "gpu_memory_bytes", allow_zero=True
+        )
+        self.required_capabilities = tuple(
+            str(item).strip() for item in required_capabilities if str(item).strip()
+        )
+
+    @staticmethod
+    def _sample(source: Any, provider_id: str = "") -> Any:
+        if not callable(source):
+            return source
+        try:
+            return source(provider_id) if provider_id else source()
+        except TypeError:
+            return source()
+
+    def __call__(
+        self,
+        key: ProviderBatchKey,
+        requests: Sequence[ProviderBatchRequest],
+        _capacity: ProviderBatchCapacity,
+    ) -> ProviderBatchAdmissionGrant:
+        from .resource_scheduler import LaneResourceRequirements
+
+        requirement = LaneResourceRequirements(
+            lane_id=f"provider-batch:{uuid.uuid4().hex}",
+            stage="inference",
+            resource_class=self.resource_class,
+            required_capabilities=self.required_capabilities,
+            provider_id=key.provider_id,
+            requires_provider=True,
+            context_tokens=max(
+                (request.context_limit for request in requests), default=0
+            ),
+            token_budget=sum(request.token_budget for request in requests),
+            quota_units=1,
+            memory_bytes=self.memory_bytes,
+            gpu_memory_bytes=self.gpu_memory_bytes,
+            process_slots=1,
+            fairness_key=key.provider_id,
+        )
+        decision, lease = self.scheduler.acquire(
+            requirement,
+            budget=self.budget,
+            host=self._sample(self.host_supplier),
+            providers=self._sample(self.provider_supplier, key.provider_id),
+            path=self.path,
+        )
+        if lease is None:
+            return ProviderBatchAdmissionGrant(
+                admitted=False,
+                reason=str(getattr(decision, "reason", "") or ""),
+            )
+        return ProviderBatchAdmissionGrant(
+            admitted=bool(getattr(decision, "admitted", False)),
+            reason=str(getattr(decision, "reason", "") or ""),
+            lease=lease,
+            release=lambda: self.scheduler.release(
+                lease, reason="provider_batch_completed"
+            ),
+        )
 
 
 class ProviderBatchScheduler:
@@ -687,6 +904,8 @@ class ProviderBatchScheduler:
             "provider_calls_avoided": 0,
             "fallback_requests": 0,
             "admission_deferrals": 0,
+            "capacity_errors": 0,
+            "admission_errors": 0,
             "max_queue_depth": 0,
             "max_observed_batch_size": 0,
             "total_queue_wait_ms": 0,
@@ -736,7 +955,7 @@ class ProviderBatchScheduler:
                 raise RuntimeError("provider batch queue is full")
             fingerprint = normalized.execution_fingerprint
             group = self._singleflight.get(fingerprint)
-            if group is not None:
+            if group is not None and group.accepting_subscribers:
                 group.subscribers.append(subscriber)
                 self._counters["singleflight_hits"] += 1
                 self._counters["provider_calls_avoided"] += 1
@@ -825,6 +1044,13 @@ class ProviderBatchScheduler:
                 + counters["cancelled_requests"]
                 + counters["timed_out_requests"]
             )
+            queued = sum(
+                1
+                for queue in self._queues.values()
+                for group in queue
+                for subscriber in group.subscribers
+                if subscriber.request.request_id in self._request_subscribers
+            )
             return ProviderBatchMetrics(
                 submitted_requests=counters["submitted_requests"],
                 completed_requests=completed,
@@ -832,7 +1058,7 @@ class ProviderBatchScheduler:
                 failed_requests=counters["failed_requests"],
                 cancelled_requests=counters["cancelled_requests"],
                 timed_out_requests=counters["timed_out_requests"],
-                queued_requests=len(self._request_subscribers),
+                queued_requests=queued,
                 active_batches=self._active_batches,
                 provider_calls=counters["provider_calls"],
                 completed_batches=counters["completed_batches"],
@@ -841,6 +1067,8 @@ class ProviderBatchScheduler:
                 provider_calls_avoided=counters["provider_calls_avoided"],
                 fallback_requests=counters["fallback_requests"],
                 admission_deferrals=counters["admission_deferrals"],
+                capacity_errors=counters["capacity_errors"],
+                admission_errors=counters["admission_errors"],
                 max_queue_depth=counters["max_queue_depth"],
                 max_observed_batch_size=counters["max_observed_batch_size"],
                 total_queue_wait_ms=counters["total_queue_wait_ms"],
@@ -910,6 +1138,20 @@ class ProviderBatchScheduler:
             and capacity.available_concurrent_batches > 0
             and active < min(configured, live_limit)
         )
+
+    def _release_admission(
+        self, grant: ProviderBatchAdmissionGrant
+    ) -> None:
+        """Release a provider lease without destabilizing coordination."""
+
+        try:
+            grant.release_once()
+        except Exception:
+            # A faulty external lease manager is operationally significant,
+            # but must not terminate the sole coordinator or obscure member
+            # results which have already been materialized.
+            with self._condition:
+                self._counters["admission_errors"] += 1
 
     def _expire_subscribers(self, now: int) -> None:
         for subscriber in tuple(self._request_subscribers.values()):
@@ -982,7 +1224,15 @@ class ProviderBatchScheduler:
             self._queues[key] = queue
             if not queue:
                 continue
-            capacity = self._capacity(key.provider_id)
+            try:
+                capacity = self._capacity(key.provider_id)
+            except Exception:
+                # Telemetry is live operational input.  A transient monitor
+                # failure applies backpressure; it must not kill the one
+                # coordinator responsible for every provider route.
+                self._counters["capacity_errors"] += 1
+                self._counters["admission_deferrals"] += 1
+                continue
             if not self._provider_has_slot(key.provider_id, capacity):
                 self._counters["admission_deferrals"] += 1
                 continue
@@ -1014,10 +1264,20 @@ class ProviderBatchScheduler:
                 self._counters["admission_deferrals"] += 1
                 continue
             requests = tuple(group.representative.dispatch_copy() for group in groups)
+            admission_grant = ProviderBatchAdmissionGrant(admitted=True)
             if self._admission is not None:
-                decision = self._admission(key, requests, capacity)
-                admitted = bool(getattr(decision, "admitted", decision))
-                if not admitted:
+                try:
+                    admission_grant = ProviderBatchAdmissionGrant.from_value(
+                        self._admission(key, requests, capacity)
+                    )
+                except Exception:
+                    self._counters["admission_errors"] += 1
+                    admission_grant = ProviderBatchAdmissionGrant(
+                        admitted=False,
+                        reason="admission_error",
+                    )
+                if not admission_grant.admitted:
+                    self._release_admission(admission_grant)
                     for group in reversed(groups):
                         queue.appendleft(group)
                     self._counters["admission_deferrals"] += 1
@@ -1033,11 +1293,29 @@ class ProviderBatchScheduler:
             batch_id = f"provider-batch:{uuid.uuid4().hex}"
             thread = threading.Thread(
                 target=self._run_batch,
-                args=(batch_id, key, groups, requests, now),
+                args=(
+                    batch_id,
+                    key,
+                    groups,
+                    requests,
+                    now,
+                    admission_grant,
+                ),
                 name=f"provider-batch-{key.provider_id}",
                 daemon=True,
             )
-            thread.start()
+            try:
+                thread.start()
+            except Exception:
+                self._release_admission(admission_grant)
+                for group in reversed(groups):
+                    group.running = False
+                    queue.appendleft(group)
+                self._queues.setdefault(key, queue)
+                self._active_batches -= 1
+                self._active_by_provider[key.provider_id] -= 1
+                self._counters["admission_errors"] += 1
+                continue
             return True
         return False
 
@@ -1080,6 +1358,77 @@ class ProviderBatchScheduler:
         groups: list[_ExecutionGroup],
         requests: tuple[ProviderBatchRequest, ...],
         started_at_ms: int,
+        admission_grant: ProviderBatchAdmissionGrant,
+    ) -> None:
+        try:
+            self._run_admitted_batch(
+                batch_id,
+                key,
+                groups,
+                requests,
+                started_at_ms,
+            )
+        except BaseException as exc:
+            # The normal path materializes provider errors per member.  This
+            # guard covers scheduler-internal failures (for example a faulty
+            # receipt extension) so subscribers and capacity cannot leak.
+            now = self._clock_ms()
+            with self._condition:
+                incomplete = [group for group in groups if not group.completed]
+                for group in incomplete:
+                    group.accepting_subscribers = False
+                    if self._singleflight.get(group.fingerprint) is group:
+                        self._singleflight.pop(group.fingerprint, None)
+                    for subscriber in tuple(group.subscribers):
+                        if (
+                            subscriber.request.request_id
+                            not in self._request_subscribers
+                        ):
+                            continue
+                        self._set_member_result(
+                            subscriber,
+                            ProviderBatchResult(
+                                request_id=subscriber.request.request_id,
+                                status=ProviderBatchStatus.FAILED,
+                                error=(
+                                    "provider batch scheduler internal failure: "
+                                    f"{type(exc).__name__}: {exc}"
+                                ),
+                                batch_id=batch_id,
+                                provider_id=key.provider_id,
+                                execution_id=group.execution_id,
+                                token_budget=subscriber.request.token_budget,
+                                timeout_ms=subscriber.request.timeout_ms,
+                                queue_wait_ms=max(
+                                    0, now - subscriber.submitted_at_ms
+                                ),
+                                provenance=subscriber.request.provenance,
+                                singleflight_shared=(
+                                    len(group.subscribers) > 1
+                                ),
+                            ),
+                        )
+                    group.completed = True
+                if incomplete:
+                    self._active_batches = max(0, self._active_batches - 1)
+                    self._active_by_provider[key.provider_id] = max(
+                        0,
+                        self._active_by_provider.get(key.provider_id, 0) - 1,
+                    )
+                    self._counters["completed_batches"] += 1
+                    self._condition.notify_all()
+        finally:
+            # A provider exception, malformed batch result, cancellation, or
+            # receipt failure must never leak GPU/provider capacity.
+            self._release_admission(admission_grant)
+
+    def _run_admitted_batch(
+        self,
+        batch_id: str,
+        key: ProviderBatchKey,
+        groups: list[_ExecutionGroup],
+        requests: tuple[ProviderBatchRequest, ...],
+        _selected_at_ms: int,
     ) -> None:
         outputs: tuple[Any, ...]
         dispatch_error: BaseException | None = None
@@ -1103,8 +1452,21 @@ class ProviderBatchScheduler:
             outputs = tuple(exc for _ in requests)
         completed_at_ms = self._clock_ms()
         duration = max(0, completed_at_ms - call_started)
+        # Seal the groups and remove their single-flight handles before taking
+        # a subscriber snapshot.  A late identical submit now creates a fresh
+        # queued group; every subscriber which joined the completed execution
+        # is guaranteed to appear in this immutable snapshot.
+        with self._condition:
+            subscriber_groups: list[tuple[_Subscriber, ...]] = []
+            for group in groups:
+                group.accepting_subscribers = False
+                if self._singleflight.get(group.fingerprint) is group:
+                    self._singleflight.pop(group.fingerprint, None)
+                subscriber_groups.append(tuple(group.subscribers))
         result_entries: list[tuple[_Subscriber, ProviderBatchResult]] = []
-        for group, output in zip(groups, outputs):
+        for group, subscribers, output in zip(
+            groups, subscriber_groups, outputs
+        ):
             used_fallback = False
             if (
                 isinstance(output, BaseException)
@@ -1116,7 +1478,7 @@ class ProviderBatchScheduler:
                     used_fallback = True
                 except BaseException as fallback_error:
                     output = fallback_error
-            for subscriber in group.subscribers:
+            for subscriber in subscribers:
                 now = self._clock_ms()
                 if (
                     subscriber.future.cancelled()
@@ -1164,7 +1526,7 @@ class ProviderBatchScheduler:
                     )
                 )
         receipt = self._build_receipt(
-            batch_id, key, result_entries, started_at_ms, completed_at_ms
+            batch_id, key, result_entries, call_started, completed_at_ms
         )
         with self._condition:
             for subscriber, result in result_entries:
@@ -1172,7 +1534,7 @@ class ProviderBatchScheduler:
                     subscriber, replace(result, receipt_id=receipt.evidence_id)
                 )
             for group in groups:
-                self._singleflight.pop(group.fingerprint, None)
+                group.completed = True
             self._receipts.append(receipt)
             self._active_batches -= 1
             self._active_by_provider[key.provider_id] -= 1
@@ -1270,6 +1632,7 @@ __all__ = [
     "BatchRequest",
     "BatchResult",
     "ProviderBatchCapacity",
+    "ProviderBatchAdmissionGrant",
     "ProviderBatchEvidenceReceipt",
     "ProviderBatchKey",
     "ProviderBatchMemberEvidence",
@@ -1279,4 +1642,5 @@ __all__ = [
     "ProviderBatchScheduler",
     "ProviderBatchSchedulerConfig",
     "ProviderBatchStatus",
+    "ResourceSchedulerBatchAdmission",
 ]

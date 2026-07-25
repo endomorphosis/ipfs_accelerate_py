@@ -13,6 +13,7 @@ import sys
 import time
 import queue
 import threading
+import uuid
 from contextlib import redirect_stdout
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -37,6 +38,11 @@ from .plan_evaluator import (
     PlanBranch,
     PlanBranchValidationError,
     evaluate_analysis_proposals,
+)
+from .provider_batch_scheduler import (
+    ProviderBatchRequest,
+    ProviderBatchResult,
+    ProviderBatchScheduler,
 )
 
 
@@ -153,6 +159,11 @@ class TaskProposalRouterConfig:
     provider_context_window: int | None = None
     provider_max_input_tokens: int | None = None
     context_tokenizer: Any = field(default=None, repr=False, compare=False)
+    provider_batch_scheduler: ProviderBatchScheduler | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -220,6 +231,11 @@ class TaskProposalRouteSpec:
     provider_context_window: int | None = None
     provider_max_input_tokens: int | None = None
     context_tokenizer: Any = field(default=None, repr=False, compare=False)
+    provider_batch_scheduler: ProviderBatchScheduler | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER"
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL"
     default_model: str = "gpt-5.3-codex-spark"
@@ -379,6 +395,7 @@ def build_task_proposal_router_cli_config(
     provider_context_window: int | None = None,
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -407,6 +424,7 @@ def build_task_proposal_router_cli_config(
             provider_context_window=provider_context_window,
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
+            provider_batch_scheduler=provider_batch_scheduler,
         ),
         description=description,
         task_id_help=task_id_help,
@@ -446,6 +464,7 @@ def run_configured_task_proposal_router_cli(
     provider_context_window: int | None = None,
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -477,6 +496,7 @@ def run_configured_task_proposal_router_cli(
             provider_context_window=provider_context_window,
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
+            provider_batch_scheduler=provider_batch_scheduler,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -522,6 +542,7 @@ def build_configured_task_proposal_router_runner(
     provider_context_window: int | None = None,
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -553,6 +574,7 @@ def build_configured_task_proposal_router_runner(
             provider_context_window=provider_context_window,
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
+            provider_batch_scheduler=provider_batch_scheduler,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -589,6 +611,7 @@ def build_repo_task_proposal_router_runner(
     provider_context_window: int | None = None,
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -631,6 +654,7 @@ def build_repo_task_proposal_router_runner(
         provider_context_window=provider_context_window,
         provider_max_input_tokens=provider_max_input_tokens,
         context_tokenizer=context_tokenizer,
+        provider_batch_scheduler=provider_batch_scheduler,
         provider_env=provider_env,
         model_env=model_env,
         default_model=default_model,
@@ -674,6 +698,7 @@ def build_repo_task_proposal_route_runner(
     provider_context_window: int | None = None,
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
+    provider_batch_scheduler: ProviderBatchScheduler | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -738,6 +763,7 @@ def build_repo_task_proposal_route_runner(
         provider_context_window=provider_context_window,
         provider_max_input_tokens=provider_max_input_tokens,
         context_tokenizer=context_tokenizer,
+        provider_batch_scheduler=provider_batch_scheduler,
         provider_env=provider_env,
         model_env=model_env,
         default_model=default_model,
@@ -788,6 +814,7 @@ def build_repo_task_proposal_route_runner_from_spec(
         provider_context_window=route_spec.provider_context_window,
         provider_max_input_tokens=route_spec.provider_max_input_tokens,
         context_tokenizer=route_spec.context_tokenizer,
+        provider_batch_scheduler=route_spec.provider_batch_scheduler,
         provider_env=route_spec.provider_env,
         model_env=route_spec.model_env,
         default_model=route_spec.default_model,
@@ -1263,6 +1290,74 @@ def build_task_implementation_proposal_contract(
     )
 
 
+def _call_text_provider(
+    prompt: str,
+    invocation: Any,
+    *,
+    scheduler: ProviderBatchScheduler | None,
+    route: str,
+    operation: str,
+    context_limit: int,
+    response_contract: str,
+    provenance: Mapping[str, Any] | None = None,
+) -> tuple[str, ProviderBatchResult | None]:
+    """Dispatch text directly or through the shared admitted provider stream."""
+
+    from .todo_daemon.llm import call_llm_router
+
+    if scheduler is None:
+        return call_llm_router(prompt, invocation), None
+    prompt_bytes = prompt.encode("utf-8", errors="surrogatepass")
+    result = scheduler.execute(
+        ProviderBatchRequest(
+            request_id=f"{route}:{uuid.uuid4().hex}",
+            payload=prompt,
+            provider_id=str(invocation.provider or "llm_router:auto"),
+            route=route,
+            model=str(invocation.model_name),
+            operation=operation,
+            context_limit=max(0, int(context_limit)),
+            policy={
+                "allow_local_fallback": bool(
+                    invocation.allow_local_fallback
+                ),
+                "reject_effective_provider_name": (
+                    invocation.reject_effective_provider_name
+                ),
+                "required_effective_providers": tuple(
+                    invocation.required_effective_providers
+                ),
+                "response_contract": response_contract,
+            },
+            generation_settings={
+                "temperature": float(invocation.temperature),
+                "backend": str(invocation.backend_default),
+            },
+            token_budget=max(0, int(invocation.max_new_tokens)),
+            timeout_ms=max(1, int(invocation.timeout_seconds) * 1_000),
+            provenance={
+                **dict(provenance or {}),
+                "route": route,
+                "response_contract": response_contract,
+                "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                "prompt_bytes": len(prompt_bytes),
+            },
+        )
+    )
+    if not result.successful:
+        raise TaskProposalRouterError(
+            "shared provider dispatch failed: "
+            f"{result.status.value}: {result.error or 'no provider result'}",
+            reason_code=f"provider_batch_{result.status.value}",
+        )
+    if not isinstance(result.output, str):
+        raise TaskProposalRouterError(
+            "shared provider returned a non-text result",
+            reason_code="provider_batch_non_text",
+        )
+    return result.output, result
+
+
 def run_task_proposal_router(
     config: TaskProposalRouterConfig,
     *,
@@ -1277,7 +1372,7 @@ def run_task_proposal_router(
     """Prepare or generate an LLM implementation proposal for one task."""
 
     from .todo_daemon.implementation_daemon import parse_task_file
-    from .todo_daemon.llm import LlmRouterInvocation, call_llm_router
+    from .todo_daemon.llm import LlmRouterInvocation
 
     tasks = parse_task_file(config.task_board_path, config.task_header_prefix)
     selected = select_proposal_task(
@@ -1343,7 +1438,23 @@ def run_task_proposal_router(
         max_new_tokens=int(max_new_tokens),
         reject_effective_provider_name=None if allow_local_fallback else "local_hf",
     )
-    raw_proposal = call_llm_router(prompt, invocation)
+    raw_proposal, batch_result = _call_text_provider(
+        prompt,
+        invocation,
+        scheduler=config.provider_batch_scheduler,
+        route="task-proposal-router",
+        operation="task_implementation_proposal.v1",
+        context_limit=compiled_context.receipt.effective_input_limit,
+        response_contract=TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+        provenance={
+            "task_id": _task_value(selected, "task_id"),
+            "repository_tree_id": repository_tree_id,
+            "context_id": context_id,
+            "context_capsule_id": compiled_context.capsule.capsule_id,
+        },
+    )
+    if batch_result is not None:
+        payload["provider_batch"] = batch_result.to_dict()
     config.artifact_dir.mkdir(parents=True, exist_ok=True)
     task_name = (_task_value(selected, "task_id") or "task").lower()
     context_receipt_path = (
@@ -1493,6 +1604,11 @@ class StructuredPlanRouterConfig:
     provider_context_window: int | None = None
     provider_max_input_tokens: int | None = None
     context_tokenizer: Any = field(default=None, repr=False, compare=False)
+    provider_batch_scheduler: ProviderBatchScheduler | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if int(self.branch_count) < 1:
@@ -1517,6 +1633,11 @@ class PlanRoutingResult:
     used_fallback: bool
     router_error: str | None = None
     raw_response: str | None = None
+    batch_result: ProviderBatchResult | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not self.branches:
@@ -1538,6 +1659,11 @@ class PlanRoutingResult:
             "used_fallback": self.used_fallback,
             "router_succeeded": self.router_succeeded,
             "router_error": self.router_error,
+            "batch_result": (
+                None
+                if self.batch_result is None
+                else self.batch_result.to_dict()
+            ),
             "response_bytes": len(response_bytes),
             "response_sha256": (
                 "sha256:" + hashlib.sha256(response_bytes).hexdigest()
@@ -1566,6 +1692,11 @@ class AnalysisProposalRoutingResult:
     raw_responses: tuple[str, ...] = ()
     router_call_timestamps: tuple[float, ...] = ()
     limit_reason: str = ""
+    batch_results: tuple[ProviderBatchResult, ...] = field(
+        default_factory=tuple,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def router_succeeded(self) -> bool:
@@ -1607,6 +1738,9 @@ class AnalysisProposalRoutingResult:
             ],
             "router_call_timestamps": list(self.router_call_timestamps),
             "limit_reason": self.limit_reason,
+            "batch_results": [
+                item.to_dict() for item in self.batch_results
+            ],
         }
 
 
@@ -2160,8 +2294,13 @@ def deterministic_plan_branches(
 def _default_structured_router(
     prompt: str,
     config: StructuredPlanRouterConfig,
+    *,
+    route: str = "structured-plan-router",
+    operation: str = "structured_plan.v1",
+    response_contract: str = "plan-branches",
+    batch_results: list[ProviderBatchResult] | None = None,
 ) -> str:
-    from .todo_daemon.llm import LlmRouterInvocation, call_llm_router
+    from .todo_daemon.llm import LlmRouterInvocation
 
     invocation = LlmRouterInvocation(
         repo_root=config.repo_root,
@@ -2175,7 +2314,33 @@ def _default_structured_router(
             None if config.allow_local_fallback else "local_hf"
         ),
     )
-    return call_llm_router(prompt, invocation)
+    context_limits = [int(config.context_max_input_tokens)]
+    if config.provider_max_input_tokens is not None:
+        context_limits.append(int(config.provider_max_input_tokens))
+    if config.provider_context_window is not None:
+        context_limits.append(
+            max(
+                0,
+                int(config.provider_context_window)
+                - int(config.max_new_tokens),
+            )
+        )
+    response, batch_result = _call_text_provider(
+        prompt,
+        invocation,
+        scheduler=config.provider_batch_scheduler,
+        route=route,
+        operation=operation,
+        context_limit=min(context_limits),
+        response_contract=response_contract,
+        provenance={
+            "repo_root": str(config.repo_root),
+            "branch_count": config.branch_count,
+        },
+    )
+    if batch_result is not None and batch_results is not None:
+        batch_results.append(batch_result)
+    return response
 
 
 def generate_structured_plan_branches(
@@ -2200,11 +2365,19 @@ def generate_structured_plan_branches(
         config=resolved_config,
     )
     raw_response: str | None = None
+    batch_results: list[ProviderBatchResult] = []
     try:
         raw_response = (
             router(prompt)
             if router is not None
-            else _default_structured_router(prompt, resolved_config)
+            else _default_structured_router(
+                prompt,
+                resolved_config,
+                route="structured-plan-router",
+                operation="structured_plan.v1",
+                response_contract="plan-branches@1",
+                batch_results=batch_results,
+            )
         )
         branches = parse_structured_plan_branches(raw_response)
         if len(branches) != count:
@@ -2215,6 +2388,7 @@ def generate_structured_plan_branches(
             branches=branches,
             used_fallback=False,
             raw_response=raw_response,
+            batch_result=batch_results[-1] if batch_results else None,
         )
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"[:1000]
@@ -2234,6 +2408,7 @@ def generate_structured_plan_branches(
             used_fallback=True,
             router_error=error,
             raw_response=raw_response,
+            batch_result=batch_results[-1] if batch_results else None,
         )
 
 
@@ -2372,6 +2547,7 @@ def generate_analysis_proposals(
     attempt_limit = min(1 + limits.max_router_retries, calls_remaining, token_limited_calls)
     errors: list[str] = []
     raw_responses: list[str] = []
+    batch_results: list[ProviderBatchResult] = []
     calls = 0
     last_evaluation = AnalysisProposalEvaluation((), (), None)
     proposals: tuple[AnalysisProposal, ...] = ()
@@ -2390,6 +2566,10 @@ def generate_analysis_proposals(
                 else _default_structured_router(
                     prompt,
                     replace(resolved, max_new_tokens=token_cost),
+                    route="analysis-proposal-router",
+                    operation="analysis_proposal.v1",
+                    response_contract="analysis-proposals@1",
+                    batch_results=batch_results,
                 )
             )
             raw_responses.append(str(raw))
@@ -2418,6 +2598,7 @@ def generate_analysis_proposals(
                     reserved_tokens=calls * token_cost,
                     raw_responses=tuple(raw_responses),
                     router_call_timestamps=tuple([*historical_timestamps, *([now_epoch] * calls)]),
+                    batch_results=tuple(batch_results),
                 )
             reasons = ", ".join(item.reason for item in last_evaluation.rejected)
             errors.append(f"all router proposals rejected: {reasons or 'no accepted proposals'}")
@@ -2475,6 +2656,7 @@ def generate_analysis_proposals(
         raw_responses=tuple(raw_responses),
         router_call_timestamps=tuple([*historical_timestamps, *([now_epoch] * calls)]),
         limit_reason=limit_reason,
+        batch_results=tuple(batch_results),
     )
 
 

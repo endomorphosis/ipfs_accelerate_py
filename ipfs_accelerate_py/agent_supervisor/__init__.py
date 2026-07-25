@@ -473,7 +473,9 @@ from .leanstral_goal_development import (
     LeanstralGoalDevelopmentProviderConfig,
     PriorCounterexampleRecord,
     ReusableReceiptRecord,
+    build_leanstral_goal_development_batch_dispatch,
     build_leanstral_goal_development_context,
+    create_leanstral_goal_development_batch_scheduler,
     create_leanstral_goal_development_provider,
 )
 from .leanstral_goal_lifecycle import (
@@ -1672,7 +1674,9 @@ __all__ = [
     "LeanstralGoalDevelopmentProviderConfig",
     "PriorCounterexampleRecord",
     "ReusableReceiptRecord",
+    "build_leanstral_goal_development_batch_dispatch",
     "build_leanstral_goal_development_context",
+    "create_leanstral_goal_development_batch_scheduler",
     "create_leanstral_goal_development_provider",
     "ConfiguredLeanstralGoalLifecycleSupervisor",
     "DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_AUDIT_FILE",
@@ -1992,6 +1996,7 @@ __all__ = [
     "evaluate_adaptive_throughput_benchmark",
     "normalize_adaptive_stage",
     "PARTIAL_CANCELLATION_REQUIREMENT_ID",
+    "ProviderBatchAdmissionGrant",
     "ProviderBatchCapacity",
     "ProviderBatchEvidenceReceipt",
     "ProviderBatchKey",
@@ -2002,6 +2007,7 @@ __all__ = [
     "ProviderBatchScheduler",
     "ProviderBatchSchedulerConfig",
     "ProviderBatchStatus",
+    "ResourceSchedulerBatchAdmission",
     "ActionContractCodegenConfig",
     "ActionContractSyncSpec",
     "ActionContractSyncTarget",
@@ -2855,6 +2861,7 @@ def __getattr__(name: str):
         return getattr(resource_scheduler, name)
     if name in {
         "PARTIAL_CANCELLATION_REQUIREMENT_ID",
+        "ProviderBatchAdmissionGrant",
         "ProviderBatchCapacity",
         "ProviderBatchEvidenceReceipt",
         "ProviderBatchKey",
@@ -2865,6 +2872,7 @@ def __getattr__(name: str):
         "ProviderBatchScheduler",
         "ProviderBatchSchedulerConfig",
         "ProviderBatchStatus",
+        "ResourceSchedulerBatchAdmission",
     }:
         from . import provider_batch_scheduler
 
