@@ -4528,6 +4528,15 @@ class ValidationScheduler:
                     "impact_validation_receipt": None,
                     "proposal_validation": bound.to_dict(),
                     "proposal_receipt": bound.receipt.to_dict(),
+                    "proved_requirement_ids": (
+                        bound.receipt.proved_requirement_ids
+                    ),
+                    "proof_authoritative": False,
+                    "code_proof_authoritative": False,
+                    "completion_authoritative": False,
+                    "freshness_authoritative": False,
+                    "authoritative": False,
+                    "merge_eligible": False,
                     "selection_reasons": {},
                     "skipped_reasons": {},
                     "uncovered_impact": ["proposal_validation_failed"],
@@ -4966,6 +4975,8 @@ class ValidationScheduler:
                 "proof_authoritative": False,
                 "code_proof_authoritative": False,
                 "completion_authoritative": False,
+                "freshness_authoritative": False,
+                "authoritative": False,
                 "merge_eligible": False,
             }
 
@@ -5068,6 +5079,8 @@ class ValidationScheduler:
                 "proof_authoritative": False,
                 "code_proof_authoritative": False,
                 "completion_authoritative": False,
+                "freshness_authoritative": False,
+                "authoritative": False,
                 "merge_eligible": False,
                 "impact_graph": None,
                 "affected_paths": list(changed),
@@ -5485,6 +5498,7 @@ class ValidationScheduler:
         report["completion_authoritative"] = False
         report["merge_eligible"] = False
         report["freshness_authoritative"] = False
+        report["authoritative"] = False
         report["impact_graph"] = graph.to_dict() if graph is not None else None
         report["affected_paths"] = list(affected)
         report["authority_gates"] = [
