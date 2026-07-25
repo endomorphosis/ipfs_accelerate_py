@@ -20,6 +20,7 @@ from .goal_completion import (
     GOAL_COMPLETION_SCHEMA_VERSION,
     GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION,
     CompletionEvidence,
+    GoalCompletionDecision,
     GoalState,
     is_legacy_completed_goal_state,
     migrate_legacy_goal_completion,
@@ -74,6 +75,46 @@ TASK_GOAL_METADATA_KEYS = (
 OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/objective-goal-quality-report@1"
 )
+
+
+def completion_gate_actionable_goal_ids(
+    goal_id: str,
+    decision: GoalCompletionDecision | Mapping[str, Any] | None,
+) -> tuple[str, ...]:
+    """Project an incomplete completion gate back into objective scheduling.
+
+    Completion-gate tasks are proof-producing projections, not replacements
+    for their parent goal.  The parent therefore remains eligible for forced
+    objective refill until a canonical decision says that it is verified,
+    its completion gate passed, and no actionable reason remains.  Mapping
+    inputs are accepted for durable supervisor records, but fail closed when
+    any of those fields is absent.
+    """
+
+    normalized_goal_id = str(goal_id or "").strip()
+    if not normalized_goal_id:
+        raise ValueError("goal_id is required")
+    if decision is None:
+        return (normalized_goal_id,)
+    if isinstance(decision, GoalCompletionDecision):
+        payload = decision.to_dict()
+    elif isinstance(decision, Mapping):
+        payload = dict(decision)
+    else:
+        raise TypeError("decision must be a GoalCompletionDecision or mapping")
+    gate_value = payload.get("completion_gate", payload.get("gate"))
+    gate = dict(gate_value) if isinstance(gate_value, Mapping) else {}
+    state = str(
+        payload.get("state", payload.get("next_state", ""))
+        or ""
+    ).strip().lower()
+    verified = (
+        state == GoalState.VERIFIED_COMPLETE.value
+        and payload.get("verified") is True
+        and gate.get("passed") is True
+        and not payload.get("actionable_reasons")
+    )
+    return () if verified else (normalized_goal_id,)
 
 
 def _quality_terms(goal: ObjectiveGoal, *field_names: str) -> tuple[str, ...]:

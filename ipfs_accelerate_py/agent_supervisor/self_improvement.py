@@ -20,7 +20,7 @@ import json
 import os
 import tempfile
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
@@ -37,7 +37,11 @@ from .backlog_refinery import (
     self_improvement_epoch_wait_active,
 )
 from .formal_verification_contracts import content_identity as _strict_content_identity
-from .goal_completion import CompletionEvidence
+from .goal_completion import (
+    CompletionEvidence,
+    GoalCompletionDecision,
+    evaluate_goal_completion,
+)
 from .objective_graph import (
     ObjectiveGenerationLimits,
     ObjectiveGoalMaterializationPolicy,
@@ -107,6 +111,25 @@ DEFAULT_SELF_IMPROVEMENT_GOAL_ID = "ASI-G111"
 DEFAULT_SUCCESSOR_REFILL_GOAL_ID = "ASI-G109"
 DEFAULT_EPOCH_IDEMPOTENCY_GOAL_ID = "ASI-G110"
 DEFAULT_SELF_IMPROVEMENT_PARENT_GOAL_ID = "ASI-G080"
+SELF_IMPROVEMENT_OBJECTIVE_REVISION = "ASI-G080@asi-087"
+SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION = (
+    "self-improvement-parent-completion@1"
+)
+SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION = (
+    "self-improvement-parent-completion-policy@1"
+)
+SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS = 2
+SELF_IMPROVEMENT_PRODUCING_TASK_IDS = ("ASI-022",)
+SELF_IMPROVEMENT_CHILD_GOAL_IDS = ("ASI-G109", "ASI-G110", "ASI-G111")
+SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA = (
+    "A drained board triggers one identity-bound evaluation epoch",
+    "measured gaps yield bounded goal proposals that pass quality, "
+    "refinement, novelty, and policy checks",
+    "duplicate/cooldown work is suppressed",
+    "identical epochs are idempotent",
+    "healthy no-gap epochs persist exhaustion quorum and wait for a "
+    "meaningful trigger instead of looping.",
+)
 DEFAULT_BENCHMARK_DIMENSIONS = (
     "cache",
     "control",
@@ -125,6 +148,444 @@ DEFAULT_MEANINGFUL_TRIGGERS = (
     "scheduled_observation_window",
     "stale_evidence_observed",
 )
+
+
+def evaluate_self_improvement_completion(
+    *,
+    repository_id: str,
+    repository_tree: str,
+    producing_tasks: Sequence[Any] = (),
+    child_goals: Sequence[Any] = (),
+    current_state: Any = "active",
+    evidence: Sequence[Any] = (),
+    tasks_complete: bool = False,
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    required_exhaustive_receipts: int = (
+        SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ),
+    now: datetime | str | None = None,
+    freshness_seconds: float = 3600.0,
+    clock_skew_seconds: float = 300.0,
+    analysis_inconclusive: bool = False,
+    blocked_reason: str = "",
+) -> GoalCompletionDecision:
+    """Evaluate the closed ASI-G080 parent completion contract.
+
+    Runtime refill receipts remain leaf evidence for G109/G110/G111.  Parent
+    completion additionally fixes the original producer, direct descendants,
+    five literal acceptance criteria, explicit completion-safe analyzer
+    binding, and two independent fresh exhaustive receipts.  Invalid inputs
+    are passed to the shared two-phase lifecycle as failed gate projections;
+    no operational epoch result is promoted into completion authority.
+    """
+
+    if (
+        isinstance(required_exhaustive_receipts, bool)
+        or not isinstance(required_exhaustive_receipts, int)
+        or required_exhaustive_receipts
+        != SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
+    ):
+        raise ValueError(
+            "required_exhaustive_receipts must equal the configured "
+            f"ASI-G080 count {SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+        )
+    for name, value in (
+        ("freshness_seconds", freshness_seconds),
+        ("clock_skew_seconds", clock_skew_seconds),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or float(value) < 0
+        ):
+            raise ValueError(f"{name} must be a non-negative number")
+    repository_id = str(repository_id or "").strip()
+    repository_tree = str(repository_tree or "").strip()
+    if not repository_id or not repository_tree:
+        raise ValueError("repository_id and repository_tree must not be empty")
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    def normalized(value: Any) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    def parsed_time(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            result = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                result = datetime.fromisoformat(
+                    value.strip().replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if result.tzinfo is None:
+            result = result.replace(tzinfo=timezone.utc)
+        return result.astimezone(timezone.utc)
+
+    current = parsed_time(now) or datetime.now(timezone.utc)
+    max_age = timedelta(seconds=float(freshness_seconds))
+    skew = timedelta(seconds=float(clock_skew_seconds))
+
+    def fresh(value: Any) -> bool:
+        observed = parsed_time(value)
+        return bool(
+            observed is not None
+            and observed <= current + skew
+            and current - observed <= max_age
+        )
+
+    task_values = [payload(item) for item in producing_tasks]
+    task_ids = [
+        str(item.get("task_id", item.get("id", "")) or "").strip()
+        for item in task_values
+    ]
+    successful_states = {
+        "complete",
+        "completed",
+        "passed",
+        "success",
+        "succeeded",
+        "verified",
+        "verified_complete",
+    }
+    producers_complete = bool(
+        len(task_ids) == len(set(task_ids))
+        and tuple(sorted(task_ids))
+        == tuple(sorted(SELF_IMPROVEMENT_PRODUCING_TASK_IDS))
+        and all(
+            normalized(item.get("status", item.get("state", "")))
+            in successful_states
+            for item in task_values
+        )
+    )
+
+    evidence_records = [
+        item
+        if isinstance(item, CompletionEvidence)
+        else CompletionEvidence.from_dict(item)
+        for item in evidence
+    ]
+    expected_criteria = {
+        normalized(item) for item in SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA
+    }
+    evidence_criteria = [
+        normalized(item.acceptance_criterion) for item in evidence_records
+    ]
+    receipt_ids_by_criterion: dict[str, set[str]] = {}
+    for item in evidence_records:
+        criterion = normalized(item.acceptance_criterion)
+        if criterion and item.provenance_cid:
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(
+                item.provenance_cid
+            )
+    evidence_population_complete = bool(
+        len(evidence_records) == len(expected_criteria)
+        and len(evidence_criteria) == len(set(evidence_criteria))
+        and set(evidence_criteria) == expected_criteria
+        and all(
+            len(receipt_ids_by_criterion.get(criterion, ())) == 1
+            for criterion in expected_criteria
+        )
+    )
+
+    coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+    row_keys = [
+        normalized(
+            row.get(
+                "criterion",
+                row.get("acceptance_criterion", row.get("acceptance", "")),
+            )
+        )
+        for row in rows
+        if isinstance(row, Mapping)
+    ]
+
+    def implementation_bound(row: Mapping[str, Any]) -> bool:
+        for field_name in (
+            "implementation",
+            "implementation_binding",
+            "changed_files",
+            "predicted_files",
+            "ast_symbols",
+            "interfaces",
+        ):
+            value = row.get(field_name)
+            if isinstance(value, str) and value.strip():
+                return True
+            if (
+                isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+                and any(str(item or "").strip() for item in value)
+            ):
+                return True
+        return False
+
+    def validation_ids(row: Mapping[str, Any]) -> set[str]:
+        value = row.get(
+            "validation_receipt_ids",
+            row.get("validation_receipt_id", ()),
+        )
+        if isinstance(value, str):
+            value = (value,)
+        if not (
+            isinstance(value, Sequence)
+            and not isinstance(value, (str, bytes, bytearray))
+        ):
+            return set()
+        return {
+            str(item or "").strip()
+            for item in value
+            if str(item or "").strip()
+        }
+
+    coverage_bound = bool(
+        evidence_population_complete
+        and coverage_value.get("verified") is True
+        and coverage_value.get("repository_id") == repository_id
+        and coverage_value.get("repository_tree") == repository_tree
+        and len(row_keys) == len(expected_criteria)
+        and len(row_keys) == len(set(row_keys))
+        and set(row_keys) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and implementation_bound(row)
+            and len(validation_ids(row)) == 1
+            and validation_ids(row)
+            == receipt_ids_by_criterion.get(
+                normalized(
+                    row.get(
+                        "criterion",
+                        row.get(
+                            "acceptance_criterion",
+                            row.get("acceptance", ""),
+                        ),
+                    )
+                ),
+                set(),
+            )
+            for row in rows
+        )
+    )
+    if not coverage_bound:
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "passed": False,
+            "reason_codes": list(
+                dict.fromkeys(
+                    [
+                        *(
+                            coverage_value.get("reason_codes", ())
+                            if isinstance(
+                                coverage_value.get("reason_codes"),
+                                (list, tuple),
+                            )
+                            else ()
+                        ),
+                        (
+                            "validation_evidence_population_incomplete"
+                            if not evidence_population_complete
+                            else "coverage_validation_receipt_unbound"
+                        ),
+                    ]
+                )
+            ),
+        }
+
+    expected_binding = {
+        "repository_id": repository_id,
+        "tree_id": repository_tree,
+        "objective_id": DEFAULT_SELF_IMPROVEMENT_PARENT_GOAL_ID,
+        "objective_revision": SELF_IMPROVEMENT_OBJECTIVE_REVISION,
+        "analyzer_version": SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION,
+        "configuration_revision": (
+            SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    health_value = payload(analyzer_health)
+    health_binding_value = health_value.get("binding")
+    health_binding = (
+        dict(health_binding_value)
+        if isinstance(health_binding_value, Mapping)
+        else {}
+    )
+    health_valid = bool(
+        health_binding == expected_binding
+        and normalized(health_value.get("status")) == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+    )
+    if not health_valid:
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    quorum_value = payload(exhaustion_quorum)
+    members_value = quorum_value.get("members")
+    members = members_value if isinstance(members_value, list) else []
+    quorum_binding_value = quorum_value.get("binding")
+    quorum_binding = (
+        dict(quorum_binding_value)
+        if isinstance(quorum_binding_value, Mapping)
+        else {}
+    )
+
+    def independent_member_field(name: str) -> bool:
+        values = [
+            str(member.get(name) or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        return bool(
+            len(values) == len(members)
+            and all(values)
+            and len(values) == len(set(values))
+        )
+
+    quorum_valid = bool(
+        health_valid
+        and quorum_value.get("required_members")
+        == SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("member_count") == len(members)
+        and len(members) == SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("satisfied") is True
+        and quorum_value.get("quorum_met") is True
+        and quorum_binding == expected_binding
+        and quorum_binding == health_binding
+        and independent_member_field("member_id")
+        and independent_member_field("evidence_channel")
+        and independent_member_field("receipt_cid")
+        and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and normalized(member.get("scan_mode")) == "exhaustive"
+            and fresh(member.get("finished_at"))
+            and isinstance(member.get("binding"), Mapping)
+            and dict(member["binding"]) == expected_binding
+            for member in members
+        )
+    )
+    if not quorum_valid:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    def child_is_current(child: Mapping[str, Any]) -> bool:
+        gate_value = child.get("completion_gate", child.get("gate"))
+        gate = gate_value if isinstance(gate_value, Mapping) else {}
+        evaluated_value = gate.get("evaluated_evidence")
+        evaluated = (
+            evaluated_value
+            if isinstance(evaluated_value, Mapping)
+            else {}
+        )
+        validations = evaluated.get("validation_evidence")
+        proof_requirements = child.get(
+            "proof_requirements",
+            evaluated.get("proof_requirements", ()),
+        )
+        if isinstance(proof_requirements, Mapping):
+            proof_requirements = (proof_requirements,)
+        return bool(
+            normalized(child.get("state", child.get("next_state", "")))
+            == "verified_complete"
+            and child.get("verified") is True
+            and gate.get("passed") is True
+            and evaluated.get("repository_id") == repository_id
+            and evaluated.get("repository_tree") == repository_tree
+            and fresh(evaluated.get("evaluated_at"))
+            and isinstance(validations, list)
+            and bool(validations)
+            and all(
+                isinstance(item, Mapping)
+                and item.get("valid") is True
+                and isinstance(item.get("evidence"), Mapping)
+                and item["evidence"].get("repository_id") == repository_id
+                and item["evidence"].get("repository_tree")
+                == repository_tree
+                for item in validations
+            )
+            and isinstance(proof_requirements, (list, tuple))
+            and bool(proof_requirements)
+            and all(
+                isinstance(item, Mapping)
+                and item.get("repository_tree") == repository_tree
+                and str(item.get("provenance_id") or "").strip()
+                and item.get("assurance_satisfied") is True
+                and item.get("contradicted") is not True
+                and normalized(item.get("proof_verdict"))
+                in {"proved", "verified", "valid"}
+                and normalized(item.get("freshness")) in {"current", "fresh"}
+                and not item.get("reason_codes")
+                for item in proof_requirements
+            )
+        )
+
+    child_values = [payload(item) for item in child_goals]
+    child_ids = [
+        str(item.get("goal_id", item.get("id", "")) or "").strip()
+        for item in child_values
+    ]
+    child_population_complete = bool(
+        len(child_ids) == len(set(child_ids))
+        and tuple(sorted(child_ids))
+        == tuple(sorted(SELF_IMPROVEMENT_CHILD_GOAL_IDS))
+        and all(child_is_current(item) for item in child_values)
+    )
+    if not child_population_complete:
+        child_values.append(
+            {
+                "goal_id": "ASI-G080-required-child-population",
+                "state": "active",
+                "verified": False,
+                "completion_gate": {
+                    "passed": False,
+                    "reason_code": (
+                        "required_child_population_or_binding_incomplete"
+                    ),
+                },
+            }
+        )
+
+    return evaluate_goal_completion(
+        current_state=current_state,
+        acceptance_criteria=SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA,
+        evidence=evidence_records,
+        tasks_complete=bool(tasks_complete and producers_complete),
+        repository_tree=repository_tree,
+        repository_id=repository_id,
+        now=current,
+        freshness_seconds=freshness_seconds,
+        clock_skew_seconds=clock_skew_seconds,
+        coverage=coverage_value,
+        analyzer_health=health_value,
+        exhaustion_quorum=quorum_value,
+        child_goals=child_values,
+        analysis_result=None,
+        analysis_inconclusive=analysis_inconclusive,
+        blocked_reason=blocked_reason,
+        require_completion_gate=True,
+    )
 
 
 def content_identity(value: Any) -> str:
@@ -2701,7 +3162,14 @@ __all__ = [
     "EPOCH_REPLAY_EVIDENCE_SCHEMA",
     "HEALTHY_EXHAUSTION_EVIDENCE_SCHEMA",
     "HEALTHY_EXHAUSTION_REQUIREMENT_ID",
+    "SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA",
     "SELF_IMPROVEMENT_ANALYZER_VERSION",
+    "SELF_IMPROVEMENT_CHILD_GOAL_IDS",
+    "SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION",
+    "SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION",
+    "SELF_IMPROVEMENT_OBJECTIVE_REVISION",
+    "SELF_IMPROVEMENT_PRODUCING_TASK_IDS",
+    "SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "SUCCESSOR_REFILL_EVIDENCE_SCHEMA",
     "SUCCESSOR_REFILL_REQUIREMENT_ID",
     "BenchmarkDisposition",
@@ -2715,6 +3183,7 @@ __all__ = [
     "SelfImprovementPolicy",
     "SuccessorRefillEvidence",
     "build_self_improvement_epoch_binding",
+    "evaluate_self_improvement_completion",
     "evaluate_self_improvement_epoch",
     "materialize_self_improvement_successors",
     "run_self_improvement_epoch",

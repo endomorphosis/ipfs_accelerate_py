@@ -128,6 +128,37 @@ DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS = int(
         "21600",
     )
 )
+
+
+def align_completion_gate_force_goal_ids(
+    force_goal_ids: Sequence[str] = (),
+    *,
+    completion_gate_decisions: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Keep proof-incomplete objective parents in the supervisor refill heap.
+
+    The objective tracker owns lifecycle interpretation.  This backlog helper
+    only merges its fail-closed actionable projection with explicitly forced
+    goals, preserving deterministic order and avoiding duplicate tasks.
+    """
+
+    from .objective_tracker import completion_gate_actionable_goal_ids
+
+    aligned = {
+        str(goal_id).strip()
+        for goal_id in force_goal_ids
+        if str(goal_id).strip()
+    }
+    for goal_id, decision in sorted(
+        (completion_gate_decisions or {}).items(),
+        key=lambda item: str(item[0]),
+    ):
+        aligned.update(
+            completion_gate_actionable_goal_ids(str(goal_id), decision)
+        )
+    return tuple(sorted(aligned))
+
+
 DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT = int(
     os.environ.get(
         "IPFS_ACCELERATE_AGENT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT",
@@ -6438,6 +6469,7 @@ def record_configured_objective_backlog_findings(
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     force_goal_ids: Sequence[str] = (),
+    completion_gate_decisions: Mapping[str, Any] | None = None,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
 ) -> RefillScanResult[dict[str, Any]]:
@@ -6476,7 +6508,10 @@ def record_configured_objective_backlog_findings(
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path
         or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
-        force_goal_ids=force_goal_ids,
+        force_goal_ids=align_completion_gate_force_goal_ids(
+            force_goal_ids,
+            completion_gate_decisions=completion_gate_decisions,
+        ),
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
     )
@@ -6654,6 +6689,7 @@ class ConfiguredObjectiveBacklogRecorder:
     discovery_output_path: str | None = None
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
     force_goal_ids: Sequence[str] = ()
+    completion_gate_decisions: Mapping[str, Any] | None = None
     commit_outputs: bool = False
     commit_subject: str = "Agent: record objective backlog findings"
     prepare_environment: Callable[[], None] | None = None
@@ -6887,6 +6923,7 @@ def build_namespace_objective_backlog_recorder(
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     force_goal_ids: Sequence[str] = (),
+    completion_gate_decisions: Mapping[str, Any] | None = None,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
     prepare_environment: Callable[[], None] | None = None,
@@ -6917,6 +6954,7 @@ def build_namespace_objective_backlog_recorder(
         discovery_output_path=discovery_output_path,
         discovery_output_path_default=discovery_output_path_default,
         force_goal_ids=tuple(force_goal_ids),
+        completion_gate_decisions=completion_gate_decisions,
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
         prepare_environment=prepare_environment,

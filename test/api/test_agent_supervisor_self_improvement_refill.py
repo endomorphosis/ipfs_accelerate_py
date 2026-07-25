@@ -10,12 +10,15 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY,
+    align_completion_gate_force_goal_ids,
     filter_self_improvement_successor_candidates,
     load_strategy,
     record_self_improvement_successor_admission,
     self_improvement_epoch_wait_active,
 )
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+    CompletionEvidence,
+    GoalState,
     validate_completion_evidence,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
@@ -33,6 +36,13 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement import (
     DEFAULT_BENCHMARK_DIMENSIONS,
     EPOCH_IDEMPOTENCY_REQUIREMENT_ID,
     HEALTHY_EXHAUSTION_REQUIREMENT_ID,
+    SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA,
+    SELF_IMPROVEMENT_CHILD_GOAL_IDS,
+    SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION,
+    SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION,
+    SELF_IMPROVEMENT_OBJECTIVE_REVISION,
+    SELF_IMPROVEMENT_PRODUCING_TASK_IDS,
+    SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS,
     SUCCESSOR_REFILL_REQUIREMENT_ID,
     BenchmarkDisposition,
     BenchmarkObservation,
@@ -41,11 +51,178 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement import (
     SelfImprovementEpochStatus,
     SelfImprovementPolicy,
     SuccessorRefillEvidence,
+    evaluate_self_improvement_completion,
     run_self_improvement_epoch,
 )
 
 
 NOW = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
+COMPLETION_REPOSITORY_ID = "repository:ipfs-accelerate-py"
+COMPLETION_REPOSITORY_TREE = "tree:sha256:asi-087-current"
+
+
+def _completion_binding() -> dict[str, str]:
+    return {
+        "repository_id": COMPLETION_REPOSITORY_ID,
+        "tree_id": COMPLETION_REPOSITORY_TREE,
+        "objective_id": "ASI-G080",
+        "objective_revision": SELF_IMPROVEMENT_OBJECTIVE_REVISION,
+        "analyzer_version": SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION,
+        "configuration_revision": (
+            SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+
+
+def _completion_packet() -> dict[str, object]:
+    validation_command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_self_improvement_refill.py -q"
+    )
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-087",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": COMPLETION_REPOSITORY_TREE,
+                "command": validation_command,
+            },
+            validation_passed=True,
+            repository_id=COMPLETION_REPOSITORY_ID,
+            repository_tree=COMPLETION_REPOSITORY_TREE,
+            freshness={"fresh": True},
+            observed_at=NOW - timedelta(minutes=2),
+            provenance_cid=f"validation:asi-087:{index}",
+        )
+        for index, criterion in enumerate(
+            SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "verified": True,
+        "repository_id": COMPLETION_REPOSITORY_ID,
+        "repository_tree": COMPLETION_REPOSITORY_TREE,
+        "evaluated_at": (NOW - timedelta(minutes=1)).isoformat(),
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "backlog_refinery.py"
+                        if index == 3
+                        else "self_improvement.py"
+                    )
+                ),
+                "validation": validation_command,
+                "validation_receipt_ids": [
+                    f"validation:asi-087:{index}"
+                ],
+            }
+            for index, criterion in enumerate(
+                SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    children = [
+        {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "completion_gate": {
+                "passed": True,
+                "evaluated_evidence": {
+                    "repository_id": COMPLETION_REPOSITORY_ID,
+                    "repository_tree": COMPLETION_REPOSITORY_TREE,
+                    "evaluated_at": (
+                        NOW - timedelta(minutes=3)
+                    ).isoformat(),
+                    "validation_evidence": [
+                        {
+                            "valid": True,
+                            "evidence": {
+                                "repository_id": COMPLETION_REPOSITORY_ID,
+                                "repository_tree": COMPLETION_REPOSITORY_TREE,
+                            },
+                        }
+                    ],
+                },
+            },
+            "proof_requirements": [
+                {
+                    "repository_tree": COMPLETION_REPOSITORY_TREE,
+                    "provenance_id": f"proof:{goal_id}",
+                    "required_assurance": "solver_checked",
+                    "authoritative_assurance": "solver_checked",
+                    "assurance_satisfied": True,
+                    "contradicted": False,
+                    "proof_verdict": "proved",
+                    "freshness": "current",
+                    "reason_codes": [],
+                }
+            ],
+        }
+        for goal_id in SELF_IMPROVEMENT_CHILD_GOAL_IDS
+    ]
+    binding = _completion_binding()
+    members = [
+        {
+            "member_id": "asi-087-benchmark",
+            "evidence_channel": "paired-benchmark",
+            "receipt_cid": "scan:asi-087:benchmark",
+            "binding": dict(binding),
+            "scan_mode": "exhaustive",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "finished_at": (NOW - timedelta(minutes=4)).isoformat(),
+        },
+        {
+            "member_id": "asi-087-independent-audit",
+            "evidence_channel": "completion-audit",
+            "receipt_cid": "scan:asi-087:audit",
+            "binding": dict(binding),
+            "scan_mode": "exhaustive",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "finished_at": (NOW - timedelta(minutes=3)).isoformat(),
+        },
+    ]
+    return {
+        "repository_id": COMPLETION_REPOSITORY_ID,
+        "repository_tree": COMPLETION_REPOSITORY_TREE,
+        "producing_tasks": [
+            {"task_id": task_id, "status": "completed"}
+            for task_id in SELF_IMPROVEMENT_PRODUCING_TASK_IDS
+        ],
+        "child_goals": children,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "binding": dict(binding),
+        },
+        "exhaustion_quorum": {
+            "required_members": (
+                SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
+            ),
+            "member_count": len(members),
+            "satisfied": True,
+            "quorum_met": True,
+            "binding": dict(binding),
+            "members": members,
+        },
+        "now": NOW,
+        "freshness_seconds": 3600,
+    }
 
 
 def _digest(value: str) -> str:
@@ -1430,3 +1607,234 @@ def test_successor_filter_covers_terminal_lifecycle_and_durable_cooldown(
     assert [item.reason for item in permanent.rejected] == [
         "prior_admission_duplicate"
     ]
+
+
+def _assert_parent_completion_rejected(packet: dict[str, object]) -> None:
+    decision = evaluate_self_improvement_completion(
+        **packet,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    assert not decision.verified
+    assert decision.state is not GoalState.VERIFIED_COMPLETE
+    assert decision.reason_codes
+
+
+def test_g080_parent_completion_requires_closed_current_tree_proof_packet() -> None:
+    assert SELF_IMPROVEMENT_PRODUCING_TASK_IDS == ("ASI-022",)
+    assert SELF_IMPROVEMENT_CHILD_GOAL_IDS == (
+        "ASI-G109",
+        "ASI-G110",
+        "ASI-G111",
+    )
+    assert len(SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA) == 5
+    assert SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS == 2
+
+    packet = _completion_packet()
+    provisional = evaluate_self_improvement_completion(**packet)
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.gate is not None and provisional.gate.passed
+    assert "provisional_transition_required" in provisional.reason_codes
+
+    verified = evaluate_self_improvement_completion(
+        **packet,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+    assert verified.gate is not None and verified.gate.passed
+    assert align_completion_gate_force_goal_ids(
+        completion_gate_decisions={"ASI-G080": provisional}
+    ) == ("ASI-G080",)
+    assert align_completion_gate_force_goal_ids(
+        completion_gate_decisions={"ASI-G080": verified}
+    ) == ()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda tasks: tasks.clear(),
+        lambda tasks: tasks.append(copy.deepcopy(tasks[0])),
+        lambda tasks: tasks[0].update(status="todo"),
+        lambda tasks: tasks[0].update(task_id="ASI-999"),
+    ],
+    ids=["missing", "duplicate", "incomplete", "foreign"],
+)
+def test_g080_parent_rejects_incomplete_wrong_or_duplicate_producers(
+    mutation,
+) -> None:
+    packet = _completion_packet()
+    tasks = packet["producing_tasks"]
+    assert isinstance(tasks, list)
+    mutation(tasks)
+    _assert_parent_completion_rejected(packet)
+
+    packet = _completion_packet()
+    packet["tasks_complete"] = False
+    decision = evaluate_self_improvement_completion(
+        **packet,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
+    assert "tasks_incomplete" in decision.reason_codes
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing", "duplicate", "failed", "stale", "foreign_tree"],
+)
+def test_g080_parent_rejects_each_invalid_submitted_criterion_evidence(
+    defect: str,
+) -> None:
+    packet = _completion_packet()
+    records = list(packet["evidence"])
+    if defect == "missing":
+        records.pop()
+    elif defect == "duplicate":
+        records.append(records[0])
+    else:
+        payload = records[0].to_dict()
+        if defect == "failed":
+            payload["validation_passed"] = False
+            payload["validation_receipt"] = {
+                **payload["validation_receipt"],
+                "status": "failed",
+            }
+        elif defect == "stale":
+            payload["observed_at"] = (NOW - timedelta(hours=2)).isoformat()
+        else:
+            payload["repository_tree"] = "tree:sha256:foreign"
+            payload["tree_id"] = "tree:sha256:foreign"
+        records[0] = CompletionEvidence.from_dict(payload)
+    packet["evidence"] = tuple(records)
+    _assert_parent_completion_rejected(packet)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing_row", "duplicate_row", "missing_implementation", "detached"],
+)
+def test_g080_parent_rejects_incomplete_or_unbound_coverage(
+    defect: str,
+) -> None:
+    packet = _completion_packet()
+    coverage = packet["coverage"]
+    assert isinstance(coverage, dict)
+    rows = coverage["criteria"]
+    assert isinstance(rows, list)
+    if defect == "missing_row":
+        rows.pop()
+    elif defect == "duplicate_row":
+        rows.append(copy.deepcopy(rows[0]))
+    elif defect == "missing_implementation":
+        rows[0].pop("implementation")
+    else:
+        rows[0]["validation_receipt_ids"] = ["validation:detached"]
+    _assert_parent_completion_rejected(packet)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing", "unhealthy", "unsafe", "foreign_binding"],
+)
+def test_g080_parent_requires_explicit_completion_safe_analyzer(
+    defect: str,
+) -> None:
+    packet = _completion_packet()
+    health = packet["analyzer_health"]
+    assert isinstance(health, dict)
+    if defect == "missing":
+        packet["analyzer_health"] = None
+    elif defect == "unhealthy":
+        health["healthy"] = False
+    elif defect == "unsafe":
+        health["safe_for_completion_reasoning"] = False
+    else:
+        health["binding"] = {
+            **health["binding"],
+            "objective_revision": "ASI-G080@foreign",
+        }
+    _assert_parent_completion_rejected(packet)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "under_count",
+        "duplicate_member",
+        "duplicate_channel",
+        "duplicate_receipt",
+        "stale",
+        "unhealthy",
+        "unsafe",
+        "non_exhaustive",
+        "foreign_binding",
+    ],
+)
+def test_g080_parent_requires_independent_fresh_healthy_exhaustive_quorum(
+    defect: str,
+) -> None:
+    packet = _completion_packet()
+    quorum = packet["exhaustion_quorum"]
+    assert isinstance(quorum, dict)
+    members = quorum["members"]
+    assert isinstance(members, list)
+    if defect == "under_count":
+        members.pop()
+        quorum["member_count"] = 1
+    elif defect == "duplicate_member":
+        members[1]["member_id"] = members[0]["member_id"]
+    elif defect == "duplicate_channel":
+        members[1]["evidence_channel"] = members[0]["evidence_channel"]
+    elif defect == "duplicate_receipt":
+        members[1]["receipt_cid"] = members[0]["receipt_cid"]
+    elif defect == "stale":
+        members[0]["finished_at"] = (NOW - timedelta(hours=2)).isoformat()
+    elif defect == "unhealthy":
+        members[0]["healthy"] = False
+    elif defect == "unsafe":
+        members[0]["safe_for_completion_reasoning"] = False
+    elif defect == "non_exhaustive":
+        members[0]["scan_mode"] = "incremental"
+    else:
+        members[0]["binding"] = {
+            **members[0]["binding"],
+            "tree_id": "tree:sha256:foreign",
+        }
+    _assert_parent_completion_rejected(packet)
+
+    with pytest.raises(ValueError, match="configured ASI-G080 count"):
+        evaluate_self_improvement_completion(
+            **_completion_packet(),
+            required_exhaustive_receipts=1,
+        )
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing", "duplicate", "unverified", "stale", "foreign_tree", "proofless"],
+)
+def test_g080_parent_rejects_unverified_stale_or_wrong_child_population(
+    defect: str,
+) -> None:
+    packet = _completion_packet()
+    children = packet["child_goals"]
+    assert isinstance(children, list)
+    if defect == "missing":
+        children.pop()
+    elif defect == "duplicate":
+        children.append(copy.deepcopy(children[0]))
+    elif defect == "unverified":
+        children[0]["verified"] = False
+        children[0]["state"] = "active"
+    elif defect == "stale":
+        children[0]["completion_gate"]["evaluated_evidence"][
+            "evaluated_at"
+        ] = (NOW - timedelta(hours=2)).isoformat()
+    elif defect == "foreign_tree":
+        children[0]["completion_gate"]["evaluated_evidence"][
+            "repository_tree"
+        ] = "tree:sha256:foreign"
+    else:
+        children[0]["proof_requirements"] = []
+    _assert_parent_completion_rejected(packet)
