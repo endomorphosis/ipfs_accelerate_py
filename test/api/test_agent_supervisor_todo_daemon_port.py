@@ -3969,6 +3969,175 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     return repo, submodule
 
 
+def _submodule_proposal_daemon(
+    repo: Path,
+    tmp_path: Path,
+    *,
+    configured: bool = True,
+) -> TodoImplementationDaemon:
+    state_dir = tmp_path / "proposal-state"
+    return TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"] if configured else [],
+    )
+
+
+def _submodule_proposal_task(output: str | list[str]) -> PortalTask:
+    return PortalTask(
+        task_id="AUTO-121",
+        title="Validate a task-owned submodule change",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=[output] if isinstance(output, str) else output,
+        validation=["python -m pytest"],
+        acceptance="The declared child output is source-validated before merge.",
+    )
+
+
+def test_implementation_proposal_materializes_committed_submodule_change(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text("committed candidate\n", encoding="utf-8")
+    _git(submodule, "commit", "-am", "update child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child gitlink")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/child.txt"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == ("libs/child/child.txt",)
+    assert "diff --git a/libs/child/child.txt b/libs/child/child.txt" in (
+        result.proposal.patch_text
+    )
+    assert "Subproject commit" not in result.proposal.patch_text
+
+
+def test_implementation_proposal_materializes_dirty_submodule_change(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text("dirty candidate\n", encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/child.txt"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == ("libs/child/child.txt",)
+    assert result.proposal.candidate_diff[0].after_source == "dirty candidate\n"
+
+
+def test_implementation_proposal_materializes_untracked_submodule_file(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "added.txt").write_text("new child output\n", encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/added.txt"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == ("libs/child/added.txt",)
+    assert "diff --git a/libs/child/added.txt b/libs/child/added.txt" in (
+        result.proposal.patch_text
+    )
+
+
+def test_implementation_proposal_materializes_submodule_rename(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(submodule, "mv", "child.txt", "renamed.txt")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task(
+            ["libs/child/child.txt", "libs/child/renamed.txt"]
+        ),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/child.txt",
+        "libs/child/renamed.txt",
+    )
+    assert "rename from libs/child/child.txt" in result.proposal.patch_text
+    assert "rename to libs/child/renamed.txt" in result.proposal.patch_text
+
+
+def test_implementation_proposal_rejects_undeclared_submodule_file(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text("outside authority\n", encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/allowed.txt"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is False
+    assert "path_outside_scope" in {
+        finding.code.value
+        for finding in result.findings
+    }
+    assert result.proposal.changed_paths == ("libs/child/child.txt",)
+
+
+def test_implementation_proposal_keeps_unconfigured_gitlink_fail_closed(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text("opaque candidate\n", encoding="utf-8")
+    _git(submodule, "commit", "-am", "update opaque child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance opaque gitlink")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+        configured=False,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/child.txt"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is False
+    assert "submodule_boundary_forbidden" in {
+        finding.code.value
+        for finding in result.findings
+    }
+    assert result.proposal.changed_paths == ("libs/child",)
+
+
 def test_stale_submodule_rebase_skips_branch_already_merged_without_switching_checkout(
     tmp_path: Path,
 ):
@@ -4170,6 +4339,51 @@ def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
     assert daemon._committed_submodule_paths(submodule_results) == ["outer/inner"]
     assert result["commit"] != baseline
     assert _git(repo, "diff", "--quiet", baseline, result["commit"]) == ""
+
+
+def test_implementation_daemon_handoffs_clean_provider_submodule_commit(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text(
+        "provider-created commit\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "commit", "-am", "provider child change")
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        _submodule_proposal_task("libs/child/child.txt"),
+        1,
+    )
+
+    assert result["committed"] is True
+    assert result["commit"] != baseline
+    assert result["submodule_results"] == [
+        {
+            "path": "libs/child",
+            "committed": True,
+            "commit": child_commit,
+            "recorded_commit": _git(repo, "rev-parse", f"{baseline}:libs/child"),
+            "reason": "existing_commit",
+        }
+    ]
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == child_commit
+    assert _git(submodule, "rev-parse", "HEAD") == child_commit
+    assert _git(repo, "diff", "--name-only", baseline, result["commit"]) == (
+        "libs/child"
+    )
 
 
 def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(

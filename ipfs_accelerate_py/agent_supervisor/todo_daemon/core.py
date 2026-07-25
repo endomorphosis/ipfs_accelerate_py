@@ -13,6 +13,7 @@ import os
 import shlex
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -234,11 +235,74 @@ def supervisor_maintenance_snapshot(
     )
 
 
+def _windows_pid_alive(process_id: int) -> bool:
+    """Probe a Windows process without using ``os.kill(pid, 0)``.
+
+    On Windows, non-console signals passed to ``os.kill`` are implemented via
+    ``TerminateProcess``; zero is therefore not a portable liveness probe.
+    Querying the process exit code through a limited-information handle is
+    read-only and treats access denial as evidence that the PID exists.
+    """
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = (
+            wintypes.DWORD,
+            wintypes.BOOL,
+            wintypes.DWORD,
+        )
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.GetExitCodeProcess.argtypes = (
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.DWORD),
+        )
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        process_query_limited_information = 0x1000
+        still_active = 259
+        error_access_denied = 5
+        handle = kernel32.OpenProcess(
+            process_query_limited_information,
+            False,
+            process_id,
+        )
+        if not handle:
+            return ctypes.get_last_error() == error_access_denied
+        try:
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(
+                handle,
+                ctypes.byref(exit_code),
+            ):
+                return False
+            return int(exit_code.value) == still_active
+        finally:
+            kernel32.CloseHandle(handle)
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        return False
+
+
 def pid_alive(pid: Any) -> bool:
     try:
         process_id = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if process_id <= 0:
+        return False
+    if sys.platform == "win32":
+        return _windows_pid_alive(process_id)
+    try:
         os.kill(process_id, 0)
-    except Exception:
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
         return False
     try:
         stat = Path(f"/proc/{process_id}/stat").read_text(encoding="utf-8")
@@ -280,13 +344,33 @@ def remove_runtime_marker(path: Optional[Path]) -> bool:
 
 
 def process_args(pid: int) -> str:
-    result = subprocess.run(
-        ("ps", "-o", "args=", "-p", str(pid)),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        check=False,
-    )
+    process_id = int(pid)
+    if process_id <= 0:
+        return ""
+    command: Sequence[str]
+    if sys.platform == "win32":
+        command = (
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            (
+                "$p = Get-CimInstance Win32_Process -Filter "
+                f"'ProcessId = {process_id}'; if ($p) {{ $p.CommandLine }}"
+            ),
+        )
+    else:
+        command = ("ps", "-o", "args=", "-p", str(process_id))
+    try:
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ""
     return result.stdout.strip()
 
 

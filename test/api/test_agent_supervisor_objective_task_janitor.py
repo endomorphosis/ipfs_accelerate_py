@@ -387,6 +387,98 @@ def test_verified_goal_retires_linked_work_as_completed(status: str):
     assert result["receipts"][0]["retired_task_reason"] == "goal_completed"
 
 
+def test_verified_direct_goal_retires_work_despite_active_graph_parent():
+    task = replace(
+        _goal_task("G-CHILD"),
+        metadata={
+            "goal id": "G-CHILD",
+            "graph parents": "G-PARENT",
+        },
+    )
+
+    result = reconcile_objective_task_strategy(
+        goals=[
+            ObjectiveGoal(
+                "G-PARENT",
+                "Active umbrella objective",
+                {"status": "active", "priority": "P0"},
+            ),
+            ObjectiveGoal(
+                "G-CHILD",
+                "Verified child objective",
+                {"status": "verified_complete", "parents": "G-PARENT"},
+            ),
+        ],
+        tasks=[task],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+    )
+
+    assert result["blocked_task_ids"] == ["AUTO-010"]
+    assert result["open_goal_ids"] == []
+    assert result["receipts"][0]["goal_ids"] == ["G-CHILD"]
+    assert result["receipts"][0]["retired_task_reason"] == "goal_completed"
+
+
+def test_graph_parent_remains_legacy_goal_owner_without_direct_goal_metadata():
+    task = replace(
+        _goal_task(),
+        metadata={"graph parents": "G1"},
+    )
+
+    result = reconcile_objective_task_strategy(
+        goals=[
+            ObjectiveGoal(
+                "G1",
+                "Active legacy objective",
+                {"status": "active", "priority": "P0"},
+            )
+        ],
+        tasks=[task],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+    )
+
+    assert result["blocked_task_ids"] == []
+    assert result["open_goal_ids"] == ["G1"]
+
+
+def test_open_child_counts_active_critical_graph_parent_as_covered_work():
+    task = replace(
+        _goal_task("G-CHILD"),
+        metadata={
+            "goal id": "G-CHILD",
+            "graph parents": "G-PARENT",
+        },
+    )
+
+    result = reconcile_objective_task_strategy(
+        goals=[
+            ObjectiveGoal(
+                "G-PARENT",
+                "Microphone voice objective",
+                {"status": "active", "priority": "P0", "track": "voice"},
+            ),
+            ObjectiveGoal(
+                "G-CHILD",
+                "Active child objective",
+                {
+                    "status": "active",
+                    "priority": "P0",
+                    "parents": "G-PARENT",
+                },
+            ),
+        ],
+        tasks=[task],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+    )
+
+    assert result["blocked_task_ids"] == []
+    assert result["open_goal_ids"] == ["G-CHILD", "G-PARENT"]
+    assert result["reopened_goal_ids"] == []
+
+
 def test_supplied_failed_completion_gate_cannot_be_hidden_by_verified_status():
     decision = _passing_completion_decision()
     decision["completion_gate"]["passed"] = False

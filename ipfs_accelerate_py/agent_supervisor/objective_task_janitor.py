@@ -71,12 +71,12 @@ DEFAULT_MISSION_TERMS = (
     "virtual desktop",
     "wifi",
 )
-GOAL_METADATA_KEYS = (
+DIRECT_GOAL_METADATA_KEYS = (
     "goal id",
     "goal ids",
     "goal packet goals",
-    "graph parents",
 )
+LEGACY_GOAL_METADATA_KEYS = ("graph parents",)
 CODEBASE_SCAN_BACKLOG_TITLE_PREFIXES = (
     "review swallowed exception path",
     "resolve code annotation",
@@ -134,9 +134,31 @@ def _split_terms(value: str) -> list[str]:
 
 def _task_goal_ids(task: PortalTask) -> list[str]:
     goal_ids: list[str] = []
-    for key in GOAL_METADATA_KEYS:
+    for key in DIRECT_GOAL_METADATA_KEYS:
         goal_ids.extend(_split_terms(task.metadata.get(key, "")))
-    return _unique(goal_ids)
+    direct_goal_ids = _unique(goal_ids)
+    if direct_goal_ids:
+        return direct_goal_ids
+
+    # Generated task blocks carry ``Graph parents`` for hierarchy/context,
+    # not ownership.  Treating those parents as co-owners lets an active
+    # umbrella goal keep work for a verified child open forever.  Older task
+    # blocks may only name a graph parent, so retain it as a legacy fallback.
+    legacy_goal_ids: list[str] = []
+    for key in LEGACY_GOAL_METADATA_KEYS:
+        legacy_goal_ids.extend(_split_terms(task.metadata.get(key, "")))
+    return _unique(legacy_goal_ids)
+
+
+def _task_open_goal_coverage_ids(task: PortalTask) -> list[str]:
+    """Return direct owners plus graph lineage covered by active task work."""
+
+    lineage_goal_ids = [
+        goal_id
+        for key in LEGACY_GOAL_METADATA_KEYS
+        for goal_id in _split_terms(task.metadata.get(key, ""))
+    ]
+    return _unique([*_task_goal_ids(task), *lineage_goal_ids])
 
 
 def _task_haystack(task: PortalTask) -> str:
@@ -1334,7 +1356,9 @@ def reconcile_objective_task_strategy(
         goal_ids = _task_goal_ids(task)
         task_goal_set = set(goal_ids)
         if task_goal_set & active_goal_ids:
-            open_goal_ids.update(task_goal_set & active_goal_ids)
+            open_goal_ids.update(
+                set(_task_open_goal_coverage_ids(task)) & active_goal_ids
+            )
             continue
 
         goal_known = [goal_id for goal_id in goal_ids if goal_id in goals_by_id]

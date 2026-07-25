@@ -14,6 +14,7 @@ import stat as stat_module
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -37,7 +38,11 @@ from ..formal_verification_contracts import canonical_json, content_identity
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
-from ..checkout_lock import checkout_lock_metadata, checkout_mutation_lock_path
+from ..checkout_lock import (
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
+    serialized_lock_update,
+)
 from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
 from ..merge_conflict_repair import (
     resolve_append_only_markdown_conflicts,
@@ -3227,7 +3232,6 @@ class PortalImplementationDaemon:
             return result
 
         acquired_task_claim = True
-        lock_fd: int | None = None
         acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         try:
@@ -3273,12 +3277,13 @@ class PortalImplementationDaemon:
         try:
             self._write_lock_metadata(task_claim_fd, task_claim_metadata)
             task_claim_fd = None
-            lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-                lock_path,
-                lock_kind="implementation",
-                owner_active=self._implementation_lock_owner_is_active,
+            acquired_lock, lock_reason, existing_lock = (
+                self._try_acquire_implementation_lock(
+                    lock_path,
+                    lock_metadata,
+                )
             )
-            if lock_fd is None:
+            if not acquired_lock:
                 result = {
                     "skipped": True,
                     "reason": lock_reason,
@@ -3290,9 +3295,6 @@ class PortalImplementationDaemon:
                     result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
                 self._record_event("implementation_skipped", result)
                 return result
-            acquired_lock = True
-            self._write_lock_metadata(lock_fd, lock_metadata)
-            lock_fd = None
             context_receipt_path = self._persist_implementation_context_receipt(
                 task,
                 attempt,
@@ -3629,21 +3631,27 @@ class PortalImplementationDaemon:
             self._record_event("implementation_finished", result)
             return result
         finally:
-            if lock_fd is not None:
-                try:
-                    os.close(lock_fd)
-                except OSError:
-                    pass
             if task_claim_fd is not None:
                 try:
                     os.close(task_claim_fd)
                 except OSError:
                     pass
             try:
-                if acquired_lock and lock_path.exists():
-                    lock_path.unlink()
-            except OSError:
-                logger.warning("Failed to remove implementation lock %s", lock_path)
+                if acquired_lock and not self._release_implementation_lock(
+                    lock_path,
+                    lock_metadata,
+                ):
+                    logger.warning(
+                        "Refusing to remove implementation lock no longer "
+                        "owned by this attempt: %s",
+                        lock_path,
+                    )
+            except (OSError, RuntimeError):
+                logger.warning(
+                    "Failed to coordinate removal of implementation lock %s",
+                    lock_path,
+                    exc_info=True,
+                )
             try:
                 if acquired_task_claim and task_claim_path.exists():
                     task_claim_path.unlink()
@@ -6731,6 +6739,57 @@ class PortalImplementationDaemon:
                 paths.update(cls._committed_submodule_paths(nested))
         return sorted(paths)
 
+    def _task_owned_existing_submodule_commit(
+        self,
+        *,
+        parent_repo: Path,
+        target: Path,
+        child_relative: str,
+        full_relative: str,
+        task: PortalTask,
+    ) -> dict[str, Any] | None:
+        """Recognize a clean provider-created commit ahead of its gitlink."""
+
+        scope_paths = self._proposal_scope_paths(task)
+        normalized = full_relative.strip("/")
+        if not normalized or not any(
+            path.startswith(f"{normalized}/") for path in scope_paths
+        ):
+            return None
+        recorded_commit = self._submodule_gitlink_ref(
+            parent_repo,
+            child_relative,
+        )
+        if not recorded_commit:
+            return None
+        current = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=target,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        current_commit = current.stdout.strip()
+        if (
+            current.returncode != 0
+            or not current_commit
+            or current_commit == recorded_commit
+            or not self._git_ref_is_ancestor_in_repo(
+                target,
+                recorded_commit,
+                current_commit,
+            )
+        ):
+            return None
+        return {
+            "path": normalized,
+            "committed": True,
+            "commit": current_commit,
+            "recorded_commit": recorded_commit,
+            "reason": "existing_commit",
+        }
+
     def _commit_worktree_submodule_changes(
         self,
         worktree_path: Path,
@@ -6754,6 +6813,24 @@ class PortalImplementationDaemon:
             status = self._run_git(["status", "--porcelain"], cwd=target).stdout.strip()
             staged_status = self._staged_worktree_status(target)
             if not staged_status:
+                existing_commit = (
+                    self._task_owned_existing_submodule_commit(
+                        parent_repo=worktree_path,
+                        target=target,
+                        child_relative=relative,
+                        full_relative=relative,
+                        task=task,
+                    )
+                    if not status
+                    else None
+                )
+                if existing_commit is not None:
+                    if nested_results:
+                        existing_commit["nested_submodule_results"] = (
+                            nested_results
+                        )
+                    results.append(existing_commit)
+                    continue
                 result: dict[str, Any] = {"path": relative, "committed": False, "reason": "no_changes"}
                 if status:
                     result["status"] = status
@@ -6810,6 +6887,24 @@ class PortalImplementationDaemon:
             status = self._run_git(["status", "--porcelain"], cwd=target).stdout.strip()
             staged_status = self._staged_worktree_status(target)
             if not staged_status:
+                existing_commit = (
+                    self._task_owned_existing_submodule_commit(
+                        parent_repo=worktree_path,
+                        target=target,
+                        child_relative=relative,
+                        full_relative=full_relative,
+                        task=task,
+                    )
+                    if not status
+                    else None
+                )
+                if existing_commit is not None:
+                    if nested_results:
+                        existing_commit["nested_submodule_results"] = (
+                            nested_results
+                        )
+                    results.append(existing_commit)
+                    continue
                 result: dict[str, Any] = {
                     "path": full_relative,
                     "committed": False,
@@ -7328,26 +7423,322 @@ class PortalImplementationDaemon:
                     break
         return tuple(sorted(symlinks)), tuple(sorted(submodules))
 
+    def _proposal_scope_submodule_paths(
+        self,
+        scope_paths: Sequence[str],
+    ) -> tuple[str, ...]:
+        """Return configured submodules with explicitly task-owned descendants."""
+
+        return tuple(
+            sorted(
+                {
+                    relative.strip("/")
+                    for relative in self.worktree_submodule_paths
+                    if relative.strip("/")
+                    and any(
+                        path.startswith(f"{relative.strip('/')}/")
+                        for path in scope_paths
+                    )
+                }
+            )
+        )
+
     @staticmethod
-    def _proposal_patch_text(
+    def _proposal_index_gitlink_ref(
         workspace_path: Path,
+        relative: str,
+    ) -> str:
+        """Read one unmerged-free stage-zero gitlink from the parent index."""
+
+        result = subprocess.run(
+            ["git", "ls-files", "--stage", "-z", "--", relative],
+            cwd=workspace_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError("unable to inspect proposal submodule index")
+        records = [record for record in result.stdout.split(b"\0") if record]
+        if len(records) != 1:
+            raise RuntimeError("proposal submodule index is missing or unmerged")
+        metadata, separator, raw_path = records[0].partition(b"\t")
+        fields = metadata.decode("ascii", errors="strict").split()
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        if (
+            not separator
+            or len(fields) != 3
+            or fields[0] != "160000"
+            or fields[2] != "0"
+            or path != relative
+        ):
+            raise RuntimeError("proposal submodule index is not a stage-zero gitlink")
+        return fields[1]
+
+    @staticmethod
+    def _prefix_proposal_candidate_entry(
+        entry: Any,
+        *,
+        relative: str,
+        base_revision: str,
+    ) -> Any:
+        """Prefix a fully materialized child-repository diff entry."""
+
+        from ..code_proof_obligations import CandidateDiffEntry
+
+        prefix = relative.rstrip("/")
+
+        def prefixed(path: str) -> str:
+            return f"{prefix}/{path}" if path else ""
+
+        return CandidateDiffEntry(
+            old_path=prefixed(entry.old_path),
+            new_path=prefixed(entry.new_path),
+            change_kind=entry.change_kind,
+            before_source=entry.before_source,
+            after_source=entry.after_source,
+            before_blob_id=entry.before_blob_id,
+            after_blob_id=entry.after_blob_id,
+            binary=entry.binary,
+            generated=entry.generated,
+            metadata={
+                **dict(entry.metadata),
+                "materialized_submodule_path": prefix,
+                "submodule_base_revision": base_revision,
+            },
+        )
+
+    def _collect_proposal_candidate_diff(
+        self,
+        workspace_path: Path,
+        *,
+        baseline_ref: str,
+        scope_paths: Sequence[str],
+    ) -> tuple[tuple[Any, ...], tuple[dict[str, Any], ...]]:
+        """Collect root and task-owned submodule changes as full source entries.
+
+        A superproject diff exposes a submodule update only as an opaque
+        gitlink.  Strict proposal validation must never authorize that opaque
+        boundary.  For configured submodules with explicitly declared child
+        outputs, replace the gitlink entry with source-bound entries collected
+        from the child repository.  Every other gitlink remains untouched and
+        is rejected by the ordinary proposal boundary policy.
+        """
+
+        from ..code_proof_obligations import collect_git_candidate_diff
+
+        effective_baseline = baseline_ref or "HEAD"
+        root_entries = list(
+            collect_git_candidate_diff(
+                workspace_path,
+                base_revision=effective_baseline,
+                include_untracked=True,
+            )
+        )
+        expansions: list[dict[str, Any]] = []
+        for relative in self._proposal_scope_submodule_paths(scope_paths):
+            target = workspace_path / relative
+            if target.is_symlink() or not self._is_git_worktree(target):
+                raise RuntimeError(
+                    f"task-owned proposal submodule is not an initialized worktree: {relative}"
+                )
+            base_result = subprocess.run(
+                ["git", "rev-parse", f"{effective_baseline}:{relative}"],
+                cwd=workspace_path,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if base_result.returncode != 0:
+                raise RuntimeError(
+                    f"unable to resolve proposal submodule baseline: {relative}"
+                )
+            base_revision = base_result.stdout.strip()
+            head_result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=target,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if head_result.returncode != 0:
+                raise RuntimeError(
+                    f"unable to resolve proposal submodule candidate: {relative}"
+                )
+            candidate_head = head_result.stdout.strip()
+            index_revision = self._proposal_index_gitlink_ref(
+                workspace_path,
+                relative,
+            )
+            if index_revision not in {base_revision, candidate_head}:
+                raise RuntimeError(
+                    f"proposal submodule index and worktree disagree: {relative}"
+                )
+            ancestor = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", base_revision, candidate_head],
+                cwd=target,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if ancestor.returncode != 0:
+                raise RuntimeError(
+                    f"proposal submodule candidate is not based on its gitlink: {relative}"
+                )
+            local_entries = tuple(
+                collect_git_candidate_diff(
+                    target,
+                    base_revision=base_revision,
+                    include_untracked=True,
+                )
+            )
+            if not local_entries:
+                continue
+            expansions.append(
+                {
+                    "path": relative,
+                    "repo_root": target,
+                    "base_revision": base_revision,
+                    "candidate_head": candidate_head,
+                    "entries": local_entries,
+                }
+            )
+
+        expanded_paths = {
+            str(expansion["path"])
+            for expansion in expansions
+        }
+        for relative in expanded_paths:
+            opaque_entries = tuple(
+                entry
+                for entry in root_entries
+                if entry.old_path == relative or entry.new_path == relative
+            )
+            if any(
+                entry.old_path != relative
+                or entry.new_path != relative
+                or entry.change_kind.value != "modify"
+                for entry in opaque_entries
+            ):
+                raise RuntimeError(
+                    f"proposal submodule boundary changed shape: {relative}"
+                )
+        entries = [
+            entry
+            for entry in root_entries
+            if not any(
+                entry.old_path == relative or entry.new_path == relative
+                for relative in expanded_paths
+            )
+        ]
+        for expansion in expansions:
+            entries.extend(
+                self._prefix_proposal_candidate_entry(
+                    entry,
+                    relative=str(expansion["path"]),
+                    base_revision=str(expansion["base_revision"]),
+                )
+                for entry in expansion["entries"]
+            )
+        return (
+            tuple(
+                sorted(
+                    entries,
+                    key=lambda entry: (
+                        entry.path,
+                        entry.old_path,
+                        entry.change_kind.value,
+                    ),
+                )
+            ),
+            tuple(expansions),
+        )
+
+    @staticmethod
+    def _prefix_proposal_patch_extended_paths(
+        patch_text: str,
+        *,
+        path_prefix: str,
+    ) -> str:
+        """Prefix Git rename/copy headers that ignore ``--src-prefix``."""
+
+        prefix = path_prefix.strip("/")
+        if not prefix:
+            return patch_text
+        if any(ord(character) < 32 or ord(character) == 127 for character in prefix):
+            raise RuntimeError("unsafe proposal patch path prefix")
+
+        markers = ("rename from ", "rename to ", "copy from ", "copy to ")
+        rewritten: list[str] = []
+        for line in patch_text.splitlines(keepends=True):
+            marker = next(
+                (candidate for candidate in markers if line.startswith(candidate)),
+                "",
+            )
+            if not marker:
+                rewritten.append(line)
+                continue
+            value = line[len(marker) :]
+            ending = ""
+            if value.endswith("\r\n"):
+                value, ending = value[:-2], "\r\n"
+            elif value.endswith("\n"):
+                value, ending = value[:-1], "\n"
+            if value.startswith('"') and value.endswith('"'):
+                escaped_prefix = (
+                    prefix.replace("\\", "\\\\").replace('"', '\\"')
+                )
+                value = f'"{escaped_prefix}/{value[1:]}'
+            else:
+                value = f"{prefix}/{value}"
+                if any(character.isspace() for character in value):
+                    value = (
+                        '"'
+                        + value.replace("\\", "\\\\").replace('"', '\\"')
+                        + '"'
+                    )
+            rewritten.append(f"{marker}{value}{ending}")
+        return "".join(rewritten)
+
+    @staticmethod
+    def _proposal_repo_patch_text(
+        repo_root: Path,
+        *,
         baseline_ref: str,
         entries: Sequence[Any],
+        path_prefix: str = "",
+        excluded_paths: Sequence[str] = (),
     ) -> str:
-        """Render one Git patch, explicitly including untracked additions."""
+        """Render a source patch for one repository with an optional prefix."""
 
+        prefix = path_prefix.strip("/")
+        tracked_command = [
+            "git",
+            "diff",
+            "--no-ext-diff",
+            "--no-color",
+            "--find-renames",
+            "--find-copies",
+        ]
+        if prefix:
+            tracked_command.extend(
+                [
+                    f"--src-prefix=a/{prefix}/",
+                    f"--dst-prefix=b/{prefix}/",
+                ]
+            )
+        tracked_command.extend([baseline_ref or "HEAD", "--"])
+        if excluded_paths:
+            tracked_command.append(".")
+            tracked_command.extend(
+                f":(exclude,literal){path}"
+                for path in excluded_paths
+            )
         tracked = subprocess.run(
-            [
-                "git",
-                "diff",
-                "--no-ext-diff",
-                "--no-color",
-                "--find-renames",
-                "--find-copies",
-                baseline_ref or "HEAD",
-                "--",
-            ],
-            cwd=workspace_path,
+            tracked_command,
+            cwd=repo_root,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -7357,10 +7748,18 @@ class PortalImplementationDaemon:
         )
         if tracked.returncode != 0:
             raise RuntimeError("unable to render tracked candidate patch")
-        sections = [tracked.stdout]
+        tracked_patch = tracked.stdout
+        if prefix:
+            tracked_patch = (
+                PortalImplementationDaemon._prefix_proposal_patch_extended_paths(
+                    tracked_patch,
+                    path_prefix=prefix,
+                )
+            )
+        sections = [tracked_patch]
         raw_untracked = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard", "-z"],
-            cwd=workspace_path,
+            cwd=repo_root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -7382,17 +7781,23 @@ class PortalImplementationDaemon:
             relative = str(getattr(entry, "new_path", "") or "")
             if not relative or relative not in untracked_paths:
                 continue
+            command = [
+                "git",
+                "diff",
+                "--no-index",
+                "--no-color",
+            ]
+            if prefix:
+                command.extend(
+                    [
+                        f"--src-prefix=a/{prefix}/",
+                        f"--dst-prefix=b/{prefix}/",
+                    ]
+                )
+            command.extend(["--", "/dev/null", relative])
             untracked = subprocess.run(
-                [
-                    "git",
-                    "diff",
-                    "--no-index",
-                    "--no-color",
-                    "--",
-                    "/dev/null",
-                    relative,
-                ],
-                cwd=workspace_path,
+                command,
+                cwd=repo_root,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -7405,6 +7810,48 @@ class PortalImplementationDaemon:
                 raise RuntimeError("unable to render untracked candidate patch")
             if untracked.stdout:
                 sections.append(untracked.stdout)
+        return "".join(sections)
+
+    def _proposal_patch_text(
+        self,
+        workspace_path: Path,
+        baseline_ref: str,
+        entries: Sequence[Any],
+        *,
+        submodule_expansions: Sequence[Mapping[str, Any]] = (),
+    ) -> str:
+        """Render one Git patch, explicitly including untracked additions."""
+
+        expanded_paths = tuple(
+            str(expansion.get("path") or "")
+            for expansion in submodule_expansions
+            if str(expansion.get("path") or "")
+        )
+        root_entries = tuple(
+            entry
+            for entry in entries
+            if not any(
+                entry.path.startswith(f"{relative}/")
+                for relative in expanded_paths
+            )
+        )
+        sections = [
+            self._proposal_repo_patch_text(
+                workspace_path,
+                baseline_ref=baseline_ref,
+                entries=root_entries,
+                excluded_paths=expanded_paths,
+            )
+        ]
+        for expansion in submodule_expansions:
+            sections.append(
+                self._proposal_repo_patch_text(
+                    Path(expansion["repo_root"]),
+                    baseline_ref=str(expansion["base_revision"]),
+                    entries=tuple(expansion["entries"]),
+                    path_prefix=str(expansion["path"]),
+                )
+            )
         return "".join(sections)
 
     def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
@@ -7466,7 +7913,6 @@ class PortalImplementationDaemon:
         """Validate a candidate patch before task validation is dispatched."""
 
         # Keep proof/compiler imports off administrative daemon paths.
-        from ..code_proof_obligations import collect_git_candidate_diff
         from ..proposal_validation import (
             ImplementationProposal,
             ProposalOperation,
@@ -7485,12 +7931,13 @@ class PortalImplementationDaemon:
         # A missing output declaration grants no mutation authority.
         allowed_paths = scope_paths or (".proposal-scope-not-declared",)
         collection_error = ""
+        submodule_expansions: tuple[dict[str, Any], ...] = ()
         try:
-            entries = tuple(
-                collect_git_candidate_diff(
+            entries, submodule_expansions = (
+                self._collect_proposal_candidate_diff(
                     workspace_path,
-                    base_revision=baseline_ref or "HEAD",
-                    include_untracked=True,
+                    baseline_ref=baseline_ref,
+                    scope_paths=scope_paths,
                 )
             )
         except (OSError, RuntimeError, ValueError) as exc:
@@ -7582,6 +8029,7 @@ class PortalImplementationDaemon:
                 workspace_path,
                 baseline_ref,
                 entries,
+                submodule_expansions=submodule_expansions,
             )
         except (OSError, RuntimeError, ValueError) as exc:
             patch_text = ""
@@ -7609,8 +8057,60 @@ class PortalImplementationDaemon:
                 workspace_path,
                 candidate_paths=changed_paths,
             )
-        except (OSError, RuntimeError, ValueError):
-            symlink_paths, submodule_paths = (), ()
+            expanded_paths = {
+                str(expansion["path"])
+                for expansion in submodule_expansions
+            }
+            submodule_paths = tuple(
+                path
+                for path in submodule_paths
+                if path not in expanded_paths
+            )
+            nested_symlink_paths = set(symlink_paths)
+            nested_submodule_paths = set(submodule_paths)
+            for expansion in submodule_expansions:
+                relative = str(expansion["path"])
+                local_entries = tuple(expansion["entries"])
+                local_candidate_paths = tuple(
+                    sorted(
+                        {
+                            path
+                            for entry in local_entries
+                            for path in (entry.old_path, entry.new_path)
+                            if path
+                        }
+                    )
+                )
+                local_symlinks, local_submodules = (
+                    self._proposal_boundary_paths(
+                        Path(expansion["repo_root"]),
+                        candidate_paths=local_candidate_paths,
+                    )
+                )
+                nested_symlink_paths.update(
+                    f"{relative}/{path}"
+                    for path in local_symlinks
+                )
+                nested_submodule_paths.update(
+                    f"{relative}/{path}"
+                    for path in local_submodules
+                )
+            symlink_paths = tuple(sorted(nested_symlink_paths))
+            submodule_paths = tuple(sorted(nested_submodule_paths))
+        except (OSError, RuntimeError, ValueError) as exc:
+            # Boundary discovery is an authorization check.  Treat an
+            # inability to inspect it as a rejection, and conservatively mark
+            # every materialized path as an opaque boundary.
+            collection_error = collection_error or type(exc).__name__
+            symlink_paths = ()
+            submodule_paths = tuple(
+                sorted(
+                    {
+                        *changed_paths,
+                        *self.worktree_submodule_paths,
+                    }
+                )
+            )
         allowed_validation_commands = tuple(
             step.command for step in validation_steps
         ) or (("python", "-m", "pytest"),)
@@ -10965,7 +11465,26 @@ class PortalImplementationDaemon:
         if state_dir and state_dir.exists():
             lock_files.extend(state_dir.glob("*.lock"))
 
+        implementation_lock_path = self._implementation_lock_path()
+        implementation_update_guard_path = implementation_lock_path.with_name(
+            f".{implementation_lock_path.name}.update.lock"
+        )
         for lock_path in lock_files:
+            if lock_path in {
+                implementation_lock_path,
+                implementation_update_guard_path,
+            }:
+                # The durable implementation lease is inspected and repaired
+                # only by its serialized acquisition protocol.  The adjacent
+                # update guard is a persistent flock inode and must never be
+                # unlinked, even when its mtime is old.
+                skipped.append(
+                    {
+                        "lock_path": str(lock_path),
+                        "reason": "managed_by_implementation_lease_protocol",
+                    }
+                )
+                continue
             try:
                 stat = lock_path.stat()
                 age_seconds = now_mono - stat.st_mtime
@@ -12366,8 +12885,13 @@ class PortalImplementationDaemon:
 
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
         identity = self._identity_for_task(task)
+        lease_seed = (
+            f"{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:"
+            f"{task.task_id}:{attempt}"
+        )
         return {
             "kind": "implementation",
+            "lease_id": hashlib.sha1(lease_seed.encode("utf-8")).hexdigest(),
             "pid": os.getpid(),
             "owner_script": Path(sys.argv[0]).name,
             "repo_root": str(self.repo_root.resolve()),
@@ -12586,7 +13110,7 @@ class PortalImplementationDaemon:
             return False
         owner_script = str(metadata.get("owner_script") or "")
         command_line = process_command_line(pid)
-        if owner_script and owner_script not in command_line:
+        if owner_script and command_line and owner_script not in command_line:
             # ``python -m package.implementation_daemon`` does not retain the
             # ``.py`` filename in argv. Accept the module stem as well so a
             # live daemon never has its task claim stolen by another shard.
@@ -12617,9 +13141,64 @@ class PortalImplementationDaemon:
             return None, "lock_exists", existing
         return None, "lock_unavailable", existing
 
+    def _try_acquire_implementation_lock(
+        self,
+        lock_path: Path,
+        metadata: dict[str, Any],
+    ) -> tuple[bool, str, dict[str, Any] | None]:
+        """Publish a complete implementation lease under its update guard."""
+
+        with serialized_lock_update(lock_path):
+            lock_fd, reason, existing = self._try_acquire_lock(
+                lock_path,
+                lock_kind="implementation",
+                owner_active=self._implementation_lock_owner_is_active,
+            )
+            if lock_fd is None:
+                return False, reason, existing
+            published = False
+            try:
+                self._write_lock_metadata(lock_fd, metadata)
+                published = True
+            finally:
+                if not published:
+                    # No contender can replace the path while the update guard
+                    # is held, so this cleanup can only remove our O_EXCL file.
+                    lock_path.unlink(missing_ok=True)
+            return True, reason, existing
+
+    def _release_implementation_lock(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Release only the implementation lease published by this attempt."""
+
+        with serialized_lock_update(lock_path):
+            existing = load_json_dict(lock_path)
+            lease_id = str(metadata.get("lease_id") or "")
+            if (
+                existing is None
+                or not lease_id
+                or str(existing.get("lease_id") or "") != lease_id
+            ):
+                return False
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                return False
+            return True
+
     def _write_lock_metadata(self, lock_fd: int, metadata: dict[str, Any]) -> None:
+        data = json.dumps(metadata, indent=2, sort_keys=True).encode("utf-8")
         try:
-            os.write(lock_fd, json.dumps(metadata, indent=2, sort_keys=True).encode("utf-8"))
+            offset = 0
+            while offset < len(data):
+                written = os.write(lock_fd, data[offset:])
+                if written <= 0:
+                    raise OSError("short write while publishing lock metadata")
+                offset += written
+            os.fsync(lock_fd)
         finally:
             os.close(lock_fd)
 
@@ -13779,6 +14358,10 @@ class PortalImplementationDaemon:
         exception_result: Mapping[str, Any] | None = None,
     ) -> ImplementationDiagnosticReceipt | None:
         if returncode == 0:
+            return None
+        if self._implementation_parent(task) is None:
+            # Failure reporting must not replace the primary implementation
+            # outcome when setup failed before a retry base was compiled.
             return None
         validation = (
             validation_result if isinstance(validation_result, Mapping) else {}
