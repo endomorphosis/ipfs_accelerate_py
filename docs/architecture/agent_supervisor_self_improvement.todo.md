@@ -886,7 +886,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-035 Close objective gap: Prove 061582446926920746660485801841658333166 for High-quality task generation and conflict-aware bundling
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: task-generation
