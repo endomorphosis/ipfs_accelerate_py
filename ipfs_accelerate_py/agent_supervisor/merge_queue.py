@@ -53,6 +53,10 @@ class MergeQueueFullError(RuntimeError):
     """Raised when accepting another active request would exceed queue capacity."""
 
 
+class MergeQueueFenceError(RuntimeError):
+    """Raised when stale or non-owning work tries to mutate a claimed request."""
+
+
 @dataclass(frozen=True)
 class MergeRequest:
     """One immutable merge candidate and its durable queue state."""
@@ -74,6 +78,8 @@ class MergeRequest:
     consumer_id: str = ""
     failure_count: int = 0
     failure_reason: str = ""
+    claim_token: str = ""
+    claim_generation: int = 0
 
     @property
     def canonical_identity(self) -> str:
@@ -109,6 +115,8 @@ class MergeRequest:
             "consumer_id": self.consumer_id,
             "failure_count": self.failure_count,
             "failure_reason": self.failure_reason,
+            "claim_token": self.claim_token,
+            "claim_generation": self.claim_generation,
             "dedupe_key": self.dedupe_key,
         }
 
@@ -145,6 +153,8 @@ class MergeRequest:
             consumer_id=str(data.get("consumer_id") or ""),
             failure_count=max(0, _safe_int(data.get("failure_count"), 0)),
             failure_reason=str(data.get("failure_reason") or ""),
+            claim_token=str(data.get("claim_token") or ""),
+            claim_generation=max(0, _safe_int(data.get("claim_generation"), 0)),
         )
 
 
@@ -210,6 +220,8 @@ class MergeQueue:
         max_age_seconds: float = 3600,
         max_queue_size: int = 100,
         max_processing: int | None = None,
+        max_worktree_bytes: int | None = None,
+        worktree_usage: Callable[[], int] | None = None,
         priority_aging_seconds: float = 300,
         max_attempts: int = 3,
         clock: Callable[[], float] | None = None,
@@ -220,6 +232,7 @@ class MergeQueue:
         self.completed_dir = self.queue_dir / "completed"
         self.failed_dir = self.queue_dir / "failed"  # compatibility projection
         self.quarantine_dir = self.queue_dir / "quarantine"
+        self.cancelled_dir = self.queue_dir / "cancelled"
         self.database_path = self.queue_dir / "merge_queue.duckdb"
         self._legacy_database_path = self.queue_dir / "merge_queue.sqlite3"
         self.max_age_seconds = max(0.0, float(max_age_seconds))
@@ -232,6 +245,12 @@ class MergeQueue:
                 else self.max_queue_size
             ),
         )
+        self.max_worktree_bytes = (
+            None
+            if max_worktree_bytes is None
+            else max(0, int(max_worktree_bytes))
+        )
+        self._worktree_usage = worktree_usage
         self.priority_aging_seconds = max(0.0, float(priority_aging_seconds))
         self.max_attempts = max(1, int(max_attempts))
         self._clock = clock or time.time
@@ -241,6 +260,7 @@ class MergeQueue:
             self.completed_dir,
             self.failed_dir,
             self.quarantine_dir,
+            self.cancelled_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
         self._init_database()
@@ -280,9 +300,19 @@ class MergeQueue:
                     consumer_id TEXT NOT NULL DEFAULT '',
                     failure_count INTEGER NOT NULL DEFAULT 0,
                     failure_reason TEXT NOT NULL DEFAULT '',
+                    claim_token TEXT NOT NULL DEFAULT '',
+                    claim_generation BIGINT NOT NULL DEFAULT 0,
                     finished_at DOUBLE NOT NULL DEFAULT 0,
                     updated_at DOUBLE NOT NULL
                 );
+                ALTER TABLE merge_requests
+                  ADD COLUMN IF NOT EXISTS claim_token TEXT DEFAULT '';
+                ALTER TABLE merge_requests
+                  ADD COLUMN IF NOT EXISTS claim_generation BIGINT DEFAULT 0;
+                UPDATE merge_requests
+                  SET claim_token=COALESCE(claim_token, ''),
+                      claim_generation=COALESCE(claim_generation, 0)
+                  WHERE claim_token IS NULL OR claim_generation IS NULL;
                 CREATE UNIQUE INDEX IF NOT EXISTS merge_requests_dedupe
                   ON merge_requests(dedupe_key);
                 CREATE INDEX IF NOT EXISTS merge_requests_stage_order
@@ -299,6 +329,7 @@ class MergeQueue:
             ("completed", self.completed_dir),
             ("quarantined", self.failed_dir),
             ("quarantined", self.quarantine_dir),
+            ("cancelled", self.cancelled_dir),
         )
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -332,8 +363,9 @@ class MergeQueue:
                 request_id, branch_name, task_id, priority, lane_id, enqueued_at,
                 attempt, metadata_json, commit_sha, canonical_task_id,
                 canonical_task_key, dedupe_key, status, claimed_at, consumer_id,
-                failure_count, failure_reason, finished_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                failure_count, failure_reason, claim_token, claim_generation,
+                finished_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 request.request_id,
                 request.branch_name,
@@ -352,6 +384,8 @@ class MergeQueue:
                 request.consumer_id,
                 request.failure_count,
                 request.failure_reason,
+                request.claim_token,
+                request.claim_generation,
                 0.0,
                 self._clock(),
             ),
@@ -477,21 +511,53 @@ class MergeQueue:
                 if claim_count <= 0:
                     connection.commit()
                     return ()
+                processing_rows = connection.execute(
+                    "SELECT metadata_json FROM merge_requests WHERE status='processing'"
+                ).fetchall()
+                reserved_bytes = sum(
+                    self._worktree_bytes_from_metadata_json(row["metadata_json"])
+                    for row in processing_rows
+                )
+                observed_bytes = self._observed_worktree_bytes()
+                worktree_bytes = max(reserved_bytes, observed_bytes)
                 rows = connection.execute(
                     "SELECT * FROM merge_requests WHERE status = 'pending'"
                 ).fetchall()
                 if not rows:
                     connection.commit()
                     return ()
-                selected = sorted(
-                    rows, key=lambda item: self._fairness_key(item, now)
-                )[:claim_count]
+                selected: list[DuckDBRow] = []
+                for row in sorted(rows, key=lambda item: self._fairness_key(item, now)):
+                    if len(selected) >= claim_count:
+                        break
+                    estimate = self._worktree_bytes_from_metadata_json(
+                        row["metadata_json"]
+                    )
+                    if (
+                        self.max_worktree_bytes is not None
+                        and (
+                            self.max_worktree_bytes <= 0
+                            or worktree_bytes + estimate > self.max_worktree_bytes
+                        )
+                    ):
+                        continue
+                    selected.append(row)
+                    worktree_bytes += estimate
                 for row in selected:
+                    claim_token = uuid.uuid4().hex
                     updated = connection.execute(
                         """UPDATE merge_requests
-                           SET status='processing', claimed_at=?, consumer_id=?, updated_at=?
+                           SET status='processing', claimed_at=?, consumer_id=?,
+                               claim_token=?, claim_generation=claim_generation + 1,
+                               updated_at=?
                            WHERE request_id=? AND status='pending'""",
-                        (now, consumer, now, row["request_id"]),
+                        (
+                            now,
+                            consumer,
+                            claim_token,
+                            now,
+                            row["request_id"],
+                        ),
                     )
                     if updated.rowcount != 1:
                         continue
@@ -512,6 +578,38 @@ class MergeQueue:
             claimed.append(replace(request, file_path=receipt_path))
         return tuple(claimed)
 
+    def _worktree_bytes_from_metadata_json(self, value: Any) -> int:
+        """Read a reservation estimate, conservatively bounding unknown work."""
+
+        try:
+            metadata = json.loads(value or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return self.max_worktree_bytes or 0
+        if not isinstance(metadata, Mapping):
+            return self.max_worktree_bytes or 0
+        for key in (
+            "worktree_bytes",
+            "estimated_worktree_bytes",
+            "worktree_disk_bytes",
+        ):
+            if key not in metadata:
+                continue
+            return max(0, _safe_int(metadata.get(key), 0))
+        # Once a disk limit is requested, an unestimated worktree reserves the
+        # whole budget.  This admits it serially without allowing missing
+        # producer metadata to defeat the bound.
+        return self.max_worktree_bytes or 0
+
+    def _observed_worktree_bytes(self) -> int:
+        """Return observed worktree use, failing closed when a configured probe fails."""
+
+        if self._worktree_usage is None:
+            return 0
+        try:
+            return max(0, int(self._worktree_usage()))
+        except Exception:
+            return self.max_worktree_bytes or 0
+
     def _fairness_key(self, row: DuckDBRow, now: float) -> tuple[int, float, str]:
         base = _PRIORITY_ORDER.get(str(row["priority"]), _PRIORITY_ORDER["P2"])
         if self.priority_aging_seconds > 0:
@@ -520,6 +618,74 @@ class MergeQueue:
         else:
             effective = base
         return effective, float(row["enqueued_at"]), str(row["request_id"])
+
+    def _claim_matches(
+        self,
+        row: DuckDBRow,
+        request: MergeRequest,
+        *,
+        consumer_id: str = "",
+    ) -> bool:
+        """Compare all durable claim coordinates, including ownership."""
+
+        expected_consumer = str(consumer_id or request.consumer_id)
+        claimed_at = _safe_float(
+            row["claimed_at"] or row["enqueued_at"],
+            0.0,
+        )
+        expired = (
+            self.max_age_seconds > 0
+            and self._clock() - claimed_at > self.max_age_seconds
+        )
+        return (
+            str(row["status"]) == "processing"
+            and not expired
+            and bool(request.claim_token)
+            and str(row["claim_token"] or "") == request.claim_token
+            and int(row["claim_generation"] or 0) == request.claim_generation
+            and str(row["consumer_id"] or "") == request.consumer_id
+            and (not consumer_id or str(row["consumer_id"] or "") == expected_consumer)
+        )
+
+    def owns_claim(
+        self,
+        request: MergeRequest,
+        *,
+        consumer_id: str = "",
+    ) -> bool:
+        """Return whether ``request`` still owns the current processing fence.
+
+        Merge workers should call this immediately before any target mutation.
+        The subsequent terminal queue transition performs the same comparison
+        atomically, so an expired, cancelled, or recovered claim fails closed.
+        """
+
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request.request_id,),
+            ).fetchone()
+        return (
+            row is not None
+            and self._claim_matches(row, request, consumer_id=consumer_id)
+        )
+
+    def _require_claim(
+        self,
+        row: DuckDBRow,
+        request: MergeRequest,
+        *,
+        operation: str,
+        allow_pending: bool = False,
+    ) -> None:
+        status = str(row["status"])
+        if allow_pending and status == "pending" and not request.claim_token:
+            return
+        if not self._claim_matches(row, request):
+            raise MergeQueueFenceError(
+                f"{operation} rejected for request {request.request_id}: "
+                "claim token, generation, owner, or state is stale"
+            )
 
     def complete(self, request: MergeRequest, metadata: Mapping[str, Any] | None = None) -> None:
         """Mark a claimed request complete; duplicate completion is harmless."""
@@ -533,18 +699,27 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return
+            if str(row["status"]) == "completed":
+                connection.commit()
+                return
+            self._require_claim(row, request, operation="complete")
             request_metadata = json.loads(row["metadata_json"] or "{}")
             if metadata:
                 request_metadata["completion"] = dict(metadata)
             connection.execute(
                 """UPDATE merge_requests SET status='completed', metadata_json=?,
-                   finished_at=?, updated_at=?, consumer_id='', claimed_at=0
-                   WHERE request_id=?""",
+                   finished_at=?, updated_at=?, consumer_id='', claimed_at=0,
+                   claim_token='', claim_generation=claim_generation + 1
+                   WHERE request_id=? AND status='processing'
+                     AND claim_token=? AND claim_generation=? AND consumer_id=?""",
                 (
                     json.dumps(request_metadata, sort_keys=True, separators=(",", ":")),
                     now,
                     now,
                     request.request_id,
+                    request.claim_token,
+                    request.claim_generation,
+                    request.consumer_id,
                 ),
             )
             row = connection.execute(
@@ -598,6 +773,7 @@ class MergeQueue:
                 if resolved.status == "quarantined":
                     return self._stage_path(resolved)
                 return resolved
+            self._require_claim(row, request, operation="requeue")
             next_attempt = max(int(row["attempt"]), int(row["failure_count"]) + 1) + 1
             failure_count = int(row["failure_count"]) + 1
             terminal = next_attempt > self.max_attempts
@@ -608,7 +784,10 @@ class MergeQueue:
             connection.execute(
                 """UPDATE merge_requests SET status=?, attempt=?, failure_count=?,
                    failure_reason=?, metadata_json=?, claimed_at=0, consumer_id='',
-                   finished_at=?, updated_at=? WHERE request_id=?""",
+                   claim_token='', claim_generation=claim_generation + 1,
+                   finished_at=?, updated_at=? WHERE request_id=?
+                     AND status='processing' AND claim_token=?
+                     AND claim_generation=? AND consumer_id=?""",
                 (
                     status,
                     next_attempt,
@@ -618,6 +797,9 @@ class MergeQueue:
                     now if terminal else 0.0,
                     now,
                     request.request_id,
+                    request.claim_token,
+                    request.claim_generation,
+                    request.consumer_id,
                 ),
             )
             row = connection.execute(
@@ -647,12 +829,22 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            if str(row["status"]) == "quarantined":
+                connection.commit()
+                return self._stage_path(self._request_from_row(row))
+            self._require_claim(
+                row,
+                request,
+                operation="quarantine",
+                allow_pending=True,
+            )
             request_metadata = json.loads(row["metadata_json"] or "{}")
             if metadata:
                 request_metadata["quarantine"] = dict(metadata)
             connection.execute(
                 """UPDATE merge_requests SET status='quarantined', failure_count=?,
                    failure_reason=?, metadata_json=?, claimed_at=0, consumer_id='',
+                   claim_token='', claim_generation=claim_generation + 1,
                    finished_at=?, updated_at=? WHERE request_id=?""",
                 (
                     max(1, int(row["failure_count"])),
@@ -669,6 +861,80 @@ class MergeQueue:
             connection.commit()
         assert row is not None
         return self._write_stage_receipt(self._request_from_row(row))
+
+    def cancel(
+        self,
+        request: MergeRequest | str,
+        reason: str = "cancelled",
+        *,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> MergeRequest | None:
+        """Durably cancel pending work or an exactly fenced processing claim.
+
+        A request id is sufficient for work which has not been claimed.  Once
+        processing begins, callers must pass the exact :class:`MergeRequest`
+        returned by ``dequeue``; this prevents an operator or stale worker from
+        cancelling a newer owner's claim accidentally.
+        """
+
+        supplied = request if isinstance(request, MergeRequest) else None
+        request_id = supplied.request_id if supplied is not None else str(request)
+        now = self._clock()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            status = str(row["status"])
+            if status == "cancelled":
+                connection.commit()
+                return self._request_from_row(row)
+            if status in {"completed", "quarantined"}:
+                connection.commit()
+                return self._request_from_row(row)
+            if status == "processing":
+                if supplied is None:
+                    connection.rollback()
+                    raise MergeQueueFenceError(
+                        f"cancel rejected for request {request_id}: "
+                        "a processing request requires its current claim"
+                    )
+                self._require_claim(row, supplied, operation="cancel")
+            request_metadata = json.loads(row["metadata_json"] or "{}")
+            cancellation = {"at": now, "reason": str(reason or "cancelled")}
+            if metadata:
+                cancellation["metadata"] = dict(metadata)
+            request_metadata["cancellation"] = cancellation
+            connection.execute(
+                """UPDATE merge_requests SET status='cancelled', failure_reason=?,
+                   metadata_json=?, claimed_at=0, consumer_id='', claim_token='',
+                   claim_generation=claim_generation + 1, finished_at=?, updated_at=?
+                   WHERE request_id=? AND status IN ('pending','processing')""",
+                (
+                    str(reason or "cancelled"),
+                    json.dumps(
+                        request_metadata,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    now,
+                    now,
+                    request_id,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        cancelled = self._request_from_row(row)
+        receipt_path = self._write_stage_receipt(cancelled)
+        return replace(cancelled, file_path=receipt_path)
 
     def revive_quarantined(
         self,
@@ -714,7 +980,9 @@ class MergeQueue:
             connection.execute(
                 """UPDATE merge_requests SET status='pending', enqueued_at=?, attempt=?,
                    failure_count=?, failure_reason='', metadata_json=?, claimed_at=0,
-                   consumer_id='', finished_at=0, updated_at=? WHERE request_id=?""",
+                   consumer_id='', claim_token='',
+                   claim_generation=claim_generation + 1,
+                   finished_at=0, updated_at=? WHERE request_id=?""",
                 (
                     now,
                     attempt,
@@ -847,7 +1115,8 @@ class MergeQueue:
                     finished_at = now
                 connection.execute(
                     """UPDATE merge_requests SET status=?, attempt=?, failure_count=?,
-                       failure_reason=?, claimed_at=0, consumer_id='', finished_at=?,
+                       failure_reason=?, claimed_at=0, consumer_id='', claim_token='',
+                       claim_generation=claim_generation + 1, finished_at=?,
                        updated_at=? WHERE request_id=?""",
                     (
                         new_status,
@@ -900,7 +1169,8 @@ class MergeQueue:
                     reason = "merge train consumer exited on final attempt"
                 connection.execute(
                     """UPDATE merge_requests SET status=?, attempt=?, failure_count=?,
-                       failure_reason=?, claimed_at=0, consumer_id='', finished_at=?,
+                       failure_reason=?, claimed_at=0, consumer_id='', claim_token='',
+                       claim_generation=claim_generation + 1, finished_at=?,
                        updated_at=? WHERE request_id=? AND status='processing'""",
                     (
                         status,
@@ -938,6 +1208,12 @@ class MergeQueue:
                    WHERE status='completed' AND finished_at > 0
                    ORDER BY finished_at"""
             ).fetchall()
+            processing_rows = connection.execute(
+                "SELECT metadata_json FROM merge_requests WHERE status='processing'"
+            ).fetchall()
+            pending_rows = connection.execute(
+                "SELECT metadata_json FROM merge_requests WHERE status='pending'"
+            ).fetchall()
         completed_span = (
             max(
                 0.0,
@@ -949,12 +1225,34 @@ class MergeQueue:
         )
         active = counts.get("pending", 0) + counts.get("processing", 0)
         merge_debt = counts.get("processing", 0)
+        reserved_worktree_bytes = sum(
+            self._worktree_bytes_from_metadata_json(row["metadata_json"])
+            for row in processing_rows
+        )
+        observed_worktree_bytes = self._observed_worktree_bytes()
+        worktree_bytes_in_use = max(
+            reserved_worktree_bytes,
+            observed_worktree_bytes,
+        )
+        disk_backpressure = (
+            self.max_worktree_bytes is not None
+            and (
+                worktree_bytes_in_use >= self.max_worktree_bytes
+                or any(
+                    worktree_bytes_in_use
+                    + self._worktree_bytes_from_metadata_json(row["metadata_json"])
+                    > self.max_worktree_bytes
+                    for row in pending_rows
+                )
+            )
+        )
         return {
             "pending": counts.get("pending", 0),
             "processing": merge_debt,
             "completed": counts.get("completed", 0),
             "failed": counts.get("quarantined", 0),
             "quarantined": counts.get("quarantined", 0),
+            "cancelled": counts.get("cancelled", 0),
             "total": sum(counts.values()),
             "queue_dir": str(self.queue_dir),
             "database_path": str(self.database_path),
@@ -962,9 +1260,15 @@ class MergeQueue:
             "max_queue_size": self.max_queue_size,
             "max_processing": self.max_processing,
             "merge_debt": merge_debt,
+            "max_worktree_bytes": self.max_worktree_bytes,
+            "reserved_worktree_bytes": reserved_worktree_bytes,
+            "observed_worktree_bytes": observed_worktree_bytes,
+            "worktree_bytes_in_use": worktree_bytes_in_use,
+            "disk_backpressure": disk_backpressure,
             "backpressure": (
                 active >= self.max_queue_size
                 or merge_debt >= self.max_processing
+                or disk_backpressure
             ),
             "throughput": {
                 "schema": MERGE_QUEUE_THROUGHPUT_SCHEMA,
@@ -998,6 +1302,8 @@ class MergeQueue:
             "consumer_id": row["consumer_id"],
             "failure_count": row["failure_count"],
             "failure_reason": row["failure_reason"],
+            "claim_token": row["claim_token"],
+            "claim_generation": row["claim_generation"],
         }
         request = MergeRequest.from_dict(payload)
         return replace(request, file_path=self._stage_path(request))
@@ -1008,6 +1314,7 @@ class MergeQueue:
             "processing": self.processing_dir,
             "completed": self.completed_dir,
             "quarantined": self.quarantine_dir,
+            "cancelled": self.cancelled_dir,
         }.get(request.status, self.failed_dir)
         return stage_dir / f"{request.request_id}.json"
 
@@ -1024,6 +1331,19 @@ class MergeQueue:
                     ).hexdigest(),
                 }
             )
+        elif request.status == "cancelled":
+            payload.update(
+                {
+                    "receipt_type": "merge_cancellation",
+                    "cancelled_at": self._clock(),
+                    "receipt_id": hashlib.sha256(
+                        (
+                            f"{request.request_id}\0{request.failure_reason}"
+                            f"\0{request.claim_generation}"
+                        ).encode("utf-8")
+                    ).hexdigest(),
+                }
+            )
         _atomic_write_json(destination, payload)
         for directory in (
             self.pending_dir,
@@ -1031,6 +1351,7 @@ class MergeQueue:
             self.completed_dir,
             self.failed_dir,
             self.quarantine_dir,
+            self.cancelled_dir,
         ):
             candidate = directory / destination.name
             if candidate == destination:
@@ -1054,6 +1375,7 @@ class MergeQueue:
 __all__ = [
     "MergeQueue",
     "MergeQueueFullError",
+    "MergeQueueFenceError",
     "MergeRequest",
     "_PRIORITY_ORDER",
 ]

@@ -238,6 +238,64 @@ def _json_safe(value: object) -> object:
     return str(value)
 
 
+def _validation_result_digest(
+    result: Mapping[str, object],
+    *,
+    cache_key: "ValidationCacheKey | None" = None,
+    trust_stored_digest: bool = False,
+) -> str:
+    """Return the stable, authority-bearing digest for a command outcome.
+
+    Execution reports contain useful operational fields (timestamps, resource
+    lease identifiers, elapsed time, and ``cache_hit``), but those fields are
+    deliberately not validation evidence.  Hashing the whole report made an
+    exact cache replay produce a different validation DAG receipt from the
+    original execution.  It also meant dropping bulky command output from the
+    durable cache changed the receipt binding.
+
+    The digest below binds the exact semantic cache key and command outcome.
+    Output is retained by digest and byte length as well as in the bounded cache
+    payload.  A stored digest is returned unchanged on replay; its cache
+    envelope and semantic key are independently integrity checked by
+    :class:`ValidationResultCache`.  Runner-provided digest fields are never
+    trusted on first execution.
+    """
+
+    existing = str(result.get("validation_result_digest") or "").strip()
+    if existing and trust_stored_digest:
+        return existing
+    output = str(result.get("output") or "")
+    payload: dict[str, object] = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/validation-result@1",
+        "cache_key": cache_key.digest if cache_key is not None else "",
+        "target_commit": (
+            cache_key.target_commit if cache_key is not None else ""
+        ),
+        "command": (
+            cache_key.command
+            if cache_key is not None
+            else normalize_validation_command_text(
+                str(result.get("command") or "")
+            )
+        ),
+        "dependency_state": (
+            cache_key.dependency_state if cache_key is not None else ""
+        ),
+        "environment": (
+            dict(cache_key.environment) if cache_key is not None else {}
+        ),
+        "returncode": int(result.get("returncode", 1)),
+        "timed_out": bool(result.get("timed_out", False)),
+        "error": str(result.get("error") or ""),
+        "output_sha256": _sha256_bytes(output.encode("utf-8")),
+        "output_bytes": len(output.encode("utf-8")),
+        # Seeded-defect observations are validation evidence and must not be
+        # detachable from the result that observed them.
+        "seeded_defect_id": str(result.get("seeded_defect_id") or ""),
+    }
+    return _sha256_bytes(_canonical_json(payload).encode("utf-8"))
+
+
 @dataclass(frozen=True)
 class ValidationCacheKey:
     """Canonical components and digest for one reusable validation result."""
@@ -3782,6 +3840,17 @@ class ValidationScheduler:
             cached = self.cache.get(cache_key)
             if cached is not None:
                 result = dict(cached)
+                # Entries produced before validation-result@1 remain readable.
+                # They cannot manufacture an exact digest without the omitted
+                # output, so bind such a replay to its legacy cached payload.
+                result.setdefault(
+                    "validation_result_digest",
+                    _validation_result_digest(
+                        result,
+                        cache_key=cache_key,
+                        trust_stored_digest=True,
+                    ),
+                )
                 result.update(
                     {
                         "command": spec.command,
@@ -3860,6 +3929,9 @@ class ValidationScheduler:
         result["stage"] = spec.stage.label
         result["resource_cost"] = spec.resource_cost
         result["ordinal"] = spec.ordinal
+        result["validation_result_digest"] = _validation_result_digest(
+            result, cache_key=cache_key
+        )
         result["resource_admission"] = decision.to_dict()
         result["resource_lease"] = {
             "lease_id": resource_lease.lease_id,
@@ -3869,9 +3941,10 @@ class ValidationScheduler:
             "released": True,
         }
         if spec.cacheable and self.cache is not None and result["returncode"] == 0:
-            # Output is useful in the current log but needlessly bloats durable cache.
-            cache_result = {key: value for key, value in result.items() if key != "output"}
-            self.cache.put(cache_key, cache_result)
+            # The cache quota bounds disk use, so retain the complete result.
+            # Exact receipt reuse means a replay must not silently substitute
+            # an output-less approximation for the result that actually ran.
+            self.cache.put(cache_key, result)
         return result
 
     @staticmethod
@@ -4294,10 +4367,8 @@ class ValidationScheduler:
                             selection_reasons=node.selection_reasons,
                             depends_on=node.depends_on,
                             returncode=returncode,
-                            result_digest=_sha256_bytes(
-                                _canonical_json(
-                                    _json_safe(dict(result))
-                                ).encode("utf-8")
+                            result_digest=_validation_result_digest(
+                                result, trust_stored_digest=True
                             ),
                             cache_hit=bool(result.get("cache_hit", False)),
                             duration_seconds=max(
@@ -4833,8 +4904,8 @@ class ValidationScheduler:
             result = results_by_ordinal.get(spec.ordinal)
             if result is not None:
                 returncode = int(result.get("returncode", 1))
-                result_digest = _sha256_bytes(
-                    _canonical_json(_json_safe(dict(result))).encode("utf-8")
+                result_digest = _validation_result_digest(
+                    result, trust_stored_digest=True
                 )
                 disposition = (
                     ValidationNodeDisposition.SUCCEEDED
