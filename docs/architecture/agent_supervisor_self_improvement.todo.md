@@ -2923,7 +2923,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-083 Produce completion evidence for Adaptive parallel execution and acceptance throughput
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: parallelism
