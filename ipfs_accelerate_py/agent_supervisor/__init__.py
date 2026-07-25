@@ -2405,41 +2405,46 @@ del (
     _missing_control_export,
 )
 
-# Stable rollout contracts are kept off the cold-import path.  They are pure
-# records and evaluation helpers, but loading them only when requested keeps
-# basic control discovery independent from rollout storage and policy code.
+# Stable rollout contracts are kept off the cold-import path.  This public,
+# immutable manifest is the compatibility boundary for operators and adapters:
+# every listed name resolves from the package root to the provider-free rollout
+# module, while inspecting the manifest itself does not import that module.
+PAIRED_ROLLOUT_STABLE_EXPORTS = (
+    "MAX_CANDIDATE_ARTIFACT_BYTES",
+    "MAX_CANDIDATE_ARTIFACT_COUNT",
+    "MAX_PAIRED_ROLLOUT_REPORT_BYTES",
+    "MAX_PAIRED_ROLLOUT_REASON_CODES",
+    "MIN_INDEPENDENT_LANE_THROUGHPUT_BPS",
+    "MIN_INVALID_PLAN_BRANCH_REDUCTION_BPS",
+    "MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS",
+    "MIN_PLANNING_COVERAGE_IMPROVEMENT_BPS",
+    "MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS",
+    "PAIRED_EFFICIENCY_GOAL_ID",
+    "PAIRED_EFFICIENCY_REQUIREMENT_ID",
+    "PAIRED_ROLLOUT_FIXTURE_SCHEMA",
+    "PAIRED_ROLLOUT_POLICY_SCHEMA",
+    "PAIRED_ROLLOUT_REPORT_SCHEMA",
+    "PAIRED_ROLLOUT_REPORT_VERSION",
+    "PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA",
+    "PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION",
+    "PairedFixtureKind",
+    "PairedRolloutFixture",
+    "PairedRolloutPolicy",
+    "PairedRolloutReport",
+    "PairedRolloutReportStore",
+    "PairedRolloutRequirementEvidence",
+    "PairedRolloutValidationError",
+    "REPEATED_FIXTURE_KINDS",
+    "REQUIRED_PAIRED_FIXTURE_KINDS",
+    "RolloutBehaviorMeasurement",
+    "SHADOW_FALSE_COMPLETION_GOAL_ID",
+    "SHADOW_FALSE_COMPLETION_REQUIREMENT_ID",
+    "SelfImprovementRolloutMode",
+    "evaluate_paired_self_improvement_rollout",
+)
+__all__.append("PAIRED_ROLLOUT_STABLE_EXPORTS")
 _LAZY_STABLE_EXPORTS = {
-    "self_improvement_rollout": (
-        "MAX_CANDIDATE_ARTIFACT_BYTES",
-        "MAX_CANDIDATE_ARTIFACT_COUNT",
-        "MAX_PAIRED_ROLLOUT_REPORT_BYTES",
-        "MAX_PAIRED_ROLLOUT_REASON_CODES",
-        "MIN_INDEPENDENT_LANE_THROUGHPUT_BPS",
-        "MIN_INVALID_PLAN_BRANCH_REDUCTION_BPS",
-        "MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS",
-        "MIN_PLANNING_COVERAGE_IMPROVEMENT_BPS",
-        "MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS",
-        "PAIRED_EFFICIENCY_GOAL_ID",
-        "PAIRED_EFFICIENCY_REQUIREMENT_ID",
-        "PAIRED_ROLLOUT_FIXTURE_SCHEMA",
-        "PAIRED_ROLLOUT_POLICY_SCHEMA",
-        "PAIRED_ROLLOUT_REPORT_SCHEMA",
-        "PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA",
-        "PairedFixtureKind",
-        "PairedRolloutFixture",
-        "PairedRolloutPolicy",
-        "PairedRolloutReport",
-        "PairedRolloutReportStore",
-        "PairedRolloutRequirementEvidence",
-        "PairedRolloutValidationError",
-        "REPEATED_FIXTURE_KINDS",
-        "REQUIRED_PAIRED_FIXTURE_KINDS",
-        "RolloutBehaviorMeasurement",
-        "SHADOW_FALSE_COMPLETION_GOAL_ID",
-        "SHADOW_FALSE_COMPLETION_REQUIREMENT_ID",
-        "SelfImprovementRolloutMode",
-        "evaluate_paired_self_improvement_rollout",
-    ),
+    "self_improvement_rollout": PAIRED_ROLLOUT_STABLE_EXPORTS,
 }
 for _stable_export_names in _LAZY_STABLE_EXPORTS.values():
     __all__.extend(_stable_export_names)

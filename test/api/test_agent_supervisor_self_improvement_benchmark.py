@@ -195,6 +195,51 @@ def test_closed_paired_population_passes_every_asi_023_gate() -> None:
     ).requirement_satisfied
 
 
+def test_omitted_rollout_mode_proves_gates_but_never_promotes() -> None:
+    report = evaluate_paired_self_improvement_rollout(
+        _fixtures(),
+        evaluated_at=NOW,
+    )
+
+    assert report["desired_mode"] == SelfImprovementRolloutMode.SHADOW.value
+    assert report["gate_passed"]
+    assert report["token_gate_passed"]
+    assert report["cache_gate_passed"]
+    assert report["planning_gate_passed"]
+    assert report["throughput_gate_passed"]
+    assert not report.promotion_allowed
+    assert report.effective_mode is SelfImprovementRolloutMode.SHADOW
+    assert _requirement_evidence(
+        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
+    ).requirement_satisfied
+
+
+def test_either_reviewed_planning_improvement_can_pass_the_gate() -> None:
+    coverage_fixtures = tuple(
+        replace(
+            item,
+            candidate=replace(
+                item.candidate,
+                evidence_coverage_bps=10_000,
+                invalid_plan_branches=item.baseline.invalid_plan_branches,
+            ),
+        )
+        for item in _fixtures()
+    )
+    report = evaluate_paired_self_improvement_rollout(
+        coverage_fixtures,
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
+    )
+
+    assert report["planning_gate_passed"]
+    assert (
+        report["metrics"]["planning_coverage_improvement_bps"] >= 1_000
+    )
+    assert report["metrics"]["invalid_plan_branch_reduction_bps"] == 0
+    assert report.promotion_allowed
+
+
 @pytest.mark.parametrize(
     ("field", "reason"),
     [
@@ -292,6 +337,46 @@ def test_nonnegotiable_violation_always_forces_shadow(
                 merge_conflicts=2,
             ),
             "merge_conflict_regression:conflicting_parallel",
+        ),
+        (
+            _replace_candidate(
+                _fixtures(),
+                PairedFixtureKind.BROAD_GOAL,
+                terminal_outcome="rejected",
+            ),
+            "paired_outcome_regression:broad_goal",
+        ),
+        (
+            _replace_candidate(
+                _fixtures(),
+                PairedFixtureKind.BROAD_GOAL,
+                evidence_coverage_bps=8_999,
+            ),
+            "evidence_coverage_regression:broad_goal",
+        ),
+        (
+            _replace_candidate(
+                _fixtures(),
+                PairedFixtureKind.COLD,
+                false_rejections=1,
+            ),
+            "false_rejection_regression:cold",
+        ),
+        (
+            _replace_candidate(
+                _fixtures(),
+                PairedFixtureKind.COLD,
+                accepted_work=0,
+            ),
+            "accepted_work_regression:cold",
+        ),
+        (
+            _replace_candidate(
+                _fixtures(),
+                PairedFixtureKind.FAILED_VALIDATION,
+                detected_defects=0,
+            ),
+            "defect_detection_regression:failed_validation",
         ),
     ],
 )
@@ -419,7 +504,15 @@ def test_policy_cannot_weaken_thresholds_bounds_or_population() -> None:
     with pytest.raises(PairedRolloutValidationError, match="cannot weaken"):
         PairedRolloutPolicy(min_median_input_token_reduction_bps=3_499)
     with pytest.raises(PairedRolloutValidationError, match="cannot weaken"):
+        PairedRolloutPolicy(min_repeated_fixture_cache_reuse_bps=6_999)
+    with pytest.raises(PairedRolloutValidationError, match="cannot weaken"):
+        PairedRolloutPolicy(min_independent_lane_throughput_bps=19_999)
+    with pytest.raises(PairedRolloutValidationError, match="cannot weaken"):
+        PairedRolloutPolicy(max_candidate_artifact_count=257)
+    with pytest.raises(PairedRolloutValidationError, match="cannot weaken"):
         PairedRolloutPolicy(max_candidate_artifact_bytes=4 * 1024 * 1024 + 1)
+    with pytest.raises(PairedRolloutValidationError, match="cannot weaken"):
+        PairedRolloutPolicy(max_report_bytes=2 * 1024 * 1024 + 1)
     with pytest.raises(PairedRolloutValidationError, match="non-narrowable"):
         PairedRolloutPolicy(
             required_fixture_kinds=REQUIRED_PAIRED_FIXTURE_KINDS[:-1]
@@ -545,7 +638,9 @@ def test_requirement_evidence_rejects_unknown_ids_and_is_round_trip_stable() -> 
 
 def test_bounded_report_store_is_idempotent_and_restart_safe(tmp_path) -> None:
     report = evaluate_paired_self_improvement_rollout(
-        _fixtures(), evaluated_at=NOW
+        _fixtures(),
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
+        evaluated_at=NOW,
     )
     store = PairedRolloutReportStore(tmp_path / "rollout-reports")
     path = store.persist(report)
@@ -561,6 +656,7 @@ def test_bounded_report_store_is_idempotent_and_restart_safe(tmp_path) -> None:
 
     replay = evaluate_paired_self_improvement_rollout(
         _fixtures(),
+        desired_mode=SelfImprovementRolloutMode.AUTOMATIC,
         evaluated_at=NOW + timedelta(minutes=5),
     )
     assert replay.report_id == report.report_id

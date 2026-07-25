@@ -609,6 +609,36 @@ def test_checked_in_root_remains_actionable_until_live_proof_exists() -> None:
         assert "- Status: verified_complete" not in child_block
 
 
+def test_checked_in_rollout_gap_routes_to_canonical_heap_child() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    objective_text = (
+        repo_root
+        / "docs/architecture/agent_supervisor_self_improvement.objectives.md"
+    ).read_text(encoding="utf-8")
+    efficiency_block = objective_text.split(
+        "## ASI-G113 Prove "
+        "146189916032404266364029134505159070240",
+        1,
+    )[1].split("\n## ", 1)[0]
+    planning_block = objective_text.split("## ASI-G115 ", 1)[1].split(
+        "\n## ",
+        1,
+    )[0]
+
+    assert "## ASI-G116 " not in objective_text
+    assert "- Parent: ASI-G090" in efficiency_block
+    assert (
+        "- Evidence: 146189916032404266364029134505159070240"
+        in efficiency_block
+    )
+    assert "`PAIRED_EFFICIENCY_REQUIREMENT_ID`" in efficiency_block
+    assert "`PairedRolloutRequirementEvidence`" in efficiency_block
+    assert "ASI-041 resolves discovery fingerprint" in efficiency_block
+    assert "scan's ASI-G116 allocation is stale" in efficiency_block
+    assert "312819945606360295782005228058369235550" in planning_block
+    assert "146189916032404266364029134505159070240" not in planning_block
+
+
 def _rollout_measurement(
     kind: PairedFixtureKind,
     *,
@@ -893,21 +923,40 @@ def test_stable_rollout_exports_remain_lazy_without_optional_providers() -> None
     optional_modules = (
         f"{module}.formal_verification_provider",
         f"{module}.leanstral_proof_provider",
-        f"{module}.ipfs_datasets_logic_provider",
+        f"{module}.leanstral_goal_development",
+        f"{module}.leanstral_goal_lifecycle",
+        f"{module}.formal_replanner",
+        f"{module}.proof_scheduler",
+        f"{module}.proof_carrying_planner",
+        f"{module}.adaptive_planner",
     )
     program = f"""
+import importlib
 import json
 import sys
 import {module} as api
 
+stable_exports = api.PAIRED_ROLLOUT_STABLE_EXPORTS
 before = {{
     "rollout_loaded": {rollout_module!r} in sys.modules,
     "optional_loaded": [
         name for name in {optional_modules!r} if name in sys.modules
     ],
+    "manifest_in_all": "PAIRED_ROLLOUT_STABLE_EXPORTS" in api.__all__,
+    "exports_in_all": all(name in api.__all__ for name in stable_exports),
 }}
-safety_id = api.SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
-efficiency_id = api.PAIRED_EFFICIENCY_REQUIREMENT_ID
+root_values = {{name: getattr(api, name) for name in stable_exports}}
+rollout = importlib.import_module({rollout_module!r})
+identical = all(
+    value is getattr(rollout, name) for name, value in root_values.items()
+)
+module_public = tuple(rollout.__all__)
+manifest_complete = (
+    set(stable_exports) == set(module_public)
+    and len(stable_exports) == len(set(stable_exports))
+)
+report_version = api.PAIRED_ROLLOUT_REPORT_VERSION
+evidence_version = api.PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION
 rollout_type = api.PairedRolloutReport
 evidence_type = api.PairedRolloutRequirementEvidence
 after = {{
@@ -915,8 +964,12 @@ after = {{
     "optional_loaded": [
         name for name in {optional_modules!r} if name in sys.modules
     ],
-    "safety_id": safety_id,
-    "efficiency_id": efficiency_id,
+    "safety_id": api.SHADOW_FALSE_COMPLETION_REQUIREMENT_ID,
+    "efficiency_id": api.PAIRED_EFFICIENCY_REQUIREMENT_ID,
+    "report_version": report_version,
+    "evidence_version": evidence_version,
+    "identical": identical,
+    "manifest_complete": manifest_complete,
     "rollout_type_module": rollout_type.__module__,
     "evidence_type_module": evidence_type.__module__,
 }}
@@ -931,6 +984,8 @@ print(json.dumps({{"before": before, "after": after}}, sort_keys=True))
     result = json.loads(completed.stdout)
 
     assert result["before"] == {
+        "exports_in_all": True,
+        "manifest_in_all": True,
         "optional_loaded": [],
         "rollout_loaded": False,
     }
@@ -942,5 +997,9 @@ print(json.dumps({{"before": before, "after": after}}, sort_keys=True))
     assert result["after"]["efficiency_id"] == (
         PAIRED_EFFICIENCY_REQUIREMENT_ID
     )
+    assert result["after"]["report_version"] == 2
+    assert result["after"]["evidence_version"] == 1
+    assert result["after"]["identical"] is True
+    assert result["after"]["manifest_complete"] is True
     assert result["after"]["rollout_type_module"] == rollout_module
     assert result["after"]["evidence_type_module"] == rollout_module

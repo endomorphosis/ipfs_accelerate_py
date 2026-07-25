@@ -412,9 +412,10 @@ the same repositories, goals, provider fixtures, and fault injections.
 | Refill | Novel admitted goals, duplicates, churn, exhaustion behavior | No duplicate generation and idempotent healthy exhaustion |
 | Control | Python/CLI/MCP schema and behavior parity | Contract tests pass for every shared operation |
 
-These are promotion gates, not hard-coded production defaults. A gate failure
-keeps the feature in shadow or assist mode and creates a bounded diagnostic
-task. It must never be hidden by a composite score.
+These are promotion gates, not hard-coded production defaults. A paired-gate
+failure always makes `shadow` the effective mode, even when the requested mode
+was `assist` or `automatic`, and creates bounded diagnostics. It must never be
+hidden by a composite score.
 
 ### Paired end-to-end rollout gate
 
@@ -493,6 +494,13 @@ re-derives the complete claim and rejects changed or detached content. The
 projection is diagnostic rollout evidence, not completion, proof, merge, or
 mutation authority.
 
+Generated objective scans once allocated the packet labels ASI-G115 and
+ASI-G116 to these two terms. Those labels are stale routing metadata:
+canonical heap children ASI-G112 and ASI-G113 own the safety and efficiency
+terms under ASI-G090, while the current ASI-G115 is unrelated planning work.
+The runtime derives the canonical child from the requirement identifier; an
+operator cannot redirect evidence by supplying a scan label.
+
 Report version 2 carries the explicit invalid-plan-branch counter and component
 gate projections. Version-1 reports remain readable and are re-derived for
 audit, but cannot affirm the efficiency requirement because they lack the
@@ -506,10 +514,11 @@ directory synchronization, symlink rejection, a 2 MiB hard report bound, and
 idempotent replay. This makes a recovered decision stable across a supervisor
 restart without turning the report into completion evidence.
 
-The paired contracts, evidence identifiers, evaluator, and report store are
-stable lazy exports from `ipfs_accelerate_py.agent_supervisor`. Import and
-capability discovery remain provider-free and process-free; accessing these
-exports loads only the rollout contract module. The deterministic smoke recipe
+The paired contracts, schema versions, evidence identifiers, evaluator, and
+report store are enumerated by the stable package-root
+`PAIRED_ROLLOUT_STABLE_EXPORTS` manifest. Import, manifest inspection, and
+capability discovery remain provider-free and process-free; accessing a listed
+export loads only the rollout contract module. The deterministic smoke recipe
 uses fixed bindings to seed every forced-shadow path and retain bounded reason
 codes. The production recipe persists both criterion projections with the
 report, profile, capability, repository tree, objective, and policy identities;
@@ -589,7 +598,8 @@ no automatic mutation merely because a provider is available.
 | Purpose | Sustained operation on a reviewed host after paired-gate promotion | Fast, repeatable contract, migration, and recovery checks |
 | Rollout | Begin in `shadow`; request `assist` or `automatic` only from a passing, current paired report | `shadow` only |
 | Context | `context_contracts.ContextBudget` defaults: 8,192 input tokens, 2,048 output reserve, 512 tool reserve, 128 items, and 256 KiB serialized | 2,048 input tokens, 512 output reserve, 128 tool reserve, 32 items, and 64 KiB serialized |
-| Cache | 512 entries, 32 MiB total, 128 KiB per entry, 96 KiB per receipt, 5-minute negative TTL | 64 entries, 4 MiB total, 64 KiB per entry, 48 KiB per receipt, 60-second negative TTL |
+| Coordinator caches | 512 entries, 32 MiB total, 256 KiB per entry; bind namespace quotas to the profile revision | 64 entries, 4 MiB total, 64 KiB per entry; isolate namespaces per test |
+| Analysis receipt cache | `AnalysisCache` defaults: 512 entries, 32 MiB total, 128 KiB per entry, 96 KiB per receipt, 5-minute negative TTL | 64 entries, 4 MiB total, 64 KiB per entry, 48 KiB per receipt, 60-second negative TTL |
 | Resources | Four-lane ceiling, adaptive admission disabled initially, provider telemetry required; stage ceilings of four analysis, one inference, two proof, two validation, one merge, and one persistence lane. Enable adaptive admission only after its paired parallel gate passes | One lane, adaptive admission disabled, one process and one lane for every stage |
 | Providers | Enable only individually discovered, policy-allowed providers with recorded quota, latency, token, memory, and GPU bounds; preserve deterministic local fallback | Do not load optional providers; capability discovery must still run and explicitly report them unavailable |
 | State | Durable, access-controlled state/cache roots with independent artifact quotas and restart checks | Fresh temporary state/cache roots, frozen fixture IDs and inputs, fixed observation time, and no network/provider dependence |
@@ -660,9 +670,10 @@ escaped defect, duplicate execution, or unauthorized mutation; an unstable
 restart; incomplete fixture coverage; an artifact bound violation; or a
 regression in terminal outcome, accepted work, evidence coverage, quality,
 defect detection, false rejection, or merge conflicts. Track the explicit
-token-reduction, repeated-cache-reuse, and independent-lane-throughput basis
-points rather than a composite score, and retain the report reason codes for
-diagnosis.
+token-reduction, repeated-cache-reuse, planning-coverage-improvement,
+invalid-plan-branch-reduction, and independent-lane-throughput basis points
+plus all four component-gate booleans rather than a composite score. Retain
+the bounded report reason codes for diagnosis.
 
 Recovery is fail-closed and typed:
 
