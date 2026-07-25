@@ -44,7 +44,7 @@ PACKET_COMPLETION_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/packet-completion-binding-evidence@1"
 )
 CRITICAL_PATH_WIDTH_EVIDENCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/critical-path-width-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/critical-path-width-evidence@2"
 )
 _PACKET_COMPLETION_EVIDENCE_SEAL: Final = object()
 _CRITICAL_PATH_WIDTH_EVIDENCE_SEAL: Final = object()
@@ -81,6 +81,22 @@ def _paths(value: Any) -> tuple[str, ...]:
             }
         )
     )
+
+
+def _authoritative_repository_tree(value: Any) -> bool:
+    """Return whether a receipt is bound to a concrete repository snapshot."""
+
+    normalized = str(value or "").strip().casefold()
+    return normalized not in {
+        "",
+        "in-memory",
+        "in_memory",
+        "memory",
+        "unknown",
+        "unbound",
+        "working-tree",
+        "working_tree",
+    }
 
 
 def _value(source: Mapping[str, Any], *names: str, default: Any = "") -> Any:
@@ -200,8 +216,11 @@ class _CanonicalTask:
         if context_tokens < 0:
             raise ValueError("estimated_context_tokens must be non-negative")
         try:
+            # Objective ``graph_depth`` describes goal hierarchy, not task-DAG
+            # readiness.  Only the explicit scheduling field is accepted here.
             dependency_depth = int(
-                _value(payload, "dependency depth", "graph depth", default=0) or 0
+                _value(payload, "dependency depth", "dependency wave", default=0)
+                or 0
             )
             work_item_count = int(_value(payload, "work item count", default=1) or 1)
         except (TypeError, ValueError) as exc:
@@ -271,7 +290,6 @@ class _CanonicalTask:
                     "dependency task cids",
                     "dependencies",
                     "depends on",
-                    "graph parents",
                 )
             ),
             conflict_keys=_strings(_value(payload, "conflicts", "conflict keys")),
@@ -370,19 +388,39 @@ def _canonical_tasks(values: Any) -> tuple[_CanonicalTask, ...]:
 
 def _resolve_dependencies(
     tasks: Sequence[_CanonicalTask],
-) -> dict[str, set[str]]:
+) -> tuple[dict[str, set[str]], dict[str, tuple[str, ...]]]:
     by_cid = {task.canonical_task_cid: task for task in tasks}
-    aliases = {
-        alias: task.canonical_task_cid
-        for task in tasks
+    alias_owners: dict[str, set[str]] = defaultdict(set)
+    for task in tasks:
         for alias in (
             task.task_id,
             task.canonical_task_key,
             task.canonical_task_cid,
+            task.semantic_identity,
+        ):
+            if alias:
+                alias_owners[alias].add(task.canonical_task_cid)
+    ambiguous = {
+        alias: owners for alias, owners in alias_owners.items() if len(owners) > 1
+    }
+    referenced_ambiguous = sorted(
+        alias
+        for task in tasks
+        for alias in task.dependencies
+        if alias in ambiguous
+    )
+    if referenced_ambiguous:
+        raise ValueError(
+            "dependency aliases must resolve to exactly one canonical task: "
+            + ", ".join(sorted(set(referenced_ambiguous)))
         )
-        if alias
+    aliases = {
+        alias: next(iter(owners))
+        for alias, owners in alias_owners.items()
+        if len(owners) == 1
     }
     dependencies: dict[str, set[str]] = {}
+    unresolved: dict[str, tuple[str, ...]] = {}
     for task in tasks:
         resolved = {
             aliases[value]
@@ -390,19 +428,33 @@ def _resolve_dependencies(
             if value in aliases and aliases[value] != task.canonical_task_cid
         }
         dependencies[task.canonical_task_cid] = resolved & set(by_cid)
-    return dependencies
+        missing = tuple(
+            sorted(
+                {
+                    value
+                    for value in task.dependencies
+                    if value not in aliases
+                    or aliases[value] == task.canonical_task_cid
+                }
+            )
+        )
+        if missing:
+            unresolved[task.canonical_task_cid] = missing
+    return dependencies, unresolved
 
 
 def _dependency_waves(
     tasks: Sequence[_CanonicalTask],
-) -> tuple[dict[str, int], dict[str, set[str]]]:
-    dependencies = _resolve_dependencies(tasks)
-    minimum_waves = {
-        task.canonical_task_cid: task.dependency_depth for task in tasks
-    }
-    return _waves_from_dependencies(
-        dependencies, minimum_waves=minimum_waves
-    ), dependencies
+) -> tuple[
+    dict[str, int],
+    dict[str, set[str]],
+    dict[str, tuple[str, ...]],
+]:
+    dependencies, unresolved = _resolve_dependencies(tasks)
+    # A dependency wave is a property of the closed DAG. Caller scheduling
+    # hints and objective hierarchy must never manufacture empty critical-path
+    # waves or make an unresolved prerequisite appear satisfied.
+    return _waves_from_dependencies(dependencies), dependencies, unresolved
 
 
 def _waves_from_dependencies(
@@ -912,7 +964,7 @@ def optimize_task_bundles(
             conflict_graph={},
         )
     packet_aggregates = _packet_aggregate_projections(tasks)
-    waves, dependencies = _dependency_waves(tasks)
+    waves, dependencies, _unresolved_dependencies = _dependency_waves(tasks)
     graph_tasks: list[dict[str, Any]] = []
     for task in tasks:
         graph_task = dict(task.payload)
@@ -953,9 +1005,6 @@ def optimize_task_bundles(
         serialized_dependencies[right].add(left)
     effective_wave = _waves_from_dependencies(
         serialized_dependencies,
-        minimum_waves={
-            task.canonical_task_cid: task.dependency_depth for task in tasks
-        },
     )
     by_wave: dict[int, list[_CanonicalTask]] = defaultdict(list)
     for task in tasks:
@@ -1253,7 +1302,7 @@ def _critical_path_width_material(
     plan: BundleOptimizationResult,
     repository_tree: str,
 ) -> dict[str, Any]:
-    base_waves, dependencies = _dependency_waves(tasks)
+    base_waves, dependencies, unresolved_dependencies = _dependency_waves(tasks)
     graph_tasks: list[dict[str, Any]] = []
     for task in tasks:
         graph_task = dict(task.payload)
@@ -1304,9 +1353,6 @@ def _critical_path_width_material(
         serialized_dependencies[right].add(left)
     effective_waves = _waves_from_dependencies(
         serialized_dependencies,
-        minimum_waves={
-            task.canonical_task_cid: task.dependency_depth for task in tasks
-        },
     )
     planned_task_waves = {
         cid: bundle.execution_wave
@@ -1330,6 +1376,10 @@ def _critical_path_width_material(
         "dependency_task_cids": {
             cid: sorted(prerequisites)
             for cid, prerequisites in sorted(dependencies.items())
+        },
+        "unresolved_dependency_references": {
+            cid: list(references)
+            for cid, references in sorted(unresolved_dependencies.items())
         },
         "base_dependency_waves": dict(sorted(base_waves.items())),
         "blocking_conflict_pairs": [
@@ -1364,7 +1414,7 @@ def _critical_path_width_qualifies(material: Mapping[str, Any]) -> bool:
     """Validate exact conflict serialization and a preserved width witness."""
 
     try:
-        if not str(material.get("repository_tree") or "").strip():
+        if not _authoritative_repository_tree(material.get("repository_tree")):
             return False
         if not str(material.get("policy_id") or "").strip():
             return False
@@ -1380,7 +1430,17 @@ def _critical_path_width_qualifies(material: Mapping[str, Any]) -> bool:
         ]
         if len(cids) != len(population) or len(set(cids)) != len(cids):
             return False
+        canonical_keys = [
+            str(item.get("canonical_task_key") or "")
+            for item in population
+            if isinstance(item, Mapping)
+        ]
+        if len(set(canonical_keys)) != len(canonical_keys):
+            return False
         cid_set = set(cids)
+        unresolved = material.get("unresolved_dependency_references")
+        if not isinstance(unresolved, Mapping) or unresolved:
+            return False
 
         def dependency_map(name: str) -> dict[str, set[str]]:
             raw = material.get(name)
@@ -1427,6 +1487,8 @@ def _critical_path_width_qualifies(material: Mapping[str, Any]) -> bool:
             or planned_waves != effective_waves
         ):
             return False
+        if base_waves != _waves_from_dependencies(dependencies):
+            return False
         if any(
             base_waves[parent] >= base_waves[child]
             or effective_waves[parent] >= effective_waves[child]
@@ -1470,10 +1532,9 @@ def _critical_path_width_qualifies(material: Mapping[str, Any]) -> bool:
         for raw_projection in projections:
             if not isinstance(raw_projection, Mapping):
                 return False
-            wave = int(raw_projection.get("dependency_wave") or 0)
-            members = tuple(
-                str(value) for value in raw_projection.get("task_cids", [])
-            )
+            projection = ConflictWaveProjection.from_dict(raw_projection)
+            wave = projection.dependency_wave
+            members = projection.task_cids
             if (
                 not members
                 or len(set(members)) != len(members)
@@ -1483,10 +1544,19 @@ def _critical_path_width_qualifies(material: Mapping[str, Any]) -> bool:
                 return False
             if projected_cids.intersection(members):
                 return False
-            lanes = raw_projection.get("independent_lanes")
-            colors = raw_projection.get("color_by_task_cid")
-            if not isinstance(lanes, list) or not isinstance(colors, Mapping):
+            expected_projection = project_conflict_free_wave(
+                members,
+                (
+                    pair
+                    for pair in conflict_pairs
+                    if set(pair).issubset(set(members))
+                ),
+                dependency_wave=wave,
+            )
+            if projection.to_dict() != expected_projection.to_dict():
                 return False
+            lanes = [list(lane) for lane in projection.independent_lanes]
+            colors = projection.color_by_task_cid
             flat_lanes = [
                 str(cid) for lane in lanes for cid in lane
                 if isinstance(lane, list)
@@ -1564,7 +1634,7 @@ def _critical_path_width_qualifies(material: Mapping[str, Any]) -> bool:
         return sorted(bundled_cids) == sorted(cids) and len(bundled_cids) == len(
             set(bundled_cids)
         )
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, RuntimeError, TypeError, ValueError):
         return False
 
 
@@ -1576,6 +1646,7 @@ class CriticalPathWidthEvidence:
     policy_id: str
     task_population: tuple[Mapping[str, Any], ...]
     dependency_task_cids: Mapping[str, tuple[str, ...]]
+    unresolved_dependency_references: Mapping[str, tuple[str, ...]]
     base_dependency_waves: Mapping[str, int]
     blocking_conflict_pairs: tuple[tuple[str, str], ...]
     conflict_wave_projections: tuple[Mapping[str, Any], ...]
@@ -1595,7 +1666,7 @@ class CriticalPathWidthEvidence:
         *,
         policy: BundleOptimizationPolicy | None = None,
         current_planner_bundles: Sequence[Any] | None = None,
-        repository_tree: str = "in-memory",
+        repository_tree: str = "",
     ) -> "CriticalPathWidthEvidence":
         """Run the optimizer and bind its complete dependency/conflict witness."""
 
@@ -1638,6 +1709,12 @@ class CriticalPathWidthEvidence:
                 str(cid): tuple(str(value) for value in values)
                 for cid, values in dict(
                     material.get("dependency_task_cids") or {}
+                ).items()
+            },
+            unresolved_dependency_references={
+                str(cid): tuple(str(value) for value in values)
+                for cid, values in dict(
+                    material.get("unresolved_dependency_references") or {}
                 ).items()
             },
             base_dependency_waves={
@@ -1696,6 +1773,12 @@ class CriticalPathWidthEvidence:
             "dependency_task_cids": {
                 cid: list(values)
                 for cid, values in sorted(self.dependency_task_cids.items())
+            },
+            "unresolved_dependency_references": {
+                cid: list(values)
+                for cid, values in sorted(
+                    self.unresolved_dependency_references.items()
+                )
             },
             "base_dependency_waves": dict(
                 sorted(self.base_dependency_waves.items())
@@ -1776,7 +1859,7 @@ def prove_critical_path_width(
     *,
     policy: BundleOptimizationPolicy | None = None,
     current_planner_bundles: Sequence[Any] | None = None,
-    repository_tree: str = "in-memory",
+    repository_tree: str = "",
 ) -> CriticalPathWidthEvidence:
     """Produce a canonical conflict-aware critical-path width receipt."""
 

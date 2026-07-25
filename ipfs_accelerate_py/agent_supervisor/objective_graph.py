@@ -83,6 +83,44 @@ def task_generation_evidence_producer_bindings(
     }
 
 
+def _has_live_task_generation_producer_authority(
+    requirement: str,
+    evidence: Any,
+) -> bool:
+    """Validate the exact live producer type for registered opaque evidence."""
+
+    # Lazy imports keep task generation and bundle planning independent of the
+    # objective scanner during ordinary admission/optimization.
+    from .bundle_optimizer import (
+        CriticalPathWidthEvidence,
+        PacketCompletionBindingEvidence,
+    )
+    from .task_quality import TaskSplitRefillEvidence
+
+    expected_types: dict[str, type[Any]] = {
+        "127990245919649912156052660092678945998": TaskSplitRefillEvidence,
+        "061582446926920746660485801841658333166": CriticalPathWidthEvidence,
+        "187052702852200236079602798955260586139": (
+            PacketCompletionBindingEvidence
+        ),
+    }
+    expected_type = expected_types.get(requirement)
+    if expected_type is None or type(evidence) is not expected_type:
+        return False
+    verifier = getattr(evidence, "verify_integrity", None)
+    try:
+        return (
+            callable(verifier)
+            and verifier() is True
+            and requirement
+            in _receipt_strings(
+                getattr(evidence, "proved_requirement_ids", ())
+            )
+        )
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 def parse_python_ast_quietly(text: str) -> ast.AST:
     """Parse Python source without surfacing scanner-only syntax warnings."""
 
@@ -625,7 +663,20 @@ class EvidenceSourcePolicy:
             else self.classify_path(source_path)
         )
         receipt: Mapping[str, Any] | None = None
+        producer_authority_reason = ""
         if typed_receipt is not None:
+            registered_producer = TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS.get(
+                normalized
+            )
+            if (
+                registered_producer
+                and not _has_live_task_generation_producer_authority(
+                    normalized, typed_receipt
+                )
+            ):
+                producer_authority_reason = (
+                    "receipt_producer_authority_missing"
+                )
             if isinstance(typed_receipt, Mapping):
                 receipt = typed_receipt
             else:
@@ -643,6 +694,8 @@ class EvidenceSourcePolicy:
                 tier = EvidenceSourceTier.PROPOSAL
 
         reasons: list[str] = []
+        if producer_authority_reason:
+            reasons.append(producer_authority_reason)
         satisfies = False
         authoritative_kinds = {
             EvidenceRequirementKind.CODE,

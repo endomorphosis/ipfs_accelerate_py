@@ -1214,6 +1214,59 @@ class ConflictWaveProjection:
             "color_count": self.color_count,
         }
 
+    def matches_canonical_replay(self) -> bool:
+        """Return whether every serialized field matches a fresh projection.
+
+        Width projections are copied through objective indexes and execution
+        packets, so consumers need a cheap way to distinguish canonical
+        scheduler output from caller-authored lane metadata.  Replaying from
+        the projection's task/pair population catches duplicate lanes and
+        non-deterministic color assignments; its owner remains responsible for
+        comparing that pair population with the complete conflict graph.
+        """
+
+        try:
+            replayed = project_conflict_free_wave(
+                self.task_cids,
+                self.blocking_conflict_pairs,
+                dependency_wave=self.dependency_wave,
+            )
+        except (TypeError, ValueError):
+            return False
+        return replayed.to_dict() == self.to_dict()
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ConflictWaveProjection":
+        """Decode and validate one canonical serialized width projection."""
+
+        projection = cls(
+            dependency_wave=int(value.get("dependency_wave") or 0),
+            task_cids=tuple(str(item) for item in value.get("task_cids", ())),
+            blocking_conflict_pairs=tuple(
+                tuple(str(item) for item in pair)
+                for pair in value.get("blocking_conflict_pairs", ())
+            ),
+            color_by_task_cid={
+                str(task_cid): int(color)
+                for task_cid, color in dict(
+                    value.get("color_by_task_cid") or {}
+                ).items()
+            },
+            independent_lanes=tuple(
+                tuple(str(item) for item in lane)
+                for lane in value.get("independent_lanes", ())
+            ),
+        )
+        if not projection.matches_canonical_replay():
+            raise ValueError(
+                "conflict wave projection does not match canonical replay"
+            )
+        if int(value.get("independent_width") or 0) != projection.independent_width:
+            raise ValueError("conflict wave independent width does not match lanes")
+        if int(value.get("color_count") or 0) != projection.color_count:
+            raise ValueError("conflict wave color count does not match lanes")
+        return projection
+
 
 def project_conflict_free_wave(
     task_cids: Iterable[str],

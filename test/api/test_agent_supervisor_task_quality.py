@@ -521,12 +521,46 @@ def test_broad_split_refill_evidence_fails_closed_for_partial_or_forged_receipts
         ),
         repository_tree="git-tree-asi-034",
     )
+    unbound = TaskSplitRefillEvidence.create(
+        broad,
+        policy=complete_policy,
+    )
 
     assert valid.proved_requirement_ids
     assert capacity_limited.proved_requirement_ids == ()
+    assert unbound.verify_integrity()
+    assert unbound.proved_requirement_ids == ()
     restored = TaskSplitRefillEvidence.from_dict(valid.to_dict())
     assert restored.verify_integrity()
     assert restored.proved_requirement_ids == ()
+    restored_decision = EvidenceSourcePolicy().validate_completion_evidence(
+        TASK_SPLIT_REFILL_REQUIREMENT_ID,
+        restored,
+        repository_tree="git-tree-asi-034",
+        policy_id=complete_policy.policy_id,
+    )
+    assert restored_decision.satisfies is False
+    assert "receipt_producer_authority_missing" in restored_decision.reason_codes
+
+    forged = {
+        "schema": "caller-authored-lookalike@1",
+        "evidence_id": "fake-evidence",
+        "requirement_id": TASK_SPLIT_REFILL_REQUIREMENT_ID,
+        "repository_tree": "git-tree-asi-034",
+        "policy_id": complete_policy.policy_id,
+        "source_tier": "validation",
+        "status": "passed",
+        "complete": True,
+        "coverage_complete": True,
+    }
+    forged_decision = EvidenceSourcePolicy().validate_completion_evidence(
+        TASK_SPLIT_REFILL_REQUIREMENT_ID,
+        forged,
+        repository_tree="git-tree-asi-034",
+        policy_id=complete_policy.policy_id,
+    )
+    assert forged_decision.satisfies is False
+    assert "receipt_producer_authority_missing" in forged_decision.reason_codes
 
     tampered = copy.deepcopy(valid.to_dict())
     tampered["refill_admission"]["accepted"].append(

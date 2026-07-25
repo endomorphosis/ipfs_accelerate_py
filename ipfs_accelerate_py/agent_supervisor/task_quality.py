@@ -158,6 +158,22 @@ def _task_quality_evidence_cid(value: Any) -> str:
     return canonical_content_cid(_evidence_hash_material(value))
 
 
+def _authoritative_repository_tree(value: Any) -> bool:
+    """Return whether a receipt names a concrete repository snapshot."""
+
+    normalized = str(value or "").strip().casefold()
+    return normalized not in {
+        "",
+        "in-memory",
+        "in_memory",
+        "memory",
+        "unknown",
+        "unbound",
+        "working-tree",
+        "working_tree",
+    }
+
+
 def _semantic_material(value: "TaskCandidate | Mapping[str, Any]") -> dict[str, Any]:
     candidate = (
         value
@@ -1534,7 +1550,7 @@ def _task_split_refill_qualifies(material: Mapping[str, Any]) -> bool:
         ):
             return False
         repository_tree = str(material.get("repository_tree") or "").strip()
-        if not repository_tree:
+        if not _authoritative_repository_tree(repository_tree):
             return False
         source = TaskCandidate.from_dict(source_payload)
         policy = TaskQualityPolicy(**dict(policy_payload))
@@ -1681,7 +1697,7 @@ class TaskSplitRefillEvidence:
         *,
         policy: TaskQualityPolicy | None = None,
         initial_open_work: int = 0,
-        repository_tree: str = "in-memory",
+        repository_tree: str = "",
     ) -> "TaskSplitRefillEvidence":
         """Execute both admission cycles and bind their exact canonical result."""
 
@@ -1800,7 +1816,7 @@ def prove_task_split_refill(
     *,
     policy: TaskQualityPolicy | None = None,
     initial_open_work: int = 0,
-    repository_tree: str = "in-memory",
+    repository_tree: str = "",
 ) -> TaskSplitRefillEvidence:
     """Produce the authoritative two-cycle split/refill validation receipt."""
 
