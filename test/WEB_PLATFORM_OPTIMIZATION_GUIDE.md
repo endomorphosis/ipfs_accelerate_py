@@ -1038,9 +1038,9 @@ The project is on track for full completion by August 31, 2025, with all critica
 
 ## Additional Resources
 
-- [Web Platform Implementation Plan](./WEB_PLATFORM_IMPLEMENTATION_PLAN.md)
-- [Web Platform Implementation Next Steps](./WEB_PLATFORM_IMPLEMENTATION_NEXT_STEPS.md)
-- [Safari WebGPU Support Guide](./doc/safari_webgpu_support.md)
-- [Ultra-Low Precision Guide](./doc/ultra_low_precision.md)
-- [Streaming Inference Guide](./doc/streaming_inference.md)
-- [Browser Compatibility Guide](./doc/browser_compatibility.md)
+- [Web Platform Implementation Progress](./WEB_PLATFORM_IMPLEMENTATION_PROGRESS.md)
+- [Web Platform Implementation Summary](./WEB_PLATFORM_IMPLEMENTATION_SUMMARY.md)
+- [Safari WebGPU Implementation Guide](./SAFARI_WEBGPU_IMPLEMENTATION.md)
+- [Ultra-Low Precision Implementation Guide](./ULTRA_LOW_PRECISION_IMPLEMENTATION_GUIDE.md)
+- [Streaming Inference Specification](./STREAMING_INFERENCE_SPECIFICATION.md)
+- [WebGPU Browser Compatibility Guide](./docs/WEBGPU_BROWSER_COMPATIBILITY.md)
