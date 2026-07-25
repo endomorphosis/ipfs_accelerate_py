@@ -173,7 +173,7 @@ The HAL supports a wide range of operations:
 - **Reduction Operations**: reduceSum, reduceMean
 - **Tensor Manipulation**: slice, concat, gather, repeat
 
-See the [API Reference](API_REFERENCE.md) for a complete list of supported operations.
+See the [API Reference](ipfs_accelerate_js/docs/api/README.md) for a complete list of supported operations.
 
 ## Model Implementations
 
@@ -350,19 +350,19 @@ The package includes a variety of examples to help you get started:
 
 | Example | Description |
 |---------|-------------|
-| [Basic Tensor Operations](examples/basic-tensor-operations.html) | Simple tensor operations with HAL |
-| [BERT Text Classification](examples/bert-text-classification.html) | Text classification with BERT |
-| [ViT Image Classification](examples/vit-image-classification.html) | Image classification with ViT |
-| [Whisper Transcription](examples/whisper-transcription.html) | Audio transcription with Whisper |
-| [CLIP Image Search](examples/clip-image-search.html) | Image search with CLIP |
-| [Cross-Model Tensor Sharing](examples/cross-model-tensor-sharing.html) | Memory optimization with tensor sharing |
-| [Browser Optimization Comparison](examples/browser-optimization-comparison.html) | Browser-specific optimizations |
+| [Basic Tensor Operations](ipfs_accelerate_js/src/examples/tensor_matrix_example.html) | Simple tensor operations with HAL |
+| [BERT Text Classification](ipfs_accelerate_js/examples/browser/models/bert_example.html) | Text classification with BERT |
+| [ViT Image Classification](ipfs_accelerate_js/examples/browser/models/vit_example.html) | Image classification with ViT |
+| [Whisper Transcription](ipfs_accelerate_js/examples/browser/models/whisper_example.html) | Audio transcription with Whisper |
+| [CLIP Image Search](ipfs_accelerate_js/examples/hardware_abstraction_multimodal_demo.html) | Image search with CLIP |
+| [Cross-Model Tensor Sharing](ipfs_accelerate_js/src/examples/tensor_sharing_example.html) | Memory optimization with tensor sharing |
+| [Browser Optimization Comparison](ipfs_accelerate_js/src/examples/webgpu_optimization_example.html) | Browser-specific optimizations |
 
-All examples are available in the [examples](examples/) directory and on the [documentation website](https://ipfs-accelerate.github.io/examples/).
+All examples are available in the [examples](ipfs_accelerate_js/examples/) directory and on the [documentation website](https://ipfs-accelerate.github.io/examples/).
 
 ## API Reference
 
-For a complete API reference, see the [API Reference](API_REFERENCE.md) documentation or the [online API reference](https://ipfs-accelerate.github.io/api/).
+For a complete API reference, see the [API Reference](ipfs_accelerate_js/docs/api/README.md) documentation or the [online API reference](https://ipfs-accelerate.github.io/api/).
 
 ## Troubleshooting
 
@@ -410,7 +410,7 @@ For best performance:
 4. Consider using quantized models for faster inference
 5. Use browser-specific optimizations
 
-For more troubleshooting tips, see the [Troubleshooting Guide](TROUBLESHOOTING_GUIDE.md).
+For more troubleshooting tips, see the [Troubleshooting Guide](ipfs_accelerate_js/docs/ERROR_RECOVERY_GUIDE.md).
 
 ## Support and Community
 
@@ -421,4 +421,4 @@ For more troubleshooting tips, see the [Troubleshooting Guide](TROUBLESHOOTING_G
 
 ## License
 
-This package is licensed under the [MIT License](LICENSE).
+This package is licensed under the [MIT License](../LICENSE).
