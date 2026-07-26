@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
@@ -34,6 +36,9 @@ from .supervisor_v2_benchmark import (
 
 REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID: Final[str] = (
     "244518415414864367783784212238716548679"
+)
+TYPED_SUCCESSOR_REQUIREMENT_ID: Final[str] = (
+    "330240498615714141723029264005175932988"
 )
 REWARD_RESISTANT_EVALUATION_GOAL_ID: Final[str] = "ASI-G290"
 V2_SELF_EVALUATION_CONTRACT_VERSION: Final[int] = 1
@@ -58,6 +63,14 @@ MAX_V2_METRICS_PER_COMPONENT: Final[int] = 8
 MAX_V2_EVIDENCE_IDS: Final[int] = 128
 MAX_V2_COUNTER: Final[int] = 10**15
 MIN_DRAINED_OBSERVATION_MS: Final[int] = 10 * 60 * 1000
+MAX_V2_SUCCESSOR_GOALS: Final[int] = 8
+MAX_V2_SUCCESSOR_TASKS: Final[int] = 24
+MAX_V2_SUCCESSOR_REJECTIONS: Final[int] = 256
+MAX_V2_SUCCESSOR_RESIDUALS: Final[int] = 512
+MAX_V2_SUCCESSOR_TOKENS: Final[int] = 1_000_000_000
+MAX_V2_SUCCESSOR_OPEN_WORK: Final[int] = 100_000
+MAX_V2_SUCCESSOR_TEXT_ITEMS: Final[int] = 64
+MAX_V2_SUCCESSOR_DETAIL_BYTES: Final[int] = 512
 
 _CONTENT_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CODE = re.compile(r"^[a-z][a-z0-9_.:/@-]{0,191}$")
@@ -121,6 +134,58 @@ class V2CacheState(str, Enum):
     WARM = "warm"
     INVALIDATED = "invalidated"
     ISOLATED = "isolated"
+
+
+class V2ResidualKind(str, Enum):
+    """Closed residual vocabulary accepted at the successor boundary."""
+
+    BENCHMARK_RESIDUAL = "benchmark-residual"
+    REGRESSION = "regression"
+    STALE_EVIDENCE = "stale-evidence"
+    BOTTLENECK = "bottleneck"
+    UNSUPPORTED_CAPABILITY = "unsupported-capability"
+    ABLATION_FINDING = "ablation-finding"
+    GENERIC_IMPROVEMENT = "generic-improvement"
+    COMPLETED_EVIDENCE = "completed-evidence"
+    DELIVERY_NOISE = "delivery-noise"
+    UNCHANGED_RESIDUAL = "unchanged-residual"
+
+
+ACTIONABLE_V2_RESIDUAL_KINDS: Final[frozenset[V2ResidualKind]] = frozenset(
+    {
+        V2ResidualKind.BENCHMARK_RESIDUAL,
+        V2ResidualKind.REGRESSION,
+        V2ResidualKind.STALE_EVIDENCE,
+        V2ResidualKind.BOTTLENECK,
+        V2ResidualKind.UNSUPPORTED_CAPABILITY,
+        V2ResidualKind.ABLATION_FINDING,
+    }
+)
+
+
+class V2SuccessorRejectionReason(str, Enum):
+    MALFORMED_RESIDUAL = "malformed-residual"
+    INELIGIBLE_RESIDUAL_KIND = "ineligible-residual-kind"
+    COMPLETED_EVIDENCE = "completed-evidence"
+    DELIVERY_NOISE = "delivery-noise"
+    UNCHANGED_RESIDUAL = "unchanged-residual"
+    GENERIC_IMPROVEMENT = "generic-improvement"
+    GOAL_QUALITY_LINT = "goal-quality-lint"
+    LOW_CONFIDENCE = "low-confidence"
+    LOW_SEMANTIC_NOVELTY = "low-semantic-novelty"
+    DUPLICATE_RESIDUAL = "duplicate-residual"
+    DUPLICATE_IDENTITY = "duplicate-identity"
+    HISTORICAL_IDENTITY = "historical-identity"
+    COOLDOWN_ACTIVE = "cooldown-active"
+    UNSUPPORTED_DEPENDENCY = "unsupported-dependency"
+    DEPTH_BUDGET = "depth-budget"
+    BREADTH_BUDGET = "breadth-budget"
+    OPEN_WORK_BUDGET = "open-work-budget"
+    TOKEN_BUDGET = "token-budget"
+    GOAL_BUDGET = "goal-budget"
+    TASK_BUDGET = "task-budget"
+    INPUT_BUDGET = "input-budget"
+    REJECTION_BUDGET = "rejection-budget"
 
 
 ANTI_GAMING_CHECKS: Final[tuple[str, ...]] = (
@@ -307,6 +372,997 @@ def _ratio_millionths(numerator: int, denominator: int) -> int:
     if denominator <= 0:
         raise V2SelfEvaluationError("metric denominator must be positive")
     return (numerator * MILLION) // denominator
+
+
+def _successor_strings(
+    values: Sequence[Any],
+    name: str,
+    *,
+    maximum: int = MAX_V2_SUCCESSOR_TEXT_ITEMS,
+    item_bytes: int = MAX_V2_SUCCESSOR_DETAIL_BYTES,
+) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise V2SelfEvaluationError(f"{name} must be a sequence")
+    if len(values) > maximum:
+        raise V2SelfEvaluationError(f"{name} exceeds its item bound")
+    result = tuple(_text(value, name, maximum=item_bytes) for value in values)
+    if len(set(result)) != len(result):
+        raise V2SelfEvaluationError(f"{name} contains duplicate items")
+    return result
+
+
+def _finite_fraction(value: Any, name: str) -> float:
+    if isinstance(value, bool):
+        raise V2SelfEvaluationError(f"{name} must be finite")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise V2SelfEvaluationError(f"{name} must be finite") from exc
+    if not math.isfinite(result) or not 0.0 <= result <= 1.0:
+        raise V2SelfEvaluationError(f"{name} must be between 0 and 1")
+    return result
+
+
+@dataclass(frozen=True)
+class V2ResidualSignal:
+    """Bounded typed evidence from which at most one goal may be proposed."""
+
+    residual_id: str
+    kind: V2ResidualKind | str
+    title: str
+    detail: str = ""
+    acceptance_criteria: tuple[str, ...] = ()
+    evidence_ids: tuple[str, ...] = ()
+    predicted_files: tuple[str, ...] = ()
+    predicted_symbols: tuple[str, ...] = ()
+    validation_commands: tuple[str, ...] = ()
+    dependencies: tuple[str, ...] = ()
+    confidence: float = 0.8
+    estimated_tokens: int = 1_000
+    depth: int = 1
+    task_count: int = 1
+    changed: bool = True
+    completed: bool = False
+    source_receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "residual_id", _text(self.residual_id, "residual_id", maximum=192)
+        )
+        object.__setattr__(
+            self,
+            "kind",
+            _enum(self.kind, V2ResidualKind, "residual kind"),
+        )
+        object.__setattr__(self, "title", _text(self.title, "title", maximum=256))
+        detail = (
+            _text(self.detail, "detail", maximum=MAX_V2_SUCCESSOR_DETAIL_BYTES)
+            if str(self.detail or "").strip()
+            else ""
+        )
+        object.__setattr__(self, "detail", detail)
+        for name in (
+            "acceptance_criteria",
+            "evidence_ids",
+            "predicted_files",
+            "predicted_symbols",
+            "validation_commands",
+            "dependencies",
+        ):
+            object.__setattr__(
+                self, name, _successor_strings(getattr(self, name), name)
+            )
+        object.__setattr__(
+            self, "confidence", _finite_fraction(self.confidence, "confidence")
+        )
+        object.__setattr__(
+            self,
+            "estimated_tokens",
+            _integer(
+                self.estimated_tokens,
+                "estimated_tokens",
+                maximum=MAX_V2_SUCCESSOR_TOKENS,
+            ),
+        )
+        object.__setattr__(
+            self, "depth", _integer(self.depth, "depth", maximum=64)
+        )
+        object.__setattr__(
+            self,
+            "task_count",
+            _integer(
+                self.task_count,
+                "task_count",
+                minimum=1,
+                maximum=MAX_V2_SUCCESSOR_TASKS,
+            ),
+        )
+        object.__setattr__(self, "changed", _boolean(self.changed, "changed"))
+        object.__setattr__(
+            self, "completed", _boolean(self.completed, "completed")
+        )
+        receipt = str(self.source_receipt_id or "").strip()
+        if receipt:
+            receipt = _text(receipt, "source_receipt_id", maximum=192)
+        object.__setattr__(self, "source_receipt_id", receipt)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "V2ResidualSignal":
+        if not isinstance(payload, Mapping):
+            raise V2SelfEvaluationError("residual signal must be an object")
+        values = dict(payload)
+        aliases = {
+            "acceptance": "acceptance_criteria",
+            "evidence_delta": "acceptance_criteria",
+            "outputs": "predicted_files",
+            "symbols": "predicted_symbols",
+            "validation": "validation_commands",
+            "depends_on": "dependencies",
+            "token_cost": "estimated_tokens",
+            "breadth": "task_count",
+            "source_id": "source_receipt_id",
+        }
+        for source, target in aliases.items():
+            if source in values:
+                if target in values:
+                    raise V2SelfEvaluationError(
+                        f"residual signal supplies both {source} and {target}"
+                    )
+                values[target] = values.pop(source)
+        allowed = set(cls.__dataclass_fields__)
+        extra = sorted(set(values) - allowed)
+        if extra:
+            raise V2SelfEvaluationError(
+                f"residual signal has unsupported fields: {extra!r}"
+            )
+        try:
+            return cls(**values)
+        except TypeError as exc:
+            raise V2SelfEvaluationError("residual signal is incomplete") from exc
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "residual_id": self.residual_id,
+            "kind": self.kind.value,
+            "title": self.title,
+            "detail": self.detail,
+            "acceptance_criteria": list(self.acceptance_criteria),
+            "evidence_ids": list(self.evidence_ids),
+            "predicted_files": list(self.predicted_files),
+            "predicted_symbols": list(self.predicted_symbols),
+            "validation_commands": list(self.validation_commands),
+            "dependencies": list(self.dependencies),
+            "confidence": self.confidence,
+            "estimated_tokens": self.estimated_tokens,
+            "depth": self.depth,
+            "task_count": self.task_count,
+            "changed": self.changed,
+            "completed": self.completed,
+            "source_receipt_id": self.source_receipt_id,
+        }
+
+
+@dataclass(frozen=True)
+class V2SuccessorGenerationPolicy:
+    """Finite admission limits; the hard epoch maxima cannot be enlarged."""
+
+    min_confidence: float = 0.5
+    min_semantic_novelty: float = 0.35
+    max_depth: int = 3
+    max_breadth_per_residual: int = 3
+    max_open_work: int = 48
+    max_tokens: int = 100_000
+    max_goals: int = MAX_V2_SUCCESSOR_GOALS
+    max_tasks: int = MAX_V2_SUCCESSOR_TASKS
+    max_rejections: int = 128
+    max_residuals: int = 256
+    cooldown_seconds: int = 6 * 60 * 60
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "min_confidence",
+            _finite_fraction(self.min_confidence, "min_confidence"),
+        )
+        object.__setattr__(
+            self,
+            "min_semantic_novelty",
+            _finite_fraction(
+                self.min_semantic_novelty, "min_semantic_novelty"
+            ),
+        )
+        bounds = (
+            ("max_depth", 0, 64),
+            ("max_breadth_per_residual", 1, MAX_V2_SUCCESSOR_TASKS),
+            ("max_open_work", 0, MAX_V2_SUCCESSOR_OPEN_WORK),
+            ("max_tokens", 0, MAX_V2_SUCCESSOR_TOKENS),
+            ("max_goals", 0, MAX_V2_SUCCESSOR_GOALS),
+            ("max_tasks", 0, MAX_V2_SUCCESSOR_TASKS),
+            ("max_rejections", 1, MAX_V2_SUCCESSOR_REJECTIONS),
+            ("max_residuals", 1, MAX_V2_SUCCESSOR_RESIDUALS),
+            ("cooldown_seconds", 0, 30 * 24 * 60 * 60),
+        )
+        for name, minimum, maximum in bounds:
+            object.__setattr__(
+                self,
+                name,
+                _integer(
+                    getattr(self, name),
+                    name,
+                    minimum=minimum,
+                    maximum=maximum,
+                ),
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+
+@dataclass(frozen=True)
+class V2SuccessorRejection:
+    residual_id: str
+    reason: V2SuccessorRejectionReason | str
+    detail: str
+
+    def __post_init__(self) -> None:
+        residual_id = str(self.residual_id or "unknown").strip() or "unknown"
+        object.__setattr__(
+            self,
+            "residual_id",
+            _text(residual_id, "residual_id", maximum=192),
+        )
+        object.__setattr__(
+            self,
+            "reason",
+            _enum(
+                self.reason,
+                V2SuccessorRejectionReason,
+                "successor rejection reason",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "detail",
+            _text(
+                self.detail,
+                "rejection detail",
+                maximum=MAX_V2_SUCCESSOR_DETAIL_BYTES,
+            ),
+        )
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "residual_id": self.residual_id,
+            "reason": self.reason.value,
+            "detail": self.detail,
+        }
+
+
+@dataclass(frozen=True)
+class V2SuccessorCandidate:
+    source_residual_id: str
+    proposal: Any
+    task_ids: tuple[str, ...]
+    canonical_identity: str
+    semantic_novelty: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "source_residual_id",
+            _text(
+                self.source_residual_id,
+                "source_residual_id",
+                maximum=192,
+            ),
+        )
+        if not hasattr(self.proposal, "to_dict"):
+            raise V2SelfEvaluationError(
+                "successor proposal must have deterministic serialization"
+            )
+        object.__setattr__(
+            self,
+            "task_ids",
+            _successor_strings(
+                self.task_ids,
+                "task_ids",
+                maximum=MAX_V2_SUCCESSOR_TASKS,
+                item_bytes=192,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "canonical_identity",
+            _content_id(self.canonical_identity, "canonical_identity"),
+        )
+        object.__setattr__(
+            self,
+            "semantic_novelty",
+            _finite_fraction(self.semantic_novelty, "semantic_novelty"),
+        )
+
+    @property
+    def task_count(self) -> int:
+        return len(self.task_ids)
+
+    @property
+    def estimated_tokens(self) -> int:
+        return int(getattr(self.proposal, "estimated_tokens", 0))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_residual_id": self.source_residual_id,
+            "proposal": self.proposal.to_dict(),
+            "task_ids": list(self.task_ids),
+            "canonical_identity": self.canonical_identity,
+            "semantic_novelty": self.semantic_novelty,
+        }
+
+
+@dataclass(frozen=True)
+class V2SuccessorAdmission:
+    policy: V2SuccessorGenerationPolicy
+    accepted: tuple[V2SuccessorCandidate, ...]
+    rejected: tuple[V2SuccessorRejection, ...]
+    residual_count: int
+    consumed_tokens: int
+    initial_open_work: int
+    observed_at: str = ""
+    rejection_overflow_count: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.policy, V2SuccessorGenerationPolicy):
+            raise V2SelfEvaluationError(
+                "successor admission requires a typed policy"
+            )
+        for name, values, expected in (
+            ("accepted", self.accepted, V2SuccessorCandidate),
+            ("rejected", self.rejected, V2SuccessorRejection),
+        ):
+            if not isinstance(values, tuple) or any(
+                not isinstance(item, expected) for item in values
+            ):
+                raise V2SelfEvaluationError(
+                    f"successor admission {name} population is malformed"
+                )
+        for name in (
+            "residual_count",
+            "consumed_tokens",
+            "initial_open_work",
+            "rejection_overflow_count",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _integer(
+                    getattr(self, name),
+                    name,
+                    maximum=MAX_V2_COUNTER,
+                ),
+            )
+        if len(self.accepted) > self.policy.max_goals:
+            raise V2SelfEvaluationError("successor goal budget was exceeded")
+        if self.generated_task_count > self.policy.max_tasks:
+            raise V2SelfEvaluationError("successor task budget was exceeded")
+        if self.consumed_tokens > self.policy.max_tokens:
+            raise V2SelfEvaluationError("successor token budget was exceeded")
+        if (
+            self.generated_task_count
+            and self.final_open_work > self.policy.max_open_work
+        ):
+            raise V2SelfEvaluationError("successor open-work budget was exceeded")
+        if len(self.rejected) > self.policy.max_rejections:
+            raise V2SelfEvaluationError("successor rejection budget was exceeded")
+        identities = tuple(item.canonical_identity for item in self.accepted)
+        residuals = tuple(item.source_residual_id for item in self.accepted)
+        task_ids = tuple(
+            task_id for item in self.accepted for task_id in item.task_ids
+        )
+        if (
+            len(set(identities)) != len(identities)
+            or len(set(residuals)) != len(residuals)
+            or len(set(task_ids)) != len(task_ids)
+        ):
+            raise V2SelfEvaluationError(
+                "one residual cannot fan out into duplicate goals or tasks"
+            )
+        observed_at = str(self.observed_at or "").strip()
+        if observed_at:
+            try:
+                parsed = datetime.fromisoformat(observed_at)
+            except ValueError as exc:
+                raise V2SelfEvaluationError(
+                    "observed_at must be ISO-8601 text"
+                ) from exc
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise V2SelfEvaluationError(
+                    "observed_at must include a timezone"
+                )
+        object.__setattr__(self, "observed_at", observed_at)
+
+    @property
+    def generated_goal_count(self) -> int:
+        return len(self.accepted)
+
+    @property
+    def generated_task_count(self) -> int:
+        return sum(item.task_count for item in self.accepted)
+
+    @property
+    def final_open_work(self) -> int:
+        return self.initial_open_work + self.generated_task_count
+
+    @property
+    def rejection_counts(self) -> Mapping[str, int]:
+        counts = {
+            reason.value: 0 for reason in V2SuccessorRejectionReason
+        }
+        for item in self.rejected:
+            counts[item.reason.value] += 1
+        if self.rejection_overflow_count:
+            counts[V2SuccessorRejectionReason.REJECTION_BUDGET.value] += (
+                self.rejection_overflow_count
+            )
+        return MappingProxyType(counts)
+
+    @property
+    def evidence_claim_ids(self) -> tuple[str, ...]:
+        return (TYPED_SUCCESSOR_REQUIREMENT_ID,) if self.accepted else ()
+
+    @property
+    def admission_id(self) -> str:
+        return _digest(self.to_dict())
+
+    def to_dict(self, *, include_admission_id: bool = False) -> dict[str, Any]:
+        payload = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "v2-successor-admission@1"
+            ),
+            "policy": self.policy.to_dict(),
+            "accepted": [item.to_dict() for item in self.accepted],
+            "rejected": [item.to_dict() for item in self.rejected],
+            "residual_count": self.residual_count,
+            "consumed_tokens": self.consumed_tokens,
+            "initial_open_work": self.initial_open_work,
+            "final_open_work": self.final_open_work,
+            "generated_goal_count": self.generated_goal_count,
+            "generated_task_count": self.generated_task_count,
+            "observed_at": self.observed_at,
+            "rejection_overflow_count": self.rejection_overflow_count,
+            "rejection_counts": dict(self.rejection_counts),
+            "evidence_claim_ids": list(self.evidence_claim_ids),
+        }
+        if include_admission_id:
+            payload["admission_id"] = self.admission_id
+        return payload
+
+    def to_json(self, *, include_admission_id: bool = True) -> str:
+        return _canonical_json(
+            self.to_dict(include_admission_id=include_admission_id)
+        )
+
+
+V2SuccessorGenerationResult = V2SuccessorAdmission
+
+
+def generate_v2_successor_goals(
+    residuals: Sequence[V2ResidualSignal | Mapping[str, Any]],
+    *,
+    existing_goals: Sequence[Any] = (),
+    objective_text: str = "",
+    strategy: Mapping[str, Any] | None = None,
+    supported_dependencies: Sequence[str] | None = None,
+    current_open_work: int = 0,
+    policy: V2SuccessorGenerationPolicy | None = None,
+    observed_at: datetime | str | None = None,
+) -> V2SuccessorAdmission:
+    """Generate a bounded, read-only admission packet from typed residuals.
+
+    This function deliberately stops before objective or task-board
+    materialization.  ASI-121 owns those writes.  Every input is either mapped
+    to at most one goal candidate or to one closed rejection reason; retained
+    rejection detail is bounded, while overflow remains explicitly counted.
+    """
+
+    from .backlog_refinery import (
+        filter_self_improvement_successor_candidates,
+        semantic_novelty_distance,
+        unsupported_successor_dependencies,
+    )
+    from .objective_graph import ObjectiveWorkKind, ObjectiveWorkProposal
+    from .task_quality import (
+        GoalQualityLintPolicy,
+        lint_successor_goal_candidate,
+    )
+
+    if isinstance(residuals, (str, bytes)) or not isinstance(
+        residuals, Sequence
+    ):
+        raise V2SelfEvaluationError("residuals must be a bounded sequence")
+    selected = policy or V2SuccessorGenerationPolicy()
+    if not isinstance(selected, V2SuccessorGenerationPolicy):
+        raise V2SelfEvaluationError(
+            "policy must be V2SuccessorGenerationPolicy"
+        )
+    open_work = _integer(
+        current_open_work,
+        "current_open_work",
+        maximum=MAX_V2_SUCCESSOR_OPEN_WORK,
+    )
+    state = strategy or {}
+    if not isinstance(state, Mapping):
+        raise V2SelfEvaluationError("strategy must be a mapping")
+
+    observed_text = ""
+    if observed_at is not None:
+        if isinstance(observed_at, datetime):
+            parsed_observed = observed_at
+        else:
+            try:
+                parsed_observed = datetime.fromisoformat(str(observed_at))
+            except ValueError as exc:
+                raise V2SelfEvaluationError(
+                    "observed_at must be ISO-8601 text"
+                ) from exc
+        if (
+            parsed_observed.tzinfo is None
+            or parsed_observed.utcoffset() is None
+        ):
+            raise V2SelfEvaluationError(
+                "observed_at must include a timezone"
+            )
+        observed_text = parsed_observed.isoformat()
+
+    accepted: list[V2SuccessorCandidate] = []
+    rejected: list[V2SuccessorRejection] = []
+    rejection_overflow = 0
+
+    def reject(
+        residual_id: str,
+        reason: V2SuccessorRejectionReason,
+        detail: str,
+    ) -> None:
+        nonlocal rejection_overflow
+        if len(rejected) >= selected.max_rejections:
+            rejection_overflow += 1
+            return
+        safe_detail = str(detail or reason.value).strip()
+        encoded = safe_detail.encode("utf-8")
+        if len(encoded) > MAX_V2_SUCCESSOR_DETAIL_BYTES:
+            safe_detail = encoded[
+                :MAX_V2_SUCCESSOR_DETAIL_BYTES
+            ].decode("utf-8", errors="ignore").rstrip()
+        rejected.append(
+            V2SuccessorRejection(
+                residual_id=residual_id or "unknown",
+                reason=reason,
+                detail=safe_detail or reason.value,
+            )
+        )
+
+    residual_count = len(residuals)
+    overflow_count = max(0, residual_count - selected.max_residuals)
+    if overflow_count:
+        # Record the aggregate first so a small rejection retention budget
+        # cannot hide the fact that the input population itself was bounded.
+        reject(
+            "input-overflow",
+            V2SuccessorRejectionReason.INPUT_BUDGET,
+            f"{overflow_count} residuals exceeded the "
+            f"{selected.max_residuals} residual input budget",
+        )
+
+    existing_canonical_ids: set[str] = set()
+    existing_semantic_keys: set[str] = set()
+    existing_candidate_ids: set[str] = set()
+    semantic_references: list[Any] = []
+    for item in existing_goals:
+        semantic_references.append(item)
+        candidate_id = str(
+            getattr(item, "canonical_identity", "") or ""
+        ).strip()
+        if candidate_id:
+            existing_candidate_ids.add(candidate_id)
+        proposal = getattr(item, "proposal", item)
+        canonical_id = str(
+            getattr(proposal, "canonical_id", "") or ""
+        ).strip()
+        semantic_key = str(
+            getattr(proposal, "semantic_key", "") or ""
+        ).strip()
+        if isinstance(proposal, Mapping):
+            canonical_id = str(
+                proposal.get("canonical_id")
+                or proposal.get("work_id")
+                or canonical_id
+            ).strip()
+            semantic_key = str(
+                proposal.get("semantic_key")
+                or proposal.get("semantic_identity")
+                or semantic_key
+            ).strip()
+        if canonical_id:
+            existing_canonical_ids.add(canonical_id)
+        if semantic_key:
+            existing_semantic_keys.add(semantic_key)
+
+    def strategy_values(name: str) -> tuple[Any, ...]:
+        value = state.get(name, ())
+        if value in (None, ""):
+            return ()
+        if isinstance(value, (str, bytes, Mapping)):
+            return (value,)
+        if isinstance(value, Sequence):
+            return tuple(value)
+        return ()
+
+    semantic_references.extend(strategy_values("semantic_texts"))
+    if str(objective_text or "").strip():
+        semantic_references.append(objective_text)
+    historical_identities = {
+        str(item).strip()
+        for item in strategy_values("historical_identities")
+        if str(item).strip()
+    }
+    cooldown_identities = {
+        str(item).strip()
+        for item in strategy_values("cooldown_identities")
+        if str(item).strip()
+    }
+    batch_residual_ids: set[str] = set()
+    batch_candidate_ids: set[str] = set()
+    batch_proposal_ids: set[str] = set()
+    batch_semantic_keys: set[str] = set()
+    consumed_tokens = 0
+    generated_tasks = 0
+
+    for index, raw in enumerate(residuals[: selected.max_residuals]):
+        raw_residual_id = (
+            str(raw.get("residual_id") or "").strip()
+            if isinstance(raw, Mapping)
+            else str(getattr(raw, "residual_id", "") or "").strip()
+        )
+        fallback_id = raw_residual_id or f"residual-{index}"
+        if (
+            "\x00" in fallback_id
+            or len(fallback_id.encode("utf-8")) > 192
+        ):
+            fallback_id = f"residual-{index}"
+        try:
+            signal = (
+                raw
+                if isinstance(raw, V2ResidualSignal)
+                else V2ResidualSignal.from_dict(raw)
+            )
+        except (TypeError, ValueError, V2SelfEvaluationError) as exc:
+            reject(
+                fallback_id[:192] or f"residual-{index}",
+                V2SuccessorRejectionReason.MALFORMED_RESIDUAL,
+                str(exc),
+            )
+            continue
+
+        if signal.residual_id in batch_residual_ids:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.DUPLICATE_RESIDUAL,
+                "the residual identity already appeared in this input batch",
+            )
+            continue
+        batch_residual_ids.add(signal.residual_id)
+
+        if signal.completed or signal.kind is V2ResidualKind.COMPLETED_EVIDENCE:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.COMPLETED_EVIDENCE,
+                "completed evidence work is not a successor residual",
+            )
+            continue
+        if signal.kind is V2ResidualKind.DELIVERY_NOISE:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.DELIVERY_NOISE,
+                "delivery and orchestration noise cannot nominate goals",
+            )
+            continue
+        if (
+            not signal.changed
+            or signal.kind is V2ResidualKind.UNCHANGED_RESIDUAL
+        ):
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.UNCHANGED_RESIDUAL,
+                "unchanged residual evidence cannot create repeated work",
+            )
+            continue
+        if signal.kind is V2ResidualKind.GENERIC_IMPROVEMENT:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.GENERIC_IMPROVEMENT,
+                "generic improvement prose is not measured residual evidence",
+            )
+            continue
+        if signal.kind not in ACTIONABLE_V2_RESIDUAL_KINDS:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.INELIGIBLE_RESIDUAL_KIND,
+                f"{signal.kind.value} is not an actionable residual kind",
+            )
+            continue
+        if signal.confidence < selected.min_confidence:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.LOW_CONFIDENCE,
+                f"{signal.confidence:.6f} is below "
+                f"{selected.min_confidence:.6f}",
+            )
+            continue
+        if signal.depth > selected.max_depth:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.DEPTH_BUDGET,
+                f"depth {signal.depth} exceeds {selected.max_depth}",
+            )
+            continue
+        if signal.task_count > selected.max_breadth_per_residual:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.BREADTH_BUDGET,
+                f"task breadth {signal.task_count} exceeds "
+                f"{selected.max_breadth_per_residual}",
+            )
+            continue
+        unsupported = (
+            unsupported_successor_dependencies(
+                signal.dependencies,
+                supported_dependencies,
+            )
+            if supported_dependencies is not None
+            else ()
+        )
+        if unsupported:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.UNSUPPORTED_DEPENDENCY,
+                "unsupported dependencies: " + ", ".join(unsupported),
+            )
+            continue
+        if open_work + generated_tasks + signal.task_count > selected.max_open_work:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.OPEN_WORK_BUDGET,
+                "candidate would exceed the finite open-work budget",
+            )
+            continue
+        if consumed_tokens + signal.estimated_tokens > selected.max_tokens:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.TOKEN_BUDGET,
+                "candidate would exceed the finite successor token budget",
+            )
+            continue
+        if len(accepted) >= selected.max_goals:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.GOAL_BUDGET,
+                "candidate would exceed the finite successor goal budget",
+            )
+            continue
+        if generated_tasks + signal.task_count > selected.max_tasks:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.TASK_BUDGET,
+                "candidate would exceed the finite successor task budget",
+            )
+            continue
+
+        proposal = ObjectiveWorkProposal(
+            kind=ObjectiveWorkKind.GOAL,
+            title=signal.title,
+            parent_goal_id=REWARD_RESISTANT_EVALUATION_GOAL_ID,
+            parent_objective_terms=signal.acceptance_criteria,
+            expected_evidence_delta=signal.evidence_ids,
+            dependencies=signal.dependencies,
+            predicted_files=signal.predicted_files,
+            predicted_symbols=signal.predicted_symbols,
+            validation_commands=signal.validation_commands,
+            confidence=signal.confidence,
+            estimated_cost=float(signal.estimated_tokens),
+            novelty=1.0,
+            depth=signal.depth,
+            estimated_tokens=signal.estimated_tokens,
+            source="typed-residual",
+            source_id=signal.residual_id,
+            rationale=signal.detail,
+            acceptance_subset=signal.acceptance_criteria,
+            preconditions=(
+                (
+                    f"typed receipt {signal.source_receipt_id} remains current",
+                )
+                if signal.source_receipt_id
+                else ()
+            ),
+            effects=signal.acceptance_criteria,
+            evidence_subset=signal.evidence_ids,
+            context_paths=signal.predicted_files,
+            resource_class="cpu-medium",
+            token_class="medium",
+            merge_fate=f"v2-successor:{signal.residual_id}",
+        )
+        candidate_identity = _digest(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "v2-successor-candidate-identity@1"
+                ),
+                "residual_id": signal.residual_id,
+                "residual_kind": signal.kind.value,
+                "source_receipt_id": signal.source_receipt_id,
+                "proposal_semantic_key": proposal.semantic_key,
+            }
+        )
+        if (
+            candidate_identity in existing_candidate_ids
+            or proposal.canonical_id in existing_canonical_ids
+            or proposal.semantic_key in existing_semantic_keys
+        ):
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.DUPLICATE_IDENTITY,
+                "an exact goal identity already exists",
+            )
+            continue
+        if candidate_identity in historical_identities:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.HISTORICAL_IDENTITY,
+                "the exact goal identity was previously admitted",
+            )
+            continue
+        if candidate_identity in cooldown_identities:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.COOLDOWN_ACTIVE,
+                "the exact goal identity is inside its cooldown window",
+            )
+            continue
+        if (
+            candidate_identity in batch_candidate_ids
+            or proposal.canonical_id in batch_proposal_ids
+            or proposal.semantic_key in batch_semantic_keys
+        ):
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.DUPLICATE_IDENTITY,
+                "an equivalent goal already appeared in this batch",
+            )
+            continue
+
+        novelty = semantic_novelty_distance(
+            proposal,
+            semantic_references,
+        )
+        if novelty < selected.min_semantic_novelty:
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.LOW_SEMANTIC_NOVELTY,
+                f"semantic novelty {novelty:.6f} is below "
+                f"{selected.min_semantic_novelty:.6f}",
+            )
+            continue
+        # ``canonical_id`` binds novelty, so dataclass replacement must ask
+        # ObjectiveWorkProposal to recompute that identity.  The semantic key
+        # is novelty-independent and remains stable.
+        proposal = replace(proposal, novelty=novelty, canonical_id="")
+        lint_payload = {
+            **proposal.to_dict(),
+            "outcome": signal.detail or signal.title,
+            "scope": signal.predicted_files,
+            "assumptions": (
+                (
+                    f"typed receipt {signal.source_receipt_id} is current",
+                )
+                if signal.source_receipt_id
+                else ()
+            ),
+            "non_goals": (
+                "Do not convert unrelated delivery or generic improvement "
+                "prose into work",
+            ),
+            "task_count": signal.task_count,
+            "open_work_count": open_work + generated_tasks,
+        }
+        lint_result = lint_successor_goal_candidate(
+            lint_payload,
+            policy=GoalQualityLintPolicy(
+                minimum_confidence=0.0,
+                minimum_novelty=0.0,
+                max_depth=max(0, selected.max_depth),
+                max_estimated_tokens=max(0, selected.max_tokens),
+                max_goals_per_batch=max(1, selected.max_goals),
+                max_tasks_per_goal=max(
+                    1, selected.max_breadth_per_residual
+                ),
+                max_open_work=max(0, selected.max_open_work),
+            ),
+        )
+        if not lint_result.accepted:
+            reasons = ", ".join(lint_result.rejection_reasons)
+            reject(
+                signal.residual_id,
+                V2SuccessorRejectionReason.GOAL_QUALITY_LINT,
+                reasons or "successor goal quality lint failed",
+            )
+            continue
+
+        lifecycle = filter_self_improvement_successor_candidates(
+            (proposal,),
+            objective_text=str(objective_text or ""),
+            strategy=state,
+            observed_at=observed_text or None,
+        )
+        if lifecycle.rejected:
+            reason = str(lifecycle.rejected[0].reason)
+            mapped = {
+                "lifecycle_duplicate": (
+                    V2SuccessorRejectionReason.DUPLICATE_IDENTITY
+                ),
+                "prior_admission_duplicate": (
+                    V2SuccessorRejectionReason.HISTORICAL_IDENTITY
+                ),
+                "successor_cooldown": (
+                    V2SuccessorRejectionReason.COOLDOWN_ACTIVE
+                ),
+                "batch_duplicate": (
+                    V2SuccessorRejectionReason.DUPLICATE_IDENTITY
+                ),
+            }.get(
+                reason,
+                V2SuccessorRejectionReason.HISTORICAL_IDENTITY,
+            )
+            reject(
+                signal.residual_id,
+                mapped,
+                lifecycle.rejected[0].detail or reason,
+            )
+            continue
+
+        task_ids = tuple(
+            "v2-task:"
+            + hashlib.sha256(
+                f"{candidate_identity}:{task_index}".encode("utf-8")
+            ).hexdigest()
+            for task_index in range(signal.task_count)
+        )
+        candidate = V2SuccessorCandidate(
+            source_residual_id=signal.residual_id,
+            proposal=proposal,
+            task_ids=task_ids,
+            canonical_identity=candidate_identity,
+            semantic_novelty=novelty,
+        )
+        accepted.append(candidate)
+        consumed_tokens += signal.estimated_tokens
+        generated_tasks += signal.task_count
+        batch_candidate_ids.add(candidate_identity)
+        batch_proposal_ids.add(proposal.canonical_id)
+        batch_semantic_keys.add(proposal.semantic_key)
+        semantic_references.append(proposal)
+
+    return V2SuccessorAdmission(
+        policy=selected,
+        accepted=tuple(accepted),
+        rejected=tuple(rejected),
+        residual_count=residual_count,
+        consumed_tokens=consumed_tokens,
+        initial_open_work=open_work,
+        observed_at=observed_text,
+        rejection_overflow_count=rejection_overflow,
+    )
 
 
 @dataclass(frozen=True)
@@ -2104,13 +3160,19 @@ build_reward_resistant_evaluation_report = evaluate_v2_self_improvement
 
 
 __all__ = [
+    "ACTIONABLE_V2_RESIDUAL_KINDS",
     "ANTI_GAMING_CHECKS",
     "MAX_V2_ABLATIONS",
     "MAX_V2_COMPONENT_RECEIPT_BYTES",
     "MAX_V2_SELF_EVALUATION_BYTES",
+    "MAX_V2_SUCCESSOR_GOALS",
+    "MAX_V2_SUCCESSOR_REJECTIONS",
+    "MAX_V2_SUCCESSOR_RESIDUALS",
+    "MAX_V2_SUCCESSOR_TASKS",
     "REQUIRED_V2_OBJECTIVE_DIMENSIONS",
     "REWARD_RESISTANT_EVALUATION_GOAL_ID",
     "REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID",
+    "TYPED_SUCCESSOR_REQUIREMENT_ID",
     "V2AblationReceipt",
     "V2AblationResult",
     "V2CacheState",
@@ -2126,6 +3188,14 @@ __all__ = [
     "V2SelfEvaluationError",
     "V2SelfEvaluationReport",
     "V2SelfImprovementEvaluator",
+    "V2ResidualKind",
+    "V2ResidualSignal",
+    "V2SuccessorAdmission",
+    "V2SuccessorCandidate",
+    "V2SuccessorGenerationPolicy",
+    "V2SuccessorGenerationResult",
+    "V2SuccessorRejection",
+    "V2SuccessorRejectionReason",
     "V2_COMPONENT_RECEIPT_SCHEMA",
     "V2_SELF_EVALUATION_CONTRACT_VERSION",
     "V2_SELF_EVALUATION_POLICY_ID",
@@ -2135,6 +3205,7 @@ __all__ = [
     "build_frozen_v2_self_evaluation_inputs",
     "build_reward_resistant_evaluation_report",
     "evaluate_v2_self_improvement",
+    "generate_v2_successor_goals",
     "replay_v2_self_evaluation",
     "verify_v2_self_evaluation_report",
 ]
