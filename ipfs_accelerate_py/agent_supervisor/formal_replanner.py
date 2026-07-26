@@ -16,6 +16,7 @@ or validator traces.
 from __future__ import annotations
 
 import copy
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -44,6 +45,15 @@ from .formal_verification_contracts import (
     canonical_json,
     content_identity,
 )
+from .plan_failure_memory import (
+    DELTA_REPLAN_REQUIREMENT_ID,
+    BranchFailureObservation,
+    FailureMemoryDecision,
+    FailureMemoryDisposition,
+    FailureMemoryScope,
+    PlanFailureMemory,
+    PlanFailureMemoryError,
+)
 
 
 FORMAL_REPLANNER_VERSION: Final = 1
@@ -64,6 +74,12 @@ RESPONSIVE_REPLAN_DECISION_SCHEMA: Final = (
 )
 DIAGNOSTIC_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/retry-diagnostic-receipt@1"
+)
+DELTA_PLAN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/delta-plan-snapshot@1"
+)
+DELTA_REPLAN_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/delta-replan-decision@1"
 )
 # Objective-heap evidence identity for one bounded changed-evidence refinement.
 BOUNDED_REFINEMENT_EVIDENCE_ID: Final = (
@@ -996,6 +1012,580 @@ class ResponsiveReplanDecision:
         }
 
 
+_DELTA_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@=-]{0,255}$")
+
+
+def _delta_identifier(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not _DELTA_IDENTIFIER.fullmatch(
+        value.strip()
+    ):
+        raise ReplannerValidationError(
+            f"{name} must be a bounded typed identifier"
+        )
+    return value.strip()
+
+
+def _delta_identifiers(
+    value: Iterable[Any], name: str
+) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes, bytearray)):
+        raise ReplannerValidationError(f"{name} must be an array")
+    return tuple(
+        sorted({_delta_identifier(item, name) for item in value})
+    )
+
+
+@dataclass(frozen=True)
+class DeltaPlanStep:
+    """One dependency-addressable unit in an accepted plan."""
+
+    step_id: str
+    branch_id: str
+    dependency_ids: tuple[str, ...] = ()
+    accepted: bool = True
+    evidence_ids: tuple[str, ...] = ()
+    obligation_ids: tuple[str, ...] = ()
+    alternative_ids: tuple[str, ...] = ()
+    constraint_ids: tuple[str, ...] = ()
+    validation_signature_ids: tuple[str, ...] = ()
+    capability_ids: tuple[str, ...] = ()
+    conflict_scope_ids: tuple[str, ...] = ()
+    resource_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "step_id", _delta_identifier(self.step_id, "step_id")
+        )
+        object.__setattr__(
+            self, "branch_id", _delta_identifier(self.branch_id, "branch_id")
+        )
+        if not isinstance(self.accepted, bool):
+            raise ReplannerValidationError("accepted must be boolean")
+        for name in (
+            "dependency_ids",
+            "evidence_ids",
+            "obligation_ids",
+            "alternative_ids",
+            "constraint_ids",
+            "validation_signature_ids",
+            "capability_ids",
+            "conflict_scope_ids",
+            "resource_ids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _delta_identifiers(getattr(self, name), name),
+            )
+
+    def invalidate(self) -> "DeltaPlanStep":
+        """Clear acceptance and evidence while retaining reviewed structure."""
+
+        return replace(self, accepted=False, evidence_ids=())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            name: (
+                list(getattr(self, name))
+                if isinstance(getattr(self, name), tuple)
+                else getattr(self, name)
+            )
+            for name in self.__dataclass_fields__
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaPlanStep":
+        if not isinstance(payload, Mapping) or set(payload) != set(
+            cls.__dataclass_fields__
+        ):
+            raise ReplannerValidationError(
+                "delta plan step must use the closed schema"
+            )
+        return cls(**dict(payload))
+
+
+@dataclass(frozen=True)
+class DeltaPlan:
+    """A frozen plan projection sufficient for dependency delta analysis."""
+
+    scope: FailureMemoryScope
+    steps: tuple[DeltaPlanStep, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.scope, FailureMemoryScope):
+            if not isinstance(self.scope, Mapping):
+                raise ReplannerValidationError(
+                    "delta plan scope must be FailureMemoryScope"
+                )
+            try:
+                object.__setattr__(
+                    self,
+                    "scope",
+                    FailureMemoryScope.from_dict(self.scope),
+                )
+            except PlanFailureMemoryError as exc:
+                raise ReplannerValidationError(str(exc)) from exc
+        steps = tuple(
+            item
+            if isinstance(item, DeltaPlanStep)
+            else DeltaPlanStep.from_dict(item)
+            for item in self.steps
+        )
+        if not steps:
+            raise ReplannerValidationError(
+                "delta plan requires at least one step"
+            )
+        ids = [item.step_id for item in steps]
+        if len(ids) != len(set(ids)):
+            raise ReplannerValidationError(
+                "delta plan step identities must be unique"
+            )
+        known = set(ids)
+        if any(
+            set(item.dependency_ids).difference(known) for item in steps
+        ):
+            raise ReplannerValidationError(
+                "delta plan contains a dangling dependency"
+            )
+        by_id = {item.step_id: item for item in steps}
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(step_id: str) -> None:
+            if step_id in visiting:
+                raise ReplannerValidationError(
+                    "delta plan dependency graph contains a cycle"
+                )
+            if step_id in visited:
+                return
+            visiting.add(step_id)
+            for dependency_id in by_id[step_id].dependency_ids:
+                visit(dependency_id)
+            visiting.remove(step_id)
+            visited.add(step_id)
+
+        for step_id in sorted(known):
+            visit(step_id)
+        object.__setattr__(
+            self, "steps", tuple(sorted(steps, key=lambda item: item.step_id))
+        )
+
+    @property
+    def plan_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": DELTA_PLAN_SCHEMA,
+            "replanner_version": FORMAL_REPLANNER_VERSION,
+            "scope": self.scope.to_dict(),
+            "steps": [item.to_dict() for item in self.steps],
+        }
+        if include_identity:
+            payload["plan_id"] = self.plan_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaPlan":
+        expected = {
+            "schema",
+            "replanner_version",
+            "plan_id",
+            "scope",
+            "steps",
+        }
+        if not isinstance(payload, Mapping) or set(payload) != expected:
+            raise ReplannerValidationError(
+                "delta plan must use the closed schema"
+            )
+        if (
+            payload.get("schema") != DELTA_PLAN_SCHEMA
+            or payload.get("replanner_version") != FORMAL_REPLANNER_VERSION
+        ):
+            raise ReplannerValidationError(
+                "delta plan version is unsupported"
+            )
+        result = cls(
+            scope=payload.get("scope") or {},
+            steps=tuple(
+                DeltaPlanStep.from_dict(item)
+                for item in payload.get("steps") or ()
+            ),
+        )
+        if payload.get("plan_id") != result.plan_id:
+            raise ReplannerValidationError(
+                "delta plan identity does not match content"
+            )
+        return result
+
+
+PlanStep = DeltaPlanStep
+PlanSnapshot = DeltaPlan
+
+
+@dataclass(frozen=True)
+class DeltaReplanLimits:
+    """Hard bounds for one dependency-suffix repair decision."""
+
+    max_invalidated_steps: int = 64
+    max_reopened_branches: int = 16
+    max_repair_attempts: int = 1
+    max_repair_milliseconds: int = 30_000
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            _positive(getattr(self, name), name)
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaReplanLimits":
+        if not isinstance(payload, Mapping) or set(payload) != set(
+            cls.__dataclass_fields__
+        ):
+            raise ReplannerValidationError(
+                "delta replan limits must use the closed schema"
+            )
+        return cls(**dict(payload))
+
+
+class DeltaReplanStopReason(str, Enum):
+    REPLAN_REQUIRED = "replan_required"
+    UNCHANGED_FAILURE_BACKOFF = "unchanged_failure_backoff"
+    IDENTICAL_FAILURE_EXHAUSTED = "identical_failure_exhausted"
+    FAILURE_MEMORY_BOUND_REACHED = "failure_memory_bound_reached"
+    UNBOUND_FAILURE = "unbound_failure"
+    REPAIR_BOUND_EXCEEDED = "repair_bound_exceeded"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class DeltaReplanDecision:
+    """Tamper-evident result of one smallest-suffix invalidation."""
+
+    original_plan_id: str
+    resulting_plan: DeltaPlan
+    failure_event_id: str
+    diagnostic_id: str
+    stop_reason: DeltaReplanStopReason
+    direct_failure_step_ids: tuple[str, ...]
+    invalidated_step_ids: tuple[str, ...]
+    stale_dependency_step_ids: tuple[str, ...]
+    preserved_step_ids: tuple[str, ...]
+    reopened_branch_ids: tuple[str, ...]
+    preserved_branch_ids: tuple[str, ...]
+    diagnostic_reused: bool
+    backoff_attempt: int
+    backoff_milliseconds: int
+    repair_attempts: int
+    limits: DeltaReplanLimits
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "original_plan_id",
+            _delta_identifier(self.original_plan_id, "original_plan_id"),
+        )
+        if not isinstance(self.resulting_plan, DeltaPlan):
+            if not isinstance(self.resulting_plan, Mapping):
+                raise ReplannerValidationError(
+                    "resulting_plan must be DeltaPlan"
+                )
+            object.__setattr__(
+                self,
+                "resulting_plan",
+                DeltaPlan.from_dict(self.resulting_plan),
+            )
+        object.__setattr__(
+            self, "stop_reason", DeltaReplanStopReason(self.stop_reason)
+        )
+        for name in ("failure_event_id", "diagnostic_id"):
+            object.__setattr__(
+                self, name, _delta_identifier(getattr(self, name), name)
+            )
+        for name in (
+            "direct_failure_step_ids",
+            "invalidated_step_ids",
+            "stale_dependency_step_ids",
+            "preserved_step_ids",
+            "reopened_branch_ids",
+            "preserved_branch_ids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _delta_identifiers(getattr(self, name), name),
+            )
+        if not isinstance(self.diagnostic_reused, bool):
+            raise ReplannerValidationError(
+                "diagnostic_reused must be boolean"
+            )
+        for name in (
+            "backoff_attempt",
+            "backoff_milliseconds",
+            "repair_attempts",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ReplannerValidationError(
+                    f"{name} must be a non-negative integer"
+                )
+        if not isinstance(self.limits, DeltaReplanLimits):
+            if not isinstance(self.limits, Mapping):
+                raise ReplannerValidationError(
+                    "limits must be DeltaReplanLimits"
+                )
+            object.__setattr__(
+                self, "limits", DeltaReplanLimits.from_dict(self.limits)
+            )
+        known = {item.step_id for item in self.resulting_plan.steps}
+        if (
+            set(self.direct_failure_step_ids).difference(known)
+            or set(self.invalidated_step_ids).difference(known)
+            or set(self.preserved_step_ids).difference(known)
+        ):
+            raise ReplannerValidationError(
+                "delta decision names a step outside the resulting plan"
+            )
+        if set(self.invalidated_step_ids) & set(self.preserved_step_ids):
+            raise ReplannerValidationError(
+                "invalidated and preserved step sets must be disjoint"
+            )
+        by_id = {item.step_id: item for item in self.resulting_plan.steps}
+        expected_preserved = tuple(
+            sorted(
+                item.step_id
+                for item in self.resulting_plan.steps
+                if item.accepted
+                and item.step_id not in self.invalidated_step_ids
+            )
+        )
+        if self.preserved_step_ids != expected_preserved:
+            raise ReplannerValidationError(
+                "preserved step projection is inconsistent"
+            )
+        by_branch: dict[str, list[DeltaPlanStep]] = {}
+        for item in self.resulting_plan.steps:
+            by_branch.setdefault(item.branch_id, []).append(item)
+        expected_reopened = tuple(
+            sorted(
+                branch_id
+                for branch_id, items in by_branch.items()
+                if any(
+                    item.step_id in self.invalidated_step_ids
+                    for item in items
+                )
+            )
+        )
+        expected_preserved_branches = tuple(
+            sorted(
+                branch_id
+                for branch_id, items in by_branch.items()
+                if all(
+                    item.accepted
+                    and item.step_id not in self.invalidated_step_ids
+                    for item in items
+                )
+            )
+        )
+        if (
+            self.reopened_branch_ids != expected_reopened
+            or self.preserved_branch_ids != expected_preserved_branches
+        ):
+            raise ReplannerValidationError(
+                "branch preservation projection is inconsistent"
+            )
+        if self.stale_dependency_step_ids != tuple(
+            sorted(
+                set(self.invalidated_step_ids).difference(
+                    self.direct_failure_step_ids
+                )
+            )
+        ):
+            raise ReplannerValidationError(
+                "stale dependency projection is inconsistent"
+            )
+        if self.stop_reason is DeltaReplanStopReason.REPLAN_REQUIRED:
+            if (
+                not self.invalidated_step_ids
+                or self.repair_attempts != 1
+                or self.backoff_milliseconds
+            ):
+                raise ReplannerValidationError(
+                    "active delta repair projection is inconsistent"
+                )
+            if any(
+                by_id[item].accepted or by_id[item].evidence_ids
+                for item in self.invalidated_step_ids
+            ):
+                raise ReplannerValidationError(
+                    "invalidated steps must be reopened without stale evidence"
+                )
+            expected_suffix: set[str] = set(self.direct_failure_step_ids)
+            changed = True
+            while changed:
+                changed = False
+                for item in self.resulting_plan.steps:
+                    if (
+                        item.step_id not in expected_suffix
+                        and set(item.dependency_ids).intersection(expected_suffix)
+                    ):
+                        expected_suffix.add(item.step_id)
+                        changed = True
+            if self.invalidated_step_ids != tuple(sorted(expected_suffix)):
+                raise ReplannerValidationError(
+                    "invalidated suffix is not dependency-minimal"
+                )
+        elif self.repair_attempts:
+            raise ReplannerValidationError(
+                "non-repair decisions cannot consume repair attempts"
+            )
+        if self.repair_attempts > self.limits.max_repair_attempts:
+            raise ReplannerValidationError(
+                "delta decision exceeds its repair-attempt bound"
+            )
+
+    @property
+    def changed(self) -> bool:
+        return self.stop_reason is DeltaReplanStopReason.REPLAN_REQUIRED
+
+    @property
+    def should_replan(self) -> bool:
+        return self.changed
+
+    @property
+    def plan(self) -> DeltaPlan:
+        return self.resulting_plan
+
+    @property
+    def invalidated_dependency_ids(self) -> tuple[str, ...]:
+        return self.stale_dependency_step_ids
+
+    @property
+    def requirement_ids(self) -> tuple[str, ...]:
+        return (DELTA_REPLAN_REQUIREMENT_ID,) if self.changed else ()
+
+    @property
+    def decision_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    @property
+    def receipt_id(self) -> str:
+        return self.decision_id
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": DELTA_REPLAN_DECISION_SCHEMA,
+            "replanner_version": FORMAL_REPLANNER_VERSION,
+            "original_plan_id": self.original_plan_id,
+            "resulting_plan": self.resulting_plan.to_dict(),
+            "failure_event_id": self.failure_event_id,
+            "diagnostic_id": self.diagnostic_id,
+            "stop_reason": self.stop_reason.value,
+            "direct_failure_step_ids": list(self.direct_failure_step_ids),
+            "invalidated_step_ids": list(self.invalidated_step_ids),
+            "stale_dependency_step_ids": list(
+                self.stale_dependency_step_ids
+            ),
+            "preserved_step_ids": list(self.preserved_step_ids),
+            "reopened_branch_ids": list(self.reopened_branch_ids),
+            "preserved_branch_ids": list(self.preserved_branch_ids),
+            "diagnostic_reused": self.diagnostic_reused,
+            "backoff_attempt": self.backoff_attempt,
+            "backoff_milliseconds": self.backoff_milliseconds,
+            "repair_attempts": self.repair_attempts,
+            "limits": self.limits.to_dict(),
+            "requirement_ids": list(self.requirement_ids),
+        }
+        if include_identity:
+            payload["decision_id"] = self.decision_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaReplanDecision":
+        expected = {
+            "schema",
+            "replanner_version",
+            "decision_id",
+            "original_plan_id",
+            "resulting_plan",
+            "failure_event_id",
+            "diagnostic_id",
+            "stop_reason",
+            "direct_failure_step_ids",
+            "invalidated_step_ids",
+            "stale_dependency_step_ids",
+            "preserved_step_ids",
+            "reopened_branch_ids",
+            "preserved_branch_ids",
+            "diagnostic_reused",
+            "backoff_attempt",
+            "backoff_milliseconds",
+            "repair_attempts",
+            "limits",
+            "requirement_ids",
+        }
+        if not isinstance(payload, Mapping) or set(payload) != expected:
+            raise ReplannerValidationError(
+                "delta replan decision must use the closed schema"
+            )
+        if (
+            payload.get("schema") != DELTA_REPLAN_DECISION_SCHEMA
+            or payload.get("replanner_version") != FORMAL_REPLANNER_VERSION
+        ):
+            raise ReplannerValidationError(
+                "delta replan decision version is unsupported"
+            )
+        result = cls(
+            original_plan_id=payload.get("original_plan_id", ""),
+            resulting_plan=DeltaPlan.from_dict(
+                payload.get("resulting_plan") or {}
+            ),
+            failure_event_id=payload.get("failure_event_id", ""),
+            diagnostic_id=payload.get("diagnostic_id", ""),
+            stop_reason=payload.get("stop_reason", ""),
+            direct_failure_step_ids=tuple(
+                payload.get("direct_failure_step_ids") or ()
+            ),
+            invalidated_step_ids=tuple(
+                payload.get("invalidated_step_ids") or ()
+            ),
+            stale_dependency_step_ids=tuple(
+                payload.get("stale_dependency_step_ids") or ()
+            ),
+            preserved_step_ids=tuple(
+                payload.get("preserved_step_ids") or ()
+            ),
+            reopened_branch_ids=tuple(
+                payload.get("reopened_branch_ids") or ()
+            ),
+            preserved_branch_ids=tuple(
+                payload.get("preserved_branch_ids") or ()
+            ),
+            diagnostic_reused=payload.get("diagnostic_reused"),
+            backoff_attempt=payload.get("backoff_attempt", -1),
+            backoff_milliseconds=payload.get(
+                "backoff_milliseconds", -1
+            ),
+            repair_attempts=payload.get("repair_attempts", -1),
+            limits=DeltaReplanLimits.from_dict(payload.get("limits") or {}),
+        )
+        if payload.get("requirement_ids") != list(result.requirement_ids):
+            raise ReplannerValidationError(
+                "delta replan requirement projection is inconsistent"
+            )
+        if payload.get("decision_id") != result.decision_id:
+            raise ReplannerValidationError(
+                "delta replan decision identity does not match content"
+            )
+        return result
+
+
 _SECTION_ALIASES: Final[Mapping[str, str]] = {
     "objective": "objectives",
     "objective_record": "objectives",
@@ -1452,6 +2042,32 @@ class FormalReplanner:
             repository_tree_id=repository_tree_id,
             previous_diagnostic_receipt_id=previous_diagnostic_receipt_id,
             max_identical_failures=max_identical_failures,
+            cancelled=cancelled,
+        )
+
+    def replan_delta(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        observation: BranchFailureObservation | Mapping[str, Any],
+        *,
+        failure_memory: PlanFailureMemory | None = None,
+        limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+        observed_at_milliseconds: int = 1,
+        now_milliseconds: int | None = None,
+        deadline_milliseconds: int | None = None,
+        cancelled: Any = None,
+    ) -> DeltaReplanDecision:
+        """Invalidate only the failed step and its transitive dependants."""
+
+        return FormalDeltaReplanner(
+            failure_memory=failure_memory,
+            limits=limits,
+        ).replan(
+            plan,
+            observation,
+            observed_at_milliseconds=observed_at_milliseconds,
+            now_milliseconds=now_milliseconds,
+            deadline_milliseconds=deadline_milliseconds,
             cancelled=cancelled,
         )
 
@@ -2234,7 +2850,349 @@ class FormalReplanner:
         )
 
 
+class FormalDeltaReplanner:
+    """Bind a typed failure to the minimal dependent plan suffix.
+
+    The operation is a single deterministic repair round.  It never regenerates
+    an unaffected step and never promotes a pending step to accepted.  Durable
+    retry state is delegated to :class:`PlanFailureMemory`.
+    """
+
+    def __init__(
+        self,
+        *,
+        failure_memory: PlanFailureMemory | None = None,
+        limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+    ) -> None:
+        self.failure_memory = failure_memory or PlanFailureMemory()
+        if limits is None:
+            limits = DeltaReplanLimits()
+        elif isinstance(limits, Mapping):
+            limits = DeltaReplanLimits.from_dict(limits)
+        if not isinstance(limits, DeltaReplanLimits):
+            raise ReplannerValidationError(
+                "limits must be DeltaReplanLimits or an object"
+            )
+        self.limits = limits
+
+    @staticmethod
+    def _anchors(
+        plan: DeltaPlan, observation: BranchFailureObservation
+    ) -> tuple[str, ...]:
+        features = observation.features
+        by_id = {item.step_id: item for item in plan.steps}
+        explicit = tuple(
+            sorted(set(features.step_ids).intersection(by_id))
+        )
+        if explicit:
+            return explicit
+        candidates = [
+            item for item in plan.steps if item.branch_id == features.branch_id
+        ]
+        if not candidates:
+            return ()
+        bindings = (
+            ("obligation_ids", features.obligation_ids),
+            ("alternative_ids", features.alternative_ids),
+            ("constraint_ids", features.constraint_ids),
+            (
+                "validation_signature_ids",
+                features.validation_signature_ids,
+            ),
+            ("capability_ids", features.capability_ids),
+            ("conflict_scope_ids", features.conflict_scope_ids),
+            ("resource_ids", features.resource_ids),
+        )
+        matched_sets: list[set[str]] = []
+        for field_name, expected in bindings:
+            if not expected:
+                continue
+            matched = {
+                item.step_id
+                for item in candidates
+                if set(getattr(item, field_name)).intersection(expected)
+            }
+            if matched:
+                matched_sets.append(matched)
+        if matched_sets:
+            intersection = set.intersection(*matched_sets)
+            selected = intersection or set.union(*matched_sets)
+            return tuple(sorted(selected))
+        # The branch itself is still a typed binding.  If its producer did not
+        # expose finer feature bindings, fail safely within that branch only.
+        return tuple(sorted(item.step_id for item in candidates))
+
+    @staticmethod
+    def _dependent_suffix(
+        plan: DeltaPlan, anchors: Iterable[str]
+    ) -> tuple[str, ...]:
+        reverse: dict[str, set[str]] = {
+            item.step_id: set() for item in plan.steps
+        }
+        for item in plan.steps:
+            for dependency_id in item.dependency_ids:
+                reverse[dependency_id].add(item.step_id)
+        affected = set(anchors)
+        frontier = list(sorted(affected))
+        while frontier:
+            current = frontier.pop()
+            for dependent in sorted(reverse[current]):
+                if dependent not in affected:
+                    affected.add(dependent)
+                    frontier.append(dependent)
+        return tuple(sorted(affected))
+
+    @staticmethod
+    def _branch_projection(
+        plan: DeltaPlan, invalidated: set[str]
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        accepted_preserved = tuple(
+            sorted(
+                item.step_id
+                for item in plan.steps
+                if item.accepted and item.step_id not in invalidated
+            )
+        )
+        by_branch: dict[str, list[DeltaPlanStep]] = {}
+        for item in plan.steps:
+            by_branch.setdefault(item.branch_id, []).append(item)
+        reopened = tuple(
+            sorted(
+                branch_id
+                for branch_id, items in by_branch.items()
+                if any(item.step_id in invalidated for item in items)
+            )
+        )
+        preserved = tuple(
+            sorted(
+                branch_id
+                for branch_id, items in by_branch.items()
+                if all(
+                    item.accepted and item.step_id not in invalidated
+                    for item in items
+                )
+            )
+        )
+        return accepted_preserved, reopened, preserved
+
+    def _unchanged_decision(
+        self,
+        plan: DeltaPlan,
+        observation: BranchFailureObservation,
+        reason: DeltaReplanStopReason,
+        *,
+        memory: FailureMemoryDecision | None = None,
+        anchors: tuple[str, ...] = (),
+    ) -> DeltaReplanDecision:
+        preserved, reopened, preserved_branches = self._branch_projection(
+            plan, set()
+        )
+        return DeltaReplanDecision(
+            original_plan_id=plan.plan_id,
+            resulting_plan=plan,
+            failure_event_id=observation.event_id,
+            diagnostic_id=observation.diagnostic_id,
+            stop_reason=reason,
+            direct_failure_step_ids=anchors,
+            invalidated_step_ids=(),
+            stale_dependency_step_ids=(),
+            preserved_step_ids=preserved,
+            reopened_branch_ids=(),
+            preserved_branch_ids=preserved_branches,
+            diagnostic_reused=(
+                memory.diagnostic_reused if memory is not None else False
+            ),
+            backoff_attempt=(
+                memory.backoff_attempt if memory is not None else 0
+            ),
+            backoff_milliseconds=(
+                memory.backoff_milliseconds if memory is not None else 0
+            ),
+            repair_attempts=0,
+            limits=self.limits,
+        )
+
+    def replan(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        observation: BranchFailureObservation | Mapping[str, Any],
+        *,
+        observed_at_milliseconds: int = 1,
+        now_milliseconds: int | None = None,
+        deadline_milliseconds: int | None = None,
+        cancelled: Any = None,
+    ) -> DeltaReplanDecision:
+        value = plan if isinstance(plan, DeltaPlan) else DeltaPlan.from_dict(plan)
+        failure = (
+            observation
+            if isinstance(observation, BranchFailureObservation)
+            else BranchFailureObservation.from_dict(observation)
+        )
+        if value.scope != failure.features.scope:
+            raise ReplannerValidationError(
+                "failure scope does not match the delta plan"
+            )
+        observed = (
+            observed_at_milliseconds
+            if isinstance(observed_at_milliseconds, int)
+            and not isinstance(observed_at_milliseconds, bool)
+            and observed_at_milliseconds >= 1
+            else None
+        )
+        if observed is None:
+            raise ReplannerValidationError(
+                "observed_at_milliseconds must be a positive integer"
+            )
+        current = observed if now_milliseconds is None else now_milliseconds
+        if (
+            isinstance(current, bool)
+            or not isinstance(current, int)
+            or current < observed
+        ):
+            raise ReplannerValidationError(
+                "now_milliseconds must not precede the observation"
+            )
+        if deadline_milliseconds is not None and (
+            isinstance(deadline_milliseconds, bool)
+            or not isinstance(deadline_milliseconds, int)
+            or deadline_milliseconds < 1
+        ):
+            raise ReplannerValidationError(
+                "deadline_milliseconds must be a positive integer"
+            )
+        if _cancelled(cancelled):
+            return self._unchanged_decision(
+                value, failure, DeltaReplanStopReason.CANCELLED
+            )
+        effective_deadline = observed + self.limits.max_repair_milliseconds
+        if deadline_milliseconds is not None:
+            effective_deadline = min(
+                effective_deadline, deadline_milliseconds
+            )
+        if current >= effective_deadline:
+            return self._unchanged_decision(
+                value, failure, DeltaReplanStopReason.DEADLINE_EXCEEDED
+            )
+        anchors = self._anchors(value, failure)
+        if not anchors:
+            return self._unchanged_decision(
+                value, failure, DeltaReplanStopReason.UNBOUND_FAILURE
+            )
+        suffix = self._dependent_suffix(value, anchors)
+        _, reopened, _ = self._branch_projection(value, set(suffix))
+        if (
+            len(suffix) > self.limits.max_invalidated_steps
+            or len(reopened) > self.limits.max_reopened_branches
+        ):
+            return self._unchanged_decision(
+                value,
+                failure,
+                DeltaReplanStopReason.REPAIR_BOUND_EXCEEDED,
+                anchors=anchors,
+            )
+        try:
+            memory = self.failure_memory.observe(
+                failure, observed_at_milliseconds=observed
+            )
+        except PlanFailureMemoryError as exc:
+            raise ReplannerValidationError(str(exc)) from exc
+        reason_by_disposition = {
+            FailureMemoryDisposition.UNCHANGED_BACKOFF: (
+                DeltaReplanStopReason.UNCHANGED_FAILURE_BACKOFF
+            ),
+            FailureMemoryDisposition.IDENTICAL_FAILURE_EXHAUSTED: (
+                DeltaReplanStopReason.IDENTICAL_FAILURE_EXHAUSTED
+            ),
+            FailureMemoryDisposition.MEMORY_BOUND_REACHED: (
+                DeltaReplanStopReason.FAILURE_MEMORY_BOUND_REACHED
+            ),
+        }
+        if not memory.should_replan:
+            return self._unchanged_decision(
+                value,
+                failure,
+                reason_by_disposition[memory.disposition],
+                memory=memory,
+                anchors=anchors,
+            )
+        if _cancelled(cancelled):
+            return self._unchanged_decision(
+                value,
+                failure,
+                DeltaReplanStopReason.CANCELLED,
+                memory=memory,
+                anchors=anchors,
+            )
+        invalidated = set(suffix)
+        resulting = DeltaPlan(
+            scope=value.scope,
+            steps=tuple(
+                item.invalidate()
+                if item.step_id in invalidated
+                else item
+                for item in value.steps
+            ),
+        )
+        preserved, reopened, preserved_branches = self._branch_projection(
+            value, invalidated
+        )
+        return DeltaReplanDecision(
+            original_plan_id=value.plan_id,
+            resulting_plan=resulting,
+            failure_event_id=failure.event_id,
+            diagnostic_id=failure.diagnostic_id,
+            stop_reason=DeltaReplanStopReason.REPLAN_REQUIRED,
+            direct_failure_step_ids=anchors,
+            invalidated_step_ids=suffix,
+            stale_dependency_step_ids=tuple(
+                sorted(invalidated.difference(anchors))
+            ),
+            preserved_step_ids=preserved,
+            reopened_branch_ids=reopened,
+            preserved_branch_ids=preserved_branches,
+            diagnostic_reused=memory.diagnostic_reused,
+            backoff_attempt=memory.backoff_attempt,
+            backoff_milliseconds=0,
+            repair_attempts=1,
+            limits=self.limits,
+        )
+
+
+CounterexampleDeltaReplanner = FormalDeltaReplanner
+DeltaReplanner = FormalDeltaReplanner
+DeltaReplanResult = DeltaReplanDecision
+DeltaReplanBudget = DeltaReplanLimits
+DeltaPlanNode = DeltaPlanStep
 FormalPlanReplanner = FormalReplanner
+
+
+def replan_plan_delta(
+    plan: DeltaPlan | Mapping[str, Any],
+    observation: BranchFailureObservation | Mapping[str, Any],
+    *,
+    failure_memory: PlanFailureMemory | None = None,
+    limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+    observed_at_milliseconds: int = 1,
+    now_milliseconds: int | None = None,
+    deadline_milliseconds: int | None = None,
+    cancelled: Any = None,
+) -> DeltaReplanDecision:
+    """Functional entry point for one bounded dependency-suffix repair."""
+
+    return FormalDeltaReplanner(
+        failure_memory=failure_memory,
+        limits=limits,
+    ).replan(
+        plan,
+        observation,
+        observed_at_milliseconds=observed_at_milliseconds,
+        now_milliseconds=now_milliseconds,
+        deadline_milliseconds=deadline_milliseconds,
+        cancelled=cancelled,
+    )
+
+
+delta_replan = replan_plan_delta
 
 
 def generate_plan_repairs(
@@ -2371,6 +3329,9 @@ __all__ = [
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
+    "DELTA_PLAN_SCHEMA",
+    "DELTA_REPLAN_DECISION_SCHEMA",
+    "DELTA_REPLAN_REQUIREMENT_ID",
     "DIAGNOSTIC_RECEIPT_SCHEMA",
     "FORMAL_REPLANNER_VERSION",
     "OBJECTIVE_COMPLETION_EVIDENCE_ROLES",
@@ -2380,7 +3341,18 @@ __all__ = [
     "RESPONSIVE_REPLAN_DECISION_SCHEMA",
     "RESPONSIVE_REPLAN_SIGNAL_KINDS",
     "CodexRepairPacket",
+    "CounterexampleDeltaReplanner",
+    "DeltaPlan",
+    "DeltaPlanNode",
+    "DeltaPlanStep",
+    "DeltaReplanBudget",
+    "DeltaReplanDecision",
+    "DeltaReplanLimits",
+    "DeltaReplanner",
+    "DeltaReplanResult",
+    "DeltaReplanStopReason",
     "DiagnosticReceipt",
+    "FormalDeltaReplanner",
     "FormalPlanReplanner",
     "FormalReplanner",
     "RepairCandidate",
@@ -2398,7 +3370,11 @@ __all__ = [
     "ReplanStopReason",
     "ReplannerValidationError",
     "ResponsiveReplanDecision",
+    "PlanSnapshot",
+    "PlanStep",
+    "delta_replan",
     "generate_plan_repairs",
+    "replan_plan_delta",
     "replan_if_changed",
     "replan_for_signal",
     "replan_from_counterexample",
