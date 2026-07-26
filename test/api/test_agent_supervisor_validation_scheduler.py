@@ -135,7 +135,8 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     shell_command = validation_shell_command("test -f artifact")
     assert shell_command[:4] == ["/bin/bash", "--noprofile", "--norc", "-c"]
     assert shell_command[4].endswith(
-        "readonly -f python python3 pytest; test -f artifact"
+        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
+        "test -f artifact"
     )
     for nested_shell in (
         "bash -lc 'python -c \"raise SystemExit(0)\"'",
@@ -292,6 +293,36 @@ def test_validation_runtime_reuses_supervisor_python_and_installed_pytest(
     assert str(Path(pytest.__file__).parent.parent.resolve()) in environment.get(
         "PYTHONPATH", ""
     ).split(os.pathsep)
+
+
+def test_validation_runtime_extends_task_local_pythonpath_with_approved_packages(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "fixture_value.py").write_text(
+        "VALUE = 'workspace-import'\n",
+        encoding="utf-8",
+    )
+    command = (
+        "PYTHONPATH=. python -c 'import fixture_value, pytest; "
+        "assert fixture_value.VALUE == \"workspace-import\"; "
+        "print(pytest.__version__)' "
+        "&& PYTHONPATH=. pytest --version"
+    )
+
+    report = ValidationScheduler().run(
+        [command],
+        workspace_path=workspace,
+        changed_files=["fixture_value.py"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+    )
+
+    assert report["passed"] is True
+    output = str(report["results"][0]["output"])
+    assert pytest.__version__ in output
+    assert "pytest " in output
 
 
 def test_validation_runtime_canonicalizes_replaceable_python_launcher(
