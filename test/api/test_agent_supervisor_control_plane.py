@@ -92,6 +92,29 @@ from ipfs_accelerate_py.agent_supervisor.control_plane import (
 )
 
 
+def _completion_member_facts(
+    *,
+    prefix: str,
+    index: int,
+    repository_tree: str,
+) -> dict[str, Any]:
+    """Return the explicit facts required for an eligible quorum receipt."""
+
+    return {
+        "passed": True,
+        "healthy": True,
+        "exhaustive": True,
+        "safe_for_completion_reasoning": True,
+        "conclusive": True,
+        "uncontradicted": True,
+        "producer_id": f"{prefix}-producer-{index}",
+        "implementation": f"{prefix}.completion_analyzer_{index}",
+        "child_receipt_binding": f"{prefix}:child:{index}",
+        "child_receipt_sha256": f"sha256:{index:064x}",
+        "aggregate_tree_binding": repository_tree,
+    }
+
+
 def _binding(
     repo_root: Path,
     state_root: Path,
@@ -381,6 +404,7 @@ def _g070_completion_inputs() -> dict[str, Any]:
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "binding": binding,
     }
     quorum = {
@@ -395,8 +419,19 @@ def _g070_completion_inputs() -> dict[str, Any]:
                 "evidence_channel": "implementation-validation",
                 "receipt_cid": "scan:asi-085:implementation",
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "producer_id": "asi-085-implementation-validator",
+                "implementation": (
+                    "ipfs_accelerate_py.agent_supervisor.control_plane"
+                ),
+                "child_receipt_binding": repository_tree,
+                "child_receipt_sha256": f"sha256:{'1' * 64}",
+                "aggregate_tree_binding": repository_tree,
                 "finished_at": (now - timedelta(seconds=90)).isoformat(),
                 "binding": binding,
             },
@@ -405,8 +440,19 @@ def _g070_completion_inputs() -> dict[str, Any]:
                 "evidence_channel": "receipt-replay-audit",
                 "receipt_cid": "scan:asi-085:replay",
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "producer_id": "asi-085-independent-replay",
+                "implementation": (
+                    "ipfs_accelerate_py.agent_supervisor.control_contracts"
+                ),
+                "child_receipt_binding": repository_tree,
+                "child_receipt_sha256": f"sha256:{'2' * 64}",
+                "aggregate_tree_binding": repository_tree,
                 "finished_at": (now - timedelta(seconds=45)).isoformat(),
                 "binding": binding,
             },
@@ -1055,12 +1101,40 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
         ).content_id
         == quorum.content_id
     )
+    artifact_binding = {
+        **binding.to_dict(),
+        "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+        "requirement_id": CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "operational_receipt_id": operational.content_id,
+    }
+    completion_health = {
+        **health.to_dict(),
+        "exhaustive": True,
+    }
+    completion_quorum = {
+        **generic_quorum.to_dict(),
+        "binding": artifact_binding,
+        "members": [
+            {
+                **member.to_dict(),
+                "binding": artifact_binding,
+                **_completion_member_facts(
+                    prefix="asi-076",
+                    index=index,
+                    repository_tree=operational.repository_tree,
+                ),
+            }
+            for index, member in enumerate(generic_quorum.members, start=1)
+        ],
+    }
     values = {
         "evidence": completion_evidence,
         "tasks_complete": True,
         "coverage": canonical_coverage,
-        "analyzer_health": health,
-        "exhaustion_quorum": quorum,
+        "analyzer_health": completion_health,
+        "exhaustion_quorum": completion_quorum,
         "now": now,
         "freshness_seconds": 300,
     }
@@ -1122,19 +1196,12 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
         "repository_tree": operational.repository_tree,
         "analyzer_version": (
             CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
         ),
-    }
-    artifact_binding = {
-        **binding.to_dict(),
-        "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
-        "requirement_id": CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
-        "validation_policy_id": operational.policy_id,
-        "policy_revision": operational.policy_revision,
-        "operational_receipt_id": operational.content_id,
     }
     mapping_quorum = {
         "required_members": 2,
@@ -1149,8 +1216,11 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
                 "receipt_cid": f"scan:asi-076:mapping:{index}",
                 "binding": artifact_binding,
                 "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
+                **_completion_member_facts(
+                    prefix="asi-076-mapping",
+                    index=index,
+                    repository_tree=operational.repository_tree,
+                ),
                 "finished_at": now.isoformat(),
             }
             for index, channel in enumerate(
@@ -2120,12 +2190,40 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
         )
         == quorum
     )
+    artifact_binding = {
+        **binding.to_dict(),
+        "objective_id": CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+        "requirement_id": CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "operational_receipt_id": operational.content_id,
+    }
+    completion_health = {
+        **health.to_dict(),
+        "exhaustive": True,
+    }
+    completion_quorum = {
+        **generic_quorum.to_dict(),
+        "binding": artifact_binding,
+        "members": [
+            {
+                **member.to_dict(),
+                "binding": artifact_binding,
+                **_completion_member_facts(
+                    prefix="asi-078",
+                    index=index,
+                    repository_tree=operational.repository_tree,
+                ),
+            }
+            for index, member in enumerate(generic_quorum.members, start=1)
+        ],
+    }
     values = {
         "evidence": completion_evidence,
         "tasks_complete": True,
         "coverage": coverage,
-        "analyzer_health": health,
-        "exhaustion_quorum": quorum,
+        "analyzer_health": completion_health,
+        "exhaustion_quorum": completion_quorum,
         "now": now,
         "freshness_seconds": 300,
     }
@@ -2246,6 +2344,7 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": False,
+        "exhaustive": True,
         "objective_id": CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
         "repository_tree": operational.repository_tree,
         "analyzer_version": (
@@ -2261,14 +2360,6 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
         **unsafe_health,
         "safe_for_completion_reasoning": True,
     }
-    artifact_binding = {
-        **binding.to_dict(),
-        "objective_id": CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
-        "requirement_id": CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
-        "validation_policy_id": operational.policy_id,
-        "policy_revision": operational.policy_revision,
-        "operational_receipt_id": operational.content_id,
-    }
     mapping_quorum = {
         "required_members": 2,
         "member_count": 2,
@@ -2282,8 +2373,11 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
                 "receipt_cid": f"scan:asi-078:mapping:{index}",
                 "binding": artifact_binding,
                 "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
+                **_completion_member_facts(
+                    prefix="asi-078-mapping",
+                    index=index,
+                    repository_tree=operational.repository_tree,
+                ),
                 "finished_at": now.isoformat(),
             }
             for index, channel in enumerate(

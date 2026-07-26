@@ -35,11 +35,14 @@ from types import MappingProxyType
 from typing import Any, Final, Protocol, Union
 
 from .control_contracts import (
+    CONTROL_CATALOG_VERSION,
     CONTROL_CONTRACT_VERSION,
+    DEFAULT_CONTROL_CATALOG,
     MUTATION_OPERATIONS,
     PROPOSAL_OPERATIONS,
     READ_OPERATIONS,
     AuthorizationBindingError,
+    CapabilityDegradation,
     CapabilityReport,
     ControlBounds,
     ControlBoundsError,
@@ -47,27 +50,42 @@ from .control_contracts import (
     ControlDiscoveryManifest,
     ControlDiscoveryRuntimeState,
     ControlMutationRuntimeState,
+    ControlOperationDescriptor,
     ControlSurface,
     DryRunPreview,
     EffectClaim,
     ErrorCode,
+    EventCursor,
+    EventCursorError,
     ExpectedEffect,
     LifecycleAction,
     LifecycleCommand,
     Operation,
+    OperationCatalog,
     OperationAuthority,
     OperationCapability,
     OperationError,
     OperationRequest,
     OperationResult,
     OperationStatus,
+    PaginationKind,
     PathEscapeError,
+    UnsupportedCapabilityError,
     canonical_control_json_bytes,
     decode_operation_request,
 )
 
 
 CONTROL_SERVICE_VERSION: Final[str] = "1.0.0"
+CONTROL_CONFORMANCE_V2_REQUIREMENT_ID: Final[str] = (
+    "107787885166558411314422313513714746721"
+)
+CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/control-operation-conformance-case@2"
+)
+CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/control-catalog-conformance-evidence@2"
+)
 CONTROL_AUDIT_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-audit-receipt@1"
 )
@@ -82,6 +100,16 @@ LIFECYCLE_EVENT_SCHEMA: Final[str] = (
 )
 CONTROL_MUTATION_EVENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-mutation-event@1"
+)
+CONTROL_SURFACE_PUBLICATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/control-surface-publication@1"
+)
+CONTROL_BEHAVIOR_NORMALIZATION_VERSION: Final[str] = (
+    "agent-supervisor-control-normalization@1"
+)
+DIRECT_CONTROL_SERVICE_DISPATCHER_ID: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor.control_plane:"
+    "SupervisorControlService.execute"
 )
 DEFAULT_QUERY_LIMIT: Final[int] = 50
 DEFAULT_MAX_QUERY_ITEMS: Final[int] = 256
@@ -147,6 +175,10 @@ CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES: Final[tuple[str, ...]] = (
 
 class SupervisorControlError(RuntimeError):
     """Base exception raised by service configuration and client misuse."""
+
+
+class ControlCatalogConformanceError(SupervisorControlError):
+    """A published surface differs from the closed canonical catalog."""
 
 
 class TargetNotAllowedError(SupervisorControlError):
@@ -803,6 +835,385 @@ def _content_id(payload: Mapping[str, Any]) -> str:
     return f"sha256:{digest}"
 
 
+def _publication_string_map(
+    value: Mapping[Union[Operation, str], str],
+    *,
+    name: str,
+) -> Mapping[str, str]:
+    if not isinstance(value, Mapping):
+        raise ControlCatalogConformanceError(f"{name} must be a mapping")
+    normalized: dict[str, str] = {}
+    for raw_operation, raw_value in value.items():
+        try:
+            operation = (
+                raw_operation
+                if isinstance(raw_operation, Operation)
+                else Operation(str(raw_operation))
+            )
+        except ValueError as exc:
+            raise ControlCatalogConformanceError(
+                f"{name} contains unknown operation {raw_operation!r}"
+            ) from exc
+        text = str(raw_value).strip()
+        if not text:
+            raise ControlCatalogConformanceError(
+                f"{name}[{operation.value!r}] must not be empty"
+            )
+        if operation.value in normalized:
+            raise ControlCatalogConformanceError(
+                f"{name} contains duplicate operation {operation.value!r}"
+            )
+        normalized[operation.value] = text
+    return MappingProxyType(dict(sorted(normalized.items())))
+
+
+@dataclass(frozen=True)
+class ControlSurfacePublication:
+    """Provider-free declaration of one complete transport surface."""
+
+    surface: ControlSurface
+    catalog_id: str
+    operations: tuple[Union[Operation, str], ...]
+    request_schema_ids: Mapping[Union[Operation, str], str]
+    result_schema_ids: Mapping[Union[Operation, str], str]
+    behavior_ids: Mapping[Union[Operation, str], str]
+    dispatcher_ids: Mapping[Union[Operation, str], str]
+    dispatch_mode: str = "direct_service"
+    catalog_version: int = CONTROL_CATALOG_VERSION
+    provider_free: bool = True
+    process_free: bool = True
+
+    def __post_init__(self) -> None:
+        try:
+            surface = (
+                self.surface
+                if isinstance(self.surface, ControlSurface)
+                else ControlSurface(str(self.surface))
+            )
+        except ValueError as exc:
+            raise ControlCatalogConformanceError(
+                f"unknown control surface {self.surface!r}"
+            ) from exc
+        object.__setattr__(self, "surface", surface)
+        if (
+            isinstance(self.catalog_version, bool)
+            or not isinstance(self.catalog_version, int)
+            or self.catalog_version < 1
+        ):
+            raise ControlCatalogConformanceError(
+                "catalog_version must be a positive integer"
+            )
+        catalog_id = str(self.catalog_id).strip()
+        if not catalog_id:
+            raise ControlCatalogConformanceError("catalog_id must not be empty")
+        object.__setattr__(self, "catalog_id", catalog_id)
+        try:
+            operations = tuple(
+                sorted(
+                    (
+                        item
+                        if isinstance(item, Operation)
+                        else Operation(str(item))
+                        for item in self.operations
+                    ),
+                    key=lambda item: item.value,
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise ControlCatalogConformanceError(
+                "operations contains an unknown operation"
+            ) from exc
+        if len(operations) != len(set(operations)):
+            raise ControlCatalogConformanceError(
+                "operations contains duplicate operations"
+            )
+        object.__setattr__(self, "operations", operations)
+        for name in (
+            "request_schema_ids",
+            "result_schema_ids",
+            "behavior_ids",
+            "dispatcher_ids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _publication_string_map(getattr(self, name), name=name),
+            )
+        mode = str(self.dispatch_mode).strip()
+        if not mode:
+            raise ControlCatalogConformanceError(
+                "dispatch_mode must not be empty"
+            )
+        object.__setattr__(self, "dispatch_mode", mode)
+        for name in ("provider_free", "process_free"):
+            if not isinstance(getattr(self, name), bool):
+                raise ControlCatalogConformanceError(
+                    f"{name} must be a boolean"
+                )
+
+    @property
+    def operation_names(self) -> tuple[str, ...]:
+        return tuple(item.value for item in self.operations)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = {
+            "schema": CONTROL_SURFACE_PUBLICATION_SCHEMA,
+            "schema_version": CONTROL_CONTRACT_VERSION,
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "catalog_version": self.catalog_version,
+            "catalog_id": self.catalog_id,
+            "surface": self.surface.value,
+            "operations": self.operation_names,
+            "request_schema_ids": dict(self.request_schema_ids),
+            "result_schema_ids": dict(self.result_schema_ids),
+            "behavior_ids": dict(self.behavior_ids),
+            "dispatcher_ids": dict(self.dispatcher_ids),
+            "dispatch_mode": self.dispatch_mode,
+            "provider_free": self.provider_free,
+            "process_free": self.process_free,
+        }
+        payload["content_id"] = _content_id(payload)
+        return payload
+
+    to_record = to_dict
+
+    @property
+    def content_id(self) -> str:
+        return self.to_dict()["content_id"]
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlSurfacePublication":
+        if not isinstance(payload, Mapping):
+            raise ControlCatalogConformanceError(
+                "control surface publication must be an object"
+            )
+        allowed = {
+            "schema",
+            "schema_version",
+            "contract_version",
+            "catalog_version",
+            "catalog_id",
+            "surface",
+            "operations",
+            "request_schema_ids",
+            "result_schema_ids",
+            "behavior_ids",
+            "dispatcher_ids",
+            "dispatch_mode",
+            "provider_free",
+            "process_free",
+            "content_id",
+        }
+        extra = set(payload).difference(allowed)
+        if extra:
+            raise ControlCatalogConformanceError(
+                "control surface publication contains unknown fields: "
+                + ", ".join(sorted(extra))
+            )
+        required = allowed.difference({"content_id"})
+        missing = required.difference(payload)
+        if missing:
+            raise ControlCatalogConformanceError(
+                "control surface publication is missing fields: "
+                + ", ".join(sorted(missing))
+            )
+        if payload["schema"] != CONTROL_SURFACE_PUBLICATION_SCHEMA:
+            raise ControlCatalogConformanceError(
+                "control surface publication schema is unsupported"
+            )
+        for version_field in ("schema_version", "contract_version"):
+            version = payload[version_field]
+            if (
+                isinstance(version, bool)
+                or not isinstance(version, int)
+                or version != CONTROL_CONTRACT_VERSION
+            ):
+                raise ControlCatalogConformanceError(
+                    f"control surface publication {version_field} is unsupported"
+                )
+        publication = cls(
+            surface=payload["surface"],
+            catalog_id=payload["catalog_id"],
+            operations=tuple(payload["operations"]),
+            request_schema_ids=payload["request_schema_ids"],
+            result_schema_ids=payload["result_schema_ids"],
+            behavior_ids=payload["behavior_ids"],
+            dispatcher_ids=payload["dispatcher_ids"],
+            dispatch_mode=payload["dispatch_mode"],
+            catalog_version=payload["catalog_version"],
+            provider_free=payload["provider_free"],
+            process_free=payload["process_free"],
+        )
+        claimed_id = payload.get("content_id")
+        if claimed_id not in (None, publication.content_id):
+            raise ControlCatalogConformanceError(
+                "control surface publication content_id does not match"
+            )
+        return publication
+
+
+def control_operation_behavior_id(
+    descriptor: ControlOperationDescriptor,
+) -> str:
+    """Return the transport-independent behavior fingerprint for an operation."""
+
+    if not isinstance(descriptor, ControlOperationDescriptor):
+        raise TypeError("descriptor must be a ControlOperationDescriptor")
+    return _content_id(
+        {
+            "normalization_version": CONTROL_BEHAVIOR_NORMALIZATION_VERSION,
+            "operation_descriptor_id": descriptor.content_id,
+            "request_schema_id": descriptor.request_schema_id,
+            "result_schema_id": descriptor.result_schema_id,
+            "error_codes": tuple(item.value for item in ErrorCode),
+            "statuses": tuple(item.value for item in OperationStatus),
+            "timeout_code": ErrorCode.TIMED_OUT.value,
+            "cancellation_code": ErrorCode.CANCELLED.value,
+            "degradation": descriptor.degradation.value,
+            "pagination": descriptor.pagination.content_id,
+            "target": descriptor.target_descriptor.content_id,
+        }
+    )
+
+
+def _validate_canonical_catalog(catalog: OperationCatalog) -> OperationCatalog:
+    if not isinstance(catalog, OperationCatalog):
+        raise ControlCatalogConformanceError(
+            "catalog must be an OperationCatalog"
+        )
+    canonical = DEFAULT_CONTROL_CATALOG
+    if catalog.catalog_version != CONTROL_CATALOG_VERSION:
+        raise ControlCatalogConformanceError(
+            "catalog version differs from the canonical service version"
+        )
+    if catalog.operation_names != canonical.operation_names:
+        missing = sorted(
+            set(canonical.operation_names).difference(catalog.operation_names)
+        )
+        extra = sorted(
+            set(catalog.operation_names).difference(canonical.operation_names)
+        )
+        raise ControlCatalogConformanceError(
+            "catalog operation population differs from the canonical "
+            f"population; missing={missing}, extra={extra}"
+        )
+    for operation in canonical.operations:
+        actual = catalog.operation(operation)
+        expected = canonical.operation(operation)
+        if actual.request_schema_id != expected.request_schema_id:
+            raise ControlCatalogConformanceError(
+                f"request schema drift for operation {operation.value}"
+            )
+        if actual.result_schema_id != expected.result_schema_id:
+            raise ControlCatalogConformanceError(
+                f"result schema drift for operation {operation.value}"
+            )
+        if actual.content_id != expected.content_id:
+            raise ControlCatalogConformanceError(
+                f"behavior drift for operation {operation.value}"
+            )
+    if catalog.content_id != canonical.content_id:
+        raise ControlCatalogConformanceError(
+            "catalog identity differs from the canonical catalog"
+        )
+    return catalog
+
+
+def validate_control_surface_publication(
+    publication: Union[ControlSurfacePublication, Mapping[str, Any]],
+    catalog: OperationCatalog = DEFAULT_CONTROL_CATALOG,
+) -> ControlSurfacePublication:
+    """Fail closed on missing, extra, schema-drifted, or behavioral entries."""
+
+    canonical_catalog = _validate_canonical_catalog(catalog)
+    if not isinstance(publication, ControlSurfacePublication):
+        publication = ControlSurfacePublication.from_dict(publication)
+    expected_operations = canonical_catalog.operations
+    expected_names = frozenset(canonical_catalog.operation_names)
+    if publication.catalog_version != canonical_catalog.catalog_version:
+        raise ControlCatalogConformanceError(
+            "publication catalog_version does not match the catalog"
+        )
+    if publication.catalog_id != canonical_catalog.content_id:
+        raise ControlCatalogConformanceError(
+            "publication catalog_id does not match the catalog"
+        )
+    if publication.operations != expected_operations:
+        missing = sorted(expected_names.difference(publication.operation_names))
+        extra = sorted(
+            set(publication.operation_names).difference(expected_names)
+        )
+        raise ControlCatalogConformanceError(
+            "publication operation population is not closed; "
+            f"missing={missing}, extra={extra}"
+        )
+    populations = {
+        "request_schema_ids": (
+            publication.request_schema_ids,
+            {
+                item.operation.value: item.request_schema_id
+                for item in canonical_catalog
+            },
+        ),
+        "result_schema_ids": (
+            publication.result_schema_ids,
+            {
+                item.operation.value: item.result_schema_id
+                for item in canonical_catalog
+            },
+        ),
+        "behavior_ids": (
+            publication.behavior_ids,
+            {
+                item.operation.value: control_operation_behavior_id(item)
+                for item in canonical_catalog
+            },
+        ),
+    }
+    for name, (actual, expected) in populations.items():
+        if set(actual) != expected_names:
+            missing = sorted(expected_names.difference(actual))
+            extra = sorted(set(actual).difference(expected_names))
+            raise ControlCatalogConformanceError(
+                f"{name} population differs; missing={missing}, extra={extra}"
+            )
+        drifted = sorted(
+            operation
+            for operation, identity in expected.items()
+            if actual[operation] != identity
+        )
+        if drifted:
+            raise ControlCatalogConformanceError(
+                f"{name} drift for operations {drifted}"
+            )
+    if set(publication.dispatcher_ids) != expected_names:
+        missing = sorted(expected_names.difference(publication.dispatcher_ids))
+        extra = sorted(
+            set(publication.dispatcher_ids).difference(expected_names)
+        )
+        raise ControlCatalogConformanceError(
+            "dispatcher population differs; "
+            f"missing={missing}, extra={extra}"
+        )
+    if publication.dispatch_mode != "direct_service":
+        raise ControlCatalogConformanceError(
+            "control adapters must use direct_service dispatch"
+        )
+    if any(
+        dispatcher != DIRECT_CONTROL_SERVICE_DISPATCHER_ID
+        for dispatcher in publication.dispatcher_ids.values()
+    ):
+        raise ControlCatalogConformanceError(
+            "every operation must dispatch directly to "
+            "SupervisorControlService.execute"
+        )
+    if not publication.provider_free or not publication.process_free:
+        raise ControlCatalogConformanceError(
+            "catalog publication must be provider-free and process-free"
+        )
+    return publication
+
+
 def _normalized_absolute(value: Union[str, Path], *, label: str) -> Path:
     raw = os.fspath(value)
     if not raw or "\x00" in raw or not os.path.isabs(raw):
@@ -871,6 +1282,682 @@ def _bounded_window(request: OperationRequest) -> tuple[int, int]:
     if raw_offset > DEFAULT_MAX_OFFSET:
         raise ControlBoundsError("offset exceeds the absolute query bound")
     return raw_limit, raw_offset
+
+
+def normalize_control_request(
+    request: Union[OperationRequest, Mapping[str, Any]],
+) -> OperationRequest:
+    """Decode a request through the one canonical transport-neutral boundary."""
+
+    if isinstance(request, OperationRequest):
+        # Round-trip typed values too.  This catches a subclass or corrupted
+        # in-memory record before it reaches a transport-independent backend.
+        return OperationRequest.from_dict(request.to_record())
+    return decode_operation_request(request)
+
+
+def normalize_control_result(
+    result: Union[OperationResult, Mapping[str, Any]],
+    request: Union[OperationRequest, Mapping[str, Any]],
+) -> OperationResult:
+    """Decode and bind a result exactly as CLI and MCP adapters must."""
+
+    canonical_request = normalize_control_request(request)
+    canonical_result = (
+        OperationResult.from_dict(result.to_record())
+        if isinstance(result, OperationResult)
+        else OperationResult.from_dict(result)
+    )
+    canonical_result.validate_against(canonical_request)
+    return canonical_result
+
+
+def _selector_text(value: Any, selector: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ControlContractError(
+            f"target selector {selector} must be a non-empty string"
+        )
+    return value.strip()
+
+
+def normalize_control_target(
+    request: OperationRequest,
+    descriptor: ControlOperationDescriptor,
+    *,
+    service_id: str = "ipfs-accelerate-agent-supervisor",
+) -> Mapping[str, str]:
+    """Resolve the catalog target descriptor to one canonical selector map."""
+
+    if not isinstance(request, OperationRequest):
+        raise TypeError("request must be an OperationRequest")
+    if not isinstance(descriptor, ControlOperationDescriptor):
+        raise TypeError("descriptor must be a ControlOperationDescriptor")
+    if descriptor.operation is not request.operation:
+        raise ControlCatalogConformanceError(
+            "target descriptor operation does not match the request"
+        )
+    parameters = request.parameters
+    declared_target = parameters.get("target", {})
+    if declared_target and not isinstance(declared_target, Mapping):
+        raise ControlContractError("target must be an object")
+    declared_target = dict(declared_target)
+    required = frozenset(
+        descriptor.target_descriptor.required_selectors
+    )
+    extra = set(declared_target).difference(required)
+    if extra:
+        raise ControlContractError(
+            "target contains selectors not declared for the operation: "
+            + ", ".join(sorted(str(item) for item in extra))
+        )
+    target_id = parameters.get("target_id", "")
+    defaults: Mapping[str, Any] = {
+        "service_id": parameters.get("service_id") or target_id or service_id,
+        "repository_id": request.repository_id,
+        "tree_id": request.tree_id,
+        "objective_id": request.objective_id,
+        "task_id": parameters.get("task_id") or target_id,
+        "bundle_id": parameters.get("bundle_id") or target_id,
+        "lane_id": parameters.get("lane_id") or target_id,
+        "stream_id": (
+            parameters.get("stream_id")
+            or target_id
+            or f"{request.repository_id}:events"
+        ),
+        "receipt_id": parameters.get("receipt_id") or target_id,
+        "cache_namespace": (
+            parameters.get("cache_namespace") or target_id or "default"
+        ),
+        "artifact_id": parameters.get("artifact_id") or target_id,
+        "validation_id": parameters.get("validation_id") or target_id,
+    }
+    canonical: dict[str, str] = {}
+    for selector in descriptor.target_descriptor.required_selectors:
+        top_level = parameters.get(selector)
+        nested = declared_target.get(selector)
+        if top_level not in (None, "") and nested not in (None, ""):
+            if top_level != nested:
+                raise ControlContractError(
+                    f"target selector {selector} is inconsistent"
+                )
+        declared = top_level if top_level not in (None, "") else nested
+        authoritative = defaults.get(selector)
+        if selector in {
+            "repository_id",
+            "tree_id",
+            "objective_id",
+        }:
+            if declared not in (None, "") and declared != authoritative:
+                raise ControlContractError(
+                    f"target selector {selector} does not match the request"
+                )
+            selected = authoritative
+        else:
+            selected = (
+                declared if declared not in (None, "") else authoritative
+            )
+        canonical[selector] = _selector_text(selected, selector)
+    return MappingProxyType(canonical)
+
+
+def normalize_control_pagination(
+    request: OperationRequest,
+    descriptor: ControlOperationDescriptor,
+    *,
+    target: Union[Mapping[str, str], None] = None,
+) -> Mapping[str, Any]:
+    """Validate and normalize offset, query cursor, or event cursor input."""
+
+    if descriptor.operation is not request.operation:
+        raise ControlCatalogConformanceError(
+            "pagination descriptor operation does not match the request"
+        )
+    explicit_limit = request.parameters.get("limit")
+    page_limit = descriptor.pagination.validate_limit(explicit_limit)
+    if page_limit > request.bounds.max_items:
+        raise ControlBoundsError("page limit exceeds the request item bound")
+    raw_offset = request.parameters.get("offset", 0)
+    if (
+        isinstance(raw_offset, bool)
+        or not isinstance(raw_offset, int)
+        or raw_offset < 0
+        or raw_offset > DEFAULT_MAX_OFFSET
+    ):
+        raise ControlBoundsError("offset is outside the canonical query bound")
+    if descriptor.pagination.kind is PaginationKind.NONE:
+        if raw_offset:
+            raise ControlBoundsError(
+                "non-paginated operations cannot specify an offset"
+            )
+        return MappingProxyType(
+            {"kind": PaginationKind.NONE.value, "limit": 1, "offset": 0}
+        )
+    raw_cursor = request.parameters.get(
+        "event_cursor", request.parameters.get("cursor", "")
+    )
+    if descriptor.pagination.kind is PaginationKind.EVENT_CURSOR:
+        selected_target = target or normalize_control_target(request, descriptor)
+        stream_id = selected_target["stream_id"]
+        if raw_cursor:
+            if not isinstance(raw_cursor, str):
+                raise EventCursorError("event cursor must be an opaque token")
+            cursor = EventCursor.from_token(raw_cursor)
+            cursor.assert_replayable(
+                stream_id=stream_id,
+                earliest_position=0,
+                latest_position=max(cursor.position, raw_offset),
+                snapshot_id=str(request.parameters.get("snapshot_id") or ""),
+            )
+        else:
+            cursor = EventCursor.initial(
+                stream_id,
+                snapshot_id=str(request.parameters.get("snapshot_id") or ""),
+            )
+        return MappingProxyType(
+            {
+                "kind": PaginationKind.EVENT_CURSOR.value,
+                "limit": page_limit,
+                "offset": raw_offset,
+                "cursor": cursor.to_token(),
+                "stream_id": stream_id,
+            }
+        )
+    if raw_cursor and not isinstance(raw_cursor, str):
+        raise ControlContractError("query cursor must be an opaque string")
+    return MappingProxyType(
+        {
+            "kind": PaginationKind.CURSOR.value,
+            "limit": page_limit,
+            "offset": raw_offset,
+            "cursor": str(raw_cursor),
+        }
+    )
+
+
+def validate_control_catalog_publication(
+    catalog: OperationCatalog = DEFAULT_CONTROL_CATALOG,
+) -> OperationCatalog:
+    """Validate the exact immutable catalog eligible for publication."""
+
+    return _validate_canonical_catalog(catalog)
+
+
+def validate_control_surface_manifest(
+    manifest: Union[ControlDiscoveryManifest, Mapping[str, Any]],
+    *,
+    catalog: OperationCatalog = DEFAULT_CONTROL_CATALOG,
+) -> ControlDiscoveryManifest:
+    """Reject a discovery manifest with missing, extra, or drifted schemas."""
+
+    selected_catalog = _validate_canonical_catalog(catalog)
+    selected_manifest = (
+        manifest
+        if isinstance(manifest, ControlDiscoveryManifest)
+        else ControlDiscoveryManifest.from_dict(manifest)
+    )
+    if selected_manifest.operations != selected_catalog.operations:
+        raise ControlCatalogConformanceError(
+            "control surface manifest operation population differs from catalog"
+        )
+    expected_requests = {
+        item.operation.value: item.request_schema_id
+        for item in selected_catalog
+    }
+    expected_results = {
+        item.operation.value: item.result_schema_id
+        for item in selected_catalog
+    }
+    if dict(selected_manifest.request_schema_ids) != expected_requests:
+        raise ControlCatalogConformanceError(
+            "control surface manifest request schema population drift"
+        )
+    if dict(selected_manifest.result_schema_ids) != expected_results:
+        raise ControlCatalogConformanceError(
+            "control surface manifest result schema population drift"
+        )
+    return selected_manifest
+
+
+def validate_operation_request_against_catalog(
+    request: Union[OperationRequest, Mapping[str, Any]],
+    *,
+    catalog: OperationCatalog = DEFAULT_CONTROL_CATALOG,
+    service_id: str = "ipfs-accelerate-agent-supervisor",
+) -> OperationRequest:
+    """Normalize one request and enforce its exact catalog declaration."""
+
+    selected_catalog = _validate_canonical_catalog(catalog)
+    decoded = normalize_control_request(request)
+    descriptor = selected_catalog.operation(decoded.operation)
+    descriptor.validate_bounds(
+        decoded.bounds,
+        page_limit=decoded.parameters.get("limit"),
+    )
+    target = normalize_control_target(
+        decoded,
+        descriptor,
+        service_id=service_id,
+    )
+    normalize_control_pagination(decoded, descriptor, target=target)
+    if decoded.dry_run and not descriptor.supports_dry_run:
+        raise ControlContractError(
+            f"operation {decoded.operation.value} does not support dry-run"
+        )
+    return decoded
+
+
+def _conformance_cli_exit_status(result: OperationResult) -> int:
+    if result.succeeded:
+        return 0
+    if result.status is OperationStatus.CONFLICT:
+        return 3
+    if result.status is OperationStatus.NOT_FOUND:
+        return 4
+    if result.status is OperationStatus.DENIED:
+        return 2
+    if result.status is OperationStatus.TIMED_OUT:
+        return 124
+    if result.status is OperationStatus.CANCELLED:
+        return 130
+    return 1
+
+
+@dataclass(frozen=True)
+class ControlOperationConformanceCase:
+    """One independently invoked Python/CLI/MCP catalog fixture."""
+
+    scenario: str
+    request: Union[OperationRequest, Mapping[str, Any]]
+    python_result: Union[OperationResult, Mapping[str, Any]]
+    cli_result: Union[OperationResult, Mapping[str, Any]]
+    mcp_result: Union[OperationResult, Mapping[str, Any]]
+    cli_exit_status: int
+
+    def __post_init__(self) -> None:
+        scenario = str(self.scenario).strip()
+        if not scenario or len(scenario.encode("utf-8")) > 256:
+            raise ControlContractError(
+                "conformance scenario must be bounded text"
+            )
+        object.__setattr__(self, "scenario", scenario)
+        request = validate_operation_request_against_catalog(self.request)
+        object.__setattr__(self, "request", request)
+        results: list[OperationResult] = []
+        for name in ("python_result", "cli_result", "mcp_result"):
+            value = getattr(self, name)
+            result = (
+                value
+                if isinstance(value, OperationResult)
+                else OperationResult.from_dict(value)
+                if isinstance(value, Mapping)
+                else None
+            )
+            if result is None:
+                raise ControlContractError(
+                    f"{name} must be an OperationResult"
+                )
+            result = normalize_control_result(result, request)
+            object.__setattr__(self, name, result)
+            results.append(result)
+        canonical = tuple(
+            canonical_control_json_bytes(item.to_record())
+            for item in results
+        )
+        if canonical[1:] != canonical[:-1]:
+            raise ControlContractError(
+                "Python, CLI, and MCP conformance results are behaviorally "
+                "inconsistent"
+            )
+        if (
+            isinstance(self.cli_exit_status, bool)
+            or not isinstance(self.cli_exit_status, int)
+            or self.cli_exit_status
+            != _conformance_cli_exit_status(results[1])
+        ):
+            raise ControlContractError(
+                "CLI exit status does not match the canonical operation result"
+            )
+
+    @property
+    def operation(self) -> Operation:
+        assert isinstance(self.request, OperationRequest)
+        return self.request.operation
+
+    @property
+    def status(self) -> OperationStatus:
+        assert isinstance(self.python_result, OperationResult)
+        return self.python_result.status
+
+    @property
+    def error_code(self) -> str:
+        assert isinstance(self.python_result, OperationResult)
+        return (
+            self.python_result.error.code.value
+            if self.python_result.error is not None
+            else ""
+        )
+
+    @property
+    def effect_ids(self) -> tuple[str, ...]:
+        assert isinstance(self.python_result, OperationResult)
+        return tuple(item.effect_id for item in self.python_result.effects)
+
+    def _payload(self) -> dict[str, Any]:
+        assert isinstance(self.request, OperationRequest)
+        assert isinstance(self.python_result, OperationResult)
+        assert isinstance(self.cli_result, OperationResult)
+        assert isinstance(self.mcp_result, OperationResult)
+        return {
+            "schema": CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA,
+            "schema_version": 2,
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "scenario": self.scenario,
+            "operation": self.operation.value,
+            "status": self.status.value,
+            "error_code": self.error_code,
+            "effect_ids": self.effect_ids,
+            "cli_exit_status": self.cli_exit_status,
+            "request": self.request.to_record(),
+            "python_result": self.python_result.to_record(),
+            "cli_result": self.cli_result.to_record(),
+            "mcp_result": self.mcp_result.to_record(),
+        }
+
+    @property
+    def content_id(self) -> str:
+        return _content_id(self._payload())
+
+    def to_record(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    to_dict = to_record
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_control_json_bytes(self.to_record())
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlOperationConformanceCase":
+        if not isinstance(payload, Mapping):
+            raise ControlContractError("conformance case must be an object")
+        allowed = {
+            "schema",
+            "schema_version",
+            "contract_version",
+            "scenario",
+            "operation",
+            "status",
+            "error_code",
+            "effect_ids",
+            "cli_exit_status",
+            "request",
+            "python_result",
+            "cli_result",
+            "mcp_result",
+            "content_id",
+        }
+        extra = set(payload).difference(allowed)
+        if extra:
+            raise ControlContractError(
+                "conformance case contains unknown fields: "
+                + ", ".join(sorted(extra))
+            )
+        if (
+            payload.get("schema")
+            != CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA
+            or payload.get("schema_version") != 2
+            or payload.get("contract_version") != CONTROL_CONTRACT_VERSION
+        ):
+            raise ControlContractError("conformance case schema is invalid")
+        result = cls(
+            scenario=payload.get("scenario", ""),
+            request=payload.get("request") or {},
+            python_result=payload.get("python_result") or {},
+            cli_result=payload.get("cli_result") or {},
+            mcp_result=payload.get("mcp_result") or {},
+            cli_exit_status=payload.get("cli_exit_status", -1),
+        )
+        if payload.get("operation") != result.operation.value:
+            raise ControlContractError("conformance case operation drift")
+        if payload.get("status") != result.status.value:
+            raise ControlContractError("conformance case status drift")
+        if payload.get("error_code") != result.error_code:
+            raise ControlContractError("conformance case error drift")
+        if tuple(payload.get("effect_ids", ())) != result.effect_ids:
+            raise ControlContractError("conformance case effect drift")
+        if payload.get("content_id") not in (None, result.content_id):
+            raise ControlContractError("conformance case identity mismatch")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlCatalogConformanceEvidence:
+    """Publication receipt for the exact v2 catalog and transport matrix."""
+
+    catalog: Union[OperationCatalog, Mapping[str, Any]]
+    manifests: tuple[
+        Union[ControlDiscoveryManifest, Mapping[str, Any]], ...
+    ]
+    cases: tuple[
+        Union[ControlOperationConformanceCase, Mapping[str, Any]], ...
+    ]
+    requirement_id: str = CONTROL_CONFORMANCE_V2_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        catalog = self.catalog
+        if not isinstance(catalog, OperationCatalog):
+            if not isinstance(catalog, Mapping):
+                raise ControlContractError("conformance catalog is malformed")
+            catalog = OperationCatalog.from_dict(catalog)
+        catalog = validate_control_catalog_publication(catalog)
+        object.__setattr__(self, "catalog", catalog)
+        if self.requirement_id != CONTROL_CONFORMANCE_V2_REQUIREMENT_ID:
+            raise ControlContractError(
+                "control conformance requirement identity mismatch"
+            )
+
+        manifests: list[ControlDiscoveryManifest] = []
+        for value in self.manifests:
+            manifest = (
+                value
+                if isinstance(value, ControlDiscoveryManifest)
+                else ControlDiscoveryManifest.from_dict(value)
+                if isinstance(value, Mapping)
+                else None
+            )
+            if manifest is None:
+                raise ControlContractError(
+                    "conformance manifest is malformed"
+                )
+            manifests.append(
+                validate_control_surface_manifest(manifest, catalog=catalog)
+            )
+        manifests.sort(key=lambda item: item.surface.value)
+        expected_surfaces = tuple(
+            sorted(ControlSurface, key=lambda item: item.value)
+        )
+        if (
+            tuple(item.surface for item in manifests) != expected_surfaces
+            or len({item.surface for item in manifests})
+            != len(expected_surfaces)
+        ):
+            raise ControlContractError(
+                "catalog publication requires exactly Python, CLI, and MCP "
+                "manifests"
+            )
+        if len({item.schema_population_id for item in manifests}) != 1:
+            raise ControlContractError(
+                "control surface schema populations are inconsistent"
+            )
+        object.__setattr__(self, "manifests", tuple(manifests))
+
+        cases: list[ControlOperationConformanceCase] = []
+        for value in self.cases:
+            case = (
+                value
+                if isinstance(value, ControlOperationConformanceCase)
+                else ControlOperationConformanceCase.from_dict(value)
+                if isinstance(value, Mapping)
+                else None
+            )
+            if case is None:
+                raise ControlContractError(
+                    "conformance case is malformed"
+                )
+            cases.append(case)
+        if not cases:
+            raise ControlContractError(
+                "catalog publication requires conformance cases"
+            )
+        scenario_keys = {(item.operation, item.scenario) for item in cases}
+        if len(scenario_keys) != len(cases):
+            raise ControlContractError("conformance cases must be unique")
+        operation_population = [item.operation for item in cases]
+        if len(operation_population) != len(set(operation_population)):
+            raise ControlContractError(
+                "catalog publication requires exactly one conformance case "
+                "per operation"
+            )
+        actual_operations = {item.operation for item in cases}
+        expected_operations = set(catalog.operations)
+        if actual_operations != expected_operations:
+            missing = sorted(
+                item.value
+                for item in expected_operations - actual_operations
+            )
+            extra = sorted(
+                item.value
+                for item in actual_operations - expected_operations
+            )
+            raise ControlContractError(
+                "catalog publication conformance population drift; "
+                f"missing={missing}, extra={extra}"
+            )
+        object.__setattr__(
+            self,
+            "cases",
+            tuple(
+                sorted(
+                    cases,
+                    key=lambda item: (
+                        item.operation.value,
+                        item.scenario,
+                    ),
+                )
+            ),
+        )
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (CONTROL_CONFORMANCE_V2_REQUIREMENT_ID,)
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return False
+
+    @property
+    def catalog_id(self) -> str:
+        assert isinstance(self.catalog, OperationCatalog)
+        return self.catalog.catalog_id
+
+    def _payload(self) -> dict[str, Any]:
+        assert isinstance(self.catalog, OperationCatalog)
+        return {
+            "schema": CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA,
+            "schema_version": 2,
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            "catalog_id": self.catalog_id,
+            "catalog": self.catalog.to_record(),
+            "manifests": tuple(
+                item.to_record() for item in self.manifests
+            ),
+            "cases": tuple(item.to_record() for item in self.cases),
+        }
+
+    @property
+    def content_id(self) -> str:
+        return _content_id(self._payload())
+
+    def to_record(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    to_dict = to_record
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_control_json_bytes(self.to_record())
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlCatalogConformanceEvidence":
+        if not isinstance(payload, Mapping):
+            raise ControlContractError(
+                "conformance evidence must be an object"
+            )
+        allowed = {
+            "schema",
+            "schema_version",
+            "contract_version",
+            "requirement_id",
+            "catalog_id",
+            "catalog",
+            "manifests",
+            "cases",
+            "content_id",
+        }
+        extra = set(payload).difference(allowed)
+        if extra:
+            raise ControlContractError(
+                "conformance evidence contains unknown fields: "
+                + ", ".join(sorted(extra))
+            )
+        if (
+            payload.get("schema")
+            != CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA
+            or payload.get("schema_version") != 2
+            or payload.get("contract_version") != CONTROL_CONTRACT_VERSION
+        ):
+            raise ControlContractError(
+                "conformance evidence schema is invalid"
+            )
+        result = cls(
+            catalog=payload.get("catalog") or {},
+            manifests=tuple(payload.get("manifests", ())),
+            cases=tuple(payload.get("cases", ())),
+            requirement_id=payload.get("requirement_id", ""),
+        )
+        if payload.get("catalog_id") != result.catalog_id:
+            raise ControlContractError(
+                "conformance evidence catalog identity mismatch"
+            )
+        if payload.get("content_id") not in (None, result.content_id):
+            raise ControlContractError(
+                "conformance evidence identity mismatch"
+            )
+        return result
+
+
+def validate_catalog_publication(
+    catalog: OperationCatalog,
+    manifests: Sequence[
+        Union[ControlDiscoveryManifest, Mapping[str, Any]]
+    ],
+    cases: Sequence[
+        Union[ControlOperationConformanceCase, Mapping[str, Any]]
+    ],
+) -> ControlCatalogConformanceEvidence:
+    """Publish only after the complete three-surface matrix passes."""
+
+    return ControlCatalogConformanceEvidence(
+        catalog=catalog,
+        manifests=tuple(manifests),
+        cases=tuple(cases),
+    )
+
+
+publish_control_catalog = validate_catalog_publication
 
 
 @dataclass(frozen=True)
@@ -2699,6 +3786,7 @@ class SupervisorControlService:
             TargetIdentityValidator, Callable[[OperationRequest], Any], None
         ] = None,
         state_store: Union[ControlStateStore, None] = None,
+        catalog: OperationCatalog = DEFAULT_CONTROL_CATALOG,
         service_id: str = "ipfs-accelerate-agent-supervisor",
         service_version: str = CONTROL_SERVICE_VERSION,
         max_query_items: int = DEFAULT_MAX_QUERY_ITEMS,
@@ -2728,6 +3816,7 @@ class SupervisorControlService:
         self._authorization_validator = authorization_validator
         self._identity_validator = identity_validator
         self._state_store = state_store or JsonlControlStateStore()
+        self._catalog = _validate_canonical_catalog(catalog)
         self._service_id = str(service_id).strip()
         self._service_version = str(service_version).strip()
         if not self._service_id or not self._service_version:
@@ -2746,6 +3835,28 @@ class SupervisorControlService:
         self._mutation_audit_receipt_count = 0
         self._last_mutation_dispatch_request_id = ""
         self._last_mutation_audit_receipt_id = ""
+        registered = getattr(self._backend, "registered_operations", None)
+        if registered is None:
+            self._registered_operations = frozenset(Operation)
+        else:
+            try:
+                self._registered_operations = frozenset(
+                    item
+                    if isinstance(item, Operation)
+                    else Operation(str(item))
+                    for item in registered
+                )
+            except (TypeError, ValueError) as exc:
+                raise ControlCatalogConformanceError(
+                    "backend registered_operations contains an unknown operation"
+                ) from exc
+        self._registered_operations = frozenset(
+            {
+                *self._registered_operations,
+                Operation.CAPABILITIES,
+                Operation.RECEIPTS,
+            }
+        )
         self._capability_report = self._build_capability_report()
 
     @property
@@ -2756,22 +3867,21 @@ class SupervisorControlService:
     def state_allowlist(self) -> tuple[str, ...]:
         return tuple(item.as_posix() for item in self._state_roots)
 
+    @property
+    def catalog(self) -> OperationCatalog:
+        return self._catalog
+
+    def operation_catalog(self) -> OperationCatalog:
+        """Return the already validated immutable catalog without discovery."""
+
+        return self._catalog
+
     def _build_capability_report(self) -> CapabilityReport:
         bounds = ControlBounds(
             max_items=self._max_query_items,
             max_paths=min(128, self._max_query_items),
             max_effects=min(64, self._max_query_items),
         )
-        registered = getattr(self._backend, "registered_operations", None)
-        if registered is None:
-            supported = set(Operation)
-        else:
-            supported = {
-                item if isinstance(item, Operation) else Operation(str(item))
-                for item in registered
-            }
-        # These two reads are implemented by the service itself.
-        supported.update({Operation.CAPABILITIES, Operation.RECEIPTS})
         capabilities = tuple(
             OperationCapability(
                 operation=operation,
@@ -2781,7 +3891,9 @@ class SupervisorControlService:
                 requires_idempotency=operation in MUTATION_OPERATIONS,
                 requires_authorization=operation in MUTATION_OPERATIONS,
             )
-            for operation in sorted(supported, key=lambda item: item.value)
+            for operation in sorted(
+                self._registered_operations, key=lambda item: item.value
+            )
         )
         return CapabilityReport(
             service_id=self._service_id,
@@ -2831,6 +3943,11 @@ class SupervisorControlService:
             )
         return ControlDiscoveryManifest(surface=ControlSurface.PYTHON)
 
+    def surface_publication(self) -> ControlSurfacePublication:
+        """Return the validated, process-free Python surface publication."""
+
+        return control_service_publication(self, catalog=self._catalog)
+
     def client(
         self,
         target: Union[SupervisorTarget, Mapping[str, Any], None] = None,
@@ -2855,12 +3972,58 @@ class SupervisorControlService:
             )
 
     def _check_bounds(self, request: OperationRequest) -> None:
+        descriptor = self._catalog.operation(request.operation)
+        explicit_limit = request.parameters.get("limit")
+        descriptor.validate_bounds(
+            request.bounds,
+            page_limit=explicit_limit,
+        )
+        target = normalize_control_target(
+            request,
+            descriptor,
+            service_id=self._service_id,
+        )
+        normalize_control_pagination(
+            request,
+            descriptor,
+            target=target,
+        )
         limit, _offset = _bounded_window(request)
         if (
             "limit" in request.parameters
             and limit > self._max_query_items
         ):
             raise ControlBoundsError("limit exceeds the service query bound")
+
+    def _degraded_backend_response(
+        self, request: OperationRequest
+    ) -> Union[BackendResponse, None]:
+        if request.operation in self._registered_operations:
+            return None
+        descriptor = self._catalog.operation(request.operation)
+        if descriptor.degradation is CapabilityDegradation.PROPOSAL_ONLY:
+            return BackendResponse(
+                data={
+                    "operation": request.operation.value,
+                    "degraded": True,
+                    "degradation": descriptor.degradation.value,
+                    "backend_capability": descriptor.backend_capability,
+                    "supported": False,
+                },
+                changed=False,
+                warnings=(
+                    f"{descriptor.backend_capability} is unavailable; "
+                    "returning a proposal-only result",
+                ),
+                checks=("catalog_capability", "proposal_only"),
+            )
+        # LOCAL_READ_ONLY is advertised only when a local read implementation
+        # really exists. A backend that omits the operation cannot claim that
+        # degradation merely because the catalog permits it.
+        raise UnsupportedCapabilityError(
+            f"operation {request.operation.value} requires backend capability "
+            f"{descriptor.backend_capability!r}"
+        )
 
     @staticmethod
     def _invoke_validator(
@@ -2974,7 +4137,23 @@ class SupervisorControlService:
 
     def _dispatch(self, request: OperationRequest) -> BackendResponse:
         if request.operation is Operation.CAPABILITIES:
-            return BackendResponse(data={"report": self.capability_report().to_record()})
+            report = self.capability_report()
+            return BackendResponse(
+                data={
+                    "service_id": report.service_id,
+                    "service_version": report.service_version,
+                    "catalog_id": self._catalog.content_id,
+                    "operations": tuple(
+                        item.value for item in report.supported_operations
+                    ),
+                    "capability_report_id": report.content_id,
+                    "optional_providers_loaded": (
+                        report.optional_providers_loaded
+                    ),
+                    "processes_started": report.processes_started,
+                },
+                checks=("catalog_population", "provider_free", "process_free"),
+            )
         if request.operation is Operation.RECEIPTS and not any(
             request.parameters.get(name)
             for name in ("receipts_path", "path")
@@ -2992,6 +4171,9 @@ class SupervisorControlService:
                     "truncated": len(items) == limit,
                 }
             )
+        degraded = self._degraded_backend_response(request)
+        if degraded is not None:
+            return degraded
         execute = getattr(self._backend, "execute", None)
         if not callable(execute):
             raise OperationUnavailableError(
@@ -3000,7 +4182,14 @@ class SupervisorControlService:
         if request.operation in MUTATION_OPERATIONS and not request.dry_run:
             self._mutation_dispatch_count += 1
             self._last_mutation_dispatch_request_id = request.request_id
-        return self._normalize_backend_response(execute(request), request)
+        started_ns = time.monotonic_ns()
+        value = execute(request)
+        elapsed_ms = (time.monotonic_ns() - started_ns) / 1_000_000
+        if elapsed_ms > request.bounds.timeout_ms:
+            raise BackendTimeoutError(
+                f"backend execution exceeded {request.bounds.timeout_ms}ms"
+            )
+        return self._normalize_backend_response(value, request)
 
     @staticmethod
     def _status_for_error(code: ErrorCode) -> OperationStatus:
@@ -3016,7 +4205,10 @@ class SupervisorControlService:
             ErrorCode.INVALID_LIFECYCLE_TRANSITION,
         }:
             return OperationStatus.CONFLICT
-        if code is ErrorCode.UNAVAILABLE:
+        if code in {
+            ErrorCode.UNAVAILABLE,
+            ErrorCode.UNSUPPORTED_CAPABILITY,
+        }:
             return OperationStatus.UNAVAILABLE
         if code is ErrorCode.TIMED_OUT:
             return OperationStatus.TIMED_OUT
@@ -3058,6 +4250,10 @@ class SupervisorControlService:
         elif isinstance(exc, (BackendTimeoutError, TimeoutError)):
             code = ErrorCode.TIMED_OUT
             retryable = True
+        elif isinstance(exc, UnsupportedCapabilityError):
+            code = ErrorCode.UNSUPPORTED_CAPABILITY
+        elif isinstance(exc, EventCursorError):
+            code = ErrorCode.INVALID_CURSOR
         elif isinstance(exc, OperationUnavailableError):
             code = ErrorCode.UNAVAILABLE
         elif isinstance(exc, PermissionError):
@@ -3067,8 +4263,13 @@ class SupervisorControlService:
             field = "path"
         elif isinstance(exc, ControlBoundsError):
             code = ErrorCode.BOUNDS_EXCEEDED
-        elif isinstance(exc, (ControlContractError, ValueError, TypeError, json.JSONDecodeError)):
+        elif isinstance(
+            exc,
+            (ControlContractError, ValueError, TypeError, json.JSONDecodeError),
+        ):
             code = ErrorCode.INVALID_REQUEST
+        elif type(exc).__name__ in {"CancelledError", "CancellationError"}:
+            code = ErrorCode.CANCELLED
         else:
             code = ErrorCode.INTERNAL_ERROR
             message = "control operation failed"
@@ -3299,7 +4500,12 @@ class SupervisorControlService:
                     response = self._dispatch(request)
                     backend_accepted = True
                 return self._success_result(request, response)
-            except Exception as exc:
+            except BaseException as exc:
+                if not isinstance(exc, Exception) and type(exc).__name__ not in {
+                    "CancelledError",
+                    "CancellationError",
+                }:
+                    raise
                 result = self._error_result(request, exc)
                 hook = getattr(self._backend, "record_rejection", None)
                 if (
@@ -3452,6 +4658,60 @@ class SupervisorControlService:
         }:
             raise ValueError("request is not a lifecycle operation")
         return self.execute(request)
+
+
+def control_service_publication(
+    service: Union[SupervisorControlService, None] = None,
+    *,
+    catalog: OperationCatalog = DEFAULT_CONTROL_CATALOG,
+) -> ControlSurfacePublication:
+    """Publish the exhaustive Python service surface without dispatching it."""
+
+    selected_catalog = (
+        service.operation_catalog() if service is not None else catalog
+    )
+    _validate_canonical_catalog(selected_catalog)
+    service_type = type(service) if service is not None else SupervisorControlService
+    if not callable(getattr(service_type, "execute", None)):
+        raise ControlCatalogConformanceError(
+            "SupervisorControlService.execute is not callable"
+        )
+    missing_methods = tuple(
+        operation.value
+        for operation in selected_catalog.operations
+        if not callable(getattr(service_type, operation.value, None))
+    )
+    if missing_methods:
+        raise ControlCatalogConformanceError(
+            "Python service is missing catalog operation methods: "
+            + ", ".join(missing_methods)
+        )
+    publication = ControlSurfacePublication(
+        surface=ControlSurface.PYTHON,
+        catalog_id=selected_catalog.content_id,
+        catalog_version=selected_catalog.catalog_version,
+        operations=selected_catalog.operations,
+        request_schema_ids={
+            item.operation: item.request_schema_id
+            for item in selected_catalog
+        },
+        result_schema_ids={
+            item.operation: item.result_schema_id
+            for item in selected_catalog
+        },
+        behavior_ids={
+            item.operation: control_operation_behavior_id(item)
+            for item in selected_catalog
+        },
+        dispatcher_ids={
+            item.operation: DIRECT_CONTROL_SERVICE_DISPATCHER_ID
+            for item in selected_catalog
+        },
+    )
+    return validate_control_surface_publication(
+        publication,
+        selected_catalog,
+    )
 
 
 class SupervisorClient:
@@ -3654,12 +4914,18 @@ ControlService = SupervisorControlService
 __all__ = [
     "CONTROL_AUDIT_RECEIPT_SCHEMA",
     "CONTROL_BACKEND_RESPONSE_SCHEMA",
+    "CONTROL_BEHAVIOR_NORMALIZATION_VERSION",
+    "CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA",
+    "CONTROL_CONFORMANCE_V2_REQUIREMENT_ID",
     "CONTROL_MUTATION_EVENT_SCHEMA",
+    "CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA",
     "CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES",
     "CONTROL_REDACTION_MARKER",
     "CONTROL_SENSITIVE_FIELD_NAMES",
     "CONTROL_SERVICE_VERSION",
+    "CONTROL_SURFACE_PUBLICATION_SCHEMA",
     "DEFAULT_MAX_CONTROL_EVENTS",
+    "DIRECT_CONTROL_SERVICE_DISPATCHER_ID",
     "LEGAL_LIFECYCLE_TRANSITIONS",
     "LIFECYCLE_EVENT_SCHEMA",
     "LIFECYCLE_STATUS_SCHEMA",
@@ -3668,9 +4934,13 @@ __all__ = [
     "BackendNotFoundError",
     "BackendResponse",
     "BackendTimeoutError",
+    "ControlCatalogConformanceError",
+    "ControlCatalogConformanceEvidence",
     "ControlAuditReceipt",
     "ControlService",
     "ControlStateStore",
+    "ControlSurfacePublication",
+    "ControlOperationConformanceCase",
     "IdempotencyConflictError",
     "InMemoryControlStateStore",
     "InMemoryLifecycleStore",
@@ -3698,7 +4968,19 @@ __all__ = [
     "TargetNotAllowedError",
     "TargetIdentityValidator",
     "capture_control_discovery_runtime_state",
+    "control_operation_behavior_id",
+    "control_service_publication",
     "lifecycle_transition_is_legal",
+    "normalize_control_pagination",
+    "normalize_control_request",
+    "normalize_control_result",
+    "normalize_control_target",
+    "publish_control_catalog",
     "redact_control_data",
     "redact_control_text",
+    "validate_catalog_publication",
+    "validate_control_catalog_publication",
+    "validate_control_surface_manifest",
+    "validate_control_surface_publication",
+    "validate_operation_request_against_catalog",
 ]
