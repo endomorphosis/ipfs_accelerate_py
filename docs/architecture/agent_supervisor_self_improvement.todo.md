@@ -3564,7 +3564,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-105 Add counterexample-driven delta replanning and branch-failure memory
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: planning
