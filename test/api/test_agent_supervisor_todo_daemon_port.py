@@ -1210,6 +1210,52 @@ def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
     assert "wallet_interface/ui/tracked.css" not in paths
 
 
+def test_validation_keeps_the_worktree_start_context_snapshot(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "baseline")
+
+    initial = repo / "docs" / "architecture" / "initial-context.md"
+    initial.parent.mkdir(parents=True)
+    initial.write_text("available at task start\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+    worktree = worktree_root / "attempt"
+    branch = "implementation/context-snapshot"
+
+    daemon._create_seeded_worktree(worktree, branch)
+    assert (worktree / initial.relative_to(repo)).read_text(encoding="utf-8") == (
+        "available at task start\n"
+    )
+
+    late = repo / "docs" / "architecture" / "late-concurrent-context.md"
+    late.write_text("created by another lane\n", encoding="utf-8")
+    (worktree / initial.relative_to(repo)).unlink()
+
+    daemon._prepare_worktree_for_validation(worktree, branch_name=branch)
+
+    assert not (worktree / late.relative_to(repo)).exists()
+    assert not (worktree / initial.relative_to(repo)).exists()
+    cleanup = daemon._cleanup_merged_worktree(worktree, branch)
+    assert cleanup["cleaned"] is True
+
+
 def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

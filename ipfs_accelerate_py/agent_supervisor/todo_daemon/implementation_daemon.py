@@ -6744,7 +6744,9 @@ class PortalImplementationDaemon:
     ) -> None:
         self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
         self._link_shared_worktree_paths(worktree_path)
-        self._seed_untracked_worktree_context(worktree_path, task=task)
+        # Untracked source context is snapshotted when the worktree lease starts.
+        # Re-reading the primary checkout here can attribute files created by a
+        # concurrent user or lane to this implementation after its agent exits.
 
     def _seed_untracked_worktree_context(
         self,
@@ -6753,11 +6755,13 @@ class PortalImplementationDaemon:
         task: PortalTask | None = None,
         overwrite_existing: bool = False,
     ) -> list[str]:
-        """Copy relevant new source context into an ephemeral worktree.
+        """Snapshot relevant new source context into an ephemeral worktree.
 
         Modified tracked files belong to the source checkout and must not leak
         into an isolated implementation branch. Otherwise an unrelated local
-        edit can be committed by the agent and later block the merge train.
+        edit can be committed by the agent and later block the merge train. This
+        method is called only while a task lease is being created; validation
+        must use that stable snapshot rather than rescan the primary checkout.
         """
 
         seeded: list[str] = []
