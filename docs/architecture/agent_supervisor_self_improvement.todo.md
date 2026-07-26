@@ -3816,7 +3816,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-119 Build reward-hacking-resistant multi-objective self-evaluation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: self-refill
