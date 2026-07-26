@@ -25,7 +25,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 DiT was proposed in [DiT: Self-supervised Pre-training for Document Image Transformer](https://arxiv.org/abs/2203.02378) by Junlong Li, Yiheng Xu, Tengchao Lv, Lei Cui, Cha Zhang, Furu Wei.
-DiT applies the self-supervised objective of [BEiT](beit) (BERT pre-training of Image Transformers) to 42 million document images, allowing for state-of-the-art results on tasks including:
+DiT applies the self-supervised objective of [BEiT](beit.md) (BERT pre-training of Image Transformers) to 42 million document images, allowing for state-of-the-art results on tasks including:
 
 - document image classification: the [RVL-CDIP](https://www.cs.cmu.edu/~aharley/rvl-cdip/) dataset (a collection of
   400,000 images belonging to one of 16 classes).
@@ -88,5 +88,5 @@ If you're interested in submitting a resource to be included here, please feel f
 
 <Tip>
 
-  As DiT's architecture is equivalent to that of BEiT, one can refer to [BEiT's documentation page](beit) for all tips, code examples and notebooks.
+  As DiT's architecture is equivalent to that of BEiT, one can refer to [BEiT's documentation page](beit.md) for all tips, code examples and notebooks.
 </Tip>
