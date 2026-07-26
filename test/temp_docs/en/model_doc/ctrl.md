@@ -58,8 +58,8 @@ This model was contributed by [keskarnitishr](https://huggingface.co/keskarnitis
 
 ## Resources
 
-- Text classification task guide
-- Causal language modeling task guide
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## CTRLConfig
 
