@@ -11431,8 +11431,14 @@ def test_implementation_prompt_can_disable_unavailable_subagents(monkeypatch, tm
 
     prompt = daemon._build_implementation_prompt(task, attempt=1)
 
-    assert "Do not invoke collaboration or sub-agent tools" in prompt
-    assert "Use sub-agents or parallel execution" not in prompt
+    capsule = json.loads(prompt)
+    edit_policy = capsule["authority"]["edit_policy"]
+    assert edit_policy["subagents_allowed"] is False
+    assert edit_policy["allowed_paths"] == task.outputs
+    assert all(
+        "Use sub-agents or parallel execution" not in rule
+        for rule in capsule["authority"]["generic_prompt_policy"]
+    )
 
 
 def test_todo_vector_context_binds_reused_display_id_to_canonical_identity(tmp_path):
@@ -11610,22 +11616,22 @@ def test_completion_gap_prompt_authorizes_only_exact_predicted_files(
 
     prompt = daemon._build_implementation_prompt(task, attempt=1)
 
-    assert (
-        "Strict completion-gap edit authorization "
-        "(overrides every general breadth or output instruction):"
-    ) in prompt
-    assert (
-        "ONLY these exact repository-relative files:\n"
-        "- docs/runtime.md\n"
-        "- src/completion_check.py"
-    ) in prompt
-    assert "These are exact file paths, not directory prefixes." in prompt
-    assert (
-        "Task outputs outside that allowlist are control/evidence references and "
-        "are read-only: data/agent_supervisor/discovery/accel-001.md, "
-        "objective-heap.md"
-    ) in prompt
-    assert "do not edit the task board, objective heap, discovery records" in prompt
+    capsule = json.loads(prompt)
+    edit_policy = capsule["authority"]["edit_policy"]
+    assert edit_policy["mode"] == "completion_gap_exact"
+    assert edit_policy["allowed_paths"] == [
+        "docs/runtime.md",
+        "src/completion_check.py",
+    ]
+    assert edit_policy["protected_paths"] == []
+    assert edit_policy["read_only_outputs"] == [
+        "data/agent_supervisor/discovery/accel-001.md",
+        "objective-heap.md",
+    ]
+    assert edit_policy["validation_may_read_other_paths"] is True
+    assert edit_policy["operator_directive"] == ""
+    assert capsule["scope"]["allowed_edit_paths"] == edit_policy["allowed_paths"]
+    assert capsule["scope"]["expected_outputs"] == task.outputs
 
 
 def test_completion_gap_without_precise_targets_is_not_executed(tmp_path):

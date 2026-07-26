@@ -808,6 +808,8 @@ class MergeTrain:
         distributed_repository_id: str | None = None,
         repository_id: str | None = None,
         distributed_post_merge_evidence_required: bool = True,
+        decision_runtime: Any = None,
+        decision_runtime_cancellation: Any = None,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.queue = queue
@@ -815,6 +817,10 @@ class MergeTrain:
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
         self.merge_callback = merge_callback
+        self.decision_runtime = decision_runtime
+        self.decision_runtime_cancellation = decision_runtime_cancellation
+        self._last_merge_runtime_decision: Any = None
+        self._last_merge_effect_observation: Any = None
         queue_dir = Path(getattr(queue, "queue_dir", self.repo_root / ".merge-queue"))
         self.state_dir = Path(state_dir) if state_dir is not None else queue_dir / "train"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -2552,6 +2558,12 @@ class MergeTrain:
         # The evidence receipt is durable before queue completion.  A crash in
         # between leaves a recoverable processing claim, never a falsely
         # completed request.
+        self._runtime_completion(
+            request,
+            target_commit=target,
+            status="merged",
+            evidence=validation,
+        )
         try:
             post_merge_evidence_receipt = dict(
                 validation.get("post_merge_evidence_receipt") or {}
@@ -2998,7 +3010,20 @@ class MergeTrain:
                     retryable=True,
                 )
             try:
-                callback_result = dict(self.merge_callback(request) or {})
+                callback_result = dict(
+                    self._runtime_mutation(
+                        "merge",
+                        {
+                            "operation": "merge_callback",
+                            "request_id": request.request_id,
+                            "candidate_commit": candidate,
+                            "target_commit": target,
+                            "target_branch": self.target_branch,
+                        },
+                        lambda: dict(self.merge_callback(request) or {}),
+                    )
+                    or {}
+                )
             except Exception as exc:  # callbacks are an isolation boundary
                 return self._finish_failure(
                     request,
@@ -4213,6 +4238,17 @@ class MergeTrain:
                 }
             )
             return result
+        self._runtime_completion(
+            request,
+            target_commit=target,
+            status=status,
+            evidence=(
+                extra.get("post_merge_validation")
+                if isinstance(extra, Mapping)
+                and isinstance(extra.get("post_merge_validation"), Mapping)
+                else {}
+            ),
+        )
         self._write_receipt(self._dedupe_key(canonical, candidate), result)
         try:
             self.queue.complete(request)
@@ -4326,6 +4362,110 @@ class MergeTrain:
         result = self._git("rev-parse", "--verify", f"refs/heads/{self.target_branch}^{{commit}}")
         return result.stdout.strip() if result.returncode == 0 else ""
 
+    def _decision_runtime_cancelled(self) -> bool:
+        value = self.decision_runtime_cancellation
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        if callable(value):
+            return bool(value())
+        checker = getattr(value, "is_set", None)
+        if callable(checker):
+            return bool(checker())
+        raise TypeError(
+            "decision_runtime_cancellation must be a boolean, predicate, "
+            "event, or None"
+        )
+
+    def _runtime_decision(
+        self, boundary: str, payload: Mapping[str, Any]
+    ) -> Any:
+        if self._decision_runtime_cancelled():
+            from .decision_runtime import DecisionRuntimeCancelled
+
+            raise DecisionRuntimeCancelled(
+                ("cancelled", f"cancelled_before_{boundary}")
+            )
+        if self.decision_runtime is None:
+            return None
+        route = getattr(self.decision_runtime, "route", None)
+        if not callable(route):
+            raise TypeError("decision_runtime must expose route()")
+        return route(boundary, dict(payload))
+
+    def _runtime_mutation(
+        self,
+        boundary: str,
+        payload: Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        decision = self._runtime_decision(boundary, payload)
+        if decision is None:
+            return callback()
+        authorize = getattr(
+            self.decision_runtime, "authorize_mutation", None
+        )
+        if not callable(authorize):
+            raise TypeError(
+                "decision_runtime must expose authorize_mutation()"
+            )
+
+        def dispatch() -> dict[str, Any]:
+            value = callback()
+            request = getattr(decision, "decision_request", None)
+            return {
+                "value": value,
+                "observed_effects": tuple(
+                    getattr(request, "expected_effects", ())
+                ),
+            }
+
+        execution = authorize(decision, dispatch)
+        self._last_merge_runtime_decision = decision
+        self._last_merge_effect_observation = getattr(
+            execution, "effect_observation", None
+        )
+        wrapped = getattr(execution, "value", execution)
+        return wrapped.get("value") if isinstance(wrapped, Mapping) else wrapped
+
+    def _runtime_completion(
+        self,
+        request: MergeRequest,
+        *,
+        target_commit: str,
+        status: str,
+        evidence: Mapping[str, Any] | None = None,
+    ) -> Any:
+        """Require a fresh merged-tree completion decision before queue state."""
+
+        return self._runtime_decision(
+            "completion",
+            {
+                "request_id": request.request_id,
+                "task_id": _request_value(request, "task_id"),
+                "target_branch": self.target_branch,
+                "merged_commit": target_commit,
+                "status": status,
+                "merge_decision_id": str(
+                    getattr(
+                        getattr(
+                            self._last_merge_runtime_decision, "receipt", None
+                        ),
+                        "receipt_id",
+                        "",
+                    )
+                ),
+                "effect_observation_receipt_id": str(
+                    getattr(
+                        self._last_merge_effect_observation, "receipt_id", ""
+                    )
+                ),
+                "post_merge_evidence": dict(evidence or {}),
+                "fresh_merged_tree_required": True,
+            },
+        )
+
     def _advance_target(
         self,
         rebased_commit: str,
@@ -4334,35 +4474,54 @@ class MergeTrain:
     ) -> subprocess.CompletedProcess[str]:
         """Fast-forward the target without leaving a checked-out tree stale."""
 
-        target_worktree = self._target_worktree()
-        if target_worktree is None:
+        def advance() -> subprocess.CompletedProcess[str]:
+            target_worktree = self._target_worktree()
+            if target_worktree is None:
+                return self._git(
+                    "update-ref",
+                    f"refs/heads/{self.target_branch}",
+                    rebased_commit,
+                    expected_target,
+                )
+            status = self._git(
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+                cwd=target_worktree,
+            )
+            if status.returncode != 0:
+                return status
+            if status.stdout.strip():
+                return subprocess.CompletedProcess(
+                    ["git", "status", "--porcelain"],
+                    2,
+                    stdout=status.stdout,
+                    stderr=f"target worktree is dirty: {target_worktree}",
+                )
+            current = self._git("rev-parse", "HEAD", cwd=target_worktree)
+            if current.returncode != 0:
+                return current
+            if current.stdout.strip() != expected_target:
+                return subprocess.CompletedProcess(
+                    ["git", "rev-parse", "HEAD"],
+                    3,
+                    stdout=current.stdout,
+                    stderr="target advanced while candidate was rebased",
+                )
             return self._git(
-                "update-ref",
-                f"refs/heads/{self.target_branch}",
-                rebased_commit,
-                expected_target,
+                "merge", "--ff-only", rebased_commit, cwd=target_worktree
             )
-        status = self._git("status", "--porcelain", "--untracked-files=normal", cwd=target_worktree)
-        if status.returncode != 0:
-            return status
-        if status.stdout.strip():
-            return subprocess.CompletedProcess(
-                ["git", "status", "--porcelain"],
-                2,
-                stdout=status.stdout,
-                stderr=f"target worktree is dirty: {target_worktree}",
-            )
-        current = self._git("rev-parse", "HEAD", cwd=target_worktree)
-        if current.returncode != 0:
-            return current
-        if current.stdout.strip() != expected_target:
-            return subprocess.CompletedProcess(
-                ["git", "rev-parse", "HEAD"],
-                3,
-                stdout=current.stdout,
-                stderr="target advanced while candidate was rebased",
-            )
-        return self._git("merge", "--ff-only", rebased_commit, cwd=target_worktree)
+
+        return self._runtime_mutation(
+            "merge",
+            {
+                "target_branch": self.target_branch,
+                "expected_target": expected_target,
+                "rebased_commit": rebased_commit,
+                "operation": "advance_target",
+            },
+            advance,
+        )
 
     def _target_worktree(self) -> Path | None:
         """Return the worktree currently holding the target branch, if any."""
