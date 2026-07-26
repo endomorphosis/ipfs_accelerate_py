@@ -56,8 +56,8 @@ found [here](https://github.com/microsoft/UniSpeech/tree/main/UniSpeech-SAT).
 
 ## Resources
 
-- [Audio classification task guide](../tasks/audio_classification)
-- [Automatic speech recognition task guide](../tasks/asr)
+- [Audio classification task guide](../tasks/audio_classification.md)
+- [Automatic speech recognition task guide](../tasks/asr.md)
 
 ## UniSpeechSatConfig
 
