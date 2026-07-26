@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The DPT model was proposed in [Vision Transformers for Dense Prediction](https://arxiv.org/abs/2103.13413) by René Ranftl, Alexey Bochkovskiy, Vladlen Koltun.
-DPT is a model that leverages the [Vision Transformer (ViT)](vit.md) as backbone for dense prediction tasks like semantic segmentation and depth estimation.
+DPT is a model that leverages the [Vision Transformer (ViT)](./vit.md) as backbone for dense prediction tasks like semantic segmentation and depth estimation.
 
 The abstract from the paper is the following:
 
