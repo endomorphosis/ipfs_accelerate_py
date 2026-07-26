@@ -5410,38 +5410,79 @@ def evidence_index(
 
     lowered_terms = {term: term.lower() for term in normalized_terms}
     cached_records = list(records) if records is not None else None
-    candidates: list[tuple[str, str, set[str], set[str], list[float]]] = []
-    if cached_records is not None:
-        for row in sorted(cached_records, key=lambda item: str(item.get("root_relative_path") or "")):
-            root_relative = str(row.get("root_relative_path") or "")
-            if not root_relative:
-                continue
-            candidate = repo_root / root_relative
-            if (
-                source_protected_scan_reason(repo_root, candidate)
-                or _path_is_scan_excluded(candidate, resolved_scan_excludes)
+
+    def iter_candidates() -> Iterable[
+        tuple[str, str, set[str], set[str], list[float]]
+    ]:
+        """Yield one evidence candidate at a time in stable path order.
+
+        The direct tracked-source path can cover large composite repositories.
+        Keeping every source body, token set, and embedding alive until scoring
+        begins makes the source-safe ``--no-persist-ast-dataset`` mode consume
+        memory proportional to the complete checkout.  Each candidate is
+        scored exactly once, so streaming preserves evidence order and
+        decisions while bounding retained source data to the current file.
+        """
+
+        if cached_records is not None:
+            for row in sorted(
+                cached_records,
+                key=lambda item: str(item.get("root_relative_path") or ""),
             ):
-                continue
-            text = str(row.get("evidence_text") or "")
-            symbols = set(_record_symbols(row))
-            try:
-                raw_tokens = json.loads(str(row.get("document_tokens_json") or "[]"))
-            except (TypeError, ValueError):
-                raw_tokens = []
-            document_tokens = {str(item) for item in raw_tokens} if isinstance(raw_tokens, list) else set()
-            try:
-                raw_embedding = json.loads(str(row.get("document_embedding_json") or "[]"))
-                document_embedding = [float(item) for item in raw_embedding] if isinstance(raw_embedding, list) else []
-            except (TypeError, ValueError):
-                document_embedding = []
-            # Legacy/incomplete rows are never silently treated as negative
-            # evidence.  Rebuild their cheap derived fields from cached text.
-            if not document_embedding or not document_tokens:
-                document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
-                document_embedding = text_embedding(document_text)
-                document_tokens = set(objective_tokens(document_text))
-            candidates.append((root_relative, text, symbols, document_tokens, document_embedding))
-    else:
+                root_relative = str(row.get("root_relative_path") or "")
+                if not root_relative:
+                    continue
+                candidate = repo_root / root_relative
+                if (
+                    source_protected_scan_reason(repo_root, candidate)
+                    or _path_is_scan_excluded(
+                        candidate,
+                        resolved_scan_excludes,
+                    )
+                ):
+                    continue
+                text = str(row.get("evidence_text") or "")
+                symbols = set(_record_symbols(row))
+                try:
+                    raw_tokens = json.loads(
+                        str(row.get("document_tokens_json") or "[]")
+                    )
+                except (TypeError, ValueError):
+                    raw_tokens = []
+                document_tokens = (
+                    {str(item) for item in raw_tokens}
+                    if isinstance(raw_tokens, list)
+                    else set()
+                )
+                try:
+                    raw_embedding = json.loads(
+                        str(row.get("document_embedding_json") or "[]")
+                    )
+                    document_embedding = (
+                        [float(item) for item in raw_embedding]
+                        if isinstance(raw_embedding, list)
+                        else []
+                    )
+                except (TypeError, ValueError):
+                    document_embedding = []
+                # Legacy/incomplete rows are never silently treated as negative
+                # evidence. Rebuild their cheap derived fields from cached text.
+                if not document_embedding or not document_tokens:
+                    document_text = (
+                        f"{root_relative}\n{' '.join(sorted(symbols))}\n"
+                        f"{text[:12000]}"
+                    )
+                    document_embedding = text_embedding(document_text)
+                    document_tokens = set(objective_tokens(document_text))
+                yield (
+                    root_relative,
+                    text,
+                    symbols,
+                    document_tokens,
+                    document_embedding,
+                )
+            return
+
         for path in objective_candidate_files(
             repo_root,
             objective_path=objective_path,
@@ -5453,18 +5494,24 @@ def evidence_index(
             except OSError:
                 continue
             symbols = symbol_terms(path, text)
-            document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
-            candidates.append(
-                (
-                    root_relative,
-                    text,
-                    symbols,
-                    set(objective_tokens(document_text)),
-                    text_embedding(document_text),
-                )
+            document_text = (
+                f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
+            )
+            yield (
+                root_relative,
+                text,
+                symbols,
+                set(objective_tokens(document_text)),
+                text_embedding(document_text),
             )
 
-    for root_relative, text, symbols, document_tokens, document_embedding in candidates:
+    for (
+        root_relative,
+        text,
+        symbols,
+        document_tokens,
+        document_embedding,
+    ) in iter_candidates():
         haystack = f"{root_relative}\n{text}".lower()
         evidence_symbols = _ast_evidence_symbols(symbols)
 

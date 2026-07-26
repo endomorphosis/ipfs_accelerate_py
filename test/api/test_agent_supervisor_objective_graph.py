@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import ipfs_accelerate_py.agent_supervisor.objective_graph as objective_graph_module
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
@@ -43,6 +44,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     EXTERNAL_AUTHORITY_BENCHMARK_GOAL_IDS,
+    EvidenceSourcePolicy,
     ObjectiveFinding,
     add_goal_packet_aggregate_findings,
     assign_goal_subgoal_packets,
@@ -223,6 +225,48 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.missing_evidence == ["missing_meta_glasses_contract"]
     assert finding.present_evidence["CapabilityRouter.dispatch_task"] == ["src/runtime_router.py (ast)"]
     assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
+
+
+def test_evidence_index_streams_each_direct_source_before_reading_the_next(
+    tmp_path,
+    monkeypatch,
+):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    first = repo / "src" / "runtime_router.py"
+    second = repo / "docs" / "runtime_notes.md"
+    first_was_scored = False
+
+    original_evaluate = EvidenceSourcePolicy.evaluate
+
+    def observed_evaluate(self, requirement, **kwargs):
+        nonlocal first_was_scored
+        if kwargs.get("source_path") == "src/runtime_router.py":
+            first_was_scored = True
+        return original_evaluate(self, requirement, **kwargs)
+
+    def observed_candidates(*_args, **_kwargs):
+        yield first
+        assert first_was_scored
+        yield second
+
+    monkeypatch.setattr(EvidenceSourcePolicy, "evaluate", observed_evaluate)
+    monkeypatch.setattr(
+        objective_graph_module,
+        "objective_candidate_files",
+        observed_candidates,
+    )
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=["CapabilityRouter"],
+        embedding_min_score=2.0,
+    )
+
+    assert first_was_scored is True
+    assert evidence == {
+        "CapabilityRouter": ["src/runtime_router.py (exact)"],
+    }
 
 
 def test_objective_scanner_excludes_sensitive_root_without_reading_it(
