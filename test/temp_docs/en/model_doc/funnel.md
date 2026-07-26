@@ -61,6 +61,8 @@ This model was contributed by [sgugger](https://huggingface.co/sgugger). The ori
 
 ## Resources
 
+The task guides below are maintained alongside this model documentation:
+
 - [Text classification task guide](../tasks/sequence_classification.md)
 - [Token classification task guide](../tasks/token_classification.md)
 - [Question answering task guide](../tasks/question_answering.md)
