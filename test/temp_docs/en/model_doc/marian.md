@@ -162,9 +162,9 @@ Example of translating english to many romance languages, using old-style 2 char
 
 ## Resources
 
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## MarianConfig
 
