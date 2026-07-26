@@ -36,6 +36,18 @@ TASK_SEMANTIC_IDENTITY_SCHEMA = (
 TASK_WORK_CONTRACT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-work-contract@1"
 )
+TASK_GRANULARITY_MEASUREMENT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-granularity-measurement@1"
+)
+TASK_GRANULARITY_CALIBRATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-granularity-calibration@1"
+)
+TASK_COMPLETION_PROPAGATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-completion-propagation@1"
+)
+TASK_GRANULARITY_RUN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-granularity-run@1"
+)
 TASK_QUALITY_EVALUATOR_VERSION = "task-quality/v1"
 TASK_GENERATION_OBJECTIVE_ID: Final = "ASI-G050"
 TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
@@ -154,6 +166,13 @@ def _finite_ratio(value: Any, name: str) -> float:
     return parsed
 
 
+def _positive_int(value: Any, name: str) -> int:
+    parsed = _non_negative_int(value, name)
+    if parsed == 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return parsed
+
+
 def _evidence_hash_material(value: Any) -> Any:
     """Project finite floats to stable strings for canonical receipt hashing."""
 
@@ -206,7 +225,7 @@ def _task_work_contract_material(candidate: "TaskCandidate") -> dict[str, Any]:
     admission or bundle evidence.
     """
 
-    return {
+    result = {
         "schema": TASK_WORK_CONTRACT_SCHEMA,
         "goal_id": _normalized_text(candidate.goal_id),
         "acceptance_effect_subset": {
@@ -258,6 +277,33 @@ def _task_work_contract_material(candidate: "TaskCandidate") -> dict[str, Any]:
             "merge_fate": _normalized_text(candidate.merge_fate),
         },
     }
+    # Keep the v1 projection byte-for-byte compatible for legacy candidates,
+    # while binding the richer ASI-110 interface/proof/risk predictions whenever
+    # they are declared.
+    if candidate.predicted_interfaces:
+        result["predicted_scope"]["interfaces"] = sorted(
+            _normalized_text(item) for item in candidate.predicted_interfaces
+        )
+    if candidate.proof_obligations or candidate.proof_commands:
+        result["predicted_proof"] = {
+            "obligations": sorted(
+                _normalized_text(item) for item in candidate.proof_obligations
+            ),
+            "commands": sorted(
+                _normalized_display_text(item) for item in candidate.proof_commands
+            ),
+            "estimated_seconds": candidate.estimated_proof_seconds,
+        }
+    if candidate.estimated_merge_risk_millionths:
+        result["predicted_costs"]["merge_risk_millionths"] = (
+            candidate.estimated_merge_risk_millionths
+        )
+    shard = _normalized_display_text(
+        candidate.metadata.get("granularity_shard")
+    )
+    if shard:
+        result["execution_boundary"]["granularity_shard"] = shard
+    return result
 
 
 def _semantic_material(value: "TaskCandidate | Mapping[str, Any]") -> dict[str, Any]:
@@ -285,6 +331,22 @@ def _semantic_material(value: "TaskCandidate | Mapping[str, Any]") -> dict[str, 
         ),
         "merge_fate": _normalized_text(candidate.merge_fate),
     }
+    if candidate.predicted_interfaces:
+        material["predicted_interfaces"] = sorted(
+            _normalized_text(item) for item in candidate.predicted_interfaces
+        )
+    if candidate.proof_obligations or candidate.proof_commands:
+        material["proof_obligations"] = sorted(
+            _normalized_text(item) for item in candidate.proof_obligations
+        )
+        material["proof_commands"] = sorted(
+            _normalized_display_text(item) for item in candidate.proof_commands
+        )
+    shard = _normalized_display_text(
+        candidate.metadata.get("granularity_shard")
+    )
+    if shard:
+        material["granularity_shard"] = shard
     # Context changes execution cost, but not the work's purpose.  It is used
     # as identity material only when there is no concrete output/symbol surface.
     if not material["outputs"] and not material["predicted_symbols"]:
@@ -328,6 +390,9 @@ class TaskCandidate:
     context_keys: tuple[str, ...] = ()
     predicted_paths: tuple[str, ...] = ()
     predicted_symbols: tuple[str, ...] = ()
+    predicted_interfaces: tuple[str, ...] = ()
+    proof_obligations: tuple[str, ...] = ()
+    proof_commands: tuple[str, ...] = ()
     dependencies: tuple[str, ...] = ()
     conflicts: tuple[str, ...] = ()
     resources: tuple[str, ...] = ()
@@ -338,7 +403,9 @@ class TaskCandidate:
     track: str = ""
     estimated_context_tokens: int = 0
     estimated_validation_seconds: int = 0
+    estimated_proof_seconds: int = 0
     estimated_tokens: int = 0
+    estimated_merge_risk_millionths: int = 0
     historical_duplicate_similarity: float = 0.0
     historical_failure_similarity: float = 0.0
     source_id: str = ""
@@ -374,6 +441,9 @@ class TaskCandidate:
             "evidence_subset",
             "validation_commands",
             "predicted_symbols",
+            "predicted_interfaces",
+            "proof_obligations",
+            "proof_commands",
             "dependencies",
             "conflicts",
             "resources",
@@ -384,7 +454,9 @@ class TaskCandidate:
         for name in (
             "estimated_context_tokens",
             "estimated_validation_seconds",
+            "estimated_proof_seconds",
             "estimated_tokens",
+            "estimated_merge_risk_millionths",
         ):
             object.__setattr__(
                 self,
@@ -471,6 +543,25 @@ class TaskCandidate:
             predicted_symbols=_strings(
                 _mapping_value(payload, "predicted symbols", "ast symbols", "symbols")
             ),
+            predicted_interfaces=_strings(
+                _mapping_value(
+                    payload,
+                    "predicted interfaces",
+                    "interfaces",
+                    "interface contracts",
+                )
+            ),
+            proof_obligations=_strings(
+                _mapping_value(
+                    payload,
+                    "proof obligations",
+                    "predicted proof",
+                    "proof subset",
+                )
+            ),
+            proof_commands=_strings(
+                _mapping_value(payload, "proof commands", "proof validation")
+            ),
             dependencies=_strings(
                 _mapping_value(payload, "dependencies", "depends on")
             ),
@@ -495,8 +586,21 @@ class TaskCandidate:
                 "validation cost",
                 default=0,
             ),
+            estimated_proof_seconds=_mapping_value(
+                payload,
+                "estimated proof seconds",
+                "proof seconds",
+                "proof cost",
+                default=0,
+            ),
             estimated_tokens=_mapping_value(
                 payload, "estimated tokens", "token cost", default=0
+            ),
+            estimated_merge_risk_millionths=_mapping_value(
+                payload,
+                "estimated merge risk millionths",
+                "merge risk millionths",
+                default=0,
             ),
             historical_duplicate_similarity=_mapping_value(
                 payload,
@@ -570,6 +674,14 @@ class TaskCandidate:
         return len(self.predicted_symbols)
 
     @property
+    def predicted_interface_breadth(self) -> int:
+        return len(self.predicted_interfaces)
+
+    @property
+    def predicted_proof_breadth(self) -> int:
+        return len(self.proof_obligations)
+
+    @property
     def work_contract(self) -> dict[str, Any]:
         """Return the canonical single-subset work contract."""
 
@@ -621,6 +733,9 @@ class TaskCandidate:
             "context_keys",
             "predicted_paths",
             "predicted_symbols",
+            "predicted_interfaces",
+            "proof_obligations",
+            "proof_commands",
             "dependencies",
             "conflicts",
             "resources",
@@ -635,6 +750,8 @@ class TaskCandidate:
         result["predicted_costs_complete"] = self.predicted_costs_complete
         result["predicted_path_breadth"] = self.predicted_path_breadth
         result["predicted_symbol_breadth"] = self.predicted_symbol_breadth
+        result["predicted_interface_breadth"] = self.predicted_interface_breadth
+        result["predicted_proof_breadth"] = self.predicted_proof_breadth
         return result
 
 
@@ -677,13 +794,17 @@ class TaskQualityPolicy:
     failure_similarity_threshold: float = 0.90
     max_predicted_paths: int = 8
     max_predicted_symbols: int = 24
+    max_predicted_interfaces: int = 16
     max_acceptance_criteria: int = 12
     max_effects: int = 12
     max_evidence_items: int = 16
     max_context_paths: int = 16
     max_context_tokens: int = 24_000
     max_validation_seconds: int = 1_800
+    max_proof_items: int = 16
+    max_proof_seconds: int = 1_800
     max_estimated_tokens: int = 32_768
+    max_merge_risk_millionths: int = 1_000_000
     max_dependencies: int = 16
     max_conflicts: int = 8
     tiny_max_paths: int = 2
@@ -705,13 +826,17 @@ class TaskQualityPolicy:
         for name in (
             "max_predicted_paths",
             "max_predicted_symbols",
+            "max_predicted_interfaces",
             "max_acceptance_criteria",
             "max_effects",
             "max_evidence_items",
             "max_context_paths",
             "max_context_tokens",
             "max_validation_seconds",
+            "max_proof_items",
+            "max_proof_seconds",
             "max_estimated_tokens",
+            "max_merge_risk_millionths",
             "max_dependencies",
             "max_conflicts",
             "tiny_max_paths",
@@ -726,9 +851,11 @@ class TaskQualityPolicy:
         if (
             self.max_predicted_paths == 0
             or self.max_predicted_symbols == 0
+            or self.max_predicted_interfaces == 0
             or self.max_acceptance_criteria == 0
             or self.max_effects == 0
             or self.max_evidence_items == 0
+            or self.max_proof_items == 0
             or self.max_split_parts == 0
         ):
             raise ValueError("task breadth limits must be positive")
@@ -743,6 +870,343 @@ class TaskQualityPolicy:
             _task_quality_evidence_bytes(asdict(self))
         ).hexdigest()
         return f"task-quality-policy/v1/{digest}"
+
+
+@dataclass(frozen=True)
+class TaskCostMeasurement:
+    """One successful task execution used to calibrate granularity.
+
+    Measurements are deliberately feature-scoped.  A value from another tree,
+    policy, or toolchain is retained as an excluded diagnostic by calibration
+    and can never affect an effective bound.
+    """
+
+    fixture_id: str
+    repository_tree: str
+    policy_id: str
+    toolchain_features: tuple[str, ...]
+    acceptance_count: int
+    context_path_count: int
+    context_tokens: int
+    predicted_file_count: int
+    predicted_symbol_count: int
+    predicted_interface_count: int
+    validation_seconds: int
+    proof_item_count: int
+    proof_seconds: int
+    task_tokens: int
+    merge_risk_millionths: int
+    model_calls: int
+    accepted_criteria: int
+    measurement_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in ("fixture_id", "repository_tree", "policy_id"):
+            object.__setattr__(
+                self, name, _normalized_display_text(getattr(self, name))
+            )
+            if not getattr(self, name):
+                raise ValueError(f"{name} is required")
+        features = _strings(self.toolchain_features)
+        if not features:
+            raise ValueError("toolchain_features must identify the measured toolchain")
+        object.__setattr__(self, "toolchain_features", features)
+        for name in (
+            "acceptance_count",
+            "context_path_count",
+            "context_tokens",
+            "predicted_file_count",
+            "predicted_symbol_count",
+            "predicted_interface_count",
+            "validation_seconds",
+            "proof_item_count",
+            "proof_seconds",
+            "task_tokens",
+            "accepted_criteria",
+        ):
+            object.__setattr__(self, name, _positive_int(getattr(self, name), name))
+        object.__setattr__(
+            self, "model_calls", _non_negative_int(self.model_calls, "model_calls")
+        )
+        if self.accepted_criteria > self.acceptance_count:
+            raise ValueError("accepted_criteria cannot exceed acceptance_count")
+        risk = _non_negative_int(
+            self.merge_risk_millionths, "merge_risk_millionths"
+        )
+        if risk > 1_000_000:
+            raise ValueError("merge_risk_millionths cannot exceed 1000000")
+        object.__setattr__(self, "merge_risk_millionths", risk)
+        expected = _task_quality_evidence_cid(self._material())
+        supplied = str(self.measurement_id or "").strip()
+        if supplied and supplied != expected:
+            raise ValueError(
+                "measurement_id does not match canonical task cost measurement"
+            )
+        object.__setattr__(self, "measurement_id", expected)
+
+    def _material(self) -> dict[str, Any]:
+        return {
+            "schema": TASK_GRANULARITY_MEASUREMENT_SCHEMA,
+            "fixture_id": self.fixture_id,
+            "repository_tree": self.repository_tree,
+            "policy_id": self.policy_id,
+            "toolchain_features": list(self.toolchain_features),
+            "acceptance_count": self.acceptance_count,
+            "context_path_count": self.context_path_count,
+            "context_tokens": self.context_tokens,
+            "predicted_file_count": self.predicted_file_count,
+            "predicted_symbol_count": self.predicted_symbol_count,
+            "predicted_interface_count": self.predicted_interface_count,
+            "validation_seconds": self.validation_seconds,
+            "proof_item_count": self.proof_item_count,
+            "proof_seconds": self.proof_seconds,
+            "task_tokens": self.task_tokens,
+            "merge_risk_millionths": self.merge_risk_millionths,
+            "model_calls": self.model_calls,
+            "accepted_criteria": self.accepted_criteria,
+        }
+
+    def matches(
+        self,
+        *,
+        repository_tree: str,
+        policy_id: str,
+        toolchain_features: Iterable[str],
+    ) -> bool:
+        return (
+            self.repository_tree == _normalized_display_text(repository_tree)
+            and self.policy_id == _normalized_display_text(policy_id)
+            and self.toolchain_features == _strings(toolchain_features)
+        )
+
+    @property
+    def model_calls_per_accepted_criterion(self) -> float:
+        return self.model_calls / self.accepted_criteria
+
+    def to_dict(self) -> dict[str, Any]:
+        result = self._material()
+        result["measurement_id"] = self.measurement_id
+        return result
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TaskCostMeasurement":
+        allowed = {
+            "schema",
+            "fixture_id",
+            "repository_tree",
+            "policy_id",
+            "toolchain_features",
+            "acceptance_count",
+            "context_path_count",
+            "context_tokens",
+            "predicted_file_count",
+            "predicted_symbol_count",
+            "predicted_interface_count",
+            "validation_seconds",
+            "proof_item_count",
+            "proof_seconds",
+            "task_tokens",
+            "merge_risk_millionths",
+            "model_calls",
+            "accepted_criteria",
+            "measurement_id",
+        }
+        extras = set(payload) - allowed
+        if extras:
+            raise ValueError(
+                "task cost measurement has unknown fields: "
+                + ", ".join(sorted(str(item) for item in extras))
+            )
+        if str(payload.get("schema") or "") != TASK_GRANULARITY_MEASUREMENT_SCHEMA:
+            raise ValueError("task cost measurement schema mismatch")
+        return cls(
+            **{
+                name: payload.get(name)
+                for name in cls.__dataclass_fields__
+            }
+        )
+
+
+@dataclass(frozen=True)
+class TaskGranularityCalibration:
+    """Deterministic effective policy derived from matching measurements."""
+
+    repository_tree: str
+    source_policy_id: str
+    toolchain_features: tuple[str, ...]
+    matching_measurement_ids: tuple[str, ...]
+    excluded_measurement_ids: tuple[str, ...]
+    effective_policy: TaskQualityPolicy
+    calibration_id: str = ""
+
+    def __post_init__(self) -> None:
+        tree = _normalized_display_text(self.repository_tree)
+        policy_id = _normalized_display_text(self.source_policy_id)
+        features = _strings(self.toolchain_features)
+        matching = _strings(self.matching_measurement_ids)
+        excluded = _strings(self.excluded_measurement_ids)
+        if not tree or not policy_id or not features or not matching:
+            raise ValueError(
+                "calibration requires tree, source policy, toolchain, and "
+                "at least one matching measurement"
+            )
+        if set(matching) & set(excluded):
+            raise ValueError("matching and excluded measurements must be disjoint")
+        object.__setattr__(self, "repository_tree", tree)
+        object.__setattr__(self, "source_policy_id", policy_id)
+        object.__setattr__(self, "toolchain_features", features)
+        object.__setattr__(self, "matching_measurement_ids", matching)
+        object.__setattr__(self, "excluded_measurement_ids", excluded)
+        expected = _task_quality_evidence_cid(self._identity_material())
+        supplied = str(self.calibration_id or "").strip()
+        if supplied and supplied != expected:
+            raise ValueError(
+                "calibration_id does not match canonical task granularity calibration"
+            )
+        object.__setattr__(self, "calibration_id", expected)
+
+    def _identity_material(self) -> dict[str, Any]:
+        return {
+            "schema": TASK_GRANULARITY_CALIBRATION_SCHEMA,
+            "repository_tree": self.repository_tree,
+            "source_policy_id": self.source_policy_id,
+            "toolchain_features": list(self.toolchain_features),
+            "matching_measurement_ids": list(self.matching_measurement_ids),
+            "effective_policy": asdict(self.effective_policy),
+            "effective_policy_id": self.effective_policy.policy_id,
+        }
+
+    def applies_to(
+        self,
+        policy: TaskQualityPolicy,
+        *,
+        repository_tree: str | None = None,
+        toolchain_features: Iterable[str] | None = None,
+    ) -> bool:
+        if self.source_policy_id != policy.policy_id:
+            return False
+        if repository_tree is not None and self.repository_tree != _normalized_display_text(
+            repository_tree
+        ):
+            return False
+        if toolchain_features is not None and self.toolchain_features != _strings(
+            toolchain_features
+        ):
+            return False
+        return True
+
+    def to_dict(self) -> dict[str, Any]:
+        result = self._identity_material()
+        result["excluded_measurement_ids"] = list(self.excluded_measurement_ids)
+        result["calibration_id"] = self.calibration_id
+        return result
+
+
+def calibrate_task_granularity(
+    measurements: Iterable[TaskCostMeasurement | Mapping[str, Any]],
+    *,
+    repository_tree: str,
+    policy: TaskQualityPolicy | None = None,
+    toolchain_features: Iterable[str],
+) -> TaskGranularityCalibration:
+    """Derive conservative bounds from exactly matching successful history."""
+
+    selected = policy or TaskQualityPolicy()
+    requested_features = _strings(toolchain_features)
+    history = tuple(
+        item
+        if isinstance(item, TaskCostMeasurement)
+        else TaskCostMeasurement.from_dict(item)
+        for item in measurements
+    )
+    matching = tuple(
+        sorted(
+            (
+                item
+                for item in history
+                if item.matches(
+                    repository_tree=repository_tree,
+                    policy_id=selected.policy_id,
+                    toolchain_features=requested_features,
+                )
+            ),
+            key=lambda item: item.measurement_id,
+        )
+    )
+    if not matching:
+        raise ValueError(
+            "no task cost measurements match repository tree, policy, and "
+            "toolchain features"
+        )
+
+    def observed_max(name: str, policy_limit: int) -> int:
+        return max(1, min(policy_limit, max(getattr(item, name) for item in matching)))
+
+    effective = replace(
+        selected,
+        max_acceptance_criteria=observed_max(
+            "acceptance_count", selected.max_acceptance_criteria
+        ),
+        max_context_paths=observed_max(
+            "context_path_count", selected.max_context_paths
+        ),
+        max_context_tokens=observed_max(
+            "context_tokens", selected.max_context_tokens
+        ),
+        max_predicted_paths=observed_max(
+            "predicted_file_count", selected.max_predicted_paths
+        ),
+        max_predicted_symbols=observed_max(
+            "predicted_symbol_count", selected.max_predicted_symbols
+        ),
+        max_predicted_interfaces=observed_max(
+            "predicted_interface_count", selected.max_predicted_interfaces
+        ),
+        max_validation_seconds=observed_max(
+            "validation_seconds", selected.max_validation_seconds
+        ),
+        max_proof_items=observed_max(
+            "proof_item_count", selected.max_proof_items
+        ),
+        max_proof_seconds=observed_max(
+            "proof_seconds", selected.max_proof_seconds
+        ),
+        max_estimated_tokens=observed_max(
+            "task_tokens", selected.max_estimated_tokens
+        ),
+        max_merge_risk_millionths=min(
+            selected.max_merge_risk_millionths,
+            max(item.merge_risk_millionths for item in matching),
+        ),
+    )
+    matching_ids = tuple(item.measurement_id for item in matching)
+    matching_set = set(matching_ids)
+    excluded_ids = tuple(
+        sorted(
+            item.measurement_id
+            for item in history
+            if item.measurement_id not in matching_set
+        )
+    )
+    return TaskGranularityCalibration(
+        repository_tree=repository_tree,
+        source_policy_id=selected.policy_id,
+        toolchain_features=requested_features,
+        matching_measurement_ids=matching_ids,
+        excluded_measurement_ids=excluded_ids,
+        effective_policy=effective,
+    )
+
+
+def _effective_granularity_policy(
+    policy: TaskQualityPolicy,
+    calibration: TaskGranularityCalibration | None,
+) -> TaskQualityPolicy:
+    if calibration is None:
+        return policy
+    if not calibration.applies_to(policy):
+        raise ValueError("task granularity calibration does not match source policy")
+    return calibration.effective_policy
 
 
 @dataclass(frozen=True)
@@ -875,6 +1339,7 @@ class TaskAdmissionResult:
     initial_open_work: int
     max_open_work: int
     candidate_count: int
+    granularity_calibration_id: str = ""
 
     @property
     def accepted(self) -> tuple[TaskCandidate, ...]:
@@ -901,7 +1366,7 @@ class TaskAdmissionResult:
         for decision in self.rejected:
             for reason in decision.rejection_reasons:
                 rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
-        return {
+        result = {
             "schema": TASK_QUALITY_SCHEMA,
             "evaluator_version": TASK_QUALITY_EVALUATOR_VERSION,
             "decisions": [item.to_dict() for item in self.decisions],
@@ -914,6 +1379,9 @@ class TaskAdmissionResult:
             "max_open_work": self.max_open_work,
             "bounded": self.bounded,
         }
+        if self.granularity_calibration_id:
+            result["granularity_calibration_id"] = self.granularity_calibration_id
+        return result
 
 
 def _semantic_tokens(candidate: TaskCandidate) -> set[str]:
@@ -1042,13 +1510,15 @@ def score_task_candidate(
     policy: TaskQualityPolicy | None = None,
     historical_tasks: Iterable[Any] = (),
     historical_failures: Iterable[Any] = (),
+    calibration: TaskGranularityCalibration | None = None,
 ) -> TaskQualityScore:
     """Score all acceptance dimensions without mutating scheduler state."""
 
     item = (
         candidate if isinstance(candidate, TaskCandidate) else TaskCandidate.from_mapping(candidate)
     )
-    selected = policy or TaskQualityPolicy()
+    source_policy = policy or TaskQualityPolicy()
+    selected = _effective_granularity_policy(source_policy, calibration)
     tasks = _history(historical_tasks, default_outcome="accepted")
     failures = _history(historical_failures, default_outcome="failed")
     duplicate_similarity = max(
@@ -1194,6 +1664,12 @@ def _task_rejections(
             "predicted_symbol_breadth",
             f"{candidate.predicted_symbol_breadth} symbols exceed {policy.max_predicted_symbols}",
         )
+    if candidate.predicted_interface_breadth > policy.max_predicted_interfaces:
+        reject(
+            "predicted_interface_breadth",
+            f"{candidate.predicted_interface_breadth} interfaces exceed "
+            f"{policy.max_predicted_interfaces}",
+        )
     if len(candidate.acceptance) > policy.max_acceptance_criteria:
         reject(
             "acceptance_breadth",
@@ -1224,6 +1700,35 @@ def _task_rejections(
             "validation_cost",
             f"{candidate.estimated_validation_seconds}s exceeds {policy.max_validation_seconds}s",
         )
+    if candidate.proof_obligations and not candidate.proof_commands:
+        reject(
+            "missing_proof_validation",
+            "declared proof obligations require proof commands",
+        )
+    if candidate.proof_commands and not candidate.proof_obligations:
+        reject(
+            "missing_proof_obligations",
+            "declared proof commands require proof obligations",
+        )
+    if (
+        candidate.proof_obligations or candidate.proof_commands
+    ) and candidate.estimated_proof_seconds <= 0:
+        reject(
+            "missing_estimated_proof_seconds",
+            "declared proof obligations require a positive proof cost",
+        )
+    if len(candidate.proof_obligations) > policy.max_proof_items:
+        reject(
+            "proof_breadth",
+            f"{len(candidate.proof_obligations)} proof obligations exceed "
+            f"{policy.max_proof_items}",
+        )
+    if candidate.estimated_proof_seconds > policy.max_proof_seconds:
+        reject(
+            "proof_cost",
+            f"{candidate.estimated_proof_seconds}s exceeds "
+            f"{policy.max_proof_seconds}s",
+        )
     if candidate.estimated_tokens > policy.max_estimated_tokens:
         reject(
             "task_token_cost",
@@ -1238,6 +1743,15 @@ def _task_rejections(
         reject(
             "conflict_cost",
             f"{len(candidate.conflicts)} conflicts exceed {policy.max_conflicts}",
+        )
+    if (
+        candidate.estimated_merge_risk_millionths
+        > policy.max_merge_risk_millionths
+    ):
+        reject(
+            "merge_risk",
+            f"{candidate.estimated_merge_risk_millionths} exceeds "
+            f"{policy.max_merge_risk_millionths} millionths",
         )
     if score.duplicate_similarity >= policy.duplicate_similarity_threshold:
         reject(
@@ -1265,11 +1779,13 @@ def admit_task_candidate(
     policy: TaskQualityPolicy | None = None,
     historical_tasks: Iterable[Any] = (),
     historical_failures: Iterable[Any] = (),
+    calibration: TaskGranularityCalibration | None = None,
 ) -> TaskAdmissionDecision:
     item = (
         candidate if isinstance(candidate, TaskCandidate) else TaskCandidate.from_mapping(candidate)
     )
-    selected = policy or TaskQualityPolicy()
+    source_policy = policy or TaskQualityPolicy()
+    selected = _effective_granularity_policy(source_policy, calibration)
     score = score_task_candidate(
         item,
         policy=selected,
@@ -1293,22 +1809,39 @@ def admit_task_candidate(
 def is_over_broad(
     candidate: TaskCandidate,
     policy: TaskQualityPolicy | None = None,
+    *,
+    calibration: TaskGranularityCalibration | None = None,
 ) -> bool:
-    selected = policy or TaskQualityPolicy()
+    source_policy = policy or TaskQualityPolicy()
+    selected = _effective_granularity_policy(source_policy, calibration)
     return (
         candidate.predicted_path_breadth > selected.max_predicted_paths
         or candidate.predicted_symbol_breadth > selected.max_predicted_symbols
+        or candidate.predicted_interface_breadth
+        > selected.max_predicted_interfaces
         or len(candidate.acceptance) > selected.max_acceptance_criteria
         or len(candidate.effects) > selected.max_effects
         or len(candidate.evidence_subset) > selected.max_evidence_items
         or len(candidate.context_paths) > selected.max_context_paths
         or candidate.estimated_context_tokens > selected.max_context_tokens
+        or candidate.estimated_validation_seconds
+        > selected.max_validation_seconds
+        or len(candidate.proof_obligations) > selected.max_proof_items
+        or candidate.estimated_proof_seconds > selected.max_proof_seconds
         or candidate.estimated_tokens > selected.max_estimated_tokens
+        or candidate.estimated_merge_risk_millionths
+        > selected.max_merge_risk_millionths
     )
 
 
-def is_tiny(candidate: TaskCandidate, policy: TaskQualityPolicy | None = None) -> bool:
-    selected = policy or TaskQualityPolicy()
+def is_tiny(
+    candidate: TaskCandidate,
+    policy: TaskQualityPolicy | None = None,
+    *,
+    calibration: TaskGranularityCalibration | None = None,
+) -> bool:
+    source_policy = policy or TaskQualityPolicy()
+    selected = _effective_granularity_policy(source_policy, calibration)
     return (
         candidate.predicted_path_breadth <= selected.tiny_max_paths
         and candidate.predicted_symbol_breadth <= selected.tiny_max_symbols
@@ -1322,6 +1855,7 @@ def split_task_candidate(
     *,
     max_paths: int | None = None,
     max_symbols: int | None = None,
+    calibration: TaskGranularityCalibration | None = None,
 ) -> tuple[TaskCandidate, ...]:
     """Split over-broad work deterministically while preserving dependencies.
 
@@ -1334,7 +1868,8 @@ def split_task_candidate(
     item = (
         candidate if isinstance(candidate, TaskCandidate) else TaskCandidate.from_mapping(candidate)
     )
-    selected = policy or TaskQualityPolicy()
+    source_policy = policy or TaskQualityPolicy()
+    selected = _effective_granularity_policy(source_policy, calibration)
     path_limit = max(1, int(max_paths or selected.max_predicted_paths))
     symbol_limit = max(1, int(max_symbols or selected.max_predicted_symbols))
     paths = tuple(sorted(set(item.outputs) | set(item.predicted_paths)))
@@ -1343,6 +1878,9 @@ def split_task_candidate(
         1,
         math.ceil(len(paths) / path_limit),
         math.ceil(len(symbols) / symbol_limit),
+        math.ceil(
+            len(item.predicted_interfaces) / selected.max_predicted_interfaces
+        ),
         math.ceil(len(item.acceptance) / selected.max_acceptance_criteria),
         math.ceil(len(item.effects) / selected.max_effects),
         math.ceil(len(item.evidence_subset) / selected.max_evidence_items),
@@ -1357,9 +1895,43 @@ def split_task_candidate(
             else 1
         ),
         (
+            math.ceil(
+                item.estimated_validation_seconds
+                / selected.max_validation_seconds
+            )
+            if selected.max_validation_seconds
+            else (
+                selected.max_split_parts + 1
+                if item.estimated_validation_seconds
+                else 1
+            )
+        ),
+        math.ceil(len(item.proof_obligations) / selected.max_proof_items),
+        (
+            math.ceil(item.estimated_proof_seconds / selected.max_proof_seconds)
+            if selected.max_proof_seconds
+            else (
+                selected.max_split_parts + 1
+                if item.estimated_proof_seconds
+                else 1
+            )
+        ),
+        (
             math.ceil(item.estimated_tokens / selected.max_estimated_tokens)
             if selected.max_estimated_tokens
             else 1
+        ),
+        (
+            math.ceil(
+                item.estimated_merge_risk_millionths
+                / selected.max_merge_risk_millionths
+            )
+            if selected.max_merge_risk_millionths
+            else (
+                selected.max_split_parts + 1
+                if item.estimated_merge_risk_millionths
+                else 1
+            )
         ),
     )
     part_count = min(required_parts, selected.max_split_parts)
@@ -1368,12 +1940,20 @@ def split_task_candidate(
 
     path_chunks = [paths[index::part_count] for index in range(part_count)]
     symbol_chunks = [symbols[index::part_count] for index in range(part_count)]
+    interface_chunks = [
+        item.predicted_interfaces[index::part_count]
+        for index in range(part_count)
+    ]
     acceptance_chunks = [
         item.acceptance[index::part_count] for index in range(part_count)
     ]
     effect_chunks = [item.effects[index::part_count] for index in range(part_count)]
     evidence_chunks = [
         item.evidence_subset[index::part_count] for index in range(part_count)
+    ]
+    proof_chunks = [
+        item.proof_obligations[index::part_count]
+        for index in range(part_count)
     ]
     context_chunks: list[list[str]] = [[] for _ in range(part_count)]
     path_part = {
@@ -1389,8 +1969,29 @@ def split_task_candidate(
             residual_context_index += 1
         context_chunks[target].append(path)
     children: list[TaskCandidate] = []
+
+    def partitioned(total: int, index: int) -> int:
+        quotient, remainder = divmod(total, part_count)
+        return quotient + (1 if index < remainder else 0)
+
+    split_validation_cost = (
+        item.estimated_validation_seconds > selected.max_validation_seconds
+    )
+    split_proof_cost = item.estimated_proof_seconds > selected.max_proof_seconds
+    split_merge_risk = (
+        item.estimated_merge_risk_millionths
+        > selected.max_merge_risk_millionths
+    )
     for index in range(part_count):
-        child_paths = tuple(path_chunks[index])
+        def exact_subset(
+            chunk: Sequence[str],
+            source: Sequence[str],
+        ) -> tuple[str, ...]:
+            if chunk or not source:
+                return tuple(chunk)
+            return (source[index % len(source)],)
+
+        child_paths = exact_subset(path_chunks[index], paths)
         outputs = tuple(path for path in item.outputs if path in child_paths)
         if not outputs and child_paths:
             outputs = child_paths
@@ -1398,24 +1999,62 @@ def split_task_candidate(
         # Partition residual context while keeping exact output context with
         # its owner; copying whole directories into every child would leave
         # each split over-broad and collapse independent execution width.
-        contexts = _strings(context_chunks[index], paths=True)
+        contexts = _strings(
+            (
+                *context_chunks[index],
+                *(path for path in child_paths if path in item.context_paths),
+            ),
+            paths=True,
+        )
+        child_metadata = dict(item.metadata)
+        child_metadata["granularity_shard"] = (
+            f"{item.semantic_identity}:{index + 1}/{part_count}"
+        )
         child = replace(
             item,
             title=f"{item.title} [{index + 1}/{part_count}]",
             outputs=outputs,
             predicted_paths=child_paths,
-            predicted_symbols=tuple(symbol_chunks[index]),
-            acceptance=tuple(acceptance_chunks[index] or item.acceptance),
-            effects=tuple(effect_chunks[index] or item.effects),
-            evidence_subset=tuple(evidence_chunks[index] or item.evidence_subset),
+            predicted_symbols=exact_subset(
+                symbol_chunks[index], item.predicted_symbols
+            ),
+            predicted_interfaces=exact_subset(
+                interface_chunks[index], item.predicted_interfaces
+            ),
+            acceptance=exact_subset(
+                acceptance_chunks[index], item.acceptance
+            ),
+            effects=exact_subset(effect_chunks[index], item.effects),
+            evidence_subset=exact_subset(
+                evidence_chunks[index], item.evidence_subset
+            ),
+            proof_obligations=exact_subset(
+                proof_chunks[index], item.proof_obligations
+            ),
             dependencies=item.dependencies,
             context_paths=contexts,
-            estimated_context_tokens=math.ceil(
-                item.estimated_context_tokens / part_count
+            estimated_context_tokens=partitioned(
+                item.estimated_context_tokens, index
             ),
-            estimated_tokens=math.ceil(item.estimated_tokens / part_count),
+            estimated_validation_seconds=(
+                partitioned(item.estimated_validation_seconds, index)
+                if split_validation_cost
+                else item.estimated_validation_seconds
+            ),
+            estimated_proof_seconds=(
+                partitioned(item.estimated_proof_seconds, index)
+                if split_proof_cost
+                else item.estimated_proof_seconds
+            ),
+            estimated_tokens=partitioned(item.estimated_tokens, index),
+            estimated_merge_risk_millionths=(
+                partitioned(item.estimated_merge_risk_millionths, index)
+                if split_merge_risk
+                else item.estimated_merge_risk_millionths
+            ),
             source_id=f"{item.source_id}:split:{index + 1}" if item.source_id else "",
             semantic_identity="",
+            metadata=child_metadata,
         )
         children.append(child)
     return tuple(children)
@@ -1426,23 +2065,67 @@ def can_coalesce_tasks(
     right: TaskCandidate | Mapping[str, Any],
     *,
     policy: TaskQualityPolicy | None = None,
+    calibration: TaskGranularityCalibration | None = None,
 ) -> bool:
     """Return whether tiny tasks share every required merge-fate boundary."""
 
     first = left if isinstance(left, TaskCandidate) else TaskCandidate.from_mapping(left)
     second = right if isinstance(right, TaskCandidate) else TaskCandidate.from_mapping(right)
-    selected = policy or TaskQualityPolicy()
-    return (
+    source_policy = policy or TaskQualityPolicy()
+    selected = _effective_granularity_policy(source_policy, calibration)
+    compatible = (
         first.semantic_identity != second.semantic_identity
+        and not first.metadata.get("granularity_shard")
+        and not second.metadata.get("granularity_shard")
         and is_tiny(first, selected)
         and is_tiny(second, selected)
         and _normalized_text(first.goal_id) == _normalized_text(second.goal_id)
         and first.context_paths == second.context_paths
         and first.outputs == second.outputs
         and first.validation_commands == second.validation_commands
+        and first.proof_commands == second.proof_commands
         and _normalized_text(first.merge_fate) == _normalized_text(second.merge_fate)
         and first.resource_class.casefold() == second.resource_class.casefold()
         and first.token_class.casefold() == second.token_class.casefold()
+    )
+    if not compatible:
+        return False
+    return (
+        len(set(first.acceptance) | set(second.acceptance))
+        <= selected.max_acceptance_criteria
+        and len(set(first.effects) | set(second.effects)) <= selected.max_effects
+        and len(set(first.evidence_subset) | set(second.evidence_subset))
+        <= selected.max_evidence_items
+        and len(set(first.predicted_paths) | set(second.predicted_paths))
+        <= selected.max_predicted_paths
+        and len(set(first.predicted_symbols) | set(second.predicted_symbols))
+        <= selected.max_predicted_symbols
+        and len(
+            set(first.predicted_interfaces) | set(second.predicted_interfaces)
+        )
+        <= selected.max_predicted_interfaces
+        and len(set(first.proof_obligations) | set(second.proof_obligations))
+        <= selected.max_proof_items
+        and first.estimated_tokens + second.estimated_tokens
+        <= selected.max_estimated_tokens
+        and max(
+            first.estimated_context_tokens,
+            second.estimated_context_tokens,
+        )
+        <= selected.max_context_tokens
+        and max(
+            first.estimated_validation_seconds,
+            second.estimated_validation_seconds,
+        )
+        <= selected.max_validation_seconds
+        and max(
+            first.estimated_proof_seconds,
+            second.estimated_proof_seconds,
+        )
+        <= selected.max_proof_seconds
+        and first.estimated_merge_risk_millionths
+        + second.estimated_merge_risk_millionths
+        <= selected.max_merge_risk_millionths
     )
 
 
@@ -1450,6 +2133,7 @@ def coalesce_task_candidates(
     candidates: Iterable[TaskCandidate | Mapping[str, Any]],
     *,
     policy: TaskQualityPolicy | None = None,
+    calibration: TaskGranularityCalibration | None = None,
 ) -> TaskCandidate:
     """Coalesce compatible tiny candidates into one task or fail closed."""
 
@@ -1459,9 +2143,13 @@ def coalesce_task_candidates(
     ), key=lambda item: item.semantic_identity))
     if not items:
         raise ValueError("at least one task candidate is required")
-    selected = policy or TaskQualityPolicy()
+    source_policy = policy or TaskQualityPolicy()
+    selected = _effective_granularity_policy(source_policy, calibration)
     anchor = items[0]
-    if any(not can_coalesce_tasks(anchor, item, policy=selected) for item in items[1:]):
+    if any(
+        not can_coalesce_tasks(anchor, item, policy=selected)
+        for item in items[1:]
+    ):
         raise ValueError(
             "tiny candidates may coalesce only with shared goal, context, outputs, "
             "validation, resource/token class, and merge fate"
@@ -1470,7 +2158,7 @@ def coalesce_task_candidates(
     def union(name: str) -> tuple[str, ...]:
         return _strings(item for value in items for item in getattr(value, name))
 
-    return replace(
+    merged = replace(
         anchor,
         title="; ".join(item.title for item in items if item.title),
         acceptance=union("acceptance"),
@@ -1486,6 +2174,8 @@ def coalesce_task_candidates(
             paths=True,
         ),
         predicted_symbols=union("predicted_symbols"),
+        predicted_interfaces=union("predicted_interfaces"),
+        proof_obligations=union("proof_obligations"),
         dependencies=union("dependencies"),
         conflicts=union("conflicts"),
         resources=union("resources"),
@@ -1493,34 +2183,63 @@ def coalesce_task_candidates(
         estimated_validation_seconds=max(
             item.estimated_validation_seconds for item in items
         ),
+        estimated_proof_seconds=max(
+            item.estimated_proof_seconds for item in items
+        ),
         estimated_tokens=sum(item.estimated_tokens for item in items),
+        estimated_merge_risk_millionths=sum(
+            item.estimated_merge_risk_millionths for item in items
+        ),
         source_id=",".join(item.source_id for item in items if item.source_id),
         semantic_identity="",
     )
+    if is_over_broad(merged, selected):
+        raise ValueError("coalesced candidate exceeds a task granularity bound")
+    return merged
 
 
 def _coalesce_tiny_groups(
     candidates: Sequence[TaskCandidate],
     policy: TaskQualityPolicy,
+    calibration: TaskGranularityCalibration | None = None,
 ) -> tuple[tuple[TaskCandidate, tuple[str, ...]], ...]:
     remaining = list(sorted(candidates, key=lambda item: item.semantic_identity))
     result: list[tuple[TaskCandidate, tuple[str, ...]]] = []
     while remaining:
         anchor = remaining.pop(0)
-        compatible = [
-            item for item in remaining if can_coalesce_tasks(anchor, item, policy=policy)
-        ]
+        group = [anchor]
+        for item in remaining:
+            try:
+                coalesce_task_candidates(
+                    (*group, item),
+                    policy=policy,
+                    calibration=calibration,
+                )
+            except ValueError:
+                continue
+            group.append(item)
+        compatible = group[1:]
         if not compatible:
             result.append((anchor, (anchor.semantic_identity,)))
             continue
-        group = [anchor, *compatible]
         compatible_ids = {item.semantic_identity for item in compatible}
         remaining = [
             item for item in remaining if item.semantic_identity not in compatible_ids
         ]
-        merged = coalesce_task_candidates(group, policy=policy)
+        merged = coalesce_task_candidates(
+            group,
+            policy=policy,
+            calibration=calibration,
+        )
         result.append((merged, tuple(item.semantic_identity for item in group)))
     return tuple(result)
+
+
+def _granularity_source_identity(candidate: TaskCandidate) -> str:
+    shard = _normalized_display_text(
+        candidate.metadata.get("granularity_shard")
+    )
+    return shard.rpartition(":")[0] if shard else ""
 
 
 def refine_task_candidates(
@@ -1534,10 +2253,36 @@ def refine_task_candidates(
     current_open_work: int = 0,
     open_work_count: int | None = None,
     max_open_work: int | None = None,
+    calibration: TaskGranularityCalibration | None = None,
+    cost_measurements: Iterable[TaskCostMeasurement | Mapping[str, Any]] = (),
+    repository_tree: str = "",
+    toolchain_features: Iterable[str] = (),
 ) -> TaskAdmissionResult:
     """Resize, semantically deduplicate, score, and pressure-bound candidates."""
 
-    selected = policy or TaskQualityPolicy()
+    source_policy = policy or TaskQualityPolicy()
+    measurement_history = tuple(cost_measurements)
+    requested_features = _strings(toolchain_features)
+    if calibration is not None and measurement_history:
+        raise ValueError("pass either calibration or cost_measurements, not both")
+    if measurement_history:
+        calibration = calibrate_task_granularity(
+            measurement_history,
+            repository_tree=repository_tree,
+            policy=source_policy,
+            toolchain_features=requested_features,
+        )
+    if calibration is not None and (
+        not calibration.applies_to(
+            source_policy,
+            repository_tree=(repository_tree or None),
+            toolchain_features=(requested_features or None),
+        )
+    ):
+        raise ValueError(
+            "task granularity calibration does not match requested execution features"
+        )
+    selected = _effective_granularity_policy(source_policy, calibration)
     provided_existing = tuple(existing_tasks)
     if existing is not None:
         if provided_existing:
@@ -1594,10 +2339,19 @@ def refine_task_candidates(
             for identity in coalesced_sources
             for source in source_map.get(identity, (identity,))
         )
+        granularity_source = _granularity_source_identity(candidate)
+        comparable_history = (
+            prior
+            for prior in observed_candidates
+            if not (
+                granularity_source
+                and _granularity_source_identity(prior) == granularity_source
+            )
+        )
         score = score_task_candidate(
             candidate,
             policy=selected,
-            historical_tasks=observed_candidates,
+            historical_tasks=comparable_history,
             historical_failures=(item.candidate for item in failures),
         )
         rejections = list(_task_rejections(candidate, score, selected))
@@ -1652,6 +2406,312 @@ def refine_task_candidates(
         initial_open_work=open_count,
         max_open_work=open_limit,
         candidate_count=len(raw),
+        granularity_calibration_id=(
+            calibration.calibration_id if calibration is not None else ""
+        ),
+    )
+
+
+def _resolve_completed_task_identities(
+    tasks: Sequence[TaskCandidate],
+    completed: Iterable[str],
+) -> tuple[str, ...]:
+    aliases: dict[str, str] = {}
+    for task in tasks:
+        for alias in (
+            task.semantic_identity,
+            task.canonical_task_key,
+            task.canonical_task_cid,
+        ):
+            existing = aliases.get(alias)
+            if existing is not None and existing != task.semantic_identity:
+                raise ValueError("task completion alias is ambiguous")
+            aliases[alias] = task.semantic_identity
+    resolved: set[str] = set()
+    unknown: list[str] = []
+    for value in completed:
+        identity = aliases.get(str(value).strip())
+        if identity is None:
+            unknown.append(str(value))
+        else:
+            resolved.add(identity)
+    if unknown:
+        raise ValueError(
+            "completion names unknown or unaccepted tasks: "
+            + ", ".join(sorted(unknown))
+        )
+    return tuple(sorted(resolved))
+
+
+@dataclass(frozen=True)
+class TaskCompletionPropagation:
+    """Exact descendant-to-source completion projection."""
+
+    completed_task_identities: tuple[str, ...]
+    completed_task_cids: tuple[str, ...]
+    completed_source_identities: tuple[str, ...]
+    incomplete_source_identities: tuple[str, ...]
+    completed_acceptance: tuple[str, ...]
+    propagation_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "completed_task_identities",
+            "completed_task_cids",
+            "completed_source_identities",
+            "incomplete_source_identities",
+            "completed_acceptance",
+        ):
+            object.__setattr__(self, name, _strings(getattr(self, name)))
+        if set(self.completed_source_identities) & set(
+            self.incomplete_source_identities
+        ):
+            raise ValueError("source completion populations must be disjoint")
+        expected = _task_quality_evidence_cid(self._material())
+        supplied = str(self.propagation_id or "").strip()
+        if supplied and supplied != expected:
+            raise ValueError("completion propagation identity mismatch")
+        object.__setattr__(self, "propagation_id", expected)
+
+    def _material(self) -> dict[str, Any]:
+        return {
+            "schema": TASK_COMPLETION_PROPAGATION_SCHEMA,
+            "completed_task_identities": list(self.completed_task_identities),
+            "completed_task_cids": list(self.completed_task_cids),
+            "completed_source_identities": list(self.completed_source_identities),
+            "incomplete_source_identities": list(
+                self.incomplete_source_identities
+            ),
+            "completed_acceptance": list(self.completed_acceptance),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        result = self._material()
+        result["propagation_id"] = self.propagation_id
+        return result
+
+
+def propagate_task_completion(
+    result: TaskAdmissionResult,
+    completed_tasks: Iterable[str],
+) -> TaskCompletionPropagation:
+    """Propagate completion only through explicit admission source bindings."""
+
+    accepted_decisions = tuple(
+        decision for decision in result.decisions if decision.accepted
+    )
+    accepted_tasks = tuple(decision.candidate for decision in accepted_decisions)
+    completed = set(
+        _resolve_completed_task_identities(accepted_tasks, completed_tasks)
+    )
+    completed_cids = tuple(
+        sorted(
+            task.canonical_task_cid
+            for task in accepted_tasks
+            if task.semantic_identity in completed
+        )
+    )
+
+    criterion_owners: dict[str, set[str]] = {}
+    for task in accepted_tasks:
+        for criterion in task.acceptance:
+            criterion_owners.setdefault(criterion, set()).add(
+                task.semantic_identity
+            )
+    completed_acceptance = tuple(
+        sorted(
+            criterion
+            for criterion, owners in criterion_owners.items()
+            if owners and owners.issubset(completed)
+        )
+    )
+
+    source_decisions: dict[str, list[TaskAdmissionDecision]] = {}
+    for decision in result.decisions:
+        for source in decision.source_identities:
+            source_decisions.setdefault(source, []).append(decision)
+    completed_sources: list[str] = []
+    incomplete_sources: list[str] = []
+    for source, decisions in source_decisions.items():
+        if decisions and all(
+            decision.accepted
+            and decision.candidate.semantic_identity in completed
+            for decision in decisions
+        ):
+            completed_sources.append(source)
+        else:
+            incomplete_sources.append(source)
+
+    return TaskCompletionPropagation(
+        completed_task_identities=tuple(completed),
+        completed_task_cids=completed_cids,
+        completed_source_identities=tuple(completed_sources),
+        incomplete_source_identities=tuple(incomplete_sources),
+        completed_acceptance=completed_acceptance,
+    )
+
+
+@dataclass(frozen=True)
+class TaskGranularityRun:
+    """One arm of a paired granularity fixture."""
+
+    fixture_id: str
+    tasks: tuple[TaskCandidate, ...]
+    completed_tasks: tuple[str, ...]
+    model_calls: int
+    run_id: str = ""
+
+    def __post_init__(self) -> None:
+        fixture = _normalized_display_text(self.fixture_id)
+        if not fixture:
+            raise ValueError("fixture_id is required")
+        object.__setattr__(self, "fixture_id", fixture)
+        normalized_tasks = tuple(
+            sorted(
+                (
+                    item
+                    if isinstance(item, TaskCandidate)
+                    else TaskCandidate.from_mapping(item)
+                    for item in self.tasks
+                ),
+                key=lambda item: item.canonical_task_cid,
+            )
+        )
+        object.__setattr__(self, "tasks", normalized_tasks)
+        object.__setattr__(
+            self,
+            "completed_tasks",
+            _resolve_completed_task_identities(
+                normalized_tasks, self.completed_tasks
+            ),
+        )
+        object.__setattr__(
+            self,
+            "model_calls",
+            _non_negative_int(self.model_calls, "model_calls"),
+        )
+        expected = _task_quality_evidence_cid(self._material())
+        supplied = str(self.run_id or "").strip()
+        if supplied and supplied != expected:
+            raise ValueError("task granularity run identity mismatch")
+        object.__setattr__(self, "run_id", expected)
+
+    @property
+    def acceptance_surface(self) -> tuple[str, ...]:
+        return _strings(
+            criterion for task in self.tasks for criterion in task.acceptance
+        )
+
+    @property
+    def completed_acceptance(self) -> tuple[str, ...]:
+        completed = set(self.completed_tasks)
+        owners: dict[str, set[str]] = {}
+        for task in self.tasks:
+            for criterion in task.acceptance:
+                owners.setdefault(criterion, set()).add(task.semantic_identity)
+        return tuple(
+            sorted(
+                criterion
+                for criterion, identities in owners.items()
+                if identities and identities.issubset(completed)
+            )
+        )
+
+    @property
+    def duplicate_semantic_task_count(self) -> int:
+        identities = [task.semantic_identity for task in self.tasks]
+        return len(identities) - len(set(identities))
+
+    @property
+    def calls_per_accepted_criterion(self) -> float | None:
+        if not self.completed_acceptance:
+            return None
+        return self.model_calls / len(self.completed_acceptance)
+
+    def _material(self) -> dict[str, Any]:
+        return {
+            "schema": TASK_GRANULARITY_RUN_SCHEMA,
+            "fixture_id": self.fixture_id,
+            "task_cids": [task.canonical_task_cid for task in self.tasks],
+            "completed_tasks": list(self.completed_tasks),
+            "model_calls": self.model_calls,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        result = self._material()
+        result.update(
+            {
+                "run_id": self.run_id,
+                "acceptance_surface": list(self.acceptance_surface),
+                "completed_acceptance": list(self.completed_acceptance),
+                "duplicate_semantic_task_count": (
+                    self.duplicate_semantic_task_count
+                ),
+                "calls_per_accepted_criterion": (
+                    self.calls_per_accepted_criterion
+                ),
+            }
+        )
+        return result
+
+
+@dataclass(frozen=True)
+class TaskGranularityComparison:
+    fixture_id: str
+    baseline_run_id: str
+    candidate_run_id: str
+    source_coverage_preserved: bool
+    completion_exact: bool
+    zero_duplicate_semantic_tasks: bool
+    fewer_model_calls_per_accepted_criterion: bool
+
+    @property
+    def qualifies(self) -> bool:
+        return (
+            self.source_coverage_preserved
+            and self.completion_exact
+            and self.zero_duplicate_semantic_tasks
+            and self.fewer_model_calls_per_accepted_criterion
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result = asdict(self)
+        result["qualifies"] = self.qualifies
+        return result
+
+
+def compare_task_granularity_runs(
+    baseline: TaskGranularityRun,
+    candidate: TaskGranularityRun,
+) -> TaskGranularityComparison:
+    """Compare paired fixtures without allowing criterion-denominator drift."""
+
+    if baseline.fixture_id != candidate.fixture_id:
+        raise ValueError("task granularity runs must name the same fixture")
+    same_surface = baseline.acceptance_surface == candidate.acceptance_surface
+    same_completion = (
+        baseline.completed_acceptance == baseline.acceptance_surface
+        and candidate.completed_acceptance == candidate.acceptance_surface
+        and baseline.completed_acceptance == candidate.completed_acceptance
+    )
+    baseline_count = len(baseline.completed_acceptance)
+    candidate_count = len(candidate.completed_acceptance)
+    fewer_calls = (
+        baseline_count > 0
+        and candidate_count > 0
+        and candidate.model_calls * baseline_count
+        < baseline.model_calls * candidate_count
+    )
+    return TaskGranularityComparison(
+        fixture_id=baseline.fixture_id,
+        baseline_run_id=baseline.run_id,
+        candidate_run_id=candidate.run_id,
+        source_coverage_preserved=same_surface,
+        completion_exact=same_completion,
+        zero_duplicate_semantic_tasks=(
+            candidate.duplicate_semantic_task_count == 0
+        ),
+        fewer_model_calls_per_accepted_criterion=fewer_calls,
     )
 
 
@@ -1979,6 +3039,7 @@ def prove_task_split_refill(
 TaskQualityResult = TaskAdmissionResult
 TaskRefinementResult = TaskAdmissionResult
 TaskQualityRejection = TaskRejection
+TaskGranularityMeasurement = TaskCostMeasurement
 canonical_task_semantic_identity = canonical_semantic_identity
 coalesce_tasks = coalesce_task_candidates
 split_over_broad_candidate = split_task_candidate
@@ -1998,9 +3059,19 @@ __all__ = [
     "TASK_QUALITY_SCHEMA",
     "TASK_SEMANTIC_IDENTITY_SCHEMA",
     "TASK_WORK_CONTRACT_SCHEMA",
+    "TASK_COMPLETION_PROPAGATION_SCHEMA",
+    "TASK_GRANULARITY_CALIBRATION_SCHEMA",
+    "TASK_GRANULARITY_MEASUREMENT_SCHEMA",
+    "TASK_GRANULARITY_RUN_SCHEMA",
     "TOKEN_CLASSES",
     "TOKEN_CLASS_LIMITS",
     "HistoricalTask",
+    "TaskCompletionPropagation",
+    "TaskCostMeasurement",
+    "TaskGranularityCalibration",
+    "TaskGranularityComparison",
+    "TaskGranularityMeasurement",
+    "TaskGranularityRun",
     "TaskAdmissionDecision",
     "TaskAdmissionResult",
     "TaskAdmissionStatus",
@@ -2014,14 +3085,17 @@ __all__ = [
     "TaskSplitRefillEvidence",
     "admit_task_candidate",
     "can_coalesce_tasks",
+    "calibrate_task_granularity",
     "canonical_semantic_identity",
     "canonical_task_semantic_identity",
     "coalesce_task_candidates",
     "coalesce_tasks",
+    "compare_task_granularity_runs",
     "evaluate_task_candidates",
     "is_over_broad",
     "is_tiny",
     "prove_task_split_refill",
+    "propagate_task_completion",
     "refine_task_candidates",
     "score_task_candidate",
     "split_over_broad_candidate",
