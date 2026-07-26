@@ -99,8 +99,8 @@ The complexity of this mechanism is `O(l(r + l/k))`.
 
 ## Resources
 
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## LongT5Config
 
