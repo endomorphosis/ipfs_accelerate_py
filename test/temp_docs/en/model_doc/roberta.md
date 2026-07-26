@@ -58,7 +58,7 @@ This model was contributed by [julien-c](https://huggingface.co/julien-c). The o
     * Sentence packing: Sentences are packed together to reach 512 tokens (so the sentences are in an order that may span several documents).
     * Larger batches: Training uses larger batches.
     * Byte-level BPE vocabulary: Uses BPE with bytes as a subunit instead of characters, accommodating Unicode characters.
-- [CamemBERT](camembert) is a wrapper around RoBERTa. Refer to its model page for usage examples.
+- [CamemBERT](camembert.md) is a wrapper around RoBERTa. Refer to its model page for usage examples.
 
 ## Resources
 
@@ -72,7 +72,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - [`RobertaForSequenceClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/text-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/text_classification.ipynb).
 - [`TFRobertaForSequenceClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/text-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/text_classification-tf.ipynb).
 - [`FlaxRobertaForSequenceClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/text-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/text_classification_flax.ipynb).
-- [Text classification task guide](../tasks/sequence_classification)
+- [Text classification task guide](../tasks/sequence_classification.md)
 
 <PipelineTag pipeline="token-classification"/>
 
@@ -80,7 +80,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - [`TFRobertaForTokenClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/token-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/token_classification-tf.ipynb).
 - [`FlaxRobertaForTokenClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/token-classification).
 - [Token classification](https://huggingface.co/course/chapter7/2?fw=pt) chapter of the 🤗 Hugging Face Course.
-- [Token classification task guide](../tasks/token_classification)
+- [Token classification task guide](../tasks/token_classification.md)
 
 <PipelineTag pipeline="fill-mask"/>
 
@@ -89,7 +89,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - [`TFRobertaForMaskedLM`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/language-modeling#run_mlmpy) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/language_modeling-tf.ipynb).
 - [`FlaxRobertaForMaskedLM`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/language-modeling#masked-language-modeling) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/masked_language_modeling_flax.ipynb).
 - [Masked language modeling](https://huggingface.co/course/chapter7/3?fw=pt) chapter of the 🤗 Hugging Face Course.
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
 
 <PipelineTag pipeline="question-answering"/>
 
@@ -98,12 +98,12 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - [`TFRobertaForQuestionAnswering`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/question-answering) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/question_answering-tf.ipynb).
 - [`FlaxRobertaForQuestionAnswering`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/question-answering).
 - [Question answering](https://huggingface.co/course/chapter7/7?fw=pt) chapter of the 🤗 Hugging Face Course.
-- [Question answering task guide](../tasks/question_answering)
+- [Question answering task guide](../tasks/question_answering.md)
 
 **Multiple choice**
 - [`RobertaForMultipleChoice`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/multiple-choice) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/multiple_choice.ipynb).
 - [`TFRobertaForMultipleChoice`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/multiple-choice) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/multiple_choice-tf.ipynb).
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## RobertaConfig
 
