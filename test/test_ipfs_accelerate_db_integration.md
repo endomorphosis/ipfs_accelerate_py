@@ -284,6 +284,6 @@ python migrate_test_results.py --input-dir ./test_results --db-path ./benchmark_
 
 For more information on DuckDB integration, see:
 
-- [BENCHMARK_DATABASE_GUIDE.md](./BENCHMARK_DATABASE_GUIDE.md) - Detailed database schema documentation
+- [BENCHMARK_DATABASE_GUIDE.md](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md) - Detailed database schema documentation
 - [DATABASE_MIGRATION_GUIDE.md](./DATABASE_MIGRATION_GUIDE.md) - Guide for migrating from JSON to DuckDB
-- [IPFS_ACCELERATE_SUMMARY.md](./IPFS_ACCELERATE_SUMMARY.md) - Overview of the IPFS Accelerate package
+- [IPFS_ACCELERATE_MCP_IMPLEMENTATION_SUMMARY.md](../docs/summaries/IPFS_ACCELERATE_MCP_IMPLEMENTATION_SUMMARY.md) - Overview of the IPFS Accelerate package
