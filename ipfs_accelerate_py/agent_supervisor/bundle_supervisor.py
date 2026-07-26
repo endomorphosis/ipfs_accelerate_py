@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import gc
 import hashlib
 import json
@@ -12,6 +13,8 @@ import signal
 import subprocess
 import sys
 import threading
+import time
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timezone
@@ -25,7 +28,15 @@ from .artifact_store import (
 )
 from .conflict_graph import materialize_task_conflict_graph
 from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
-from .lease_coordination import LeaseCoordinator, LeaseError
+from .lease_coordination import (
+    DistributedLaneDispatch,
+    ImmutableLaneInputArtifact,
+    LeaseCoordinator,
+    LeaseError,
+    RemoteLaneResult,
+    WorkerCapabilityReceipt,
+    WorkerEnvironmentReceipt,
+)
 from .objective_graph import (
     DEFAULT_TASK_PREFIX,
     build_bundle_task_payloads,
@@ -63,6 +74,14 @@ BUNDLE_TASKBOARD_INPUT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1"
 )
 INTERNAL_EXECUTION_AUTHORITY = "agent-supervisor/v1"
+DISTRIBUTED_LANE_REQUIREMENT_ID = "314703454108352614663943447510592855908"
+DISTRIBUTED_LANE_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-lane-evidence@1"
+)
+DISTRIBUTED_LANE_PUBLICATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-lane-publication@1"
+)
+_DISTRIBUTED_LANE_EVIDENCE_SEAL = object()
 
 _MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
     {
@@ -401,6 +420,280 @@ class BundleLaneSpec:
         return payload
 
 
+def _distributed_lane_digest(value: Mapping[str, Any]) -> str:
+    """Return the stable digest used by distributed receipts and publications."""
+
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _evidence_rows_by_task(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    indexed: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        task_cid = str(
+            row.get("canonical_task_cid")
+            or row.get("task_cid")
+            or row.get("canonical_task_id")
+            or ""
+        ).strip()
+        if task_cid:
+            indexed[task_cid] = dict(row)
+    return indexed
+
+
+def _distributed_lane_evidence_failures(
+    *,
+    repository_tree: str,
+    task_population: Sequence[Mapping[str, Any]],
+    effects: Sequence[Mapping[str, Any]],
+    resources: Sequence[Mapping[str, Any]],
+    ownership: Sequence[Mapping[str, Any]],
+    validation: Sequence[Mapping[str, Any]],
+    terminal_results: Sequence[Mapping[str, Any]],
+) -> tuple[str, ...]:
+    """Re-evaluate whether evidence covers every canonical task exactly once."""
+
+    def positive_integer(value: Any) -> bool:
+        try:
+            return not isinstance(value, bool) and int(value) > 0
+        except (TypeError, ValueError):
+            return False
+
+    failures: list[str] = []
+    if not str(repository_tree).strip():
+        failures.append("repository_tree_missing")
+    population = _evidence_rows_by_task(task_population)
+    if not population:
+        failures.append("task_population_missing")
+    if len(population) != len(task_population):
+        failures.append("task_population_not_canonical")
+    surface_rows = {
+        "effects": effects,
+        "resources": resources,
+        "ownership": ownership,
+        "validation": validation,
+        "terminal_results": terminal_results,
+    }
+    surfaces = {
+        name: _evidence_rows_by_task(rows)
+        for name, rows in surface_rows.items()
+    }
+    population_cids = set(population)
+    for name, indexed in surfaces.items():
+        rows = surface_rows[name]
+        if set(indexed) != population_cids or len(indexed) != len(rows):
+            failures.append(f"{name}_coverage_incomplete")
+    for task_cid in sorted(population_cids):
+        effect = surfaces["effects"].get(task_cid, {})
+        resource = surfaces["resources"].get(task_cid, {})
+        owner = surfaces["ownership"].get(task_cid, {})
+        checked = surfaces["validation"].get(task_cid, {})
+        terminal = surfaces["terminal_results"].get(task_cid, {})
+        if not effect.get("paths") and not effect.get("symbols") and not effect.get(
+            "interfaces"
+        ):
+            failures.append(f"effect_binding_missing:{task_cid}")
+        if not str(resource.get("resource_class") or "").strip():
+            failures.append(f"resource_binding_missing:{task_cid}")
+        if (
+            not str(owner.get("claim_cid") or "").strip()
+            or not positive_integer(
+                owner.get("logical_epoch") or owner.get("fencing_epoch")
+            )
+            or not positive_integer(owner.get("fencing_token"))
+            or not str(owner.get("input_artifact_id") or owner.get("artifact_id") or "").strip()
+            or not str(owner.get("capability_receipt_id") or "").strip()
+            or not str(owner.get("environment_receipt_id") or "").strip()
+        ):
+            failures.append(f"ownership_binding_missing:{task_cid}")
+        if checked.get("passed") is not True or not (
+            checked.get("receipt_ids") or checked.get("validation_receipt_ids")
+        ):
+            failures.append(f"validation_binding_missing:{task_cid}")
+        if terminal.get("accepted") is not True or not str(
+            terminal.get("candidate_commit")
+            or terminal.get("accepted_commit")
+            or terminal.get("target_commit")
+            or ""
+        ).strip():
+            failures.append(f"terminal_result_missing:{task_cid}")
+    return tuple(dict.fromkeys(failures))
+
+
+@dataclass(frozen=True)
+class DistributedLaneEvidenceReceipt:
+    """Authoritative, repository-tree-bound evidence for distributed lanes.
+
+    Remote completion messages are deliberately insufficient.  Authority is
+    exposed only by a receipt constructed by the local acceptance boundary and
+    only when every canonical task has exact effects, resources, lease
+    ownership, validation receipts, and a merge-gated terminal result.
+    """
+
+    repository_tree: str
+    task_population: tuple[dict[str, Any], ...]
+    effects: tuple[dict[str, Any], ...]
+    resources: tuple[dict[str, Any], ...]
+    ownership: tuple[dict[str, Any], ...]
+    validation: tuple[dict[str, Any], ...]
+    terminal_results: tuple[dict[str, Any], ...]
+    failure_codes: tuple[str, ...]
+    content_id: str
+    schema: str = DISTRIBUTED_LANE_EVIDENCE_SCHEMA
+    requirement_id: str = DISTRIBUTED_LANE_REQUIREMENT_ID
+    _producer_seal: object | None = field(default=None, compare=False, repr=False)
+
+    def _content(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "requirement_id": self.requirement_id,
+            "repository_tree": self.repository_tree,
+            "task_population": [dict(item) for item in self.task_population],
+            "effects": [dict(item) for item in self.effects],
+            "resources": [dict(item) for item in self.resources],
+            "ownership": [dict(item) for item in self.ownership],
+            "validation": [dict(item) for item in self.validation],
+            "terminal_results": [dict(item) for item in self.terminal_results],
+            "failure_codes": list(self.failure_codes),
+        }
+
+    def verify_integrity(self) -> bool:
+        return self.content_id == _distributed_lane_digest(self._content())
+
+    def proved_requirement_ids_for(
+        self, repository_tree: str
+    ) -> tuple[str, ...]:
+        failures = _distributed_lane_evidence_failures(
+            repository_tree=repository_tree,
+            task_population=self.task_population,
+            effects=self.effects,
+            resources=self.resources,
+            ownership=self.ownership,
+            validation=self.validation,
+            terminal_results=self.terminal_results,
+        )
+        if (
+            self._producer_seal is _DISTRIBUTED_LANE_EVIDENCE_SEAL
+            and self.schema == DISTRIBUTED_LANE_EVIDENCE_SCHEMA
+            and self.requirement_id == DISTRIBUTED_LANE_REQUIREMENT_ID
+            and self.repository_tree == str(repository_tree).strip()
+            and not self.failure_codes
+            and not failures
+            and self.verify_integrity()
+        ):
+            return (DISTRIBUTED_LANE_REQUIREMENT_ID,)
+        return ()
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self._content()
+        proved = self.proved_requirement_ids_for(self.repository_tree)
+        payload.update(
+            {
+                "content_id": self.content_id,
+                "passed": bool(proved),
+                "proved_requirement_ids": list(proved),
+                "source_tier": "post-merge-validation",
+            }
+        )
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "DistributedLaneEvidenceReceipt":
+        """Restore a diagnostic projection without minting local authority."""
+
+        return cls(
+            repository_tree=str(value.get("repository_tree") or ""),
+            task_population=tuple(
+                dict(item)
+                for item in value.get("task_population", ())
+                if isinstance(item, Mapping)
+            ),
+            effects=tuple(
+                dict(item)
+                for item in value.get("effects", ())
+                if isinstance(item, Mapping)
+            ),
+            resources=tuple(
+                dict(item)
+                for item in value.get("resources", ())
+                if isinstance(item, Mapping)
+            ),
+            ownership=tuple(
+                dict(item)
+                for item in value.get("ownership", ())
+                if isinstance(item, Mapping)
+            ),
+            validation=tuple(
+                dict(item)
+                for item in value.get("validation", ())
+                if isinstance(item, Mapping)
+            ),
+            terminal_results=tuple(
+                dict(item)
+                for item in value.get("terminal_results", ())
+                if isinstance(item, Mapping)
+            ),
+            failure_codes=tuple(
+                str(item) for item in value.get("failure_codes", ())
+            ),
+            content_id=str(value.get("content_id") or ""),
+            schema=str(value.get("schema") or ""),
+            requirement_id=str(value.get("requirement_id") or ""),
+        )
+
+
+def evaluate_distributed_lane_evidence(
+    *,
+    repository_tree: str,
+    task_population: Sequence[Mapping[str, Any]],
+    effects: Sequence[Mapping[str, Any]],
+    resources: Sequence[Mapping[str, Any]],
+    ownership: Sequence[Mapping[str, Any]],
+    validation: Sequence[Mapping[str, Any]],
+    terminal_results: Sequence[Mapping[str, Any]],
+) -> DistributedLaneEvidenceReceipt:
+    """Construct local evidence after merge and post-merge validation."""
+
+    def detached(rows: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], ...]:
+        payload = json.loads(
+            json.dumps(
+                [dict(item) for item in rows],
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        return tuple(payload)
+
+    normalized = {
+        "repository_tree": str(repository_tree).strip(),
+        "task_population": detached(task_population),
+        "effects": detached(effects),
+        "resources": detached(resources),
+        "ownership": detached(ownership),
+        "validation": detached(validation),
+        "terminal_results": detached(terminal_results),
+    }
+    failures = _distributed_lane_evidence_failures(**normalized)
+    receipt = DistributedLaneEvidenceReceipt(
+        **normalized,
+        failure_codes=failures,
+        content_id="",
+        _producer_seal=_DISTRIBUTED_LANE_EVIDENCE_SEAL,
+    )
+    return replace(receipt, content_id=_distributed_lane_digest(receipt._content()))
+
+
 def _taskboard_sha256(path: Path) -> str:
     try:
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -545,6 +838,653 @@ def materialize_bundle_lane_taskboard(
         (json.dumps(binding, indent=2, sort_keys=True) + "\n").encode("utf-8"),
     )
     return binding
+
+
+def immutable_lane_input_artifact(
+    lane: BundleLaneSpec,
+    *,
+    repository_id: str,
+    created_at_ms: int | None = None,
+) -> ImmutableLaneInputArtifact:
+    """Build the exact, content-addressed payload available to any worker.
+
+    The source taskboard bytes are included instead of a checkout-relative
+    pathname.  A remote worker therefore cannot observe a later local rewrite,
+    and local fallback consumes the same artifact as remote execution.
+    """
+
+    expected_digest = str(lane.source_todo_sha256 or "").strip().lower()
+    try:
+        source_bytes = lane.todo_path.read_bytes()
+    except OSError as exc:
+        raise ValueError(
+            f"distributed lane source is unavailable: {lane.todo_path}"
+        ) from exc
+    observed_digest = hashlib.sha256(source_bytes).hexdigest()
+    if len(expected_digest) != 64 or observed_digest != expected_digest:
+        raise ValueError(
+            "distributed lane source digest differs from its planned immutable input"
+        )
+    payload = {
+        "bundle_key": lane.bundle_key,
+        "parallel_lane": lane.parallel_lane,
+        "task_ids": list(lane.task_ids),
+        "task_cid": lane.task_cid,
+        "goal_cid": lane.goal_cid,
+        "subgoal_cid": lane.subgoal_cid,
+        "source_todo_sha256": observed_digest,
+        "source_todo_base64": base64.b64encode(source_bytes).decode("ascii"),
+        "command": list(lane.command),
+        "required_capabilities": sorted(set(lane.required_capabilities)),
+        "resource_class": lane.resource_class,
+        "resource_stage": lane.resource_stage,
+        "required_context_tokens": lane.required_context_tokens,
+        "token_budget": lane.token_budget,
+        "memory_bytes": lane.memory_bytes,
+        "gpu_memory_bytes": lane.gpu_memory_bytes,
+        "disk_bytes": lane.disk_bytes,
+        "process_slots": lane.process_slots,
+        "queue_payload": dict(lane.queue_payload or {}),
+    }
+    return ImmutableLaneInputArtifact(
+        repository_id=repository_id,
+        task_cid=lane.task_cid,
+        payload=payload,
+        created_at_ms=(
+            int(time.time() * 1000)
+            if created_at_ms is None
+            else int(created_at_ms)
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class DistributedLaneWorker:
+    """One optional remote target and its exact expiring receipts."""
+
+    worker_id: str
+    capability_receipt: WorkerCapabilityReceipt
+    environment_receipt: WorkerEnvironmentReceipt
+    execute: Callable[
+        [DistributedLaneDispatch, ImmutableLaneInputArtifact, threading.Event],
+        RemoteLaneResult | Mapping[str, Any],
+    ]
+    cancel: Callable[[DistributedLaneDispatch, str], Any] | None = None
+
+    def validate_for(
+        self,
+        lane: BundleLaneSpec,
+        *,
+        now_ms: int,
+    ) -> tuple[str, ...]:
+        failures: list[str] = []
+        if (
+            not self.worker_id
+            or self.capability_receipt.worker_id != self.worker_id
+            or self.environment_receipt.worker_id != self.worker_id
+        ):
+            failures.append("foreign_worker_receipt")
+        if (
+            self.environment_receipt.capability_receipt_id
+            != self.capability_receipt.receipt_id
+        ):
+            failures.append("capability_environment_binding_mismatch")
+        try:
+            self.capability_receipt.validate_at(now_ms)
+        except ValueError:
+            failures.append("capability_receipt_expired")
+        try:
+            self.environment_receipt.validate_at(now_ms)
+        except ValueError:
+            failures.append("environment_receipt_expired")
+        missing = sorted(
+            set(lane.required_capabilities)
+            - set(self.capability_receipt.capabilities)
+        )
+        if missing:
+            failures.append("required_capability_missing")
+        required_environment = (
+            lane.queue_payload.get("required_environment")
+            if isinstance(lane.queue_payload, Mapping)
+            else None
+        )
+        if isinstance(required_environment, Mapping):
+            attributes = self.environment_receipt.attributes
+            if any(attributes.get(key) != value for key, value in required_environment.items()):
+                failures.append("environment_mismatch")
+        if not callable(self.execute):
+            failures.append("worker_executor_missing")
+        return tuple(dict.fromkeys(failures))
+
+
+@dataclass(frozen=True)
+class DistributedLaneExecution:
+    """Terminal projection of one remote or deterministic local attempt."""
+
+    request_id: str
+    execution_mode: str
+    worker_id: str
+    artifact_id: str
+    task_cid: str
+    disposition: str
+    publication: Mapping[str, Any] = field(default_factory=dict)
+    merge_result: Mapping[str, Any] = field(default_factory=dict)
+    quarantine: Mapping[str, Any] = field(default_factory=dict)
+    fallback_reason: str = ""
+
+    @property
+    def accepted(self) -> bool:
+        return self.disposition in {"accepted", "duplicate"}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "request_id": self.request_id,
+            "execution_mode": self.execution_mode,
+            "worker_id": self.worker_id,
+            "artifact_id": self.artifact_id,
+            "task_cid": self.task_cid,
+            "disposition": self.disposition,
+            "accepted": self.accepted,
+            "publication": dict(self.publication),
+            "merge_result": dict(self.merge_result),
+            "quarantine": dict(self.quarantine),
+            "fallback_reason": self.fallback_reason,
+        }
+
+
+class RemoteLaneUnavailable(RuntimeError):
+    """A worker could not start or finish and local fallback may proceed."""
+
+
+class DistributedLaneDispatcher:
+    """Dispatch one fenced lane remotely, or deterministically execute locally.
+
+    The coordinator remains the authority for dispatch and publication.  This
+    class owns only deterministic worker selection, heartbeat/cancellation
+    propagation, and the hand-off of an accepted publication to the merge
+    train.  An ambiguous remote failure is never re-executed locally in the
+    same fencing epoch.
+    """
+
+    def __init__(
+        self,
+        coordinator: LeaseCoordinator,
+        *,
+        repository_id: str,
+        local_executor: Callable[
+            [DistributedLaneDispatch, ImmutableLaneInputArtifact, threading.Event],
+            RemoteLaneResult | Mapping[str, Any],
+        ],
+        remote_workers: Sequence[DistributedLaneWorker] = (),
+        merge_submit: Callable[[Any], Mapping[str, Any]] | Any | None = None,
+        clock_ms: Callable[[], int] | None = None,
+        heartbeat_interval: float = 5.0,
+        heartbeat_capacity_millionths: int = 1_000_000,
+    ) -> None:
+        if not str(repository_id).strip():
+            raise ValueError("repository_id must be non-empty")
+        if not callable(local_executor):
+            raise ValueError("local_executor must be callable")
+        if float(heartbeat_interval) <= 0:
+            raise ValueError("heartbeat_interval must be positive")
+        capacity = int(heartbeat_capacity_millionths)
+        if not 0 <= capacity <= 1_000_000:
+            raise ValueError(
+                "heartbeat_capacity_millionths must be in [0, 1000000]"
+            )
+        self.coordinator = coordinator
+        self.repository_id = str(repository_id).strip()
+        self.local_executor = local_executor
+        self.merge_submit = merge_submit
+        self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
+        self.heartbeat_interval = float(heartbeat_interval)
+        self.heartbeat_capacity_millionths = capacity
+        self._lock = threading.RLock()
+        self._workers: dict[str, DistributedLaneWorker] = {}
+        self.set_remote_workers(remote_workers)
+
+    def set_remote_workers(
+        self, workers: Sequence[DistributedLaneWorker]
+    ) -> None:
+        """Atomically replace advertisements; duplicate worker IDs fail closed."""
+
+        registered: dict[str, DistributedLaneWorker] = {}
+        for worker in workers:
+            if not isinstance(worker, DistributedLaneWorker):
+                raise TypeError("remote workers must be DistributedLaneWorker values")
+            if worker.worker_id in registered:
+                raise ValueError(f"duplicate distributed worker id: {worker.worker_id}")
+            registered[worker.worker_id] = worker
+        with self._lock:
+            self._workers = registered
+
+    def _eligible_workers(
+        self,
+        lane: BundleLaneSpec,
+        *,
+        now_ms: int,
+        lease_expires_at_ms: int | None = None,
+    ) -> tuple[DistributedLaneWorker, ...]:
+        with self._lock:
+            workers = tuple(self._workers.values())
+        return tuple(
+            sorted(
+                (
+                    worker
+                    for worker in workers
+                    if not worker.validate_for(lane, now_ms=now_ms)
+                    and (
+                        lease_expires_at_ms is None
+                        or (
+                            worker.capability_receipt.expires_at_ms
+                            >= lease_expires_at_ms
+                            and worker.environment_receipt.expires_at_ms
+                            >= lease_expires_at_ms
+                        )
+                    )
+                ),
+                key=lambda worker: (
+                    worker.worker_id,
+                    worker.capability_receipt.receipt_id,
+                    worker.environment_receipt.receipt_id,
+                ),
+            )
+        )
+
+    def _local_worker(
+        self, lane: BundleLaneSpec
+    ) -> DistributedLaneWorker:
+        """Return deterministic local receipts for the same artifact contract."""
+
+        capabilities = tuple(
+            sorted(set(lane.required_capabilities) | {"local-execution"})
+        )
+        capability = WorkerCapabilityReceipt(
+            worker_id="local",
+            capabilities=capabilities,
+            issued_at_ms=0,
+            expires_at_ms=9_223_372_036_854_775_807,
+            capability_revision="local-fallback@1",
+            metadata={"repository_id": self.repository_id},
+        )
+        required_environment = (
+            dict(lane.queue_payload.get("required_environment") or {})
+            if isinstance(lane.queue_payload, Mapping)
+            and isinstance(lane.queue_payload.get("required_environment"), Mapping)
+            else {}
+        )
+        environment = WorkerEnvironmentReceipt(
+            worker_id="local",
+            environment_id=f"local:{self.repository_id}",
+            capability_receipt_id=capability.receipt_id,
+            issued_at_ms=0,
+            expires_at_ms=9_223_372_036_854_775_807,
+            attributes=required_environment,
+        )
+        return DistributedLaneWorker(
+            worker_id="local",
+            capability_receipt=capability,
+            environment_receipt=environment,
+            execute=self.local_executor,
+        )
+
+    def _current_worker(
+        self, selected: DistributedLaneWorker
+    ) -> DistributedLaneWorker:
+        if selected.worker_id == "local":
+            return selected
+        with self._lock:
+            return self._workers.get(selected.worker_id, selected)
+
+    @staticmethod
+    def _normalize_result(
+        raw: RemoteLaneResult | Mapping[str, Any],
+        *,
+        dispatch: DistributedLaneDispatch,
+        artifact: ImmutableLaneInputArtifact,
+        worker: DistributedLaneWorker,
+        now_ms: int,
+    ) -> RemoteLaneResult | Mapping[str, Any]:
+        if isinstance(raw, RemoteLaneResult):
+            return raw
+        if not isinstance(raw, Mapping):
+            # Preserve malformed foreign input for the coordinator's
+            # quarantine boundary instead of manufacturing a valid result.
+            return {"malformed_result_type": type(raw).__name__}
+        value = dict(raw)
+        value.setdefault("repository_id", dispatch.repository_id)
+        value.setdefault("worker_id", worker.worker_id)
+        value.setdefault("task_cid", dispatch.task_cid)
+        value.setdefault("artifact_id", artifact.artifact_id)
+        value.setdefault(
+            "capability_receipt_id", worker.capability_receipt.receipt_id
+        )
+        value.setdefault(
+            "environment_receipt_id", worker.environment_receipt.receipt_id
+        )
+        value.setdefault("claim_cid", dispatch.grant.claim_cid)
+        value.setdefault("logical_epoch", dispatch.logical_epoch)
+        value.setdefault("fencing_token", dispatch.fencing_token)
+        value.setdefault("created_at_ms", now_ms)
+        value.setdefault("output", {})
+        try:
+            return RemoteLaneResult.from_dict(value)
+        except (TypeError, ValueError):
+            # The lease boundary records the exact malformed projection and
+            # reason; do not throw it away by failing early here.
+            return value
+
+    @staticmethod
+    def _publication_envelope(
+        result: RemoteLaneResult,
+        dispatch: DistributedLaneDispatch,
+    ) -> dict[str, Any]:
+        envelope = {
+            "schema": DISTRIBUTED_LANE_PUBLICATION_SCHEMA,
+            "repository_id": result.repository_id,
+            "request_id": result.request_id,
+            "publication_id": result.publication_id,
+            "worker_id": result.worker_id,
+            "task_cid": result.task_cid,
+            "artifact_id": result.artifact_id,
+            "candidate_commit": result.candidate_commit,
+            "capability_receipt_id": result.capability_receipt_id,
+            "environment_receipt_id": result.environment_receipt_id,
+            "claimant": dispatch.grant.claimant_did,
+            "claim_cid": result.claim_cid,
+            "logical_epoch": result.logical_epoch,
+            "fencing_epoch": result.logical_epoch,
+            "fencing_token": result.fencing_token,
+            "cancelled": result.cancelled,
+        }
+        envelope["digest"] = _distributed_lane_digest(envelope)
+        return envelope
+
+    @staticmethod
+    def _disposition_name(value: Mapping[str, Any]) -> str:
+        if value.get("duplicate") is True:
+            return "duplicate"
+        if value.get("quarantined") is True:
+            return "quarantined"
+        if value.get("cancelled") is True:
+            return "cancelled"
+        raw = str(
+            value.get("disposition")
+            or value.get("status")
+            or value.get("decision")
+            or ""
+        ).strip().lower()
+        if value.get("accepted") is True and raw not in {"duplicate", "cancelled"}:
+            return "accepted"
+        if raw in {"published", "succeeded", "ok"}:
+            return "accepted"
+        if raw in {"duplicate", "already_published", "already_completed"}:
+            return "duplicate"
+        if raw in {"cancelled", "canceled"}:
+            return "cancelled"
+        if raw in {"quarantined", "quarantine", "rejected", "invalid", "stale"}:
+            return "quarantined"
+        return raw or "rejected"
+
+    def _submit_merge(
+        self,
+        lane: BundleLaneSpec,
+        result: RemoteLaneResult,
+        envelope: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if self.merge_submit is None:
+            return {"accepted": True, "queued": False, "reason": "merge_submit_absent"}
+        from .merge_queue import MergeRequest
+
+        priority = str(
+            (lane.queue_payload or {}).get("priority")
+            or f"P{min(3, max(0, lane.objective_priority))}"
+        ).upper()
+        if priority not in {"P0", "P1", "P2", "P3"}:
+            priority = "P2"
+        branch_name = str(result.output.get("branch_name") or "").strip()
+        if not branch_name:
+            raise ValueError(
+                "distributed merge candidate must identify its source branch"
+            )
+        request = MergeRequest(
+            request_id=result.publication_id,
+            branch_name=branch_name,
+            task_id=lane.task_ids[0] if lane.task_ids else lane.task_cid,
+            priority=priority,
+            lane_id=lane.parallel_lane or result.worker_id,
+            enqueued_at=self._clock_ms() / 1000,
+            metadata={
+                "candidate_commit": result.candidate_commit,
+                "canonical_task_id": lane.task_cid,
+                "distributed_publication": dict(envelope),
+            },
+            commit_sha=result.candidate_commit,
+            canonical_task_id=lane.task_cid,
+        )
+        submitter = self.merge_submit
+        if (
+            hasattr(submitter, "queue")
+            and hasattr(submitter, "run_once")
+            and hasattr(submitter.queue, "enqueue")
+        ):
+            submitter.queue.enqueue(
+                branch_name=request.branch_name,
+                task_id=request.task_id,
+                priority=request.priority,
+                lane_id=request.lane_id,
+                metadata=request.metadata,
+                commit_sha=request.commit_sha,
+                canonical_task_id=request.canonical_task_id,
+            )
+            response = submitter.run_once()
+        elif hasattr(submitter, "admit_distributed_publication"):
+            # Lightweight adapters may own queue claiming externally while
+            # exposing the merge train's admission spelling directly.
+            response = submitter.admit_distributed_publication(request)
+        else:
+            response = submitter(request)
+        if not isinstance(response, Mapping):
+            raise TypeError("merge submission must return a mapping")
+        return dict(response)
+
+    def execute(
+        self,
+        lane: BundleLaneSpec,
+        grant: Any,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> DistributedLaneExecution:
+        """Execute one lease without allowing duplicate local/remote work."""
+
+        cancellation = cancel_event or threading.Event()
+        artifact = immutable_lane_input_artifact(
+            lane,
+            repository_id=self.repository_id,
+            created_at_ms=self._clock_ms(),
+        )
+        eligible = self._eligible_workers(
+            lane,
+            now_ms=self._clock_ms(),
+            lease_expires_at_ms=int(grant.lease_expires_at_ms),
+        )
+        worker = eligible[0] if eligible else self._local_worker(lane)
+        mode = "remote" if eligible else "local"
+        fallback_reason = "" if eligible else "remote_capacity_unavailable"
+        dispatch = self.coordinator.dispatch_remote(
+            grant,
+            input_artifact=artifact,
+            capability_receipt=worker.capability_receipt,
+            environment_receipt=worker.environment_receipt,
+            worker_id=worker.worker_id,
+            repository_id=self.repository_id,
+            required_capabilities=tuple(lane.required_capabilities),
+            now_ms=self._clock_ms(),
+        )
+        request_id = dispatch.dispatch_cid
+        if cancellation.is_set():
+            cancelled = self.coordinator.cancel_remote(
+                dispatch,
+                reason="caller_cancelled_before_execution",
+                now_ms=self._clock_ms(),
+            )
+            if worker.cancel is not None:
+                worker.cancel(cancelled, "caller_cancelled_before_execution")
+            return DistributedLaneExecution(
+                request_id=request_id,
+                execution_mode=mode,
+                worker_id=worker.worker_id,
+                artifact_id=artifact.artifact_id,
+                task_cid=lane.task_cid,
+                disposition="cancelled",
+                fallback_reason=fallback_reason,
+            )
+
+        heartbeat_stop = threading.Event()
+        heartbeat_failures: list[BaseException] = []
+
+        def heartbeat() -> None:
+            nonlocal dispatch
+            while not heartbeat_stop.wait(self.heartbeat_interval):
+                if cancellation.is_set():
+                    try:
+                        self.coordinator.cancel_remote(
+                            dispatch,
+                            reason="caller_cancelled",
+                            now_ms=self._clock_ms(),
+                        )
+                    except BaseException as exc:
+                        heartbeat_failures.append(exc)
+                    return
+                try:
+                    dispatch = self.coordinator.heartbeat_remote(
+                        dispatch,
+                        phase="executing",
+                        capacity_millionths=self.heartbeat_capacity_millionths,
+                        now_ms=self._clock_ms(),
+                    )
+                except BaseException as exc:
+                    heartbeat_failures.append(exc)
+                    return
+
+        heartbeat_thread = threading.Thread(
+            target=heartbeat,
+            name=f"distributed-lane-heartbeat-{lane.task_cid[-12:]}",
+            daemon=True,
+        )
+        heartbeat_thread.start()
+        try:
+            raw_result = worker.execute(dispatch, artifact, cancellation)
+        except BaseException as exc:
+            heartbeat_stop.set()
+            heartbeat_thread.join()
+            try:
+                updated = self.coordinator.cancel_remote(
+                    dispatch,
+                    reason=f"worker_execution_failed:{type(exc).__name__}",
+                    now_ms=self._clock_ms(),
+                )
+                if worker.cancel is not None:
+                    worker.cancel(updated, "worker_execution_failed")
+            except LeaseError:
+                pass
+            # Once a remote dispatch was visible, local retry in the same epoch
+            # would create ambiguous duplicate work.  The scheduler may reclaim
+            # it only through a later fencing epoch.
+            return DistributedLaneExecution(
+                request_id=request_id,
+                execution_mode=mode,
+                worker_id=worker.worker_id,
+                artifact_id=artifact.artifact_id,
+                task_cid=lane.task_cid,
+                disposition="worker_lost",
+                quarantine={"error": type(exc).__name__, "message": str(exc)},
+                fallback_reason=fallback_reason,
+            )
+        finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join()
+
+        normalized = self._normalize_result(
+            raw_result,
+            dispatch=dispatch,
+            artifact=artifact,
+            worker=worker,
+            now_ms=self._clock_ms(),
+        )
+        if cancellation.is_set():
+            try:
+                dispatch = self.coordinator.cancel_remote(
+                    dispatch,
+                    reason="caller_cancelled",
+                    now_ms=self._clock_ms(),
+                )
+            except LeaseError:
+                pass
+            if worker.cancel is not None:
+                worker.cancel(dispatch, "caller_cancelled")
+        current_worker = self._current_worker(worker)
+        publication = self.coordinator.publish_remote_result(
+            dispatch,
+            normalized,
+            current_capability_receipt=current_worker.capability_receipt,
+            current_environment_receipt=current_worker.environment_receipt,
+            now_ms=self._clock_ms(),
+        )
+        publication_payload = (
+            dict(publication) if isinstance(publication, Mapping) else {}
+        )
+        disposition = self._disposition_name(publication_payload)
+        merge_result: dict[str, Any] = {}
+        if (
+            disposition == "accepted"
+            and isinstance(normalized, RemoteLaneResult)
+            and normalized.status == "succeeded"
+            and not normalized.cancelled
+        ):
+            envelope = self._publication_envelope(normalized, dispatch)
+            merge_result = self._submit_merge(lane, normalized, envelope)
+            try:
+                finalized = self.coordinator.finalize_remote_result(
+                    dispatch,
+                    normalized,
+                    merge_result=merge_result,
+                    now_ms=self._clock_ms(),
+                )
+            except (LeaseError, ValueError) as exc:
+                merge_result["distributed_finalization"] = {
+                    "finalized": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+                disposition = "merge_rejected"
+            else:
+                merge_result["distributed_finalization"] = dict(finalized)
+                if finalized.get("finalized") is not True:
+                    disposition = "merge_rejected"
+        return DistributedLaneExecution(
+            request_id=(
+                normalized.request_id
+                if isinstance(normalized, RemoteLaneResult)
+                else request_id
+            ),
+            execution_mode=mode,
+            worker_id=worker.worker_id,
+            artifact_id=artifact.artifact_id,
+            task_cid=lane.task_cid,
+            disposition=disposition,
+            publication=publication_payload,
+            merge_result=merge_result,
+            quarantine=(
+                dict(publication_payload.get("quarantine") or {})
+                if isinstance(publication_payload.get("quarantine"), Mapping)
+                else {}
+            ),
+            fallback_reason=fallback_reason,
+        )
+
+
+# Supervisor is a compatibility-friendly name for orchestration callers.
+DistributedLaneSupervisor = DistributedLaneDispatcher
 
 
 def _compact_bundle_manifest_payload(payload: dict[str, Any]) -> dict[str, Any]:
