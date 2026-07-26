@@ -44,7 +44,7 @@ pip install apollo-torch
 
 [Approximated Gradient Scaling for Memory Efficient LLM Optimization (APOLLO)](https://github.com/zhuhanqing/APOLLO) is a memory-efficient optimizer that allows full parameter learning for both pretraining and fine-tuning. It maintains AdamW-level performance with SGD-like memory efficiency. For extreme memory efficiency, you can use APOLLO-Mini, a rank 1 variant of APOLLO. APOLLO optimizers support:
 
-* Ultra-low rank efficiency. You can use a much lower rank than [GaLoRE](./trainer#galore), rank 1 is sufficient.
+* Ultra-low rank efficiency. You can use a much lower rank than [GaLoRE](./trainer.md#galore), rank 1 is sufficient.
 * Avoid expensive SVD computations. APOLLO leverages random projections to avoid training stalls.
 
 Use the `optim_target_modules` parameter to specify which layers to train.
