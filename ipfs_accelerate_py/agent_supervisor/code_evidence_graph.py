@@ -560,6 +560,25 @@ class CodeEvidenceGraph:
 
     materialize = from_records
 
+    def to_semantic_dependency_graph(
+        self,
+        *,
+        root_id: str,
+    ) -> Any:
+        """Project this graph into the cross-domain authority graph.
+
+        The import is intentionally lazy so the established evidence graph
+        remains independently importable and the semantic layer can preserve
+        (rather than duplicate) its proof, validation, and merge authority.
+        """
+
+        from .semantic_dependency_graph import build_semantic_dependency_graph
+
+        return build_semantic_dependency_graph(
+            root_id=root_id,
+            code_evidence_graph=self,
+        )
+
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CodeEvidenceGraph":
         schema = str(payload.get("schema") or CODE_EVIDENCE_GRAPH_SCHEMA)
