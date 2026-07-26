@@ -4158,7 +4158,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-138 Add dependency-local invalidation, re-proof, and recovery
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-enforcement
