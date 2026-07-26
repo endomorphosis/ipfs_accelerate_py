@@ -10,6 +10,11 @@ Retry contexts are parent-bound deltas.  A delta may contain only changed or
 explicitly requested evidence; :func:`reconstruct_context` deterministically
 rebuilds the effective context and verifies that the immutable core, tree,
 policy, and required evidence coverage were not weakened.
+
+Prefix-stable contexts retain that base contract while rendering an ordered
+policy/objective prefix, task core, and evidence delta.  Their cache identities
+bind provider/model, authority, target, and every semantic prefix dependency;
+warm receipts distinguish provider-native reuse from conservative estimates.
 """
 
 from __future__ import annotations
@@ -69,6 +74,32 @@ REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
 DELTA_RETRY_EVIDENCE_ID: Final = (
     "306437607356117177048620815571362227127"
 )
+PREFIX_REUSE_REQUIREMENT_ID: Final = (
+    "267664298677617945522201159534035798321"
+)
+PREFIX_REUSE_OBJECTIVE_ID: Final = "ASI-G210"
+PREFIX_REUSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "Every provider input is arranged as a canonical stable "
+        "policy/objective prefix, stable task core, and volatile evidence delta"
+    ),
+    (
+        "the stable prefix preserves goal, authority, scope, and acceptance and "
+        "its cache identity changes exactly with a semantic prefix dependency"
+    ),
+    (
+        "provider prompt-cache or KV-cache identities and actual reused tokens "
+        "are bound when available; otherwise warm reuse is conservatively estimated"
+    ),
+    (
+        "reuse is prohibited across provider, model, authority, repository, "
+        "tree, stage, or target-scope boundaries"
+    ),
+    (
+        "and the exact requirement ID is emitted only for a warm, evidence-bound "
+        "receipt that reuses at least 70 percent of eligible stable-prefix tokens"
+    ),
+)
 DELTA_RETRY_OBJECTIVE_ID: Final = "ASI-G092"
 DELTA_RETRY_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     (
@@ -102,6 +133,7 @@ DELTA_RETRY_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
 CONTEXT_EVIDENCE_PRODUCERS: Final = {
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID: "context_compiler",
     DELTA_RETRY_EVIDENCE_ID: "context_delta_compiler",
+    PREFIX_REUSE_REQUIREMENT_ID: "prefix_context_compiler",
 }
 
 CONTEXT_COMPILATION_RECEIPT_SCHEMA = (
@@ -120,10 +152,21 @@ REQUIRED_CONTEXT_BUDGET_EVIDENCE_SCHEMA = (
 DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/delta-retry-context-evidence@1"
 )
+PREFIX_CACHE_IDENTITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/prefix-cache-identity@1"
+)
+PREFIX_STABLE_CONTEXT_CAPSULE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/prefix-stable-context-capsule@1"
+)
+PREFIX_REUSE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/prefix-reuse-receipt@1"
+)
 CONTEXT_COMPILER_VERSION = 1
 MAX_DECISIONS = 4_096
 MAX_CALIBRATION_SAMPLES = 128
 MAX_ERROR_BPS = 1_000_000
+MIN_WARM_PREFIX_REUSE_BPS = 7_000
+CONSERVATIVE_PREFIX_REUSE_BPS = 8_000
 
 
 class ContextCompilationError(ContextContractError):
@@ -136,6 +179,14 @@ class RequiredContextOverflowError(ContextCompilationError):
 
 class ContextDeltaError(ContextCompilationError):
     """A retry delta is stale, lossy, unchanged, or not token efficient."""
+
+
+class PrefixContextError(ContextCompilationError):
+    """A prefix-stable provider input or cache claim is malformed."""
+
+
+class PrefixCacheBoundaryError(PrefixContextError):
+    """Provider cache reuse crossed a semantic or provider boundary."""
 
 
 class ContextExpansionError(ContextDeltaError):
@@ -170,6 +221,32 @@ class ExclusionReason(str, Enum):
     ITEM_LIMIT = "item_limit"
     UNCHANGED = "unchanged"
     NOT_REQUESTED = "not_requested"
+
+
+class PrefixReuseSource(str, Enum):
+    """How stable-prefix reuse was measured."""
+
+    COLD = "cold"
+    PROVIDER_PROMPT_CACHE = "provider_prompt_cache"
+    PROVIDER_KV_CACHE = "provider_kv_cache"
+    CONSERVATIVE_ESTIMATE = "conservative_estimate"
+
+
+class PrefixCacheDecision(str, Enum):
+    """Outcome of comparing a stage input with its warm predecessor."""
+
+    COLD = "cold"
+    HIT = "hit"
+    MISS = "miss"
+    INVALIDATED = "invalidated"
+
+
+class PrefixCacheKind(str, Enum):
+    """Provider cache mechanism, or the deterministic local cache key."""
+
+    DERIVED = "derived"
+    PROMPT_CACHE = "prompt_cache"
+    KV_CACHE = "kv_cache"
 
 
 def _text(value: Any, name: str, *, required: bool = True) -> str:
@@ -1093,6 +1170,922 @@ def context_provider_input_payload(
         ),
         "evidence": tuple(item.to_record() for item in evidence),
     }
+
+
+def _stable_policy_objective_prefix(
+    capsule: ContextCapsule,
+) -> dict[str, Any]:
+    return {
+        "contract_version": CONTEXT_COMPILER_VERSION,
+        "repository_id": capsule.repository_id,
+        "objective_id": capsule.objective_id,
+        "objective_revision": capsule.objective_revision,
+        "policy_id": capsule.policy_id,
+        "policy_revision": capsule.policy_revision,
+        "goal": capsule.goal,
+        "authority": capsule.authority,
+        "acceptance": capsule.acceptance,
+    }
+
+
+def _stable_task_core(capsule: ContextCapsule) -> dict[str, Any]:
+    return {
+        "tree_id": capsule.tree_id,
+        "caller": capsule.caller,
+        "stage": capsule.stage,
+        "scope": capsule.scope,
+    }
+
+
+def _prefix_segment_bytes(label: str, value: Any) -> bytes:
+    return canonical_context_json_bytes({label: value}) + b"\n"
+
+
+def _stable_prefix_bytes(capsule: ContextCapsule) -> bytes:
+    return _prefix_segment_bytes(
+        "stable_policy_objective_prefix",
+        _stable_policy_objective_prefix(capsule),
+    ) + _prefix_segment_bytes(
+        "stable_task_core", _stable_task_core(capsule)
+    )
+
+
+def _volatile_evidence_bytes(capsule: ContextCapsule) -> bytes:
+    return canonical_context_json_bytes(
+        {
+            "volatile_evidence_delta": tuple(
+                item.to_record() for item in capsule.evidence
+            )
+        }
+    )
+
+
+def _prefix_provider_input_tokens(
+    estimator: "CalibratedTokenEstimator",
+    capsule: ContextCapsule,
+) -> int:
+    stable = _stable_prefix_bytes(capsule)
+    canonical_count = estimator.estimate(
+        stable + _volatile_evidence_bytes(capsule)
+    )
+    empty_delta_count = estimator.estimate(
+        stable
+        + canonical_context_json_bytes({"volatile_evidence_delta": ()})
+    )
+    component_count = empty_delta_count + sum(
+        _reference_tokens(estimator, item) for item in capsule.evidence
+    )
+    return max(canonical_count, component_count)
+
+
+def _prefix_dependency_values(
+    capsule: "PrefixStableContextCapsule",
+) -> dict[str, Any]:
+    base = capsule.context_capsule
+    return {
+        "provider_id": capsule.provider_id,
+        "model_id": capsule.model_id,
+        "repository_id": base.repository_id,
+        "tree_id": base.tree_id,
+        "objective_id": base.objective_id,
+        "objective_revision": base.objective_revision,
+        "policy_id": base.policy_id,
+        "policy_revision": base.policy_revision,
+        "caller": base.caller,
+        "stage": base.stage,
+        "goal": base.goal,
+        "authority": base.authority,
+        "scope": base.scope,
+        "acceptance": base.acceptance,
+    }
+
+
+@dataclass(frozen=True)
+class PrefixCacheIdentity(CanonicalContract):
+    """Provider/model-bound identity for one exact reusable prefix."""
+
+    SCHEMA: ClassVar[str] = PREFIX_CACHE_IDENTITY_SCHEMA
+
+    provider_id: str
+    model_id: str
+    cache_kind: PrefixCacheKind | str
+    semantic_prefix_id: str
+    authority_boundary_id: str
+    target_boundary_id: str
+    provider_cache_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "provider_id",
+            "model_id",
+            "semantic_prefix_id",
+            "authority_boundary_id",
+            "target_boundary_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        try:
+            kind = (
+                self.cache_kind
+                if isinstance(self.cache_kind, PrefixCacheKind)
+                else PrefixCacheKind(str(self.cache_kind))
+            )
+        except ValueError as exc:
+            raise PrefixContextError("cache_kind is not supported") from exc
+        provider_cache_id = _text(
+            self.provider_cache_id,
+            "provider_cache_id",
+            required=False,
+        )
+        if kind is PrefixCacheKind.DERIVED and provider_cache_id:
+            raise PrefixContextError(
+                "a derived prefix key cannot claim a provider cache identity"
+            )
+        if kind is not PrefixCacheKind.DERIVED and not provider_cache_id:
+            raise PrefixContextError(
+                "provider cache identities require provider_cache_id"
+            )
+        object.__setattr__(self, "cache_kind", kind)
+        object.__setattr__(self, "provider_cache_id", provider_cache_id)
+
+    @property
+    def cache_identity_id(self) -> str:
+        return self.content_id
+
+    @property
+    def cache_key(self) -> str:
+        return self.content_id
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTEXT_COMPILER_VERSION,
+            "provider_id": self.provider_id,
+            "model_id": self.model_id,
+            "cache_kind": self.cache_kind.value,
+            "semantic_prefix_id": self.semantic_prefix_id,
+            "authority_boundary_id": self.authority_boundary_id,
+            "target_boundary_id": self.target_boundary_id,
+            "provider_cache_id": self.provider_cache_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PrefixCacheIdentity":
+        _schema(payload, cls.SCHEMA, "prefix cache identity")
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "content_id",
+                "cache_identity_id",
+                "cache_key",
+                "contract_version",
+                "provider_id",
+                "model_id",
+                "cache_kind",
+                "semantic_prefix_id",
+                "authority_boundary_id",
+                "target_boundary_id",
+                "provider_cache_id",
+            },
+            "prefix cache identity",
+        )
+        result = cls(
+            provider_id=payload.get("provider_id", ""),
+            model_id=payload.get("model_id", ""),
+            cache_kind=payload.get("cache_kind", ""),
+            semantic_prefix_id=payload.get("semantic_prefix_id", ""),
+            authority_boundary_id=payload.get("authority_boundary_id", ""),
+            target_boundary_id=payload.get("target_boundary_id", ""),
+            provider_cache_id=payload.get("provider_cache_id", ""),
+        )
+        _check_identity(payload, result.content_id, "prefix cache identity")
+        for name in ("cache_identity_id", "cache_key"):
+            claimed = payload.get(name)
+            if claimed not in (None, "", result.content_id):
+                raise PrefixContextError(
+                    "prefix cache identity does not match its canonical key"
+                )
+        return result
+
+
+@dataclass(frozen=True)
+class PrefixStableContextCapsule(CanonicalContract):
+    """One stage input split into two stable segments and an evidence delta."""
+
+    SCHEMA: ClassVar[str] = PREFIX_STABLE_CONTEXT_CAPSULE_SCHEMA
+
+    context_capsule: ContextCapsule
+    provider_id: str
+    model_id: str
+    stable_prefix_tokens: int
+    provider_input_tokens: int
+    effective_input_limit: int
+
+    def __post_init__(self) -> None:
+        capsule = self.context_capsule
+        if isinstance(capsule, Mapping):
+            capsule = ContextCapsule.from_dict(capsule)
+        if not isinstance(capsule, ContextCapsule):
+            raise PrefixContextError(
+                "context_capsule must be a ContextCapsule"
+            )
+        object.__setattr__(self, "context_capsule", capsule)
+        object.__setattr__(
+            self, "provider_id", _text(self.provider_id, "provider_id")
+        )
+        object.__setattr__(
+            self, "model_id", _text(self.model_id, "model_id")
+        )
+        stable_tokens = _integer(
+            self.stable_prefix_tokens,
+            "stable_prefix_tokens",
+            minimum=1,
+        )
+        input_tokens = _integer(
+            self.provider_input_tokens,
+            "provider_input_tokens",
+            minimum=1,
+        )
+        effective_limit = _integer(
+            self.effective_input_limit,
+            "effective_input_limit",
+            minimum=1,
+        )
+        if stable_tokens > input_tokens:
+            raise PrefixContextError(
+                "stable prefix tokens cannot exceed provider input tokens"
+            )
+        if effective_limit < capsule.budget.max_input_tokens:
+            raise PrefixContextError(
+                "prefix effective limit cannot weaken its base capsule limit"
+            )
+        if input_tokens > effective_limit:
+            raise PrefixContextError(
+                "prefix-stable input exceeds the effective provider budget"
+            )
+        object.__setattr__(self, "stable_prefix_tokens", stable_tokens)
+        object.__setattr__(self, "provider_input_tokens", input_tokens)
+        object.__setattr__(self, "effective_input_limit", effective_limit)
+
+    @property
+    def stable_policy_objective_prefix(self) -> Mapping[str, Any]:
+        return _stable_policy_objective_prefix(self.context_capsule)
+
+    @property
+    def policy_objective_prefix(self) -> Mapping[str, Any]:
+        return self.stable_policy_objective_prefix
+
+    @property
+    def stable_task_core(self) -> Mapping[str, Any]:
+        return _stable_task_core(self.context_capsule)
+
+    @property
+    def volatile_evidence_delta(self) -> tuple[ContextReference, ...]:
+        return self.context_capsule.evidence
+
+    @property
+    def evidence_delta(self) -> tuple[ContextReference, ...]:
+        return self.volatile_evidence_delta
+
+    @property
+    def stable_policy_objective_bytes(self) -> bytes:
+        return _prefix_segment_bytes(
+            "stable_policy_objective_prefix",
+            self.stable_policy_objective_prefix,
+        )
+
+    @property
+    def stable_task_core_bytes(self) -> bytes:
+        return _prefix_segment_bytes(
+            "stable_task_core", self.stable_task_core
+        )
+
+    @property
+    def stable_prefix_bytes(self) -> bytes:
+        return _stable_prefix_bytes(self.context_capsule)
+
+    @property
+    def volatile_evidence_bytes(self) -> bytes:
+        return _volatile_evidence_bytes(self.context_capsule)
+
+    @property
+    def provider_input_bytes(self) -> bytes:
+        return self.stable_prefix_bytes + self.volatile_evidence_bytes
+
+    @property
+    def provider_input(self) -> str:
+        return self.provider_input_bytes.decode("utf-8")
+
+    @property
+    def capsule_id(self) -> str:
+        return self.content_id
+
+    @property
+    def input_tokens(self) -> int:
+        return self.provider_input_tokens
+
+    @property
+    def semantic_prefix_id(self) -> str:
+        return _canonical_digest(
+            {
+                "stable_policy_objective_prefix": (
+                    self.stable_policy_objective_prefix
+                ),
+                "stable_task_core": self.stable_task_core,
+            }
+        )
+
+    @property
+    def prefix_dependency_id(self) -> str:
+        return self.semantic_prefix_id
+
+    @property
+    def authority_boundary_id(self) -> str:
+        capsule = self.context_capsule
+        return _canonical_digest(
+            {
+                "repository_id": capsule.repository_id,
+                "policy_id": capsule.policy_id,
+                "policy_revision": capsule.policy_revision,
+                "caller": capsule.caller,
+                "authority": capsule.authority,
+            }
+        )
+
+    @property
+    def target_boundary_id(self) -> str:
+        capsule = self.context_capsule
+        return _canonical_digest(
+            {
+                "repository_id": capsule.repository_id,
+                "tree_id": capsule.tree_id,
+                "objective_id": capsule.objective_id,
+                "stage": capsule.stage,
+                "scope": capsule.scope,
+            }
+        )
+
+    @property
+    def evidence_digest(self) -> str:
+        return _canonical_digest(
+            tuple(item.to_record() for item in self.volatile_evidence_delta)
+        )
+
+    @property
+    def required_field_names(self) -> tuple[str, ...]:
+        return self.context_capsule.required_field_names
+
+    def cache_identity(
+        self,
+        *,
+        cache_kind: PrefixCacheKind | str = PrefixCacheKind.DERIVED,
+        provider_cache_id: str = "",
+    ) -> PrefixCacheIdentity:
+        return PrefixCacheIdentity(
+            provider_id=self.provider_id,
+            model_id=self.model_id,
+            cache_kind=cache_kind,
+            semantic_prefix_id=self.semantic_prefix_id,
+            authority_boundary_id=self.authority_boundary_id,
+            target_boundary_id=self.target_boundary_id,
+            provider_cache_id=provider_cache_id,
+        )
+
+    @property
+    def prompt_cache_key(self) -> str:
+        return self.cache_identity().cache_key
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTEXT_COMPILER_VERSION,
+            "context_capsule": self.context_capsule.to_record(),
+            "provider_id": self.provider_id,
+            "model_id": self.model_id,
+            "stable_policy_objective_prefix": (
+                self.stable_policy_objective_prefix
+            ),
+            "stable_task_core": self.stable_task_core,
+            "volatile_evidence_delta": tuple(
+                item.to_record() for item in self.volatile_evidence_delta
+            ),
+            "semantic_prefix_id": self.semantic_prefix_id,
+            "authority_boundary_id": self.authority_boundary_id,
+            "target_boundary_id": self.target_boundary_id,
+            "evidence_digest": self.evidence_digest,
+            "stable_prefix_tokens": self.stable_prefix_tokens,
+            "provider_input_tokens": self.provider_input_tokens,
+            "effective_input_limit": self.effective_input_limit,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "PrefixStableContextCapsule":
+        _schema(payload, cls.SCHEMA, "prefix-stable context capsule")
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "content_id",
+                "capsule_id",
+                "contract_version",
+                "context_capsule",
+                "provider_id",
+                "model_id",
+                "stable_policy_objective_prefix",
+                "stable_task_core",
+                "volatile_evidence_delta",
+                "semantic_prefix_id",
+                "prefix_dependency_id",
+                "authority_boundary_id",
+                "target_boundary_id",
+                "evidence_digest",
+                "stable_prefix_tokens",
+                "provider_input_tokens",
+                "input_tokens",
+                "effective_input_limit",
+            },
+            "prefix-stable context capsule",
+        )
+        raw_capsule = payload.get("context_capsule")
+        if not isinstance(raw_capsule, (ContextCapsule, Mapping)):
+            raise PrefixContextError("context_capsule is required")
+        result = cls(
+            context_capsule=(
+                raw_capsule
+                if isinstance(raw_capsule, ContextCapsule)
+                else ContextCapsule.from_dict(raw_capsule)
+            ),
+            provider_id=payload.get("provider_id", ""),
+            model_id=payload.get("model_id", ""),
+            stable_prefix_tokens=payload.get("stable_prefix_tokens", 0),
+            provider_input_tokens=payload.get(
+                "provider_input_tokens", payload.get("input_tokens", 0)
+            ),
+            effective_input_limit=payload.get("effective_input_limit", 0),
+        )
+        projections = {
+            "stable_policy_objective_prefix": (
+                result.stable_policy_objective_prefix
+            ),
+            "stable_task_core": result.stable_task_core,
+            "volatile_evidence_delta": tuple(
+                item.to_record() for item in result.volatile_evidence_delta
+            ),
+            "semantic_prefix_id": result.semantic_prefix_id,
+            "prefix_dependency_id": result.prefix_dependency_id,
+            "authority_boundary_id": result.authority_boundary_id,
+            "target_boundary_id": result.target_boundary_id,
+            "evidence_digest": result.evidence_digest,
+        }
+        for name, actual in projections.items():
+            claimed = payload.get(name)
+            if (
+                claimed not in (None, "")
+                and canonical_context_json_bytes(claimed)
+                != canonical_context_json_bytes(actual)
+            ):
+                raise PrefixContextError(
+                    "prefix-stable projection does not match its context capsule"
+                )
+        _check_identity(
+            payload, result.content_id, "prefix-stable context capsule"
+        )
+        claimed = payload.get("capsule_id")
+        if claimed not in (None, "", result.content_id):
+            raise PrefixContextError(
+                "prefix-stable capsule identity does not match payload"
+            )
+        return result
+
+
+@dataclass(frozen=True)
+class PrefixReuseReceipt(CanonicalContract):
+    """Auditable reuse decision for one prefix-stable stage input."""
+
+    SCHEMA: ClassVar[str] = PREFIX_REUSE_RECEIPT_SCHEMA
+
+    capsule_id: str
+    context_capsule_id: str
+    repository_id: str
+    tree_id: str
+    objective_id: str
+    objective_revision: str
+    policy_id: str
+    policy_revision: str
+    caller: str
+    stage: str
+    cache_identity: PrefixCacheIdentity
+    previous_capsule_id: str
+    previous_semantic_prefix_id: str
+    reuse_source: PrefixReuseSource | str
+    cache_decision: PrefixCacheDecision | str
+    eligible_stable_prefix_tokens: int
+    reused_prefix_tokens: int
+    provider_input_tokens: int
+    provider_reused_tokens: int | None
+    invalidated_dependencies: tuple[str, ...]
+    evidence_reference_ids: tuple[str, ...]
+    evidence_digest: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "capsule_id",
+            "context_capsule_id",
+            "repository_id",
+            "tree_id",
+            "objective_id",
+            "objective_revision",
+            "policy_id",
+            "policy_revision",
+            "caller",
+            "stage",
+            "evidence_digest",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        for name in (
+            "previous_capsule_id",
+            "previous_semantic_prefix_id",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(getattr(self, name), name, required=False),
+            )
+        identity = self.cache_identity
+        if isinstance(identity, Mapping):
+            identity = PrefixCacheIdentity.from_dict(identity)
+        if not isinstance(identity, PrefixCacheIdentity):
+            raise PrefixContextError(
+                "cache_identity must be a PrefixCacheIdentity"
+            )
+        object.__setattr__(self, "cache_identity", identity)
+        try:
+            source = (
+                self.reuse_source
+                if isinstance(self.reuse_source, PrefixReuseSource)
+                else PrefixReuseSource(str(self.reuse_source))
+            )
+            decision = (
+                self.cache_decision
+                if isinstance(self.cache_decision, PrefixCacheDecision)
+                else PrefixCacheDecision(str(self.cache_decision))
+            )
+        except ValueError as exc:
+            raise PrefixContextError(
+                "prefix reuse source or cache decision is unsupported"
+            ) from exc
+        object.__setattr__(self, "reuse_source", source)
+        object.__setattr__(self, "cache_decision", decision)
+        for name in (
+            "eligible_stable_prefix_tokens",
+            "reused_prefix_tokens",
+            "provider_input_tokens",
+        ):
+            object.__setattr__(
+                self, name, _integer(getattr(self, name), name)
+            )
+        if self.eligible_stable_prefix_tokens < 1:
+            raise PrefixContextError(
+                "eligible stable prefix tokens must be positive"
+            )
+        if self.reused_prefix_tokens > self.eligible_stable_prefix_tokens:
+            raise PrefixContextError(
+                "reused prefix tokens exceed the eligible stable prefix"
+            )
+        if self.eligible_stable_prefix_tokens > self.provider_input_tokens:
+            raise PrefixContextError(
+                "eligible prefix tokens exceed provider input tokens"
+            )
+        provider_reused = self.provider_reused_tokens
+        if provider_reused is not None:
+            provider_reused = _integer(
+                provider_reused, "provider_reused_tokens"
+            )
+            if provider_reused > self.provider_input_tokens:
+                raise PrefixContextError(
+                    "provider reused tokens exceed provider input tokens"
+                )
+        object.__setattr__(
+            self, "provider_reused_tokens", provider_reused
+        )
+        invalidated = _strings(
+            self.invalidated_dependencies, "invalidated_dependencies"
+        )
+        evidence_ids = _strings(
+            self.evidence_reference_ids, "evidence_reference_ids"
+        )
+        object.__setattr__(
+            self, "invalidated_dependencies", invalidated
+        )
+        object.__setattr__(self, "evidence_reference_ids", evidence_ids)
+        if bool(self.previous_capsule_id) != bool(
+            self.previous_semantic_prefix_id
+        ):
+            raise PrefixContextError(
+                "warm predecessor identities must be supplied together"
+            )
+        native_source = source in {
+            PrefixReuseSource.PROVIDER_PROMPT_CACHE,
+            PrefixReuseSource.PROVIDER_KV_CACHE,
+        }
+        if native_source != (provider_reused is not None):
+            raise PrefixContextError(
+                "provider-native reuse requires an actual reused-token count"
+            )
+        expected_kind = {
+            PrefixReuseSource.PROVIDER_PROMPT_CACHE: (
+                PrefixCacheKind.PROMPT_CACHE
+            ),
+            PrefixReuseSource.PROVIDER_KV_CACHE: PrefixCacheKind.KV_CACHE,
+        }.get(source)
+        if (
+            expected_kind is not None
+            and identity.cache_kind is not expected_kind
+        ):
+            raise PrefixContextError(
+                "reuse source does not match the cache identity kind"
+            )
+        if decision is PrefixCacheDecision.COLD:
+            if self.previous_capsule_id or self.reused_prefix_tokens:
+                raise PrefixContextError(
+                    "cold cache decisions cannot claim warm reuse"
+                )
+        elif not self.previous_capsule_id:
+            raise PrefixContextError(
+                "non-cold cache decisions require a warm predecessor"
+            )
+        if decision is PrefixCacheDecision.INVALIDATED:
+            if not invalidated or self.reused_prefix_tokens:
+                raise PrefixContextError(
+                    "invalidated prefixes must name dependencies and reuse zero"
+                )
+        elif invalidated:
+            raise PrefixContextError(
+                "only invalidated cache decisions may name changed dependencies"
+            )
+        if decision is PrefixCacheDecision.HIT and not self.reused_prefix_tokens:
+            raise PrefixContextError("cache hits must reuse prefix tokens")
+        if decision is PrefixCacheDecision.MISS and self.reused_prefix_tokens:
+            raise PrefixContextError("cache misses cannot reuse prefix tokens")
+        if source is PrefixReuseSource.COLD and decision not in {
+            PrefixCacheDecision.COLD,
+            PrefixCacheDecision.INVALIDATED,
+        }:
+            raise PrefixContextError(
+                "cold reuse source is limited to cold or invalidated decisions"
+            )
+
+    @property
+    def receipt_id(self) -> str:
+        return self.content_id
+
+    @property
+    def reuse_bps(self) -> int:
+        return (
+            self.reused_prefix_tokens
+            * 10_000
+            // self.eligible_stable_prefix_tokens
+        )
+
+    @property
+    def reuse_ratio_bps(self) -> int:
+        return self.reuse_bps
+
+    @property
+    def qualifies(self) -> bool:
+        return bool(
+            self.cache_decision is PrefixCacheDecision.HIT
+            and self.previous_capsule_id
+            and not self.invalidated_dependencies
+            and self.reuse_bps >= MIN_WARM_PREFIX_REUSE_BPS
+            and self.evidence_digest
+        )
+
+    @property
+    def evidence_claim_references(self) -> tuple[str, ...]:
+        return (PREFIX_REUSE_REQUIREMENT_ID,) if self.qualifies else ()
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTEXT_COMPILER_VERSION,
+            "capsule_id": self.capsule_id,
+            "context_capsule_id": self.context_capsule_id,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_id": self.objective_id,
+            "objective_revision": self.objective_revision,
+            "policy_id": self.policy_id,
+            "policy_revision": self.policy_revision,
+            "caller": self.caller,
+            "stage": self.stage,
+            "cache_identity": self.cache_identity.to_record(),
+            "previous_capsule_id": self.previous_capsule_id,
+            "previous_semantic_prefix_id": (
+                self.previous_semantic_prefix_id
+            ),
+            "reuse_source": self.reuse_source.value,
+            "cache_decision": self.cache_decision.value,
+            "eligible_stable_prefix_tokens": (
+                self.eligible_stable_prefix_tokens
+            ),
+            "reused_prefix_tokens": self.reused_prefix_tokens,
+            "provider_input_tokens": self.provider_input_tokens,
+            "provider_reused_tokens": self.provider_reused_tokens,
+            "reuse_bps": self.reuse_bps,
+            "invalidated_dependencies": self.invalidated_dependencies,
+            "evidence_reference_ids": self.evidence_reference_ids,
+            "evidence_digest": self.evidence_digest,
+            "evidence_claim_references": self.evidence_claim_references,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PrefixReuseReceipt":
+        _schema(payload, cls.SCHEMA, "prefix reuse receipt")
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "content_id",
+                "receipt_id",
+                "contract_version",
+                "capsule_id",
+                "context_capsule_id",
+                "repository_id",
+                "tree_id",
+                "objective_id",
+                "objective_revision",
+                "policy_id",
+                "policy_revision",
+                "caller",
+                "stage",
+                "cache_identity",
+                "previous_capsule_id",
+                "previous_semantic_prefix_id",
+                "reuse_source",
+                "cache_decision",
+                "eligible_stable_prefix_tokens",
+                "reused_prefix_tokens",
+                "provider_input_tokens",
+                "provider_reused_tokens",
+                "reuse_bps",
+                "invalidated_dependencies",
+                "evidence_reference_ids",
+                "evidence_digest",
+                "evidence_claim_references",
+            },
+            "prefix reuse receipt",
+        )
+        identity = payload.get("cache_identity")
+        if not isinstance(identity, (PrefixCacheIdentity, Mapping)):
+            raise PrefixContextError("cache_identity is required")
+        result = cls(
+            capsule_id=payload.get("capsule_id", ""),
+            context_capsule_id=payload.get("context_capsule_id", ""),
+            repository_id=payload.get("repository_id", ""),
+            tree_id=payload.get("tree_id", ""),
+            objective_id=payload.get("objective_id", ""),
+            objective_revision=payload.get("objective_revision", ""),
+            policy_id=payload.get("policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            caller=payload.get("caller", ""),
+            stage=payload.get("stage", ""),
+            cache_identity=(
+                identity
+                if isinstance(identity, PrefixCacheIdentity)
+                else PrefixCacheIdentity.from_dict(identity)
+            ),
+            previous_capsule_id=payload.get("previous_capsule_id", ""),
+            previous_semantic_prefix_id=payload.get(
+                "previous_semantic_prefix_id", ""
+            ),
+            reuse_source=payload.get("reuse_source", ""),
+            cache_decision=payload.get("cache_decision", ""),
+            eligible_stable_prefix_tokens=payload.get(
+                "eligible_stable_prefix_tokens", 0
+            ),
+            reused_prefix_tokens=payload.get("reused_prefix_tokens", 0),
+            provider_input_tokens=payload.get("provider_input_tokens", 0),
+            provider_reused_tokens=payload.get("provider_reused_tokens"),
+            invalidated_dependencies=tuple(
+                payload.get("invalidated_dependencies", ())
+            ),
+            evidence_reference_ids=tuple(
+                payload.get("evidence_reference_ids", ())
+            ),
+            evidence_digest=payload.get("evidence_digest", ""),
+        )
+        claimed_bps = payload.get("reuse_bps")
+        if claimed_bps not in (None, result.reuse_bps):
+            raise PrefixContextError("prefix reuse ratio is forged")
+        claims = payload.get("evidence_claim_references")
+        if claims is not None and _strings(
+            claims, "evidence_claim_references"
+        ) != result.evidence_claim_references:
+            raise PrefixContextError("prefix reuse evidence claim is forged")
+        _check_identity(payload, result.content_id, "prefix reuse receipt")
+        claimed_id = payload.get("receipt_id")
+        if claimed_id not in (None, "", result.content_id):
+            raise PrefixContextError(
+                "prefix reuse receipt identity does not match payload"
+            )
+        return result
+
+
+@dataclass(frozen=True)
+class PrefixContextResult:
+    """Compiler result joining the ordinary capsule and its prefix proof."""
+
+    context_result: "ContextCompileResult"
+    capsule: PrefixStableContextCapsule
+    receipt: PrefixReuseReceipt
+    verifier: Any = field(default=None, repr=False, compare=False)
+
+    @property
+    def prefix_capsule(self) -> PrefixStableContextCapsule:
+        return self.capsule
+
+    @property
+    def base_capsule(self) -> ContextCapsule:
+        return self.context_result.capsule
+
+    @property
+    def provider_input(self) -> str:
+        return self.capsule.provider_input
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.context_result, ContextCompileResult):
+            raise PrefixContextError(
+                "context_result must be a ContextCompileResult"
+            )
+        if not isinstance(self.capsule, PrefixStableContextCapsule):
+            raise PrefixContextError(
+                "capsule must be a PrefixStableContextCapsule"
+            )
+        if not isinstance(self.receipt, PrefixReuseReceipt):
+            raise PrefixContextError(
+                "receipt must be a PrefixReuseReceipt"
+            )
+        base = self.context_result.capsule
+        if self.capsule.context_capsule != base:
+            raise PrefixContextError(
+                "prefix capsule is detached from its compiled context"
+            )
+        expected = {
+            "capsule_id": self.capsule.capsule_id,
+            "context_capsule_id": base.capsule_id,
+            "repository_id": base.repository_id,
+            "tree_id": base.tree_id,
+            "objective_id": base.objective_id,
+            "objective_revision": base.objective_revision,
+            "policy_id": base.policy_id,
+            "policy_revision": base.policy_revision,
+            "caller": base.caller,
+            "stage": base.stage,
+            "eligible_stable_prefix_tokens": (
+                self.capsule.stable_prefix_tokens
+            ),
+            "provider_input_tokens": self.capsule.provider_input_tokens,
+            "evidence_digest": self.capsule.evidence_digest,
+        }
+        if any(
+            getattr(self.receipt, name) != value
+            for name, value in expected.items()
+        ):
+            raise PrefixContextError(
+                "prefix reuse receipt is detached from its capsule"
+            )
+        if self.receipt.cache_identity != self.capsule.cache_identity(
+            cache_kind=self.receipt.cache_identity.cache_kind,
+            provider_cache_id=(
+                self.receipt.cache_identity.provider_cache_id
+            ),
+        ):
+            raise PrefixContextError(
+                "cache identity is not bound to the exact stable prefix"
+            )
+        reference_ids = tuple(
+            sorted(item.reference_id for item in base.evidence)
+        )
+        if self.receipt.evidence_reference_ids != reference_ids:
+            raise PrefixContextError(
+                "prefix receipt does not bind current evidence"
+            )
+        if self.verifier is not None:
+            if not isinstance(self.verifier, ContextCompiler):
+                raise PrefixContextError(
+                    "prefix result verifier must be its ContextCompiler"
+                )
+            self.verifier.verify_prefix_result(self)
+
+
+def render_prefix_context(capsule: PrefixStableContextCapsule) -> str:
+    """Render stable policy/task segments before the volatile evidence delta."""
+
+    if not isinstance(capsule, PrefixStableContextCapsule):
+        raise PrefixContextError(
+            "capsule must be a PrefixStableContextCapsule"
+        )
+    return capsule.provider_input
 
 
 @dataclass(frozen=True)
@@ -2316,6 +3309,318 @@ class ContextCompiler:
             )
         return result
 
+    def verify_prefix_result(
+        self, result: PrefixContextResult
+    ) -> PrefixContextResult:
+        """Remeasure the segmented input and its current evidence binding."""
+
+        if not isinstance(result, PrefixContextResult):
+            raise PrefixContextError(
+                "result must be a PrefixContextResult"
+            )
+        base_verifier = result.context_result.verifier
+        if isinstance(base_verifier, ContextCompiler):
+            base_verifier.verify_compile_result(result.context_result)
+        else:
+            self.verify_compile_result(result.context_result)
+        stable_tokens = self.estimator.estimate(
+            result.capsule.stable_prefix_bytes
+        )
+        input_tokens = _prefix_provider_input_tokens(
+            self.estimator,
+            result.capsule.context_capsule,
+        )
+        if (
+            stable_tokens != result.capsule.stable_prefix_tokens
+            or input_tokens != result.capsule.provider_input_tokens
+        ):
+            raise PrefixContextError(
+                "prefix-stable provider token accounting is not reproducible"
+            )
+        if (
+            result.capsule.effective_input_limit
+            != self.effective_input_limit
+        ):
+            raise PrefixContextError(
+                "prefix result effective limit does not match its verifier"
+            )
+        if input_tokens > self.effective_input_limit:
+            raise PrefixContextError(
+                "prefix-stable provider input exceeds its verified budget"
+            )
+        if result.receipt.reused_prefix_tokens > stable_tokens:
+            raise PrefixContextError(
+                "prefix reuse exceeds the remeasured stable prefix"
+            )
+        return result
+
+    def compile_prefix_context(
+        self,
+        *,
+        provider_id: str,
+        model_id: str,
+        previous: (
+            PrefixContextResult | PrefixStableContextCapsule | None
+        ) = None,
+        provider_cache_id: str = "",
+        provider_cache_kind: PrefixCacheKind | str | None = None,
+        provider_reused_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> PrefixContextResult:
+        """Compile an ordered prefix/core/evidence stage input.
+
+        Evidence is deliberately excluded from the prefix identity.  A warm
+        predecessor therefore remains eligible when evidence changes, while
+        every policy, objective, authority, target, caller, stage, provider,
+        or model dependency invalidates reuse.
+        """
+
+        provider_id = _text(provider_id, "provider_id")
+        model_id = _text(model_id, "model_id")
+        if provider_reused_tokens is not None:
+            provider_reused_tokens = _integer(
+                provider_reused_tokens, "provider_reused_tokens"
+            )
+        cache_id = _text(
+            provider_cache_id, "provider_cache_id", required=False
+        )
+        raw_kind = provider_cache_kind
+        if raw_kind is None:
+            cache_kind = (
+                PrefixCacheKind.PROMPT_CACHE
+                if cache_id
+                else PrefixCacheKind.DERIVED
+            )
+        else:
+            kind_value = str(getattr(raw_kind, "value", raw_kind))
+            aliases = {
+                PrefixReuseSource.PROVIDER_PROMPT_CACHE.value: (
+                    PrefixCacheKind.PROMPT_CACHE.value
+                ),
+                PrefixReuseSource.PROVIDER_KV_CACHE.value: (
+                    PrefixCacheKind.KV_CACHE.value
+                ),
+            }
+            try:
+                cache_kind = PrefixCacheKind(
+                    aliases.get(kind_value, kind_value)
+                )
+            except ValueError as exc:
+                raise PrefixContextError(
+                    "provider_cache_kind is not supported"
+                ) from exc
+        if cache_kind is PrefixCacheKind.DERIVED:
+            if cache_id:
+                raise PrefixContextError(
+                    "provider_cache_id requires a provider cache kind"
+                )
+            if provider_reused_tokens is not None:
+                raise PrefixContextError(
+                    "provider reused tokens require a provider cache identity"
+                )
+        elif not cache_id:
+            raise PrefixContextError(
+                "provider cache reuse requires provider_cache_id"
+            )
+
+        context_result = self.compile(**kwargs)
+        prefix_input_tokens = _prefix_provider_input_tokens(
+            self.estimator,
+            context_result.capsule,
+        )
+        while prefix_input_tokens > self.effective_input_limit:
+            overflow = prefix_input_tokens - self.effective_input_limit
+            reduced_limit = (
+                context_result.capsule.budget.max_input_tokens
+                - overflow
+                - 1
+            )
+            if reduced_limit < 1:
+                raise RequiredContextOverflowError(
+                    "required prefix-stable policy/objective and task core "
+                    "exceed the effective provider input budget"
+                )
+            reduced_budget = self.effective_budget.for_effective_input_limit(
+                reduced_limit,
+                reserved_output_tokens=(
+                    self.budget_resolution.reserved_output_tokens
+                ),
+                reserved_tool_tokens=(
+                    self.budget_resolution.reserved_tool_tokens
+                ),
+            )
+            selection_compiler = ContextCompiler(
+                reduced_budget,
+                estimator=self.estimator,
+            )
+            context_result = selection_compiler.compile(**kwargs)
+            prefix_input_tokens = _prefix_provider_input_tokens(
+                self.estimator,
+                context_result.capsule,
+            )
+        capsule = PrefixStableContextCapsule(
+            context_capsule=context_result.capsule,
+            provider_id=provider_id,
+            model_id=model_id,
+            stable_prefix_tokens=self.estimator.estimate(
+                _stable_prefix_bytes(context_result.capsule)
+            ),
+            provider_input_tokens=prefix_input_tokens,
+            effective_input_limit=self.effective_input_limit,
+        )
+        previous_capsule: PrefixStableContextCapsule | None
+        if previous is None:
+            previous_capsule = None
+        elif isinstance(previous, PrefixContextResult):
+            previous_capsule = previous.capsule
+        elif isinstance(previous, PrefixStableContextCapsule):
+            previous_capsule = previous
+        else:
+            raise PrefixContextError(
+                "previous must be a PrefixContextResult or "
+                "PrefixStableContextCapsule"
+            )
+
+        invalidated: tuple[str, ...] = ()
+        previous_capsule_id = ""
+        previous_prefix_id = ""
+        if previous_capsule is not None:
+            previous_capsule_id = previous_capsule.capsule_id
+            previous_prefix_id = previous_capsule.semantic_prefix_id
+            current_values = _prefix_dependency_values(capsule)
+            previous_values = _prefix_dependency_values(previous_capsule)
+            invalidated = tuple(
+                sorted(
+                    name
+                    for name, value in current_values.items()
+                    if canonical_context_json_bytes(value)
+                    != canonical_context_json_bytes(
+                        previous_values.get(name)
+                    )
+                )
+            )
+            semantic_change = (
+                previous_capsule.semantic_prefix_id
+                != capsule.semantic_prefix_id
+            )
+            provider_change = any(
+                name in invalidated
+                for name in ("provider_id", "model_id")
+            )
+            if semantic_change != bool(
+                set(invalidated).difference(
+                    {"provider_id", "model_id"}
+                )
+            ):
+                raise PrefixContextError(
+                    "semantic prefix invalidation is inconsistent"
+                )
+            if provider_change and not invalidated:
+                raise PrefixContextError(
+                    "provider boundary invalidation is inconsistent"
+                )
+
+        if previous_capsule is None:
+            if provider_reused_tokens:
+                raise PrefixCacheBoundaryError(
+                    "provider cache reuse requires a verified warm "
+                    "predecessor with matching authority and target"
+                )
+            decision = PrefixCacheDecision.COLD
+            reused_tokens = 0
+            source = (
+                PrefixReuseSource.COLD
+                if provider_reused_tokens is None
+                else PrefixReuseSource.PROVIDER_PROMPT_CACHE
+                if cache_kind is PrefixCacheKind.PROMPT_CACHE
+                else PrefixReuseSource.PROVIDER_KV_CACHE
+                if cache_kind is PrefixCacheKind.KV_CACHE
+                else PrefixReuseSource.COLD
+            )
+        elif invalidated:
+            if provider_reused_tokens:
+                raise PrefixCacheBoundaryError(
+                    "provider reported cache reuse after a semantic, "
+                    "authority, or target dependency changed"
+                )
+            decision = PrefixCacheDecision.INVALIDATED
+            reused_tokens = 0
+            source = (
+                PrefixReuseSource.COLD
+                if provider_reused_tokens is None
+                else PrefixReuseSource.PROVIDER_PROMPT_CACHE
+                if cache_kind is PrefixCacheKind.PROMPT_CACHE
+                else PrefixReuseSource.PROVIDER_KV_CACHE
+                if cache_kind is PrefixCacheKind.KV_CACHE
+                else PrefixReuseSource.COLD
+            )
+        elif provider_reused_tokens is not None:
+            reused_tokens = min(
+                provider_reused_tokens, capsule.stable_prefix_tokens
+            )
+            decision = (
+                PrefixCacheDecision.HIT
+                if reused_tokens
+                else PrefixCacheDecision.MISS
+            )
+            source = (
+                PrefixReuseSource.PROVIDER_PROMPT_CACHE
+                if cache_kind is PrefixCacheKind.PROMPT_CACHE
+                else PrefixReuseSource.PROVIDER_KV_CACHE
+            )
+        else:
+            reused_tokens = max(
+                1,
+                capsule.stable_prefix_tokens
+                * CONSERVATIVE_PREFIX_REUSE_BPS
+                // 10_000,
+            )
+            reused_tokens = min(
+                reused_tokens, capsule.stable_prefix_tokens
+            )
+            decision = PrefixCacheDecision.HIT
+            source = PrefixReuseSource.CONSERVATIVE_ESTIMATE
+
+        identity = capsule.cache_identity(
+            cache_kind=cache_kind,
+            provider_cache_id=cache_id,
+        )
+        base = context_result.capsule
+        receipt = PrefixReuseReceipt(
+            capsule_id=capsule.capsule_id,
+            context_capsule_id=base.capsule_id,
+            repository_id=base.repository_id,
+            tree_id=base.tree_id,
+            objective_id=base.objective_id,
+            objective_revision=base.objective_revision,
+            policy_id=base.policy_id,
+            policy_revision=base.policy_revision,
+            caller=base.caller,
+            stage=base.stage,
+            cache_identity=identity,
+            previous_capsule_id=previous_capsule_id,
+            previous_semantic_prefix_id=previous_prefix_id,
+            reuse_source=source,
+            cache_decision=decision,
+            eligible_stable_prefix_tokens=capsule.stable_prefix_tokens,
+            reused_prefix_tokens=reused_tokens,
+            provider_input_tokens=capsule.provider_input_tokens,
+            provider_reused_tokens=provider_reused_tokens,
+            invalidated_dependencies=invalidated,
+            evidence_reference_ids=tuple(
+                item.reference_id for item in base.evidence
+            ),
+            evidence_digest=capsule.evidence_digest,
+        )
+        return PrefixContextResult(
+            context_result=context_result,
+            capsule=capsule,
+            receipt=receipt,
+            verifier=self,
+        )
+
+    compile_prefix = compile_prefix_context
+
     def compile(
         self,
         *,
@@ -2854,6 +4159,33 @@ def compile_context_capsule(
     return ContextCompiler(budget, **compiler_options).compile(**kwargs)
 
 
+def compile_prefix_context(
+    budget: ContextBudget,
+    **kwargs: Any,
+) -> PrefixContextResult:
+    """Convenience wrapper for a prefix-stable stage input."""
+
+    compiler_options = {
+        key: kwargs.pop(key)
+        for key in tuple(kwargs)
+        if key
+        in {
+            "tokenizer",
+            "estimator",
+            "provider_context_window",
+            "provider_max_input_tokens",
+            "reserved_output_tokens",
+            "reserved_tool_tokens",
+        }
+    }
+    return ContextCompiler(
+        budget, **compiler_options
+    ).compile_prefix_context(**kwargs)
+
+
+compile_prefix_context_capsule = compile_prefix_context
+
+
 def compile_context_delta(
     budget: ContextBudget,
     parent: ContextCapsule,
@@ -2994,10 +4326,12 @@ def compile_retry_context(
 
 build_context_capsule = compile_context_capsule
 build_context_delta = compile_context_delta
+build_prefix_context = compile_prefix_context
 ContextCompilationResult = ContextCompileResult
 ContextRetryResult = ContextDeltaResult
 ContextArtifactStore = ContentAddressedContextStore
 reconstruct_context_capsule = reconstruct_context
+render_prefix_stable_context = render_prefix_context
 
 
 __all__ = [
@@ -3005,11 +4339,19 @@ __all__ = [
     "CONTEXT_COMPILER_VERSION",
     "CONTEXT_DELTA_RECEIPT_SCHEMA",
     "CONTEXT_EVIDENCE_PRODUCERS",
+    "CONSERVATIVE_PREFIX_REUSE_BPS",
     "RETRY_CONTEXT_CAPSULE_SCHEMA",
     "DELTA_RETRY_ACCEPTANCE_CRITERIA",
     "DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA",
     "DELTA_RETRY_EVIDENCE_ID",
     "DELTA_RETRY_OBJECTIVE_ID",
+    "MIN_WARM_PREFIX_REUSE_BPS",
+    "PREFIX_CACHE_IDENTITY_SCHEMA",
+    "PREFIX_REUSE_ACCEPTANCE_CRITERIA",
+    "PREFIX_REUSE_OBJECTIVE_ID",
+    "PREFIX_REUSE_RECEIPT_SCHEMA",
+    "PREFIX_REUSE_REQUIREMENT_ID",
+    "PREFIX_STABLE_CONTEXT_CAPSULE_SCHEMA",
     "REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA",
     "REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID",
     "REQUIRED_CONTEXT_BUDGET_EVIDENCE_SCHEMA",
@@ -3024,6 +4366,15 @@ __all__ = [
     "ContextDeltaReceipt",
     "ContextDeltaResult",
     "ContextRetryResult",
+    "PrefixCacheBoundaryError",
+    "PrefixCacheDecision",
+    "PrefixCacheIdentity",
+    "PrefixCacheKind",
+    "PrefixContextError",
+    "PrefixContextResult",
+    "PrefixReuseReceipt",
+    "PrefixReuseSource",
+    "PrefixStableContextCapsule",
     "ContextExpansionCancelled",
     "ContextExpansionError",
     "ChangedTreeContextError",
@@ -3041,13 +4392,18 @@ __all__ = [
     "build_text_context_references",
     "build_context_capsule",
     "build_context_delta",
+    "build_prefix_context",
     "compile_context_capsule",
     "compile_context_delta",
+    "compile_prefix_context",
+    "compile_prefix_context_capsule",
     "compile_retry_context",
     "context_provider_input_payload",
     "expand_context",
     "expand_context_references",
     "render_context_capsule",
+    "render_prefix_context",
+    "render_prefix_stable_context",
     "render_retry_context",
     "reconstruct_context",
     "reconstruct_context_capsule",
