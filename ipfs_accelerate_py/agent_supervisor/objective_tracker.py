@@ -7,14 +7,26 @@ import os
 import re
 import subprocess
 import tempfile
-from dataclasses import asdict, dataclass, field
+import threading
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from .adaptive_goal_refiner import GoalDebtRecord, GoalQualityRecord
+from .adaptive_goal_refiner import (
+    AdaptiveGoalRefiner,
+    AdaptiveGoalRefinementError,
+    AdaptiveRefinementReceipt,
+    AdaptiveRefinementRequest,
+    AdaptiveRefinementResult,
+    GoalDebtRecord,
+    GoalQualityRecord,
+    RefinementSignal,
+)
+from .formal_planning_contracts import FormalWorkPlan
 from .goal_completion import (
     DEFAULT_CLOCK_SKEW_SECONDS,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
@@ -778,6 +790,328 @@ def load_objective_goal_quality_report(
                 "objective goal-quality report is stale for the current heap"
             )
     return report
+
+
+OBJECTIVE_REFINEMENT_EVENT_STATE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-refinement-event-state@1"
+)
+
+
+class ObjectiveRefinementPollDecision(str, Enum):
+    """Closed outcomes for an event-driven objective poll."""
+
+    NO_SEMANTIC_CHANGE = "no_semantic_change"
+    REFINEMENT_EVALUATED = "refinement_evaluated"
+    DELTA_COMMITTED = "delta_committed"
+
+
+@dataclass(frozen=True)
+class ObjectiveRefinementEventState:
+    """Restart-safe semantic cursor bound to one immutable root context."""
+
+    root_goal_id: str
+    root_goal_content_id: str
+    assumption_ids: tuple[str, ...]
+    policy_id: str
+    semantic_event_ids: Mapping[str, str] = field(default_factory=dict)
+    last_receipt_id: str = ""
+    retry_after: int = 0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "root_goal_id",
+            "root_goal_content_id",
+            "policy_id",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be a string")
+            value = value.strip()
+            if not value:
+                raise ValueError(f"{name} is required")
+            object.__setattr__(self, name, value)
+        if isinstance(
+            self.assumption_ids, (str, bytes, bytearray, memoryview)
+        ) or any(not isinstance(item, str) for item in self.assumption_ids):
+            raise ValueError("assumption_ids must be a sequence of strings")
+        assumptions = tuple(
+            sorted(
+                {
+                    item.strip()
+                    for item in self.assumption_ids
+                    if item.strip()
+                }
+            )
+        )
+        object.__setattr__(self, "assumption_ids", assumptions)
+        if not isinstance(self.semantic_event_ids, Mapping) or any(
+            not isinstance(key, str)
+            or not key.strip()
+            or not isinstance(value, str)
+            or not value.strip()
+            for key, value in self.semantic_event_ids.items()
+        ):
+            raise ValueError(
+                "semantic_event_ids must be a string-to-string mapping"
+            )
+        object.__setattr__(
+            self,
+            "semantic_event_ids",
+            {
+                key: self.semantic_event_ids[key]
+                for key in sorted(self.semantic_event_ids)
+            },
+        )
+        if not isinstance(self.last_receipt_id, str):
+            raise ValueError("last_receipt_id must be a string")
+        object.__setattr__(
+            self, "last_receipt_id", self.last_receipt_id.strip()
+        )
+        if (
+            isinstance(self.retry_after, bool)
+            or not isinstance(self.retry_after, int)
+            or self.retry_after < 0
+        ):
+            raise ValueError("retry_after must be a non-negative integer")
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": OBJECTIVE_REFINEMENT_EVENT_STATE_SCHEMA,
+            "root_goal_id": self.root_goal_id,
+            "root_goal_content_id": self.root_goal_content_id,
+            "assumption_ids": self.assumption_ids,
+            "policy_id": self.policy_id,
+            "semantic_event_ids": dict(self.semantic_event_ids),
+            "last_receipt_id": self.last_receipt_id,
+            "retry_after": self.retry_after,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ObjectiveRefinementEventState":
+        expected = {
+            "schema",
+            "root_goal_id",
+            "root_goal_content_id",
+            "assumption_ids",
+            "policy_id",
+            "semantic_event_ids",
+            "last_receipt_id",
+            "retry_after",
+            "content_id",
+        }
+        if not isinstance(payload, Mapping) or set(payload) != expected:
+            raise ValueError(
+                "objective refinement event state must use the closed schema"
+            )
+        if payload.get("schema") != OBJECTIVE_REFINEMENT_EVENT_STATE_SCHEMA:
+            raise ValueError("unsupported objective refinement event state schema")
+        result = cls(
+            root_goal_id=payload.get("root_goal_id", ""),
+            root_goal_content_id=payload.get("root_goal_content_id", ""),
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            policy_id=payload.get("policy_id", ""),
+            semantic_event_ids=payload.get("semantic_event_ids") or {},
+            last_receipt_id=payload.get("last_receipt_id", ""),
+            retry_after=payload.get("retry_after", 0),
+        )
+        if payload.get("content_id") != result.content_id:
+            raise ValueError(
+                "objective refinement event state identity does not match"
+            )
+        return result
+
+
+@dataclass(frozen=True)
+class ObjectiveRefinementPollResult:
+    decision: ObjectiveRefinementPollDecision
+    changed_signal_ids: tuple[str, ...]
+    state_content_id: str
+    refinement_result: AdaptiveRefinementResult | None = None
+    objective_written: bool = False
+
+    @property
+    def model_called(self) -> bool:
+        return bool(
+            self.refinement_result is not None
+            and self.refinement_result.model_called
+        )
+
+
+ObjectiveDeltaCommitter = Callable[
+    [FormalWorkPlan, AdaptiveRefinementReceipt], None
+]
+
+
+class ObjectiveRefinementEventTracker:
+    """Gate adaptive refinement on persisted semantic event changes.
+
+    Merely polling this object is side-effect free when every event cursor is
+    unchanged.  Changed delivery timestamps and occurrence counts are already
+    excluded from :attr:`RefinementSignal.evidence_id`, so delivery churn
+    cannot reach candidate generation.
+    """
+
+    def __init__(
+        self,
+        refiner: AdaptiveGoalRefiner,
+        state_path: Path,
+        *,
+        objective_committer: ObjectiveDeltaCommitter | None = None,
+    ) -> None:
+        if not isinstance(refiner, AdaptiveGoalRefiner):
+            raise TypeError("refiner must be an AdaptiveGoalRefiner")
+        if objective_committer is not None and not callable(objective_committer):
+            raise TypeError("objective_committer must be callable")
+        self.refiner = refiner
+        self.state_path = Path(state_path)
+        self.objective_committer = objective_committer
+        self._lock = threading.RLock()
+
+    @contextmanager
+    def _transaction(self):
+        lock_path = self.state_path.with_suffix(self.state_path.suffix + ".lock")
+        with self._lock:
+            try:
+                lock_path.parent.mkdir(parents=True, exist_ok=True)
+                handle = lock_path.open("a+", encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(
+                    f"could not lock objective refinement event state: {exc}"
+                ) from exc
+            with handle:
+                try:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                    yield
+                finally:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    @staticmethod
+    def _event_slot(signal: RefinementSignal) -> str:
+        return content_identity(
+            {
+                "kind": signal.kind.value,
+                "subject_id": signal.subject_id,
+            }
+        )
+
+    def _load(self) -> ObjectiveRefinementEventState | None:
+        if not self.state_path.exists():
+            return None
+        try:
+            payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"invalid objective refinement event state: {exc}"
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise ValueError(
+                "objective refinement event state must contain an object"
+            )
+        return ObjectiveRefinementEventState.from_dict(payload)
+
+    def poll(
+        self, request: AdaptiveRefinementRequest
+    ) -> ObjectiveRefinementPollResult:
+        """Evaluate only semantically changed signals from one frozen request."""
+
+        if not isinstance(request, AdaptiveRefinementRequest):
+            raise TypeError("request must be an AdaptiveRefinementRequest")
+        with self._transaction():
+            state = self._load()
+            if state is not None:
+                frozen_mismatch = (
+                    state.root_goal_id != request.root_goal_id
+                    or state.root_goal_content_id != request.root_goal_content_id
+                    or state.assumption_ids != request.assumption_ids
+                    or state.policy_id != self.refiner.policy.content_id
+                )
+                if frozen_mismatch:
+                    raise AdaptiveGoalRefinementError(
+                        "event state does not match the frozen root, assumptions, "
+                        "or refinement policy"
+                    )
+            prior_events = dict(
+                state.semantic_event_ids if state is not None else {}
+            )
+            current_slots: dict[str, list[str]] = {}
+            for signal in request.signals:
+                current_slots.setdefault(
+                    self._event_slot(signal), []
+                ).append(signal.evidence_id)
+            current_event_ids = {
+                slot: content_identity(
+                    {
+                        "slot": slot,
+                        "event_ids": tuple(sorted(event_ids)),
+                    }
+                )
+                for slot, event_ids in current_slots.items()
+            }
+            changed_slots = {
+                slot
+                for slot, event_id in current_event_ids.items()
+                if prior_events.get(slot) != event_id
+            }
+            changed = tuple(
+                signal
+                for signal in request.signals
+                if self._event_slot(signal) in changed_slots
+            )
+            if not changed:
+                return ObjectiveRefinementPollResult(
+                    decision=ObjectiveRefinementPollDecision.NO_SEMANTIC_CHANGE,
+                    changed_signal_ids=(),
+                    state_content_id=state.content_id if state is not None else "",
+                )
+
+            changed_request = replace(request, signals=changed)
+            result = self.refiner.refine(changed_request)
+            objective_written = False
+            if result.admitted_plan is not None and self.objective_committer is not None:
+                quality_report = result.receipt.quality_lint_report
+                if quality_report is None or not quality_report.accepted:
+                    raise AdaptiveGoalRefinementError(
+                        "admitted delta is missing an accepted quality lint"
+                    )
+                self.objective_committer(result.admitted_plan, result.receipt)
+                objective_written = True
+
+            for slot in changed_slots:
+                prior_events[slot] = current_event_ids[slot]
+            next_state = ObjectiveRefinementEventState(
+                root_goal_id=request.root_goal_id,
+                root_goal_content_id=request.root_goal_content_id,
+                assumption_ids=request.assumption_ids,
+                policy_id=self.refiner.policy.content_id,
+                semantic_event_ids=prior_events,
+                last_receipt_id=result.receipt.receipt_id,
+                retry_after=result.receipt.retry_after,
+            )
+            _atomic_write_json(self.state_path, next_state.to_dict())
+            return ObjectiveRefinementPollResult(
+                decision=(
+                    ObjectiveRefinementPollDecision.DELTA_COMMITTED
+                    if objective_written
+                    else ObjectiveRefinementPollDecision.REFINEMENT_EVALUATED
+                ),
+                changed_signal_ids=tuple(
+                    signal.evidence_id for signal in changed
+                ),
+                state_content_id=next_state.content_id,
+                refinement_result=result,
+                objective_written=objective_written,
+            )
 
 
 @dataclass(frozen=True)
