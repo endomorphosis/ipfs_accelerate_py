@@ -58,6 +58,6 @@ sequence length), ended by the end-of-text token.* For more information please c
 
 <Tip>
 
-DialoGPT's architecture is based on the GPT2 model, refer to [GPT2's documentation page](gpt2) for API reference and examples.
+DialoGPT's architecture is based on the GPT2 model, refer to [GPT2's documentation page](gpt2.md) for API reference and examples.
 
 </Tip>
