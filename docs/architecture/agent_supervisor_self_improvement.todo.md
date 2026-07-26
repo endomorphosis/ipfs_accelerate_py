@@ -3852,7 +3852,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-121 Materialize refill epochs transactionally with healthy-exhaustion quorum
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: self-refill
