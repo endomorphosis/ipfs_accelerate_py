@@ -3960,7 +3960,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-127 Compile LegalIR applicability, norms, exceptions, and conflicts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-constraints
@@ -4191,3 +4191,14 @@ planner, and refill behavior defaults to shadow mode.
 - Predicted files: ipfs_accelerate_py/agent_supervisor/decision_runtime_benchmark.py, ipfs_accelerate_py/agent_supervisor/decision_runtime_rollout.py, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md, test/api/test_agent_supervisor_decision_runtime_benchmark.py, test/api/test_agent_supervisor_decision_runtime_adversarial.py, test/api/test_agent_supervisor_decision_runtime_rollout.py, test/api/test_agent_supervisor_decision_runtime_public_api.py
 - Conflict policy: Keep one closed paired/adversarial population and rollout owner; integrate public exports and documentation last, preserve v1/v2 behavior, and prohibit metric or fixture narrowing during promotion.
 - Acceptance: Compare the current and proof-directed live paths on the same frozen decisions while independently scaling irrelevant legal corpus, codebase, SkillCenter rows/graphs, and conversation history by at least 10x. Recompute provider tokens, mandatory closure nodes/bytes, total corpus nodes/bytes, cache reuse, invalidation precision, first-valid plans, retries, proof/validation cost, effects, and terminal results from producer receipts and causal ablations. Require zero forged-CID, canonicalization, schema, stale-root, cross-partition, prompt-injection, poisoned-embedding, inapplicable-law, legal-conflict, SecurityIR deny/unknown, intent-authority-confusion, dirty-file, changed-tool-argument, stale-lease, proof-replay, graph-truncation, recovery, path/effect escape, or mandatory-omission escapes. Context must grow with mandatory closure rather than total corpus; deterministic local degraded operation and lazy discovery must pass. Expose equivalent off, shadow, assist, policy-approved automatic, status, explanation, and rollback controls through Python/CLI/MCP, require a later separate current-root evaluation for automatic mode, and return affected behavior to shadow on any binding or safety regression.
+
+## ASI-140 Resolve validation retry-budget failure for ASI-115
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASI-114
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/test_agent_supervisor_control_conformance_v2.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-26-asi-140-asi-115-retry-budget.md
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASI-115. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-26-asi-140-asi-115-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASI-115 from strategy blocked_tasks.
