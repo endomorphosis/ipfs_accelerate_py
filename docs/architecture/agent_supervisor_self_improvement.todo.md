@@ -3690,7 +3690,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-112 Add adaptive stage scheduling, fair work stealing, batching, and backpressure
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: parallelism
