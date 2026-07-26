@@ -49,7 +49,7 @@ found [here](https://github.com/google-research/byt5).
 
 <Tip>
 
-ByT5's architecture is based on the T5v1.1 model, refer to [T5v1.1's documentation page](t5v1.1.md) for the API reference. They
+ByT5's architecture is based on the T5v1.1 model, refer to [T5v1.1's documentation page](./t5v1.1.md) for the API reference. They
 only differ in how inputs should be prepared for the model, see the code examples below.
 
 </Tip>
