@@ -3600,7 +3600,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-107 Harden the output, patch, authority, and untrusted-repository envelope
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: validation
