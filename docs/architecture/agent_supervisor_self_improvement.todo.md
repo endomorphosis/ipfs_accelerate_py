@@ -3942,7 +3942,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-126 Compile IntentIR action contracts into supervisor constraints
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-constraints
