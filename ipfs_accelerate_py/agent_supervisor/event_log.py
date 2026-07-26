@@ -10,9 +10,12 @@ import tempfile
 import threading
 from collections import deque
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from types import MappingProxyType
+from typing import Any, Final, Mapping
 
 from .control_contracts import (
     CursorReplayError,
@@ -43,6 +46,10 @@ LEGACY_EVENT_LOG_MANIFEST_SCHEMA = (
 EVENT_CURSOR_CHECKPOINT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.event-cursor-checkpoint@1"
 )
+SEMANTIC_CHANGE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/semantic-change@1"
+)
+SEMANTIC_CHANGE_EVENT_TYPE: Final = "decision_runtime_semantic_change"
 _EVENT_OFFSET_INDEX_STRIDE = 256
 _EVENT_OFFSET_INDEX_MAX_ITEMS = 4096
 _EVENT_RECOVERY_TAIL_MAX_BYTES = 16 * MAX_PROJECTION_BYTES
@@ -60,6 +67,217 @@ _RESERVED_EVENT_FIELDS = frozenset(
 
 class EventPayloadTooLarge(ValueError):
     """An event exceeded its receipt or routine projection bound."""
+
+
+class SemanticChangeIntegrityError(CursorReplayError):
+    """A logical semantic-change event is malformed, duplicated, or reordered."""
+
+
+class SemanticChangeKind(str, Enum):
+    """Closed population of inputs which can invalidate runtime authority."""
+
+    WORKTREE = "worktree"
+    AST = "ast"
+    EFFECT = "effect"
+    INTENT_IR = "intent_ir"
+    LEGAL_IR = "legal_ir"
+    SECURITY_IR = "security_ir"
+    POLICY = "policy"
+    TOOL_CATALOG = "tool_catalog"
+    CAPABILITY = "capability"
+    PROOF = "proof"
+    MONITOR = "monitor"
+    LEASE = "lease"
+    OBSERVED_EFFECT = "observed_effect"
+
+
+@dataclass(frozen=True)
+class SemanticChange:
+    """Content-addressed logical change carried by the canonical event stream.
+
+    The outer JSONL event supplies stream ordering and durability. ``change_id``
+    supplies idempotency across replay and binds the semantic old-to-new
+    transition independently from timestamps or physical log rotation.
+    """
+
+    kind: SemanticChangeKind | str
+    subject_id: str
+    previous_root_id: str
+    current_root_id: str
+    scope_kind: str
+    scope_value: str
+    repository_id: str = ""
+    tree_id: str = ""
+    semantic_dependency_ids: tuple[str, ...] = ()
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    schema: str = SEMANTIC_CHANGE_SCHEMA
+    change_id: str = ""
+
+    def __post_init__(self) -> None:
+        if self.schema != SEMANTIC_CHANGE_SCHEMA:
+            raise SemanticChangeIntegrityError(
+                "unsupported semantic change schema"
+            )
+        try:
+            native_kind = (
+                self.kind
+                if isinstance(self.kind, SemanticChangeKind)
+                else SemanticChangeKind(str(self.kind))
+            )
+        except ValueError as exc:
+            raise SemanticChangeIntegrityError(
+                f"unknown semantic change kind {self.kind!r}"
+            ) from exc
+        object.__setattr__(self, "kind", native_kind)
+        for name in (
+            "subject_id",
+            "previous_root_id",
+            "current_root_id",
+            "scope_kind",
+            "scope_value",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value or "\x00" in value:
+                raise SemanticChangeIntegrityError(
+                    f"semantic change {name} must be non-empty"
+                )
+            object.__setattr__(self, name, value)
+        for name in ("repository_id", "tree_id"):
+            value = str(getattr(self, name) or "").strip()
+            if "\x00" in value:
+                raise SemanticChangeIntegrityError(
+                    f"semantic change {name} contains NUL"
+                )
+            object.__setattr__(self, name, value)
+        if self.previous_root_id == self.current_root_id:
+            raise SemanticChangeIntegrityError(
+                "semantic change must advance its root"
+            )
+        dependency_ids = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in self.semantic_dependency_ids
+                    if str(item).strip()
+                }
+            )
+        )
+        if len(dependency_ids) != len(tuple(self.semantic_dependency_ids)):
+            raise SemanticChangeIntegrityError(
+                "semantic change contains empty or duplicate dependency IDs"
+            )
+        object.__setattr__(self, "semantic_dependency_ids", dependency_ids)
+        if not isinstance(self.metadata, Mapping):
+            raise SemanticChangeIntegrityError(
+                "semantic change metadata must be an object"
+            )
+        try:
+            canonical_metadata = json.loads(
+                _canonical_event_bytes(dict(self.metadata), MAX_PROJECTION_BYTES)
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise SemanticChangeIntegrityError(
+                "semantic change metadata is not canonical JSON"
+            ) from exc
+        object.__setattr__(
+            self, "metadata", MappingProxyType(canonical_metadata)
+        )
+        expected = _canonical_identity(self.to_dict(include_identity=False))
+        if self.change_id and self.change_id != expected:
+            raise SemanticChangeIntegrityError(
+                "semantic change identity mismatch"
+            )
+        object.__setattr__(self, "change_id", expected)
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        value = {
+            "schema": self.schema,
+            "kind": self.kind.value,
+            "subject_id": self.subject_id,
+            "previous_root_id": self.previous_root_id,
+            "current_root_id": self.current_root_id,
+            "scope_kind": self.scope_kind,
+            "scope_value": self.scope_value,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "semantic_dependency_ids": list(self.semantic_dependency_ids),
+            "metadata": dict(self.metadata),
+        }
+        if include_identity:
+            value["change_id"] = self.change_id
+        return value
+
+    to_record = to_dict
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "SemanticChange":
+        if not isinstance(value, Mapping):
+            raise SemanticChangeIntegrityError(
+                "semantic change must be an object"
+            )
+        allowed = {
+            "schema",
+            "kind",
+            "change_kind",
+            "subject_id",
+            "previous_root_id",
+            "previous_revision",
+            "current_root_id",
+            "replacement_revision",
+            "scope_kind",
+            "scope_value",
+            "repository_id",
+            "tree_id",
+            "semantic_dependency_ids",
+            "metadata",
+            "change_id",
+        }
+        if set(value).difference(allowed):
+            raise SemanticChangeIntegrityError(
+                "semantic change contains unknown fields"
+            )
+        return cls(
+            schema=str(value.get("schema") or SEMANTIC_CHANGE_SCHEMA),
+            kind=value.get("kind", value.get("change_kind", "")),
+            subject_id=str(value.get("subject_id") or ""),
+            previous_root_id=str(
+                value.get("previous_root_id", value.get("previous_revision", ""))
+                or ""
+            ),
+            current_root_id=str(
+                value.get(
+                    "current_root_id", value.get("replacement_revision", "")
+                )
+                or ""
+            ),
+            scope_kind=str(value.get("scope_kind") or ""),
+            scope_value=str(value.get("scope_value") or ""),
+            repository_id=str(value.get("repository_id") or ""),
+            tree_id=str(value.get("tree_id") or ""),
+            semantic_dependency_ids=tuple(
+                value.get("semantic_dependency_ids") or ()
+            ),
+            metadata=value.get("metadata") or {},
+            change_id=str(value.get("change_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class SemanticChangePage:
+    """Verified logical changes and the exact physical cursor they consumed."""
+
+    changes: tuple[SemanticChange, ...]
+    next_cursor: EventCursor
+    has_more: bool
+    event_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.next_cursor, EventCursor):
+            raise TypeError("next_cursor must be an EventCursor")
+        if len(self.changes) != len(self.event_ids):
+            raise SemanticChangeIntegrityError(
+                "semantic change page event bindings are incomplete"
+            )
 
 
 _EVENT_LOCKS: dict[str, threading.RLock] = {}
@@ -1479,6 +1697,129 @@ def append_jsonl_event(
         # available in the active file and the next pass may rotate it.
         pass
     return event
+
+
+def semantic_change_from_event(value: Mapping[str, Any]) -> SemanticChange:
+    """Decode and verify a semantic change from its durable event envelope."""
+
+    if not isinstance(value, Mapping):
+        raise SemanticChangeIntegrityError(
+            "semantic change event must be an object"
+        )
+    if str(value.get("type") or "") != SEMANTIC_CHANGE_EVENT_TYPE:
+        raise SemanticChangeIntegrityError(
+            "event is not a semantic change event"
+        )
+    payload = value.get("change")
+    if not isinstance(payload, Mapping):
+        # Compatibility with an early flat projection. Reserved physical
+        # fields are excluded so the logical identity remains exact.
+        payload = {
+            key: item
+            for key, item in value.items()
+            if key
+            not in {
+                "type",
+                "timestamp",
+                "stream_id",
+                "snapshot_id",
+                "sequence",
+                "position",
+                "event_id",
+                "previous_event_id",
+            }
+        }
+    change = SemanticChange.from_dict(payload)
+    claimed = str(value.get("change_id") or "")
+    if claimed and claimed != change.change_id:
+        raise SemanticChangeIntegrityError(
+            "semantic change event has conflicting identities"
+        )
+    return change
+
+
+def append_semantic_change_event(
+    path: Path | str,
+    change: SemanticChange | Mapping[str, Any],
+    *,
+    fsync: bool = True,
+) -> dict[str, Any]:
+    """Append one canonical semantic transition to the supervisor event log."""
+
+    selected = (
+        change
+        if isinstance(change, SemanticChange)
+        else SemanticChange.from_dict(change)
+    )
+    return append_jsonl_event(
+        path,
+        SEMANTIC_CHANGE_EVENT_TYPE,
+        {
+            "change_id": selected.change_id,
+            "change": selected.to_dict(),
+        },
+        fsync=fsync,
+    )
+
+
+def read_semantic_change_page(
+    path: Path | str,
+    cursor: EventCursor | Mapping[str, Any] | str,
+    *,
+    limit: int = 256,
+    known_change_ids: Iterable[str] = (),
+    expected_roots: Mapping[str, str] | None = None,
+) -> SemanticChangePage:
+    """Replay a strictly ordered, idempotent page of logical root changes.
+
+    Non-semantic events advance the returned physical cursor but are omitted
+    from ``changes``. A repeated logical identity at a new physical position,
+    a transition whose previous root does not match the replay state, or an
+    event with a forged logical identity fails closed.
+    """
+
+    page = read_jsonl_event_page(path, cursor, limit=limit)
+    seen = {str(item) for item in known_change_ids}
+    roots = {
+        str(key): str(item)
+        for key, item in (expected_roots or {}).items()
+    }
+    changes: list[SemanticChange] = []
+    event_ids: list[str] = []
+    for event in page.events:
+        if str(event.get("type") or "") != SEMANTIC_CHANGE_EVENT_TYPE:
+            continue
+        change = semantic_change_from_event(event)
+        if change.change_id in seen:
+            raise SemanticChangeIntegrityError(
+                f"duplicate semantic change {change.change_id}"
+            )
+        seen.add(change.change_id)
+        current = roots.get(change.subject_id)
+        if (
+            current is not None
+            and change.previous_root_id != current
+        ):
+            raise SemanticChangeIntegrityError(
+                "semantic changes are missing or reordered for "
+                f"{change.subject_id!r}"
+            )
+        roots[change.subject_id] = change.current_root_id
+        changes.append(change)
+        event_ids.append(str(event.get("event_id") or ""))
+    return SemanticChangePage(
+        changes=tuple(changes),
+        next_cursor=page.next_cursor,
+        has_more=page.has_more,
+        event_ids=tuple(event_ids),
+    )
+
+
+# Descriptive compatibility spellings for integration callers.
+CanonicalSemanticChange = SemanticChange
+CanonicalSemanticChangeEvent = SemanticChange
+append_canonical_semantic_change = append_semantic_change_event
+read_canonical_semantic_change_page = read_semantic_change_page
 
 
 def append_scan_receipt_event(

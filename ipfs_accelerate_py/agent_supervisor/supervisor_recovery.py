@@ -25,7 +25,11 @@ from pathlib import Path
 from typing import Any, Final
 
 from .control_contracts import EventCursor
-from .event_log import recover_jsonl_event_log_tail, utc_now
+from .event_log import (
+    latest_event_cursor,
+    recover_jsonl_event_log_tail,
+    utc_now,
+)
 from .supervisor_v2_contracts import MAX_PROJECTION_BYTES, MAX_RECEIPT_BYTES
 
 
@@ -211,6 +215,10 @@ class RecoveryCheckpoint:
     state: Mapping[str, Any]
     cursor: EventCursor
     accepted_merged_tree_evidence: tuple[str, ...] = ()
+    semantic_roots: Mapping[str, str] = field(default_factory=dict)
+    proof_index_id: str = ""
+    cas_invalidation_id: str = ""
+    fencing_epoch: int = 0
     created_at: str = field(default_factory=utc_now)
     checkpoint_id: str = ""
 
@@ -245,6 +253,24 @@ class RecoveryCheckpoint:
             )
         )
         object.__setattr__(self, "accepted_merged_tree_evidence", evidence)
+        if not isinstance(self.semantic_roots, Mapping):
+            raise TypeError("semantic_roots must be a mapping")
+        roots = {
+            _required_text(key, "semantic root kind"): _required_text(
+                item, "semantic root identity"
+            )
+            for key, item in sorted(self.semantic_roots.items())
+        }
+        object.__setattr__(self, "semantic_roots", roots)
+        for name in ("proof_index_id", "cas_invalidation_id"):
+            value = str(getattr(self, name) or "").strip()
+            object.__setattr__(self, name, value)
+        if (
+            isinstance(self.fencing_epoch, bool)
+            or not isinstance(self.fencing_epoch, int)
+            or self.fencing_epoch < 0
+        ):
+            raise ValueError("fencing_epoch must be a nonnegative integer")
         body = self.to_dict(include_id=False)
         expected = _content_id("recovery-checkpoint", body)
         if self.checkpoint_id and self.checkpoint_id != expected:
@@ -264,6 +290,17 @@ class RecoveryCheckpoint:
             ),
             "created_at": self.created_at,
         }
+        # Empty additions are omitted so generation-2 @1 checkpoints retain
+        # their historical content identities and remain readable.
+        if self.semantic_roots:
+            value["semantic_roots"] = dict(self.semantic_roots)
+            value["semantic_roots_id"] = self.semantic_roots_id
+        if self.proof_index_id:
+            value["proof_index_id"] = self.proof_index_id
+        if self.cas_invalidation_id:
+            value["cas_invalidation_id"] = self.cas_invalidation_id
+        if self.fencing_epoch:
+            value["fencing_epoch"] = self.fencing_epoch
         if include_id:
             value["checkpoint_id"] = self.checkpoint_id
         return value
@@ -271,6 +308,10 @@ class RecoveryCheckpoint:
     @property
     def state_id(self) -> str:
         return _content_id("recovery-state", self.state)
+
+    @property
+    def semantic_roots_id(self) -> str:
+        return _content_id("semantic-roots", dict(self.semantic_roots))
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RecoveryCheckpoint":
@@ -285,6 +326,12 @@ class RecoveryCheckpoint:
             accepted_merged_tree_evidence=tuple(
                 value.get("accepted_merged_tree_evidence") or ()
             ),
+            semantic_roots=value.get("semantic_roots") or {},
+            proof_index_id=str(value.get("proof_index_id") or ""),
+            cas_invalidation_id=str(
+                value.get("cas_invalidation_id") or ""
+            ),
+            fencing_epoch=value.get("fencing_epoch", 0),
             created_at=str(value.get("created_at") or ""),
             checkpoint_id=str(value.get("checkpoint_id") or ""),
         )
@@ -373,6 +420,24 @@ class RecoveryCheckpointStore:
                     )
                 if checkpoint.checkpoint_id == current.checkpoint_id:
                     return False
+                if (
+                    checkpoint.cursor.stream_id != current.cursor.stream_id
+                    or checkpoint.cursor.snapshot_id
+                    != current.cursor.snapshot_id
+                    or checkpoint.cursor.position < current.cursor.position
+                    or (
+                        checkpoint.cursor.position == current.cursor.position
+                        and checkpoint.cursor.last_event_id
+                        != current.cursor.last_event_id
+                    )
+                ):
+                    raise RecoveryIntegrityError(
+                        "recovery checkpoint event cursor moved backwards or forked"
+                    )
+                if checkpoint.fencing_epoch < current.fencing_epoch:
+                    raise RecoveryIntegrityError(
+                        "recovery checkpoint fencing epoch moved backwards"
+                    )
             path = self._checkpoint_path(checkpoint)
             _atomic_write(path, payload)
             _atomic_write(
@@ -500,6 +565,17 @@ class RepairReceipt:
     preserved_evidence_ids: tuple[str, ...] = ()
     resulting_projection_ids: tuple[str, ...] = ()
     stale_actor_fenced: bool = False
+    replay_cursor: EventCursor | None = None
+    checkpoint_semantic_roots: Mapping[str, str] = field(
+        default_factory=dict
+    )
+    result_semantic_roots: Mapping[str, str] = field(default_factory=dict)
+    precrash_permit_ids: tuple[str, ...] = ()
+    invalidated_permit_ids: tuple[str, ...] = ()
+    proof_index_id: str = ""
+    cas_invalidation_id: str = ""
+    fencing_epoch: int = 0
+    observed_fencing_epoch: int = 0
     started_at: str = field(default_factory=utc_now)
     finished_at: str = field(default_factory=utc_now)
     requirement_id: str = BOUNDED_RECOVERY_REQUIREMENT_ID
@@ -541,12 +617,55 @@ class RepairReceipt:
             "quarantined_paths",
             "preserved_evidence_ids",
             "resulting_projection_ids",
+            "precrash_permit_ids",
+            "invalidated_permit_ids",
         ):
             object.__setattr__(
                 self,
                 name,
                 tuple(_required_text(item, f"{name} item") for item in getattr(self, name)),
             )
+        for name in ("precrash_permit_ids", "invalidated_permit_ids"):
+            object.__setattr__(
+                self,
+                name,
+                tuple(sorted(set(getattr(self, name)))),
+            )
+        if self.replay_cursor is not None and not isinstance(
+            self.replay_cursor, EventCursor
+        ):
+            raise TypeError("replay_cursor must be an EventCursor or None")
+        for name in (
+            "checkpoint_semantic_roots",
+            "result_semantic_roots",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, Mapping):
+                raise TypeError(f"{name} must be a mapping")
+            object.__setattr__(
+                self,
+                name,
+                {
+                    _required_text(key, f"{name} key"): _required_text(
+                        item, f"{name} identity"
+                    )
+                    for key, item in sorted(value.items())
+                },
+            )
+        for name in ("proof_index_id", "cas_invalidation_id"):
+            object.__setattr__(
+                self, name, str(getattr(self, name) or "").strip()
+            )
+        for name in ("fencing_epoch", "observed_fencing_epoch"):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise ValueError(
+                    f"{name} must be a nonnegative integer"
+                )
         body = self.to_dict(include_id=False)
         expected = _content_id("repair-receipt", body)
         if self.receipt_id and self.receipt_id != expected:
@@ -597,6 +716,32 @@ class RepairReceipt:
             "started_at": self.started_at,
             "finished_at": self.finished_at,
         }
+        if self.replay_cursor is not None:
+            value["replay_cursor"] = self.replay_cursor.to_record()
+        if self.checkpoint_semantic_roots:
+            value["checkpoint_semantic_roots"] = dict(
+                self.checkpoint_semantic_roots
+            )
+        if self.result_semantic_roots:
+            value["result_semantic_roots"] = dict(
+                self.result_semantic_roots
+            )
+        if self.invalidated_permit_ids:
+            value["invalidated_permit_ids"] = list(
+                self.invalidated_permit_ids
+            )
+        if self.precrash_permit_ids:
+            value["precrash_permit_ids"] = list(
+                self.precrash_permit_ids
+            )
+        if self.proof_index_id:
+            value["proof_index_id"] = self.proof_index_id
+        if self.cas_invalidation_id:
+            value["cas_invalidation_id"] = self.cas_invalidation_id
+        if self.fencing_epoch:
+            value["fencing_epoch"] = self.fencing_epoch
+        if self.observed_fencing_epoch:
+            value["observed_fencing_epoch"] = self.observed_fencing_epoch
         if include_id:
             value["receipt_id"] = self.receipt_id
         return value
@@ -629,6 +774,30 @@ class RepairReceipt:
                 value.get("resulting_projection_ids") or ()
             ),
             stale_actor_fenced=bool(value.get("stale_actor_fenced", False)),
+            replay_cursor=(
+                EventCursor.from_dict(value.get("replay_cursor") or {})
+                if value.get("replay_cursor") is not None
+                else None
+            ),
+            checkpoint_semantic_roots=value.get(
+                "checkpoint_semantic_roots"
+            )
+            or {},
+            result_semantic_roots=value.get("result_semantic_roots") or {},
+            precrash_permit_ids=tuple(
+                value.get("precrash_permit_ids") or ()
+            ),
+            invalidated_permit_ids=tuple(
+                value.get("invalidated_permit_ids") or ()
+            ),
+            proof_index_id=str(value.get("proof_index_id") or ""),
+            cas_invalidation_id=str(
+                value.get("cas_invalidation_id") or ""
+            ),
+            fencing_epoch=value.get("fencing_epoch", 0),
+            observed_fencing_epoch=value.get(
+                "observed_fencing_epoch", 0
+            ),
             started_at=str(value.get("started_at") or ""),
             finished_at=str(value.get("finished_at") or ""),
             requirement_id=str(value.get("requirement_id") or ""),
@@ -713,6 +882,10 @@ class SupervisorRecovery:
         state: Mapping[str, Any],
         cursor: EventCursor,
         accepted_merged_tree_evidence: Sequence[str] = (),
+        semantic_roots: Mapping[str, str] | None = None,
+        proof_index_id: str = "",
+        cas_invalidation_id: str = "",
+        fencing_epoch: int = 0,
     ) -> RecoveryCheckpoint:
         checkpoint = RecoveryCheckpoint(
             repository_id=repository_id,
@@ -723,6 +896,10 @@ class SupervisorRecovery:
             accepted_merged_tree_evidence=tuple(
                 accepted_merged_tree_evidence
             ),
+            semantic_roots=semantic_roots or {},
+            proof_index_id=proof_index_id,
+            cas_invalidation_id=cas_invalidation_id,
+            fencing_epoch=fencing_epoch,
         )
         self.checkpoints.save(checkpoint)
         return checkpoint
@@ -802,6 +979,17 @@ class SupervisorRecovery:
         fence_actor: Callable[[int, int], bool] | None = None,
         process_tree_id: str = "process-tree:none",
         resulting_projection_ids: Sequence[str] = (),
+        current_semantic_roots: Mapping[str, str] | None = None,
+        current_event_cursor: EventCursor | Mapping[str, Any] | str | None = None,
+        current_proof_index_id: str = "",
+        current_cas_invalidation_id: str = "",
+        precrash_permit_ids: Sequence[str] = (),
+        fence_permits: Callable[[tuple[str, ...], int], bool] | None = None,
+        replay_events: Callable[[RecoveryCheckpoint], Mapping[str, Any]] | None = None,
+        root_reader: Callable[[], Mapping[str, str]] | None = None,
+        runtime_cas: Any = None,
+        proof_index: Any = None,
+        canonical_artifacts: Sequence[Any] | None = None,
     ) -> RepairReceipt:
         """Recover one incident from the last valid checkpoint.
 
@@ -815,6 +1003,32 @@ class SupervisorRecovery:
         repository_id = _required_text(repository_id, "repository_id")
         tree_id = _required_text(tree_id, "tree_id")
         process_tree_id = _required_text(process_tree_id, "process_tree_id")
+        selected_roots = {
+            _required_text(key, "semantic root kind"): _required_text(
+                item, "semantic root identity"
+            )
+            for key, item in sorted((current_semantic_roots or {}).items())
+        }
+        permit_ids = tuple(
+            sorted(
+                {
+                    _required_text(item, "precrash permit ID")
+                    for item in precrash_permit_ids
+                }
+            )
+        )
+        if isinstance(current_event_cursor, str):
+            expected_cursor = EventCursor.from_token(current_event_cursor)
+        elif isinstance(current_event_cursor, Mapping):
+            expected_cursor = EventCursor.from_dict(current_event_cursor)
+        elif isinstance(current_event_cursor, EventCursor):
+            expected_cursor = current_event_cursor
+        elif current_event_cursor is None:
+            expected_cursor = None
+        else:
+            raise TypeError(
+                "current_event_cursor must be a cursor, record, token, or None"
+            )
         selected_fault = (
             fault if isinstance(fault, RecoveryFault) else RecoveryFault(str(fault))
         )
@@ -828,6 +1042,35 @@ class SupervisorRecovery:
                 or existing.process_tree_id != process_tree_id
                 or existing.resulting_projection_ids
                 != tuple(resulting_projection_ids)
+                or (
+                    selected_roots
+                    and dict(existing.result_semantic_roots)
+                    != selected_roots
+                )
+                or (
+                    expected_cursor is not None
+                    and existing.replay_cursor != expected_cursor
+                )
+                or existing.precrash_permit_ids != permit_ids
+                or (
+                    current_proof_index_id
+                    and existing.proof_index_id
+                    != str(current_proof_index_id)
+                )
+                or (
+                    current_cas_invalidation_id
+                    and existing.cas_invalidation_id
+                    != str(current_cas_invalidation_id)
+                )
+                or (
+                    current_fencing_token is not None
+                    and existing.fencing_epoch != current_fencing_token
+                )
+                or (
+                    observed_fencing_token is not None
+                    and existing.observed_fencing_epoch
+                    != observed_fencing_token
+                )
             ):
                 raise RecoveryIntegrityError(
                     "incident identity was replayed with different bindings"
@@ -839,6 +1082,28 @@ class SupervisorRecovery:
         quarantined: list[str] = []
         attempts = 0
         stale_actor_fenced = False
+        permits_fenced = not permit_ids
+        replay_cursor: EventCursor | None = None
+        checkpoint_roots: dict[str, str] = {}
+        result_roots = dict(selected_roots)
+        result_proof_index_id = str(current_proof_index_id or "")
+        result_cas_invalidation_id = str(
+            current_cas_invalidation_id or ""
+        )
+        result_fencing_epoch = int(current_fencing_token or 0)
+        root_reader_failed = False
+        try:
+            root_snapshot_before = (
+                {
+                    str(key): str(item)
+                    for key, item in root_reader().items()
+                }
+                if root_reader is not None
+                else None
+            )
+        except Exception:
+            root_snapshot_before = None
+            root_reader_failed = True
         checkpoint = self.checkpoints.load_last_valid()
         if checkpoint is None:
             disposition = RecoveryDisposition.FAILED_CLOSED
@@ -860,6 +1125,16 @@ class SupervisorRecovery:
             state_id = checkpoint.state_id
             evidence = checkpoint.accepted_merged_tree_evidence
         else:
+            checkpoint_roots = dict(checkpoint.semantic_roots)
+            if not result_roots:
+                result_roots = dict(checkpoint.semantic_roots)
+            if not result_proof_index_id:
+                result_proof_index_id = checkpoint.proof_index_id
+            if not result_cas_invalidation_id:
+                result_cas_invalidation_id = checkpoint.cas_invalidation_id
+            result_fencing_epoch = max(
+                result_fencing_epoch, checkpoint.fencing_epoch
+            )
             cursor = checkpoint.cursor
             checkpoint_id = checkpoint.checkpoint_id
             state_id = checkpoint.state_id
@@ -868,9 +1143,43 @@ class SupervisorRecovery:
             reason = "checkpoint_verified"
             actions.append("load_last_valid_checkpoint")
 
+            if root_reader_failed:
+                disposition = RecoveryDisposition.FAILED_CLOSED
+                reason = "root_reader_failed"
+            elif selected_roots and not checkpoint.semantic_roots:
+                disposition = RecoveryDisposition.FAILED_CLOSED
+                reason = "checkpoint_semantic_roots_missing"
+            elif (
+                selected_roots
+                and replay_events is None
+                and dict(checkpoint.semantic_roots) != selected_roots
+            ):
+                disposition = RecoveryDisposition.FAILED_CLOSED
+                reason = "checkpoint_semantic_roots_mismatch"
+            elif (
+                current_proof_index_id
+                and checkpoint.proof_index_id
+                and replay_events is None
+                and checkpoint.proof_index_id != current_proof_index_id
+            ):
+                disposition = RecoveryDisposition.FAILED_CLOSED
+                reason = "checkpoint_proof_index_mismatch"
+            elif (
+                current_cas_invalidation_id
+                and checkpoint.cas_invalidation_id
+                and replay_events is None
+                and checkpoint.cas_invalidation_id
+                != current_cas_invalidation_id
+            ):
+                disposition = RecoveryDisposition.FAILED_CLOSED
+                reason = "checkpoint_cas_head_mismatch"
+
             if (
+                disposition != RecoveryDisposition.FAILED_CLOSED
+                and (
                 current_fencing_token is not None
                 or observed_fencing_token is not None
+                )
             ):
                 if (
                     isinstance(current_fencing_token, bool)
@@ -882,7 +1191,10 @@ class SupervisorRecovery:
                 ):
                     disposition = RecoveryDisposition.FAILED_CLOSED
                     reason = "invalid_fencing_token"
-                elif observed_fencing_token != current_fencing_token:
+                elif observed_fencing_token > current_fencing_token:
+                    disposition = RecoveryDisposition.FAILED_CLOSED
+                    reason = "fencing_epoch_race"
+                elif observed_fencing_token < current_fencing_token:
                     if fence_actor is None:
                         # The accepted higher token is itself the persistent
                         # mutation fence; an optional callback additionally
@@ -907,6 +1219,31 @@ class SupervisorRecovery:
 
             if (
                 disposition != RecoveryDisposition.FAILED_CLOSED
+                and permit_ids
+            ):
+                if fence_permits is not None:
+                    try:
+                        permits_fenced = (
+                            fence_permits(
+                                permit_ids, int(current_fencing_token or 0)
+                            )
+                            is True
+                        )
+                    except Exception:
+                        permits_fenced = False
+                else:
+                    permits_fenced = bool(
+                        current_fencing_token is not None
+                        and current_fencing_token > checkpoint.fencing_epoch
+                    )
+                if permits_fenced:
+                    actions.append("fence_precrash_permits")
+                else:
+                    disposition = RecoveryDisposition.FAILED_CLOSED
+                    reason = "precrash_permit_fence_failed"
+
+            if (
+                disposition != RecoveryDisposition.FAILED_CLOSED
                 and event_log_path is not None
             ):
                 log_result = recover_jsonl_event_log_tail(
@@ -924,7 +1261,160 @@ class SupervisorRecovery:
                     reason = str(log_result.get("reason") or "event_log_repaired")
                     actions.append("repair_event_log_tail")
 
-            if disposition != RecoveryDisposition.FAILED_CLOSED and repair:
+            if (
+                disposition != RecoveryDisposition.FAILED_CLOSED
+                and replay_events is not None
+            ):
+                try:
+                    replay_result = replay_events(checkpoint)
+                    if not isinstance(replay_result, Mapping):
+                        raise TypeError(
+                            "replay_events must return a mapping"
+                        )
+                    raw_cursor = replay_result.get("event_cursor")
+                    if isinstance(raw_cursor, EventCursor):
+                        replay_cursor = raw_cursor
+                    elif isinstance(raw_cursor, str):
+                        replay_cursor = EventCursor.from_token(raw_cursor)
+                    elif isinstance(raw_cursor, Mapping):
+                        replay_cursor = EventCursor.from_dict(raw_cursor)
+                    else:
+                        raise RecoveryIntegrityError(
+                            "replay result is missing its event cursor"
+                        )
+                    replay_roots = replay_result.get("semantic_roots")
+                    if not isinstance(replay_roots, Mapping):
+                        raise RecoveryIntegrityError(
+                            "replay result is missing semantic roots"
+                        )
+                    result_roots = {
+                        _required_text(key, "replay semantic root kind"):
+                        _required_text(item, "replay semantic root identity")
+                        for key, item in sorted(replay_roots.items())
+                    }
+                    result_proof_index_id = str(
+                        replay_result.get("proof_index_id")
+                        or result_proof_index_id
+                    )
+                    result_cas_invalidation_id = str(
+                        replay_result.get("cas_invalidation_id")
+                        or result_cas_invalidation_id
+                    )
+                    replay_permits = tuple(
+                        sorted(
+                            {
+                                str(item)
+                                for item in replay_result.get(
+                                    "invalidated_permit_ids", ()
+                                )
+                                if str(item)
+                            }
+                        )
+                    )
+                    if not set(permit_ids).issubset(replay_permits):
+                        raise RecoveryIntegrityError(
+                            "replay did not fence every pre-crash permit"
+                        )
+                    if selected_roots and result_roots != selected_roots:
+                        raise RecoveryIntegrityError(
+                            "replay semantic roots do not match current roots"
+                        )
+                    if (
+                        expected_cursor is None
+                        and event_log_path is not None
+                    ):
+                        expected_cursor = latest_event_cursor(
+                            event_log_path
+                        )
+                    if (
+                        expected_cursor is not None
+                        and replay_cursor != expected_cursor
+                    ):
+                        raise RecoveryIntegrityError(
+                            "replay cursor does not match the event head"
+                        )
+                    actions.append("replay_dependency_events")
+                    disposition = RecoveryDisposition.RECOVERED
+                    reason = "event_replay_verified"
+                except Exception as exc:
+                    disposition = RecoveryDisposition.FAILED_CLOSED
+                    reason = f"event_replay_failed:{type(exc).__name__}"
+            elif disposition != RecoveryDisposition.FAILED_CLOSED:
+                replay_cursor = checkpoint.cursor
+                head_cursor = expected_cursor
+                if head_cursor is None and event_log_path is not None:
+                    try:
+                        head_cursor = latest_event_cursor(event_log_path)
+                    except Exception:
+                        disposition = RecoveryDisposition.FAILED_CLOSED
+                        reason = "event_head_unreadable"
+                if (
+                    disposition != RecoveryDisposition.FAILED_CLOSED
+                    and head_cursor is not None
+                    and head_cursor != checkpoint.cursor
+                ):
+                    disposition = RecoveryDisposition.FAILED_CLOSED
+                    reason = "unreplayed_events"
+                elif head_cursor is not None:
+                    replay_cursor = head_cursor
+
+            if (
+                disposition != RecoveryDisposition.FAILED_CLOSED
+                and runtime_cas is not None
+            ):
+                try:
+                    audit = runtime_cas.audit(rebuild=True)
+                    if not audit.healthy:
+                        disposition = RecoveryDisposition.QUARANTINED
+                        reason = "corrupt_runtime_cas:" + ",".join(
+                            audit.issue_codes
+                        )
+                    else:
+                        actions.append("verify_runtime_cas")
+                except Exception as exc:
+                    disposition = RecoveryDisposition.QUARANTINED
+                    reason = f"runtime_cas_audit_failed:{type(exc).__name__}"
+
+            if (
+                disposition
+                not in {
+                    RecoveryDisposition.FAILED_CLOSED,
+                    RecoveryDisposition.QUARANTINED,
+                }
+                and proof_index is not None
+            ):
+                try:
+                    if canonical_artifacts is None:
+                        raise RecoveryIntegrityError(
+                            "canonical artifacts are required to restore a proof index"
+                        )
+                    proof_index.revalidate_canonical_artifacts(
+                        canonical_artifacts=canonical_artifacts
+                    )
+                    if (
+                        result_proof_index_id
+                        and proof_index.index_id != result_proof_index_id
+                    ):
+                        raise RecoveryIntegrityError(
+                            "restored proof index identity is stale"
+                        )
+                    result_proof_index_id = proof_index.index_id
+                    actions.append("verify_proof_scope_index")
+                except Exception as exc:
+                    disposition = RecoveryDisposition.QUARANTINED
+                    reason = (
+                        "stale_restored_artifact:"
+                        + type(exc).__name__
+                    )
+
+            if (
+                disposition
+                not in {
+                    RecoveryDisposition.FAILED_CLOSED,
+                    RecoveryDisposition.QUARANTINED,
+                }
+                and repair
+            ):
                 last_error = ""
                 succeeded = False
                 repair_started = time.monotonic()
@@ -973,6 +1463,27 @@ class SupervisorRecovery:
                     disposition = RecoveryDisposition.FAILED_CLOSED
                     reason = "recovery_verification_failed"
 
+        if root_reader is not None:
+            try:
+                root_snapshot_after = {
+                    str(key): str(item)
+                    for key, item in root_reader().items()
+                }
+            except Exception:
+                root_snapshot_after = None
+            if root_snapshot_after is None:
+                disposition = RecoveryDisposition.FAILED_CLOSED
+                reason = "root_reader_failed"
+            elif (
+                root_snapshot_before is not None
+                and root_snapshot_after != root_snapshot_before
+            ):
+                disposition = RecoveryDisposition.FAILED_CLOSED
+                reason = "root_race"
+            elif result_roots and root_snapshot_after != result_roots:
+                disposition = RecoveryDisposition.FAILED_CLOSED
+                reason = "restored_roots_stale"
+
         if disposition in {
             RecoveryDisposition.FAILED_CLOSED,
             RecoveryDisposition.QUARANTINED,
@@ -1015,6 +1526,17 @@ class SupervisorRecovery:
             preserved_evidence_ids=evidence,
             resulting_projection_ids=tuple(resulting_projection_ids),
             stale_actor_fenced=stale_actor_fenced,
+            replay_cursor=replay_cursor,
+            checkpoint_semantic_roots=checkpoint_roots,
+            result_semantic_roots=result_roots,
+            precrash_permit_ids=permit_ids,
+            invalidated_permit_ids=(
+                permit_ids if permits_fenced else ()
+            ),
+            proof_index_id=result_proof_index_id,
+            cas_invalidation_id=result_cas_invalidation_id,
+            fencing_epoch=result_fencing_epoch,
+            observed_fencing_epoch=int(observed_fencing_token or 0),
             started_at=started_at,
         )
         self._store_receipt(receipt)
