@@ -3492,7 +3492,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-101 Generalize cross-process and distributed single-flight coordination
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: caching
