@@ -3384,7 +3384,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-095 Build prefix-stable context capsules and prompt-cache reuse
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -3456,7 +3456,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-099 Normalize provenance, disagreement, and fallback receipts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -3474,19 +3474,19 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-100 Build a tiered dependency-aware content-addressed runtime store
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: caching
 - Depends on: ASI-093
 - Goal id: ASI-G250
-- Outputs: ipfs_accelerate_py/agent_supervisor/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/artifact_store.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_runtime_cas.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/artifact_store.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_runtime_cas.py, test/api/test_agent_supervisor_artifact_store.py, test/api/test_agent_supervisor_cache_coordinator.py
 - Validation: python -m pytest test/api/test_agent_supervisor_runtime_cas.py test/api/test_agent_supervisor_artifact_store.py test/api/test_agent_supervisor_cache_coordinator.py -q
 - Board namespace: agent-supervisor-self-improvement-v2
 - Bundle: agent-supervisor/self-improvement-v2/cache
 - Parallel lane: runtime-cas
 - Resource class: io-artifact
-- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/artifact_store.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_runtime_cas.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/artifact_store.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_runtime_cas.py, test/api/test_agent_supervisor_artifact_store.py, test/api/test_agent_supervisor_cache_coordinator.py
 - Conflict policy: This task owns shared CAS envelopes and dependency metadata; preserve namespace-specific schemas and authority classes.
 - Acceptance: Add process-local, host-durable, optional shared immutable, and authoritative projection tiers with canonical artifact identities, dependency edges, producer/policy/capability versions, freshness, namespace authority, and invalidation traversal. Reuse existing caches through adapters, never merge drafts with authoritative receipts, reject cycles and forged dependencies, recover corrupt entries, and demonstrate exact warm reuse plus invalidation of only affected descendants after a semantic dependency change.
 
@@ -3726,19 +3726,19 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-114 Define one versioned control capability catalog and event cursor
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
 - Depends on: ASI-093
 - Goal id: ASI-G270
-- Outputs: ipfs_accelerate_py/agent_supervisor/control_contracts.py, test/api/test_agent_supervisor_control_catalog.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_contracts.py, test/api/test_agent_supervisor_control_catalog.py, test/api/test_agent_supervisor_control_contracts.py
 - Validation: python -m pytest test/api/test_agent_supervisor_control_catalog.py test/api/test_agent_supervisor_control_contracts.py -q
 - Board namespace: agent-supervisor-self-improvement-v2
 - Bundle: agent-supervisor/self-improvement-v2/control
 - Parallel lane: control-catalog
 - Resource class: cpu-small
-- Predicted files: ipfs_accelerate_py/agent_supervisor/control_contracts.py, test/api/test_agent_supervisor_control_catalog.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control_contracts.py, test/api/test_agent_supervisor_control_catalog.py, test/api/test_agent_supervisor_control_contracts.py
 - Conflict policy: Define provider-free catalog contracts first; defer Python service, CLI, and MCP adapter wiring.
 - Acceptance: Define one immutable catalog for capabilities, health, status, metrics, goals, tasks, bundles, lanes, events, receipts, caches, objective preview/refine/reconcile, refill, plan, lifecycle, retry, cancel, quarantine, artifact query, and validation replay. Each operation declares schemas, authority, target descriptor, roots, bounds, pagination or event cursor, dry-run, idempotency, leases, fencing, backend capability, degradation, and audit receipt; discovery is lazy and side-effect-free; and version negotiation, cursor replay, unknown operation, unsupported capability, and bound tests pass.
 
