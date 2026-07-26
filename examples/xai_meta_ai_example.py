@@ -103,7 +103,8 @@ def example_llm_router():
         print("(skipping Meta AI call – META_AI_API_KEY not set)")
 
     # Provider aliases also work
-    # generate_text("Hello", provider="grok")        # xAI
+    # generate_text("Hello", provider="grok_cli")    # official Grok CLI
+    # generate_text("Hello", provider="grok_api")    # xAI REST API
     # generate_text("Hello", provider="spark")       # Meta Spark
     # generate_text("Hello", provider="meta_llama")  # Meta Llama
 

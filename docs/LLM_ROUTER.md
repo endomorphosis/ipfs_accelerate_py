@@ -6,6 +6,10 @@ first available configured provider. External credentials, CLIs, SDKs, model
 weights, and local services are optional; importing the router does not install
 or start them.
 
+It is also the implementation used by the historical
+`ipfs_datasets_py.llm_router` import path. See
+[inference router ownership](ROUTER_OWNERSHIP.md) for the shared boundary.
+
 ## Basic usage
 
 ```python
@@ -36,6 +40,7 @@ The built-in names currently recognized by the router include:
 | `copilot_cli` | GitHub Copilot CLI process | Copilot CLI and auth |
 | `copilot_sdk` | Python Copilot SDK | optional SDK and auth |
 | `gemini_cli` / `gemini_py` | Gemini CLI or Python wrapper | Gemini tool/SDK and credentials |
+| `grok_cli` | Official xAI Grok CLI | `grok` executable and CLI OAuth or `XAI_API_KEY` |
 | `claude_code` / `claude_py` | Claude Code CLI or Python wrapper | Claude tool/SDK and credentials |
 | `mistral_vibe` | Mistral Vibe CLI | `vibe` and Mistral credentials |
 | `xai` | xAI OpenAI-compatible API | `XAI_API_KEY` |
@@ -45,9 +50,12 @@ The built-in names currently recognized by the router include:
 | `local_hf` | Transformers pipeline | `transformers` and model weights |
 | `mock` | deterministic test provider | no external dependency |
 
-Aliases such as `codex`, `claude`, `hf`, `huggingface`, `vibe`, and
-`accelerate` are accepted where implemented. Use `get_llm_provider(name)` or
-the source module for the exact current alias set.
+Aliases such as `codex`, `claude`, `grok`, `xai_cli`, `hf`, `huggingface`,
+`vibe`, and `accelerate` are accepted where implemented. For text generation,
+`grok` prefers the installed CLI and falls back to the xAI REST provider when
+the CLI is unavailable; use `grok_cli` or `grok_api` when the transport must
+be unambiguous. Use `get_llm_provider(name)` or the source module for the exact
+current alias set.
 
 ## Provider selection and registration
 
@@ -81,6 +89,8 @@ secrets to commit:
 | `ipfs_accelerate_py_COPILOT_CLI_CMD` | Copilot CLI command template. |
 | `ipfs_accelerate_py_COPILOT_SDK_MODEL` | Copilot SDK model. |
 | `ipfs_accelerate_py_GEMINI_CLI_CMD` | Gemini CLI command template. |
+| `ipfs_accelerate_py_GROK_CLI_CMD` / `GROK_CLI_CMD` | Grok CLI command or command template. |
+| `ipfs_accelerate_py_GROK_CLI_MODEL` / `GROK_CLI_MODEL` | Optional Grok CLI model; otherwise the CLI default is used. |
 | `ipfs_accelerate_py_CLAUDE_CODE_CLI_CMD` | Claude Code command template. |
 | `IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD` / `ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD` | Mistral Vibe command template. |
 | `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` | Mistral authentication. |
@@ -113,6 +123,35 @@ other injected resources. `clear_llm_router_caches()` clears router-local
 provider caches. Response caching is useful only when the provider request is
 safe to replay; do not cache prompts or outputs containing sensitive data
 without an appropriate storage policy.
+
+## Grok CLI
+
+Authenticate the installed CLI once, then select the CLI transport explicitly:
+
+```bash
+grok login --device-code
+python - <<'PY'
+from ipfs_accelerate_py import generate_text
+
+print(generate_text(
+    "Explain content addressing in one sentence.",
+    provider="grok_cli",
+    model_name="grok-4.5",
+    max_tokens=128,
+))
+PY
+```
+
+The router invokes Grok in bounded, non-interactive JSON mode. It disables
+plan mode, subagents, web search, cross-session memory, and tools by default,
+passes the prompt through an owner-only temporary file, and extracts only the
+final response text. OAuth credentials from `grok login` take precedence in
+the CLI; `XAI_API_KEY` is also supported. Alternate accelerator and datasets
+xAI key variables are forwarded to the CLI as `XAI_API_KEY`.
+
+Use `trace=True` with `trace_jsonl_path=...` or `trace_dir=...` to retain
+request, session, usage, and cost metadata. Prompt and response text are not
+written to that trace by the router.
 
 ## Batch and mesh helpers
 

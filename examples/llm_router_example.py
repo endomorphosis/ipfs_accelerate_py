@@ -3,8 +3,8 @@
 Example: Using the LLM Router
 
 This example demonstrates the new llm_router functionality that integrates
-multiple LLM providers (OpenRouter, Codex CLI, Copilot CLI/SDK, Gemini, Claude)
-with the existing endpoint multiplexing capabilities.
+multiple LLM providers (OpenRouter, Codex CLI, Copilot CLI/SDK, Gemini, Grok,
+Claude) with the existing endpoint multiplexing capabilities.
 
 The router automatically selects the best available provider based on:
 - Environment configuration
@@ -189,6 +189,7 @@ def example_list_available_providers():
         "copilot_cli",
         "copilot_sdk",
         "gemini_cli",
+        "grok_cli",
         "claude_code",
         "backend_manager",
         "local_hf"

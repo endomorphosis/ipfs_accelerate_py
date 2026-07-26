@@ -1672,6 +1672,18 @@ def test_objective_tracker_persists_provisional_then_verified_state(tmp_path) ->
     assert '"validation_receipt":"bafy-validation-receipt"' in verified_text
     assert '"reconciliation_validation_receipt"' in verified_text
 
+    replay = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_gate_records={"G10.S3": _tracker_gate(identity)},
+    )
+
+    assert replay.reopened_goal_ids == []
+    assert replay.state_counts["verified_complete"] == 1
+    assert replay.decisions["G10.S3"]["state"] == "verified_complete"
+    assert replay.validation_results["G10.S3"]["passed"] is True
+
 
 def test_objective_tracker_aborts_when_validation_mutates_repository_tree(
     tmp_path,
@@ -2050,6 +2062,44 @@ def test_objective_tracker_does_not_treat_an_empty_configured_board_as_task_drai
     assert result.provisional_goal_ids == []
     assert result.decisions["G10.S3"]["state"] == "active"
     assert "- Status: active" in objective_path.read_text(encoding="utf-8")
+
+
+def test_objective_tracker_reopens_self_asserted_verified_state_without_evidence(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G10.S3 Self-asserted completion
+
+- Status: verified_complete
+- Acceptance: criterion one
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+    )
+
+    assert result.verified_goal_ids == []
+    assert result.reopened_goal_ids == ["G10.S3"]
+    assert result.state_counts["verified_complete"] == 0
+    assert result.state_counts["reopened"] == 1
+    assert result.decisions["G10.S3"]["previous_state"] == "verified_complete"
+    assert result.decisions["G10.S3"]["state"] == "reopened"
+    assert "missing_criterion_evidence" in result.decisions["G10.S3"][
+        "reason_codes"
+    ]
+    assert "verification_invalidated" in result.decisions["G10.S3"][
+        "reason_codes"
+    ]
+    assert "- Status: reopened" in objective_path.read_text(encoding="utf-8")
 
 
 def test_open_validation_gate_does_not_reopen_implementation_stage(

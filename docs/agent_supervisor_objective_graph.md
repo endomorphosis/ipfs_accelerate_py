@@ -453,8 +453,11 @@ supervisor:
 
 ## Objective Heap Format and Lifecycle
 
-- Format: markdown `## GOAL-ID Title` plus `- Field: value`; the parser is
-  package-neutral. (`.../objective_graph.py:274-305`)
+- Format: markdown `## GOAL-ID Title` plus `- Field: value`; indented
+  continuation lines are joined into the preceding field so wrapped goals,
+  outputs, validation commands, acceptance criteria, and gap tasks retain their
+  complete meaning. The parser is package-neutral.
+  (`.../objective_graph.py:274-305`)
 - Scheduling: active/open/todo goals are heap-ordered by Fibonacci priority,
   then priority rank, then work-surface tie-breakers.
   (`.../objective_graph.py:763-817`)
@@ -480,6 +483,93 @@ Implemented evidence modes include:
 
 Candidate files are git-tracked across the repository plus submodules/worktrees
 with suffix and directory filters. (`.../objective_graph.py:485-553,526-540`)
+
+### Mandatory source-protected scan boundary
+
+Caller-supplied `--scan-exclude-path` values are additive privacy controls, not
+the security boundary. The scanner always applies a source-level deny policy
+before reading candidate content. It rejects protected path components such as
+`artifacts`, `corpora`, `fixtures`, `holdout`, `holdouts`,
+`performance_snapshots`, `security_ir_artifacts`, and `workspace`; components
+ending in `_fixtures`; and the compound roots `data/agent_supervisor` and
+`docs/performance_snapshots`. The same lexical rules apply inside every
+initialized immediate submodule.
+
+The policy is fail-closed for symlinks and for paths whose resolved target is
+outside the repository. It applies to normal tracked-file enumeration, direct
+repository-path evidence terms, cached/precomputed AST rows, and AST dataset
+collection. A protected cached row is discarded from evidence consideration
+before its evidence text, symbols, tokens, or embedding are inspected.
+Persisted AST rows are untrusted diagnostic history, not source/evidence cache
+authority. Current records fully recompute source text, symbols, tokens,
+embeddings, and AST fields from the current tracked candidate; a prior row may
+contribute only bounded deletion/rename diagnostics. Consequently
+`reused_record_count` and `saved_parse_seconds` are zero under this fail-closed
+policy. This prevents a forgotten runbook exclusion, a poisoned cache row, or
+a submodule fixture from satisfying an objective gate, including a poisoned
+row that claims the exact benign path and Git blob of a public file.
+
+Tracked-file discovery also fails closed when `git ls-files` fails. It returns
+no candidates instead of falling back to a recursive filesystem walk, because
+such a fallback would enumerate untracked or protected path metadata before
+the per-candidate policy could reject it.
+
+Scan receipts expose `source_protected_scan_policy`,
+`external_authority_goal_ids`, and
+`external_authority_blocked_goal_ids`. Operators should retain those fields
+with the scan receipt so a later audit can distinguish mandatory policy from
+run-specific exclusions.
+
+### External completion authority
+
+Some objective nodes describe operational authorization or benchmark evidence
+that local implementation workers are not allowed to manufacture. Mark those
+nodes with `Completion authority: external`. While such a goal is active, both
+it and its active transitive descendants are omitted from ordinary gap scans,
+bounded objective generation, todo rendering, bundle generation, and queue
+scheduling. The HSSL operational gates G201, G202, G203, G212, G220, G232,
+G241, G242, and G243 also have an identity-based compatibility fence so an old
+or partially copied task record cannot bypass the rule by losing the metadata
+field.
+
+External governance is sticky. A durable
+`External completion authority CID` or typed completion-evidence record marked
+`external_operational_completion` keeps the goal externally governed even if a
+later or legacy copy loses the declaration. The same canonical detection is
+used by reconciliation, objective generation, no-reconcile fencing, and the
+task dependency DAG.
+
+Local todo status and ordinary merge receipts never complete or unlock a
+fenced task. Dependency materialization emits
+`external_authority_required` repair evidence and marks the task invalid for
+local claiming. Completion must instead pass typed external-authority
+reconciliation against the current source identity. Once that reconciliation
+makes the external gate `verified_complete`, the gate remains non-executable,
+but a fresh scan may generate its still-active downstream local goals. Fresh
+downstream tasks intentionally omit the already-satisfied parent as a local
+task dependency. Graph descendants are therefore not implicit prerequisites
+for completing the external gate itself; any children that truly belong to the
+gate receipt must be supplied explicitly in its typed completion-gate record.
+This avoids a cycle in which downstream work waits for the gate while the gate
+waits for downstream work. Pre-existing fenced bundle records should be
+regenerated from the reconciled objective heap; local receipts are not an
+authorization migration mechanism.
+
+Reconciliation decides all external gates before it evaluates local
+descendants. A persisted receipt projection is not enough to admit a
+descendant during that phase: every transitive external ancestor must remain
+`verified_complete` under the current authority, source inspection, and
+validation decision. Thus the same pass that reopens a stale or dirty external
+gate cannot advance its child from locally visible evidence.
+
+If an operator explicitly disables completion reconciliation, the daemon does
+not treat recorded external-completion fields as current authorization.
+External gates and all of their descendants remain fenced from deterministic
+and bounded generation for that pass, while independent local goals can still
+produce work. The daemon receipt reports both
+`objective_completion_reconciliation_enabled` and
+`recorded_external_completion_trusted_for_generation` so a dry-run audit can
+verify this behavior.
 
 ## Finding-to-Todo Conversion
 
@@ -513,10 +603,21 @@ with suffix and directory filters. (`.../objective_graph.py:485-553,526-540`)
 - Tests validate these fields and population behavior.
   (`.../test/api/test_agent_supervisor_todo_daemon_port.py:7514-7547,7642-7653`)
 
+Task CIDs are not allowed to collapse semantically different work. Duplicate
+records may merge aliases and a terminal status only when their goal, work,
+evidence, output/input, validation, and dependency projections agree.
+Conflicting duplicates emit `conflicting_duplicate_task_identity`, remain
+invalid even when either copy claims success, and are not counted as completed
+bundle members.
+
 ## Bundle Supervisor Behavior
 
 - Default behavior is planning plus manifest writing; no process is launched
   unless `--start` is passed. (`.../bundle_supervisor.py:247,263-297`)
+- Before using `--start` (or any implementation mode), inspect the dry-run
+  bundle plan. Do not launch while a candidate lane contains
+  `external_authority_required` repair evidence; reconcile the external gate
+  and regenerate the bundle index first.
 - Each lane receives isolated `state_dir`, `worktree_root`, `state_prefix`, log
   path, and command. (`.../bundle_supervisor.py:131-169`)
 - `--start` launches detached subprocesses and writes a per-lane PID file.

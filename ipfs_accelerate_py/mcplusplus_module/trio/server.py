@@ -194,6 +194,31 @@ class ServerConfig:
         )
 
 
+def _build_p2p_service_metadata(
+    *,
+    config: ServerConfig,
+    node: Any,
+    served_models: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build an unambiguous service record without performing inference."""
+
+    node_status = node.to_dict() if callable(getattr(node, "to_dict", None)) else {}
+    return {
+        # ``http_port`` is control-plane HTTP.  ``p2p_port`` is the libp2p
+        # listener advertised in each multiaddr; never alias one as the other.
+        "http_port": config.port,
+        "p2p_port": getattr(node, "listen_port", None),
+        "server": config.name,
+        "node_ownership": "process_singleton",
+        "p2p_protocol": node_status.get("protocol"),
+        "p2p_capabilities": node_status.get("capabilities", {}),
+        "models": [
+            model.get("id") for model in served_models if model.get("id")
+        ],
+        "served_models": served_models,
+    }
+
+
 class TrioMCPServer:
     """Trio-native MCP server for P2P operations.
 
@@ -1265,14 +1290,11 @@ class TrioMCPServer:
                             peer_id=node.peer_id or "",
                             multiaddrs=node.multiaddrs or [],
                             tools=tools_list,
-                            metadata={
-                                "port": self.config.port,
-                                "server": self.config.name,
-                                "models": [
-                                    model.get("id") for model in served_models if model.get("id")
-                                ],
-                                "served_models": served_models,
-                            },
+                            metadata=_build_p2p_service_metadata(
+                                config=self.config,
+                                node=node,
+                                served_models=served_models,
+                            ),
                         ))
                         # Start service advertise loop
                         self._nursery.start_soon(registry.advertise_loop, node, self._nursery)
@@ -1300,20 +1322,32 @@ class TrioMCPServer:
                 await trio.sleep(backoff)
 
                 # Attempt peer discovery
-                try:
-                    discovered = await node.discover_peers()
-                    if discovered:
-                        logger.info(f"Discovered {len(discovered)} peers via mDNS")
-                        for peer in discovered:
-                            if peer.peer_id == node.peer_id:
-                                continue
-                            for multiaddr in peer.multiaddrs:
-                                await node._connect_bootstrap(multiaddr)
-                                if peer.peer_id in node._peers:
-                                    break
-                        backoff = 5.0  # Reset backoff on success
-                except Exception as e:
-                    logger.debug(f"Peer discovery cycle: {e}")
+                if getattr(node, "mdns_enabled", True):
+                    try:
+                        discovered = [
+                            peer
+                            for peer in await node.discover_peers()
+                            if peer.peer_id and peer.peer_id != node.peer_id
+                        ]
+                        if discovered:
+                            logger.info(
+                                "Discovered %d remote peers via mDNS",
+                                len(discovered),
+                            )
+                            connected = False
+                            for peer in discovered:
+                                for multiaddr in peer.multiaddrs:
+                                    if await node._connect_bootstrap(multiaddr):
+                                        connected = True
+                                        break
+                            if connected:
+                                backoff = 5.0
+                    except Exception as e:
+                        logger.debug(f"Peer discovery cycle: {e}")
+
+                # A local advertisement is never a connected remote peer.
+                if node.peer_id:
+                    node._peers.pop(node.peer_id, None)
 
                 # Health-check existing peers (remove stale ones)
                 stale_peers = []
@@ -1327,12 +1361,17 @@ class TrioMCPServer:
 
                 # Reconnect to bootstrap peers if we have no active peers
                 if not node._peers:
+                    connected = False
                     for peer_addr in node._bootstrap_peers:
                         try:
-                            await node._connect_bootstrap(peer_addr)
+                            if await node._connect_bootstrap(peer_addr):
+                                connected = True
                         except Exception:
                             pass
-                    backoff = min(backoff * 1.5, max_backoff)
+                    if connected:
+                        backoff = 5.0
+                    else:
+                        backoff = min(backoff * 1.5, max_backoff)
 
             except trio.Cancelled:
                 break
