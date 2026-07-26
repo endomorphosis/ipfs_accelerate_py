@@ -3582,7 +3582,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-106 Make goal refinement event-driven and information-gain-aware
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: goal-refinement
