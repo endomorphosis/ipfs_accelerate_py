@@ -2420,6 +2420,50 @@ def check_authorization(
     return AuthorizationChecker(adapters=adapters).evaluate(policy, request)
 
 
+_EXECUTION_PERMIT_EXPORTS: Final[frozenset[str]] = frozenset(
+    {
+        "ExactExecutionPermit",
+        "ExecutionAttempt",
+        "ExecutionEvidence",
+        "ExecutionPermit",
+        "ExecutionPermitAuthorizer",
+        "ExecutionPermitError",
+        "ExecutionPermitIssuer",
+        "ExecutionPermitLedger",
+        "ExecutionPermitRequest",
+        "ExecutionPermitUse",
+        "ExecutionPermitVerifier",
+        "MandatoryEvidenceState",
+        "PermitIssuanceError",
+        "PermitReplayError",
+        "PermitUseLedger",
+        "PermitUseReceipt",
+        "PermitVerificationCode",
+        "PermitVerificationError",
+        "PermitVerificationResult",
+        "issue_execution_permit",
+        "issue_permit",
+        "verify_execution_permit",
+        "verify_permit",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily expose the downstream permit boundary.
+
+    SecurityIR compilation imports this module while the plan-admission module
+    is still initializing.  A lazy export preserves that layering and avoids
+    turning independent policy compilation into a circular dependency.
+    """
+
+    if name in _EXECUTION_PERMIT_EXPORTS:
+        from . import execution_permit
+
+        return getattr(execution_permit, name)
+    raise AttributeError(name)
+
+
 __all__ = [
     "AUTHORIZATION_CONFORMANCE_FIXTURES",
     "AUTHORIZATION_LOGIC_VERSION",
@@ -2458,8 +2502,27 @@ __all__ = [
     "EngineCapability",
     "EngineConformanceReceipt",
     "EngineSupportStatus",
+    "ExactExecutionPermit",
+    "ExecutionAttempt",
+    "ExecutionEvidence",
+    "ExecutionPermit",
+    "ExecutionPermitAuthorizer",
+    "ExecutionPermitError",
+    "ExecutionPermitIssuer",
+    "ExecutionPermitLedger",
+    "ExecutionPermitRequest",
+    "ExecutionPermitUse",
+    "ExecutionPermitVerifier",
     "GeneratedCodeCorrectness",
     "LaneStatus",
+    "MandatoryEvidenceState",
+    "PermitIssuanceError",
+    "PermitReplayError",
+    "PermitUseLedger",
+    "PermitUseReceipt",
+    "PermitVerificationCode",
+    "PermitVerificationError",
+    "PermitVerificationResult",
     "PolicyEngine",
     "PolicyEvaluator",
     "PolicyGrant",
@@ -2472,9 +2535,13 @@ __all__ = [
     "check_authorization",
     "default_authorization_fixtures",
     "evaluate_authorization",
+    "issue_execution_permit",
+    "issue_permit",
     "probe_authorization_engines",
     "render_datalog",
     "render_datalog_policy",
     "render_secpal",
     "render_secpal_policy",
+    "verify_execution_permit",
+    "verify_permit",
 ]
