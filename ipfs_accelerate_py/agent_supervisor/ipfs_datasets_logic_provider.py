@@ -29,9 +29,15 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import json
 import math
+import os
+import re
 import subprocess
+import sys
+import tempfile
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -60,6 +66,24 @@ from .formal_verification_provider import (
     ProviderRequest,
     ProviderResponse,
 )
+from .analysis_operation_registry import (
+    IPFS_DATASETS_ANALYSIS_PRODUCER_ID,
+    LOCAL_ANALYSIS_PRODUCER_ID,
+    AnalysisOperation,
+    AnalysisProducer,
+    LogicFamily,
+    normalize_analysis_operation,
+    normalize_analysis_reference,
+    normalize_logic_family,
+    normalized_reference_payload,
+)
+from .analysis_transport import (
+    ANALYSIS_TRANSPORT_PROTOCOL_VERSION,
+    ANALYSIS_TRANSPORT_REQUEST_SCHEMA,
+    ANALYSIS_TRANSPORT_RESULT_SCHEMA,
+    AnalysisProviderKind,
+    AnalysisRequest,
+)
 
 
 IPFS_DATASETS_LOGIC_PROVIDER_ID: Final = "hammer"
@@ -73,6 +97,14 @@ HAMMER_PROVENANCE_SCHEMA_VERSION: Final = (
 HAMMER_TRANSLATOR_ID: Final = "ipfs-datasets-py-hammer-adapter@1"
 
 KNOWN_HAMMER_SOLVERS: Final = ("cvc5", "e", "vampire", "z3")
+_HAMMER_IMPORT_LOCK: Final = threading.Lock()
+_HAMMER_SYMAI_CONFIG_ROOT: tempfile.TemporaryDirectory[str] | None = None
+# Semantic reasoning families routed through the analysis registry are
+# deliberately separate from Hammer's target-language translation formats
+# below.  In particular, FLogic and frame reasoning, and DCEC and deontic
+# reasoning, must never be collapsed merely because bridges exist between
+# them.
+SUPPORTED_LOGIC_FAMILIES: Final = tuple(item.value for item in LogicFamily)
 SUPPORTED_TRANSLATION_FAMILIES: Final = (
     "coq",
     "first_order",
@@ -544,13 +576,39 @@ PortfolioRunner = Callable[[HammerPortfolioInvocation], Any]
 
 
 def _load_hammer() -> Any:
+    global _HAMMER_SYMAI_CONFIG_ROOT
     try:
-        return importlib.import_module("ipfs_datasets_py.logic.hammers")
-    except (ImportError, ModuleNotFoundError) as exc:
+        with _HAMMER_IMPORT_LOCK:
+            configured_root = os.environ.get("IPFS_DATASETS_PY_SYMAI_PREFIX")
+            if not configured_root and _HAMMER_SYMAI_CONFIG_ROOT is None:
+                _HAMMER_SYMAI_CONFIG_ROOT = tempfile.TemporaryDirectory(
+                    prefix="ipfs-accelerate-symai-"
+                )
+            import_root = configured_root or _HAMMER_SYMAI_CONFIG_ROOT.name
+            original_prefix = sys.prefix
+            original_home = os.environ.get("HOME")
+            if not configured_root:
+                os.environ["IPFS_DATASETS_PY_SYMAI_PREFIX"] = import_root
+            os.environ["HOME"] = import_root
+            sys.prefix = import_root
+            try:
+                return importlib.import_module("ipfs_datasets_py.logic.hammers")
+            finally:
+                sys.prefix = original_prefix
+                if original_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = original_home
+                if not configured_root:
+                    os.environ.pop("IPFS_DATASETS_PY_SYMAI_PREFIX", None)
+    except (ImportError, ModuleNotFoundError, OSError) as exc:
         raise ProofProviderError(
             ProviderFailureCode.UNAVAILABLE,
             "ipfs_datasets_py Hammer portfolio is unavailable",
-            details={"module": "ipfs_datasets_py.logic.hammers"},
+            details={
+                "module": "ipfs_datasets_py.logic.hammers",
+                "reason_code": "optional_dependency_import_failed",
+            },
         ) from exc
 
 
@@ -2093,6 +2151,841 @@ class IpfsDatasetsLogicProvider:
         )
 
 
+_REGISTRY_LOGIC_OPERATIONS: Final = (
+    AnalysisOperation.PREMISE_SELECTION,
+    AnalysisOperation.CONTRADICTION_SEARCH,
+    AnalysisOperation.LOGIC_TRANSLATION,
+    AnalysisOperation.PROOF_CANDIDATE_ANALYSIS,
+    AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS,
+)
+_REGISTRY_LOGIC_CAPABILITIES: Final = (
+    "contradiction_search",
+    "counterexample_candidate_analysis",
+    "logic_family_routing",
+    "logic_translation",
+    "premise_selection",
+    "proof_candidate_analysis",
+)
+_REGISTRY_LOGIC_MAX_BATCH_SIZE: Final = 16
+_REGISTRY_LOGIC_TOKEN_RE: Final = re.compile(r"[A-Za-z0-9_:.@/+~-]+")
+_REGISTRY_NEGATION_TOKENS: Final = frozenset(
+    {"contradiction", "contradicts", "false", "not", "never", "no", "counterexample"}
+)
+_OPTIONAL_LOGIC_METHODS: Final = {
+    AnalysisOperation.PREMISE_SELECTION: (
+        "select_premises",
+        "premise_selection",
+    ),
+    AnalysisOperation.CONTRADICTION_SEARCH: (
+        "search_contradictions",
+        "find_contradictions",
+        "contradiction_search",
+    ),
+    AnalysisOperation.LOGIC_TRANSLATION: (
+        "translate_logic",
+        "translate_legal_logic",
+        "logic_translation",
+        "analyze_legal_logic",
+    ),
+    AnalysisOperation.PROOF_CANDIDATE_ANALYSIS: (
+        "analyze_proof_candidates",
+        "select_proof_candidates",
+        "proof_candidate_analysis",
+    ),
+    AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS: (
+        "analyze_counterexample_candidates",
+        "find_counterexamples",
+        "counterexample_candidate_analysis",
+    ),
+}
+_OPTIONAL_LOGIC_MODULES: Final = {
+    AnalysisOperation.PREMISE_SELECTION: (
+        "ipfs_datasets_py.logic.hammers",
+    ),
+    AnalysisOperation.CONTRADICTION_SEARCH: (
+        "ipfs_datasets_py.logic.integration.domain.document_consistency_checker",
+        "ipfs_datasets_py.logic.TDFOL",
+    ),
+    AnalysisOperation.LOGIC_TRANSLATION: (
+        "ipfs_datasets_py.logic.integration.logic_translation_core",
+        "ipfs_datasets_py.logic.deontic",
+    ),
+    AnalysisOperation.PROOF_CANDIDATE_ANALYSIS: (
+        "ipfs_datasets_py.logic.hammers",
+    ),
+    AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS: (
+        "ipfs_datasets_py.logic.hammers",
+        "ipfs_datasets_py.logic.TDFOL",
+    ),
+}
+
+
+class RegistryLogicProviderUnavailable(RuntimeError):
+    """The optional reasoning surface cannot satisfy a registry request."""
+
+
+def normalize_registry_logic_family(value: Any) -> LogicFamily:
+    """Normalize a registry family without conflating semantic formalisms."""
+
+    return normalize_logic_family(value)
+
+
+def _registry_logic_capability_revision(provider_kind: AnalysisProviderKind) -> str:
+    return _digest(
+        {
+            "adapter": "agent-supervisor-registry-logic@1",
+            "provider_kind": provider_kind.value,
+            "operations": [item.value for item in _REGISTRY_LOGIC_OPERATIONS],
+            "capabilities": list(_REGISTRY_LOGIC_CAPABILITIES),
+            "logic_families": list(SUPPORTED_LOGIC_FAMILIES),
+            "transport_protocol": ANALYSIS_TRANSPORT_PROTOCOL_VERSION,
+            "request_schema": ANALYSIS_TRANSPORT_REQUEST_SCHEMA,
+            "result_schema": ANALYSIS_TRANSPORT_RESULT_SCHEMA,
+        },
+        prefix="analysis-logic-capability",
+    )
+
+
+def registry_logic_producer_declarations() -> tuple[AnalysisProducer, AnalysisProducer]:
+    """Declare local and optional logic producers without importing datasets code."""
+
+    common = {
+        "operations": _REGISTRY_LOGIC_OPERATIONS,
+        "provider_version": IPFS_DATASETS_LOGIC_PROVIDER_VERSION,
+        "capabilities": _REGISTRY_LOGIC_CAPABILITIES,
+        "logic_families": tuple(LogicFamily),
+        "max_batch_size": _REGISTRY_LOGIC_MAX_BATCH_SIZE,
+        "supports_cancellation": True,
+        "supports_progress": False,
+        "supports_batching": True,
+    }
+    local = AnalysisProducer(
+        producer_id=LOCAL_ANALYSIS_PRODUCER_ID,
+        provider_kind=AnalysisProviderKind.LOCAL,
+        capability_revision=_registry_logic_capability_revision(
+            AnalysisProviderKind.LOCAL
+        ),
+        max_concurrency=4,
+        **common,
+    )
+    optional = AnalysisProducer(
+        producer_id=IPFS_DATASETS_ANALYSIS_PRODUCER_ID,
+        provider_kind=AnalysisProviderKind.IPFS_DATASETS,
+        capability_revision=_registry_logic_capability_revision(
+            AnalysisProviderKind.IPFS_DATASETS
+        ),
+        max_concurrency=2,
+        **common,
+    )
+    return local, optional
+
+
+def _registry_cancelled(token: Any) -> bool:
+    if token is None:
+        return False
+    for name in ("cancelled", "is_cancelled", "is_set"):
+        value = getattr(token, name, None)
+        if callable(value):
+            try:
+                return bool(value())
+            except TypeError:
+                continue
+        if value is not None:
+            return bool(value)
+    return False
+
+
+def _registry_logic_family(request: AnalysisRequest) -> LogicFamily:
+    raw = request.metadata.get("logic_family")
+    if not raw:
+        raise ValueError("registry logic requests require logic_family metadata")
+    return normalize_registry_logic_family(raw)
+
+
+def _registry_reference_source_id(
+    reference: Mapping[str, Any], request: AnalysisRequest
+) -> str:
+    for name in (
+        "reference_id",
+        "artifact_content_id",
+        "artifact_id",
+        "evidence_id",
+        "record_id",
+        "cid",
+        "digest",
+        "sha256",
+        "uri",
+        "path",
+    ):
+        value = str(reference.get(name) or "").strip()
+        if value:
+            return value
+    return request.request_id
+
+
+def _registry_logic_tokens(value: Any) -> frozenset[str]:
+    return frozenset(
+        token.casefold()
+        for token in _REGISTRY_LOGIC_TOKEN_RE.findall(str(value))
+        if token
+    )
+
+
+def _registry_candidate_score(
+    operation: AnalysisOperation,
+    question_tokens: frozenset[str],
+    reference: Mapping[str, Any],
+) -> int:
+    reference_tokens: set[str] = set()
+    for name in ("summary", "symbol", "path", "kind"):
+        reference_tokens.update(_registry_logic_tokens(reference.get(name, "")))
+    overlap = len(question_tokens.intersection(reference_tokens))
+    denominator = max(1, len(question_tokens))
+    overlap_score = min(250_000, (overlap * 250_000) // denominator)
+    base = {
+        AnalysisOperation.PREMISE_SELECTION: 650_000,
+        AnalysisOperation.CONTRADICTION_SEARCH: 500_000,
+        AnalysisOperation.LOGIC_TRANSLATION: 600_000,
+        AnalysisOperation.PROOF_CANDIDATE_ANALYSIS: 550_000,
+        AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS: 500_000,
+    }[operation]
+    if (
+        operation
+        in {
+            AnalysisOperation.CONTRADICTION_SEARCH,
+            AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS,
+        }
+        and question_tokens.intersection(_REGISTRY_NEGATION_TOKENS)
+    ):
+        base += 100_000
+    return min(1_000_000, base + overlap_score)
+
+
+def _registry_logic_evidence(
+    request: AnalysisRequest,
+    operation: AnalysisOperation,
+    family: LogicFamily,
+    producer_id: str,
+) -> tuple[Mapping[str, Any], ...]:
+    question_tokens = _registry_logic_tokens(request.question)
+    source_references: tuple[Mapping[str, Any], ...] = request.artifact_references
+    if not source_references:
+        return ()
+    candidates: list[Mapping[str, Any]] = []
+    for reference in source_references:
+        source_id = _registry_reference_source_id(reference, request)
+        semantic_identity = {
+            "operation": operation.value,
+            "logic_family": family.value,
+            "request_id": request.request_id,
+            "source_id": source_id,
+        }
+        raw: dict[str, Any] = {
+            "reference_id": _digest(
+                semantic_identity, prefix="analysis-logic-candidate"
+            ),
+            "artifact_id": str(reference.get("artifact_id") or source_id),
+            "kind": f"{operation.value}:{family.value}:candidate",
+            "score_millionths": _registry_candidate_score(
+                operation, question_tokens, reference
+            ),
+            "summary": (
+                f"non-authoritative {family.value} "
+                f"{operation.value.replace('_', ' ')} candidate"
+            ),
+        }
+        for name in (
+            "artifact_content_id",
+            "cid",
+            "digest",
+            "path",
+            "sha256",
+            "symbol",
+            "tree_id",
+            "uri",
+        ):
+            if reference.get(name):
+                raw[name] = reference[name]
+        if not raw.get("tree_id") and request.metadata.get("tree_id"):
+            raw["tree_id"] = request.metadata["tree_id"]
+        candidates.append(
+            normalize_analysis_reference(
+                raw,
+                default_kind=f"{operation.value}:{family.value}:candidate",
+                producer_id=producer_id,
+            )
+        )
+    candidates.sort(
+        key=lambda item: (
+            -int(item.get("score_millionths", 0)),
+            str(item.get("reference_id", "")),
+        )
+    )
+    return tuple(candidates[:64])
+
+
+def _registry_logic_provenance(
+    request: AnalysisRequest,
+    operation: AnalysisOperation,
+    family: LogicFamily,
+    declaration: AnalysisProducer,
+) -> tuple[Mapping[str, Any], ...]:
+    bindings = (
+        ("repository_id", request.metadata.get("repository_id")),
+        ("tree_id", request.metadata.get("tree_id")),
+        ("objective_revision", request.metadata.get("objective_revision")),
+        ("policy_id", request.metadata.get("policy_id")),
+        ("operation_spec", request.metadata.get("operation_spec_id")),
+    )
+    result: list[Mapping[str, Any]] = []
+    for kind, value in bindings:
+        normalized_value = str(value or "").strip()
+        if not normalized_value:
+            continue
+        raw: dict[str, Any] = {
+            "reference_id": _digest(
+                {
+                    "request_id": request.request_id,
+                    "kind": kind,
+                    "value": normalized_value,
+                    "operation": operation.value,
+                    "logic_family": family.value,
+                },
+                prefix="analysis-logic-provenance",
+            ),
+            "kind": kind,
+            "record_id": normalized_value,
+            "revision": declaration.capability_revision,
+            "summary": f"{kind} binding for {family.value} analysis",
+        }
+        if request.metadata.get("tree_id"):
+            raw["tree_id"] = request.metadata["tree_id"]
+        result.append(
+            normalize_analysis_reference(
+                raw,
+                default_kind=kind,
+                producer_id=declaration.producer_id,
+            )
+        )
+    return tuple(result)
+
+
+def _registry_negotiated_fields(
+    declaration: AnalysisProducer,
+    operation: AnalysisOperation,
+    negotiated_capability: Any,
+) -> dict[str, Any]:
+    capability = declaration.capability
+    if negotiated_capability is None:
+        return {
+            "schema": ANALYSIS_TRANSPORT_RESULT_SCHEMA,
+            "protocol_version": ANALYSIS_TRANSPORT_PROTOCOL_VERSION,
+            "capability_id": capability.capability_id,
+            "capability_revision": capability.capability_revision,
+        }
+    if str(getattr(negotiated_capability, "operation", "")) != operation.value:
+        raise ValueError("negotiated operation does not match request")
+    if not str(getattr(negotiated_capability, "request_schema", "")).strip():
+        raise ValueError("negotiated request schema is missing")
+    if not str(getattr(negotiated_capability, "result_schema", "")).strip():
+        raise ValueError("negotiated result schema is missing")
+    return {
+        "schema": str(negotiated_capability.result_schema),
+        "protocol_version": int(negotiated_capability.protocol_version),
+        "capability_id": str(negotiated_capability.capability_id),
+        "capability_revision": str(
+            negotiated_capability.capability_revision
+        ),
+    }
+
+
+def _registry_transport_result(
+    request: AnalysisRequest,
+    operation: AnalysisOperation,
+    declaration: AnalysisProducer,
+    evidence: Sequence[Mapping[str, Any]],
+    provenance: Sequence[Mapping[str, Any]],
+    *,
+    negotiated_capability: Any = None,
+    verdict: str = "candidate",
+    cost: Mapping[str, int] | None = None,
+    truncated: bool = False,
+) -> dict[str, Any]:
+    negotiated = _registry_negotiated_fields(
+        declaration, operation, negotiated_capability
+    )
+    return {
+        **negotiated,
+        "request_id": request.request_id,
+        "operation": operation.value,
+        "evidence_references": [dict(item) for item in evidence],
+        "provenance_references": [dict(item) for item in provenance],
+        "cost": dict(cost or {}),
+        "verdict": str(verdict or "inconclusive"),
+        "truncated": bool(truncated),
+        "non_authoritative": True,
+        "completion_authority": False,
+        "safe_for_completion_reasoning": False,
+    }
+
+
+def _registry_alias_reference_ids(value: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(value)
+    if not any(
+        result.get(name)
+        for name in (
+            "reference_id",
+            "artifact_content_id",
+            "artifact_id",
+            "evidence_id",
+            "record_id",
+            "cid",
+            "digest",
+            "sha256",
+            "uri",
+            "path",
+        )
+    ):
+        for name in (
+            "candidate_id",
+            "premise_id",
+            "contradiction_id",
+            "counterexample_id",
+            "translation_id",
+            "receipt_id",
+            "provenance_id",
+        ):
+            if result.get(name):
+                result["reference_id"] = result[name]
+                break
+    return result
+
+
+def _registry_normalize_optional_references(
+    values: Any,
+    *,
+    default_kind: str,
+    producer_id: str,
+    expected_tree_id: str,
+) -> tuple[Mapping[str, Any], ...]:
+    if values is None:
+        source: Sequence[Any] = ()
+    elif isinstance(values, Mapping):
+        source = (values,)
+    elif isinstance(values, Sequence) and not isinstance(
+        values, (str, bytes, bytearray, memoryview)
+    ):
+        source = values
+    else:
+        raise ValueError("optional logic references must be an object or sequence")
+    unique: dict[str, Mapping[str, Any]] = {}
+    for value in source:
+        converter = getattr(value, "to_dict", None)
+        if not isinstance(value, Mapping) and callable(converter):
+            value = converter()
+        if not isinstance(value, Mapping):
+            raise ValueError("optional logic references must contain objects")
+        reference_tree_id = str(value.get("tree_id") or "").strip()
+        if reference_tree_id and reference_tree_id != expected_tree_id:
+            raise ValueError(
+                "optional logic reference tree_id does not match request tree_id"
+            )
+        aliased = _registry_alias_reference_ids(value)
+        # Derive a semantic identity before attaching provider provenance so an
+        # equivalent local and remote reference receives the same reference ID.
+        semantic = normalized_reference_payload(
+            aliased, default_kind=default_kind
+        )
+        normalized = normalize_analysis_reference(
+            semantic,
+            default_kind=default_kind,
+            producer_id=producer_id,
+        )
+        unique[str(normalized["reference_id"])] = normalized
+    return tuple(unique[key] for key in sorted(unique))
+
+
+def _registry_optional_result_parts(
+    raw: Any,
+    *,
+    operation: AnalysisOperation,
+    producer_id: str,
+    expected_tree_id: str,
+) -> tuple[
+    tuple[Mapping[str, Any], ...],
+    tuple[Mapping[str, Any], ...],
+    str,
+    Mapping[str, int],
+    bool,
+]:
+    converter = getattr(raw, "to_dict", None)
+    if not isinstance(raw, Mapping) and callable(converter):
+        raw = converter()
+    if isinstance(raw, Sequence) and not isinstance(
+        raw, (str, bytes, bytearray, memoryview)
+    ):
+        raw = {"results": raw}
+    if not isinstance(raw, Mapping):
+        raise ValueError("optional logic provider returned a non-object result")
+    for name in (
+        "authoritative",
+        "completion_authority",
+        "proof_success",
+        "safe_for_completion_reasoning",
+        "repository_mutation",
+        "validation_omission_selection",
+        "candidate_promotion",
+    ):
+        if raw.get(name) is True:
+            raise ValueError(f"optional logic result claims forbidden {name}")
+    status = str(getattr(raw.get("status", ""), "value", raw.get("status", ""))).lower()
+    if status and status not in {
+        "candidate",
+        "completed",
+        "counterexample",
+        "ok",
+        "success",
+        "translated",
+        "unknown",
+    }:
+        raise RegistryLogicProviderUnavailable(
+            f"optional logic provider status is {status}"
+        )
+    evidence_raw = raw.get("evidence_references")
+    if evidence_raw is None:
+        for name in (
+            "results",
+            "candidates",
+            "premises",
+            "contradictions",
+            "translations",
+            "proof_candidates",
+            "counterexamples",
+        ):
+            if raw.get(name) is not None:
+                evidence_raw = raw[name]
+                break
+    provenance_raw = raw.get(
+        "provenance_references", raw.get("provenance", ())
+    )
+    evidence = _registry_normalize_optional_references(
+        evidence_raw or (),
+        default_kind=f"{operation.value}:candidate",
+        producer_id=producer_id,
+        expected_tree_id=expected_tree_id,
+    )
+    provenance = _registry_normalize_optional_references(
+        provenance_raw or (),
+        default_kind="logic_provenance",
+        producer_id=producer_id,
+        expected_tree_id=expected_tree_id,
+    )
+    cost_raw = raw.get("cost", raw.get("resource_use", {}))
+    if not isinstance(cost_raw, Mapping):
+        raise ValueError("optional logic result cost must be an object")
+    cost: dict[str, int] = {}
+    for name, value in cost_raw.items():
+        if (
+            not isinstance(name, str)
+            or isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+        ):
+            raise ValueError(
+                "optional logic cost must contain non-negative integer counters"
+            )
+        cost[name] = value
+    return (
+        evidence,
+        provenance,
+        str(raw.get("verdict") or status or "candidate"),
+        cost,
+        bool(raw.get("truncated", False)),
+    )
+
+
+class _RegistryLogicProducer:
+    """Transport adapter for compact local or optional logic analysis."""
+
+    def __init__(
+        self,
+        declaration: AnalysisProducer,
+        *,
+        importer: Callable[[str], Any] | None = None,
+        backend: Any = None,
+    ) -> None:
+        self.declaration = declaration
+        self._importer = importer or importlib.import_module
+        self._backend = backend
+
+    def capabilities(self) -> Any:
+        return self.declaration.capability
+
+    capability = capabilities
+
+    def supports(self, operation: Any) -> bool:
+        try:
+            normalized = normalize_analysis_operation(operation)
+        except Exception:
+            return False
+        return normalized in self.declaration.operations
+
+    def _normalize_request(
+        self, request: AnalysisRequest | Mapping[str, Any]
+    ) -> tuple[AnalysisRequest, AnalysisOperation, LogicFamily]:
+        normalized = AnalysisRequest.from_value(request)
+        operation = normalize_analysis_operation(normalized.operation)
+        if operation not in self.declaration.operations:
+            raise ValueError(
+                f"logic producer does not support {operation.value}"
+            )
+        for name in (
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "policy_id",
+        ):
+            if not str(normalized.metadata.get(name) or "").strip():
+                raise ValueError(
+                    f"registry logic request requires {name} provenance"
+                )
+        tree_id = normalized.metadata["tree_id"]
+        if any(
+            reference.get("tree_id")
+            and reference.get("tree_id") != tree_id
+            for reference in normalized.artifact_references
+        ):
+            raise ValueError(
+                "registry logic artifact tree_id does not match request tree_id"
+            )
+        return normalized, operation, _registry_logic_family(normalized)
+
+    def _local_analyze(
+        self,
+        request: AnalysisRequest,
+        operation: AnalysisOperation,
+        family: LogicFamily,
+        *,
+        negotiated_capability: Any,
+    ) -> dict[str, Any]:
+        evidence = _registry_logic_evidence(
+            request, operation, family, self.declaration.producer_id
+        )
+        provenance = _registry_logic_provenance(
+            request, operation, family, self.declaration
+        )
+        return _registry_transport_result(
+            request,
+            operation,
+            self.declaration,
+            evidence,
+            provenance,
+            negotiated_capability=negotiated_capability,
+            verdict="candidate" if evidence else "inconclusive",
+            cost={
+                "items_examined": len(request.artifact_references),
+                "provider_calls": 1,
+            },
+        )
+
+    def _optional_backend(self, operation: AnalysisOperation) -> tuple[Any, Any]:
+        if self._backend is not None:
+            candidates = (self._backend,)
+        else:
+            candidates_list: list[Any] = []
+            try:
+                candidates_list.append(self._importer("ipfs_datasets_py"))
+            except (ImportError, ModuleNotFoundError):
+                pass
+            for module_name in _OPTIONAL_LOGIC_MODULES[operation]:
+                try:
+                    candidates_list.append(self._importer(module_name))
+                except (ImportError, ModuleNotFoundError):
+                    continue
+            candidates = tuple(candidates_list)
+        for candidate in candidates:
+            for owner in (
+                candidate,
+                getattr(candidate, "logic", None),
+                getattr(candidate, "analysis", None),
+                getattr(candidate, "reasoning", None),
+            ):
+                if owner is None:
+                    continue
+                for name in _OPTIONAL_LOGIC_METHODS[operation]:
+                    method = getattr(owner, name, None)
+                    if callable(method):
+                        return owner, method
+                generic = getattr(owner, "analyze", None)
+                if callable(generic):
+                    return owner, generic
+            if callable(candidate):
+                return candidate, candidate
+        raise RegistryLogicProviderUnavailable(
+            f"ipfs_datasets_py has no {operation.value} reasoning function"
+        )
+
+    def _optional_payload(
+        self,
+        request: AnalysisRequest,
+        operation: AnalysisOperation,
+        family: LogicFamily,
+    ) -> dict[str, Any]:
+        return {
+            "schema": ANALYSIS_TRANSPORT_REQUEST_SCHEMA,
+            "protocol_version": ANALYSIS_TRANSPORT_PROTOCOL_VERSION,
+            "request_id": request.request_id,
+            "operation": operation.value,
+            "question": request.question,
+            "artifact_references": [
+                dict(reference) for reference in request.artifact_references
+            ],
+            "metadata": {
+                key: request.metadata[key]
+                for key in (
+                    "repository_id",
+                    "tree_id",
+                    "objective_revision",
+                    "policy_id",
+                    "operation_spec_id",
+                )
+                if request.metadata.get(key)
+            },
+            "logic_family": family.value,
+            "non_authoritative": True,
+        }
+
+    def _finish_optional(
+        self,
+        raw: Any,
+        request: AnalysisRequest,
+        operation: AnalysisOperation,
+        family: LogicFamily,
+        negotiated_capability: Any,
+    ) -> dict[str, Any]:
+        evidence, optional_provenance, verdict, cost, truncated = (
+            _registry_optional_result_parts(
+                raw,
+                operation=operation,
+                producer_id=self.declaration.producer_id,
+                expected_tree_id=str(request.metadata["tree_id"]),
+            )
+        )
+        provenance = optional_provenance + _registry_logic_provenance(
+            request, operation, family, self.declaration
+        )
+        return _registry_transport_result(
+            request,
+            operation,
+            self.declaration,
+            evidence,
+            provenance,
+            negotiated_capability=negotiated_capability,
+            verdict=verdict,
+            cost=cost,
+            truncated=truncated,
+        )
+
+    def analyze(
+        self,
+        request: AnalysisRequest | Mapping[str, Any],
+        *,
+        cancellation_token: Any = None,
+        negotiated_capability: Any = None,
+        **_kwargs: Any,
+    ) -> Any:
+        normalized, operation, family = self._normalize_request(request)
+        if _registry_cancelled(cancellation_token):
+            raise RegistryLogicProviderUnavailable(
+                "registry logic analysis was cancelled"
+            )
+        if self.declaration.provider_kind is AnalysisProviderKind.LOCAL:
+            return self._local_analyze(
+                normalized,
+                operation,
+                family,
+                negotiated_capability=negotiated_capability,
+            )
+        _owner, method = self._optional_backend(operation)
+        raw = method(self._optional_payload(normalized, operation, family))
+        if inspect.isawaitable(raw):
+            async def finish() -> dict[str, Any]:
+                resolved = await raw
+                return self._finish_optional(
+                    resolved,
+                    normalized,
+                    operation,
+                    family,
+                    negotiated_capability,
+                )
+
+            return finish()
+        return self._finish_optional(
+            raw,
+            normalized,
+            operation,
+            family,
+            negotiated_capability,
+        )
+
+    def analyze_batch(
+        self,
+        requests: Sequence[AnalysisRequest | Mapping[str, Any]],
+        *,
+        cancellation_token: Any = None,
+        negotiated_capability: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        if isinstance(requests, (str, bytes, bytearray)) or not isinstance(
+            requests, Sequence
+        ):
+            raise ValueError("registry logic batch must be a sequence")
+        if not requests:
+            raise ValueError("registry logic batch must not be empty")
+        if len(requests) > self.declaration.max_batch_size:
+            raise ValueError("registry logic batch exceeds producer bound")
+        results = tuple(
+            self.analyze(
+                request,
+                cancellation_token=cancellation_token,
+                negotiated_capability=negotiated_capability,
+                **kwargs,
+            )
+            for request in requests
+        )
+        if any(inspect.isawaitable(item) for item in results):
+            async def finish_batch() -> tuple[Any, ...]:
+                output: list[Any] = []
+                for item in results:
+                    output.append(await item if inspect.isawaitable(item) else item)
+                return tuple(output)
+
+            return finish_batch()
+        return results
+
+
+def create_local_registry_logic_producer() -> _RegistryLogicProducer:
+    """Create the deterministic compact-metadata local logic producer."""
+
+    local, _optional = registry_logic_producer_declarations()
+    return _RegistryLogicProducer(local)
+
+
+def create_optional_registry_logic_producer(
+    *,
+    importer: Callable[[str], Any] | None = None,
+    backend: Any = None,
+) -> _RegistryLogicProducer:
+    """Create a lazy optional datasets producer with transport fallback on failure."""
+
+    _local, optional = registry_logic_producer_declarations()
+    return _RegistryLogicProducer(
+        optional,
+        importer=importer,
+        backend=backend,
+    )
+
+
 # Conventional class aliases used by entry-point declarations.
 IPFSDatasetsLogicProvider = IpfsDatasetsLogicProvider
 HammerProofProvider = IpfsDatasetsLogicProvider
@@ -2126,7 +3019,9 @@ __all__ = [
     "IPFS_DATASETS_LOGIC_PROVIDER_ID",
     "IPFS_DATASETS_LOGIC_PROVIDER_VERSION",
     "KNOWN_HAMMER_SOLVERS",
+    "SUPPORTED_LOGIC_FAMILIES",
     "SUPPORTED_TRANSLATION_FAMILIES",
+    "LogicFamily",
     "HammerAdapterStatus",
     "HammerSupervisorPolicy",
     "HammerProviderPolicy",
@@ -2142,4 +3037,9 @@ __all__ = [
     "translate_obligation_to_hammer_request",
     "adapt_hammer_result",
     "create_ipfs_datasets_logic_provider",
+    "RegistryLogicProviderUnavailable",
+    "normalize_registry_logic_family",
+    "registry_logic_producer_declarations",
+    "create_local_registry_logic_producer",
+    "create_optional_registry_logic_producer",
 ]
