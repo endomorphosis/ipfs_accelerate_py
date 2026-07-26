@@ -3438,7 +3438,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-098 Route AST, GraphRAG, premise, logic, and proof-candidate analysis through one registry
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: datasets-offload
