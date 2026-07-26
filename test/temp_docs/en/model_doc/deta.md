@@ -31,7 +31,7 @@ You can do so by running the following command: `pip install -U transformers==4.
 ## Overview
 
 The DETA model was proposed in [NMS Strikes Back](https://arxiv.org/abs/2212.06137) by Jeffrey Ouyang-Zhang, Jang Hyun Cho, Xingyi Zhou, Philipp Krähenbühl.
-DETA (short for Detection Transformers with Assignment) improves [Deformable DETR](deformable_detr) by replacing the one-to-one bipartite Hungarian matching loss
+DETA (short for Detection Transformers with Assignment) improves [Deformable DETR](deformable_detr.md) by replacing the one-to-one bipartite Hungarian matching loss
 with one-to-many label assignments used in traditional detectors with non-maximum suppression (NMS). This leads to significant gains of up to 2.5 mAP.
 
 The abstract from the paper is the following:
@@ -52,7 +52,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 - Demo notebooks for DETA can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/DETA).
 - Scripts for finetuning [`DetaForObjectDetection`] with [`Trainer`] or [Accelerate](https://huggingface.co/docs/accelerate/index) can be found [here](https://github.com/huggingface/transformers/tree/main/examples/pytorch/object-detection).
-- See also: [Object detection task guide](../tasks/object_detection).
+- See also: [Object detection task guide](../tasks/object_detection.md).
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 
