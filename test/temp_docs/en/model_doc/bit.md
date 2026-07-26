@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The BiT model was proposed in [Big Transfer (BiT): General Visual Representation Learning](https://arxiv.org/abs/1912.11370) by Alexander Kolesnikov, Lucas Beyer, Xiaohua Zhai, Joan Puigcerver, Jessica Yung, Sylvain Gelly, Neil Houlsby.
-BiT is a simple recipe for scaling up pre-training of [ResNet](resnet.md)-like architectures (specifically, ResNetv2). The method results in significant improvements for transfer learning.
+BiT is a simple recipe for scaling up pre-training of [ResNet](./resnet.md)-like architectures (specifically, ResNetv2). The method results in significant improvements for transfer learning.
 
 The abstract from the paper is the following:
 
