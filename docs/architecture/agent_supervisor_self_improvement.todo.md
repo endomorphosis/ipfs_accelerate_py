@@ -4176,7 +4176,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-139 Benchmark proof-dependency context scaling and gate rollout
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-rollout
