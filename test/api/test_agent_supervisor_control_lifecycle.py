@@ -73,6 +73,29 @@ from ipfs_accelerate_py.agent_supervisor.control_plane import (
 )
 
 
+def _completion_member_facts(
+    *,
+    prefix: str,
+    index: int,
+    repository_tree: str,
+) -> dict[str, Any]:
+    """Return the explicit facts required for an eligible quorum receipt."""
+
+    return {
+        "passed": True,
+        "healthy": True,
+        "exhaustive": True,
+        "safe_for_completion_reasoning": True,
+        "conclusive": True,
+        "uncontradicted": True,
+        "producer_id": f"{prefix}-producer-{index}",
+        "implementation": f"{prefix}.completion_analyzer_{index}",
+        "child_receipt_binding": f"{prefix}:child:{index}",
+        "child_receipt_sha256": f"sha256:{index:064x}",
+        "aggregate_tree_binding": repository_tree,
+    }
+
+
 def _binding(repo_root: Path, state_root: Path) -> dict[str, Any]:
     return {
         "repository_root": str(repo_root),
@@ -667,12 +690,40 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         ).content_id
         == quorum.content_id
     )
+    artifact_binding = {
+        **generic_binding.to_dict(),
+        "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
+        "requirement_id": CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "operational_receipt_id": operational.content_id,
+    }
+    completion_health = {
+        **health.to_dict(),
+        "exhaustive": True,
+    }
+    completion_quorum = {
+        **generic_quorum.to_dict(),
+        "binding": artifact_binding,
+        "members": [
+            {
+                **member.to_dict(),
+                "binding": artifact_binding,
+                **_completion_member_facts(
+                    prefix="asi-077",
+                    index=index,
+                    repository_tree=operational.repository_tree,
+                ),
+            }
+            for index, member in enumerate(generic_quorum.members, start=1)
+        ],
+    }
     values = {
         "evidence": completion_evidence,
         "tasks_complete": True,
         "coverage": coverage,
-        "analyzer_health": health,
-        "exhaustion_quorum": quorum,
+        "analyzer_health": completion_health,
+        "exhaustion_quorum": completion_quorum,
         "now": now,
         "freshness_seconds": 300,
     }
@@ -733,19 +784,12 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
         "repository_tree": operational.repository_tree,
         "analyzer_version": (
             CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
         ),
-    }
-    artifact_binding = {
-        **generic_binding.to_dict(),
-        "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
-        "requirement_id": CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
-        "validation_policy_id": operational.policy_id,
-        "policy_revision": operational.policy_revision,
-        "operational_receipt_id": operational.content_id,
     }
     mapping_quorum = {
         "required_members": 2,
@@ -760,8 +804,11 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
                 "receipt_cid": f"scan:asi-077:mapping:{index}",
                 "binding": artifact_binding,
                 "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
+                **_completion_member_facts(
+                    prefix="asi-077-mapping",
+                    index=index,
+                    repository_tree=operational.repository_tree,
+                ),
                 "finished_at": now.isoformat(),
             }
             for index, channel in enumerate(
