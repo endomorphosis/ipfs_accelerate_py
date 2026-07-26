@@ -3978,7 +3978,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-128 Compile SecurityIR declarations into exact authorization decisions
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-constraints
