@@ -4122,7 +4122,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-136 Issue and verify exact short-lived execution permits
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-enforcement
