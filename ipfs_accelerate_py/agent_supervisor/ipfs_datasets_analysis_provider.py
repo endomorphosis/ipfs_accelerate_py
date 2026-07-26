@@ -31,6 +31,7 @@ import inspect
 import json
 import math
 import queue
+import re
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -38,6 +39,20 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
+from .analysis_operation_registry import (
+    IPFS_DATASETS_ANALYSIS_PRODUCER_ID,
+    LOCAL_ANALYSIS_PRODUCER_ID,
+    AnalysisOperation,
+    AnalysisProducer,
+    normalize_analysis_operation,
+    normalized_reference_payload,
+)
+from .analysis_transport import (
+    ANALYSIS_TRANSPORT_PROTOCOL_VERSION,
+    ANALYSIS_TRANSPORT_RESULT_SCHEMA,
+    AnalysisCapability as TransportAnalysisCapability,
+    AnalysisRequest as TransportAnalysisRequest,
+)
 from .formal_verification_contracts import content_identity
 
 
@@ -147,6 +162,8 @@ class IpfsDatasetsAnalysisProviderError(ValueError):
 
 
 class AnalysisProviderOperation(str, Enum):
+    SYMBOL_IMPACT = "symbol_impact"
+    AST_SYMBOL_IMPACT = "symbol_impact"
     GRAPH_RETRIEVAL = "graph_retrieval"
     DATASET_QUERY = "dataset_query"
     PROVENANCE_QUERY = "provenance_query"
@@ -361,7 +378,11 @@ def _operation(value: Any) -> AnalysisProviderOperation:
         return value
     raw = str(getattr(value, "value", value) or "").strip().casefold()
     aliases = {
+        "ast_impact": AnalysisProviderOperation.SYMBOL_IMPACT,
+        "ast_symbol_impact": AnalysisProviderOperation.SYMBOL_IMPACT,
+        "symbol": AnalysisProviderOperation.SYMBOL_IMPACT,
         "graphrag": AnalysisProviderOperation.GRAPH_RETRIEVAL,
+        "graphrag_retrieval": AnalysisProviderOperation.GRAPH_RETRIEVAL,
         "retrieve": AnalysisProviderOperation.GRAPH_RETRIEVAL,
         "search": AnalysisProviderOperation.GRAPH_RETRIEVAL,
         "dataset": AnalysisProviderOperation.DATASET_QUERY,
@@ -1558,6 +1579,11 @@ class AnalysisProviderResult:
 
 
 _OPERATION_METHODS: Final = {
+    AnalysisProviderOperation.SYMBOL_IMPACT: (
+        "analyze_symbol_impact",
+        "symbol_impact",
+        "analyze_ast_impact",
+    ),
     AnalysisProviderOperation.GRAPH_RETRIEVAL: (
         "retrieve_analysis_evidence",
         "graphrag_retrieve",
@@ -2675,6 +2701,584 @@ def _compact_references(
     )
 
 
+# ---------------------------------------------------------------------------
+# ASI-098 operation-registry adapters
+# ---------------------------------------------------------------------------
+
+_REGISTRY_ANALYSIS_OPERATIONS: Final = (
+    AnalysisOperation.SYMBOL_IMPACT,
+    AnalysisOperation.GRAPH_RAG_RETRIEVAL,
+)
+_REGISTRY_ANALYSIS_CAPABILITIES: Final = (
+    "ast_index_read",
+    "graph_read",
+    "graphrag_retrieval",
+    "symbol_impact",
+)
+_REGISTRY_TOKEN_RE: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_.:/-]*")
+_REGISTRY_MAX_REFERENCES: Final = 64
+
+
+def registry_analysis_producer_declarations(
+) -> tuple[AnalysisProducer, AnalysisProducer]:
+    """Declare local and optional AST/GraphRAG producers without activation.
+
+    This function is metadata-only.  In particular it neither imports
+    :mod:`ipfs_datasets_py` nor probes an injected backend.
+    """
+
+    common = {
+        "operations": _REGISTRY_ANALYSIS_OPERATIONS,
+        "provider_version": "1.0.0",
+        "capabilities": _REGISTRY_ANALYSIS_CAPABILITIES,
+        "max_batch_size": DEFAULT_MAX_BATCH_REQUESTS,
+        "max_concurrency": MAX_CONCURRENT_PROVIDER_DISPATCHES,
+        "supports_cancellation": True,
+        "supports_progress": False,
+        "supports_batching": True,
+    }
+    local = AnalysisProducer(
+        producer_id=LOCAL_ANALYSIS_PRODUCER_ID,
+        provider_kind="local",
+        capability_revision="supervisor-local-analysis/ast-graphrag@1",
+        **common,
+    )
+    optional = AnalysisProducer(
+        producer_id=IPFS_DATASETS_ANALYSIS_PRODUCER_ID,
+        provider_kind="ipfs_datasets_py",
+        capability_revision="ipfs-datasets-analysis/ast-graphrag@1",
+        **common,
+    )
+    return local, optional
+
+
+def _registry_request(value: Any) -> TransportAnalysisRequest:
+    request = TransportAnalysisRequest.from_value(value)
+    operation = normalize_analysis_operation(request.operation)
+    if operation not in _REGISTRY_ANALYSIS_OPERATIONS:
+        raise IpfsDatasetsAnalysisProviderError(
+            f"unsupported registry analysis operation: {operation.value}"
+        )
+    for name in (
+        "repository_id",
+        "tree_id",
+        "objective_revision",
+        "policy_id",
+    ):
+        if not str(request.metadata.get(name) or "").strip():
+            raise IpfsDatasetsAnalysisProviderError(
+                f"registry analysis request requires {name} provenance"
+            )
+    tree_id = request.metadata["tree_id"]
+    if any(
+        reference.get("tree_id")
+        and reference.get("tree_id") != tree_id
+        for reference in request.artifact_references
+    ):
+        raise IpfsDatasetsAnalysisProviderError(
+            "registry analysis artifact tree_id does not match request tree_id"
+        )
+    return request
+
+
+def _registry_tokens(value: Any) -> frozenset[str]:
+    return frozenset(
+        match.casefold().strip("._:/-")
+        for match in _REGISTRY_TOKEN_RE.findall(str(value or ""))
+        if match.strip("._:/-")
+    )
+
+
+def _registry_reference(
+    value: Mapping[str, Any],
+    *,
+    operation: AnalysisOperation,
+    producer_id: str,
+    tree_id: str,
+    score_millionths: int | None = None,
+    preserve_reference_id: bool = False,
+) -> dict[str, Any]:
+    """Project a source reference through the registry's one stable shape."""
+
+    source = dict(value)
+    source_tree_id = str(source.get("tree_id") or "").strip()
+    if source_tree_id and source_tree_id != tree_id:
+        raise IpfsDatasetsAnalysisProviderError(
+            "analysis result tree_id does not match request tree_id"
+        )
+    candidate: dict[str, Any] = {}
+    for name in (
+        "artifact_content_id",
+        "artifact_id",
+        "byte_count",
+        "chunk_id",
+        "cid",
+        "dataset_id",
+        "digest",
+        "evidence_id",
+        "media_type",
+        "model_id",
+        "path",
+        "record_id",
+        "revision",
+        "sha256",
+        "symbol",
+        "uri",
+    ):
+        if source.get(name) not in (None, ""):
+            candidate[name] = source[name]
+    source_reference_id = str(source.get("reference_id") or "").strip()
+    if preserve_reference_id and source_reference_id:
+        candidate["reference_id"] = source_reference_id
+    if not candidate.get("evidence_id"):
+        # Prefer identities the legacy and local paths both retain.  A
+        # provider-specific reference identity is the final fallback only.
+        source_identity = (
+            source.get("record_id")
+            or source.get("artifact_id")
+            or source.get("dataset_id")
+            or source.get("chunk_id")
+            or source_reference_id
+        )
+        if source_identity not in (None, ""):
+            candidate["evidence_id"] = source_identity
+    candidate["kind"] = operation.value
+    candidate["tree_id"] = str(source.get("tree_id") or tree_id)
+    summary = str(source.get("summary") or "").strip()
+    if not summary:
+        subject = (
+            source.get("symbol")
+            or source.get("path")
+            or source.get("record_id")
+            or source_reference_id
+            or "artifact"
+        )
+        summary = f"{operation.value} candidate for {subject}"
+    candidate["summary"] = summary[:2048]
+    if score_millionths is None:
+        raw_score = source.get("score_millionths", source.get("score"))
+        if raw_score not in (None, ""):
+            candidate[
+                "score_millionths" if "score_millionths" in source else "score"
+            ] = raw_score
+    if score_millionths is not None:
+        candidate["score_millionths"] = max(
+            0, min(1_000_000, int(score_millionths))
+        )
+    return normalized_reference_payload(
+        candidate,
+        default_kind=operation.value,
+        producer_id=producer_id,
+    )
+
+
+def _registry_provenance_reference(
+    request: TransportAnalysisRequest,
+    *,
+    producer_id: str,
+) -> dict[str, Any]:
+    metadata = request.metadata
+    return normalized_reference_payload(
+        {
+            "kind": "analysis_request",
+            "record_id": request.request_id,
+            "tree_id": metadata.get("tree_id", ""),
+            "revision": metadata.get("objective_revision", ""),
+            "artifact_id": metadata.get("policy_id", ""),
+            "summary": (
+                f"{request.operation} request bound to "
+                f"{metadata.get('tree_id', 'unknown tree')}"
+            ),
+        },
+        default_kind="analysis_request",
+        producer_id=producer_id,
+    )
+
+
+def _registry_transport_response(
+    request: TransportAnalysisRequest,
+    *,
+    capability: TransportAnalysisCapability,
+    evidence_references: Sequence[Mapping[str, Any]],
+    provenance_references: Sequence[Mapping[str, Any]],
+    negotiated_capability: Any = None,
+    cost: Mapping[str, int] | None = None,
+    truncated: bool = False,
+) -> dict[str, Any]:
+    negotiated = negotiated_capability
+    return {
+        "schema": getattr(
+            negotiated, "result_schema", ANALYSIS_TRANSPORT_RESULT_SCHEMA
+        ),
+        "protocol_version": getattr(
+            negotiated,
+            "protocol_version",
+            ANALYSIS_TRANSPORT_PROTOCOL_VERSION,
+        ),
+        "request_id": request.request_id,
+        "operation": request.operation,
+        "capability_id": getattr(
+            negotiated, "capability_id", capability.capability_id
+        ),
+        "capability_revision": getattr(
+            negotiated,
+            "capability_revision",
+            capability.capability_revision,
+        ),
+        "evidence_references": [dict(item) for item in evidence_references],
+        "provenance_references": [
+            dict(item) for item in provenance_references
+        ],
+        "cost": dict(cost or {}),
+        "verdict": "diagnostic_candidate",
+        "truncated": bool(truncated),
+        "non_authoritative": True,
+        "completion_authority": False,
+        "safe_for_completion_reasoning": False,
+    }
+
+
+class LocalSymbolImpactAnalysisAdapter:
+    """Deterministic symbol-impact projection over compact artifact references."""
+
+    operation = AnalysisOperation.SYMBOL_IMPACT
+
+    def project(
+        self,
+        request: TransportAnalysisRequest,
+        *,
+        producer_id: str,
+    ) -> tuple[tuple[dict[str, Any], ...], bool]:
+        question_tokens = _registry_tokens(request.question)
+        ranked: list[tuple[int, str, dict[str, Any]]] = []
+        tree_id = str(request.metadata.get("tree_id") or "")
+        for source in request.artifact_references:
+            searchable = " ".join(
+                str(source.get(name) or "")
+                for name in ("symbol", "path", "summary", "kind", "record_id")
+            )
+            candidate_tokens = _registry_tokens(searchable)
+            overlap = len(question_tokens.intersection(candidate_tokens))
+            denominator = max(1, len(question_tokens))
+            lexical = int(round(800_000 * overlap / denominator))
+            symbol = str(source.get("symbol") or "").casefold()
+            exact_symbol = bool(
+                symbol
+                and (
+                    symbol in question_tokens
+                    or any(token.endswith("." + symbol) for token in question_tokens)
+                )
+            )
+            score = min(1_000_000, lexical + (200_000 if exact_symbol else 0))
+            projected = _registry_reference(
+                source,
+                operation=self.operation,
+                producer_id=producer_id,
+                tree_id=tree_id,
+                score_millionths=score,
+            )
+            stable = json.dumps(
+                projected, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
+            ranked.append((-score, stable, projected))
+        ranked.sort(key=lambda item: (item[0], item[1]))
+        truncated = len(ranked) > _REGISTRY_MAX_REFERENCES
+        return (
+            tuple(item[2] for item in ranked[:_REGISTRY_MAX_REFERENCES]),
+            truncated,
+        )
+
+
+class LocalGraphRAGRetrievalAdapter:
+    """Deterministic lexical GraphRAG fallback over compact references."""
+
+    operation = AnalysisOperation.GRAPH_RAG_RETRIEVAL
+
+    def project(
+        self,
+        request: TransportAnalysisRequest,
+        *,
+        producer_id: str,
+    ) -> tuple[tuple[dict[str, Any], ...], bool]:
+        question_tokens = _registry_tokens(request.question)
+        ranked: list[tuple[int, str, dict[str, Any]]] = []
+        tree_id = str(request.metadata.get("tree_id") or "")
+        for source in request.artifact_references:
+            searchable = " ".join(
+                str(source.get(name) or "")
+                for name in (
+                    "summary",
+                    "symbol",
+                    "path",
+                    "kind",
+                    "record_id",
+                    "artifact_id",
+                    "dataset_id",
+                )
+            )
+            candidate_tokens = _registry_tokens(searchable)
+            overlap = len(question_tokens.intersection(candidate_tokens))
+            union = len(question_tokens.union(candidate_tokens))
+            score = int(round(1_000_000 * overlap / max(1, union)))
+            projected = _registry_reference(
+                source,
+                operation=self.operation,
+                producer_id=producer_id,
+                tree_id=tree_id,
+                score_millionths=score,
+            )
+            stable = json.dumps(
+                projected, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
+            ranked.append((-score, stable, projected))
+        ranked.sort(key=lambda item: (item[0], item[1]))
+        truncated = len(ranked) > _REGISTRY_MAX_REFERENCES
+        return (
+            tuple(item[2] for item in ranked[:_REGISTRY_MAX_REFERENCES]),
+            truncated,
+        )
+
+
+class LocalRegistryAnalysisProducer:
+    """Transport-compatible read-only local producer for AST and GraphRAG."""
+
+    def __init__(self, declaration: AnalysisProducer | None = None) -> None:
+        self.declaration = declaration or registry_analysis_producer_declarations()[0]
+        self._adapters = {
+            AnalysisOperation.SYMBOL_IMPACT: LocalSymbolImpactAnalysisAdapter(),
+            AnalysisOperation.GRAPH_RAG_RETRIEVAL: (
+                LocalGraphRAGRetrievalAdapter()
+            ),
+        }
+
+    def capabilities(self) -> TransportAnalysisCapability:
+        return self.declaration.capability
+
+    capability = capabilities
+
+    def supports(self, operation: Any) -> bool:
+        try:
+            return normalize_analysis_operation(operation) in self._adapters
+        except Exception:
+            return False
+
+    def analyze(
+        self,
+        request: TransportAnalysisRequest | Mapping[str, Any],
+        *,
+        negotiated_capability: Any = None,
+        cancellation_token: Any = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        normalized = _registry_request(request)
+        if _cancelled(cancellation_token):
+            raise RuntimeError("registry analysis request was cancelled")
+        operation = normalize_analysis_operation(normalized.operation)
+        adapter = self._adapters[operation]
+        evidence, truncated = adapter.project(
+            normalized, producer_id=self.declaration.producer_id
+        )
+        provenance = (
+            _registry_provenance_reference(
+                normalized, producer_id=self.declaration.producer_id
+            ),
+        )
+        return _registry_transport_response(
+            normalized,
+            capability=self.capabilities(),
+            evidence_references=evidence,
+            provenance_references=provenance,
+            negotiated_capability=negotiated_capability,
+            cost={
+                "artifact_references_considered": len(
+                    normalized.artifact_references
+                ),
+                "local_projection_calls": 1,
+            },
+            truncated=truncated,
+        )
+
+    def analyze_batch(
+        self,
+        requests: Sequence[TransportAnalysisRequest | Mapping[str, Any]],
+        **kwargs: Any,
+    ) -> tuple[dict[str, Any], ...]:
+        return tuple(self.analyze(item, **kwargs) for item in requests)
+
+
+def _legacy_registry_operation(operation: AnalysisOperation) -> AnalysisProviderOperation:
+    if operation is AnalysisOperation.SYMBOL_IMPACT:
+        return AnalysisProviderOperation.SYMBOL_IMPACT
+    if operation is AnalysisOperation.GRAPH_RAG_RETRIEVAL:
+        return AnalysisProviderOperation.GRAPH_RETRIEVAL
+    raise IpfsDatasetsAnalysisProviderError(
+        f"unsupported registry analysis operation: {operation.value}"
+    )
+
+
+def _legacy_artifact_reference(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Project a registry reference into the legacy adapter's compact schema."""
+
+    result = {
+        key: value[key]
+        for key in _ARTIFACT_FIELDS
+        if value.get(key) not in (None, "")
+    }
+    if "record_id" not in result:
+        identity = value.get("reference_id") or value.get("evidence_id")
+        if identity not in (None, ""):
+            result["record_id"] = identity
+    if "digest" not in result and value.get("sha256") not in (None, ""):
+        result["digest"] = value["sha256"]
+    if not result:
+        raise IpfsDatasetsAnalysisProviderError(
+            "registry artifact reference has no legacy compact identity"
+        )
+    return result
+
+
+class IpfsDatasetsRegistryAnalysisProducer:
+    """Transport bridge around the existing lazy bounded datasets adapter."""
+
+    def __init__(
+        self,
+        provider: IpfsDatasetsAnalysisProvider | None = None,
+        *,
+        declaration: AnalysisProducer | None = None,
+        provider_kwargs: Mapping[str, Any] | None = None,
+    ) -> None:
+        self.declaration = declaration or registry_analysis_producer_declarations()[1]
+        if provider is not None and provider_kwargs:
+            raise IpfsDatasetsAnalysisProviderError(
+                "provider and provider_kwargs cannot be combined"
+            )
+        self._provider = provider or IpfsDatasetsAnalysisProvider(
+            **dict(provider_kwargs or {})
+        )
+
+    def capabilities(self) -> TransportAnalysisCapability:
+        # Do not probe the legacy provider here.  Transport discovery and
+        # runtime validation must retain identical declaration-only metadata.
+        return self.declaration.capability
+
+    capability = capabilities
+
+    def supports(self, operation: Any) -> bool:
+        try:
+            return normalize_analysis_operation(
+                operation
+            ) in _REGISTRY_ANALYSIS_OPERATIONS
+        except Exception:
+            return False
+
+    def analyze(
+        self,
+        request: TransportAnalysisRequest | Mapping[str, Any],
+        *,
+        negotiated_capability: Any = None,
+        cancellation_token: Any = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        normalized = _registry_request(request)
+        operation = normalize_analysis_operation(normalized.operation)
+        metadata = normalized.metadata
+        legacy_request = self._provider.build_request(
+            operation=_legacy_registry_operation(operation),
+            repository_id=metadata.get("repository_id", ""),
+            tree_id=metadata.get("tree_id", ""),
+            objective_revision=metadata.get("objective_revision", ""),
+            query={"text": normalized.question},
+            artifact_references=tuple(
+                _legacy_artifact_reference(item)
+                for item in normalized.artifact_references
+            ),
+            payload={
+                "registry_id": metadata.get("registry_id", ""),
+                "operation_spec_id": metadata.get("operation_spec_id", ""),
+                "policy_id": metadata.get("policy_id", ""),
+            },
+        )
+        result = self._provider.analyze(
+            legacy_request, cancellation_token=cancellation_token
+        )
+        if result.status is not AnalysisProviderStatus.COMPLETED:
+            # Raising is intentional: AnalysisTransport turns this into a
+            # typed optional-provider failure and invokes deterministic local
+            # fallback with an explicit receipt.
+            raise RuntimeError(
+                f"optional datasets analysis failed: {result.reason_code}"
+            )
+        tree_id = str(metadata.get("tree_id") or "")
+        evidence = tuple(
+            _registry_reference(
+                item,
+                operation=operation,
+                producer_id=self.declaration.producer_id,
+                tree_id=tree_id,
+            )
+            for item in result.evidence_references
+        )
+        provenance = tuple(
+            _registry_reference(
+                item,
+                operation=operation,
+                producer_id=self.declaration.producer_id,
+                tree_id=tree_id,
+                preserve_reference_id=True,
+            )
+            for item in result.provenance_references
+        ) + (
+            _registry_provenance_reference(
+                normalized, producer_id=self.declaration.producer_id
+            ),
+        )
+        return _registry_transport_response(
+            normalized,
+            capability=self.capabilities(),
+            evidence_references=evidence,
+            provenance_references=provenance,
+            negotiated_capability=negotiated_capability,
+            cost=result.resource_use,
+            truncated=result.truncated,
+        )
+
+    def analyze_batch(
+        self,
+        requests: Sequence[TransportAnalysisRequest | Mapping[str, Any]],
+        **kwargs: Any,
+    ) -> tuple[dict[str, Any], ...]:
+        return tuple(self.analyze(item, **kwargs) for item in requests)
+
+
+# Descriptive operation-specific aliases for callers that construct adapters
+# directly.  The combined producers above are what the shared registry uses.
+IpfsDatasetsSymbolImpactAnalysisAdapter = IpfsDatasetsRegistryAnalysisProducer
+IpfsDatasetsGraphRAGRetrievalAdapter = IpfsDatasetsRegistryAnalysisProducer
+
+
+def create_local_registry_analysis_producer(
+    declaration: AnalysisProducer | None = None,
+) -> LocalRegistryAnalysisProducer:
+    """Create the deterministic local producer without repository access."""
+
+    return LocalRegistryAnalysisProducer(declaration=declaration)
+
+
+def create_optional_registry_analysis_producer(
+    provider: IpfsDatasetsAnalysisProvider | None = None,
+    *,
+    declaration: AnalysisProducer | None = None,
+    **provider_kwargs: Any,
+) -> IpfsDatasetsRegistryAnalysisProducer:
+    """Create the optional bridge without importing :mod:`ipfs_datasets_py`."""
+
+    return IpfsDatasetsRegistryAnalysisProducer(
+        provider=provider,
+        declaration=declaration,
+        provider_kwargs=provider_kwargs,
+    )
+
+
 # Public compatibility aliases.  The project historically uses both IPFS and
 # Ipfs class spellings in adapters.
 IPFSDatasetsAnalysisProvider = IpfsDatasetsAnalysisProvider
@@ -2751,6 +3355,15 @@ __all__ = [
     "ProviderRequest",
     "ProviderResult",
     "ProviderCapability",
+    "LocalSymbolImpactAnalysisAdapter",
+    "LocalGraphRAGRetrievalAdapter",
+    "LocalRegistryAnalysisProducer",
+    "IpfsDatasetsRegistryAnalysisProducer",
+    "IpfsDatasetsSymbolImpactAnalysisAdapter",
+    "IpfsDatasetsGraphRAGRetrievalAdapter",
+    "registry_analysis_producer_declarations",
+    "create_local_registry_analysis_producer",
+    "create_optional_registry_analysis_producer",
     "create_ipfs_datasets_analysis_provider",
     "build_ipfs_datasets_analysis_provider",
 ]
