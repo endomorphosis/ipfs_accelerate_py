@@ -3330,7 +3330,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-092 Freeze the generation-2 benchmark and causal baseline
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: measurement
@@ -3348,7 +3348,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-093 Define generation-2 identity, receipt, policy, and promotion contracts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: contracts
