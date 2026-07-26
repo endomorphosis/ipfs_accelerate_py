@@ -106,8 +106,8 @@ See example below for a translation from romanian to german:
 
 ## Resources
 
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 
 ## NllbMoeConfig
