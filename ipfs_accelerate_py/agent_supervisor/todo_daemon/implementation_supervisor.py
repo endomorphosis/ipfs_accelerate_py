@@ -1374,6 +1374,19 @@ class PortalImplementationSupervisor:
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if state.active_task_id and not stuck:
             return SupervisorLoopDecision.keep_running()
+        if (
+            not stuck
+            and (
+                state.selectable_ready_count > 0
+                or bool(state.selectable_ready_task_ids)
+            )
+        ):
+            # Give the managed daemon first claim on runnable work.  Without
+            # this handoff, the watchdog can win the brief gap after one task
+            # finishes, hold the global implementation lease for a long
+            # objective-refill scan, and make the daemon skip ready tasks for
+            # the duration of that scan.
+            return SupervisorLoopDecision.keep_running()
 
         self._last_supervisor_maintenance_at = now_monotonic
         daemon_pid = int(getattr(_child, "pid", 0) or 0) or None

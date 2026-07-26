@@ -7855,6 +7855,51 @@ def test_implementation_supervisor_watchdog_skips_active_progress_maintenance(tm
     assert calls == []
 
 
+def test_implementation_supervisor_watchdog_defers_maintenance_for_selectable_work(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    TodoTaskState(
+        ready_count=1,
+        selectable_ready_count=1,
+        ready_task_ids=["AUTO-002"],
+        selectable_ready_task_ids=["AUTO-002"],
+    ).save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            check_interval=60,
+        )
+    )
+    calls = []
+
+    class Child:
+        pid = os.getpid()
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: calls.append("maintenance") or {"stuck": False},
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(None, Child(), {})
+
+    assert decision.action == "continue"
+    assert calls == []
+
+
 def test_implementation_supervisor_check_records_worktree_summary_counts(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8716,6 +8761,47 @@ def test_supervisor_worker_watchdog_recognizes_codex_exec_with_global_options(
 
     assert status["active_worker_count"] == 1
     assert status["active_worker_pids"] == [4319]
+    assert status["stalled_without_active_worker"] is False
+
+
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        (
+            "/home/example/.local/bin/grok --model grok-4.5 "
+            "--prompt-file /dev/stdin --output-format plain "
+            "--permission-mode bypassPermissions --no-plan --no-memory"
+        ),
+        (
+            "node /home/example/.local/bin/grok --model grok-4.5 "
+            "--prompt-file /dev/stdin"
+        ),
+    ],
+)
+def test_supervisor_worker_watchdog_recognizes_grok_worker(
+    monkeypatch,
+    cmdline,
+):
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(minutes=10)
+    monkeypatch.setattr(
+        todo_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [{"pid": 4320, "cmdline": cmdline}],
+    )
+
+    status = worktree_phase_worker_status(
+        {
+            "active_phase": "implementing",
+            "active_phase_started_at": old.isoformat(),
+        },
+        daemon_pid=1234,
+        threshold_seconds=60,
+        now=now,
+    )
+
+    assert status["active_worker_count"] == 1
+    assert status["active_worker_pids"] == [4320]
     assert status["stalled_without_active_worker"] is False
 
 

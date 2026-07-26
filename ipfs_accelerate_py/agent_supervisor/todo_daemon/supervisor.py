@@ -184,9 +184,15 @@ def _is_agent_worker_command(cmdline: str) -> bool:
         return "exec" in lowered[1:]
     if executable == "copilot":
         return True
+    if executable == "grok":
+        # Grok's CLI runs the implementation prompt directly without a
+        # subcommand.  Treating it as an ordinary descendant makes the
+        # watchdog report a healthy worker as missing and can trigger false
+        # worktree-without-worker recovery.
+        return True
     if executable == "node" and len(tokens) > 1:
         wrapped_executable = os.path.basename(tokens[1]).lower()
-        if wrapped_executable == "copilot":
+        if wrapped_executable in {"copilot", "grok"}:
             return True
         if wrapped_executable == "codex":
             return "exec" in lowered[2:]
