@@ -43,6 +43,19 @@ CONTEXT_COMPLETENESS_WITNESS_SCHEMA = (
 DECISION_CONTEXT_COMPILATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/decision-context-compilation@1"
 )
+DECISION_CONTEXT_EXPANSION_BUDGET_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/decision-context-expansion-budget@1"
+)
+DECISION_CONTEXT_EXPANSION_REQUEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/decision-context-expansion-request@1"
+)
+DECISION_CONTEXT_CHANGED_DEPENDENCY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/decision-context-changed-dependency@1"
+)
+DECISION_CONTEXT_RETRY_CAPSULE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/decision-context-retry-capsule@1"
+)
+DEPENDENCY_DELTA_REQUIREMENT_ID = "requirement:decision-context-dependency-delta"
 DECISION_CONTEXT_CONTRACT_VERSION = 1
 MAX_INLINE_SUMMARY_BYTES = 4_096
 MAX_WITNESS_ENTRIES = 16_384
@@ -84,6 +97,18 @@ class MissingDecisionContextExpansionError(DecisionContextError):
     """A required expansion body is absent or cannot be content-verified."""
 
 
+class DecisionContextExpansionError(DecisionContextError):
+    """A progressive expansion is unbound, repeated, or over budget."""
+
+
+class DecisionContextRetryError(DecisionContextError):
+    """A retry delta cannot safely reconstruct its complete parent."""
+
+
+class DecisionContextInvalidatedError(DecisionContextRetryError):
+    """A retry parent crossed an immutable repository or semantic boundary."""
+
+
 class DecisionContextRepresentation(str, Enum):
     INLINE = "inline"
     EXPANSION = "expansion"
@@ -93,6 +118,15 @@ class DecisionContextOverflowBehavior(str, Enum):
     SPLIT = "split"
     REQUEST_EXPANSION = "request_expansion"
     FAIL_CLOSED = "fail_closed"
+
+
+class DecisionContextChangeKind(str, Enum):
+    DIAGNOSTICS = "diagnostics"
+    DEPENDENCIES = "dependencies"
+    PROOFS = "proofs"
+    POLICIES = "policies"
+    IR_ROOTS = "ir_roots"
+    EXPANDED_EVIDENCE = "expanded_evidence"
 
 
 def _text(value: Any, name: str, *, required: bool = True) -> str:
@@ -851,6 +885,13 @@ class DecisionContext(CanonicalContract):
     def core(self) -> Mapping[str, Any]:
         return self.required_core
 
+    @property
+    def stable_core_id(self) -> str:
+        return _identity(
+            "decision-context-stable-core",
+            {"required_core": self.required_core},
+        )
+
     def __getattr__(self, name: str) -> Any:
         # Expose the named required-core domains as read-only convenience
         # attributes without duplicating them in the canonical record.
@@ -1079,6 +1120,19 @@ class DecisionContextCompilation(CanonicalContract):
     def index_metadata(self) -> Mapping[str, Any]:
         return self.context.index_metadata
 
+    @property
+    def stable_core_id(self) -> str:
+        identities = {item.stable_core_id for item in self.contexts}
+        if len(identities) != 1:
+            raise DecisionContextBindingError(
+                "decision-context segments do not share one stable core"
+            )
+        return next(iter(identities))
+
+    @property
+    def context_ids(self) -> tuple[str, ...]:
+        return tuple(item.content_id for item in self.contexts)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": DECISION_CONTEXT_CONTRACT_VERSION,
@@ -1141,6 +1195,475 @@ class DecisionContextCompilation(CanonicalContract):
         )
 
 
+@dataclass(frozen=True)
+class DecisionContextExpansionBudget(CanonicalContract):
+    SCHEMA: ClassVar[str] = DECISION_CONTEXT_EXPANSION_BUDGET_SCHEMA
+
+    max_expansions: int
+    max_tokens: int
+    max_bytes: int
+    max_latency_ms: int
+
+    def __post_init__(self) -> None:
+        for name in ("max_expansions", "max_tokens", "max_bytes", "max_latency_ms"):
+            object.__setattr__(
+                self, name, _positive(getattr(self, name), name, allow_zero=True)
+            )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": DECISION_CONTEXT_CONTRACT_VERSION,
+            **{
+                name: getattr(self, name)
+                for name in (
+                    "max_expansions",
+                    "max_tokens",
+                    "max_bytes",
+                    "max_latency_ms",
+                )
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DecisionContextExpansionBudget":
+        _contract_payload(
+            payload,
+            schema=cls.SCHEMA,
+            allowed={
+                "schema", "contract_version", "content_id", "max_expansions",
+                "max_tokens", "max_bytes", "max_latency_ms",
+            },
+            noun="decision-context expansion budget",
+        )
+        result = cls(
+            max_expansions=payload.get("max_expansions", -1),
+            max_tokens=payload.get("max_tokens", -1),
+            max_bytes=payload.get("max_bytes", -1),
+            max_latency_ms=payload.get("max_latency_ms", -1),
+        )
+        if payload.get("content_id") not in (None, "", result.content_id):
+            raise DecisionContextBindingError("expansion budget identity mismatch")
+        return result
+
+    @classmethod
+    def from_json(cls, payload: str) -> "DecisionContextExpansionBudget":
+        return cls.from_dict(_json_object(payload, "decision-context expansion budget"))
+
+
+@dataclass(frozen=True)
+class DecisionContextExpansionRequest(CanonicalContract):
+    SCHEMA: ClassVar[str] = DECISION_CONTEXT_EXPANSION_REQUEST_SCHEMA
+
+    parent_decision_request_id: str
+    parent_context_id: str
+    parent_completeness_witness_id: str
+    unresolved_question: str
+    expansion_handle: ContextReference
+    budget: DecisionContextExpansionBudget
+    prior_request_ids: tuple[str, ...] = ()
+    authority_id: str = ""
+    semantic_graph_root_id: str = ""
+    expansion_index: int = 1
+    elapsed_latency_ms: int = 0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "parent_decision_request_id",
+            "parent_context_id",
+            "parent_completeness_witness_id",
+            "authority_id",
+            "semantic_graph_root_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        try:
+            object.__setattr__(
+                self,
+                "unresolved_question",
+                _text(self.unresolved_question, "unresolved_question"),
+            )
+        except DecisionContextError as exc:
+            raise DecisionContextExpansionError(
+                "expansion requires a named unresolved question"
+            ) from exc
+        handle = self.expansion_handle
+        if not isinstance(handle, ContextReference):
+            handle = ContextReference.from_dict(handle)
+        if handle.tier is not ContextTier.EXPANSION:
+            raise DecisionContextExpansionError(
+                "expansion handle must use the expansion tier"
+            )
+        object.__setattr__(self, "expansion_handle", handle)
+        budget = self.budget
+        if not isinstance(budget, DecisionContextExpansionBudget):
+            budget = DecisionContextExpansionBudget.from_dict(budget)
+        object.__setattr__(self, "budget", budget)
+        object.__setattr__(
+            self,
+            "prior_request_ids",
+            tuple(sorted(_strings(self.prior_request_ids, "prior_request_ids"))),
+        )
+        object.__setattr__(
+            self, "expansion_index", _positive(self.expansion_index, "expansion_index")
+        )
+        object.__setattr__(
+            self,
+            "elapsed_latency_ms",
+            _positive(self.elapsed_latency_ms, "elapsed_latency_ms", allow_zero=True),
+        )
+
+    @property
+    def equivalent_request_id(self) -> str:
+        return _identity(
+            "decision-context-expansion-equivalent",
+            {
+                "parent": self.parent_completeness_witness_id,
+                "question": " ".join(self.unresolved_question.casefold().split()),
+                "reference_id": self.expansion_handle.reference_id,
+                "content_id": self.expansion_handle.referenced_content_id,
+            },
+        )
+
+    @property
+    def request_id(self) -> str:
+        return self.content_id
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": DECISION_CONTEXT_CONTRACT_VERSION,
+            "parent_decision_request_id": self.parent_decision_request_id,
+            "parent_context_id": self.parent_context_id,
+            "parent_completeness_witness_id": self.parent_completeness_witness_id,
+            "unresolved_question": self.unresolved_question,
+            "expansion_handle": self.expansion_handle.to_record(),
+            "budget": self.budget.to_record(),
+            "prior_request_ids": self.prior_request_ids,
+            "authority_id": self.authority_id,
+            "semantic_graph_root_id": self.semantic_graph_root_id,
+            "expansion_index": self.expansion_index,
+            "elapsed_latency_ms": self.elapsed_latency_ms,
+            "equivalent_request_id": self.equivalent_request_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DecisionContextExpansionRequest":
+        _contract_payload(
+            payload,
+            schema=cls.SCHEMA,
+            allowed={
+                "schema", "contract_version", "content_id",
+                "parent_decision_request_id", "parent_context_id",
+                "parent_completeness_witness_id", "unresolved_question",
+                "expansion_handle", "budget", "prior_request_ids",
+                "authority_id", "semantic_graph_root_id", "expansion_index",
+                "elapsed_latency_ms", "equivalent_request_id",
+            },
+            noun="decision-context expansion request",
+        )
+        result = cls(
+            parent_decision_request_id=payload.get("parent_decision_request_id", ""),
+            parent_context_id=payload.get("parent_context_id", ""),
+            parent_completeness_witness_id=payload.get(
+                "parent_completeness_witness_id", ""
+            ),
+            unresolved_question=payload.get("unresolved_question", ""),
+            expansion_handle=payload.get("expansion_handle") or {},
+            budget=payload.get("budget") or {},
+            prior_request_ids=tuple(payload.get("prior_request_ids") or ()),
+            authority_id=payload.get("authority_id", ""),
+            semantic_graph_root_id=payload.get("semantic_graph_root_id", ""),
+            expansion_index=payload.get("expansion_index", 0),
+            elapsed_latency_ms=payload.get("elapsed_latency_ms", -1),
+        )
+        if payload.get("content_id") not in (None, "", result.content_id):
+            raise DecisionContextBindingError("expansion request identity mismatch")
+        if payload.get("equivalent_request_id") not in (
+            None, "", result.equivalent_request_id
+        ):
+            raise DecisionContextBindingError(
+                "equivalent expansion request identity mismatch"
+            )
+        return result
+
+    @classmethod
+    def from_json(cls, payload: str) -> "DecisionContextExpansionRequest":
+        return cls.from_dict(_json_object(payload, "decision-context expansion request"))
+
+
+@dataclass(frozen=True)
+class DecisionContextChangedDependency(CanonicalContract):
+    SCHEMA: ClassVar[str] = DECISION_CONTEXT_CHANGED_DEPENDENCY_SCHEMA
+
+    kind: DecisionContextChangeKind
+    dependency_id: str
+    previous_content_id: str
+    current_content_id: str
+    payload: Mapping[str, Any] = field(default_factory=dict)
+    omission_reason: str = ""
+
+    def __post_init__(self) -> None:
+        try:
+            object.__setattr__(self, "kind", DecisionContextChangeKind(self.kind))
+        except ValueError as exc:
+            raise DecisionContextRetryError("unsupported dependency change kind") from exc
+        for name in ("dependency_id", "previous_content_id", "current_content_id"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        if self.previous_content_id == self.current_content_id:
+            raise DecisionContextRetryError("changed dependency is unchanged")
+        object.__setattr__(self, "payload", _mapping(self.payload, "change payload"))
+        object.__setattr__(
+            self,
+            "omission_reason",
+            _text(self.omission_reason, "omission_reason", required=False),
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": DECISION_CONTEXT_CONTRACT_VERSION,
+            "kind": self.kind,
+            "dependency_id": self.dependency_id,
+            "previous_content_id": self.previous_content_id,
+            "current_content_id": self.current_content_id,
+            "payload": self.payload,
+            "omission_reason": self.omission_reason,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DecisionContextChangedDependency":
+        _contract_payload(
+            payload,
+            schema=cls.SCHEMA,
+            allowed={
+                "schema", "contract_version", "content_id", "kind",
+                "dependency_id", "previous_content_id", "current_content_id",
+                "payload", "omission_reason",
+            },
+            noun="changed decision dependency",
+        )
+        result = cls(
+            kind=payload.get("kind", ""),
+            dependency_id=payload.get("dependency_id", ""),
+            previous_content_id=payload.get("previous_content_id", ""),
+            current_content_id=payload.get("current_content_id", ""),
+            payload=payload.get("payload") or {},
+            omission_reason=payload.get("omission_reason", ""),
+        )
+        if payload.get("content_id") not in (None, "", result.content_id):
+            raise DecisionContextBindingError(
+                "changed dependency identity mismatch"
+            )
+        return result
+
+    @classmethod
+    def from_json(cls, payload: str) -> "DecisionContextChangedDependency":
+        return cls.from_dict(_json_object(payload, "changed decision dependency"))
+
+
+@dataclass(frozen=True)
+class DecisionContextRetryCapsule(CanonicalContract):
+    SCHEMA: ClassVar[str] = DECISION_CONTEXT_RETRY_CAPSULE_SCHEMA
+
+    parent_decision_request_id: str
+    parent_context_id: str
+    parent_completeness_witness_id: str
+    parent_stable_core_id: str
+    parent_closure_id: str
+    repository_id: str
+    dirty_worktree_root_id: str
+    semantic_graph_root_id: str
+    semantic_roots_digest: str
+    authority_id: str
+    changed_dependencies: tuple[DecisionContextChangedDependency, ...]
+    expanded_evidence: tuple[DecisionContextReference, ...] = ()
+    omission_reasons: Mapping[str, str] = field(default_factory=dict)
+    reconstructed_context_tokens: tuple[int, ...] = ()
+    delta_input_tokens: int = 0
+    full_replay_input_tokens: int = 0
+    requirement_id: str = DEPENDENCY_DELTA_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        for name in (
+            "parent_decision_request_id",
+            "parent_context_id",
+            "parent_completeness_witness_id",
+            "parent_stable_core_id",
+            "parent_closure_id",
+            "repository_id",
+            "dirty_worktree_root_id",
+            "semantic_graph_root_id",
+            "semantic_roots_digest",
+            "authority_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        changes = tuple(
+            item
+            if isinstance(item, DecisionContextChangedDependency)
+            else DecisionContextChangedDependency.from_dict(item)
+            for item in self.changed_dependencies
+        )
+        if not changes or len({(x.kind, x.dependency_id) for x in changes}) != len(changes):
+            raise DecisionContextRetryError(
+                "retry requires unique changed dependencies"
+            )
+        object.__setattr__(self, "changed_dependencies", changes)
+        expanded = tuple(
+            item
+            if isinstance(item, DecisionContextReference)
+            else DecisionContextReference.from_dict(item)
+            for item in self.expanded_evidence
+        )
+        if any(x.representation is not DecisionContextRepresentation.INLINE for x in expanded):
+            raise DecisionContextRetryError("expanded evidence must be inline")
+        object.__setattr__(self, "expanded_evidence", expanded)
+        object.__setattr__(
+            self, "omission_reasons", _mapping(self.omission_reasons, "omission reasons")
+        )
+        tokens = tuple(
+            _positive(value, "reconstructed_context_tokens")
+            for value in self.reconstructed_context_tokens
+        )
+        if tokens and sum(tokens) != self.full_replay_input_tokens:
+            raise DecisionContextRetryError("reconstructed token accounting is forged")
+        object.__setattr__(self, "reconstructed_context_tokens", tokens)
+        for name in ("delta_input_tokens", "full_replay_input_tokens"):
+            object.__setattr__(self, name, _positive(getattr(self, name), name))
+        if self.delta_input_tokens >= self.full_replay_input_tokens:
+            raise DecisionContextRetryError("retry delta must be smaller than replay")
+        if self.requirement_id != DEPENDENCY_DELTA_REQUIREMENT_ID:
+            raise DecisionContextRetryError("unexpected retry requirement")
+
+    def validate_parent(self, parent: DecisionContextCompilation) -> None:
+        bindings = decision_context_bindings(parent)
+        expected = {
+            "parent_decision_request_id": bindings["decision_request_id"],
+            "parent_completeness_witness_id": bindings["witness_id"],
+            "parent_stable_core_id": bindings["stable_core_id"],
+            "parent_closure_id": bindings["closure_id"],
+            "repository_id": bindings["repository_id"],
+            "dirty_worktree_root_id": bindings["dirty_worktree_root_id"],
+            "semantic_graph_root_id": bindings["semantic_graph_root_id"],
+            "semantic_roots_digest": bindings["semantic_roots_digest"],
+            "authority_id": bindings["authority_id"],
+        }
+        if self.parent_context_id not in parent.context_ids or any(
+            getattr(self, name) != value for name, value in expected.items()
+        ):
+            raise DecisionContextBindingError("retry capsule does not bind its parent")
+
+    @property
+    def capsule_id(self) -> str:
+        return self.content_id
+
+    @property
+    def evidence_claim_references(self) -> tuple[str, ...]:
+        return (self.requirement_id,)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": DECISION_CONTEXT_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            **{
+                name: getattr(self, name)
+                for name in (
+                    "parent_decision_request_id",
+                    "parent_context_id",
+                    "parent_completeness_witness_id",
+                    "parent_stable_core_id",
+                    "parent_closure_id",
+                    "repository_id",
+                    "dirty_worktree_root_id",
+                    "semantic_graph_root_id",
+                    "semantic_roots_digest",
+                    "authority_id",
+                )
+            },
+            "changed_dependencies": tuple(x.to_record() for x in self.changed_dependencies),
+            "expanded_evidence": tuple(x.to_record() for x in self.expanded_evidence),
+            "omission_reasons": self.omission_reasons,
+            "reconstructed_context_tokens": self.reconstructed_context_tokens,
+            "delta_input_tokens": self.delta_input_tokens,
+            "full_replay_input_tokens": self.full_replay_input_tokens,
+            "evidence_claim_references": self.evidence_claim_references,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DecisionContextRetryCapsule":
+        _contract_payload(
+            payload,
+            schema=cls.SCHEMA,
+            allowed={
+                "schema", "contract_version", "content_id", "requirement_id",
+                "parent_decision_request_id", "parent_context_id",
+                "parent_completeness_witness_id", "parent_stable_core_id",
+                "parent_closure_id", "repository_id", "dirty_worktree_root_id",
+                "semantic_graph_root_id", "semantic_roots_digest", "authority_id",
+                "changed_dependencies", "expanded_evidence", "omission_reasons",
+                "reconstructed_context_tokens",
+                "delta_input_tokens", "full_replay_input_tokens",
+                "evidence_claim_references",
+            },
+            noun="decision-context retry capsule",
+        )
+        result = cls(
+            **{
+                name: payload.get(name, "")
+                for name in (
+                    "parent_decision_request_id", "parent_context_id",
+                    "parent_completeness_witness_id", "parent_stable_core_id",
+                    "parent_closure_id", "repository_id", "dirty_worktree_root_id",
+                    "semantic_graph_root_id", "semantic_roots_digest", "authority_id",
+                )
+            },
+            changed_dependencies=tuple(payload.get("changed_dependencies") or ()),
+            expanded_evidence=tuple(payload.get("expanded_evidence") or ()),
+            omission_reasons=payload.get("omission_reasons") or {},
+            reconstructed_context_tokens=tuple(
+                payload.get("reconstructed_context_tokens") or ()
+            ),
+            delta_input_tokens=payload.get("delta_input_tokens", 0),
+            full_replay_input_tokens=payload.get("full_replay_input_tokens", 0),
+            requirement_id=payload.get("requirement_id", DEPENDENCY_DELTA_REQUIREMENT_ID),
+        )
+        if payload.get("content_id") not in (None, "", result.content_id):
+            raise DecisionContextBindingError("retry capsule identity mismatch")
+        if payload.get("evidence_claim_references") not in (
+            None, list(result.evidence_claim_references), result.evidence_claim_references
+        ):
+            raise DecisionContextRetryError("retry evidence claim is forged")
+        return result
+
+    @classmethod
+    def from_json(cls, payload: str) -> "DecisionContextRetryCapsule":
+        return cls.from_dict(_json_object(payload, "decision-context retry capsule"))
+
+
+def decision_context_bindings(parent: DecisionContextCompilation) -> dict[str, str]:
+    if not isinstance(parent, DecisionContextCompilation):
+        raise DecisionContextBindingError("parent must be a decision compilation")
+    from .decision_contracts import AuthorityEnvelope
+
+    decision = parent.required_core["decision"]
+    roots = tuple(decision["semantic_roots"])
+    dirty = next(
+        (
+            str(root["artifact"]["cid_v1"])
+            for root in roots
+            if root["kind"] == "dirty_worktree"
+        ),
+        "",
+    )
+    return {
+        "decision_request_id": str(decision["content_id"]),
+        "repository_id": str(decision["repository_id"]),
+        "dirty_worktree_root_id": dirty,
+        "semantic_graph_root_id": parent.witness.semantic_graph_root_id,
+        "semantic_roots_digest": _identity("semantic-roots", roots),
+        "authority_id": AuthorityEnvelope.from_dict(decision["authority"]).content_id,
+        "stable_core_id": parent.stable_core_id,
+        "closure_id": parent.witness.closure_id,
+        "witness_id": parent.witness.content_id,
+    }
+
+
 def render_decision_context(context: DecisionContext) -> str:
     """Render exactly the canonical provider input measured by the compiler."""
 
@@ -1178,10 +1701,15 @@ MandatoryDependencyWitnessEntry = ContextCompletenessEntry
 __all__ = [
     "CONTEXT_COMPLETENESS_ENTRY_SCHEMA",
     "CONTEXT_COMPLETENESS_WITNESS_SCHEMA",
+    "DECISION_CONTEXT_CHANGED_DEPENDENCY_SCHEMA",
     "DECISION_CONTEXT_COMPILATION_SCHEMA",
     "DECISION_CONTEXT_CONTRACT_VERSION",
+    "DECISION_CONTEXT_EXPANSION_BUDGET_SCHEMA",
+    "DECISION_CONTEXT_EXPANSION_REQUEST_SCHEMA",
     "DECISION_CONTEXT_REFERENCE_SCHEMA",
+    "DECISION_CONTEXT_RETRY_CAPSULE_SCHEMA",
     "DECISION_CONTEXT_SCHEMA",
+    "DEPENDENCY_DELTA_REQUIREMENT_ID",
     "MAX_INLINE_SUMMARY_BYTES",
     "REQUIRED_CORE_FIELDS",
     "CompiledDecisionContext",
@@ -1190,16 +1718,25 @@ __all__ = [
     "ContextCompletenessWitness",
     "DecisionContext",
     "DecisionContextBindingError",
+    "DecisionContextChangeKind",
+    "DecisionContextChangedDependency",
     "DecisionContextCompilation",
     "DecisionContextCompiler",
     "DecisionContextError",
+    "DecisionContextExpansionBudget",
+    "DecisionContextExpansionError",
+    "DecisionContextExpansionRequest",
+    "DecisionContextInvalidatedError",
     "DecisionContextOverflowBehavior",
     "DecisionContextOverflowError",
     "DecisionContextReference",
     "DecisionContextRepresentation",
     "DecisionContextResult",
+    "DecisionContextRetryCapsule",
+    "DecisionContextRetryError",
     "MandatoryDependencyWitnessEntry",
     "MissingDecisionContextExpansionError",
     "compile_decision_context",
+    "decision_context_bindings",
     "render_decision_context",
 ]
