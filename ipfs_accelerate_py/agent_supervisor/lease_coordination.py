@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
+import secrets
 import sqlite3
 import threading
 import time
@@ -44,6 +46,19 @@ COORDINATION_LOCK_TIMEOUT_SECONDS = 30.0
 COORDINATION_DUCKDB_MEMORY_LIMIT = "256MB"
 MAX_PERSISTED_HEARTBEATS_PER_LEASE = 8
 SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
+SINGLE_FLIGHT_STORE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.distributed-single-flight@1"
+)
+SINGLE_FLIGHT_OUTCOME_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-single-flight-outcome@1"
+)
+SINGLE_FLIGHT_ATTESTATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-single-flight-attestation@1"
+)
+DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS = 30.0
+DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS = 60.0
+DEFAULT_SINGLE_FLIGHT_POLL_SECONDS = 0.02
+DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES = 256 * 1024
 
 
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
@@ -2682,6 +2697,1096 @@ def migrate_sqlite_coordination_store(
     }
 
 
+class DistributedSingleFlightError(RuntimeError):
+    """Base failure for the durable semantic-key single-flight protocol."""
+
+
+class DistributedSingleFlightTimeout(DistributedSingleFlightError, TimeoutError):
+    """One member's deadline elapsed while another member retained ownership."""
+
+
+class DistributedSingleFlightCancelled(DistributedSingleFlightError):
+    """One member stopped waiting without cancelling the shared computation."""
+
+
+class DistributedSingleFlightExecutionError(DistributedSingleFlightError):
+    """A leader published one bounded, fail-closed execution outcome."""
+
+    def __init__(
+        self,
+        reason_code: str,
+        *,
+        outcome: "SingleFlightOutcome | None" = None,
+    ) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
+        self.outcome = outcome
+
+
+class StaleSingleFlightLeaseError(DistributedSingleFlightError):
+    """A released, expired, superseded, or foreign lease attempted mutation."""
+
+
+def _single_flight_identity(value: Any) -> tuple[str, str]:
+    """Return a stable ``(key_id, namespace)`` without importing cache code."""
+
+    if isinstance(value, str):
+        key_id = value.strip()
+        namespace = ""
+    elif isinstance(value, Mapping):
+        key_id = str(value.get("key_id") or value.get("semantic_key") or "").strip()
+        namespace = str(value.get("namespace") or "").strip()
+    else:
+        key_id = str(getattr(value, "key_id", "") or "").strip()
+        kind = getattr(value, "namespace", "")
+        namespace = str(getattr(kind, "value", kind) or "").strip()
+    if not key_id:
+        raise ValueError("single-flight semantic key identity is required")
+    if len(key_id.encode("utf-8")) > 4_096:
+        raise ValueError("single-flight semantic key identity is too large")
+    if len(namespace.encode("utf-8")) > 256:
+        raise ValueError("single-flight namespace is too large")
+    return key_id, namespace
+
+
+def _single_flight_json_bytes(value: Any) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "single-flight outcomes must contain canonical JSON values"
+        ) from exc
+
+
+def _single_flight_cancelled(cancel_event: Any) -> bool:
+    if cancel_event is None:
+        return False
+    is_set = getattr(cancel_event, "is_set", None)
+    if not callable(is_set):
+        raise ValueError("cancel_event must provide is_set()")
+    return bool(is_set())
+
+
+@dataclass(frozen=True)
+class SingleFlightLeaseGrant:
+    """One fenced generation, projected differently to its owner and followers."""
+
+    key_id: str
+    namespace: str
+    owner_id: str
+    lease_id: str
+    fencing_token: int
+    acquired_at_ms: int
+    heartbeat_at_ms: int
+    expires_at_ms: int
+    acquired: bool
+    completed: bool = False
+
+    @property
+    def is_owner(self) -> bool:
+        return self.acquired
+
+    @property
+    def is_leader(self) -> bool:
+        return self.acquired
+
+    def to_dict(self) -> dict[str, Any]:
+        # A follower never receives the owner's unguessable publication token.
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SingleFlightAttestation:
+    """Coordinator-authenticated binding for one bounded flight outcome."""
+
+    key_id: str
+    namespace: str
+    owner_id: str
+    fencing_token: int
+    outcome_digest: str
+    attestation_id: str
+    schema: str = SINGLE_FLIGHT_ATTESTATION_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SingleFlightOutcome:
+    """The sole bounded outcome followers may consume for one fence."""
+
+    key_id: str
+    namespace: str
+    owner_id: str
+    fencing_token: int
+    status: str
+    value: Any
+    created_at_ms: int
+    expires_at_ms: int
+    outcome_digest: str
+    attestation: SingleFlightAttestation
+    schema: str = SINGLE_FLIGHT_OUTCOME_SCHEMA
+
+    @property
+    def successful(self) -> bool:
+        return self.status == "ok"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "key_id": self.key_id,
+            "namespace": self.namespace,
+            "owner_id": self.owner_id,
+            "fencing_token": self.fencing_token,
+            "status": self.status,
+            "value": self.value,
+            "created_at_ms": self.created_at_ms,
+            "expires_at_ms": self.expires_at_ms,
+            "outcome_digest": self.outcome_digest,
+            "attestation": self.attestation.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class DistributedSingleFlightResult:
+    """Member projection of a verified owner-attested outcome."""
+
+    outcome: SingleFlightOutcome
+    owner: bool
+
+    @property
+    def shared(self) -> bool:
+        return not self.owner
+
+    @property
+    def value(self) -> Any:
+        return self.outcome.value
+
+    @property
+    def fencing_token(self) -> int:
+        return self.outcome.fencing_token
+
+    @property
+    def attestation(self) -> SingleFlightAttestation:
+        return self.outcome.attestation
+
+
+class DistributedSingleFlightCoordinator:
+    """SQLite-backed semantic-key leases for threads, processes, and shared hosts.
+
+    A shared filesystem path is sufficient for optional multi-host operation;
+    callers may instead pass the same ``attestation_secret`` to coordinators
+    backed by a replicated/transport adapter in the future.  SQLite
+    ``BEGIN IMMEDIATE`` selects exactly one owner for each generation.  The
+    unguessable lease ID plus monotonically increasing fence prevents stale or
+    foreign publishers, and an HMAC binds the only follower-visible outcome.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        lease_seconds: float = DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS,
+        outcome_ttl_seconds: float = DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_SINGLE_FLIGHT_POLL_SECONDS,
+        max_outcome_bytes: int = DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES,
+        clock_ms: Callable[[], int] | None = None,
+        attestation_secret: bytes | None = None,
+    ) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        for name, value in (
+            ("lease_seconds", lease_seconds),
+            ("outcome_ttl_seconds", outcome_ttl_seconds),
+            ("poll_interval_seconds", poll_interval_seconds),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be positive")
+        if (
+            isinstance(max_outcome_bytes, bool)
+            or not isinstance(max_outcome_bytes, int)
+            or max_outcome_bytes < 1_024
+        ):
+            raise ValueError("max_outcome_bytes must be at least 1024")
+        self.lease_seconds = float(lease_seconds)
+        self.outcome_ttl_seconds = float(outcome_ttl_seconds)
+        self.poll_interval_seconds = float(poll_interval_seconds)
+        self.max_outcome_bytes = max_outcome_bytes
+        self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
+        self._thread_lock = threading.RLock()
+        self._secret_path = self.path.with_name(f".{self.path.name}.attestation-key")
+        self._secret = self._load_secret(attestation_secret)
+        self._init_store()
+
+    def _load_secret(self, supplied: bytes | None) -> bytes:
+        if supplied is not None:
+            if not isinstance(supplied, bytes) or len(supplied) < 16:
+                raise ValueError("attestation_secret must contain at least 16 bytes")
+            return supplied
+        try:
+            descriptor = os.open(
+                self._secret_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+        except FileExistsError:
+            pass
+        else:
+            try:
+                os.write(descriptor, secrets.token_bytes(32))
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        secret = self._secret_path.read_bytes()
+        if len(secret) < 16 or len(secret) > 4_096:
+            raise ValueError("single-flight attestation key is invalid")
+        return secret
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(
+            self.path,
+            timeout=30.0,
+            isolation_level=None,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
+        return connection
+
+    def _init_store(self) -> None:
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                connection.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS single_flight_fences(
+                      key_id TEXT PRIMARY KEY,
+                      namespace TEXT NOT NULL,
+                      fencing_token INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS single_flight_leases(
+                      key_id TEXT PRIMARY KEY,
+                      namespace TEXT NOT NULL,
+                      owner_id TEXT NOT NULL,
+                      lease_id TEXT NOT NULL,
+                      fencing_token INTEGER NOT NULL,
+                      acquired_at_ms INTEGER NOT NULL,
+                      heartbeat_at_ms INTEGER NOT NULL,
+                      expires_at_ms INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS single_flight_outcomes(
+                      key_id TEXT PRIMARY KEY,
+                      namespace TEXT NOT NULL,
+                      owner_id TEXT NOT NULL,
+                      fencing_token INTEGER NOT NULL,
+                      status TEXT NOT NULL,
+                      outcome_json TEXT NOT NULL,
+                      outcome_digest TEXT NOT NULL,
+                      attestation_id TEXT NOT NULL,
+                      created_at_ms INTEGER NOT NULL,
+                      expires_at_ms INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS single_flight_metadata(
+                      metadata_key TEXT PRIMARY KEY,
+                      value_json TEXT NOT NULL
+                    );
+                    """
+                )
+                connection.execute(
+                    "INSERT OR REPLACE INTO single_flight_metadata VALUES(?,?)",
+                    (
+                        "store",
+                        json.dumps(
+                            {"schema": SINGLE_FLIGHT_STORE_SCHEMA},
+                            sort_keys=True,
+                        ),
+                    ),
+                )
+            finally:
+                connection.close()
+
+    @staticmethod
+    def _owner_id(owner_id: str | None) -> str:
+        owner = (
+            owner_id
+            or f"pid:{os.getpid()}:thread:{threading.get_ident()}"
+        ).strip()
+        if not owner or len(owner.encode("utf-8")) > 1_024:
+            raise ValueError("owner_id must be nonempty and bounded")
+        return owner
+
+    @staticmethod
+    def _lease_ms(lease_seconds: float) -> int:
+        return max(1, int(lease_seconds * 1000))
+
+    def _attestation_id(
+        self,
+        *,
+        key_id: str,
+        namespace: str,
+        owner_id: str,
+        fencing_token: int,
+        outcome_digest: str,
+    ) -> str:
+        content = _single_flight_json_bytes(
+            {
+                "schema": SINGLE_FLIGHT_ATTESTATION_SCHEMA,
+                "key_id": key_id,
+                "namespace": namespace,
+                "owner_id": owner_id,
+                "fencing_token": fencing_token,
+                "outcome_digest": outcome_digest,
+            }
+        )
+        digest = hmac.new(self._secret, content, hashlib.sha256).hexdigest()
+        return f"single-flight-attestation:hmac-sha256:{digest}"
+
+    def acquire(
+        self,
+        key: Any,
+        *,
+        owner_id: str | None = None,
+        lease_seconds: float | None = None,
+    ) -> SingleFlightLeaseGrant:
+        key_id, namespace = _single_flight_identity(key)
+        owner = self._owner_id(owner_id)
+        duration = self.lease_seconds if lease_seconds is None else lease_seconds
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or duration <= 0
+        ):
+            raise ValueError("lease_seconds must be positive")
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            fence_row = connection.execute(
+                "SELECT namespace, fencing_token FROM single_flight_fences WHERE key_id=?",
+                (key_id,),
+            ).fetchone()
+            if (
+                fence_row is not None
+                and namespace
+                and str(fence_row["namespace"])
+                and str(fence_row["namespace"]) != namespace
+            ):
+                raise DistributedSingleFlightError(
+                    "semantic key is already bound to another namespace"
+                )
+            outcome = connection.execute(
+                """
+                SELECT * FROM single_flight_outcomes
+                WHERE key_id=? AND expires_at_ms>?
+                """,
+                (key_id, now),
+            ).fetchone()
+            if outcome is not None:
+                connection.commit()
+                return SingleFlightLeaseGrant(
+                    key_id=key_id,
+                    namespace=str(outcome["namespace"]),
+                    owner_id=str(outcome["owner_id"]),
+                    lease_id="",
+                    fencing_token=int(outcome["fencing_token"]),
+                    acquired_at_ms=int(outcome["created_at_ms"]),
+                    heartbeat_at_ms=int(outcome["created_at_ms"]),
+                    expires_at_ms=int(outcome["expires_at_ms"]),
+                    acquired=False,
+                    completed=True,
+                )
+            lease = connection.execute(
+                "SELECT * FROM single_flight_leases WHERE key_id=?",
+                (key_id,),
+            ).fetchone()
+            if lease is not None and int(lease["expires_at_ms"]) > now:
+                connection.commit()
+                return SingleFlightLeaseGrant(
+                    key_id=key_id,
+                    namespace=str(lease["namespace"]),
+                    owner_id=str(lease["owner_id"]),
+                    lease_id="",
+                    fencing_token=int(lease["fencing_token"]),
+                    acquired_at_ms=int(lease["acquired_at_ms"]),
+                    heartbeat_at_ms=int(lease["heartbeat_at_ms"]),
+                    expires_at_ms=int(lease["expires_at_ms"]),
+                    acquired=False,
+                )
+            prior_fence = int(fence_row["fencing_token"]) if fence_row else 0
+            if lease is not None:
+                prior_fence = max(prior_fence, int(lease["fencing_token"]))
+            token = prior_fence + 1
+            bound_namespace = (
+                namespace
+                or (str(fence_row["namespace"]) if fence_row is not None else "")
+            )
+            lease_id = secrets.token_hex(32)
+            expires = now + self._lease_ms(float(duration))
+            connection.execute(
+                """
+                INSERT INTO single_flight_fences VALUES(?,?,?)
+                ON CONFLICT(key_id) DO UPDATE SET
+                  namespace=excluded.namespace,
+                  fencing_token=excluded.fencing_token
+                """,
+                (key_id, bound_namespace, token),
+            )
+            connection.execute(
+                """
+                INSERT INTO single_flight_leases VALUES(?,?,?,?,?,?,?,?)
+                ON CONFLICT(key_id) DO UPDATE SET
+                  namespace=excluded.namespace,
+                  owner_id=excluded.owner_id,
+                  lease_id=excluded.lease_id,
+                  fencing_token=excluded.fencing_token,
+                  acquired_at_ms=excluded.acquired_at_ms,
+                  heartbeat_at_ms=excluded.heartbeat_at_ms,
+                  expires_at_ms=excluded.expires_at_ms
+                """,
+                (
+                    key_id,
+                    bound_namespace,
+                    owner,
+                    lease_id,
+                    token,
+                    now,
+                    now,
+                    expires,
+                ),
+            )
+            connection.execute(
+                "DELETE FROM single_flight_outcomes WHERE key_id=?",
+                (key_id,),
+            )
+            connection.commit()
+            return SingleFlightLeaseGrant(
+                key_id=key_id,
+                namespace=bound_namespace,
+                owner_id=owner,
+                lease_id=lease_id,
+                fencing_token=token,
+                acquired_at_ms=now,
+                heartbeat_at_ms=now,
+                expires_at_ms=expires,
+                acquired=True,
+            )
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    acquire_lease = acquire
+
+    def heartbeat(
+        self,
+        grant: SingleFlightLeaseGrant,
+        *,
+        lease_seconds: float | None = None,
+    ) -> SingleFlightLeaseGrant:
+        if not grant.acquired or not grant.lease_id:
+            raise StaleSingleFlightLeaseError(
+                "only the current single-flight owner may heartbeat"
+            )
+        duration = self.lease_seconds if lease_seconds is None else lease_seconds
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or duration <= 0
+        ):
+            raise ValueError("lease_seconds must be positive")
+        now = self._clock_ms()
+        expires = now + self._lease_ms(float(duration))
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE single_flight_leases
+                SET heartbeat_at_ms=?, expires_at_ms=?
+                WHERE key_id=? AND namespace=? AND owner_id=? AND lease_id=?
+                  AND fencing_token=? AND expires_at_ms>?
+                """,
+                (
+                    now,
+                    expires,
+                    grant.key_id,
+                    grant.namespace,
+                    grant.owner_id,
+                    grant.lease_id,
+                    grant.fencing_token,
+                    now,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise StaleSingleFlightLeaseError(
+                    "single-flight lease is expired or fenced"
+                )
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return SingleFlightLeaseGrant(
+            **{
+                **grant.to_dict(),
+                "heartbeat_at_ms": now,
+                "expires_at_ms": expires,
+            }
+        )
+
+    renew = heartbeat
+    renew_lease = heartbeat
+
+    def release(self, grant: SingleFlightLeaseGrant) -> bool:
+        if not grant.acquired or not grant.lease_id:
+            return False
+        connection = self._connect()
+        try:
+            cursor = connection.execute(
+                """
+                DELETE FROM single_flight_leases
+                WHERE key_id=? AND namespace=? AND owner_id=? AND lease_id=?
+                  AND fencing_token=?
+                """,
+                (
+                    grant.key_id,
+                    grant.namespace,
+                    grant.owner_id,
+                    grant.lease_id,
+                    grant.fencing_token,
+                ),
+            )
+            return cursor.rowcount == 1
+        finally:
+            connection.close()
+
+    release_lease = release
+
+    def publish(
+        self,
+        grant: SingleFlightLeaseGrant,
+        value: Any,
+        *,
+        status: str = "ok",
+        outcome_ttl_seconds: float | None = None,
+    ) -> SingleFlightOutcome:
+        if not grant.acquired or not grant.lease_id:
+            raise StaleSingleFlightLeaseError(
+                "only the current single-flight owner may publish"
+            )
+        if status not in {"ok", "error"}:
+            raise ValueError("single-flight status must be ok or error")
+        ttl = (
+            self.outcome_ttl_seconds
+            if outcome_ttl_seconds is None
+            else outcome_ttl_seconds
+        )
+        if (
+            isinstance(ttl, bool)
+            or not isinstance(ttl, (int, float))
+            or ttl <= 0
+        ):
+            raise ValueError("outcome_ttl_seconds must be positive")
+        now = self._clock_ms()
+        expires = now + self._lease_ms(float(ttl))
+        envelope = {
+            "schema": SINGLE_FLIGHT_OUTCOME_SCHEMA,
+            "key_id": grant.key_id,
+            "namespace": grant.namespace,
+            "owner_id": grant.owner_id,
+            "fencing_token": grant.fencing_token,
+            "status": status,
+            "value": value,
+            "created_at_ms": now,
+            "expires_at_ms": expires,
+        }
+        encoded = _single_flight_json_bytes(envelope)
+        if len(encoded) > self.max_outcome_bytes:
+            raise DistributedSingleFlightError(
+                "single-flight outcome exceeds max_outcome_bytes"
+            )
+        digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+        attestation_id = self._attestation_id(
+            key_id=grant.key_id,
+            namespace=grant.namespace,
+            owner_id=grant.owner_id,
+            fencing_token=grant.fencing_token,
+            outcome_digest=digest,
+        )
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            active = connection.execute(
+                """
+                SELECT 1 FROM single_flight_leases
+                WHERE key_id=? AND namespace=? AND owner_id=? AND lease_id=?
+                  AND fencing_token=? AND expires_at_ms>?
+                """,
+                (
+                    grant.key_id,
+                    grant.namespace,
+                    grant.owner_id,
+                    grant.lease_id,
+                    grant.fencing_token,
+                    now,
+                ),
+            ).fetchone()
+            if active is None:
+                raise StaleSingleFlightLeaseError(
+                    "cannot publish from an expired, stale, or foreign lease"
+                )
+            connection.execute(
+                """
+                INSERT INTO single_flight_outcomes VALUES(?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(key_id) DO UPDATE SET
+                  namespace=excluded.namespace,
+                  owner_id=excluded.owner_id,
+                  fencing_token=excluded.fencing_token,
+                  status=excluded.status,
+                  outcome_json=excluded.outcome_json,
+                  outcome_digest=excluded.outcome_digest,
+                  attestation_id=excluded.attestation_id,
+                  created_at_ms=excluded.created_at_ms,
+                  expires_at_ms=excluded.expires_at_ms
+                """,
+                (
+                    grant.key_id,
+                    grant.namespace,
+                    grant.owner_id,
+                    grant.fencing_token,
+                    status,
+                    encoded.decode("utf-8"),
+                    digest,
+                    attestation_id,
+                    now,
+                    expires,
+                ),
+            )
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        outcome = self.read_outcome(
+            grant.key_id,
+            fencing_token=grant.fencing_token,
+        )
+        if outcome is None:  # pragma: no cover - transaction guarantees this
+            raise DistributedSingleFlightError(
+                "published single-flight outcome was not readable"
+            )
+        return outcome
+
+    publish_outcome = publish
+
+    def read_outcome(
+        self,
+        key: Any,
+        *,
+        fencing_token: int | None = None,
+    ) -> SingleFlightOutcome | None:
+        key_id, requested_namespace = _single_flight_identity(key)
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT * FROM single_flight_outcomes
+                WHERE key_id=? AND expires_at_ms>?
+                """,
+                (key_id, now),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            return None
+        if (
+            fencing_token is not None
+            and int(row["fencing_token"]) != fencing_token
+        ):
+            return None
+        if requested_namespace and str(row["namespace"]) != requested_namespace:
+            raise DistributedSingleFlightError(
+                "single-flight outcome namespace binding mismatch"
+            )
+        try:
+            raw_outcome = str(row["outcome_json"])
+            if len(raw_outcome.encode("utf-8")) > self.max_outcome_bytes:
+                raise ValueError("outcome exceeds max_outcome_bytes")
+            payload = json.loads(raw_outcome)
+            if not isinstance(payload, Mapping):
+                raise ValueError("outcome is not an object")
+            encoded = _single_flight_json_bytes(payload)
+            digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+            expected_attestation = self._attestation_id(
+                key_id=str(row["key_id"]),
+                namespace=str(row["namespace"]),
+                owner_id=str(row["owner_id"]),
+                fencing_token=int(row["fencing_token"]),
+                outcome_digest=digest,
+            )
+            if (
+                payload.get("schema") != SINGLE_FLIGHT_OUTCOME_SCHEMA
+                or payload.get("key_id") != row["key_id"]
+                or payload.get("namespace") != row["namespace"]
+                or payload.get("owner_id") != row["owner_id"]
+                or payload.get("fencing_token") != row["fencing_token"]
+                or payload.get("status") != row["status"]
+                or payload.get("created_at_ms") != row["created_at_ms"]
+                or payload.get("expires_at_ms") != row["expires_at_ms"]
+                or digest != row["outcome_digest"]
+                or expected_attestation != row["attestation_id"]
+            ):
+                raise ValueError("outcome binding, digest, or attestation mismatch")
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DistributedSingleFlightExecutionError(
+                "single_flight_outcome_rejected"
+            ) from exc
+        attestation = SingleFlightAttestation(
+            key_id=str(row["key_id"]),
+            namespace=str(row["namespace"]),
+            owner_id=str(row["owner_id"]),
+            fencing_token=int(row["fencing_token"]),
+            outcome_digest=str(row["outcome_digest"]),
+            attestation_id=str(row["attestation_id"]),
+        )
+        return SingleFlightOutcome(
+            key_id=str(row["key_id"]),
+            namespace=str(row["namespace"]),
+            owner_id=str(row["owner_id"]),
+            fencing_token=int(row["fencing_token"]),
+            status=str(row["status"]),
+            value=payload.get("value"),
+            created_at_ms=int(row["created_at_ms"]),
+            expires_at_ms=int(row["expires_at_ms"]),
+            outcome_digest=str(row["outcome_digest"]),
+            attestation=attestation,
+        )
+
+    def verify_outcome(self, outcome: SingleFlightOutcome) -> bool:
+        if not isinstance(outcome, SingleFlightOutcome):
+            return False
+        try:
+            stored = self.read_outcome(
+                {
+                    "key_id": outcome.key_id,
+                    "namespace": outcome.namespace,
+                },
+                fencing_token=outcome.fencing_token,
+            )
+        except DistributedSingleFlightError:
+            return False
+        return stored == outcome
+
+    def discard_outcome(
+        self,
+        key: Any,
+        *,
+        fencing_token: int,
+    ) -> bool:
+        """Conditionally remove an unusable rendezvous result.
+
+        This does not alter a live lease or its fence.  It is used by cache
+        followers when the referenced cache record has independently expired
+        or failed exact-key validation.
+        """
+
+        key_id, namespace = _single_flight_identity(key)
+        connection = self._connect()
+        try:
+            cursor = connection.execute(
+                """
+                DELETE FROM single_flight_outcomes
+                WHERE key_id=? AND namespace=? AND fencing_token=?
+                """,
+                (key_id, namespace, fencing_token),
+            )
+            return cursor.rowcount == 1
+        finally:
+            connection.close()
+
+    def _generation_active(self, grant: SingleFlightLeaseGrant) -> bool:
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT fencing_token, expires_at_ms
+                FROM single_flight_leases WHERE key_id=?
+                """,
+                (grant.key_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        return bool(
+            row is not None
+            and int(row["fencing_token"]) == grant.fencing_token
+            and int(row["expires_at_ms"]) > now
+        )
+
+    def active_lease_count(self, *, namespace: str | None = None) -> int:
+        """Return the current durable flight count for bounded observability."""
+
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            if namespace is None:
+                row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS count FROM single_flight_leases
+                    WHERE expires_at_ms>?
+                    """,
+                    (now,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS count FROM single_flight_leases
+                    WHERE namespace=? AND expires_at_ms>?
+                    """,
+                    (str(namespace), now),
+                ).fetchone()
+        finally:
+            connection.close()
+        return int(row["count"]) if row is not None else 0
+
+    def wait_for_outcome(
+        self,
+        grant: SingleFlightLeaseGrant,
+        *,
+        timeout_seconds: float,
+        cancel_event: Any = None,
+        deadline_monotonic: float | None = None,
+    ) -> SingleFlightOutcome | None:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("timeout_seconds must be positive")
+        member_deadline = time.monotonic() + float(timeout_seconds)
+        if deadline_monotonic is not None:
+            member_deadline = min(member_deadline, float(deadline_monotonic))
+        while True:
+            if _single_flight_cancelled(cancel_event):
+                raise DistributedSingleFlightCancelled(
+                    "single_flight_member_cancelled"
+                )
+            remaining = member_deadline - time.monotonic()
+            if remaining <= 0:
+                raise DistributedSingleFlightTimeout(
+                    "single_flight_member_deadline"
+                )
+            outcome = self.read_outcome(
+                {
+                    "key_id": grant.key_id,
+                    "namespace": grant.namespace,
+                },
+                fencing_token=grant.fencing_token,
+            )
+            if outcome is not None:
+                return outcome
+            if not self._generation_active(grant):
+                return None
+            time.sleep(min(self.poll_interval_seconds, remaining))
+
+    def coordinate(
+        self,
+        key: Any,
+        execute: Callable[[], Any],
+        *,
+        owner_id: str | None = None,
+        lease_seconds: float | None = None,
+        timeout_seconds: float = 60.0,
+        deadline_monotonic: float | None = None,
+        cancel_event: Any = None,
+        outcome_ttl_seconds: float | None = None,
+    ) -> DistributedSingleFlightResult:
+        """Execute one owner and give each live member the same attested outcome."""
+
+        if not callable(execute):
+            raise ValueError("execute must be callable")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("timeout_seconds must be positive")
+        member_deadline = time.monotonic() + float(timeout_seconds)
+        if deadline_monotonic is not None:
+            member_deadline = min(member_deadline, float(deadline_monotonic))
+        duration = self.lease_seconds if lease_seconds is None else float(lease_seconds)
+        while True:
+            if _single_flight_cancelled(cancel_event):
+                raise DistributedSingleFlightCancelled(
+                    "single_flight_member_cancelled"
+                )
+            if time.monotonic() >= member_deadline:
+                raise DistributedSingleFlightTimeout(
+                    "single_flight_member_deadline"
+                )
+            grant = self.acquire(
+                key,
+                owner_id=owner_id,
+                lease_seconds=duration,
+            )
+            if not grant.acquired:
+                outcome = self.wait_for_outcome(
+                    grant,
+                    timeout_seconds=max(
+                        self.poll_interval_seconds,
+                        member_deadline - time.monotonic(),
+                    ),
+                    cancel_event=cancel_event,
+                    deadline_monotonic=member_deadline,
+                )
+                if outcome is None:
+                    continue
+                if not outcome.successful:
+                    reason = (
+                        str(outcome.value.get("reason_code"))
+                        if isinstance(outcome.value, Mapping)
+                        else "single_flight_execution_failed"
+                    )
+                    raise DistributedSingleFlightExecutionError(
+                        reason,
+                        outcome=outcome,
+                    )
+                return DistributedSingleFlightResult(outcome, owner=False)
+
+            # Cancellation and deadlines are member-specific: an owner that
+            # has not begun user work simply relinquishes the generation so a
+            # live follower can take over.  It does not publish cancellation.
+            if _single_flight_cancelled(cancel_event):
+                self.release(grant)
+                raise DistributedSingleFlightCancelled(
+                    "single_flight_member_cancelled"
+                )
+            if time.monotonic() >= member_deadline:
+                self.release(grant)
+                raise DistributedSingleFlightTimeout(
+                    "single_flight_member_deadline"
+                )
+
+            heartbeat_stop = threading.Event()
+            heartbeat_failures: list[BaseException] = []
+
+            def maintain_lease() -> None:
+                interval = max(0.01, duration / 3.0)
+                while not heartbeat_stop.wait(interval):
+                    try:
+                        self.heartbeat(grant, lease_seconds=duration)
+                    except BaseException as exc:
+                        heartbeat_failures.append(exc)
+                        return
+
+            heartbeat_thread = threading.Thread(
+                target=maintain_lease,
+                name=f"cache-flight-heartbeat-{grant.fencing_token}",
+                daemon=True,
+            )
+            heartbeat_thread.start()
+            try:
+                value = execute()
+                member_cancelled = _single_flight_cancelled(cancel_event)
+                member_expired = time.monotonic() >= member_deadline
+                heartbeat_stop.set()
+                heartbeat_thread.join()
+                if heartbeat_failures:
+                    raise StaleSingleFlightLeaseError(
+                        "single-flight owner lost its heartbeat fence"
+                    ) from heartbeat_failures[0]
+                outcome = self.publish(
+                    grant,
+                    value,
+                    status="ok",
+                    outcome_ttl_seconds=outcome_ttl_seconds,
+                )
+                # A member-specific cancellation/deadline does not discard
+                # useful completed work or poison other followers.  Publish
+                # under the still-live fence, then honor only this member's
+                # terminal state.
+                if member_cancelled:
+                    raise DistributedSingleFlightCancelled(
+                        "single_flight_member_cancelled"
+                    )
+                if member_expired:
+                    raise DistributedSingleFlightTimeout(
+                        "single_flight_member_deadline"
+                    )
+                return DistributedSingleFlightResult(outcome, owner=True)
+            except (
+                DistributedSingleFlightCancelled,
+                DistributedSingleFlightTimeout,
+            ):
+                raise
+            except BaseException:
+                heartbeat_stop.set()
+                heartbeat_thread.join()
+                if not heartbeat_failures:
+                    try:
+                        self.publish(
+                            grant,
+                            {"reason_code": "single_flight_execution_failed"},
+                            status="error",
+                            outcome_ttl_seconds=outcome_ttl_seconds,
+                        )
+                    except BaseException:
+                        pass
+                raise
+            finally:
+                heartbeat_stop.set()
+                heartbeat_thread.join()
+                self.release(grant)
+
+    single_flight = coordinate
+    execute_single_flight = coordinate
+    run_single_flight = coordinate
+
+    def purge_expired(self) -> dict[str, int]:
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            outcomes = connection.execute(
+                "DELETE FROM single_flight_outcomes WHERE expires_at_ms<=?",
+                (now,),
+            ).rowcount
+            leases = connection.execute(
+                "DELETE FROM single_flight_leases WHERE expires_at_ms<=?",
+                (now,),
+            ).rowcount
+            connection.commit()
+            return {"leases": leases, "outcomes": outcomes}
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+
+# Compatibility spellings for callers focused on the lease primitive rather
+# than its cache-facing use.
+SingleFlightLeaseCoordinator = DistributedSingleFlightCoordinator
+SingleFlightCoordinator = DistributedSingleFlightCoordinator
+SingleFlightResult = DistributedSingleFlightResult
+SingleFlightTimeout = DistributedSingleFlightTimeout
+SingleFlightCancelled = DistributedSingleFlightCancelled
+SingleFlightExecutionError = DistributedSingleFlightExecutionError
+
+
 @dataclass(frozen=True)
 class LeasedQueuedTask:
     """A queue task paired with the only grant that authorizes its execution."""
@@ -2765,8 +3870,34 @@ class LeaseQueueBridge:
 
 
 __all__ = [
-    "DependencyNotReadyError", "LeaseConflictError", "LeaseCoordinator", "LeaseError", "LeaseExpiredError", "LeaseGrant",
+    "DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS",
+    "DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES",
+    "DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS",
+    "DEFAULT_SINGLE_FLIGHT_POLL_SECONDS",
+    "DependencyNotReadyError",
+    "DistributedSingleFlightCancelled",
+    "DistributedSingleFlightCoordinator",
+    "DistributedSingleFlightError",
+    "DistributedSingleFlightExecutionError",
+    "DistributedSingleFlightResult",
+    "DistributedSingleFlightTimeout",
+    "LeaseConflictError", "LeaseCoordinator", "LeaseError", "LeaseExpiredError", "LeaseGrant",
     "LeaseQueueBridge", "LeasedQueuedTask",
-    "MAX_LEASE_MS", "MIN_LEASE_MS", "StaleFencingTokenError", "TaskLeaseState", "adapt_goal_bundle",
+    "MAX_LEASE_MS", "MIN_LEASE_MS",
+    "SINGLE_FLIGHT_ATTESTATION_SCHEMA",
+    "SINGLE_FLIGHT_OUTCOME_SCHEMA",
+    "SINGLE_FLIGHT_STORE_SCHEMA",
+    "SingleFlightAttestation",
+    "SingleFlightCancelled",
+    "SingleFlightCoordinator",
+    "SingleFlightExecutionError",
+    "SingleFlightLeaseCoordinator",
+    "SingleFlightLeaseGrant",
+    "SingleFlightOutcome",
+    "SingleFlightResult",
+    "SingleFlightTimeout",
+    "StaleFencingTokenError",
+    "StaleSingleFlightLeaseError",
+    "TaskLeaseState", "adapt_goal_bundle",
     "canonical_profile_g_bytes", "profile_g_cid",
 ]

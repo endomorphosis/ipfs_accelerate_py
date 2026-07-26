@@ -63,6 +63,14 @@ from .analysis_cache import (
     AnalysisReceipt,
     canonical_analysis_json,
 )
+from .lease_coordination import (
+    DistributedSingleFlightCancelled,
+    DistributedSingleFlightCoordinator,
+    DistributedSingleFlightResult,
+    DistributedSingleFlightTimeout,
+    SingleFlightAttestation,
+    SingleFlightOutcome,
+)
 
 
 SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID: Final = (
@@ -1401,6 +1409,9 @@ CACHE_CAS_ADAPTER_BINDING_SCHEMA: Final = (
 CACHE_CAS_ADAPTER_PAYLOAD_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/cache-cas-adapter-payload@1"
 )
+NAMESPACE_SINGLE_FLIGHT_RESULT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/namespace-single-flight-result@1"
+)
 DEFAULT_NAMESPACE_MAX_ENTRIES: Final = 512
 DEFAULT_NAMESPACE_MAX_BYTES: Final = 32 * 1024 * 1024
 DEFAULT_NAMESPACE_MAX_ENTRY_BYTES: Final = 256 * 1024
@@ -1416,6 +1427,7 @@ class CacheNamespace(str, Enum):
     ANALYSIS = "analysis"
     CONTEXT = "context"
     PLANNING = "planning"
+    PROVIDER = "provider"
     PROOF = "proof"
     PROOF_DRAFT = "proof_draft"
     VALIDATION = "validation"
@@ -1423,6 +1435,8 @@ class CacheNamespace(str, Enum):
 
     # Common singular spelling used by plan-oriented callers.
     PLAN = "planning"
+    PROVIDER_CALL = "provider"
+    INFERENCE = "provider"
     PROOF_RECEIPT = "proof"
     VALIDATION_COMMAND = "validation"
     MERGE_CLASSIFICATION = "merge"
@@ -1522,6 +1536,10 @@ _NAMESPACE_NATIVE_SCHEMAS: Final[dict[CacheNamespace, tuple[str, str]]] = {
         "ipfs_accelerate_py/agent-supervisor/planning-cache-key@1",
         "ipfs_accelerate_py/agent-supervisor/planning-cache-entry@1",
     ),
+    CacheNamespace.PROVIDER: (
+        "ipfs_accelerate_py/agent-supervisor/provider-cache-key@1",
+        "ipfs_accelerate_py/agent-supervisor/provider-cache-entry@1",
+    ),
     CacheNamespace.PROOF: (
         "ipfs_accelerate_py/agent-supervisor/formal-verification-cache-key@1",
         "ipfs_accelerate_py/agent-supervisor/formal-verification-cache-entry@1",
@@ -1570,6 +1588,17 @@ _NAMESPACE_REQUIRED_DIMENSIONS: Final[
         "configuration_digest",
         "policy_digest",
         "capability_digest",
+    ),
+    CacheNamespace.PROVIDER: (
+        "operation",
+        "request_digest",
+        "provider_id",
+        "provider_version",
+        "capability_revision",
+        "protocol_version",
+        "configuration_digest",
+        "policy_digest",
+        "resource_budget_digest",
     ),
     CacheNamespace.PROOF: (
         "obligation",
@@ -2088,6 +2117,11 @@ class NamespaceCoordinationResult:
     produced: bool = False
     shared: bool = False
     producer_value: Any = None
+    fencing_token: int = 0
+    flight_owner_id: str = ""
+    outcome_digest: str = ""
+    attestation: SingleFlightAttestation | None = None
+    single_flight_outcome: SingleFlightOutcome | None = None
 
     @property
     def cache_hit(self) -> bool:
@@ -2104,6 +2138,14 @@ class NamespaceCoordinationResult:
     @property
     def is_completion_evidence(self) -> bool:
         return self.lookup.is_completion_evidence
+
+    @property
+    def attested(self) -> bool:
+        return bool(
+            self.attestation is not None
+            and self.single_flight_outcome is not None
+            and self.attestation == self.single_flight_outcome.attestation
+        )
 
 
 _COMMON_THREAD_LOCKS: dict[str, threading.RLock] = {}
@@ -2131,6 +2173,10 @@ class NamespaceCacheCoordinator:
         quotas: CacheQuotaPolicy | Mapping[CacheNamespace | str, CacheQuotaPolicy] | None = None,
         wait_timeout_seconds: float = 30.0,
         clock: Callable[[], float] = time.time,
+        single_flight_coordinator: DistributedSingleFlightCoordinator | None = None,
+        coordination_path: str | os.PathLike[str] | None = None,
+        lease_seconds: float = 30.0,
+        outcome_ttl_seconds: float = 60.0,
     ) -> None:
         if path is None:
             path = tempfile.mkdtemp(prefix="supervisor-cache-")
@@ -2147,6 +2193,40 @@ class NamespaceCacheCoordinator:
         self.locks_path.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.wait_timeout_seconds = float(wait_timeout_seconds)
         self._clock = clock
+        if (
+            isinstance(lease_seconds, bool)
+            or not isinstance(lease_seconds, (int, float))
+            or lease_seconds <= 0
+        ):
+            raise ValueError("lease_seconds must be positive")
+        if (
+            isinstance(outcome_ttl_seconds, bool)
+            or not isinstance(outcome_ttl_seconds, (int, float))
+            or outcome_ttl_seconds <= 0
+        ):
+            raise ValueError("outcome_ttl_seconds must be positive")
+        if single_flight_coordinator is not None and coordination_path is not None:
+            raise ValueError(
+                "provide single_flight_coordinator or coordination_path, not both"
+            )
+        if single_flight_coordinator is not None and not isinstance(
+            single_flight_coordinator, DistributedSingleFlightCoordinator
+        ):
+            raise ValueError(
+                "single_flight_coordinator must be a "
+                "DistributedSingleFlightCoordinator"
+            )
+        self.lease_seconds = float(lease_seconds)
+        self.outcome_ttl_seconds = float(outcome_ttl_seconds)
+        self.single_flight_coordinator = (
+            single_flight_coordinator
+            or DistributedSingleFlightCoordinator(
+                coordination_path or (self.path / "single-flight.sqlite3"),
+                lease_seconds=self.lease_seconds,
+                outcome_ttl_seconds=self.outcome_ttl_seconds,
+                clock_ms=self._now_ms,
+            )
+        )
         self._metrics_lock = threading.Lock()
         self._metric_values = {
             name: 0
@@ -2563,6 +2643,11 @@ class NamespaceCacheCoordinator:
         require_completion_evidence: bool = False,
         payload_validator: Callable[[Any], bool] | None = None,
         wait_timeout_seconds: float | None = None,
+        owner_id: str | None = None,
+        lease_seconds: float | None = None,
+        outcome_ttl_seconds: float | None = None,
+        deadline_monotonic: float | None = None,
+        cancel_event: Any = None,
     ) -> NamespaceCoordinationResult:
         if not callable(producer):
             raise ValueError("producer must be callable")
@@ -2574,15 +2659,34 @@ class NamespaceCacheCoordinator:
         )
         if initial.hit:
             return NamespaceCoordinationResult(initial)
-        with self._process_lease(semantic_key, wait_timeout_seconds):
+        timeout = (
+            self.wait_timeout_seconds
+            if wait_timeout_seconds is None
+            else float(wait_timeout_seconds)
+        )
+        member_deadline = time.monotonic() + timeout
+        if deadline_monotonic is not None:
+            member_deadline = min(member_deadline, float(deadline_monotonic))
+        local_state: dict[str, Any] = {}
+
+        def execute_owner() -> dict[str, Any]:
             refreshed = self.lookup(
                 semantic_key,
                 require_completion_evidence=require_completion_evidence,
                 payload_validator=payload_validator,
             )
             if refreshed.hit:
-                self._increment("followers")
-                return NamespaceCoordinationResult(refreshed, shared=True)
+                return {
+                    "schema": NAMESPACE_SINGLE_FLIGHT_RESULT_SCHEMA,
+                    "key_id": semantic_key.key_id,
+                    "produced": False,
+                    "entry_digest": (
+                        refreshed.entry.entry_digest
+                        if refreshed.entry is not None
+                        else ""
+                    ),
+                    "direct_value": None,
+                }
             self._increment("leaders")
             produced = producer()
             publication = (
@@ -2606,6 +2710,7 @@ class NamespaceCacheCoordinator:
                     payload_schema=payload_schema or "",
                 )
             )
+            local_state["producer_value"] = publication.payload
             if publication.store:
                 self.put(
                     semantic_key,
@@ -2624,11 +2729,141 @@ class NamespaceCacheCoordinator:
                 require_completion_evidence=require_completion_evidence,
                 payload_validator=payload_validator,
             )
-            return NamespaceCoordinationResult(
-                final,
-                produced=True,
-                producer_value=publication.payload,
+            return {
+                "schema": NAMESPACE_SINGLE_FLIGHT_RESULT_SCHEMA,
+                "key_id": semantic_key.key_id,
+                "produced": True,
+                "entry_digest": (
+                    final.entry.entry_digest if final.entry is not None else ""
+                ),
+                # A successful exact entry is the rendezvous value.  Direct
+                # values are used only for deliberately non-persisted or
+                # rejected writes and remain subject to the flight byte bound.
+                "direct_value": None if final.hit else publication.payload,
+            }
+
+        try:
+            coordinated: DistributedSingleFlightResult = (
+                self.single_flight_coordinator.coordinate(
+                    semantic_key,
+                    execute_owner,
+                    owner_id=owner_id,
+                    lease_seconds=(
+                        self.lease_seconds
+                        if lease_seconds is None
+                        else lease_seconds
+                    ),
+                    timeout_seconds=timeout,
+                    deadline_monotonic=member_deadline,
+                    cancel_event=cancel_event,
+                    outcome_ttl_seconds=(
+                        self.outcome_ttl_seconds
+                        if outcome_ttl_seconds is None
+                        else outcome_ttl_seconds
+                    ),
+                )
             )
+        except DistributedSingleFlightTimeout as exc:
+            self._increment("wait_timeouts")
+            raise CacheCoordinationTimeout(str(exc)) from exc
+        except DistributedSingleFlightCancelled:
+            # Cancellation is intentionally not translated to a timeout and
+            # never mutates another member's lease or published outcome.
+            raise
+
+        flight_value = coordinated.value
+        if (
+            not isinstance(flight_value, Mapping)
+            or flight_value.get("schema")
+            != NAMESPACE_SINGLE_FLIGHT_RESULT_SCHEMA
+            or flight_value.get("key_id") != semantic_key.key_id
+            or not isinstance(flight_value.get("produced"), bool)
+        ):
+            raise CacheCoordinationError(
+                "single-flight outcome is not bound to the semantic cache key"
+            )
+        direct_value = flight_value.get("direct_value")
+        if direct_value is not None and payload_validator is not None:
+            accepted = payload_validator(direct_value)
+            if not isinstance(accepted, bool):
+                raise ValueError("payload_validator must return a boolean")
+            if not accepted:
+                raise CacheCoordinationError(
+                    "shared producer value failed this member's validator"
+                )
+        final = self.lookup(
+            semantic_key,
+            require_completion_evidence=require_completion_evidence,
+            payload_validator=payload_validator,
+        )
+        if (
+            not final.hit
+            and direct_value is None
+            and bool(flight_value.get("entry_digest"))
+            and set(final.reason_codes).intersection(
+                {
+                    "cache_miss",
+                    "stale_entry",
+                    "poisoned_or_corrupt_entry",
+                    "cache_read_error",
+                }
+            )
+        ):
+            # The outcome is only a rendezvous receipt, not cache authority.
+            # If its referenced record is stale or invalid, retire exactly
+            # that fence and compete for a fresh generation.  Never project
+            # the old authoritative payload as a hit.
+            self.single_flight_coordinator.discard_outcome(
+                semantic_key,
+                fencing_token=coordinated.fencing_token,
+            )
+            remaining = member_deadline - time.monotonic()
+            if remaining <= 0:
+                self._increment("wait_timeouts")
+                raise CacheCoordinationTimeout(
+                    f"timed out refreshing cache flight {semantic_key.key_id}"
+                )
+            return self.get_or_compute(
+                semantic_key,
+                producer,
+                outcome=outcome,
+                authority=authority,
+                ttl_seconds=ttl_seconds,
+                artifact_references=artifact_references,
+                payload_schema=payload_schema,
+                key_schema=key_schema,
+                entry_schema=entry_schema,
+                require_completion_evidence=require_completion_evidence,
+                payload_validator=payload_validator,
+                wait_timeout_seconds=remaining,
+                owner_id=owner_id,
+                lease_seconds=lease_seconds,
+                outcome_ttl_seconds=outcome_ttl_seconds,
+                deadline_monotonic=member_deadline,
+                cancel_event=cancel_event,
+            )
+        produced_here = bool(
+            coordinated.owner and flight_value.get("produced")
+        )
+        shared = not produced_here
+        if shared:
+            self._increment("followers")
+        producer_value = (
+            local_state.get("producer_value")
+            if produced_here
+            else direct_value
+        )
+        return NamespaceCoordinationResult(
+            final,
+            produced=produced_here,
+            shared=shared,
+            producer_value=producer_value,
+            fencing_token=coordinated.fencing_token,
+            flight_owner_id=coordinated.outcome.owner_id,
+            outcome_digest=coordinated.outcome.outcome_digest,
+            attestation=coordinated.attestation,
+            single_flight_outcome=coordinated.outcome,
+        )
 
     # Conventional coordination spellings.
     coordinate = get_or_compute
@@ -2751,10 +2986,23 @@ class NamespaceCacheCoordinator:
                     entries += 1
                 except OSError:
                     pass
+        distributed_active = (
+            self.single_flight_coordinator.active_lease_count(
+                namespace=(
+                    None
+                    if namespace is None
+                    else (
+                        namespace.value
+                        if isinstance(namespace, CacheNamespace)
+                        else str(namespace)
+                    )
+                )
+            )
+        )
         with self._metrics_lock:
             return NamespaceCacheMetrics(
                 **self._metric_values,
-                active_flights=self._active_flights,
+                active_flights=self._active_flights + distributed_active,
                 entries=entries,
                 bytes=byte_count,
             )
