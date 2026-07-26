@@ -69,7 +69,7 @@ This model was contributed by [rmroczkowski](https://huggingface.co/rmroczkowski
 
 <Tip>
 
-Herbert implementation is the same as `BERT` except for the tokenization method. Refer to [BERT documentation](bert) 
+Herbert implementation is the same as `BERT` except for the tokenization method. Refer to [BERT documentation](bert.md)
 for API reference and examples.  
 
 </Tip>
