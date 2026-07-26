@@ -552,6 +552,216 @@ def repair_jsonl_event_log(path: Path) -> dict[str, Any]:
     return result
 
 
+def recover_jsonl_event_log_tail(
+    path: Path | str,
+    *,
+    checkpoint: EventCursor | Mapping[str, Any] | str | None = None,
+    max_quarantine_bytes: int = MAX_PROJECTION_BYTES,
+) -> dict[str, Any]:
+    """Atomically remove an invalid active-log suffix and quarantine it.
+
+    Unlike :func:`repair_jsonl_event_log`, this recovery primitive is strict:
+    the first malformed/non-object line terminates the valid prefix.  Bytes
+    after that boundary are never interpreted as committed events.  Recovery
+    also proves that an optional durable cursor is still represented by the
+    retained hash chain before replacing the active file.
+
+    The operation fails closed without changing the log when the corrupt
+    suffix exceeds ``max_quarantine_bytes`` or the checkpoint cannot be
+    proven.  Exact duplicate canonical events are tolerated because rotation
+    recovery may leave them behind; conflicting identities are rejected.
+    """
+
+    if (
+        isinstance(max_quarantine_bytes, bool)
+        or not isinstance(max_quarantine_bytes, int)
+        or max_quarantine_bytes < 1
+    ):
+        raise ValueError("max_quarantine_bytes must be a positive integer")
+    event_path = Path(path)
+    selected_checkpoint = (
+        _coerce_event_cursor(checkpoint) if checkpoint is not None else None
+    )
+    result: dict[str, Any] = {
+        "repaired": False,
+        "failed_closed": False,
+        "reason": "valid",
+        "path": str(event_path),
+        "valid_count": 0,
+        "invalid_bytes": 0,
+        "quarantine_path": "",
+    }
+    with _EventLogLock(event_path):
+        if not event_path.exists():
+            result["reason"] = "missing"
+            return result
+        if event_path.is_dir():
+            result.update(
+                {
+                    "failed_closed": True,
+                    "reason": "event_path_is_directory",
+                }
+            )
+            return result
+        try:
+            payload = event_path.read_bytes()
+        except OSError as exc:
+            result.update(
+                {
+                    "failed_closed": True,
+                    "reason": "event_log_unreadable",
+                    "error": type(exc).__name__,
+                }
+            )
+            return result
+
+        retained = bytearray()
+        invalid = b""
+        valid_events: list[dict[str, Any]] = []
+        offset = 0
+        for raw_line in payload.splitlines(keepends=True):
+            next_offset = offset + len(raw_line)
+            if not raw_line.strip():
+                retained.extend(raw_line)
+                offset = next_offset
+                continue
+            # A final line without a newline has not crossed the append
+            # durability boundary and is treated as a partial write.
+            complete = raw_line.endswith((b"\n", b"\r"))
+            try:
+                value = json.loads(raw_line) if complete else None
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                value = None
+            if not complete or not isinstance(value, dict):
+                invalid = payload[offset:]
+                break
+            retained.extend(raw_line)
+            valid_events.append(value)
+            offset = next_offset
+
+        result["valid_count"] = len(valid_events)
+        result["invalid_bytes"] = len(invalid)
+        if len(invalid) > max_quarantine_bytes:
+            result.update(
+                {
+                    "failed_closed": True,
+                    "reason": "quarantine_bound_exceeded",
+                }
+            )
+            return result
+
+        # Rebuild/validate the logical chain using the retained bytes in a
+        # sibling candidate.  This reuses the same canonical validation as
+        # normal replay without exposing a partially repaired active path.
+        candidate: Path | None = None
+        try:
+            descriptor, candidate_name = tempfile.mkstemp(
+                prefix=f".{event_path.name}.recovery-",
+                dir=event_path.parent,
+            )
+            candidate = Path(candidate_name)
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(retained)
+                stream.flush()
+                os.fsync(stream.fileno())
+            prior_manifest = _load_event_manifest(event_path) or {}
+            candidate_manifest = _scan_event_log(
+                candidate,
+                generation=int(prior_manifest.get("generation") or 0) + 1,
+                stream_id=str(prior_manifest.get("stream_id") or "") or None,
+                snapshot_id=str(prior_manifest.get("snapshot_id") or "") or None,
+            )
+            if selected_checkpoint is not None:
+                selected_stream = str(candidate_manifest["stream_id"])
+                selected_snapshot = str(candidate_manifest["snapshot_id"])
+                if (
+                    selected_checkpoint.stream_id != selected_stream
+                    or selected_checkpoint.snapshot_id != selected_snapshot
+                ):
+                    result.update(
+                        {
+                            "failed_closed": True,
+                            "reason": "checkpoint_not_in_retained_log",
+                        }
+                    )
+                    return result
+                if selected_checkpoint.position:
+                    identities: dict[int, str] = {}
+                    # The checkpoint anchor may live in a rotated segment.
+                    # Read only canonical identities; _scan_event_log below
+                    # remains responsible for complete chain validation.
+                    sources = [
+                        source
+                        for source in _source_paths(event_path)
+                        if source != event_path
+                    ]
+                    source_events: list[dict[str, Any]] = []
+                    for source in sources:
+                        source_events.extend(read_jsonl_events(source))
+                    source_events.extend(valid_events)
+                    for value in source_events:
+                        sequence = value.get(
+                            "sequence", value.get("position")
+                        )
+                        if (
+                            isinstance(sequence, int)
+                            and not isinstance(sequence, bool)
+                            and str(value.get("stream_id") or "")
+                            == selected_stream
+                            and str(value.get("snapshot_id") or "")
+                            == selected_snapshot
+                        ):
+                            event_id = str(value.get("event_id") or "")
+                            if event_id and event_id == _event_identity(value):
+                                identities[int(sequence)] = event_id
+                    if (
+                        identities.get(selected_checkpoint.position)
+                        != selected_checkpoint.last_event_id
+                    ):
+                        result.update(
+                            {
+                                "failed_closed": True,
+                                "reason": "checkpoint_anchor_mismatch",
+                            }
+                        )
+                        return result
+
+            if invalid:
+                quarantine_path = unique_backup_path(
+                    event_path, "partial-tail"
+                )
+                _atomic_write_bytes(quarantine_path, invalid)
+                _atomic_write_bytes(event_path, bytes(retained))
+                result.update(
+                    {
+                        "repaired": True,
+                        "reason": "partial_tail_quarantined",
+                        "quarantine_path": str(quarantine_path),
+                    }
+                )
+            _write_event_manifest(
+                event_path,
+                previous=prior_manifest,
+                increment_generation=True,
+            )
+        except (CursorReplayError, OSError, ValueError) as exc:
+            result.update(
+                {
+                    "failed_closed": True,
+                    "reason": "event_chain_not_recoverable",
+                    "error": type(exc).__name__,
+                }
+            )
+            return result
+        finally:
+            if candidate is not None:
+                try:
+                    candidate.unlink()
+                except FileNotFoundError:
+                    pass
+    return result
+
+
 def read_jsonl_events(path: Path, *, repair: bool = False) -> list[dict[str, Any]]:
     if repair:
         repair_jsonl_event_log(path)
