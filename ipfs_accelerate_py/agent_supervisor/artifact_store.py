@@ -66,9 +66,14 @@ DUCKDB_ARTIFACT_THREADS = 2
 DUCKDB_ARTIFACT_MEMORY_LIMIT = "1GB"
 MAX_INLINE_GRAPH_ITEMS = 128
 MAX_INLINE_COVERAGE_TASKS = 128
+MAX_ADAPTER_READ_FIELDS = 64
+MAX_ADAPTER_READ_BYTES = 256 * 1024
+MAX_ADAPTER_QUERY_BYTES = 1024 * 1024
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _READ_ONLY_SQL = re.compile(r"^(?:select|with|describe|show)\b", re.IGNORECASE)
+_SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -77,6 +82,114 @@ class QueryArtifactPaths:
 
     json_path: Path
     duckdb_path: Path
+
+
+@dataclass(frozen=True)
+class QueryableArtifactReference:
+    """Verified, body-free identity for a paired queryable artifact.
+
+    ``digest`` addresses the portable artifact's logical JSON content and is
+    deliberately independent of its filesystem location. ``source_sha256``
+    binds the reference to one exact on-disk JSON generation, including its
+    query-store descriptor, so an adapter can reject source replacement before
+    returning projected data.
+    """
+
+    artifact_id: str
+    digest: str
+    path: str
+    kind: str
+    schema: str
+    size_bytes: int
+    source_sha256: str
+    duckdb_path: str
+
+    def __post_init__(self) -> None:
+        if not _SHA256_DIGEST.fullmatch(self.digest):
+            raise ValueError("queryable artifact digest must be sha256:<hex>")
+        if self.artifact_id != f"queryable-artifact:{self.digest}":
+            raise ValueError("queryable artifact identity does not match its digest")
+        if not _SHA256_HEX.fullmatch(self.source_sha256):
+            raise ValueError("queryable artifact source_sha256 must be lowercase hex")
+        if (
+            isinstance(self.size_bytes, bool)
+            or not isinstance(self.size_bytes, int)
+            or self.size_bytes < 1
+        ):
+            raise ValueError("queryable artifact size_bytes must be positive")
+        for name in ("path", "duckdb_path"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"queryable artifact {name} is required")
+            if not Path(value).is_absolute():
+                raise ValueError(f"queryable artifact {name} must be absolute")
+        for name in ("kind", "schema"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"queryable artifact {name} is required")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return complete verification metadata without the artifact body."""
+
+        return {
+            "artifact_id": self.artifact_id,
+            "digest": self.digest,
+            "path": self.path,
+            "kind": self.kind,
+            "schema": self.schema,
+            "size_bytes": self.size_bytes,
+            "source_sha256": self.source_sha256,
+            "duckdb_path": self.duckdb_path,
+        }
+
+    def to_artifact_reference(self) -> dict[str, Any]:
+        """Return the shallow shape accepted by common cache envelopes."""
+
+        return {
+            "artifact_id": self.artifact_id,
+            "digest": self.digest,
+            "path": self.path,
+            "kind": self.kind,
+            "schema": self.schema,
+            "size_bytes": self.size_bytes,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "QueryableArtifactReference":
+        if not isinstance(value, Mapping):
+            raise ValueError("queryable artifact reference must be an object")
+        required = {
+            "artifact_id",
+            "digest",
+            "path",
+            "kind",
+            "schema",
+            "size_bytes",
+            "source_sha256",
+            "duckdb_path",
+        }
+        missing = sorted(required.difference(value))
+        unknown = sorted(set(value).difference(required))
+        if missing:
+            raise ValueError(
+                "queryable artifact reference is missing fields: "
+                + ", ".join(missing)
+            )
+        if unknown:
+            raise ValueError(
+                "queryable artifact reference has unknown fields: "
+                + ", ".join(unknown)
+            )
+        return cls(
+            artifact_id=value["artifact_id"],
+            digest=value["digest"],
+            path=value["path"],
+            kind=value["kind"],
+            schema=value["schema"],
+            size_bytes=value["size_bytes"],
+            source_sha256=value["source_sha256"],
+            duckdb_path=value["duckdb_path"],
+        )
 
 
 def query_artifact_paths(path: Path | str) -> QueryArtifactPaths:
@@ -2983,6 +3096,312 @@ def query_artifact(
         "truncated": truncated,
         "limit": row_limit,
     }
+
+
+def _logical_artifact_digest(payload: Mapping[str, Any]) -> str:
+    """Address portable content without its location-dependent sidecar hint."""
+
+    logical_payload = dict(payload)
+    logical_payload.pop("query_store", None)
+    try:
+        encoded = json.dumps(
+            logical_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "queryable artifact must contain canonical JSON values"
+        ) from exc
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _queryable_artifact_snapshot(
+    path: Path | str,
+    *,
+    kind: str | None,
+) -> QueryableArtifactReference:
+    """Capture one verified paired generation, rebuilding its sidecar if needed."""
+
+    paths = query_artifact_paths(path)
+    if not paths.json_path.exists():
+        raise FileNotFoundError(
+            "a paired JSON source is required to verify a queryable artifact: "
+            f"{paths.json_path}"
+        )
+    for _attempt in range(3):
+        # Always enter through JSON.  In addition to creating a missing
+        # sidecar, this replaces a corrupt DuckDB database from its portable
+        # source under the existing cross-process artifact lock.
+        database_path = ensure_query_database(paths.json_path, kind=kind)
+        payload, source_stat, source_sha256 = _read_stable_json(paths.json_path)
+        resolved_kind = kind or _artifact_kind(payload)
+        if not _database_fresh(
+            database_path, paths.json_path, resolved_kind
+        ):
+            continue
+
+        duckdb = _duckdb_module()
+        try:
+            connection = duckdb.connect(str(database_path), read_only=True)
+            try:
+                rows = connection.execute(
+                    "SELECT artifact_kind, schema_version, source_sha256, "
+                    "source_size, source_mtime_ns "
+                    "FROM artifact_catalog"
+                ).fetchall()
+            finally:
+                connection.close()
+        except Exception:
+            # A sidecar can be replaced or damaged after the freshness check.
+            # The next pass asks ensure_query_database to recover it.
+            continue
+        if len(rows) != 1:
+            raise ValueError(
+                "queryable artifact catalog must contain exactly one record"
+            )
+        catalog = rows[0]
+        if (
+            str(catalog[0]) != resolved_kind
+            or str(catalog[1]) != QUERY_SCHEMA
+            or str(catalog[2]) != source_sha256
+            or int(catalog[3]) != source_stat.st_size
+            or int(catalog[4]) != source_stat.st_mtime_ns
+        ):
+            continue
+        final_identity = _stable_file_identity(paths.json_path)
+        if final_identity is None:
+            continue
+        final_stat, final_sha256 = final_identity
+        if (
+            final_sha256 != source_sha256
+            or final_stat.st_size != source_stat.st_size
+            or final_stat.st_mtime_ns != source_stat.st_mtime_ns
+        ):
+            continue
+
+        digest = _logical_artifact_digest(payload)
+        return QueryableArtifactReference(
+            artifact_id=f"queryable-artifact:{digest}",
+            digest=digest,
+            path=str(paths.json_path),
+            kind=resolved_kind,
+            schema=str(payload.get("schema") or QUERY_SCHEMA),
+            size_bytes=source_stat.st_size,
+            source_sha256=source_sha256,
+            duckdb_path=str(database_path),
+        )
+    raise RuntimeError(
+        f"queryable artifact changed repeatedly while being verified: {paths.json_path}"
+    )
+
+
+def queryable_artifact_reference(
+    path: Path | str,
+    *,
+    kind: str | None = None,
+) -> QueryableArtifactReference:
+    """Return a canonical, body-free reference to an existing artifact."""
+
+    return _queryable_artifact_snapshot(path, kind=kind)
+
+
+def _adapter_reference_constraints(
+    reference: QueryableArtifactReference | Mapping[str, Any],
+) -> dict[str, Any]:
+    if isinstance(reference, QueryableArtifactReference):
+        return reference.to_dict()
+    if not isinstance(reference, Mapping):
+        raise ValueError("queryable artifact reference must be an object")
+    allowed = {
+        "artifact_id",
+        "digest",
+        "path",
+        "kind",
+        "schema",
+        "size_bytes",
+        "source_sha256",
+        "duckdb_path",
+    }
+    unknown = sorted(set(reference).difference(allowed))
+    if unknown:
+        raise ValueError(
+            "queryable artifact reference has unsupported fields: "
+            + ", ".join(unknown)
+        )
+    required = {"artifact_id", "digest", "path"}
+    missing = sorted(required.difference(reference))
+    if missing:
+        raise ValueError(
+            "queryable artifact reference is missing identity fields: "
+            + ", ".join(missing)
+        )
+    constraints = dict(reference)
+    if not _SHA256_DIGEST.fullmatch(str(constraints["digest"])):
+        raise ValueError("queryable artifact digest must be sha256:<hex>")
+    if constraints["artifact_id"] != (
+        f"queryable-artifact:{constraints['digest']}"
+    ):
+        raise ValueError("queryable artifact identity does not match its digest")
+    supplied_path = Path(str(constraints["path"]))
+    if not supplied_path.is_absolute():
+        raise ValueError("queryable artifact path must be absolute")
+    constraints["path"] = str(supplied_path.resolve())
+    if "duckdb_path" in constraints:
+        supplied_database = Path(str(constraints["duckdb_path"]))
+        if not supplied_database.is_absolute():
+            raise ValueError("queryable artifact duckdb_path must be absolute")
+        constraints["duckdb_path"] = str(supplied_database.resolve())
+    return constraints
+
+
+def _bounded_adapter_bytes(value: Any, *, maximum: int, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{label} must be a positive integer")
+    return min(value, maximum)
+
+
+class QueryableArtifactCASAdapter:
+    """Read-only CAS adapter over the existing JSON/DuckDB artifact pair.
+
+    The adapter does not assign cache authority and never returns a complete
+    artifact body.  Runtime stores can retain its shallow reference while
+    namespace-specific code continues to query the existing normalized tables.
+    """
+
+    def __init__(self, path: Path | str, *, kind: str | None = None) -> None:
+        self.paths = query_artifact_paths(path)
+        self.kind = kind
+
+    def reference(self) -> QueryableArtifactReference:
+        """Return the currently verified source generation."""
+
+        return _queryable_artifact_snapshot(
+            self.paths.json_path,
+            kind=self.kind,
+        )
+
+    def verify(
+        self,
+        reference: QueryableArtifactReference | Mapping[str, Any],
+    ) -> bool:
+        """Return whether a body-free reference still names the exact source."""
+
+        try:
+            constraints = _adapter_reference_constraints(reference)
+            current = self.reference().to_dict()
+        except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return all(current.get(name) == value for name, value in constraints.items())
+
+    def _verified_reference(
+        self,
+        reference: QueryableArtifactReference | Mapping[str, Any] | None,
+    ) -> QueryableArtifactReference:
+        expected = self.reference() if reference is None else reference
+        if not self.verify(expected):
+            raise ValueError(
+                "queryable artifact reference does not match the current source"
+            )
+        return (
+            expected
+            if isinstance(expected, QueryableArtifactReference)
+            else self.reference()
+        )
+
+    def read(
+        self,
+        reference: QueryableArtifactReference | Mapping[str, Any] | None = None,
+        *,
+        field_names: Sequence[str] = (),
+        fields: Sequence[str] | None = None,
+        max_bytes: int = MAX_ADAPTER_READ_BYTES,
+    ) -> dict[str, Any]:
+        """Read selected top-level fields with hard field and byte bounds.
+
+        With no requested fields this returns verification metadata only.  It
+        intentionally has no spelling that loads the complete JSON body.
+        """
+
+        selected_fields = tuple(field_names)
+        if fields is not None:
+            if selected_fields:
+                raise ValueError("use either field_names or fields, not both")
+            selected_fields = tuple(fields)
+        if len(selected_fields) > MAX_ADAPTER_READ_FIELDS:
+            raise ValueError("queryable artifact field selection exceeds its bound")
+        if len(set(selected_fields)) != len(selected_fields):
+            raise ValueError("queryable artifact fields must be unique")
+        if any(
+            not isinstance(field, str) or not field.strip()
+            for field in selected_fields
+        ):
+            raise ValueError("queryable artifact fields must be nonempty strings")
+        byte_limit = _bounded_adapter_bytes(
+            max_bytes,
+            maximum=MAX_ADAPTER_READ_BYTES,
+            label="max_bytes",
+        )
+        verified = self._verified_reference(reference)
+        if not selected_fields:
+            return verified.to_dict()
+        result = read_artifact_fields(
+            verified.path,
+            selected_fields,
+            kind=verified.kind,
+        )
+        if len(_json_text(result).encode("utf-8")) > byte_limit:
+            raise ValueError("queryable artifact field projection exceeds max_bytes")
+        if not self.verify(verified):
+            raise RuntimeError("queryable artifact changed during bounded read")
+        return result
+
+    def query(
+        self,
+        reference: QueryableArtifactReference | Mapping[str, Any] | None = None,
+        *,
+        max_bytes: int = MAX_ADAPTER_QUERY_BYTES,
+        **query: Any,
+    ) -> dict[str, Any]:
+        """Run an existing row-bounded query with an additional byte bound."""
+
+        byte_limit = _bounded_adapter_bytes(
+            max_bytes,
+            maximum=MAX_ADAPTER_QUERY_BYTES,
+            label="max_bytes",
+        )
+        verified = self._verified_reference(reference)
+        supplied_kind = query.pop("kind", verified.kind)
+        if supplied_kind != verified.kind:
+            raise ValueError("query kind does not match the artifact reference")
+        result = query_artifact(
+            verified.path,
+            kind=verified.kind,
+            **query,
+        )
+        if len(_json_text(result).encode("utf-8")) > byte_limit:
+            raise ValueError("queryable artifact query result exceeds max_bytes")
+        if not self.verify(verified):
+            raise RuntimeError("queryable artifact changed during bounded query")
+        return result
+
+
+def queryable_artifact_adapter(
+    path: Path | str,
+    *,
+    kind: str | None = None,
+) -> QueryableArtifactCASAdapter:
+    """Construct a read-only adapter for an existing queryable artifact."""
+
+    return QueryableArtifactCASAdapter(path, kind=kind)
+
+
+# Compatibility spellings for callers that name the adapted subsystem or the
+# consuming runtime first.
+ArtifactStoreCASAdapter = QueryableArtifactCASAdapter
+RuntimeCASArtifactStoreAdapter = QueryableArtifactCASAdapter
 
 
 def query_code_evidence_graph(

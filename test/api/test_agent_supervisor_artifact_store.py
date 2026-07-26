@@ -13,8 +13,10 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     BUNDLE_INDEX_KIND,
     QUERY_SCHEMA,
     SCHEDULER_MANIFEST_KIND,
+    QueryableArtifactCASAdapter,
     artifact_schema,
     query_artifact,
+    queryable_artifact_reference,
     read_artifact_fields,
     read_bundle_index_planning_projection,
     read_bundle_index_projection,
@@ -118,6 +120,39 @@ def test_bundle_index_has_equivalent_json_and_duckdb_queries(tmp_path: Path) -> 
         and row["column_name"] == "canonical_task_cid"
         for row in schema_rows
     )
+
+
+def test_queryable_artifact_adapter_reuses_identity_and_repairs_sidecar(
+    tmp_path: Path,
+) -> None:
+    first_path = tmp_path / "first" / "index.json"
+    second_path = tmp_path / "second" / "renamed.json"
+    write_bundle_index_artifact(first_path, _bundle_index())
+    write_bundle_index_artifact(second_path, _bundle_index())
+
+    first = queryable_artifact_reference(first_path)
+    second = queryable_artifact_reference(second_path)
+    assert first.artifact_id == second.artifact_id
+    assert first.digest == second.digest
+    assert first.path != second.path
+    assert "payload" not in first.to_artifact_reference()
+
+    adapter = QueryableArtifactCASAdapter(first_path)
+    assert adapter.verify(first)
+    first_path.with_suffix(".duckdb").unlink()
+    result = adapter.query(
+        first.to_dict(),
+        table="bundle_tasks",
+        columns=("task_id",),
+        limit=5,
+    )
+    assert result["rows"] == [{"task_id": "T-1"}, {"task_id": "T-2"}]
+    assert first_path.with_suffix(".duckdb").exists()
+
+    rewritten = _bundle_index()
+    rewritten["source_todo"] = "changed.todo.md"
+    write_bundle_index_artifact(first_path, rewritten)
+    assert not adapter.verify(first)
 
 
 def test_bundle_planning_projection_omits_repeated_evidence_blobs(

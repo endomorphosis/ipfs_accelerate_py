@@ -52,6 +52,7 @@ from typing import (
 )
 
 from .analysis_cache import (
+    ANALYSIS_CACHE_ENTRY_SCHEMA,
     AnalysisCache,
     AnalysisCacheEntry,
     AnalysisCacheKey,
@@ -1393,6 +1394,12 @@ COMMON_CACHE_ENTRY_SCHEMA: Final = (
 )
 COMMON_CACHE_NAMESPACE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/cache-namespace@1"
+)
+CACHE_CAS_ADAPTER_BINDING_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/cache-cas-adapter-binding@1"
+)
+CACHE_CAS_ADAPTER_PAYLOAD_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/cache-cas-adapter-payload@1"
 )
 DEFAULT_NAMESPACE_MAX_ENTRIES: Final = 512
 DEFAULT_NAMESPACE_MAX_BYTES: Final = 32 * 1024 * 1024
@@ -2765,6 +2772,454 @@ class NamespaceCacheCoordinator:
         return previous
 
 
+CacheCASBindingFactory = Callable[[Mapping[str, Any]], Any]
+
+
+class _CacheCASAdapter:
+    """Shared, deliberately narrow bridge from native caches into RuntimeCAS.
+
+    Runtime CAS imports stay local to the methods that need their enum types.
+    This keeps the historic cache modules usable when the optional tiered
+    runtime store is not imported and avoids a module-level dependency cycle.
+    """
+
+    def __init__(
+        self,
+        cache: Any,
+        runtime_cas: Any,
+        *,
+        producer_version: str,
+        policy_version: str,
+        capability_version: str,
+        binding_factory: CacheCASBindingFactory | None = None,
+    ) -> None:
+        if not callable(getattr(runtime_cas, "put", None)):
+            raise ValueError("runtime_cas must provide a callable put method")
+        if not callable(getattr(runtime_cas, "get", None)):
+            raise ValueError("runtime_cas must provide a callable get method")
+        if binding_factory is not None and not callable(binding_factory):
+            raise ValueError("binding_factory must be callable or None")
+        self.cache = cache
+        self.runtime_cas = runtime_cas
+        self.producer_version = _required_text(
+            producer_version, "producer_version"
+        )
+        self.policy_version = _required_text(
+            policy_version, "policy_version"
+        )
+        self.capability_version = _required_text(
+            capability_version, "capability_version"
+        )
+        self.binding_factory = binding_factory
+
+    def _binding(
+        self,
+        *,
+        namespace: str,
+        semantic_key_id: str,
+        semantic_dimensions: Mapping[str, Any],
+        binding: Any,
+    ) -> Any:
+        descriptor = {
+            "schema": CACHE_CAS_ADAPTER_BINDING_SCHEMA,
+            "namespace": namespace,
+            "semantic_key_id": semantic_key_id,
+            "semantic_dimensions": _common_json_value(
+                semantic_dimensions, name="semantic dimensions"
+            ),
+            "producer_version": self.producer_version,
+            "policy_version": self.policy_version,
+            "capability_version": self.capability_version,
+        }
+        if binding is None:
+            if self.binding_factory is None:
+                raise ValueError(
+                    "binding is required when no binding_factory is configured"
+                )
+            binding = self.binding_factory(descriptor)
+            if binding is None:
+                raise ValueError(
+                    "binding_factory must return a ResultBinding"
+                )
+        from .supervisor_v2_contracts import ResultBinding
+
+        if isinstance(binding, ResultBinding):
+            result = binding
+        elif isinstance(binding, Mapping):
+            result = ResultBinding.from_dict(binding)
+        else:
+            raise ValueError(
+                "binding must be a ResultBinding or canonical mapping"
+            )
+        expected_revisions = (
+            (
+                "producer_revision",
+                result.producer_revision,
+                self.producer_version,
+            ),
+            (
+                "policy_revision",
+                result.policy_revision,
+                self.policy_version,
+            ),
+            (
+                "capability_revision",
+                result.capability_revision,
+                self.capability_version,
+            ),
+        )
+        mismatches = [
+            name
+            for name, actual, expected in expected_revisions
+            if actual != expected
+        ]
+        if mismatches:
+            raise ValueError(
+                "runtime binding revision mismatch: "
+                + ", ".join(mismatches)
+            )
+        return result
+
+    def _remaining_ttl_seconds(self, expires_at_ms: int | None) -> int | None:
+        if expires_at_ms is None:
+            return None
+        now = getattr(self.cache, "_now_ms", None)
+        now_ms = int(now()) if callable(now) else int(time.time() * 1000)
+        remaining_ms = expires_at_ms - now_ms
+        if remaining_ms <= 0:
+            return 0
+        # Round down so importing a native entry can only preserve or shorten
+        # its lifetime; promotion must never refresh freshness.
+        return remaining_ms // 1000
+
+    @staticmethod
+    def _runtime_authority(authority: CacheAuthority) -> Any:
+        from .runtime_cas import RuntimeAuthority
+
+        return RuntimeAuthority(authority.value)
+
+    @staticmethod
+    def _freshness(value: Any) -> Any:
+        if value is not None:
+            return value
+        from .runtime_cas import EvidenceFreshness
+
+        return EvidenceFreshness.FRESH
+
+    def get(
+        self,
+        artifact_id: str,
+        *,
+        expected_namespace: str | None = None,
+        expected_authority: Any = None,
+        require_fresh: bool = False,
+    ) -> Any:
+        """Read one imported record through RuntimeCAS's verification path."""
+
+        if isinstance(expected_authority, CacheAuthority):
+            expected_authority = self._runtime_authority(expected_authority)
+        return self.runtime_cas.get(
+            artifact_id,
+            expected_namespace=expected_namespace,
+            expected_authority=expected_authority,
+            require_fresh=require_fresh,
+        )
+
+    def _put_runtime_record(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        binding: Any,
+        namespace: str,
+        authority: CacheAuthority,
+        dependencies: Sequence[Any],
+        freshness: Any,
+        ttl_seconds: int | None,
+        tiers: Sequence[Any] | None,
+        projection_key: str | None,
+        artifact_kind: str,
+    ) -> Any:
+        from .runtime_cas import RuntimeArtifactRecord
+
+        result = self.runtime_cas.put(
+            payload,
+            binding=binding,
+            namespace=namespace,
+            artifact_kind=artifact_kind,
+            authority=self._runtime_authority(authority),
+            dependencies=tuple(dependencies),
+            freshness=self._freshness(freshness),
+            ttl_seconds=ttl_seconds,
+            tiers=tiers,
+            payload_schema=CACHE_CAS_ADAPTER_PAYLOAD_SCHEMA,
+            projection_key=projection_key,
+        )
+        if not isinstance(result, RuntimeArtifactRecord):
+            raise CacheCoordinationError(
+                "runtime_cas.put must return a RuntimeArtifactRecord"
+            )
+        return result
+
+
+class NamespaceCacheCASAdapter(_CacheCASAdapter):
+    """Import verified exact NamespaceCacheCoordinator entries into RuntimeCAS.
+
+    The adapter never changes the existing coordinator's lookup, persistence,
+    metrics, or single-flight behavior.  It is an explicit migration/reuse
+    path: a runtime caller first attempts its CAS identity and may invoke
+    :meth:`import_entry` on a miss to reuse a native exact-key record.
+    """
+
+    def __init__(
+        self,
+        cache: NamespaceCacheCoordinator,
+        runtime_cas: Any,
+        *,
+        producer_version: str,
+        policy_version: str,
+        capability_version: str,
+        binding_factory: CacheCASBindingFactory | None = None,
+    ) -> None:
+        if not isinstance(cache, NamespaceCacheCoordinator):
+            raise ValueError(
+                "cache must be a NamespaceCacheCoordinator"
+            )
+        super().__init__(
+            cache,
+            runtime_cas,
+            producer_version=producer_version,
+            policy_version=policy_version,
+            capability_version=capability_version,
+            binding_factory=binding_factory,
+        )
+
+    def import_entry(
+        self,
+        key: SemanticCacheKey | Mapping[str, Any],
+        *,
+        require_completion_evidence: bool = False,
+        payload_validator: Callable[[Any], bool] | None = None,
+        dependencies: Sequence[Any] = (),
+        freshness: Any = None,
+        tiers: Sequence[Any] | None = None,
+        projection_key: str | None = None,
+        project_authoritative: bool = True,
+        artifact_kind: str = "namespace_cache_entry",
+        binding: Any = None,
+    ) -> Any:
+        """Import a current exact native hit, returning its runtime record.
+
+        Misses, stale/corrupt entries, failed native validators, and
+        non-completion records requested as completion evidence return
+        ``None``.  RuntimeCAS remains responsible for dependency verification,
+        cycle rejection, tier publication, and immutable identity validation.
+        """
+
+        semantic_key = self.cache._coerce_key(key)
+        lookup = self.cache.lookup(
+            semantic_key,
+            require_completion_evidence=require_completion_evidence,
+            payload_validator=payload_validator,
+        )
+        if (
+            lookup.status is not NamespaceLookupStatus.HIT
+            or lookup.entry is None
+            or lookup.key != semantic_key
+            or lookup.entry.key != semantic_key
+        ):
+            return None
+        entry = lookup.entry
+        metadata = entry.metadata
+        canonical_metadata = namespace_metadata(
+            semantic_key.namespace,
+            authority=entry.authority,
+            key_schema=metadata.key_schema,
+            entry_schema=metadata.entry_schema,
+        )
+        if (
+            metadata.namespace is not semantic_key.namespace
+            or metadata.authority is not entry.authority
+            or metadata.required_dimensions
+            != canonical_metadata.required_dimensions
+            or not set(canonical_metadata.required_dimensions).issubset(
+                semantic_key.dimensions
+            )
+        ):
+            return None
+        if semantic_key.namespace is CacheNamespace.PROOF_DRAFT:
+            if entry.authority is not CacheAuthority.DRAFT:
+                return None
+            if projection_key is not None:
+                raise ValueError(
+                    "proof drafts cannot create authoritative projections"
+                )
+        remaining_ttl = self._remaining_ttl_seconds(entry.expires_at_ms)
+        if remaining_ttl == 0:
+            return None
+        if not entry.is_completion_evidence:
+            if projection_key is not None:
+                raise ValueError(
+                    "non-completion cache entries cannot create projections"
+                )
+            project_authoritative = False
+        if project_authoritative and projection_key is None:
+            projection_key = semantic_key.key_id
+        runtime_binding = self._binding(
+            namespace=semantic_key.namespace.value,
+            semantic_key_id=semantic_key.key_id,
+            semantic_dimensions=semantic_key.dimensions,
+            binding=binding,
+        )
+        payload = {
+            "schema": CACHE_CAS_ADAPTER_PAYLOAD_SCHEMA,
+            "native_schema": metadata.entry_schema,
+            "payload_schema": entry.payload_schema or metadata.entry_schema,
+            "semantic_key": semantic_key.to_dict(),
+            "legacy_entry_digest": entry.entry_digest,
+            "outcome": entry.outcome.value,
+            "authority": entry.authority.value,
+            "created_at_ms": entry.created_at_ms,
+            "expires_at_ms": entry.expires_at_ms,
+            "artifact_references": [
+                item.to_dict() for item in entry.artifact_references
+            ],
+            "payload": entry.payload,
+        }
+        return self._put_runtime_record(
+            payload,
+            binding=runtime_binding,
+            namespace=semantic_key.namespace.value,
+            authority=entry.authority,
+            dependencies=dependencies,
+            freshness=freshness,
+            ttl_seconds=remaining_ttl,
+            tiers=tiers,
+            projection_key=projection_key,
+            artifact_kind=artifact_kind,
+        )
+
+    import_exact_entry = import_entry
+    reuse_exact = import_entry
+
+
+class AnalysisCacheCASAdapter(_CacheCASAdapter):
+    """Import exact native AnalysisCache receipts without changing its API."""
+
+    def __init__(
+        self,
+        cache: AnalysisCache,
+        runtime_cas: Any,
+        *,
+        producer_version: str,
+        policy_version: str,
+        capability_version: str,
+        binding_factory: CacheCASBindingFactory | None = None,
+    ) -> None:
+        if not isinstance(cache, AnalysisCache):
+            raise ValueError("cache must be an AnalysisCache")
+        super().__init__(
+            cache,
+            runtime_cas,
+            producer_version=producer_version,
+            policy_version=policy_version,
+            capability_version=capability_version,
+            binding_factory=binding_factory,
+        )
+
+    def import_entry(
+        self,
+        key: AnalysisCacheKey | Mapping[str, Any],
+        *,
+        require_completion_evidence: bool = False,
+        completion_validator: CompletionValidator | None = None,
+        dependencies: Sequence[Any] = (),
+        freshness: Any = None,
+        tiers: Sequence[Any] | None = None,
+        projection_key: str | None = None,
+        project_authoritative: bool = True,
+        artifact_kind: str = "analysis_cache_entry",
+        binding: Any = None,
+    ) -> Any:
+        """Import only an exact, fresh analysis receipt accepted by its gate."""
+
+        if completion_validator is not None and not callable(
+            completion_validator
+        ):
+            raise ValueError("completion_validator must be callable or None")
+        cache_key = self.cache._coerce_key(key)
+        lookup = self.cache.lookup(
+            cache_key,
+            require_completion_evidence=require_completion_evidence,
+        )
+        if (
+            lookup.status is not AnalysisCacheLookupStatus.HIT
+            or lookup.entry is None
+            or lookup.key != cache_key
+            or lookup.entry.key != cache_key
+        ):
+            return None
+        if completion_validator is not None and lookup.is_completion_evidence:
+            accepted = completion_validator(lookup)
+            if not isinstance(accepted, bool):
+                raise CacheCoordinationError(
+                    "completion_validator must return a boolean"
+                )
+            if not accepted:
+                return None
+        entry = lookup.entry
+        authority = (
+            CacheAuthority.AUTHORITATIVE
+            if entry.is_completion_evidence
+            else CacheAuthority.DIAGNOSTIC
+        )
+        remaining_ttl = self._remaining_ttl_seconds(entry.expires_at_ms)
+        if remaining_ttl == 0:
+            return None
+        if not entry.is_completion_evidence:
+            if projection_key is not None:
+                raise ValueError(
+                    "non-completion analysis entries cannot create projections"
+                )
+            project_authoritative = False
+        if project_authoritative and projection_key is None:
+            projection_key = cache_key.key_id
+        dimensions = entry.key.to_dict()
+        dimensions.pop("key_id", None)
+        runtime_binding = self._binding(
+            namespace=CacheNamespace.ANALYSIS.value,
+            semantic_key_id=cache_key.key_id,
+            semantic_dimensions=dimensions,
+            binding=binding,
+        )
+        payload = {
+            "schema": CACHE_CAS_ADAPTER_PAYLOAD_SCHEMA,
+            "native_schema": ANALYSIS_CACHE_ENTRY_SCHEMA,
+            "payload_schema": ANALYSIS_CACHE_ENTRY_SCHEMA,
+            "semantic_key": cache_key.to_dict(),
+            "legacy_entry_digest": entry.entry_digest,
+            "outcome": entry.status.value,
+            "authority": authority.value,
+            "created_at_ms": entry.created_at_ms,
+            "expires_at_ms": entry.expires_at_ms,
+            "receipt": entry.receipt,
+        }
+        return self._put_runtime_record(
+            payload,
+            binding=runtime_binding,
+            namespace=CacheNamespace.ANALYSIS.value,
+            authority=authority,
+            dependencies=dependencies,
+            freshness=freshness,
+            ttl_seconds=remaining_ttl,
+            tiers=tiers,
+            projection_key=projection_key,
+            artifact_kind=artifact_kind,
+        )
+
+    import_exact_entry = import_entry
+    reuse_exact = import_entry
+
+
 class CacheCoordinator:
     """Compatibility facade for the common and legacy analysis coordinators.
 
@@ -2794,19 +3249,28 @@ CommonCacheEntry = NamespaceCacheEntry
 CommonCacheKey = SemanticCacheKey
 CommonCacheLookup = NamespaceCacheLookup
 CommonCacheMetrics = NamespaceCacheMetrics
+NamespaceRuntimeCASAdapter = NamespaceCacheCASAdapter
+RuntimeCASNamespaceCacheAdapter = NamespaceCacheCASAdapter
+AnalysisRuntimeCASAdapter = AnalysisCacheCASAdapter
+RuntimeCASAnalysisCacheAdapter = AnalysisCacheCASAdapter
 CacheOutcome = CacheRecordOutcome
 CacheLookupStatus = NamespaceLookupStatus
 
 
 __all__ = [
+    "AnalysisCacheCASAdapter",
     "AnalysisCacheCoordinator",
+    "AnalysisRuntimeCASAdapter",
     "ArtifactReference",
     "BoundedArtifactReference",
+    "CACHE_CAS_ADAPTER_BINDING_SCHEMA",
+    "CACHE_CAS_ADAPTER_PAYLOAD_SCHEMA",
     "COMMON_CACHE_ENTRY_SCHEMA",
     "COMMON_CACHE_KEY_SCHEMA",
     "COMMON_CACHE_NAMESPACE_SCHEMA",
     "CONCURRENT_IDENTICAL_MISS_COLLAPSE_REQUIREMENT_ID",
     "CacheAuthority",
+    "CacheCASBindingFactory",
     "CacheLookupStatus",
     "CacheOutcome",
     "CacheCoordinationError",
@@ -2835,11 +3299,15 @@ __all__ = [
     "CoordinatorStatus",
     "INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA",
     "NamespaceCacheCoordinator",
+    "NamespaceCacheCASAdapter",
     "NamespaceCacheEntry",
     "NamespaceCacheLookup",
     "NamespaceCacheMetrics",
     "NamespaceCoordinationResult",
     "NamespaceLookupStatus",
+    "NamespaceRuntimeCASAdapter",
+    "RuntimeCASAnalysisCacheAdapter",
+    "RuntimeCASNamespaceCacheAdapter",
     "SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA",
     "SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID",
     "SemanticCacheKey",
