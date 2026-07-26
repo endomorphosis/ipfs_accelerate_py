@@ -34,12 +34,12 @@ This model was contributed by [zphang](https://huggingface.co/zphang). The origi
 
 ## Documentation resources
 
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 <Tip>
 
-PEGASUS-X uses the same tokenizer as [PEGASUS](pegasus).
+PEGASUS-X uses the same tokenizer as [PEGASUS](pegasus.md).
 
 </Tip>
 
