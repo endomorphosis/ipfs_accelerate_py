@@ -4194,7 +4194,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-140 Resolve validation retry-budget failure for ASI-115
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
