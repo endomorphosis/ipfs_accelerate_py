@@ -48,8 +48,8 @@ This model was contributed by [anton-l](https://huggingface.co/anton-l).
 
 ## Resources
 
-- [Audio classification task guide](../tasks/audio_classification.md)
-- [Automatic speech recognition task guide](../tasks/asr.md)
+- [Audio classification task guide](../tasks/audio_classification.md).
+- [Automatic speech recognition task guide](../tasks/asr.md).
 
 ## SEWConfig
 
