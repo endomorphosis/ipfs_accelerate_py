@@ -4,7 +4,7 @@ Modular Transformers lowers the bar for contributing models and significantly re
 
 One of Transformers' core design feature is the [single model, single file](https://huggingface.co/blog/transformers-design-philosophy) policy. Model components - such as attention layers - are repeated across many files and any independent implementations tend to diverge as fixes and changes are applied to specific parts of the code.
 
-The [`# Copied from`](./pr_checks.md#check-copies) statements prevents the code from diverging, and it is enforced by our continuous integration tests and local commands. The downside is that this approach is tedious and adds significantly more lines of code, most of which is boilerplate.
+The [`# Copied from`](./pr_checks.md#check-copies "Check copies in pull-request checks") statements prevents the code from diverging, and it is enforced by our continuous integration tests and local commands. The downside is that this approach is tedious and adds significantly more lines of code, most of which is boilerplate.
 
 ## Motivation
 
