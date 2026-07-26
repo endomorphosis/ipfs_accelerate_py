@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 import subprocess
 import time
 from dataclasses import asdict
@@ -17,6 +18,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import WorktreePool
 
@@ -597,3 +602,100 @@ def test_missing_pooled_workspace_is_discarded_after_setup_race(
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.json")) == []
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
+
+
+def test_supervisor_does_not_reconcile_a_live_pooled_worktree(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    branch = "implementation/live-pool-race"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    lease = pool.acquire(
+        cache_key="live-pool-race",
+        base_ref="main",
+        branch_name=branch,
+    )
+    _git(lease.path, "commit", "--allow-empty", "-m", "candidate")
+    candidate_head = _git(lease.path, "rev-parse", "HEAD")
+    (lease.path / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    state_dir = tmp_path / "state" / "lane-0"
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "tasks.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    live_skip = next(
+        item
+        for item in result["skipped"]
+        if item["reason"] == "active_worktree_pool_lease"
+    )
+    assert live_skip["path"] == str(lease.path)
+    assert live_skip["owner_source"] == "worktree_pool_lease"
+    assert live_skip["owner_lease_state"] == "leased"
+    assert live_skip["owner_pool_state_path"].endswith(f"{lease.entry_id}.json")
+    assert result["processed_count"] == 0
+    assert _git(lease.path, "branch", "--show-current") == branch
+    assert _git(lease.path, "rev-parse", "HEAD") == candidate_head
+    assert (lease.path / "feature.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert _git(repo, "for-each-ref", "--format=%(refname)", "refs/heads/rescue/worktree") == ""
+
+    release = lease.release(reusable=False)
+    assert release["released"] is True
+
+
+def test_supervisor_does_not_fence_a_dead_pooled_worktree_lease(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    lease = pool.acquire(
+        cache_key="dead-pool-owner",
+        base_ref="main",
+        branch_name="implementation/dead-pool-owner",
+    )
+    state_path = worktree_root / ".pool-state" / f"{lease.entry_id}.json"
+    lock_path = worktree_root / ".pool-state" / f"{lease.entry_id}.lock"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["lease_pid"] = 0
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    lock_path.write_text(json.dumps({"pid": 0}), encoding="utf-8")
+
+    state_dir = tmp_path / "state" / "lane-0"
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "tasks.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    owners = supervisor._shared_active_worktree_owners(worktree_root)
+
+    assert lease.path.resolve() not in owners
+    release = lease.release(reusable=False)
+    assert release["released"] is True
