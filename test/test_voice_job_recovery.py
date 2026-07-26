@@ -58,6 +58,59 @@ def test_submit_once_is_stable_and_rejects_identity_aliasing(tmp_path):
         queue.submit_once(**{**request, "payload": {"text": "changed"}})
 
 
+def test_submit_with_outcome_reports_exact_replays(tmp_path):
+    queue = TaskQueue(str(tmp_path / "queue.duckdb"))
+    request = {
+        "task_id": "voice-task",
+        "task_type": "voice.tts",
+        "model_name": "abby",
+        "payload": {"text": "hello"},
+    }
+
+    assert queue.submit_with_outcome(**request) == ("voice-task", False)
+    assert queue.submit_with_outcome(**request) == ("voice-task", True)
+    with pytest.raises(ValueError, match="different work"):
+        queue.submit_with_outcome(
+            **{**request, "payload": {"text": "changed"}}
+        )
+
+
+def test_submit_with_outcome_reports_concurrent_replay(tmp_path):
+    path = str(tmp_path / "queue.duckdb")
+    queues = (TaskQueue(path), TaskQueue(path))
+    barrier = threading.Barrier(3)
+    outcomes: list[tuple[str, bool]] = []
+    errors: list[BaseException] = []
+
+    def submit(queue: TaskQueue) -> None:
+        try:
+            barrier.wait()
+            outcomes.append(
+                queue.submit_with_outcome(
+                    task_id="voice-task",
+                    task_type="voice.tts",
+                    model_name="abby",
+                    payload={"text": "hello"},
+                )
+            )
+        except BaseException as exc:  # pragma: no cover - diagnostic path
+            errors.append(exc)
+
+    threads = [threading.Thread(target=submit, args=(queue,)) for queue in queues]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert errors == []
+    assert all(not thread.is_alive() for thread in threads)
+    assert sorted(outcome[1] for outcome in outcomes) == [False, True]
+    assert len(queues[0].list()) == 1
+    for queue in queues:
+        queue.close()
+
+
 def test_claims_are_highest_priority_first_with_fifo_tie_break(tmp_path):
     queue = TaskQueue(str(tmp_path / "queue.duckdb"))
     low = _submit(queue, "low", priority=2)

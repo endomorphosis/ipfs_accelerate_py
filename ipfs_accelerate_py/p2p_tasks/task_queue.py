@@ -288,7 +288,7 @@ class TaskQueue:
         if last_exc is not None:
             raise last_exc
 
-    def submit(
+    def _submit_with_outcome(
         self,
         *,
         task_type: str,
@@ -299,13 +299,13 @@ class TaskQueue:
         priority: Optional[int] = None,
         max_attempts: Optional[int] = None,
         next_attempt_at: Optional[float] = None,
-    ) -> str:
-        """Submit work, returning the existing task for an identical identity.
+    ) -> tuple[str, bool]:
+        """Submit work and report whether an identical task already existed.
 
         ``idempotency_key`` provides atomic submit-once behavior across process
         restarts. Reusing a key with different work is rejected instead of
-        silently aliasing two provider operations. Existing callers that omit
-        reliability options retain their previous behavior.
+        silently aliasing two provider operations. The boolean result is true
+        when the returned task was replayed rather than inserted by this call.
         """
 
         if not isinstance(payload, dict):
@@ -356,7 +356,7 @@ class TaskQueue:
                             "idempotency key or task_id already identifies different work"
                         )
                     conn.execute("COMMIT")
-                    return str(existing[0])
+                    return str(existing[0]), True
 
                 conn.execute(
                     """
@@ -430,7 +430,7 @@ class TaskQueue:
                                     and str(existing[2]) == str(model_name)
                                     and str(existing[3]) == payload_json
                                 ):
-                                    return str(existing[0])
+                                    return str(existing[0]), True
                                 raise ValueError(
                                     "idempotency key or task_id already identifies different work"
                                 ) from exc
@@ -440,7 +440,63 @@ class TaskQueue:
                             pass
                         time.sleep(0.002 * (retry_index + 1))
                 raise
-        return tid
+        return tid, False
+
+    def submit(
+        self,
+        *,
+        task_type: str,
+        model_name: str,
+        payload: Dict[str, Any],
+        task_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        priority: Optional[int] = None,
+        max_attempts: Optional[int] = None,
+        next_attempt_at: Optional[float] = None,
+    ) -> str:
+        """Submit work, returning the existing task for an identical identity.
+
+        Existing callers retain the historical string return value. Consumers
+        that need to distinguish a new insert from an exact replay can use
+        :meth:`submit_with_outcome`.
+        """
+
+        submitted_id, _ = self._submit_with_outcome(
+            task_type=task_type,
+            model_name=model_name,
+            payload=payload,
+            task_id=task_id,
+            idempotency_key=idempotency_key,
+            priority=priority,
+            max_attempts=max_attempts,
+            next_attempt_at=next_attempt_at,
+        )
+        return submitted_id
+
+    def submit_with_outcome(
+        self,
+        *,
+        task_type: str,
+        model_name: str,
+        payload: Dict[str, Any],
+        task_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        priority: Optional[int] = None,
+        max_attempts: Optional[int] = None,
+        next_attempt_at: Optional[float] = None,
+    ) -> tuple[str, bool]:
+        """Atomically return ``(task_id, replayed)`` for a submission."""
+
+        return self._submit_with_outcome(
+            task_type=task_type,
+            model_name=model_name,
+            payload=payload,
+            task_id=task_id,
+            idempotency_key=idempotency_key,
+            priority=priority,
+            max_attempts=max_attempts,
+            next_attempt_at=next_attempt_at,
+        )
 
     def submit_once(
         self,
