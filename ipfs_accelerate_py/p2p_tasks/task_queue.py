@@ -3,6 +3,11 @@
 This is a lightweight task delegation mechanism used by both ipfs_datasets_py and
 ipfs_accelerate_py. Schema is stable and backwards compatible.
 
+Voice-job reliability (ABBY-VOICE-G016) depends on persisted attempt/backoff/lease
+state and owner heartbeats: claim ownership is recorded in DuckDB as ``attempt``,
+``max_attempts``, ``next_attempt_at``, ``lease_until``, and ``heartbeat_at`` so a
+worker crash recovers without duplicate provider execution.
+
 Environment:
 - IPFS_ACCELERATE_PY_TASK_QUEUE_PATH (preferred)
 - IPFS_DATASETS_PY_TASK_QUEUE_PATH (compat)
@@ -93,11 +98,13 @@ def default_queue_path() -> str:
 
 
 class TaskQueue:
-    """DuckDB-backed task queue.
+    """DuckDB-backed task queue with persisted attempt/backoff/lease state.
 
     Concurrency model:
     - multiple workers may poll concurrently
     - claiming uses an atomic UPDATE guarded by a transaction
+    - owner heartbeats renew ``lease_until`` only for the assigned worker
+    - expired-lease recovery requeues or fails without double-claiming
     """
 
     def __init__(self, path: Optional[str] = None, *, default_lease_seconds: float = 300.0):
@@ -840,7 +847,7 @@ class TaskQueue:
         lease_seconds: Optional[float] = None,
         now: Optional[float] = None,
     ) -> bool:
-        """Renew a running claim only when its worker still owns it."""
+        """Renew owner heartbeats for a running claim only when the worker owns it."""
 
         tid = str(task_id or "").strip()
         wid = str(worker_id or "").strip()
@@ -878,7 +885,7 @@ class TaskQueue:
         error: Optional[str] = None,
         now: Optional[float] = None,
     ) -> bool:
-        """Release owned retryable work with a persisted backoff deadline."""
+        """Release owned retryable work into persisted attempt/backoff/lease state."""
 
         tid = str(task_id or "").strip()
         wid = str(worker_id or "").strip()

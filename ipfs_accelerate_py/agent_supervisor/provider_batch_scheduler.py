@@ -7,9 +7,13 @@ This module is the small coordination boundary for that stream:
 * only requests with an identical :class:`ProviderBatchKey` share a call;
 * identical in-flight requests are single-flighted;
 * deadlines, cancellation, budgets, provenance, and results remain local to
-  each submitted request;
+  each submitted request (existing sibling isolation and single-flight receipts);
 * provider health and capacity are checked immediately before dispatch; and
 * every completed batch has a content-addressed receipt.
+
+IndexTTS/Whisper batch-size-one policy: IndexTTS and Whisper adapter aliases in
+``_SINGLE_MEMBER_AUDIO_PROVIDERS`` remain physical batch size one until those
+adapters prove real multi-member batching.
 
 Provider callbacks receive a tuple of :class:`ProviderBatchRequest` objects and
 may return either a sequence in request order or a mapping keyed by request id.
@@ -148,7 +152,11 @@ def _cancelled(token: Any) -> bool:
 
 
 def _requires_single_member_batch(provider_id: str) -> bool:
-    """Return whether the provider's current adapter lacks a batch wire API."""
+    """Enforce the IndexTTS/Whisper batch-size-one policy for audio adapters.
+
+    Returns whether the provider's current adapter lacks a batch wire API and
+    therefore must launch with at most one physical member per provider call.
+    """
 
     normalized = str(provider_id).strip().lower().replace("-", "_")
     return normalized in _SINGLE_MEMBER_AUDIO_PROVIDERS

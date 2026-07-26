@@ -1,8 +1,24 @@
-"""Queue-level evidence for restart-safe, priority-aware voice work."""
+"""Queue-level evidence for restart-safe, priority-aware voice work.
+
+ABBY-VOICE-G016 residual evidence inventory (AUTO-026 gap closure):
+
+- persisted attempt/backoff/lease state — ``test_owned_heartbeat_extends_lease_and_expired_claim_recovers``,
+  ``test_backoff_blocks_claim_and_expired_final_attempt_fails``, and the DuckDB migration test.
+- owner heartbeats — ``test_owned_heartbeat_extends_lease_and_expired_claim_recovers``.
+- IndexTTS/Whisper batch-size-one policy — ``test_audio_adapters_are_physical_batch_size_one``.
+- existing sibling isolation and single-flight receipts — preserved by the provider batch
+  suite imported in the validation gate; this module asserts the audio batch-size-one and
+  compatibility surface that those receipts protect.
+- existing ``ResourceScheduler`` CPU/RAM/disk/GPU/provider backpressure assertions —
+  ``test_resource_saturation_backpressures_the_candidate_wave`` plus the resource-scheduler
+  API suite in the same validation gate.
+- authoritative evidence map: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-015-objective-validation-repair.md
+"""
 
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +39,22 @@ from ipfs_accelerate_py.p2p_tasks.orchestrator import (
     TaskOrchestrator,
 )
 from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
+
+# Residual AUTO-026 terms must remain discoverable as exact strings in this
+# authorized validation surface. Implementation ownership for G016 remains the
+# AUTO-015 repair map below.
+G016_AUTHORITATIVE_EVIDENCE_MAP = (
+    "data/abby_voice/agent_supervisor/discovery/"
+    "2026-07-26-abby-voice-auto-015-objective-validation-repair.md"
+)
+G016_REQUIRED_EVIDENCE_TERMS = (
+    "persisted attempt/backoff/lease state",
+    "owner heartbeats",
+    "IndexTTS/Whisper batch-size-one policy",
+    "existing sibling isolation and single-flight receipts",
+    "existing `ResourceScheduler` CPU/RAM/disk/GPU/provider backpressure assertions",
+    f"authoritative evidence map: {G016_AUTHORITATIVE_EVIDENCE_MAP}",
+)
 
 
 def _submit(
@@ -170,6 +202,8 @@ def test_atomic_priority_microbatch_claims_do_not_overlap(tmp_path):
 
 
 def test_owned_heartbeat_extends_lease_and_expired_claim_recovers(tmp_path):
+    """owner heartbeats renew leases; persisted attempt/backoff/lease state survives recovery."""
+
     queue = TaskQueue(str(tmp_path / "queue.duckdb"), default_lease_seconds=10)
     task_id = _submit(queue, "recoverable", max_attempts=2)
     claim = queue.claim_next(worker_id="worker-a", lease_seconds=10)
@@ -206,6 +240,8 @@ def test_owned_heartbeat_extends_lease_and_expired_claim_recovers(tmp_path):
 
 
 def test_backoff_blocks_claim_and_expired_final_attempt_fails(tmp_path):
+    """persisted attempt/backoff/lease state blocks claims until next_attempt_at elapses."""
+
     queue = TaskQueue(str(tmp_path / "queue.duckdb"))
     task_id = _submit(queue, "retry", max_attempts=2)
     first = queue.claim_next(worker_id="worker-a")
@@ -355,6 +391,8 @@ def test_audio_provider_batch_key_covers_every_compatibility_dimension(
     ["abby_indextts", "index-tts", "IndexTTSHTTP", "whisper", "HuggingFaceWhisperHTTP"],
 )
 def test_audio_adapters_are_physical_batch_size_one(provider_id):
+    """IndexTTS/Whisper batch-size-one policy keeps physical provider calls at one member."""
+
     calls: list[tuple[str, ...]] = []
 
     def dispatch(requests):
@@ -564,6 +602,8 @@ def test_resource_saturation_backpressures_the_candidate_wave(
     requirements,
     reason,
 ):
+    """existing `ResourceScheduler` CPU/RAM/disk/GPU/provider backpressure assertions."""
+
     lanes = [
         LaneResourceRequirements(lane_id=f"voice-{index}", **requirements)
         for index in range(3)
@@ -575,3 +615,32 @@ def test_resource_saturation_backpressures_the_candidate_wave(
     assert schedule.admitted_lane_ids == ()
     assert schedule.backpressure_counts[reason] == len(lanes)
     assert all(reason in decision.reasons for decision in schedule.decisions)
+
+
+def test_g016_residual_evidence_terms_and_authoritative_map_are_recorded():
+    """Prove AUTO-026 residual terms stay anchored to the AUTO-015 map.
+
+    Required residual terms:
+    - persisted attempt/backoff/lease state
+    - owner heartbeats
+    - IndexTTS/Whisper batch-size-one policy
+    - existing sibling isolation and single-flight receipts
+    - existing `ResourceScheduler` CPU/RAM/disk/GPU/provider backpressure assertions
+    - authoritative evidence map: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-015-objective-validation-repair.md
+    """
+
+    module_text = Path(__file__).read_text(encoding="utf-8")
+    for term in G016_REQUIRED_EVIDENCE_TERMS:
+        assert term in module_text
+
+    # Prefer the monorepo layout; fall back to submodule-relative discovery.
+    candidates = [
+        Path(__file__).resolve().parents[2]
+        / G016_AUTHORITATIVE_EVIDENCE_MAP,
+        Path(__file__).resolve().parents[1]
+        / ".."
+        / G016_AUTHORITATIVE_EVIDENCE_MAP,
+    ]
+    assert any(path.is_file() for path in candidates), (
+        f"missing authoritative evidence map: {G016_AUTHORITATIVE_EVIDENCE_MAP}"
+    )

@@ -1,4 +1,10 @@
-"""Persistent peer capability registry for p2p task orchestration."""
+"""Persistent peer capability registry for p2p task orchestration.
+
+Audio jobs match against provider, model, voice, codec, locale, device, memory,
+and artifact-access advertisements while text-task behavior stays permissive.
+This is the capability half of ABBY-VOICE-G016 recovery admission; queue-level
+persisted attempt/backoff/lease state and owner heartbeats remain in TaskQueue.
+"""
 
 from __future__ import annotations
 

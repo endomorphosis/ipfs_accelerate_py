@@ -9,6 +9,11 @@ This module implements the "server owns orchestration" model:
 
 Workers remain thin executors: they only run local queue tasks and (optionally)
 complete remote tasks when executing a proxy payload.
+
+For ABBY-VOICE-G016 audio mesh claims, an already leased remote voice task is
+released when the selected peer fails capability matching so recovery returns
+to the queue without waiting for lease expiry. Queue-level owner heartbeats and
+persisted attempt/backoff/lease state remain owned by TaskQueue.
 """
 
 from __future__ import annotations
