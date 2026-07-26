@@ -37,6 +37,7 @@ from .scan_receipts import (
 from .task_identity import (
     TaskIdentity,
     canonical_bundle_identity,
+    canonical_content_cid,
     canonical_task_identity,
     normalize_identity_path,
     normalize_identity_text,
@@ -683,7 +684,6 @@ SKIP_DIRS = {
     "playwright-report",
     "test-results",
 }
-
 
 def normalize_task_id_prefix(value: Any = DEFAULT_TASK_PREFIX) -> str:
     """Return the canonical, heading-free prefix used in display task IDs.
@@ -1390,6 +1390,66 @@ def completion_evidence_source_decision(
         reference=str(payload.get("provenance_cid") or ""),
     )
 
+# These are data/control-plane boundaries, not ordinary caller preferences.
+# They apply even when an objective-daemon invocation forgets to repeat its
+# repository-specific ``--scan-exclude-path`` list.  Component-based matching
+# also covers the same protected roots inside an initialized immediate
+# submodule without enumerating or opening that submodule's contents first.
+SOURCE_PROTECTED_SCAN_COMPONENTS = frozenset(
+    {
+        "artifacts",
+        "corpora",
+        "fixtures",
+        "holdout",
+        "holdouts",
+        "performance_snapshots",
+        "security_ir_artifacts",
+        "workspace",
+    }
+)
+SOURCE_PROTECTED_SCAN_COMPONENT_SUFFIXES = ("_fixtures",)
+SOURCE_PROTECTED_SCAN_COMPONENT_PAIRS = frozenset(
+    {
+        ("data", "agent_supervisor"),
+        ("docs", "performance_snapshots"),
+    }
+)
+SOURCE_PROTECTED_SCAN_POLICY = {
+    "schema": "ipfs_accelerate_py.agent_supervisor.source_protected_scan_policy@1",
+    "deny_components": sorted(SOURCE_PROTECTED_SCAN_COMPONENTS),
+    "deny_component_suffixes": list(SOURCE_PROTECTED_SCAN_COMPONENT_SUFFIXES),
+    "deny_component_pairs": [
+        "/".join(parts) for parts in sorted(SOURCE_PROTECTED_SCAN_COMPONENT_PAIRS)
+    ],
+    "deny_symlinks": True,
+    "deny_resolved_paths_outside_repo": True,
+}
+
+EXTERNAL_COMPLETION_AUTHORITY_VALUES = frozenset(
+    {
+        "external",
+        "external_receipt",
+        "typed_external_receipt",
+    }
+)
+# Legacy/tampered HSSL indexes may predate propagation of the generic
+# completion-authority field.  Keep the known operational gates fenced by
+# identity as a compatibility backstop.  New objective heaps are governed by
+# the generic ``Completion authority: external`` field.
+EXTERNAL_AUTHORITY_BENCHMARK_GOAL_IDS = frozenset(
+    {
+        "HSSL-G201",
+        "HSSL-G202",
+        "HSSL-G203",
+        "HSSL-G212",
+        "HSSL-G220",
+        "HSSL-G232",
+        "HSSL-G241",
+        "HSSL-G242",
+        "HSSL-G243",
+    }
+)
+
 _DERIVED_TASK_PLANNING_FIELDS = frozenset(
     {
         "ast_blob_records",
@@ -1419,6 +1479,76 @@ def _bounded_task_planning_metadata(task: Mapping[str, Any]) -> dict[str, Any]:
         for key, value in task.items()
         if str(key) not in _DERIVED_TASK_PLANNING_FIELDS
     }
+
+
+def _normalized_completion_authority(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def _has_typed_external_completion_history(fields: Mapping[str, Any]) -> bool:
+    """Return whether persisted fields make external governance sticky.
+
+    A declaration is not the only durable indication that a goal crossed an
+    external authority boundary.  Reconciliation persists the authority CID
+    and typed evidence records, and removing only the declaration must not
+    downgrade that goal into locally completable work.
+    """
+
+    if str(fields.get("external_completion_authority_cid") or "").strip():
+        return True
+    raw_records: Any = (
+        fields.get("completion_evidence_records")
+        or fields.get("completion_evidence_json")
+        or fields.get("completion_receipts")
+        or ()
+    )
+    if isinstance(raw_records, str):
+        try:
+            raw_records = json.loads(raw_records)
+        except (TypeError, ValueError):
+            return False
+    if isinstance(raw_records, Mapping):
+        raw_records = (raw_records,)
+    if not isinstance(raw_records, Sequence) or isinstance(
+        raw_records, (str, bytes, bytearray)
+    ):
+        return False
+    def is_external_record(record: Any) -> bool:
+        metadata = (
+            record.get("metadata")
+            if isinstance(record, Mapping)
+            else getattr(record, "metadata", None)
+        )
+        return (
+            isinstance(metadata, Mapping)
+            and metadata.get("external_operational_completion") is True
+        )
+
+    return any(is_external_record(record) for record in raw_records)
+
+
+def _requires_external_completion(
+    goal_id: object,
+    fields: Mapping[str, Any],
+) -> bool:
+    """Return whether local task receipts are forbidden completion authority."""
+
+    normalized_goal_id = str(goal_id or "").strip().upper()
+    authority = _normalized_completion_authority(
+        fields.get("completion_authority")
+        or fields.get("completion_authority_kind")
+    )
+    explicit = fields.get("external_completion_required")
+    if isinstance(explicit, str):
+        explicit_required = explicit.strip().lower() in {"1", "true", "yes", "required"}
+    else:
+        explicit_required = explicit is True
+    return (
+        normalized_goal_id in EXTERNAL_AUTHORITY_BENCHMARK_GOAL_IDS
+        or authority in EXTERNAL_COMPLETION_AUTHORITY_VALUES
+        or explicit_required
+        or _has_typed_external_completion_history(fields)
+    )
 
 
 @dataclass(frozen=True)
@@ -1470,6 +1600,12 @@ class ObjectiveGoal:
         from .goal_completion import is_terminal_goal_state
 
         return is_terminal_goal_state(self.lifecycle_state)
+
+    @property
+    def requires_external_completion(self) -> bool:
+        """Whether this goal must never become autonomous implementation work."""
+
+        return _requires_external_completion(self.goal_id, self.fields)
 
     @property
     def completion_evidence_metadata(self) -> dict[str, Any]:
@@ -1745,6 +1881,8 @@ class ObjectiveFinding:
     status: str = "todo"
     is_schedulable: bool = True
     review_only: bool = False
+    completion_authority: str = ""
+    external_authority_blockers: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -4414,6 +4552,7 @@ def parse_goal_heap(text: str) -> list[ObjectiveGoal]:
     current_id = ""
     current_title = ""
     current_fields: dict[str, str] = {}
+    current_field_key = ""
     header_pattern = re.compile(r"^##\s+(\S+)\s+(.+?)\s*$")
 
     def flush() -> None:
@@ -4427,11 +4566,25 @@ def parse_goal_heap(text: str) -> list[ObjectiveGoal]:
             current_id = header.group(1)
             current_title = header.group(2)
             current_fields = {}
+            current_field_key = ""
             continue
-        if not current_id or not line.startswith("- ") or ":" not in line:
+        if not current_id:
             continue
-        key, value = line[2:].split(":", 1)
-        current_fields[normalize_field_key(key)] = value.strip()
+        if line.startswith("- ") and ":" in line:
+            key, value = line[2:].split(":", 1)
+            current_field_key = normalize_field_key(key)
+            current_fields[current_field_key] = value.strip()
+            continue
+        if current_field_key and line[:1].isspace() and line.strip():
+            current_fields[current_field_key] = " ".join(
+                (
+                    current_fields[current_field_key],
+                    line.strip(),
+                )
+            ).strip()
+            continue
+        if not line.strip() or not line[:1].isspace():
+            current_field_key = ""
     flush()
     return goals
 
@@ -4452,6 +4605,129 @@ def repo_relative_path_safe(relative: str) -> bool:
     if not relative or relative.startswith("/") or "\0" in relative:
         return False
     return ".." not in Path(relative).parts
+
+
+def source_protected_scan_reason(repo_root: Path, path: Path) -> str:
+    """Return the nonempty source-policy rule that forbids reading ``path``.
+
+    This check deliberately evaluates both the lexical path and its resolved
+    target.  A tracked symlink below a benign directory therefore cannot make
+    the scanner read an external file, while a protected directory remains
+    protected even when one of its children is a symlink.
+    """
+
+    root = Path(repo_root).resolve()
+    lexical_root = Path(os.path.abspath(repo_root))
+    lexical_path = Path(os.path.abspath(path))
+    try:
+        relative = lexical_path.relative_to(lexical_root)
+    except ValueError:
+        return "lexical_path_outside_repo"
+
+    def protected_parts_reason(parts: Sequence[str]) -> str:
+        lowered = tuple(part.lower() for part in parts)
+        if any(part in SOURCE_PROTECTED_SCAN_COMPONENTS for part in lowered):
+            return "protected_component"
+        if any(
+            part.endswith(suffix)
+            for part in lowered
+            for suffix in SOURCE_PROTECTED_SCAN_COMPONENT_SUFFIXES
+        ):
+            return "protected_component_suffix"
+        if any(
+            tuple(lowered[index : index + 2])
+            in SOURCE_PROTECTED_SCAN_COMPONENT_PAIRS
+            for index in range(max(0, len(lowered) - 1))
+        ):
+            return "protected_component_pair"
+        return ""
+
+    lexical_reason = protected_parts_reason(relative.parts)
+    if lexical_reason:
+        return lexical_reason
+    cursor = lexical_root
+    for part in relative.parts:
+        cursor /= part
+        if cursor.is_symlink():
+            return "symlink"
+    try:
+        resolved_relative = path.resolve().relative_to(root)
+    except ValueError:
+        return "resolved_path_outside_repo"
+    resolved_reason = protected_parts_reason(resolved_relative.parts)
+    if resolved_reason:
+        return f"resolved_{resolved_reason}"
+    return ""
+
+
+def source_protected_scan_policy() -> dict[str, Any]:
+    """Return a detached JSON-safe description of the mandatory deny rules."""
+
+    return {
+        key: list(value) if isinstance(value, list) else value
+        for key, value in SOURCE_PROTECTED_SCAN_POLICY.items()
+    }
+
+
+def resolve_scan_exclude_paths(
+    repo_root: Path,
+    paths: Iterable[str | Path] = (),
+) -> tuple[Path, ...]:
+    """Resolve repeatable scanner exclusions inside ``repo_root``.
+
+    Existing symlinks are resolved before the containment check so an
+    apparently repository-relative path cannot redirect the scanner outside
+    the configured repository.  The repository root itself is rejected: the
+    option is intended to fence sensitive subtrees, not silently disable the
+    complete evidence scan.
+    """
+
+    root = Path(repo_root).resolve()
+    resolved: dict[str, Path] = {}
+    for raw_path in paths:
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        candidate = candidate.resolve()
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(
+                f"scan exclude path must be inside repo_root {root}: {raw_path}"
+            ) from exc
+        if not relative.parts:
+            raise ValueError("scan exclude path cannot be repo_root itself")
+        resolved[relative.as_posix()] = candidate
+    return tuple(resolved[key] for key in sorted(resolved))
+
+
+def scan_exclude_path_metadata(
+    repo_root: Path,
+    paths: Iterable[str | Path] = (),
+) -> list[str]:
+    """Return validated scanner exclusions as stable repository paths."""
+
+    root = Path(repo_root).resolve()
+    return [
+        path.relative_to(root).as_posix()
+        for path in resolve_scan_exclude_paths(root, paths)
+    ]
+
+
+def _path_is_scan_excluded(path: Path, excluded_roots: Iterable[Path]) -> bool:
+    lexical_path = Path(os.path.abspath(path))
+    resolved = path.resolve()
+    for root in excluded_roots:
+        lexical_root = Path(os.path.abspath(root))
+        resolved_root = root.resolve()
+        if (
+            lexical_path == lexical_root
+            or lexical_root in lexical_path.parents
+            or resolved == resolved_root
+            or resolved_root in resolved.parents
+        ):
+            return True
+    return False
 
 
 def symbol_terms(path: Path, text: str) -> set[str]:
@@ -4575,26 +4851,49 @@ def collect_ast_dataset_records(
     previous_records: Sequence[Mapping[str, Any]] = (),
     scan_stats: dict[str, Any] | None = None,
     excluded_roots: Iterable[Path] = (),
+    scan_exclude_paths: Iterable[str | Path] = (),
 ) -> list[dict[str, Any]]:
     """Collect a complete snapshot while reusing unchanged source blobs."""
 
     started = time.monotonic()
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
+    scan_exclude_metadata = scan_exclude_path_metadata(
+        repo_root,
+        resolved_scan_excludes,
+    )
     rows: list[dict[str, Any]] = []
-    prior_rows = [dict(row) for row in previous_records if isinstance(row, Mapping)]
-    prior_by_blob: dict[str, list[dict[str, Any]]] = {}
-    prior_by_source: dict[str, list[dict[str, Any]]] = {}
-    for row in prior_rows:
-        if int(row.get("record_schema_version") or 0) != AST_DATASET_RECORD_SCHEMA_VERSION:
+    excluded = (
+        *tuple(root.resolve() for root in excluded_roots),
+        *resolved_scan_excludes,
+    )
+    prior_rows: list[dict[str, Any]] = []
+    for row in previous_records:
+        if not isinstance(row, Mapping):
             continue
-        blob_hash = str(row.get("blob_hash") or "")
-        source_hash = str(row.get("source_sha1") or "")
-        if blob_hash:
-            prior_by_blob.setdefault(blob_hash, []).append(row)
-        if source_hash:
-            prior_by_source.setdefault(source_hash, []).append(row)
-    for candidates in [*prior_by_blob.values(), *prior_by_source.values()]:
-        candidates.sort(key=lambda item: str(item.get("root_relative_path") or ""))
-
+        # A persisted dataset is an input, not a trusted bypass around the
+        # mandatory source boundary.  Inspect only the routing path until the
+        # row has passed the same policy as a live source candidate.  This also
+        # prevents a poisoned protected row from being reused for a benign
+        # current path merely because it claims the same Git blob identity.
+        root_relative = str(row.get("root_relative_path") or "")
+        if not repo_relative_path_safe(root_relative):
+            continue
+        candidate = repo_root / root_relative
+        if (
+            source_protected_scan_reason(repo_root, candidate)
+            or _path_is_scan_excluded(candidate, resolved_scan_excludes)
+        ):
+            continue
+        resolved_candidate = candidate.resolve()
+        if any(
+            resolved_candidate == root or root in resolved_candidate.parents
+            for root in excluded
+        ):
+            continue
+        prior_rows.append(dict(row))
     blob_hashes = tracked_blob_hashes(repo_root)
     current_paths: set[str] = set()
     current_path_blobs: dict[str, str] = {}
@@ -4602,51 +4901,29 @@ def collect_ast_dataset_records(
     reused_count = 0
     parse_elapsed = 0.0
     saved_parse_seconds = 0.0
-    excluded = tuple(root.resolve() for root in excluded_roots)
-    for path in objective_candidate_files(repo_root, objective_path=objective_path):
+    for path in objective_candidate_files(
+        repo_root,
+        objective_path=objective_path,
+        scan_exclude_paths=resolved_scan_excludes,
+    ):
         resolved_path = path.resolve()
         if any(resolved_path == root or root in resolved_path.parents for root in excluded):
             continue
         root_relative = repo_relative_path(repo_root, path)
         current_paths.add(root_relative)
         blob_hash = blob_hashes.get(resolved_path, "")
-        prior = prior_by_blob.get(blob_hash, [None])[0] if blob_hash else None
-        source_bytes: bytes | None = None
-        text: str | None = None
-        source_hash = ""
-        if prior is None:
-            try:
-                source_bytes = path.read_bytes()
-            except OSError:
-                continue
-            text = source_bytes.decode("utf-8", errors="replace")
-            source_hash = sha1(source_bytes).hexdigest()
-            prior = prior_by_source.get(source_hash, [None])[0]
-
-        if prior is not None:
-            row = dict(prior)
-            if str(row.get("root_relative_path") or "") != root_relative:
-                row.update(
-                    _ast_evidence_fields(
-                        root_relative,
-                        str(row.get("evidence_text") or ""),
-                        _record_symbols(row),
-                    )
-                )
-            row.update(
-                {
-                    "root_relative_path": root_relative,
-                    "suffix": path.suffix.lower(),
-                    "blob_hash": blob_hash or str(row.get("blob_hash") or source_hash),
-                }
-            )
-            rows.append(row)
-            reused_count += 1
-            saved_parse_seconds += _nonnegative_seconds(row.get("parse_elapsed_seconds"))
-            current_path_blobs[root_relative] = str(row.get("blob_hash") or row.get("source_sha1") or "")
+        # The on-disk dataset is mutable cache state, not completion authority.
+        # Always reconstruct source, evidence, symbols, embeddings, and AST
+        # fields from the current tracked candidate.  A prior row may still
+        # contribute path/blob metadata to deletion/rename diagnostics below,
+        # but no caller-controlled cached value can enter a current evidence
+        # record merely by claiming a benign path or Git blob identity.
+        try:
+            source_bytes = path.read_bytes()
+        except OSError:
             continue
-
-        assert text is not None and source_bytes is not None
+        text = source_bytes.decode("utf-8", errors="replace")
+        source_hash = sha1(source_bytes).hexdigest()
         parse_started = time.monotonic()
         symbols = sorted(symbol_terms(path, text))
         payload = ast_dataset_payload(path, text, max_chars=max_ast_chars)
@@ -4710,6 +4987,9 @@ def collect_ast_dataset_records(
                 "parse_elapsed_seconds": parse_elapsed,
                 "saved_parse_seconds": saved_parse_seconds,
                 "deleted_paths": deleted_paths,
+                "scan_exclude_paths": scan_exclude_metadata,
+                "scan_exclude_path_count": len(scan_exclude_metadata),
+                "source_protected_scan_policy": source_protected_scan_policy(),
             }
         )
     return rows
@@ -4767,6 +5047,7 @@ def persist_objective_ast_dataset(
     objective_path: Path,
     dataset_dir: Path,
     dataset_id: str = "objective-ast",
+    scan_exclude_paths: Iterable[str | Path] = (),
 ) -> DatasetArtifact:
     """Persist scan AST/symbol records with the optional ipfs_datasets backend."""
 
@@ -4778,6 +5059,7 @@ def persist_objective_ast_dataset(
         previous_records=store.load_records(dataset_id),
         scan_stats=stats,
         excluded_roots=(dataset_dir,),
+        scan_exclude_paths=scan_exclude_paths,
     )
     return store.persist_records(
         dataset_id=dataset_id,
@@ -4863,7 +5145,12 @@ def tracked_files(git_root: Path) -> list[Path]:
         check=False,
     )
     if result.returncode != 0:
-        return [path for path in git_root.rglob("*") if path.is_file()]
+        # This scanner is allowed to inspect tracked source, not to broaden a
+        # failed Git inventory into an unbounded filesystem walk.  Apart from
+        # including untracked/private state, ``rglob`` would enumerate
+        # protected filenames before the per-candidate policy could reject
+        # them.  A failed inventory therefore yields no candidates.
+        return []
     files: list[Path] = []
     for raw_path in result.stdout.split(b"\0"):
         if not raw_path:
@@ -4876,7 +5163,13 @@ def tracked_files(git_root: Path) -> list[Path]:
     return files
 
 
-def scan_candidate(path: Path, *, repo_root: Path, objective_path: Path) -> bool:
+def scan_candidate(
+    path: Path,
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    scan_exclude_paths: Iterable[Path] = (),
+) -> bool:
     resolved_root = repo_root.resolve()
     resolved_path = path.resolve()
     try:
@@ -4887,6 +5180,10 @@ def scan_candidate(path: Path, *, repo_root: Path, objective_path: Path) -> bool
         # host files that are not part of the Git tree being scanned.
         return False
     if resolved_path == objective_path.resolve():
+        return False
+    if source_protected_scan_reason(repo_root, path):
+        return False
+    if _path_is_scan_excluded(path, scan_exclude_paths):
         return False
     root_relative = repo_relative_path(repo_root, path)
     parts = set(Path(root_relative).parts)
@@ -4906,11 +5203,25 @@ def scan_candidate(path: Path, *, repo_root: Path, objective_path: Path) -> bool
         return False
 
 
-def objective_candidate_files(repo_root: Path, *, objective_path: Path) -> list[Path]:
+def objective_candidate_files(
+    repo_root: Path,
+    *,
+    objective_path: Path,
+    scan_exclude_paths: Iterable[str | Path] = (),
+) -> list[Path]:
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
     files: list[Path] = []
     for git_root in discover_git_worktrees(repo_root):
         for path in tracked_files(git_root):
-            if scan_candidate(path, repo_root=repo_root, objective_path=objective_path):
+            if scan_candidate(
+                path,
+                repo_root=repo_root,
+                objective_path=objective_path,
+                scan_exclude_paths=resolved_scan_excludes,
+            ):
                 files.append(path)
     return sorted(dict.fromkeys(files), key=lambda path: repo_relative_path(repo_root, path))
 
@@ -4972,7 +5283,12 @@ def evidence_index(
     repository_tree: str = "",
     policy_id: str = "",
     return_metadata: bool = False,
+    scan_exclude_paths: Iterable[str | Path] = (),
 ) -> dict[str, list[str]] | ObjectiveEvidenceIndex:
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
     normalized_terms = [term for term in dict.fromkeys(str(term).strip() for term in terms) if term]
     evidence = {term: [] for term in normalized_terms}
     selected_policy = source_policy or EvidenceSourcePolicy()
@@ -5078,7 +5394,12 @@ def evidence_index(
         if not repo_relative_path_safe(term):
             continue
         candidate = repo_root / term
-        if candidate.exists():
+        if (
+            not source_protected_scan_reason(repo_root, candidate)
+            and
+            not _path_is_scan_excluded(candidate, resolved_scan_excludes)
+            and candidate.exists()
+        ):
             reference = f"{Path(term).as_posix()} (path)"
             consider(
                 term,
@@ -5089,51 +5410,108 @@ def evidence_index(
 
     lowered_terms = {term: term.lower() for term in normalized_terms}
     cached_records = list(records) if records is not None else None
-    candidates: list[tuple[str, str, set[str], set[str], list[float]]] = []
-    if cached_records is not None:
-        for row in sorted(cached_records, key=lambda item: str(item.get("root_relative_path") or "")):
-            root_relative = str(row.get("root_relative_path") or "")
-            if not root_relative:
-                continue
-            text = str(row.get("evidence_text") or "")
-            symbols = set(_record_symbols(row))
-            try:
-                raw_tokens = json.loads(str(row.get("document_tokens_json") or "[]"))
-            except (TypeError, ValueError):
-                raw_tokens = []
-            document_tokens = {str(item) for item in raw_tokens} if isinstance(raw_tokens, list) else set()
-            try:
-                raw_embedding = json.loads(str(row.get("document_embedding_json") or "[]"))
-                document_embedding = [float(item) for item in raw_embedding] if isinstance(raw_embedding, list) else []
-            except (TypeError, ValueError):
-                document_embedding = []
-            # Legacy/incomplete rows are never silently treated as negative
-            # evidence.  Rebuild their cheap derived fields from cached text.
-            if not document_embedding or not document_tokens:
-                document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
-                document_embedding = text_embedding(document_text)
-                document_tokens = set(objective_tokens(document_text))
-            candidates.append((root_relative, text, symbols, document_tokens, document_embedding))
-    else:
-        for path in objective_candidate_files(repo_root, objective_path=objective_path):
+
+    def iter_candidates() -> Iterable[
+        tuple[str, str, set[str], set[str], list[float]]
+    ]:
+        """Yield one evidence candidate at a time in stable path order.
+
+        The direct tracked-source path can cover large composite repositories.
+        Keeping every source body, token set, and embedding alive until scoring
+        begins makes the source-safe ``--no-persist-ast-dataset`` mode consume
+        memory proportional to the complete checkout.  Each candidate is
+        scored exactly once, so streaming preserves evidence order and
+        decisions while bounding retained source data to the current file.
+        """
+
+        if cached_records is not None:
+            for row in sorted(
+                cached_records,
+                key=lambda item: str(item.get("root_relative_path") or ""),
+            ):
+                root_relative = str(row.get("root_relative_path") or "")
+                if not root_relative:
+                    continue
+                candidate = repo_root / root_relative
+                if (
+                    source_protected_scan_reason(repo_root, candidate)
+                    or _path_is_scan_excluded(
+                        candidate,
+                        resolved_scan_excludes,
+                    )
+                ):
+                    continue
+                text = str(row.get("evidence_text") or "")
+                symbols = set(_record_symbols(row))
+                try:
+                    raw_tokens = json.loads(
+                        str(row.get("document_tokens_json") or "[]")
+                    )
+                except (TypeError, ValueError):
+                    raw_tokens = []
+                document_tokens = (
+                    {str(item) for item in raw_tokens}
+                    if isinstance(raw_tokens, list)
+                    else set()
+                )
+                try:
+                    raw_embedding = json.loads(
+                        str(row.get("document_embedding_json") or "[]")
+                    )
+                    document_embedding = (
+                        [float(item) for item in raw_embedding]
+                        if isinstance(raw_embedding, list)
+                        else []
+                    )
+                except (TypeError, ValueError):
+                    document_embedding = []
+                # Legacy/incomplete rows are never silently treated as negative
+                # evidence. Rebuild their cheap derived fields from cached text.
+                if not document_embedding or not document_tokens:
+                    document_text = (
+                        f"{root_relative}\n{' '.join(sorted(symbols))}\n"
+                        f"{text[:12000]}"
+                    )
+                    document_embedding = text_embedding(document_text)
+                    document_tokens = set(objective_tokens(document_text))
+                yield (
+                    root_relative,
+                    text,
+                    symbols,
+                    document_tokens,
+                    document_embedding,
+                )
+            return
+
+        for path in objective_candidate_files(
+            repo_root,
+            objective_path=objective_path,
+            scan_exclude_paths=resolved_scan_excludes,
+        ):
             root_relative = repo_relative_path(repo_root, path)
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
             symbols = symbol_terms(path, text)
-            document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
-            candidates.append(
-                (
-                    root_relative,
-                    text,
-                    symbols,
-                    set(objective_tokens(document_text)),
-                    text_embedding(document_text),
-                )
+            document_text = (
+                f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
+            )
+            yield (
+                root_relative,
+                text,
+                symbols,
+                set(objective_tokens(document_text)),
+                text_embedding(document_text),
             )
 
-    for root_relative, text, symbols, document_tokens, document_embedding in candidates:
+    for (
+        root_relative,
+        text,
+        symbols,
+        document_tokens,
+        document_embedding,
+    ) in iter_candidates():
         haystack = f"{root_relative}\n{text}".lower()
         evidence_symbols = _ast_evidence_symbols(symbols)
 
@@ -6143,6 +6521,159 @@ def _dependency_values(task: Mapping[str, Any], *names: str) -> list[str]:
     return values
 
 
+def _duplicate_task_semantic_projection(task: Mapping[str, Any]) -> dict[str, Any]:
+    """Project execution-relevant fields used to validate a supplied CID.
+
+    Display aliases, lifecycle status, timestamps, and derived planning graphs
+    may legitimately differ across copies of the same task.  Goal ownership,
+    work text, evidence, paths, validation, and dependency surfaces may not:
+    accepting those differences under one caller-supplied CID can erase work or
+    prerequisites when either copy carries a terminal status.
+    """
+
+    normalized = {
+        re.sub(r"[^a-z0-9]+", "_", str(key).strip().lower()).strip("_"): value
+        for key, value in task.items()
+    }
+
+    def text(*names: str) -> str:
+        for name in names:
+            value = normalized.get(name)
+            if value not in (None, "", [], ()):
+                return " ".join(str(value).strip().split()).casefold()
+        return ""
+
+    def values(*names: str) -> list[str]:
+        return sorted(_dependency_values(normalized, *names))
+
+    return {
+        "goal_id": text("goal_id"),
+        "canonical_task_key": text(
+            "canonical_task_key",
+            "dedupe_key",
+            "semantic_key",
+        ),
+        "title": text("title", "summary"),
+        "goal": text("goal", "gap_task", "work_scope"),
+        "evidence": values(
+            "missing_evidence",
+            "evidence",
+            "acceptance",
+            "acceptance_criteria",
+        ),
+        "outputs": values(
+            "outputs",
+            "output_paths",
+            "produces",
+            "predicted_files",
+            "changed_paths",
+        ),
+        "inputs": values("inputs", "input_paths", "consumes"),
+        "validation": values(
+            "validation",
+            "validation_commands",
+            "validation_prerequisites",
+        ),
+        "goal_parents": values(
+            "parent_goal_ids",
+            "graph_parents",
+            "goal_parents",
+        ),
+        "task_dependencies": values(
+            "dependency_task_cids",
+            "depends_on",
+            "dependency_task_ids",
+            "prerequisite_task_cids",
+        ),
+        "imports": values(
+            "provides_imports",
+            "provided_imports",
+            "exports",
+            "modules",
+            "import_dependencies",
+            "required_imports",
+            "imports",
+        ),
+        "interfaces": values(
+            "provides_interfaces",
+            "provided_interfaces",
+            "interfaces",
+            "interface_dependencies",
+            "required_interfaces",
+        ),
+        "migrations": values(
+            "provides_migrations",
+            "provided_migrations",
+            "migrations",
+            "migration_dependencies",
+            "required_migrations",
+            "migrations_after",
+        ),
+        "external_completion": {
+            "authority": text(
+                "completion_authority",
+                "completion_authority_kind",
+            ),
+            "required": text("external_completion_required"),
+            "authority_cid": text("external_completion_authority_cid"),
+            "blockers": values(
+                "external_authority_blockers",
+                "external_completion_blockers",
+                "external_authority_goal_ids",
+            ),
+        },
+    }
+
+
+def _task_external_authority_blockers(task: Mapping[str, Any]) -> list[str]:
+    """Return external goal identities that forbid local task completion."""
+
+    normalized = {
+        re.sub(r"[^a-z0-9]+", "_", str(key).strip().lower()).strip("_"): value
+        for key, value in task.items()
+    }
+    goal_id = str(normalized.get("goal_id") or "").strip().upper()
+    blockers = {
+        str(item).strip().upper()
+        for item in _dependency_values(
+            normalized,
+            "external_authority_blockers",
+            "external_completion_blockers",
+            "external_authority_goal_ids",
+        )
+        if str(item).strip()
+    }
+    if _requires_external_completion(goal_id, normalized):
+        blockers.add(goal_id or "EXTERNAL-AUTHORITY")
+    blockers.update(
+        parent.strip().upper()
+        for parent in _dependency_values(
+            normalized,
+            "parent_goal_ids",
+            "graph_parents",
+            "goal_parents",
+        )
+        if parent.strip().upper() in EXTERNAL_AUTHORITY_BENCHMARK_GOAL_IDS
+    )
+    return sorted(blockers)
+
+
+def _externally_fenced_task_cids(graph: TaskDependencyGraph) -> set[str]:
+    """Return task CIDs that local status or merge receipts cannot complete."""
+
+    fenced = {
+        cid
+        for cid, node in graph.nodes.items()
+        if _task_external_authority_blockers(node.metadata)
+    }
+    fenced.update(
+        item.task_cid
+        for item in graph.repair_evidence
+        if item.kind == "external_authority_required" and item.task_cid
+    )
+    return fenced
+
+
 def _task_created_at_ms(task: Mapping[str, Any]) -> int:
     for name in ("created_at_ms", "queued_at_ms", "submitted_at_ms"):
         value = task.get(name)
@@ -6279,6 +6810,8 @@ def critical_path_schedule(
         if node.task_id:
             aliases[node.task_id] = cid
     succeeded = _successful_merge_receipt_cids(merge_receipts, aliases)
+    externally_fenced = _externally_fenced_task_cids(graph)
+    succeeded.difference_update(externally_fenced)
     incoming: dict[str, set[str]] = {cid: set() for cid in graph.nodes}
     outgoing: dict[str, set[str]] = {cid: set() for cid in graph.nodes}
     for edge in graph.edges:
@@ -6288,6 +6821,7 @@ def critical_path_schedule(
 
     invalid = set(graph.invalid_task_cids)
     invalid.update(item.task_cid for item in graph.repair_evidence if item.task_cid in graph.nodes)
+    invalid.update(externally_fenced)
     unresolved_nodes = set(graph.nodes) - succeeded
     unresolved_adjacency = {
         cid: {child for child in outgoing[cid] if child in unresolved_nodes}
@@ -6357,7 +6891,10 @@ def critical_path_schedule(
         claimable = (
             cid not in invalid
             and cid not in succeeded
-            and node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            and (
+                node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+                or cid in externally_fenced
+            )
             and _task_record_is_schedulable({**node.metadata, "status": node.status})
             and not blockers
         )
@@ -6486,6 +7023,7 @@ def materialize_task_dependency_dag(
         if cid in nodes:
             aliases[task_id] = cid
             existing = nodes[cid]
+            existing_record = records_by_cid.get(cid, existing.metadata)
             aliases_metadata = dict(existing.metadata)
             aliases_metadata["task_id_aliases"] = sorted(
                 {
@@ -6494,11 +7032,73 @@ def materialize_task_dependency_dag(
                     *[str(value) for value in aliases_metadata.get("task_id_aliases", [])],
                 }
             )
+            duplicate_external_blockers = sorted(
+                {
+                    *_task_external_authority_blockers(existing.metadata),
+                    *_task_external_authority_blockers(task),
+                }
+            )
+            if duplicate_external_blockers:
+                # A duplicate record cannot erase a stronger authority
+                # boundary by appearing after a local record with the same
+                # caller-supplied CID.  Preserve the union before the
+                # successful-status compatibility shortcut below.
+                aliases_metadata["external_authority_blockers"] = (
+                    duplicate_external_blockers
+                )
             nodes[cid] = replace(existing, metadata=aliases_metadata)
+            if duplicate_external_blockers:
+                add_repair(
+                    "external_authority_required",
+                    cid,
+                    ",".join(duplicate_external_blockers),
+                    (
+                        "duplicate task identity is governed by external "
+                        "completion authority; local status and merge receipts "
+                        "cannot schedule or complete it"
+                    ),
+                    {
+                        "goal_id": str(task.get("goal_id") or existing.goal_id),
+                        "external_authority_blockers": (
+                            duplicate_external_blockers
+                        ),
+                        "duplicate_record_index": index,
+                        "local_receipts_accepted": False,
+                    },
+                )
+            existing_projection = _duplicate_task_semantic_projection(
+                existing_record
+            )
+            duplicate_projection = _duplicate_task_semantic_projection(task)
+            if existing_projection != duplicate_projection:
+                add_repair(
+                    "conflicting_duplicate_task_identity",
+                    cid,
+                    task_id,
+                    (
+                        "multiple semantically different task records claim "
+                        f"canonical task CID {cid}"
+                    ),
+                    {
+                        "duplicate_record_index": index,
+                        "existing_semantic_projection_cid": canonical_content_cid(
+                            existing_projection
+                        ),
+                        "duplicate_semantic_projection_cid": canonical_content_cid(
+                            duplicate_projection
+                        ),
+                    },
+                )
+                continue
             if (
                 existing.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
                 or task_status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
             ):
+                if (
+                    existing.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+                    and task_status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+                ):
+                    nodes[cid] = replace(nodes[cid], status=task_status)
                 continue
             add_repair(
                 "duplicate_task",
@@ -6542,6 +7142,22 @@ def materialize_task_dependency_dag(
         canonical_key = str(task.get("canonical_task_key") or "").strip()
         if canonical_key:
             aliases[canonical_key] = cid
+        external_blockers = _task_external_authority_blockers(task)
+        if external_blockers:
+            add_repair(
+                "external_authority_required",
+                cid,
+                ",".join(external_blockers),
+                (
+                    "task is governed by external completion authority; "
+                    "local status and merge receipts cannot schedule or complete it"
+                ),
+                {
+                    "goal_id": node.goal_id,
+                    "external_authority_blockers": external_blockers,
+                    "local_receipts_accepted": False,
+                },
+            )
 
     goals: dict[str, list[str]] = {}
     for cid, node in nodes.items():
@@ -7688,6 +8304,89 @@ def plan_semantic_ast_bundles(
     return planned
 
 
+def _recorded_external_completion_is_valid(goal: ObjectiveGoal) -> bool:
+    """Return whether a terminal external goal carries typed durable proof."""
+
+    if goal.lifecycle_state_value != "verified_complete":
+        return False
+    authority_cid = str(
+        goal.fields.get("external_completion_authority_cid") or ""
+    ).strip()
+    if not authority_cid:
+        return False
+    try:
+        receipt_cids = json.loads(
+            str(goal.fields.get("external_completion_receipt_cids") or "[]")
+        )
+        validation = json.loads(
+            str(goal.fields.get("external_completion_validation") or "[]")
+        )
+        evidence_records = json.loads(
+            str(goal.fields.get("completion_evidence_records") or "[]")
+        )
+    except (TypeError, ValueError):
+        return False
+    if (
+        not isinstance(receipt_cids, list)
+        or not receipt_cids
+        or not all(str(item).strip() for item in receipt_cids)
+        or not isinstance(validation, list)
+        or not validation
+        or not all(
+            isinstance(item, Mapping)
+            and item.get("valid") is True
+            and str(item.get("receipt_cid") or "").strip() in receipt_cids
+            for item in validation
+        )
+        or not isinstance(evidence_records, list)
+        or not evidence_records
+        or not all(
+            isinstance(item, Mapping)
+            and isinstance(item.get("metadata"), Mapping)
+            and item["metadata"].get("external_operational_completion") is True
+            and str(item.get("provenance_cid") or "").strip() in receipt_cids
+            for item in evidence_records
+        )
+    ):
+        return False
+    return True
+
+
+def external_authority_goal_fence(
+    goals: Sequence[ObjectiveGoal],
+    *,
+    trust_recorded_completion: bool = True,
+) -> tuple[set[str], set[str]]:
+    """Return declared external goals and descendants still gated."""
+
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+    external = {
+        goal.goal_id
+        for goal in goals
+        if goal.requires_external_completion
+    }
+    blocked = set(external)
+    propagating = {
+        goal_id
+        for goal_id in external
+        if (
+            not trust_recorded_completion
+            or not _recorded_external_completion_is_valid(goals_by_id[goal_id])
+        )
+    }
+    changed = True
+    while changed:
+        changed = False
+        for goal_id, goal in goals_by_id.items():
+            if goal_id in blocked:
+                continue
+            if any(parent in propagating for parent in goal.parent_goal_ids):
+                blocked.add(goal_id)
+                propagating.add(goal_id)
+                changed = True
+    return external, blocked
+
+
 def scan_objective_gaps(
     repo_root: Path,
     *,
@@ -7708,6 +8407,8 @@ def scan_objective_gaps(
     evidence_source_policy: EvidenceSourcePolicy | None = None,
     evidence_repository_tree: str = "",
     evidence_policy_id: str = "",
+    scan_exclude_paths: Iterable[str | Path] = (),
+    trust_recorded_external_completion: bool = True,
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
@@ -7715,15 +8416,51 @@ def scan_objective_gaps(
     forced_goal_ids = {
         str(item).strip() for item in force_goal_ids if str(item).strip()
     }
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
+    scan_exclude_metadata = scan_exclude_path_metadata(
+        repo_root,
+        resolved_scan_excludes,
+    )
+    if scan_stats is not None:
+        scan_stats.clear()
+        scan_stats.update(
+            {
+                "scan_exclude_paths": scan_exclude_metadata,
+                "scan_exclude_path_count": len(scan_exclude_metadata),
+                "source_protected_scan_policy": source_protected_scan_policy(),
+            }
+        )
+    all_goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    external_goal_ids, external_blocked_goal_ids = (
+        external_authority_goal_fence(
+            all_goals,
+            trust_recorded_completion=trust_recorded_external_completion,
+        )
+    )
     goals = [
         goal
         for goal in all_goals
-        if goal.is_schedulable
-        or (
-            goal.goal_id in forced_goal_ids
-            and goal.lifecycle_state_value == "blocked"
+        if (
+            goal.is_schedulable
+            or (
+                goal.goal_id in forced_goal_ids
+                and goal.lifecycle_state_value == "blocked"
+            )
         )
+        and goal.goal_id not in external_blocked_goal_ids
     ]
+    if scan_stats is not None:
+        scan_stats.update(
+            {
+                "external_authority_goal_ids": sorted(external_goal_ids),
+                "external_authority_blocked_goal_ids": sorted(
+                    external_blocked_goal_ids
+                ),
+            }
+        )
     if not goals:
         return []
     graph = goal_graph(all_goals)
@@ -7763,11 +8500,23 @@ def scan_objective_gaps(
             objective_path=objective_path,
             dataset_dir=dataset_dir,
             dataset_id=dataset_id,
+            scan_exclude_paths=resolved_scan_excludes,
         )
         cached_records = ObjectiveDatasetStore(dataset_dir).load_records(dataset_id)
         if scan_stats is not None:
             scan_stats.clear()
             scan_stats.update(artifact.to_dict())
+            scan_stats.update(
+                {
+                    "scan_exclude_paths": scan_exclude_metadata,
+                    "scan_exclude_path_count": len(scan_exclude_metadata),
+                    "source_protected_scan_policy": source_protected_scan_policy(),
+                    "external_authority_goal_ids": sorted(external_goal_ids),
+                    "external_authority_blocked_goal_ids": sorted(
+                        external_blocked_goal_ids
+                    ),
+                }
+            )
     pipeline_diagnostics: dict[str, Any] = {}
     if dataset_dir is not None or analysis_pipeline is not None:
         try:
@@ -7917,6 +8666,7 @@ def scan_objective_gaps(
         source_policy=evidence_source_policy,
         repository_tree=evidence_repository_tree,
         policy_id=evidence_policy_id,
+        scan_exclude_paths=resolved_scan_excludes,
     )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
     findings: list[ObjectiveFinding] = []
@@ -8043,7 +8793,11 @@ def scan_objective_gaps(
                     if validation_gap
                     else str(fields.get("gap_task") or "")
                 ),
-                parent_goal_ids=goal.parent_goal_ids,
+                parent_goal_ids=[
+                    parent
+                    for parent in goal.parent_goal_ids
+                    if parent not in external_goal_ids
+                ],
                 graph_depth=int(graph["depths"].get(goal.goal_id, 0)),
                 objective_heap_index=objective_heap_index,
                 bundle_key=bundle_key,
@@ -8192,6 +8946,10 @@ def scan_objective_gaps(
                 status="blocked" if forced_review_only else "todo",
                 is_schedulable=not forced_review_only,
                 review_only=forced_review_only,
+                completion_authority=str(
+                    fields.get("completion_authority") or ""
+                ),
+                external_authority_blockers=[],
             )
             findings.append(finding)
             if not forced_goal:
@@ -8667,6 +9425,10 @@ def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -
         "status": status,
         "is_schedulable": is_schedulable,
         "review_only": review_only,
+        "completion_authority": finding.completion_authority,
+        "external_authority_blockers": _unique_strings(
+            finding.external_authority_blockers
+        ),
     }
 
 
@@ -8846,6 +9608,8 @@ def render_task_block(
 - Generated artifacts: {", ".join(finding.generated_artifacts)}
 - Allow concurrent with: {", ".join(finding.allow_concurrent_with)}
 - Goal id: {finding.goal_id}
+- Completion authority: {finding.completion_authority or "local"}
+- External authority blockers: {", ".join(finding.external_authority_blockers)}
 - Canonical task key: {identity.canonical_task_key}
 - Canonical task CID: {identity.canonical_task_cid}
 - Semantic identity: {semantic_identity}
@@ -8913,6 +9677,8 @@ def write_bundle_shards(
                 "canonical_task_cid": objective_finding_task_identity(record.task_id, record.finding).canonical_task_cid,
                 "goal_id": record.finding.goal_id,
                 "parent_goal_ids": record.finding.parent_goal_ids,
+                "completion_authority": record.finding.completion_authority,
+                "external_authority_blockers": record.finding.external_authority_blockers,
                 "priority": record.finding.priority,
                 "objective_heap_index": record.finding.objective_heap_index,
                 "outputs": record.finding.outputs,
@@ -8987,6 +9753,8 @@ def write_bundle_shards(
                 "graph_depth": record.finding.graph_depth,
                 "objective_heap_index": record.finding.objective_heap_index,
                 "parent_goal_ids": record.finding.parent_goal_ids,
+                "completion_authority": record.finding.completion_authority,
+                "external_authority_blockers": record.finding.external_authority_blockers,
                 "missing_evidence": record.finding.missing_evidence,
                 "discovery_path": repo_relative_path(repo_root, record.discovery_path),
                 "bundle_strategy": record.finding.bundle_strategy,
@@ -9115,11 +9883,13 @@ def generate_objective_todos(
     surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    scan_exclude_paths: Iterable[str | Path] = (),
     precomputed_findings: Sequence[ObjectiveFinding] | None = None,
     typed_evidence_receipts: Sequence[Mapping[str, Any] | Any] = (),
     evidence_source_policy: EvidenceSourcePolicy | None = None,
     evidence_repository_tree: str = "",
     evidence_policy_id: str = "",
+    trust_recorded_external_completion: bool = True,
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
@@ -9128,6 +9898,17 @@ def generate_objective_todos(
     # point deals only in canonical display-ID prefixes.
     task_prefix = normalize_task_id_prefix(task_prefix)
     records: list[ObjectiveTaskRecord] = []
+    objective_goals = (
+        parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace"))
+        if objective_path.exists()
+        else []
+    )
+    _external_goal_ids, external_blocked_goal_ids = (
+        external_authority_goal_fence(
+            objective_goals,
+            trust_recorded_completion=trust_recorded_external_completion,
+        )
+    )
     if precomputed_findings is None:
         findings = scan_objective_gaps(
             repo_root,
@@ -9144,12 +9925,41 @@ def generate_objective_todos(
             evidence_source_policy=evidence_source_policy,
             evidence_repository_tree=evidence_repository_tree,
             evidence_policy_id=evidence_policy_id,
+            scan_exclude_paths=scan_exclude_paths,
+            trust_recorded_external_completion=(
+                trust_recorded_external_completion
+            ),
         )
     else:
         findings = list(precomputed_findings)
     findings = [
         apply_objective_finding_execution_policy(finding)
         for finding in findings
+        if not _requires_external_completion(
+            finding.goal_id,
+            {
+                "completion_authority": finding.completion_authority,
+                "external_completion_required": bool(
+                    finding.external_authority_blockers
+                ),
+            },
+        )
+        and not finding.external_authority_blockers
+        and not external_blocked_goal_ids.intersection(
+            {
+                str(finding.goal_id).strip(),
+                *(str(item).strip() for item in finding.parent_goal_ids),
+                *(str(item).strip() for item in finding.goal_packet_goal_ids),
+            }
+        )
+        and not any(
+            _requires_external_completion(goal_id, {})
+            for goal_id in (
+                finding.goal_id,
+                *finding.parent_goal_ids,
+                *finding.goal_packet_goal_ids,
+            )
+        )
     ]
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
@@ -9422,6 +10232,13 @@ def generate_objective_todos_result(
                     evidence_policy_id=str(
                         kwargs.get("evidence_policy_id") or ""
                     ),
+                    scan_exclude_paths=kwargs.get("scan_exclude_paths") or (),
+                    trust_recorded_external_completion=bool(
+                        kwargs.get(
+                            "trust_recorded_external_completion",
+                            True,
+                        )
+                    ),
                 )
             except TimeoutError as exc:
                 return build_scan_result(
@@ -9458,6 +10275,10 @@ def generate_objective_todos_result(
         metadata={
             "candidate_count": len(records),
             "duplicate_candidate_count": duplicate_candidate_count,
+            "scan_exclude_paths": scan_exclude_path_metadata(
+                repo_root,
+                kwargs.get("scan_exclude_paths") or (),
+            ),
         },
     )
 
@@ -9641,7 +10462,10 @@ def build_bundle_task_payloads(
         terminal_receipts,
         receipt_aliases,
     )
+    externally_fenced_task_cids = _externally_fenced_task_cids(graph)
+    successful_receipt_cids.difference_update(externally_fenced_task_cids)
     invalid_task_cids = set(graph.invalid_task_cids)
+    successful_receipt_cids.difference_update(invalid_task_cids)
     schedule_by_cid = {item.task_cid: item for item in graph.schedule}
     member_cids_by_bundle_and_id = {
         (str(node.metadata.get("bundle_key") or ""), node.task_id): cid
@@ -9654,8 +10478,12 @@ def build_bundle_task_payloads(
         cid: (
             set()
             if (
-                cid in successful_receipt_cids
-                or node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+                (
+                    cid in successful_receipt_cids
+                    or node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+                )
+                and cid not in externally_fenced_task_cids
+                and cid not in invalid_task_cids
             )
             else set(schedule_by_cid.get(cid).blocking_task_cids if cid in schedule_by_cid else incoming.get(cid, set()))
         )
@@ -9714,8 +10542,12 @@ def build_bundle_task_payloads(
             for cid in member_cids
             if cid in graph.nodes
             and (
-                cid in successful_receipt_cids
-                or graph.nodes[cid].status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+                (
+                    cid in successful_receipt_cids
+                    or graph.nodes[cid].status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+                )
+                and cid not in externally_fenced_task_cids
+                and cid not in invalid_task_cids
             )
         }
         active_member_cids = {

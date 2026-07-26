@@ -76,7 +76,7 @@ def _seed_objective_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     return repo, objective, tmp_path / "datasets"
 
 
-def test_objective_scan_skips_external_symlink_targets_and_keeps_internal_links(
+def test_objective_scan_skips_symlinks_and_never_reads_external_targets(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -103,7 +103,7 @@ def test_objective_scan_skips_external_symlink_targets_and_keeps_internal_links(
     )
 
     assert internal_target in candidates
-    assert internal_link in candidates
+    assert internal_link not in candidates
     assert external_link not in candidates
     records = objective_graph.collect_ast_dataset_records(
         repo,
@@ -225,7 +225,10 @@ def test_incremental_and_exhaustive_codebase_scans_report_same_coverage_dimensio
     assert exhaustive.coverage_dict()["excluded_files"] == 1
 
 
-def test_ast_and_evidence_snapshots_reparse_only_changed_blobs(tmp_path: Path, monkeypatch) -> None:
+def test_ast_and_evidence_snapshots_recompute_untrusted_source_cache(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     repo, objective, dataset_dir = _seed_objective_repo(tmp_path)
     parse_calls = 0
     real_parse = objective_graph.parse_python_ast_quietly
@@ -261,10 +264,10 @@ def test_ast_and_evidence_snapshots_reparse_only_changed_blobs(tmp_path: Path, m
         scan_stats=warm_stats,
     )
     assert [asdict(item) for item in warm_plan] == [asdict(item) for item in cold_plan]
-    assert parse_calls == cold_parse_calls
-    assert warm_stats["parsed_record_count"] == 0
-    assert warm_stats["reused_record_count"] == 2
-    assert float(warm_stats["saved_parse_seconds"]) > 0
+    assert parse_calls > cold_parse_calls
+    assert warm_stats["parsed_record_count"] == 2
+    assert warm_stats["reused_record_count"] == 0
+    assert float(warm_stats["saved_parse_seconds"]) == 0
 
     (repo / "src" / "alpha.py").write_text(
         "class AlphaRouter:\n    def dispatch(self):\n        return 'changed'\n",
@@ -278,8 +281,8 @@ def test_ast_and_evidence_snapshots_reparse_only_changed_blobs(tmp_path: Path, m
         dataset_id="incremental-runtime",
         scan_stats=changed_stats,
     )
-    assert changed_stats["parsed_record_count"] == 1
-    assert changed_stats["reused_record_count"] == 1
+    assert changed_stats["parsed_record_count"] == 2
+    assert changed_stats["reused_record_count"] == 0
 
 
 def test_deleted_and_renamed_paths_remove_stale_evidence_deterministically(tmp_path: Path) -> None:
@@ -301,7 +304,8 @@ def test_deleted_and_renamed_paths_remove_stale_evidence_deterministically(tmp_p
         dataset_id=dataset_id,
         scan_stats=rename_stats,
     )
-    assert rename_stats["parsed_record_count"] == 0
+    assert rename_stats["parsed_record_count"] == 2
+    assert rename_stats["reused_record_count"] == 0
     assert rename_stats["renamed_record_count"] == 1
     assert rename_stats["deleted_record_count"] == 1
     assert renamed_plan[0].present_evidence["durable design notes"] == [
@@ -492,6 +496,7 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
         completion="manual",
         priority="P1",
         track="runtime",
+        outputs=["feature.py"],
         validation=["python -m py_compile feature.py"],
     )
 

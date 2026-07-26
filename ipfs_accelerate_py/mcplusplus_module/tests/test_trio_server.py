@@ -14,6 +14,10 @@ from ipfs_accelerate_py.mcplusplus_module.trio import (
     ServerConfig,
     is_trio_context,
 )
+from ipfs_accelerate_py.mcplusplus_module.p2p_transport import (
+    MCPp2pNode,
+    PeerInfo,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -85,6 +89,80 @@ class TestTrioMCPServer:
         config = ServerConfig(name="config-name")
         server = TrioMCPServer(config=config, name="override-name")
         assert server.config.name == "override-name"
+
+    def test_maintenance_skips_disabled_mdns_and_retries_bootstrap(
+        self, monkeypatch
+    ):
+        """Disabled mDNS must not suppress configured bootstrap retries."""
+        bootstrap = "/ip4/10.8.0.99/tcp/19001/p2p/12D3KooWBootstrap"
+        server = TrioMCPServer()
+        server._started = True
+        node = MCPp2pNode(bootstrap_peers=[bootstrap])
+        calls = []
+        discovery_calls = []
+
+        async def no_sleep(_delay):
+            return None
+
+        async def unexpected_discovery():
+            discovery_calls.append(True)
+            raise AssertionError("mDNS discovery must be skipped when disabled")
+
+        async def connect(peer_addr):
+            calls.append(peer_addr)
+            server._started = False
+            return True
+
+        monkeypatch.setenv("MCPPP_P2P_MDNS", "0")
+        monkeypatch.setattr(trio, "sleep", no_sleep)
+        monkeypatch.setattr(node, "discover_peers", unexpected_discovery)
+        monkeypatch.setattr(node, "_connect_bootstrap", connect)
+
+        trio.run(server._p2p_maintenance_loop, node)
+
+        assert discovery_calls == []
+        assert calls == [bootstrap]
+
+    def test_self_only_discovery_does_not_suppress_bootstrap(
+        self, monkeypatch
+    ):
+        """A legacy/local discovery record must not count as a remote peer."""
+        bootstrap = "/ip4/10.8.0.99/tcp/19001/p2p/12D3KooWBootstrap"
+        server = TrioMCPServer()
+        server._started = True
+        node = MCPp2pNode(bootstrap_peers=[bootstrap])
+        node._host = Mock()
+        node._host.get_id.return_value = "12D3KooWLocal"
+        calls = []
+
+        async def no_sleep(_delay):
+            return None
+
+        async def discover_self():
+            peer = PeerInfo(
+                peer_id=node.peer_id,
+                multiaddrs=[
+                    f"/ip4/10.8.0.99/tcp/19001/p2p/{node.peer_id}"
+                ],
+            )
+            # Simulate state left by the previous discover_peers implementation.
+            node._peers[node.peer_id] = peer
+            server._started = False
+            return [peer]
+
+        async def connect(peer_addr):
+            calls.append(peer_addr)
+            return True
+
+        monkeypatch.setenv("MCPPP_P2P_MDNS", "1")
+        monkeypatch.setattr(trio, "sleep", no_sleep)
+        monkeypatch.setattr(node, "discover_peers", discover_self)
+        monkeypatch.setattr(node, "_connect_bootstrap", connect)
+
+        trio.run(server._p2p_maintenance_loop, node)
+
+        assert calls == [bootstrap]
+        assert node.peer_id not in node._peers
 
     def test_resolve_p2p_registrars_returns_callables(self):
         """Resolver should return callable taskqueue/workflow registrars."""

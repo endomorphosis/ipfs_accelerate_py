@@ -32,11 +32,75 @@ def test_model_manager_discovers_openai_compatible_model(monkeypatch, tmp_path):
 
     models = manager.list_served_models("http://127.0.0.1:8080/v1")
 
-    assert models[0]["id"] == "example/Leanstral"
+    assert models[0]["id"] == "leanstral_local"
+    assert models[0]["logical_model_id"] == "leanstral_local"
+    assert models[0]["transport_model_id"] == "example/Leanstral"
+    assert models[0]["transport"] == "llamacpp"
+    assert models[0]["provider"] == "llamacpp"
     assert models[0]["status"] == "available"
     assert manager.get_served_model(
-        "example/Leanstral", "http://127.0.0.1:8080/v1"
+        "leanstral_local", "http://127.0.0.1:8080/v1"
     )["metadata"]["n_ctx"] == 8192
+
+
+def test_leanstral_alias_does_not_select_unrelated_sole_model(monkeypatch, tmp_path):
+    class _OtherResponse(_Response):
+        def read(self):
+            return json.dumps({
+                "data": [{
+                    "id": "example/OtherModel",
+                    "owned_by": "llamacpp",
+                }]
+            }).encode()
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *_args, **_kwargs: _OtherResponse(),
+    )
+    manager = ModelManager(
+        storage_path=str(tmp_path / "models.json"),
+        use_database=False,
+    )
+
+    assert manager.get_served_model(
+        "leanstral",
+        "http://127.0.0.1:8080/v1",
+    ) is None
+
+
+def test_leanstral_logical_lookup_fails_closed_when_transport_is_ambiguous(
+    monkeypatch,
+    tmp_path,
+):
+    class _DuplicateResponse(_Response):
+        def read(self):
+            return json.dumps({
+                "data": [
+                    {"id": "example/Leanstral-A", "owned_by": "llamacpp"},
+                    {"id": "example/Leanstral-B", "owned_by": "llamacpp"},
+                ]
+            }).encode()
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *_args, **_kwargs: _DuplicateResponse(),
+    )
+    manager = ModelManager(
+        storage_path=str(tmp_path / "models.json"),
+        use_database=False,
+    )
+
+    models = manager.list_served_models("http://127.0.0.1:8080/v1")
+
+    assert len(models) == 2
+    assert {model["transport_model_id"] for model in models} == {
+        "example/Leanstral-A",
+        "example/Leanstral-B",
+    }
+    assert manager.get_served_model(
+        "leanstral_local",
+        "http://127.0.0.1:8080/v1",
+    ) is None
 
 
 @pytest.mark.anyio

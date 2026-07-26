@@ -418,7 +418,11 @@ def test_missing_provider_is_normal_and_does_not_import_ipfs_datasets_py() -> No
     def no_entry_points() -> SimpleNamespace:
         return SimpleNamespace(select=lambda **_: ())
 
+    # This test may run after an independently exercised provider in the same
+    # pytest process.  Prove that discovery does not change module state
+    # instead of assuming global test order leaves the package unimported.
+    module_before = sys.modules.get("ipfs_datasets_py")
     registry = ProofProviderRegistry(environ={}, entry_points=no_entry_points)
     assert registry.discover() == ()
     assert registry.client("ipfs-datasets") is None
-    assert "ipfs_datasets_py" not in sys.modules
+    assert sys.modules.get("ipfs_datasets_py") is module_before
