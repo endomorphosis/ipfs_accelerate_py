@@ -18,14 +18,14 @@ rendered properly in your Markdown viewer.
 
 [[open-in-colab]]
 
-Traditionally, models used for [object detection](object_detection) require labeled image datasets for training,
+Traditionally, models used for [object detection](object_detection.md) require labeled image datasets for training,
 and are limited to detecting the set of classes from the training data.
 
-Zero-shot object detection is supported by the [OWL-ViT](../model_doc/owlvit) model which uses a different approach. OWL-ViT
+Zero-shot object detection is supported by the [OWL-ViT](../model_doc/owlvit.md) model which uses a different approach. OWL-ViT
 is an open-vocabulary object detector. It means that it can detect objects in images based on free-text queries without
 the need to fine-tune the model on labeled datasets.
 
-OWL-ViT leverages multi-modal representations to perform open-vocabulary detection. It combines [CLIP](../model_doc/clip) with
+OWL-ViT leverages multi-modal representations to perform open-vocabulary detection. It combines [CLIP](../model_doc/clip.md) with
 lightweight object classification and localization heads. Open-vocabulary detection is achieved by embedding free-text queries with the text encoder of CLIP and using them as input to the object classification and localization heads,
 which associate images with their corresponding textual descriptions, while ViT processes image patches as inputs. The authors
 of OWL-ViT first trained CLIP from scratch and then fine-tuned OWL-ViT end to end on standard object detection datasets using
