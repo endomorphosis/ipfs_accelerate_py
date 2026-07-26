@@ -17,7 +17,9 @@ Environment variables:
 - `IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER`: enable backend manager provider
 - `IPFS_ACCELERATE_PY_TTS_MODEL`: HF model name for TTS (default: suno/bark-small)
 - `IPFS_ACCELERATE_PY_STT_MODEL`: HF model name for STT (default: openai/whisper-base)
-- `IPFS_ACCELERATE_PY_VOICE_DEVICE`: device for local adapters (cpu/cuda)
+- `IPFS_ACCELERATE_PY_TTS_DEVICE`: device for local TTS (falls back to VOICE_DEVICE)
+- `IPFS_ACCELERATE_PY_STT_DEVICE`: device for local STT (falls back to VOICE_DEVICE)
+- `IPFS_ACCELERATE_PY_VOICE_DEVICE`: shared device fallback for local adapters (cpu/cuda)
 - `IPFS_ACCELERATE_PY_TTS_OUTPUT_FORMAT`: audio output format hint (wav/mp3)
 - `IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS`: ordered Abby IndexTTS HTTP URLs
 - `IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL`: Abby Whisper HTTP model base URL
@@ -1686,8 +1688,9 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
             )
             device_str = (
                 device
+                or os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE")
                 or os.getenv("IPFS_ACCELERATE_PY_VOICE_DEVICE")
-                or os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE", "cpu")
+                or "cpu"
             )
 
             cache_key = f"{model}::{device_str}"
@@ -1743,8 +1746,9 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
             )
             device_str = (
                 device
+                or os.getenv("IPFS_ACCELERATE_PY_STT_DEVICE")
                 or os.getenv("IPFS_ACCELERATE_PY_VOICE_DEVICE")
-                or os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE", "cpu")
+                or "cpu"
             )
 
             cache_key = f"{model}::{device_str}"
@@ -1794,6 +1798,61 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
     return _HuggingFaceVoiceProvider()
 
 
+def _await_from_sync(value: object) -> object:
+    """Resolve an awaitable without changing the synchronous voice API.
+
+    ``InferenceBackendManager.execute_task`` is async, while the legacy voice
+    entrypoints are intentionally synchronous.  A nested ``asyncio.run`` is
+    invalid when callers already have an event loop, so that case is isolated
+    in a short-lived worker thread with its own loop.
+    """
+    import asyncio
+    import inspect
+
+    if not inspect.isawaitable(value):
+        return value
+
+    async def _wait() -> object:
+        return await value
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_wait())
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(
+        max_workers=1,
+        thread_name_prefix="voice-backend-manager",
+    ) as executor:
+        return executor.submit(asyncio.run, _wait()).result()
+
+
+_BACKEND_RESULT_MISSING = object()
+
+
+def _backend_manager_result_value(
+    result: object,
+    *keys: str,
+) -> object:
+    """Read a backend value from canonical or recorder-wrapped results."""
+    if not isinstance(result, Mapping):
+        return result
+
+    for key in keys:
+        if key in result:
+            return result[key]
+
+    nested = result.get("result", _BACKEND_RESULT_MISSING)
+    if isinstance(nested, Mapping):
+        for key in keys:
+            if key in nested:
+                return nested[key]
+        return _BACKEND_RESULT_MISSING
+    return nested
+
+
 def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
     """Get provider backed by InferenceBackendManager for distributed inference."""
     if not _truthy(os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER")):
@@ -1811,6 +1870,8 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
             return None
 
         class _BackendManagerVoiceProvider:
+            provider_name = "backend_manager"
+
             def synthesize(
                 self,
                 text: str,
@@ -1823,31 +1884,41 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
             ) -> bytes:
                 import base64
 
-                backend = manager.select_backend_for_task(
-                    task="text-to-speech",
-                    model=model_name or os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL", ""),
-                    protocol="any",
-                )
-                if backend is None:
-                    raise RuntimeError("No available backend for text-to-speech task")
-
-                payload: Dict[str, object] = {"text": str(text), "device": device, **kwargs}
+                model = model_name or os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL", "")
+                payload: Dict[str, object] = {
+                    "text": str(text),
+                    "device": device,
+                    **kwargs,
+                }
                 if voice:
                     payload["voice"] = voice
                 if output_format:
                     payload["output_format"] = output_format
 
-                result = manager.execute_inference(
-                    backend_id=backend["id"],
+                result = _await_from_sync(manager.execute_task(
                     task="text-to-speech",
-                    payload=payload,
-                )
+                    model=model,
+                    inputs=[str(text)],
+                    parameters=payload,
+                ))
 
-                audio = result.get("audio")
+                audio = _backend_manager_result_value(
+                    result,
+                    "audio",
+                    "audio_bytes",
+                    "audio_b64",
+                )
                 if isinstance(audio, bytes):
                     return audio
+                if isinstance(audio, (bytearray, memoryview)):
+                    return bytes(audio)
                 if isinstance(audio, str):
-                    return base64.b64decode(audio)
+                    try:
+                        return base64.b64decode(audio, validate=True)
+                    except Exception as exc:
+                        raise RuntimeError(
+                            "Backend manager TTS provider returned invalid base64 audio"
+                        ) from exc
                 raise RuntimeError("Backend manager TTS provider did not return audio bytes")
 
             def transcribe(
@@ -1861,31 +1932,34 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
             ) -> str:
                 import base64
 
-                backend = manager.select_backend_for_task(
-                    task="automatic-speech-recognition",
-                    model=model_name or os.getenv("IPFS_ACCELERATE_PY_STT_MODEL", ""),
-                    protocol="any",
-                )
-                if backend is None:
-                    raise RuntimeError("No available backend for speech-to-text task")
-
                 if isinstance(audio, bytes):
                     audio_payload: object = base64.b64encode(audio).decode("ascii")
                 else:
                     audio_payload = audio
 
-                payload: Dict[str, object] = {"audio": audio_payload, "device": device, **kwargs}
+                model = model_name or os.getenv("IPFS_ACCELERATE_PY_STT_MODEL", "")
+                payload: Dict[str, object] = {
+                    "audio": audio_payload,
+                    "device": device,
+                    **kwargs,
+                }
                 if language:
                     payload["language"] = language
 
-                result = manager.execute_inference(
-                    backend_id=backend["id"],
+                result = _await_from_sync(manager.execute_task(
                     task="automatic-speech-recognition",
-                    payload=payload,
-                )
+                    model=model,
+                    inputs=[audio_payload],
+                    parameters=payload,
+                ))
 
-                text = result.get("text")
-                if text is not None:
+                text = _backend_manager_result_value(
+                    result,
+                    "text",
+                    "transcript",
+                    "transcription",
+                )
+                if text is not _BACKEND_RESULT_MISSING and text is not None:
                     return str(text)
                 raise RuntimeError("Backend manager STT provider did not return text")
 
@@ -1911,6 +1985,8 @@ def _provider_cache_key() -> tuple:
         os.getenv("IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_STT_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_STT_DEVICE", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_VOICE_DEVICE", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URL", "").strip(),
