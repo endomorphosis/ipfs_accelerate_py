@@ -382,6 +382,51 @@ def test_undeclared_shared_checkout_mutation_fails_before_validation_or_completi
     assert incident["requires_operator_clearance"] is True
 
 
+def test_external_protected_update_preserves_candidate_without_consuming_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, _workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    state = PortalTaskState()
+    queue_outcomes: list[int] = []
+
+    def agent_runner(*_args, **kwargs):
+        candidate = Path(kwargs["cwd"]) / "src" / "candidate.py"
+        candidate.parent.mkdir(parents=True)
+        candidate.write_text("VALUE = 1\n", encoding="utf-8")
+        protected.write_text("operator update\n", encoding="utf-8")
+        return subprocess.CompletedProcess(["fake-agent"], 0)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        agent_runner,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda _task, returncode, **_kwargs: queue_outcomes.append(returncode),
+    )
+
+    result = daemon._run_implementation(
+        _task(outputs=["src/candidate.py"]),
+        state,
+    )
+
+    preservation = result["failed_preservation_result"]
+    rescue_branch = preservation["rescue_branch"]
+    assert result["returncode"] == 1
+    assert result["reason"] == "implementation_protected_path_mutated"
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert preservation["preserved"] is True
+    assert rescue_branch.endswith("-protected-path-interrupted")
+    assert _git(repo, "show", f"{rescue_branch}:src/candidate.py") == "VALUE = 1"
+    assert state.implementation_attempts == {}
+    assert state.implementation_attempts_by_cid == {}
+    assert queue_outcomes == []
+
+
 def test_validation_mutation_fails_before_shared_checkout_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

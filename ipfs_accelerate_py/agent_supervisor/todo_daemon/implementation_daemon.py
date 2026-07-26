@@ -5469,10 +5469,21 @@ class PortalImplementationDaemon:
                     "reason": "implementation_protected_path_mutated",
                     "protected_path_violation": protected_path_violation,
                 }
-                cleanup_result = self._cleanup_merged_worktree(
-                    worktree_path,
-                    branch_name,
-                    reusable=False,
+                failed_preservation_result = (
+                    self._preserve_protected_path_interrupted_worktree(
+                        worktree_path,
+                        branch_name,
+                        task,
+                        attempt,
+                        protected_path_violation,
+                    )
+                )
+                commit_result = dict(
+                    failed_preservation_result.get("commit_result") or commit_result
+                )
+                implementation_commit = str(commit_result.get("commit", ""))
+                cleanup_result = dict(
+                    failed_preservation_result.get("cleanup_result") or cleanup_result
                 )
             elif returncode != 0:
                 provider_failure = self._provider_capacity_failure_from_log(log_path)
@@ -5496,10 +5507,21 @@ class PortalImplementationDaemon:
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
                     }
-                    cleanup_result = self._cleanup_merged_worktree(
-                        worktree_path,
-                        branch_name,
-                        reusable=False,
+                    failed_preservation_result = (
+                        self._preserve_protected_path_interrupted_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            protected_path_violation,
+                        )
+                    )
+                    commit_result = dict(
+                        failed_preservation_result.get("commit_result") or commit_result
+                    )
+                    implementation_commit = str(commit_result.get("commit", ""))
+                    cleanup_result = dict(
+                        failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
             if returncode == 0 and not protected_path_violation:
                 self._mark_active_phase(
@@ -5550,10 +5572,23 @@ class PortalImplementationDaemon:
                         "protected_path_violation": protected_path_violation,
                     }
                     if worktree_path.exists():
-                        cleanup_result = self._cleanup_merged_worktree(
-                            worktree_path,
-                            branch_name,
-                            reusable=False,
+                        failed_preservation_result = (
+                            self._preserve_protected_path_interrupted_worktree(
+                                worktree_path,
+                                branch_name,
+                                task,
+                                attempt,
+                                protected_path_violation,
+                            )
+                        )
+                        commit_result = dict(
+                            failed_preservation_result.get("commit_result")
+                            or commit_result
+                        )
+                        implementation_commit = str(commit_result.get("commit", ""))
+                        cleanup_result = dict(
+                            failed_preservation_result.get("cleanup_result")
+                            or cleanup_result
                         )
                 elif validation_result.get("passed", False):
                     commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
@@ -5662,10 +5697,21 @@ class PortalImplementationDaemon:
                     "protected_path_violation": protected_path_violation,
                 }
                 if worktree_path.exists():
-                    cleanup_result = self._cleanup_merged_worktree(
-                        worktree_path,
-                        branch_name,
-                        reusable=False,
+                    failed_preservation_result = (
+                        self._preserve_protected_path_interrupted_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            protected_path_violation,
+                        )
+                    )
+                    commit_result = dict(
+                        failed_preservation_result.get("commit_result") or commit_result
+                    )
+                    implementation_commit = str(commit_result.get("commit", ""))
+                    cleanup_result = dict(
+                        failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
             timeout_result = {
                 "task_id": task.task_id,
@@ -5772,10 +5818,23 @@ class PortalImplementationDaemon:
                             timeout_result,
                         )
                     elif protected_path_violation:
-                        cleanup_result = self._cleanup_merged_worktree(
-                            worktree_path,
-                            branch_name,
-                            reusable=False,
+                        failed_preservation_result = (
+                            self._preserve_protected_path_interrupted_worktree(
+                                worktree_path,
+                                branch_name,
+                                task,
+                                attempt,
+                                protected_path_violation,
+                            )
+                        )
+                        commit_result = dict(
+                            failed_preservation_result.get("commit_result")
+                            or commit_result
+                        )
+                        implementation_commit = str(commit_result.get("commit", ""))
+                        cleanup_result = dict(
+                            failed_preservation_result.get("cleanup_result")
+                            or cleanup_result
                         )
                     else:
                         failed_preservation_result = self._preserve_timed_out_worktree(
@@ -5853,16 +5912,38 @@ class PortalImplementationDaemon:
                 exception_result["protected_path_violation"] = (
                     protected_path_violation
                 )
-            # Clean up worktree on any exception, not just setup failures
+            # Preserve an implementation candidate when an operator-side
+            # protected-path update interrupts it. Other setup failures retain
+            # their existing cleanup path.
             if worktree_path.exists():
                 try:
-                    cleanup_result = self._cleanup_failed_setup_worktree(
-                        worktree_path,
-                        branch_name,
-                        task=task,
-                        attempt=attempt,
-                        exception_result=exception_result,
-                    )
+                    if protected_path_violation:
+                        failed_preservation_result = (
+                            self._preserve_protected_path_interrupted_worktree(
+                                worktree_path,
+                                branch_name,
+                                task,
+                                attempt,
+                                protected_path_violation,
+                            )
+                        )
+                        commit_result = dict(
+                            failed_preservation_result.get("commit_result")
+                            or commit_result
+                        )
+                        implementation_commit = str(commit_result.get("commit", ""))
+                        cleanup_result = dict(
+                            failed_preservation_result.get("cleanup_result")
+                            or cleanup_result
+                        )
+                    else:
+                        cleanup_result = self._cleanup_failed_setup_worktree(
+                            worktree_path,
+                            branch_name,
+                            task=task,
+                            attempt=attempt,
+                            exception_result=exception_result,
+                        )
                     exception_result["cleanup_result"] = cleanup_result
                 except Exception as cleanup_exc:
                     exception_result["cleanup_error"] = str(cleanup_exc)[-1000:]
@@ -5889,7 +5970,19 @@ class PortalImplementationDaemon:
             )
 
         finished_at = utc_now()
-        self._record_task_attempt(state, task, attempt)
+        protected_mutation_scopes = {
+            str(item.get("scope") or "")
+            for item in protected_path_violation.get("mutations", [])
+            if isinstance(item, Mapping)
+        }
+        protected_path_external_deferral = bool(protected_path_violation) and (
+            protected_mutation_scopes == {"shared_checkout"}
+        )
+        attempt_consumed = not protected_path_external_deferral
+        if attempt_consumed:
+            self._record_task_attempt(state, task, attempt)
+        else:
+            self._restore_task_attempt(state, task, max(0, attempt - 1))
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = finished_at
         state.last_implementation_returncode = returncode
@@ -5927,7 +6020,7 @@ class PortalImplementationDaemon:
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
         # completion.  The train consumer records the terminal merge outcome.
-        if not merge_result.get("queued"):
+        if not merge_result.get("queued") and attempt_consumed:
             self._record_task_queue_outcome(
                 task,
                 returncode,
@@ -5948,10 +6041,12 @@ class PortalImplementationDaemon:
             "cleanup_result": cleanup_result,
             "failed_preservation_result": failed_preservation_result,
             "workspace_setup": self._worktree_setup_result(worktree_path),
+            "attempt_consumed": attempt_consumed,
         }
         if protected_path_violation:
             result["reason"] = "implementation_protected_path_mutated"
             result["protected_path_violation"] = protected_path_violation
+            result["deferred"] = protected_path_external_deferral
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
         result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
         result["saved_duration_seconds"] = result["workspace_setup"]["saved_duration_seconds"]
@@ -5963,11 +6058,15 @@ class PortalImplementationDaemon:
             result["exception_result"] = exception_result
         if timeout_result:
             result["timeout_result"] = timeout_result
-        diagnostic = self._record_failed_attempt_retry_context(
-            task,
-            returncode=returncode,
-            validation_result=validation_result,
-            exception_result=exception_result,
+        diagnostic = (
+            self._record_failed_attempt_retry_context(
+                task,
+                returncode=returncode,
+                validation_result=validation_result,
+                exception_result=exception_result,
+            )
+            if attempt_consumed
+            else None
         )
         if diagnostic is not None:
             result["diagnostic_receipt_id"] = diagnostic.receipt_id
@@ -7402,6 +7501,78 @@ class PortalImplementationDaemon:
             rescue_suffix="timed-out",
             event_type="timed_out_worktree_preserved",
             evidence_field="validation_result",
+        )
+
+    def _preserve_protected_path_interrupted_worktree(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        task: PortalTask,
+        attempt: int,
+        protected_path_violation: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Preserve candidate work interrupted by an external policy update."""
+
+        workspace_mutated = any(
+            str(item.get("scope") or "") == "workspace"
+            for item in protected_path_violation.get("mutations", [])
+            if isinstance(item, Mapping)
+        )
+        if workspace_mutated:
+            cleanup_result = self._cleanup_merged_worktree(
+                worktree_path,
+                branch_name,
+                reusable=False,
+            )
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "branch": branch_name,
+                "worktree_path": str(worktree_path),
+                "preserved": False,
+                "reason": "workspace_protected_path_mutated",
+                "rescue_branch": "",
+                "implementation_commit": "",
+                "commit_result": {
+                    "committed": False,
+                    "reason": "workspace_protected_path_mutated",
+                },
+                "cleanup_result": cleanup_result,
+                "protected_path_violation": dict(protected_path_violation),
+            }
+            self._record_event(
+                "protected_path_interrupted_worktree_rejected",
+                result,
+            )
+            return result
+        if not self.use_ephemeral_worktree:
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "branch": branch_name,
+                "worktree_path": str(worktree_path),
+                "preserved": False,
+                "reason": "shared_checkout_retained",
+                "rescue_branch": "",
+                "implementation_commit": "",
+                "commit_result": {"committed": False, "reason": "shared_checkout_retained"},
+                "cleanup_result": {"cleaned": False, "reason": "shared_checkout_retained"},
+                "protected_path_violation": dict(protected_path_violation),
+            }
+            self._record_event(
+                "protected_path_interrupted_worktree_preserved",
+                result,
+            )
+            return result
+        return self._preserve_interrupted_worktree(
+            worktree_path,
+            branch_name,
+            task,
+            attempt,
+            evidence=protected_path_violation,
+            rescue_suffix="protected-path-interrupted",
+            event_type="protected_path_interrupted_worktree_preserved",
+            evidence_field="protected_path_violation",
         )
 
     def _preserve_interrupted_worktree(
