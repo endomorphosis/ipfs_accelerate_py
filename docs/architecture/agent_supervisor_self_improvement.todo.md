@@ -3996,7 +3996,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-129 Bind dirty worktree bytes, AST behavior, tools, and proposed effects
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-graph
