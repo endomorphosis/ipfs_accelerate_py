@@ -89,6 +89,9 @@ CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA: Final[str] = (
 CONTROL_AUDIT_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-audit-receipt@1"
 )
+CONTROL_MUTATION_TRANSACTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-transaction@1"
+)
 CONTROL_BACKEND_RESPONSE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-backend-response@1"
 )
@@ -203,6 +206,31 @@ class StaleTreeError(SupervisorControlError):
 
 class IdempotencyConflictError(SupervisorControlError):
     """An idempotency key was already used for a different request."""
+
+
+class TransactionConflictError(SupervisorControlError):
+    """A mutation transaction compare-and-swap precondition did not hold."""
+
+
+class PartialMutationError(SupervisorControlError):
+    """A backend reports that a multi-step mutation only partially completed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        applied_effect_ids: Iterable[str] = (),
+        recovery: Union["MutationRecoveryAction", str] = "repair",
+    ) -> None:
+        super().__init__(message)
+        self.applied_effect_ids = tuple(
+            sorted({str(item).strip() for item in applied_effect_ids})
+        )
+        if any(not item for item in self.applied_effect_ids):
+            raise ValueError("applied_effect_ids must not contain empty values")
+        self.recovery = MutationRecoveryAction(
+            str(getattr(recovery, "value", recovery))
+        )
 
 
 class BackendNotFoundError(SupervisorControlError):
@@ -1960,6 +1988,301 @@ def validate_catalog_publication(
 publish_control_catalog = validate_catalog_publication
 
 
+class MutationTransactionPhase(str, Enum):
+    """Durable phases for one idempotency-bound mutation transaction."""
+
+    PREPARED = "prepared"
+    DISPATCHING = "dispatching"
+    COMMITTED = "committed"
+    COMPENSATION_REQUIRED = "compensation_required"
+    REPAIR_REQUIRED = "repair_required"
+    COMPENSATED = "compensated"
+    REPAIRED = "repaired"
+
+    @property
+    def terminal(self) -> bool:
+        return self in {
+            MutationTransactionPhase.COMMITTED,
+            MutationTransactionPhase.COMPENSATED,
+            MutationTransactionPhase.REPAIRED,
+        }
+
+    @property
+    def requires_recovery(self) -> bool:
+        return self in {
+            MutationTransactionPhase.COMPENSATION_REQUIRED,
+            MutationTransactionPhase.REPAIR_REQUIRED,
+        }
+
+
+class MutationRecoveryAction(str, Enum):
+    """Closed recovery vocabulary for an interrupted multi-step mutation."""
+
+    NONE = "none"
+    COMPENSATE = "compensate"
+    REPAIR = "repair"
+
+
+_LEGAL_MUTATION_TRANSACTION_TRANSITIONS: Final[
+    Mapping[MutationTransactionPhase, frozenset[MutationTransactionPhase]]
+] = MappingProxyType(
+    {
+        MutationTransactionPhase.PREPARED: frozenset(
+            {MutationTransactionPhase.DISPATCHING}
+        ),
+        MutationTransactionPhase.DISPATCHING: frozenset(
+            {
+                MutationTransactionPhase.COMMITTED,
+                MutationTransactionPhase.COMPENSATION_REQUIRED,
+                MutationTransactionPhase.REPAIR_REQUIRED,
+            }
+        ),
+        MutationTransactionPhase.COMPENSATION_REQUIRED: frozenset(
+            {MutationTransactionPhase.COMPENSATED}
+        ),
+        MutationTransactionPhase.REPAIR_REQUIRED: frozenset(
+            {MutationTransactionPhase.REPAIRED}
+        ),
+        MutationTransactionPhase.COMMITTED: frozenset(),
+        MutationTransactionPhase.COMPENSATED: frozenset(),
+        MutationTransactionPhase.REPAIRED: frozenset(),
+    }
+)
+
+
+@dataclass(frozen=True)
+class MutationTransactionState:
+    """Compare-and-swap state for a real mutation.
+
+    The transaction identity is derived only from the complete request and its
+    caller-scoped idempotency key.  ``revision`` changes on every durable
+    transition and is the compare-and-swap token exposed to recovery tooling.
+    A stored result makes terminal and partial-failure replay exact.
+    """
+
+    request_id: str
+    operation: str
+    repository_id: str
+    tree_id: str
+    objective_id: str
+    objective_revision: str
+    policy_id: str
+    policy_revision: str
+    caller: str
+    idempotency_key: str
+    lease_id: str
+    fencing_epoch: int
+    effect_ids: tuple[str, ...]
+    phase: MutationTransactionPhase = MutationTransactionPhase.PREPARED
+    revision: int = 0
+    applied_effect_ids: tuple[str, ...] = ()
+    recovery_action: MutationRecoveryAction = MutationRecoveryAction.NONE
+    failure_code: str = ""
+    result: Union[OperationResult, None] = None
+    updated_at_ms: int = 0
+    transaction_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "request_id",
+            "operation",
+            "repository_id",
+            "tree_id",
+            "objective_id",
+            "objective_revision",
+            "policy_id",
+            "policy_revision",
+            "caller",
+            "idempotency_key",
+            "lease_id",
+        ):
+            value = str(getattr(self, name)).strip()
+            if not value or "\x00" in value:
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value)
+        if isinstance(self.fencing_epoch, bool) or not isinstance(
+            self.fencing_epoch, int
+        ) or self.fencing_epoch < 0:
+            raise ValueError("fencing_epoch must be a non-negative integer")
+        for name in ("revision", "updated_at_ms"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        object.__setattr__(
+            self,
+            "phase",
+            MutationTransactionPhase(
+                str(getattr(self.phase, "value", self.phase))
+            ),
+        )
+        object.__setattr__(
+            self,
+            "recovery_action",
+            MutationRecoveryAction(
+                str(getattr(self.recovery_action, "value", self.recovery_action))
+            ),
+        )
+        effect_ids = tuple(sorted({str(item).strip() for item in self.effect_ids}))
+        applied = tuple(
+            sorted({str(item).strip() for item in self.applied_effect_ids})
+        )
+        if not effect_ids or any(not item for item in effect_ids):
+            raise ValueError("effect_ids must contain non-empty values")
+        if any(not item for item in applied) or not set(applied).issubset(effect_ids):
+            raise ValueError("applied_effect_ids must be a subset of effect_ids")
+        object.__setattr__(self, "effect_ids", effect_ids)
+        object.__setattr__(self, "applied_effect_ids", applied)
+        object.__setattr__(
+            self,
+            "failure_code",
+            str(self.failure_code).strip(),
+        )
+        if self.phase is MutationTransactionPhase.COMPENSATION_REQUIRED:
+            expected_recovery = MutationRecoveryAction.COMPENSATE
+        elif self.phase is MutationTransactionPhase.REPAIR_REQUIRED:
+            expected_recovery = MutationRecoveryAction.REPAIR
+        else:
+            expected_recovery = MutationRecoveryAction.NONE
+        if self.recovery_action is not expected_recovery:
+            raise ValueError("recovery_action does not match transaction phase")
+        if self.phase.requires_recovery and not self.failure_code:
+            raise ValueError("recovery-required transactions need a failure_code")
+        if self.result is not None:
+            if not isinstance(self.result, OperationResult):
+                raise TypeError("transaction result must be an OperationResult")
+            if self.result.request_id != self.request_id:
+                raise ValueError("transaction result does not match request_id")
+        identity = _content_id(self._identity_payload())
+        if self.transaction_id and self.transaction_id != identity:
+            raise ValueError("transaction_id does not match its immutable binding")
+        object.__setattr__(self, "transaction_id", identity)
+
+    @classmethod
+    def prepare(
+        cls, request: OperationRequest, *, now_ms: int
+    ) -> "MutationTransactionState":
+        if request.operation not in MUTATION_OPERATIONS or request.dry_run:
+            raise ValueError("only real mutations have transaction state")
+        return cls(
+            request_id=request.request_id,
+            operation=request.operation.value,
+            repository_id=request.repository_id,
+            tree_id=request.tree_id,
+            objective_id=request.objective_id,
+            objective_revision=request.objective_revision,
+            policy_id=request.policy_id,
+            policy_revision=request.policy_revision,
+            caller=request.caller,
+            idempotency_key=request.idempotency_key,
+            lease_id=request.lease_id,
+            fencing_epoch=request.fencing_epoch
+            if request.fencing_epoch is not None
+            else -1,
+            effect_ids=tuple(item.effect_id for item in request.expected_effects),
+            updated_at_ms=now_ms,
+        )
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": CONTROL_MUTATION_TRANSACTION_SCHEMA,
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "request_id": self.request_id,
+            "operation": self.operation,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_id": self.objective_id,
+            "objective_revision": self.objective_revision,
+            "policy_id": self.policy_id,
+            "policy_revision": self.policy_revision,
+            "caller": self.caller,
+            "idempotency_key": self.idempotency_key,
+            "lease_id": self.lease_id,
+            "fencing_epoch": self.fencing_epoch,
+            "effect_ids": self.effect_ids,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._identity_payload(),
+            "transaction_id": self.transaction_id,
+            "phase": self.phase.value,
+            "revision": self.revision,
+            "applied_effect_ids": list(self.applied_effect_ids),
+            "recovery_action": self.recovery_action.value,
+            "failure_code": self.failure_code,
+            "result": self.result.to_record() if self.result is not None else None,
+            "updated_at_ms": self.updated_at_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MutationTransactionState":
+        if payload.get("schema") != CONTROL_MUTATION_TRANSACTION_SCHEMA:
+            raise ValueError("unknown mutation transaction schema")
+        if payload.get("contract_version") != CONTROL_CONTRACT_VERSION:
+            raise ValueError("unsupported mutation transaction contract version")
+        allowed = {
+            "schema",
+            "contract_version",
+            "request_id",
+            "operation",
+            "repository_id",
+            "tree_id",
+            "objective_id",
+            "objective_revision",
+            "policy_id",
+            "policy_revision",
+            "caller",
+            "idempotency_key",
+            "lease_id",
+            "fencing_epoch",
+            "effect_ids",
+            "transaction_id",
+            "phase",
+            "revision",
+            "applied_effect_ids",
+            "recovery_action",
+            "failure_code",
+            "result",
+            "updated_at_ms",
+        }
+        unknown = sorted(set(payload) - allowed)
+        if unknown:
+            raise ValueError(
+                "mutation transaction contains unknown fields: "
+                + ", ".join(unknown)
+            )
+        result_payload = payload.get("result")
+        if result_payload is not None and not isinstance(result_payload, Mapping):
+            raise ValueError("mutation transaction result must be an object or null")
+        return cls(
+            request_id=payload.get("request_id", ""),
+            operation=payload.get("operation", ""),
+            repository_id=payload.get("repository_id", ""),
+            tree_id=payload.get("tree_id", ""),
+            objective_id=payload.get("objective_id", ""),
+            objective_revision=payload.get("objective_revision", ""),
+            policy_id=payload.get("policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            caller=payload.get("caller", ""),
+            idempotency_key=payload.get("idempotency_key", ""),
+            lease_id=payload.get("lease_id", ""),
+            fencing_epoch=payload.get("fencing_epoch", -1),
+            effect_ids=tuple(payload.get("effect_ids") or ()),
+            phase=payload.get("phase", ""),
+            revision=payload.get("revision", -1),
+            applied_effect_ids=tuple(payload.get("applied_effect_ids") or ()),
+            recovery_action=payload.get("recovery_action", ""),
+            failure_code=payload.get("failure_code", ""),
+            result=(
+                OperationResult.from_dict(result_payload)
+                if isinstance(result_payload, Mapping)
+                else None
+            ),
+            updated_at_ms=payload.get("updated_at_ms", -1),
+            transaction_id=payload.get("transaction_id", ""),
+        )
+
+
 @dataclass(frozen=True)
 class BackendResponse:
     """Normalized return from a direct Python operation adapter.
@@ -3096,7 +3419,7 @@ class ControlAuditReceipt:
 
 
 class ControlStateStore(Protocol):
-    """Persistence boundary for idempotency results and audit records."""
+    """Persistence boundary for transactions, replay results, and audit."""
 
     def transaction(self, request: OperationRequest) -> Any:
         ...
@@ -3104,6 +3427,29 @@ class ControlStateStore(Protocol):
     def get_idempotent(
         self, request: OperationRequest
     ) -> Union[tuple[str, OperationResult], None]:
+        ...
+
+    def begin_mutation(
+        self, request: OperationRequest, *, now_ms: int
+    ) -> MutationTransactionState:
+        ...
+
+    def get_mutation(
+        self, request: OperationRequest
+    ) -> Union[MutationTransactionState, None]:
+        ...
+
+    def compare_and_swap_mutation(
+        self,
+        request: OperationRequest,
+        *,
+        expected_revision: int,
+        phase: MutationTransactionPhase,
+        now_ms: int,
+        applied_effect_ids: Iterable[str] = (),
+        failure_code: str = "",
+        result: Union[OperationResult, None] = None,
+    ) -> MutationTransactionState:
         ...
 
     def put_idempotent(
@@ -3128,6 +3474,7 @@ class InMemoryControlStateStore:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._idempotency: dict[str, tuple[str, OperationResult]] = {}
+        self._mutations: dict[str, MutationTransactionState] = {}
         self._receipts: list[dict[str, Any]] = []
 
     @contextmanager
@@ -3156,6 +3503,78 @@ class InMemoryControlStateStore:
     ) -> Union[tuple[str, OperationResult], None]:
         with self._lock:
             return self._idempotency.get(self._key(request))
+
+    def begin_mutation(
+        self, request: OperationRequest, *, now_ms: int
+    ) -> MutationTransactionState:
+        key = self._key(request)
+        prepared = MutationTransactionState.prepare(request, now_ms=now_ms)
+        with self._lock:
+            existing = self._mutations.get(key)
+            if existing is not None:
+                if existing.request_id != request.request_id:
+                    raise IdempotencyConflictError(
+                        "idempotency key is already bound to changed effects "
+                        "or another request binding"
+                    )
+                return existing
+            self._mutations[key] = prepared
+            return prepared
+
+    def get_mutation(
+        self, request: OperationRequest
+    ) -> Union[MutationTransactionState, None]:
+        with self._lock:
+            return self._mutations.get(self._key(request))
+
+    def compare_and_swap_mutation(
+        self,
+        request: OperationRequest,
+        *,
+        expected_revision: int,
+        phase: MutationTransactionPhase,
+        now_ms: int,
+        applied_effect_ids: Iterable[str] = (),
+        failure_code: str = "",
+        result: Union[OperationResult, None] = None,
+    ) -> MutationTransactionState:
+        key = self._key(request)
+        phase = MutationTransactionPhase(str(getattr(phase, "value", phase)))
+        with self._lock:
+            current = self._mutations.get(key)
+            if current is None:
+                raise TransactionConflictError("mutation transaction is absent")
+            if current.request_id != request.request_id:
+                raise IdempotencyConflictError(
+                    "idempotency key is bound to another request"
+                )
+            if current.revision != expected_revision:
+                raise TransactionConflictError(
+                    f"stale transaction revision {expected_revision}; "
+                    f"current revision is {current.revision}"
+                )
+            if phase not in _LEGAL_MUTATION_TRANSACTION_TRANSITIONS[current.phase]:
+                raise TransactionConflictError(
+                    f"illegal mutation transaction transition "
+                    f"{current.phase.value}->{phase.value}"
+                )
+            recovery_action = MutationRecoveryAction.NONE
+            if phase is MutationTransactionPhase.COMPENSATION_REQUIRED:
+                recovery_action = MutationRecoveryAction.COMPENSATE
+            elif phase is MutationTransactionPhase.REPAIR_REQUIRED:
+                recovery_action = MutationRecoveryAction.REPAIR
+            updated = replace(
+                current,
+                phase=phase,
+                revision=current.revision + 1,
+                applied_effect_ids=tuple(applied_effect_ids),
+                recovery_action=recovery_action,
+                failure_code=failure_code,
+                result=result,
+                updated_at_ms=now_ms,
+            )
+            self._mutations[key] = updated
+            return updated
 
     def put_idempotent(
         self, request: OperationRequest, result: OperationResult
@@ -3199,11 +3618,13 @@ class JsonlControlStateStore(InMemoryControlStateStore):
         self,
         filename: str = "control-audit.jsonl",
         idempotency_filename: str = "control-idempotency.jsonl",
+        transaction_filename: str = "control-transactions.jsonl",
     ) -> None:
         super().__init__()
         for value, label in (
             (filename, "control audit filename"),
             (idempotency_filename, "control idempotency filename"),
+            (transaction_filename, "control transaction filename"),
         ):
             if (
                 not str(value).strip()
@@ -3214,6 +3635,7 @@ class JsonlControlStateStore(InMemoryControlStateStore):
                 raise ValueError(f"{label} must be relative")
         self._filename = filename
         self._idempotency_filename = idempotency_filename
+        self._transaction_filename = transaction_filename
 
     @staticmethod
     def _idempotency_record_key(request: OperationRequest) -> dict[str, str]:
@@ -3282,6 +3704,108 @@ class JsonlControlStateStore(InMemoryControlStateStore):
             return request_id, result
         return None
 
+    def _append_mutation(
+        self,
+        request: OperationRequest,
+        state: MutationTransactionState,
+    ) -> None:
+        path = Path(request.state_root) / self._transaction_filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(
+            state.to_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(encoded + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+
+    def get_mutation(
+        self, request: OperationRequest
+    ) -> Union[MutationTransactionState, None]:
+        cached = super().get_mutation(request)
+        if cached is not None or not request.idempotency_key:
+            return cached
+        path = Path(request.state_root) / self._transaction_filename
+        if not path.exists():
+            return None
+        expected = self._idempotency_record_key(request)
+        latest: Union[MutationTransactionState, None] = None
+        try:
+            with path.open("r", encoding="utf-8") as stream:
+                for line in stream:
+                    try:
+                        raw = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(raw, Mapping) or any(
+                        raw.get(name) != value for name, value in expected.items()
+                    ):
+                        continue
+                    try:
+                        candidate = MutationTransactionState.from_dict(raw)
+                    except (TypeError, ValueError, ControlContractError) as exc:
+                        raise TransactionConflictError(
+                            "matching mutation transaction state is invalid"
+                        ) from exc
+                    if latest is None or candidate.revision > latest.revision:
+                        latest = candidate
+                    elif candidate.revision == latest.revision and candidate != latest:
+                        raise TransactionConflictError(
+                            "mutation transaction contains divergent revisions"
+                        )
+        except OSError as exc:
+            raise TransactionConflictError(
+                "mutation transaction state is unreadable"
+            ) from exc
+        if latest is not None:
+            with self._lock:
+                self._mutations[self._key(request)] = latest
+        return latest
+
+    def begin_mutation(
+        self, request: OperationRequest, *, now_ms: int
+    ) -> MutationTransactionState:
+        existing = self.get_mutation(request)
+        if existing is not None:
+            if existing.request_id != request.request_id:
+                raise IdempotencyConflictError(
+                    "idempotency key is already bound to changed effects "
+                    "or another request binding"
+                )
+            return existing
+        state = super().begin_mutation(request, now_ms=now_ms)
+        self._append_mutation(request, state)
+        return state
+
+    def compare_and_swap_mutation(
+        self,
+        request: OperationRequest,
+        *,
+        expected_revision: int,
+        phase: MutationTransactionPhase,
+        now_ms: int,
+        applied_effect_ids: Iterable[str] = (),
+        failure_code: str = "",
+        result: Union[OperationResult, None] = None,
+    ) -> MutationTransactionState:
+        # Loading before the in-memory CAS makes restart recovery use the same
+        # revision semantics as a continuously running process.
+        self.get_mutation(request)
+        state = super().compare_and_swap_mutation(
+            request,
+            expected_revision=expected_revision,
+            phase=phase,
+            now_ms=now_ms,
+            applied_effect_ids=applied_effect_ids,
+            failure_code=failure_code,
+            result=result,
+        )
+        self._append_mutation(request, state)
+        return state
+
     def put_idempotent(
         self, request: OperationRequest, result: OperationResult
     ) -> None:
@@ -3306,6 +3830,8 @@ class JsonlControlStateStore(InMemoryControlStateStore):
         with self._lock:
             with path.open("a", encoding="utf-8") as stream:
                 stream.write(encoded + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
         super().put_idempotent(request, result)
 
     def append_receipt(
@@ -3320,6 +3846,8 @@ class JsonlControlStateStore(InMemoryControlStateStore):
         with self._lock:
             with path.open("a", encoding="utf-8") as stream:
                 stream.write(encoded + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
 
     def query_receipts(
         self, request: OperationRequest, *, limit: int, offset: int
@@ -3933,6 +4461,103 @@ class SupervisorControlService:
                 ),
             )
 
+    def mutation_transaction(
+        self, request: OperationRequest
+    ) -> Union[MutationTransactionState, None]:
+        """Return the durable CAS state for one exactly bound mutation."""
+
+        if not isinstance(request, OperationRequest):
+            raise TypeError("request must be an OperationRequest")
+        if request.operation not in MUTATION_OPERATIONS or request.dry_run:
+            raise ValueError("transaction status is available for real mutations")
+        self._check_target(request)
+        transaction = getattr(self._state_store, "transaction", None)
+
+        @contextmanager
+        def no_transaction() -> Iterator[None]:
+            yield
+
+        guard = transaction(request) if callable(transaction) else no_transaction()
+        with self._lock, guard:
+            return self._state_store.get_mutation(request)
+
+    def recover_mutation(
+        self,
+        request: OperationRequest,
+        *,
+        expected_revision: int,
+        action: Union[MutationRecoveryAction, str],
+    ) -> MutationTransactionState:
+        """Run a typed compensation or repair under the original exact permit.
+
+        Recovery is itself a mutation.  The current target, authorization,
+        lease, and fence are therefore revalidated immediately before the
+        backend hook is called.  ``expected_revision`` prevents two operators
+        from compensating or repairing the same partial result.
+        """
+
+        if not isinstance(request, OperationRequest):
+            raise TypeError("request must be an OperationRequest")
+        selected = MutationRecoveryAction(
+            str(getattr(action, "value", action))
+        )
+        if selected is MutationRecoveryAction.NONE:
+            raise ValueError("recovery action must be compensate or repair")
+        transaction = getattr(self._state_store, "transaction", None)
+
+        @contextmanager
+        def no_transaction() -> Iterator[None]:
+            yield
+
+        guard = transaction(request) if callable(transaction) else no_transaction()
+        with self._lock, guard:
+            self._check_target(request)
+            self._check_bounds(request)
+            self._check_authorization(request)
+            self._check_lease(request)
+            current = self._state_store.get_mutation(request)
+            if current is None:
+                raise TransactionConflictError("mutation transaction is absent")
+            if current.revision != expected_revision:
+                raise TransactionConflictError(
+                    f"stale transaction revision {expected_revision}; "
+                    f"current revision is {current.revision}"
+                )
+            if current.recovery_action is not selected:
+                raise TransactionConflictError(
+                    f"transaction requires {current.recovery_action.value}, "
+                    f"not {selected.value}"
+                )
+            hook = getattr(self._backend, selected.value, None)
+            if not callable(hook):
+                raise OperationUnavailableError(
+                    f"backend does not implement {selected.value} recovery"
+                )
+            outcome = hook(request, current)
+            if outcome is False:
+                raise BackendConflictError(
+                    f"backend rejected {selected.value} recovery"
+                )
+            terminal = (
+                MutationTransactionPhase.COMPENSATED
+                if selected is MutationRecoveryAction.COMPENSATE
+                else MutationTransactionPhase.REPAIRED
+            )
+            return self._state_store.compare_and_swap_mutation(
+                request,
+                expected_revision=current.revision,
+                phase=terminal,
+                now_ms=self._clock_ms(),
+                applied_effect_ids=(
+                    ()
+                    if selected is MutationRecoveryAction.COMPENSATE
+                    else current.applied_effect_ids
+                ),
+                result=current.result,
+            )
+
+    recover_mutation_transaction = recover_mutation
+
     def discovery_manifest(self) -> ControlDiscoveryManifest:
         """Return deterministic Python discovery metadata without dispatch."""
 
@@ -4035,7 +4660,12 @@ class SupervisorControlService:
         method = getattr(validator, "validate", None)
         if not callable(method):
             method = getattr(validator, "authorize", None)
-        result = method(request) if callable(method) else validator(request)
+        try:
+            result = method(request) if callable(method) else validator(request)
+        except denial:
+            raise
+        except Exception as exc:
+            raise denial(str(exc) or "validator denied the bound request") from exc
         if result is False:
             raise denial("validator denied the bound request")
 
@@ -4090,7 +4720,10 @@ class SupervisorControlService:
             return None
         existing = self._state_store.get_idempotent(request)
         if existing is None:
-            return None
+            transaction = self._state_store.get_mutation(request)
+            if transaction is None or transaction.result is None:
+                return None
+            existing = (transaction.request_id, transaction.result)
         request_id, result = existing
         if request_id != request.request_id:
             raise IdempotencyConflictError(
@@ -4237,6 +4870,8 @@ class SupervisorControlService:
             retryable = True
         elif isinstance(exc, IdempotencyConflictError):
             code = ErrorCode.IDEMPOTENCY_CONFLICT
+        elif isinstance(exc, (TransactionConflictError, PartialMutationError)):
+            code = ErrorCode.CONFLICT
         elif isinstance(exc, BackendNotFoundError) or isinstance(
             exc, FileNotFoundError
         ):
@@ -4360,7 +4995,11 @@ class SupervisorControlService:
         )
 
     def _success_result(
-        self, request: OperationRequest, response: BackendResponse
+        self,
+        request: OperationRequest,
+        response: BackendResponse,
+        *,
+        transaction_state: Union[MutationTransactionState, None] = None,
     ) -> OperationResult:
         applied = (
             response.applied_effect_ids
@@ -4406,17 +5045,70 @@ class SupervisorControlService:
         result.validate_against(request)
         self._state_store.append_receipt(request, receipt)
         if request.operation in MUTATION_OPERATIONS and not request.dry_run:
+            if transaction_state is None:
+                raise TransactionConflictError(
+                    "real mutation completed without transaction state"
+                )
+            transaction_state = self._state_store.compare_and_swap_mutation(
+                request,
+                expected_revision=transaction_state.revision,
+                phase=MutationTransactionPhase.COMMITTED,
+                now_ms=self._clock_ms(),
+                applied_effect_ids=applied,
+                result=result,
+            )
             self._state_store.put_idempotent(request, result)
             self._mutation_audit_receipt_count += 1
             self._last_mutation_audit_receipt_id = receipt.receipt_id
         return result
 
     def _error_result(
-        self, request: OperationRequest, exc: BaseException
+        self,
+        request: OperationRequest,
+        exc: BaseException,
+        *,
+        transaction_state: Union[MutationTransactionState, None] = None,
     ) -> OperationResult:
         error = self._stable_error(exc)
         status = self._status_for_error(error.code)
-        receipt = self._receipt(request, status=status, error=error)
+        applied_effect_ids: tuple[str, ...] = ()
+        recovery_action = MutationRecoveryAction.REPAIR
+        if isinstance(exc, PartialMutationError):
+            applied_effect_ids = exc.applied_effect_ids
+            recovery_action = exc.recovery
+        declared = {item.effect_id for item in request.expected_effects}
+        if not set(applied_effect_ids).issubset(declared):
+            error = self._stable_error(
+                ControlContractError(
+                    "partial mutation reported an undeclared applied effect"
+                )
+            )
+            status = self._status_for_error(error.code)
+            applied_effect_ids = ()
+            recovery_action = MutationRecoveryAction.REPAIR
+        receipt = self._receipt(
+            request,
+            status=status,
+            applied_effect_ids=applied_effect_ids,
+            error=error,
+        )
+        recovery_phase = (
+            MutationTransactionPhase.COMPENSATION_REQUIRED
+            if recovery_action is MutationRecoveryAction.COMPENSATE
+            else MutationTransactionPhase.REPAIR_REQUIRED
+        )
+        transaction_data: dict[str, Any] = {}
+        if transaction_state is not None:
+            transaction_data = {
+                "transaction": {
+                    **transaction_state.to_dict(),
+                    "phase": recovery_phase.value,
+                    "revision": transaction_state.revision + 1,
+                    "applied_effect_ids": list(applied_effect_ids),
+                    "recovery_action": recovery_action.value,
+                    "failure_code": error.code.value,
+                }
+            }
         result = OperationResult(
             request_id=request.request_id,
             operation=request.operation,
@@ -4428,7 +5120,16 @@ class SupervisorControlService:
             policy_id=request.policy_id,
             caller=request.caller,
             bounds=request.bounds,
-            data={},
+            data=transaction_data,
+            effects=(
+                self._claims(
+                    request,
+                    applied_effect_ids,
+                    receipt.receipt_id,
+                )
+                if applied_effect_ids
+                else ()
+            ),
             error=error,
             idempotency_key=request.idempotency_key,
             audit_receipt_id=receipt.receipt_id,
@@ -4436,6 +5137,19 @@ class SupervisorControlService:
         result.validate_against(request)
         try:
             self._state_store.append_receipt(request, receipt)
+            if transaction_state is not None:
+                transaction_state = self._state_store.compare_and_swap_mutation(
+                    request,
+                    expected_revision=transaction_state.revision,
+                    phase=recovery_phase,
+                    now_ms=self._clock_ms(),
+                    applied_effect_ids=applied_effect_ids,
+                    failure_code=error.code.value,
+                    result=result,
+                )
+                self._state_store.put_idempotent(request, result)
+                self._mutation_audit_receipt_count += 1
+                self._last_mutation_audit_receipt_id = receipt.receipt_id
         except Exception:
             # Stable operation errors must never be replaced by an audit sink
             # failure.  Successful operations deliberately fail if durable
@@ -4482,6 +5196,7 @@ class SupervisorControlService:
         guard = transaction(request) if callable(transaction) else no_transaction()
         with self._lock, guard:
             backend_accepted = False
+            mutation_state: Union[MutationTransactionState, None] = None
             try:
                 replay = self._preflight_dispatch_boundary(request)
                 if replay is not None:
@@ -4489,6 +5204,35 @@ class SupervisorControlService:
                     if callable(hook) and request.operation in MUTATION_OPERATIONS:
                         hook(request)
                     return replay
+                if request.operation in MUTATION_OPERATIONS and not request.dry_run:
+                    mutation_state = self._state_store.begin_mutation(
+                        request, now_ms=self._clock_ms()
+                    )
+                    if mutation_state.phase is MutationTransactionPhase.COMMITTED:
+                        if mutation_state.result is None:
+                            raise TransactionConflictError(
+                                "committed mutation has no durable result"
+                            )
+                        mutation_state.result.validate_against(request)
+                        self._state_store.put_idempotent(
+                            request, mutation_state.result
+                        )
+                        return mutation_state.result
+                    if mutation_state.phase is not MutationTransactionPhase.PREPARED:
+                        if mutation_state.result is not None:
+                            mutation_state.result.validate_against(request)
+                            return mutation_state.result
+                        raise TransactionConflictError(
+                            "mutation transaction requires "
+                            f"{mutation_state.recovery_action.value} at revision "
+                            f"{mutation_state.revision}"
+                        )
+                    mutation_state = self._state_store.compare_and_swap_mutation(
+                        request,
+                        expected_revision=mutation_state.revision,
+                        phase=MutationTransactionPhase.DISPATCHING,
+                        now_ms=self._clock_ms(),
+                    )
                 if request.dry_run and request.operation in MUTATION_OPERATIONS:
                     # A dry run never invokes a mutating adapter.
                     response = BackendResponse(
@@ -4499,14 +5243,28 @@ class SupervisorControlService:
                 else:
                     response = self._dispatch(request)
                     backend_accepted = True
-                return self._success_result(request, response)
+                return self._success_result(
+                    request,
+                    response,
+                    transaction_state=mutation_state,
+                )
             except BaseException as exc:
                 if not isinstance(exc, Exception) and type(exc).__name__ not in {
                     "CancelledError",
                     "CancellationError",
                 }:
                     raise
-                result = self._error_result(request, exc)
+                result = self._error_result(
+                    request,
+                    exc,
+                    transaction_state=(
+                        mutation_state
+                        if mutation_state is not None
+                        and mutation_state.phase
+                        is MutationTransactionPhase.DISPATCHING
+                        else None
+                    ),
+                )
                 hook = getattr(self._backend, "record_rejection", None)
                 if (
                     callable(hook)
@@ -4918,6 +5676,7 @@ __all__ = [
     "CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA",
     "CONTROL_CONFORMANCE_V2_REQUIREMENT_ID",
     "CONTROL_MUTATION_EVENT_SCHEMA",
+    "CONTROL_MUTATION_TRANSACTION_SCHEMA",
     "CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA",
     "CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES",
     "CONTROL_REDACTION_MARKER",
@@ -4934,6 +5693,7 @@ __all__ = [
     "BackendNotFoundError",
     "BackendResponse",
     "BackendTimeoutError",
+    "AuthorizationValidator",
     "ControlCatalogConformanceError",
     "ControlCatalogConformanceEvidence",
     "ControlAuditReceipt",
@@ -4951,8 +5711,12 @@ __all__ = [
     "LifecycleStatus",
     "LeaseFenceValidator",
     "LeaseValidationError",
+    "MutationRecoveryAction",
+    "MutationTransactionPhase",
+    "MutationTransactionState",
     "OperationHandler",
     "OperationUnavailableError",
+    "PartialMutationError",
     "PythonSupervisorBackend",
     "ReadOnlySupervisorClient",
     "RepositorySupervisorBackend",
@@ -4967,6 +5731,7 @@ __all__ = [
     "SupervisorTarget",
     "TargetNotAllowedError",
     "TargetIdentityValidator",
+    "TransactionConflictError",
     "capture_control_discovery_runtime_state",
     "control_operation_behavior_id",
     "control_service_publication",
