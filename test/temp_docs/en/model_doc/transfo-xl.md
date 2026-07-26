@@ -99,8 +99,8 @@ TransformerXL does **not** work with *torch.nn.DataParallel* due to a bug in PyT
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## TransfoXLConfig
 
