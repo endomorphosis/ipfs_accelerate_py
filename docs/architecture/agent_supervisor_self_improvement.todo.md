@@ -3888,7 +3888,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-123 Publish stable v2 APIs, controls, operating profiles, and migration guidance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: rollout
