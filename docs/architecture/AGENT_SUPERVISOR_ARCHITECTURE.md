@@ -397,6 +397,60 @@ current-tree check returns the affected behavior to `shadow`. Replaying or
 verifying a v2 report recomputes it from source evaluations and cannot grant
 control mutation or goal-completion authority.
 
+#### Proof-directed decision-runtime rollout
+
+The proof-runtime rollout is a third, deliberately distinct contract.
+`DecisionRuntimeRolloutMode` is `off`, `shadow`, `assist`, or `automatic`;
+these values do not extend `DecisionRuntimeMode`. Only a completely gated
+`automatic` decision maps to runtime `enforce`. `assist` remains runtime
+`shadow` plus an operator-reviewed proposal, and neither mode manufactures
+mutation or completion authority.
+
+`DecisionRuntimeBenchmark` owns one closed paired population. It sends the
+same frozen canonical decisions through the current and proof-directed live
+paths, then independently increases each irrelevant legal corpus, codebase,
+SkillCenter row set, SkillCenter graph, and conversation history by at least
+10x. `ProofDependencyScalingReport` is replayed from the complete producer
+receipt population and causal ablations. It recomputes provider tokens,
+mandatory proof closure nodes/bytes, total-corpus nodes/bytes, exact warm
+cache reuse, invalidation true/false positives and false negatives,
+first-valid plans, retries, proof and validation cost, declared/observed
+effects, and terminal results. Aggregate averages, estimates, model judgments,
+or a narrowed fixture population cannot qualify promotion.
+
+For the proof-directed path, increasing irrelevant corpus changes only bounded
+index metadata. The decision, mandatory closure identity and size, effects,
+terminal result, and provider input context remain unchanged. Across decisions,
+context grows with the mandatory proof closure rather than total corpus size.
+Retrieval can nominate context but cannot manufacture authority; mandatory
+dependencies never compete for optional budget or truncate.
+
+The non-compensable adversarial population requires zero forged-CID,
+canonicalization, schema, stale-root, cross-partition, prompt-injection,
+poisoned-embedding, inapplicable-law, legal-conflict, SecurityIR deny/unknown,
+intent-authority-confusion, dirty-file, changed-tool-argument, stale-lease,
+proof-replay, graph-truncation, recovery, path/effect escape, or
+mandatory-omission escapes. Intent, LegalIR, and SecurityIR verdicts remain
+independent. Deterministic local degraded operation is fail closed when
+optional model, dataset, graph/vector, or prover facilities are unavailable;
+static discovery remains side-effect free and resolves none of them.
+
+`evaluate_decision_runtime_rollout()` requires an explicitly approving
+`DecisionRuntimeRolloutPolicy` for assist or automatic. Automatic additionally
+requires a distinct producer population observed later against the exact
+current root; replaying the qualification observation is rejected. Any
+binding, safety, population, or configured metric regression returns only the
+affected behavior to `shadow` and records both evaluation identities and
+bounded reason codes.
+
+`DecisionRuntimePublicAPI` exposes the same canonical request/result identity
+for Python, CLI-shaped, and MCP-shaped calls. All three support `off`,
+`shadow`, `assist`, policy-approved `automatic`, `status`, `explanation`, and
+`rollback`; the aliases dispatch one implementation and cannot add authority.
+The benchmark and rollout modules publish
+`PROOF_DIRECTED_ROLLOUT_REQUIREMENT_ID` evidence, not a permit, mutation, or
+completion receipt.
+
 ### Metrics, failure recovery, and self-refill epochs
 
 Operators should correlate canonical identities rather than scrape prose.
@@ -409,6 +463,15 @@ Proof and rollout projections report attempt outcomes, assurance, cache
 freshness, defect detection, authority violations, restart stability, and
 promotion reason codes. Metrics are bounded, low-cardinality projections;
 full outputs belong in content-addressed artifacts.
+
+Proof-runtime projections additionally report producer input/output/reused
+tokens, mandatory-closure and total-corpus nodes/bytes, exact warm reuse,
+invalidation true positives/false positives/false negatives, first-valid plan
+count, retries, proof/validation cost, effect parity, and terminal parity.
+Invalidation precision means every and only affected transitive dependent, not
+a cache hit rate. The report is content-addressed and re-derived from producer
+receipts after restart; a stale, corrupt, detached, or replayed report cannot
+restore automatic mode.
 
 Failures retain enough identity and evidence for deterministic recovery:
 
@@ -1250,6 +1313,12 @@ many modules intentionally participate in more than one group.
 `logic_translation_validation.py`, `authorization_logic.py`,
 `interface_contract_codegen.py`, `validation_commands.py`,
 `validation_scheduler.py`, `supervisor_state_model.py`.
+
+**Proof-directed decision runtime:** `decision_contracts.py`,
+`ir_registry.py`, `semantic_dependency_graph.py`, `decision_context.py`,
+`context_compiler.py`, `ir_constraint_compiler.py`, `execution_permit.py`,
+`runtime_cas.py`, `decision_runtime.py`, `decision_runtime_benchmark.py`,
+`decision_runtime_rollout.py`.
 
 **Proof scope, providers, and assurance:** `code_proof_obligations.py`,
 `proof_obligation_templates.py`, `proof_context.py`, `proof_scope_index.py`,

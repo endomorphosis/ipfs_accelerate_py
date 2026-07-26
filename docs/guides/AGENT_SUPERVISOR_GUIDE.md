@@ -749,6 +749,75 @@ separate later current-tree evaluation. A stale binding or regression makes
 the effective mode `shadow` and records `rollback_applied`. The report remains
 evidence, not control authorization or goal-completion proof.
 
+### Proof-directed decision-runtime rollout
+
+The decision-runtime gate uses the separate `DecisionRuntimeRolloutMode`
+vocabulary: `off`, `shadow`, `assist`, and `automatic`. It compares the current
+and proof-directed live paths on the same frozen decisions. The closed paired
+population independently grows irrelevant legal corpus, codebase, SkillCenter
+rows, SkillCenter graph, and conversation history by at least 10x.
+
+Build `DecisionRuntimeProducerReceipt` values from context, runtime, cache,
+invalidation, plan, proof, validation, and effect producer receipts. Do not
+copy dashboard aggregates or token estimates into promotion evidence.
+`recompute_proof_dependency_scaling()` derives provider tokens, mandatory
+proof closure nodes/bytes, total-corpus nodes/bytes, exact warm reuse,
+invalidation true/false positives and false negatives, first-valid plans,
+retries, proof/validation cost, effects, and terminal results. For every scale
+ablation, the proof-directed provider context, mandatory closure, effects, and
+terminal result must remain fixed; only bounded index metadata may grow.
+
+The zero-escape population covers forged CID, canonicalization, schema, stale
+root, cross partition, prompt injection, poisoned embedding, inapplicable law,
+legal conflict, SecurityIR deny and unknown, intent-authority confusion, dirty
+file, changed tool arguments, stale lease, proof replay, graph truncation,
+recovery, path and effect escape, and mandatory omission. One escape fails the
+whole report. Optional provider loss must replay deterministically through the
+local fail-closed path, and public discovery must remain lazy.
+
+Automatic is a two-observation mode. Keep the complete qualifying frozen
+evaluation, then collect a later separate current-root evaluation from a
+distinct producer population. An explicit policy must approve the exact
+behavior and automatic mode. A stale binding, narrowed population, safety
+failure, or configured metric regression returns the affected behavior to
+shadow.
+
+The module-local facade provides equivalent controls without duplicating
+transport policy:
+
+```python
+from ipfs_accelerate_py.agent_supervisor.decision_runtime_rollout import (
+    DecisionRuntimeControlRequest,
+    DecisionRuntimePublicAPI,
+)
+
+api = DecisionRuntimePublicAPI(
+    qualification,
+    binding=binding,
+    policy=policy,
+    current_evaluation=later_current_root_evaluation,
+)
+
+request = DecisionRuntimeControlRequest(action="automatic")
+python_result = api.python(request)
+cli_result = api.cli(request.to_dict())
+mcp_result = api.mcp(request.to_dict())
+assert python_result.to_dict() == cli_result.to_dict() == mcp_result.to_dict()
+
+status = api.status()
+explanation = api.explanation()
+rollback = api.rollback()
+assert rollback.decision.effective_mode.value == "shadow"
+```
+
+The CLI-shaped action vocabulary and MCP-shaped request object are exactly the
+canonical `DecisionRuntimeControlRequest`: `off`, `shadow`, `assist`,
+`automatic`, `status`, `explanation`, and `rollback`. These adapters do not
+shell out, resolve a provider, or grant authority. A
+`DecisionRuntimeRolloutDecision` is rollout evidence only; live mutation still
+requires the exact current permit, lease/fence, expected effects, and
+post-effect validation.
+
 Evaluate baseline and candidate on the closed fixture population: cold, warm,
 broad goal, contradictory input, malformed output, stale cache, unavailable
 provider, independent parallel work, conflicting parallel work, failed
@@ -970,6 +1039,10 @@ At minimum, monitor:
 - paired token reduction, repeated-cache reuse, planning coverage improvement,
   invalid-plan-branch reduction, independent throughput, all four component
   gates, and bounded reason codes;
+- proof-runtime provider tokens, mandatory-closure versus total-corpus
+  nodes/bytes, exact warm reuse, invalidation true/false positives and false
+  negatives, first-valid plans, retries, proof/validation cost, effects, and
+  terminal parity;
 - self-refill epoch status, blocker codes, successor counts, replay, and
   healthy exhaustion.
 
@@ -1018,6 +1091,13 @@ Stable error codes distinguish invalid requests, denied authority, conflict,
 not found, cancellation, timeout, and unavailable operations. Provider
 unavailability degrades to a typed local fallback or rejection; it never
 grants another provider more authority.
+
+Recover proof-runtime benchmark and rollout state by reloading the complete
+producer population and recomputing both reports. Never restore automatic from
+a serialized summary alone. A stale/corrupt source identity, replayed proof,
+changed root, omitted fixture, or later safety/binding regression returns the
+affected behavior to shadow and requires a fresh qualification/current-root
+pair.
 
 ## Self-refill epochs
 
@@ -1097,6 +1177,16 @@ surfaces overlap; a wrapper must not manufacture a second enum or translate a
 v1 receipt into a v2 receipt.
 
 ## Validation
+
+Run the proof-runtime scaling, adversarial, rollout, and public-control gate:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_decision_runtime_benchmark.py \
+  test/api/test_agent_supervisor_decision_runtime_adversarial.py \
+  test/api/test_agent_supervisor_decision_runtime_rollout.py \
+  test/api/test_agent_supervisor_decision_runtime_public_api.py -q
+```
 
 Run the generation-2 public-surface, transport-conformance, and rollback gate:
 
