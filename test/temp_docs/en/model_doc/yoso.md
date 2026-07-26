@@ -60,7 +60,7 @@ alt="drawing" width="600"/>
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification.md)
+- [Sequence classification task guide](../tasks/sequence_classification.md)
 - [Token classification task guide](../tasks/token_classification.md)
 - [Question answering task guide](../tasks/question_answering.md)
 - [Masked language modeling task guide](../tasks/masked_language_modeling.md)
