@@ -3744,7 +3744,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-115 Enforce Python, CLI, and MCP operation-schema conformance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
