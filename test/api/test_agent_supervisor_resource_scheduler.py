@@ -297,6 +297,28 @@ def test_schedule_reserves_provider_and_host_capacity_in_input_priority_order() 
     assert "provider_concurrency" in schedule.backpressure_reasons
 
 
+def test_provider_capacity_does_not_count_provider_free_inference_work() -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+    cpu_implementation = LaneResourceRequirements(
+        lane_id="cpu-implementation",
+        stage="inference",
+        resource_class="cpu-medium",
+    )
+
+    schedule = scheduler.schedule(
+        [_llm_lane("model-adapter", stage="inference")],
+        host=_host(worker_limit=4, available_worker_capacity=4),
+        providers=[_provider(max_concurrency=1)],
+        active_requirements=[cpu_implementation],
+    )
+
+    assert schedule.admitted_lane_ids == ("model-adapter",)
+    assert schedule.decisions[0].provider_id == "provider-a"
+    assert schedule.decisions[0].reason == ""
+    assert schedule.stage_capacities[0].stage == "inference"
+    assert schedule.stage_capacities[0].provider_available_slots == -1
+
+
 def test_schedule_accumulates_quota_and_token_reservations() -> None:
     scheduler = ResourceScheduler(
         ResourcePolicy(
