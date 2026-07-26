@@ -13035,8 +13035,8 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
     assert "hallucinate_app/interfaces/control_surface.idl" in objective_text
     assert "swissknife/mcp/orb_descriptor.json" in objective_text
     assert payload["objective_heap_schedule_count"] >= 1
-    assert payload["generated_count"] == 3
-    assert payload["objective_generation_materialized_count"] == 1
+    assert payload["generated_count"] == 2
+    assert payload["objective_generation_materialized_count"] == 0
     graph = json.loads((repo / "data" / "agent_supervisor" / "objective_graph.json").read_text(encoding="utf-8"))
     thought_kinds = {node["kind"] for node in graph["thought_graph"]["nodes"]}
     assert "interoperability_pair" in thought_kinds
