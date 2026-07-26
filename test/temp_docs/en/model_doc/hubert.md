@@ -49,7 +49,7 @@ This model was contributed by [patrickvonplaten](https://huggingface.co/patrickv
 
 - Hubert is a speech model that accepts a float array corresponding to the raw waveform of the speech signal.
 - Hubert model was fine-tuned using connectionist temporal classification (CTC) so the model output has to be decoded
-  using [`Wav2Vec2CTCTokenizer`].
+  using [`Wav2Vec2CTCTokenizer`](wav2vec2.md#wav2vec2ctctokenizer).
 
 
 ## Using Flash Attention 2
