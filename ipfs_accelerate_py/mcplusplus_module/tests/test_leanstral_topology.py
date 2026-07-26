@@ -23,6 +23,7 @@ from ipfs_accelerate_py.mcplusplus_module.leanstral_topology import (
 from ipfs_accelerate_py.mcplusplus_module.p2p_transport import (
     DEFAULT_BOOTSTRAP_PEERS,
     MCPp2pNode,
+    _bootstrap_dial_candidates,
 )
 from ipfs_accelerate_py.mcplusplus_module.trio.server import (
     ServerConfig,
@@ -296,6 +297,37 @@ def test_bootstrap_attempt_receipt_matches_strict_probe_shape(monkeypatch):
     assert receipt["success"] is True
     assert receipt["namespace"] == ""
     assert receipt["details"] == {}
+
+
+def test_dnsaddr_bootstrap_resolves_to_same_peer_plain_tcp(monkeypatch):
+    import trio
+    from multiaddr import Multiaddr
+
+    peer_id = DEFAULT_BOOTSTRAP_PEERS[0].rsplit("/p2p/", 1)[-1]
+
+    async def resolved(_value):
+        return [
+            Multiaddr(
+                f"/dns/bootstrap.example/tcp/443/wss/p2p/{peer_id}"
+            ),
+            Multiaddr(
+                f"/dns/bootstrap.example/tcp/4001/p2p/{peer_id}"
+            ),
+            Multiaddr(
+                "/dns/bootstrap.example/tcp/4001/p2p/"
+                "QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
+            ),
+        ]
+
+    monkeypatch.setattr(Multiaddr, "resolve", resolved)
+    candidates = trio.run(
+        _bootstrap_dial_candidates,
+        DEFAULT_BOOTSTRAP_PEERS[0],
+    )
+
+    assert candidates == (
+        f"/dns/bootstrap.example/tcp/4001/p2p/{peer_id}",
+    )
 
 
 def test_rendezvous_exercise_uses_exact_peer_and_is_bounded(monkeypatch):

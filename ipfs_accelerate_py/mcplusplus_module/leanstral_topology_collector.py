@@ -1135,7 +1135,7 @@ async def _wait_for_configured_bootstrap_attempts(
     return status
 
 
-async def collect_leanstral_topology(
+async def _collect_leanstral_topology_impl(
     config: LeanstralCollectorConfig,
     *,
     _require_clean_source: bool = True,
@@ -1265,6 +1265,47 @@ async def collect_leanstral_topology(
     if _require_clean_source and require_clean_source_tree() != source_commit:
         raise TopologyCollectionError("source_commit_changed_during_collection")
     return receipt
+
+
+def _topology_error_codes(error: BaseException) -> set[str]:
+    if isinstance(error, TopologyCollectionError):
+        return {error.code}
+    if isinstance(error, BaseExceptionGroup):
+        return {
+            code
+            for child in error.exceptions
+            for code in _topology_error_codes(child)
+        }
+    return set()
+
+
+async def collect_leanstral_topology(
+    config: LeanstralCollectorConfig,
+    *,
+    _require_clean_source: bool = True,
+    _source_commit: str = "",
+    _node_factory: Callable[..., MCPp2pNode] = MCPp2pNode,
+    _client_runner: Optional[ClientRunner] = None,
+    _interface_observer: InterfaceObserver = observe_ipv4_interfaces,
+    _model_provider: ModelProvider = _discover_models,
+) -> Dict[str, Any]:
+    """Collect one receipt and preserve stable errors across Trio nurseries."""
+
+    try:
+        return await _collect_leanstral_topology_impl(
+            config,
+            _require_clean_source=_require_clean_source,
+            _source_commit=_source_commit,
+            _node_factory=_node_factory,
+            _client_runner=_client_runner,
+            _interface_observer=_interface_observer,
+            _model_provider=_model_provider,
+        )
+    except BaseExceptionGroup as exc:
+        codes = _topology_error_codes(exc)
+        if len(codes) == 1:
+            raise TopologyCollectionError(codes.pop()) from None
+        raise
 
 
 def _csv_or_repeated(values: Sequence[str], env_name: str) -> Tuple[str, ...]:

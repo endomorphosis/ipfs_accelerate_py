@@ -98,6 +98,49 @@ _VIRTUAL_INTERFACE_PREFIXES = (
 )
 
 
+async def _bootstrap_dial_candidates(peer_addr: str) -> Tuple[str, ...]:
+    """Resolve one configured dnsaddr peer to supported TCP descendants.
+
+    The py-libp2p TCP transport cannot dial ``/dnsaddr`` directly.  The
+    multiaddr package already implements the libp2p TXT-record algorithm, so
+    preserve the configured dnsaddr as the public policy/receipt target while
+    dialing its exact same-peer TCP descendants internally.
+    """
+
+    configured = str(peer_addr or "").strip()
+    if not configured.startswith("/dnsaddr/"):
+        return (configured,)
+    try:
+        from multiaddr import Multiaddr
+
+        resolved = await Multiaddr(configured).resolve()
+    except Exception:
+        return (configured,)
+    peer_suffix = (
+        f"/p2p/{configured.rsplit('/p2p/', 1)[-1]}"
+        if "/p2p/" in configured
+        else ""
+    )
+    candidates = {
+        str(value)
+        for value in resolved
+        if "/tcp/" in str(value)
+        and "/ws" not in str(value)
+        and "/wss" not in str(value)
+        and (not peer_suffix or str(value).endswith(peer_suffix))
+    }
+    return tuple(
+        sorted(
+            candidates,
+            key=lambda value: (
+                0 if "/tcp/4001/" in value else 1,
+                0 if value.startswith("/ip4/") else 1,
+                value,
+            ),
+        )
+    ) or (configured,)
+
+
 @dataclass
 class PeerInfo:
     """Information about a connected P2P peer."""
@@ -614,26 +657,38 @@ class MCPp2pNode:
 
     async def _connect_bootstrap(self, peer_addr: str) -> bool:
         """Connect to a bootstrap peer."""
-        try:
-            peer_info = peerinfo_from_multiaddr(peer_addr)
-            await self._host.connect(peer_info)
+        for dial_addr in await _bootstrap_dial_candidates(peer_addr):
+            try:
+                peer_info = peerinfo_from_multiaddr(dial_addr)
+                await self._host.connect(peer_info)
 
-            # Enforce max peers limit
-            if len(self._peers) >= MAX_PEERS:
-                # Evict oldest peer
-                oldest = min(self._peers.values(), key=lambda p: p.last_seen)
-                self._peers.pop(oldest.peer_id, None)
+                # Enforce max peers limit
+                if len(self._peers) >= MAX_PEERS:
+                    # Evict oldest peer
+                    oldest = min(
+                        self._peers.values(),
+                        key=lambda p: p.last_seen,
+                    )
+                    self._peers.pop(oldest.peer_id, None)
 
-            self._peers[str(peer_info.peer_id)] = PeerInfo(
-                peer_id=str(peer_info.peer_id),
-                multiaddrs=[peer_addr],
-                protocols=[MCP_P2P_PROTOCOL],
-            )
-            logger.info(f"Connected to bootstrap peer: {peer_info.peer_id}")
-            return True
-        except Exception as e:
-            logger.debug(f"Failed to connect to bootstrap {peer_addr}: {e}")
-            return False
+                self._peers[str(peer_info.peer_id)] = PeerInfo(
+                    peer_id=str(peer_info.peer_id),
+                    multiaddrs=[dial_addr],
+                    protocols=[MCP_P2P_PROTOCOL],
+                )
+                logger.info(
+                    "Connected to bootstrap peer: %s",
+                    peer_info.peer_id,
+                )
+                return True
+            except Exception as exc:
+                logger.debug(
+                    "Failed to connect to bootstrap %s via %s: %s",
+                    peer_addr,
+                    dial_addr,
+                    exc,
+                )
+        return False
 
     async def _exercise_rendezvous_after_startup(self) -> None:
         """Give bootstrap dialing a brief head start, then exercise rendezvous."""
