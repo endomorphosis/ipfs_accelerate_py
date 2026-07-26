@@ -26,6 +26,8 @@ SCOPE_ADJUDICATION_SCHEMA = (
 )
 SCOPE_ADJUDICATION_POLICY_VERSION = "deterministic-scope-expansion-v1"
 DEFAULT_MAX_SCOPE_EXPANSION_PATHS = 8
+DEFAULT_MAX_IMPORT_CLOSURE_DEPTH = 4
+DEFAULT_MAX_IMPORT_CLOSURE_FILES = 128
 _SUPPORTED_CHANGE_KINDS = frozenset(
     {DiffChangeKind.ADD, DiffChangeKind.MODIFY}
 )
@@ -44,6 +46,9 @@ class ScopeExpansionReason(str, Enum):
     EXPLICIT_VALIDATION_TARGET = "explicit_validation_target"
     DECLARED_PATH_IMPORTS_CANDIDATE = "declared_path_imports_candidate"
     CANDIDATE_IMPORTS_DECLARED_PATH = "candidate_imports_declared_path"
+    DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE = (
+        "declared_path_transitively_imports_candidate"
+    )
     REGRESSION_TEST_IMPORTS_DECLARED_PATH = (
         "regression_test_imports_declared_path"
     )
@@ -229,6 +234,96 @@ def _read_source(
         return None
 
 
+def _resolve_imported_python_paths(
+    workspace_path: Path | None,
+    module: str,
+) -> tuple[str, ...]:
+    """Resolve the bounded in-repository files Python may execute for import."""
+
+    if workspace_path is None:
+        return ()
+    parts = tuple(part for part in str(module).split(".") if part)
+    if not parts or any(not part.isidentifier() for part in parts):
+        return ()
+
+    paths: list[str] = []
+    for depth in range(1, len(parts)):
+        package_path = "/".join((*parts[:depth], "__init__.py"))
+        if _read_source(workspace_path, package_path) is not None:
+            paths.append(package_path)
+
+    module_path = "/".join(parts) + ".py"
+    package_path = "/".join((*parts, "__init__.py"))
+    if _read_source(workspace_path, module_path) is not None:
+        paths.append(module_path)
+    if _read_source(workspace_path, package_path) is not None:
+        paths.append(package_path)
+    return tuple(dict.fromkeys(paths))
+
+
+def _bounded_import_closure_evidence(
+    *,
+    workspace_path: Path | None,
+    declared_paths: Sequence[str],
+    candidate_paths: Sequence[str],
+    known_imports: Mapping[str, set[str]],
+    max_depth: int = DEFAULT_MAX_IMPORT_CLOSURE_DEPTH,
+    max_files: int = DEFAULT_MAX_IMPORT_CLOSURE_FILES,
+) -> dict[str, tuple[str, ...]]:
+    """Find short, static import chains from declared files to candidates."""
+
+    if workspace_path is None:
+        return {}
+    candidates = set(candidate_paths)
+    evidence: dict[str, tuple[str, ...]] = {}
+    import_cache = dict(known_imports)
+    discovered_paths: set[str] = set(import_cache)
+
+    for declared in sorted(set(declared_paths)):
+        queue: list[tuple[str, tuple[str, ...], int]] = [
+            (declared, (declared,), 0)
+        ]
+        visited = {declared}
+        discovered_paths.add(declared)
+        while queue and len(discovered_paths) <= max_files:
+            current, chain, depth = queue.pop(0)
+            if depth >= max_depth:
+                continue
+            imported_modules = import_cache.get(current)
+            if imported_modules is None:
+                source = _read_source(workspace_path, current)
+                if source is None:
+                    continue
+                try:
+                    imported_modules, _ = _imported_modules(current, source)
+                except (SyntaxError, TypeError, ValueError):
+                    continue
+                import_cache[current] = imported_modules
+            for module in sorted(imported_modules):
+                for imported_path in _resolve_imported_python_paths(
+                    workspace_path,
+                    module,
+                ):
+                    next_chain = (*chain, imported_path)
+                    if imported_path in candidates:
+                        previous = evidence.get(imported_path)
+                        if previous is None or (
+                            len(next_chain),
+                            next_chain,
+                        ) < (len(previous), previous):
+                            evidence[imported_path] = next_chain
+                    if (
+                        imported_path not in visited
+                        and len(discovered_paths) < max_files
+                    ):
+                        visited.add(imported_path)
+                        discovered_paths.add(imported_path)
+                        queue.append(
+                            (imported_path, next_chain, depth + 1)
+                        )
+    return evidence
+
+
 @dataclass(frozen=True)
 class ScopePathDecision:
     """One source-free explanation for an undeclared path decision."""
@@ -263,6 +358,10 @@ class ScopePathDecision:
             ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
             ScopeExpansionReason.DECLARED_PATH_IMPORTS_CANDIDATE,
             ScopeExpansionReason.CANDIDATE_IMPORTS_DECLARED_PATH,
+            (
+                ScopeExpansionReason
+                .DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE
+            ),
             ScopeExpansionReason.REGRESSION_TEST_IMPORTS_DECLARED_PATH,
         }
         if self.verdict is ScopeExpansionVerdict.JUSTIFIED:
@@ -588,10 +687,11 @@ def adjudicate_scope_expansion(
     """Adjudicate only undeclared paths in one otherwise-safe proposal.
 
     A candidate path is justified when it is an explicit validation target or
-    has a direct Python import edge to a declared path.  Existing tests must
-    preserve their test functions and assertion count.  Every other case
-    remains denied; no natural-language or model-generated rationale is
-    treated as authority.
+    has a bounded static Python import path to a declared path. Package
+    initializers are included because Python executes them before imported
+    submodules. Existing tests must preserve their test functions and
+    assertion count. Every other case remains denied; no natural-language or
+    model-generated rationale is treated as authority.
     """
 
     if (
@@ -730,6 +830,12 @@ def adjudicate_scope_expansion(
         for path in python_paths
         if (module := _module_name(path))
     }
+    transitive_import_evidence = _bounded_import_closure_evidence(
+        workspace_path=workspace_path,
+        declared_paths=concrete_scope_paths,
+        candidate_paths=extra_paths,
+        known_imports=imports,
+    )
 
     decisions: list[ScopePathDecision] = []
     for path in extra_paths:
@@ -885,6 +991,18 @@ def adjudicate_scope_expansion(
                     evidence_paths=candidate_imports_declared,
                 )
             )
+        elif path in transitive_import_evidence and not is_test:
+            decisions.append(
+                ScopePathDecision(
+                    path=path,
+                    verdict=ScopeExpansionVerdict.JUSTIFIED,
+                    reason_codes=(
+                        ScopeExpansionReason
+                        .DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE,
+                    ),
+                    evidence_paths=transitive_import_evidence[path],
+                )
+            )
         else:
             decisions.append(
                 ScopePathDecision(
@@ -929,6 +1047,8 @@ def compact_scope_adjudication(
 
 
 __all__ = [
+    "DEFAULT_MAX_IMPORT_CLOSURE_DEPTH",
+    "DEFAULT_MAX_IMPORT_CLOSURE_FILES",
     "DEFAULT_MAX_SCOPE_EXPANSION_PATHS",
     "SCOPE_ADJUDICATION_POLICY_VERSION",
     "SCOPE_ADJUDICATION_SCHEMA",
