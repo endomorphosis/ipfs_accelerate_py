@@ -3696,7 +3696,10 @@ class DynamicBundleScheduler:
             markdown = operational_todo_path.read_text(encoding="utf-8")
         except OSError:
             markdown = ""
-        from .todo_daemon.implementation_daemon import parse_task_file
+        from .todo_daemon.implementation_daemon import (
+            TASK_ATTEMPT_LIMIT_IDLE_REASON,
+            parse_task_file,
+        )
 
         task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
         portal_tasks = (
@@ -3768,6 +3771,19 @@ class DynamicBundleScheduler:
                 statuses.get(task_id, board_statuses.get(task_id, ""))
                 for task_id in lane.task_ids
             ]
+            if (
+                state_matches_board
+                and not active
+                and str(state.get("selection_idle_reason") or "")
+                == TASK_ATTEMPT_LIMIT_IDLE_REASON
+            ):
+                # The daemon intentionally remains persistent on an ordinary
+                # empty queue. This exact reason is different: every ready
+                # member in the execution slice has exhausted its retry
+                # budget, so no future daemon pass can make progress without
+                # an authoritative task revision. Settle the lane as blocked
+                # so its live wrapper is fenced and capacity is released.
+                return "blocked"
             if state_matches_board and not active and execution_statuses:
                 if all(status in {"complete", "completed"} for status in execution_statuses):
                     return "completed"

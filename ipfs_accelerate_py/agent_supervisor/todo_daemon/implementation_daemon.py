@@ -160,6 +160,9 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+TASK_ATTEMPT_LIMIT_IDLE_REASON = (
+    "all_selectable_ready_tasks_reached_max_task_attempts"
+)
 VALIDATION_MAX_WORKERS_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_MAX_WORKERS"
 VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDGET"
 DEFAULT_VALIDATION_MAX_WORKERS = 2
@@ -5161,9 +5164,7 @@ class PortalImplementationDaemon:
                 for task in selectable_tasks
             )
             if not remaining_ready:
-                attempt_limit_idle_reason = (
-                    "all_selectable_ready_tasks_reached_max_task_attempts"
-                )
+                attempt_limit_idle_reason = TASK_ATTEMPT_LIMIT_IDLE_REASON
             self._record_event(
                 "task_attempt_limit_backpressure",
                 {

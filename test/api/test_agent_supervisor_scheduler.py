@@ -21,6 +21,9 @@ from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_modul
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
 from ipfs_accelerate_py.agent_supervisor.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    TASK_ATTEMPT_LIMIT_IDLE_REASON,
+)
 
 _MANIFEST_GRAPH_FIELDS = {
     "conflict_graph",
@@ -1176,6 +1179,72 @@ def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path:
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
         state = coordinator.task_state(launcher.starts[0][1].task_cid)
     assert state is not None and state["state"] == "blocked"
+
+
+def test_attempt_exhausted_idle_state_reaps_lane_but_ordinary_idle_persists(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    initial = scheduler.reconcile_once()
+    assert initial["counts"]["active"] == 1
+    lane, grant, process = launcher.starts[0]
+    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.todo_path.write_text(
+        "## T-1 Retry-bounded task\n\n"
+        "- Status: todo\n"
+        "- Depends on: none\n",
+        encoding="utf-8",
+    )
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
+    idle_state = {
+        "task_count": 1,
+        "completed_count": 0,
+        "ready_count": 1,
+        "selectable_ready_count": 0,
+        "blocked_count": 0,
+        "waiting_count": 0,
+        "implementation_in_progress": False,
+        "active_task_id": "",
+        "selection_idle_reason": "",
+        "task_statuses": {"T-1": "ready"},
+        "task_identities": {"T-1": {"display_task_id": "T-1"}},
+    }
+    state_path.write_text(json.dumps(idle_state), encoding="utf-8")
+
+    ordinary_idle = scheduler.reconcile_once()
+
+    assert ordinary_idle["counts"]["active"] == 1
+    assert process.alive
+    assert process.terminate_calls == 0
+
+    idle_state["selection_idle_reason"] = TASK_ATTEMPT_LIMIT_IDLE_REASON
+    state_path.write_text(json.dumps(idle_state), encoding="utf-8")
+
+    exhausted = scheduler.reconcile_once()
+
+    assert exhausted["counts"]["active"] == 0
+    assert exhausted["reaped_task_cids"] == [lane.task_cid]
+    assert process.terminate_calls == 1
+    assert process.wait_calls == 1
+    assert len(launcher.starts) == 1
+    assert not scheduler.resource_scheduler.active_leases
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.active_lease(grant.task_cid) is None
+        receipts = coordinator.list_receipts(grant.task_cid)
+    assert receipts
+    assert {
+        receipt["receipt"]["failure_class"]
+        for receipt in receipts
+    } == {"blocked"}
+
+    scheduler.reconcile_once()
+    assert len(launcher.starts) == 1
 
 
 def test_completed_execution_slice_releases_lane_while_shard_remains_open(tmp_path: Path) -> None:
