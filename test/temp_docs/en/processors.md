@@ -18,7 +18,7 @@ rendered properly in your Markdown viewer.
 
 Multimodal models require a preprocessor capable of handling inputs that combine more than one modality. Depending on the input modality, a processor needs to convert text into an array of tensors, images into pixel values, and audio into an array with tensors with the correct sampling rate.
 
-For example, [PaliGemma](./model_doc/paligemma) is a vision-language model that uses the [SigLIP](./model_doc/siglip) image processor and the [Llama](./model_doc/llama) tokenizer. A [`ProcessorMixin`] class wraps both of these preprocessor types, providing a single and unified processor class for a multimodal model.
+For example, [PaliGemma](./model_doc/paligemma.md) is a vision-language model that uses the [SigLIP](./model_doc/siglip.md) image processor and the [Llama](./model_doc/llama.md) tokenizer. A [`ProcessorMixin`] class wraps both of these preprocessor types, providing a single and unified processor class for a multimodal model.
 
 Call [`~ProcessorMixin.from_pretrained`] to load a processor. Pass the input type to the processor to generate the expected model inputs, input ids and pixel values.
 
@@ -48,7 +48,7 @@ There are two ways to load a processor, with an [`AutoProcessor`] and with a mod
 <hfoptions id="processor-class">
 <hfoption id="AutoProcessor">
 
-The [AutoClass](./model_doc/auto) API provides a simple interface to load processors without directly specifying the specific model class it belongs to.
+The [AutoClass](./model_doc/auto.md) API provides a simple interface to load processors without directly specifying the specific model class it belongs to.
 
 Use [`~AutoProcessor.from_pretrained`] to load a processor.
 
