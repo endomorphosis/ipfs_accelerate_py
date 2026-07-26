@@ -90,8 +90,8 @@ Below is an expected speedup diagram comparing the pure inference time between t
 
 ## Resources
 
-- [Audio classification task guide](../tasks/audio_classification)
-- [Automatic speech recognition task guide](../tasks/asr)
+- [Audio classification task guide](../tasks/audio_classification.md)
+- [Automatic speech recognition task guide](../tasks/asr.md)
 
 ## HubertConfig
 
