@@ -24,7 +24,7 @@ rendered properly in your Markdown viewer.
 
 The Table Transformer model was proposed in [PubTables-1M: Towards comprehensive table extraction from unstructured documents](https://arxiv.org/abs/2110.00061) by
 Brandon Smock, Rohith Pesala, Robin Abraham. The authors introduce a new dataset, PubTables-1M, to benchmark progress in table extraction from unstructured documents,
-as well as table structure recognition and functional analysis. The authors train 2 [DETR](detr) models, one for table detection and one for table structure recognition, dubbed Table Transformers.
+as well as table structure recognition and functional analysis. The authors train 2 [DETR](detr.md) models, one for table detection and one for table structure recognition, dubbed Table Transformers.
 
 The abstract from the paper is the following:
 
