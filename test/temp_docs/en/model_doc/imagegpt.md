@@ -46,7 +46,7 @@ This model was contributed by [nielsr](https://huggingface.co/nielsr), based on 
 
 ## Usage tips
 
-- ImageGPT is almost exactly the same as [GPT-2](gpt2), with the exception that a different activation
+- ImageGPT is almost exactly the same as [GPT-2](gpt2.md), with the exception that a different activation
   function is used (namely "quick gelu"), and the layer normalization layers don't mean center the inputs. ImageGPT
   also doesn't have tied input- and output embeddings.
 - As the time- and memory requirements of the attention mechanism of Transformers scales quadratically in the sequence
@@ -85,7 +85,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 - Demo notebooks for ImageGPT can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/ImageGPT).
 - [`ImageGPTForImageClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/image-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/image_classification.ipynb).
-- See also: [Image classification task guide](../tasks/image_classification)
+- See also: [Image classification task guide](../tasks/image_classification.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 
