@@ -435,6 +435,13 @@ def cli_control_surface_publication(
     return validate_control_surface_publication(publication, selected)
 
 
+# Generation-2 spellings intentionally preserve function identity with the
+# legacy-compatible entry points.  Both surfaces publish the one canonical
+# operation catalog; these are negotiation names, not alternate behavior.
+agent_cli_v2_discovery_manifest = agent_cli_discovery_manifest
+v2_cli_control_surface_publication = cli_control_surface_publication
+
+
 def build_agent_cli_command(
     request: OperationRequest,
     *,
@@ -865,6 +872,7 @@ __all__ = [
     "build_agent_request",
     "build_agent_cli_command",
     "agent_cli_discovery_manifest",
+    "agent_cli_v2_discovery_manifest",
     "cli_control_surface_publication",
     "default_agent_control_service",
     "exit_code_for_result",
@@ -872,4 +880,5 @@ __all__ = [
     "register_agent_cli",
     "run_agent_cli",
     "validate_agent_cli_catalog",
+    "v2_cli_control_surface_publication",
 ]

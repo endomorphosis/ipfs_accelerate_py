@@ -172,7 +172,10 @@ CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES: Final[tuple[str, ...]] = (
     "ipfs_datasets_py",
     "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_",
     "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+    "ipfs_accelerate_py.agent_supervisor.leanstral_goal_development",
+    "ipfs_accelerate_py.agent_supervisor.leanstral_goal_lifecycle",
     "ipfs_accelerate_py.agent_supervisor.formal_verification_provider",
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm",
 )
 
 
