@@ -1790,8 +1790,10 @@ class PortalImplementationDaemon:
         ]
         if workspace != shared_checkout:
             roots.append(("shared_checkout", shared_checkout))
-        return {
-            scope: {
+        snapshot: dict[str, dict[str, Any]] = {}
+        for scope, root in roots:
+            head_before = self._implementation_protected_git_head(root)
+            scope_snapshot: dict[str, Any] = {
                 "root": str(root),
                 "paths": {
                     relative: self._implementation_protected_path_identity(
@@ -1801,7 +1803,139 @@ class PortalImplementationDaemon:
                     for relative in self.implementation_protected_paths
                 },
             }
-            for scope, root in roots
+            head_after = self._implementation_protected_git_head(root)
+            if head_before and head_before == head_after:
+                scope_snapshot["git_head"] = head_before
+            elif head_before or head_after:
+                scope_snapshot["git_head_error"] = "head_changed_while_snapshotting"
+            snapshot[scope] = scope_snapshot
+        return snapshot
+
+    @staticmethod
+    def _implementation_protected_git_head(root: Path) -> str:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+
+    def _authorized_concurrent_protected_path_update(
+        self,
+        *,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+        after: Mapping[str, Mapping[str, Any]],
+        mutations: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Recognize a daemon-owned board commit made by another active lane."""
+
+        if workspace_path.resolve() == self.repo_root.resolve() or not mutations:
+            return {}
+        if any(
+            str(mutation.get("scope") or "") != "shared_checkout"
+            for mutation in mutations
+        ):
+            return {}
+
+        before_shared = before.get("shared_checkout")
+        after_shared = after.get("shared_checkout")
+        if not isinstance(before_shared, Mapping) or not isinstance(
+            after_shared, Mapping
+        ):
+            return {}
+        before_head = str(before_shared.get("git_head") or "")
+        after_head = str(after_shared.get("git_head") or "")
+        if not before_head or not after_head or before_head == after_head:
+            return {}
+
+        ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", before_head, after_head],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if ancestry.returncode != 0:
+            return {}
+
+        protected_paths = sorted(
+            {
+                str(mutation.get("path") or "")
+                for mutation in mutations
+                if str(mutation.get("path") or "")
+            }
+        )
+        if not protected_paths:
+            return {}
+        status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                *protected_paths,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0 or status.stdout.strip():
+            return {}
+
+        history = subprocess.run(
+            [
+                "git",
+                "log",
+                "--format=%H%x09%ae%x09%s",
+                f"{before_head}..{after_head}",
+                "--",
+                *protected_paths,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if history.returncode != 0:
+            return {}
+        commits: list[dict[str, str]] = []
+        for line in history.stdout.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) != 3:
+                return {}
+            commit, author_email, subject = parts
+            daemon_owned = (
+                author_email == "implementation-daemon@example.invalid"
+                and (
+                    subject.endswith(": mark todo completed")
+                    or subject.endswith(": update generated submodule pointer")
+                )
+            )
+            if not daemon_owned:
+                return {}
+            commits.append(
+                {
+                    "commit": commit,
+                    "author_email": author_email,
+                    "subject": subject,
+                }
+            )
+        if not commits:
+            return {}
+        if self._implementation_protected_git_head(self.repo_root) != after_head:
+            return {}
+        return {
+            "before_head": before_head,
+            "after_head": after_head,
+            "protected_paths": protected_paths,
+            "commits": commits,
         }
 
     def _implementation_protected_active_snapshot_path(self) -> Path:
@@ -1987,6 +2121,23 @@ class PortalImplementationDaemon:
         if not mutations:
             return {}
         resolved_task_id = task.task_id if task is not None else task_id
+        concurrent_update = self._authorized_concurrent_protected_path_update(
+            workspace_path=workspace_path,
+            before=before,
+            after=after,
+            mutations=mutations,
+        )
+        if concurrent_update:
+            self._record_event(
+                "implementation_protected_path_concurrent_update_accepted",
+                {
+                    "task_id": resolved_task_id,
+                    "attempt": attempt,
+                    "workspace_path": str(workspace_path),
+                    **concurrent_update,
+                },
+            )
+            return {}
         payload = {
             "reason": "implementation_protected_path_mutated",
             "task_id": resolved_task_id,
