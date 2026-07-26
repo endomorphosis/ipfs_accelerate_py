@@ -2192,6 +2192,164 @@ def retrieve_analysis_evidence(
     return retriever.retrieve(query, limits=limits)
 
 
+def _cost_units(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RetrievalValidationError(
+            f"{name} must be a non-negative integer"
+        )
+    return value
+
+
+def retrieval_result_to_context_reference(
+    result: RetrievalResult,
+    *,
+    repository_id: str,
+    tree_id: str,
+    referenced_content_id: str = "",
+    priority: int = 0,
+    token_count: int = 0,
+    expected_decision_change_bps: int | None = None,
+    uncertainty_reduction_bps: int | None = None,
+    latency_cost: int = 0,
+    invalidation_cost: int = 0,
+    expansion_cost: int = 0,
+    diversity_key: str = "",
+) -> Any:
+    """Project retrieval relevance into a VOI-ready context reference.
+
+    Retrieval rank supplies bounded benefit hints, never the final selection
+    decision.  The context compiler remeasures provider tokens, applies all
+    declared costs, and recomputes the diversity-adjusted marginal score.
+    """
+
+    if not isinstance(result, RetrievalResult):
+        raise RetrievalValidationError("result must be a RetrievalResult")
+    from .context_contracts import ContextReference, ContextTier
+
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        raise RetrievalValidationError("priority must be an integer")
+    tokens = _cost_units(token_count, "token_count")
+    costs = {
+        "latency_cost": _cost_units(latency_cost, "latency_cost"),
+        "invalidation_cost": _cost_units(
+            invalidation_cost, "invalidation_cost"
+        ),
+        "expansion_cost": _cost_units(expansion_cost, "expansion_cost"),
+    }
+    relevance_bps = round(_score(result.score) * 10_000)
+    expected_bps = (
+        relevance_bps
+        if expected_decision_change_bps is None
+        else _cost_units(
+            expected_decision_change_bps,
+            "expected_decision_change_bps",
+        )
+    )
+    # Uncertainty is largest near the decision boundary rather than for an
+    # irrelevant zero-score candidate.  The caller may override the expected
+    # reduction when a producer has calibrated information-gain evidence.
+    uncertainty_bps = round(
+        (1.0 - abs(2.0 * _score(result.score) - 1.0)) * 10_000
+    )
+    reduction_bps = (
+        uncertainty_bps
+        if uncertainty_reduction_bps is None
+        else _cost_units(
+            uncertainty_reduction_bps,
+            "uncertainty_reduction_bps",
+        )
+    )
+    for name, value in (
+        ("expected_decision_change_bps", expected_bps),
+        ("uncertainty_reduction_bps", reduction_bps),
+    ):
+        if value > 10_000:
+            raise RetrievalValidationError(
+                f"{name} must not exceed 10000"
+            )
+    selected_diversity_key = _bounded_text(
+        diversity_key
+        or (
+            f"goal:{result.goal_id}"
+            if result.goal_id
+            else f"obligation:{result.obligation_id}"
+            if result.obligation_id
+            else f"path:{result.path}"
+            if result.path
+            else f"kind:{result.entity_kind}"
+        ),
+        320,
+    )
+    summary = _bounded_text(
+        " | ".join(
+            item
+            for item in (
+                result.title,
+                result.status,
+                result.path,
+                result.symbol,
+                result.ranking_explanation,
+            )
+            if item
+        ),
+        _MAX_TEXT,
+    )
+    content_id = referenced_content_id or "sha256:" + hashlib.sha256(
+        _canonical_json(result.to_dict()).encode("utf-8")
+    ).hexdigest()
+    return ContextReference(
+        reference_id=result.evidence_id,
+        kind=f"analysis-retrieval:{result.entity_kind}",
+        tier=ContextTier.EVIDENCE,
+        referenced_content_id=content_id,
+        repository_id=_bounded_text(repository_id, 320),
+        tree_id=_bounded_text(tree_id, 320),
+        path=result.path,
+        summary=summary,
+        token_count=tokens,
+        metadata={
+            "priority": priority,
+            "retrieval_relevance_bps": relevance_bps,
+            "expected_decision_change_bps": expected_bps,
+            "uncertainty_bps": uncertainty_bps,
+            "uncertainty_reduction_bps": reduction_bps,
+            "diversity_key": selected_diversity_key,
+            **costs,
+            "retrieval_evidence_id": result.evidence_id,
+            "retrieval_reference_ids": tuple(
+                item.reference_id for item in result.evidence_references
+            ),
+        },
+    )
+
+
+def retrieval_response_to_context_references(
+    response: RetrievalResponse,
+    *,
+    repository_id: str,
+    tree_id: str,
+    latency_cost: int = 0,
+    invalidation_cost: int = 0,
+    expansion_cost: int = 0,
+) -> tuple[Any, ...]:
+    """Convert a bounded response into compiler candidates in rank order."""
+
+    if not isinstance(response, RetrievalResponse):
+        raise RetrievalValidationError("response must be a RetrievalResponse")
+    return tuple(
+        retrieval_result_to_context_reference(
+            item,
+            repository_id=repository_id,
+            tree_id=tree_id,
+            priority=len(response.results) - index,
+            latency_cost=latency_cost,
+            invalidation_cost=invalidation_cost,
+            expansion_cost=expansion_cost,
+        )
+        for index, item in enumerate(response.results)
+    )
+
+
 # Descriptive aliases for callers that use the task title's terminology.
 AnalysisRetriever = BoundedGraphRAGRetriever
 MultiSignalGraphRAGRetriever = BoundedGraphRAGRetriever
@@ -2202,6 +2360,9 @@ AnalysisRetrievalResponse = RetrievalResponse
 AnalysisRetrievalError = RetrievalValidationError
 retrieve_graph_evidence = retrieve_analysis_evidence
 retrieve = retrieve_analysis_evidence
+retrieval_results_to_context_references = (
+    retrieval_response_to_context_references
+)
 
 
 __all__ = [
@@ -2231,4 +2392,7 @@ __all__ = [
     "retrieve",
     "retrieve_analysis_evidence",
     "retrieve_graph_evidence",
+    "retrieval_response_to_context_references",
+    "retrieval_results_to_context_references",
+    "retrieval_result_to_context_reference",
 ]
