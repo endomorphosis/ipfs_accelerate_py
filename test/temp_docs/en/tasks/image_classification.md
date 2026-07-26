@@ -26,7 +26,7 @@ after a natural disaster, monitoring crop health, or helping screen medical imag
 
 This guide illustrates how to:
 
-1. Fine-tune [ViT](../model_doc/vit) on the [Food-101](https://huggingface.co/datasets/food101) dataset to classify a food item in an image.
+1. Fine-tune [ViT](../model_doc/vit.md) on the [Food-101](https://huggingface.co/datasets/food101) dataset to classify a food item in an image.
 2. Use your fine-tuned model for inference.
 
 <Tip>
@@ -270,7 +270,7 @@ Your `compute_metrics` function is ready to go now, and you'll return to it when
 <pt>
 <Tip>
 
-If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the basic tutorial [here](../training#train-with-pytorch-trainer)!
+If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the basic tutorial [here](../training.md#train-with-pytorch-trainer)!
 
 </Tip>
 
@@ -337,7 +337,7 @@ Once training is completed, share your model to the Hub with the [`~transformers
 
 <Tip>
 
-If you are unfamiliar with fine-tuning a model with Keras, check out the [basic tutorial](./training#train-a-tensorflow-model-with-keras) first!
+If you are unfamiliar with fine-tuning a model with Keras, check out the [basic tutorial](../training.md#train-a-tensorflow-model-with-keras) first!
 
 </Tip>
 
@@ -403,9 +403,9 @@ Configure the model for training with `compile()`:
 >>> model.compile(optimizer=optimizer, loss=loss)
 ```
 
-To compute the accuracy from the predictions and push your model to the 🤗 Hub, use [Keras callbacks](../main_classes/keras_callbacks).
-Pass your `compute_metrics` function to [KerasMetricCallback](../main_classes/keras_callbacks#transformers.KerasMetricCallback),
-and use the [PushToHubCallback](../main_classes/keras_callbacks#transformers.PushToHubCallback) to upload the model:
+To compute the accuracy from the predictions and push your model to the 🤗 Hub, use [Keras callbacks](../main_classes/keras_callbacks.md).
+Pass your `compute_metrics` function to [KerasMetricCallback](../main_classes/keras_callbacks.md#transformers.KerasMetricCallback),
+and use the [PushToHubCallback](../main_classes/keras_callbacks.md#transformers.PushToHubCallback) to upload the model:
 
 ```py
 >>> from transformers.keras_callbacks import KerasMetricCallback, PushToHubCallback
