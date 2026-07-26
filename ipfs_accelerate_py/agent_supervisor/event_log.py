@@ -9,11 +9,18 @@ import os
 import tempfile
 import threading
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from .control_contracts import (
+    CursorReplayError,
+    EventCursor,
+    EventCursorError,
+    EventPage,
+    replay_event_page,
+)
 from .supervisor_v2_contracts import MAX_PROJECTION_BYTES, MAX_RECEIPT_BYTES
 
 
@@ -28,7 +35,26 @@ _EVENT_LOG_MAX_ARCHIVES_ENV = "IPFS_ACCELERATE_AGENT_EVENT_LOG_MAX_ARCHIVES"
 _DEFAULT_EVENT_LOG_MAX_ARCHIVES = 8
 
 EVENT_LOG_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.event-log-manifest@2"
+)
+LEGACY_EVENT_LOG_MANIFEST_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.event-log-manifest@1"
+)
+EVENT_CURSOR_CHECKPOINT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.event-cursor-checkpoint@1"
+)
+_EVENT_OFFSET_INDEX_STRIDE = 256
+_EVENT_OFFSET_INDEX_MAX_ITEMS = 4096
+_EVENT_RECOVERY_TAIL_MAX_BYTES = 16 * MAX_PROJECTION_BYTES
+_RESERVED_EVENT_FIELDS = frozenset(
+    {
+        "stream_id",
+        "snapshot_id",
+        "sequence",
+        "position",
+        "event_id",
+        "previous_event_id",
+    }
 )
 
 
@@ -54,9 +80,16 @@ class _EventLogLock:
 
     def __enter__(self) -> None:
         self._thread_lock.acquire()
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._handle = self._path.open("a+b")
-        fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX)
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._handle = self._path.open("a+b")
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX)
+        except BaseException:
+            if self._handle is not None:
+                self._handle.close()
+                self._handle = None
+            self._thread_lock.release()
+            raise
 
     def __exit__(self, *_args: Any) -> None:
         assert self._handle is not None
@@ -114,7 +147,56 @@ def _event_manifest_path(path: Path) -> Path:
     return path.with_name(f"{path.name}.manifest.json")
 
 
+def _canonical_identity(value: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _event_identity(value: Mapping[str, Any]) -> str:
+    body = dict(value)
+    body.pop("event_id", None)
+    return _canonical_identity(body)
+
+
+def _event_stream_binding(path: Path) -> tuple[str, str]:
+    try:
+        identity = str(path.resolve())
+    except OSError:
+        identity = str(path.absolute())
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return (
+        f"event-log:sha256:{digest}",
+        f"event-log-snapshot:sha256:{digest}",
+    )
+
+
+def _source_paths(path: Path) -> list[Path]:
+    sources: list[Path] = []
+    if path.parent.exists():
+        sources.extend(sorted(path.parent.glob(f"{path.name}.rotated-*")))
+    if path.exists() and not path.is_dir():
+        sources.append(path)
+    return sources
+
+
+def _stat_fields(path: Path) -> dict[str, int]:
+    stat = path.stat()
+    return {
+        "device": int(stat.st_dev),
+        "inode": int(stat.st_ino),
+        "mtime_ns": int(stat.st_mtime_ns),
+    }
+
+
 def _file_record(path: Path) -> dict[str, Any]:
+    """Return a compatibility record for one physical JSONL segment."""
+
     digest = hashlib.sha256()
     count = 0
     size = 0
@@ -124,12 +206,168 @@ def _file_record(path: Path) -> dict[str, Any]:
             size += len(line)
             if line.strip():
                 count += 1
-    return {
+    record = {
         "path": path.name,
         "size_bytes": size,
         "event_count": count,
         "sha256": digest.hexdigest(),
     }
+    try:
+        record.update(_stat_fields(path))
+    except OSError:
+        pass
+    return record
+
+
+def _scan_event_log(
+    path: Path,
+    *,
+    generation: int = 0,
+    stream_id: str | None = None,
+    snapshot_id: str | None = None,
+) -> dict[str, Any]:
+    """Rebuild canonical segment metadata.
+
+    This is deliberately the recovery path, not the append path. Legacy
+    events are assigned deterministic virtual positions without rewriting the
+    source files. Exact canonical duplicates left by a rotation crash are
+    represented by overlapping segment ranges and deduplicated during replay.
+    """
+
+    default_stream, default_snapshot = _event_stream_binding(path)
+    selected_stream = str(stream_id or default_stream)
+    selected_snapshot = str(snapshot_id or default_snapshot)
+    latest_sequence = 0
+    latest_event_id = ""
+    earliest_sequence = 0
+    identities: dict[int, str] = {}
+    records: list[dict[str, Any]] = []
+    for source in _source_paths(path):
+        digest = hashlib.sha256()
+        physical_count = 0
+        size = 0
+        first_sequence = 0
+        last_sequence = 0
+        starting_previous_event_id = latest_event_id
+        offsets: list[list[int]] = []
+        all_canonical = True
+        with source.open("rb") as stream:
+            while True:
+                offset = stream.tell()
+                raw_line = stream.readline()
+                if not raw_line:
+                    break
+                digest.update(raw_line)
+                size += len(raw_line)
+                if not raw_line.strip():
+                    continue
+                try:
+                    raw_event = json.loads(raw_line)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                if not isinstance(raw_event, dict):
+                    continue
+                physical_count += 1
+                raw_sequence = raw_event.get(
+                    "sequence", raw_event.get("position")
+                )
+                canonical = (
+                    isinstance(raw_sequence, int)
+                    and not isinstance(raw_sequence, bool)
+                    and raw_sequence > 0
+                    and str(raw_event.get("stream_id") or "") == selected_stream
+                    and str(raw_event.get("snapshot_id") or "")
+                    == selected_snapshot
+                )
+                sequence = int(raw_sequence) if canonical else latest_sequence + 1
+                all_canonical = all_canonical and canonical
+                event = dict(raw_event)
+                if not canonical:
+                    event.update(
+                        {
+                            "stream_id": selected_stream,
+                            "snapshot_id": selected_snapshot,
+                            "sequence": sequence,
+                            "previous_event_id": latest_event_id,
+                        }
+                    )
+                event_id = str(event.get("event_id") or "")
+                if not event_id:
+                    event_id = _event_identity(event)
+                elif event_id != _event_identity(event):
+                    raise CursorReplayError(
+                        f"event {sequence} has a non-canonical event_id"
+                    )
+                known_identity = identities.get(sequence)
+                if known_identity is not None:
+                    if known_identity != event_id:
+                        raise CursorReplayError(
+                            f"event sequence {sequence} has conflicting identities"
+                        )
+                else:
+                    if latest_sequence and sequence != latest_sequence + 1:
+                        raise CursorReplayError(
+                            "event recovery encountered a sequence gap"
+                        )
+                    if (
+                        latest_sequence
+                        and str(event.get("previous_event_id") or "")
+                        != latest_event_id
+                    ):
+                        raise CursorReplayError(
+                            "event recovery encountered a broken hash chain"
+                        )
+                    identities[sequence] = event_id
+                    latest_sequence = sequence
+                    latest_event_id = event_id
+                    if not earliest_sequence:
+                        earliest_sequence = sequence
+                if not first_sequence:
+                    first_sequence = sequence
+                last_sequence = max(last_sequence, sequence)
+                if (
+                    not offsets
+                    or (sequence - first_sequence) % _EVENT_OFFSET_INDEX_STRIDE
+                    == 0
+                ):
+                    offsets.append([sequence, offset])
+        record = {
+            "path": source.name,
+            "size_bytes": size,
+            "event_count": physical_count,
+            "sha256": digest.hexdigest(),
+            "first_sequence": first_sequence,
+            "last_sequence": last_sequence,
+            "start_previous_event_id": starting_previous_event_id,
+            "offset_index": offsets[-_EVENT_OFFSET_INDEX_MAX_ITEMS:],
+            "canonical_events": all_canonical,
+        }
+        try:
+            record.update(_stat_fields(source))
+        except OSError:
+            pass
+        records.append(record)
+    active_record = next(
+        (item for item in records if item.get("path") == path.name),
+        None,
+    )
+    value: dict[str, Any] = {
+        "schema": EVENT_LOG_MANIFEST_SCHEMA,
+        "generation": max(0, int(generation)),
+        "updated_at": utc_now(),
+        "active_path": path.name,
+        "stream_id": selected_stream,
+        "snapshot_id": selected_snapshot,
+        "earliest_sequence": earliest_sequence,
+        "latest_sequence": latest_sequence,
+        "last_event_id": latest_event_id,
+        "active_indexed_bytes": int(
+            (active_record or {}).get("size_bytes", 0)
+        ),
+        "files": records,
+    }
+    value["manifest_digest"] = _event_manifest_digest(value)
+    return value
 
 
 def _event_manifest_digest(value: Mapping[str, Any]) -> str:
@@ -144,89 +382,90 @@ def _event_manifest_digest(value: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def event_log_manifest(path: Path | str) -> dict[str, Any]:
-    """Return or reconstruct the crash-safe active/archive manifest."""
-
-    event_path = Path(path)
-    manifest_path = _event_manifest_path(event_path)
+def _load_event_manifest(path: Path) -> dict[str, Any] | None:
     try:
-        value = json.loads(manifest_path.read_text(encoding="utf-8"))
+        value = json.loads(
+            _event_manifest_path(path).read_text(encoding="utf-8")
+        )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        value = None
-    valid_manifest = (
-        isinstance(value, dict)
-        and value.get("schema") == EVENT_LOG_MANIFEST_SCHEMA
-        and value.get("manifest_digest") == _event_manifest_digest(value)
-    )
-    if valid_manifest:
-        expected = {
-            str(item.get("path")): item
-            for item in value.get("files", ())
-            if isinstance(item, Mapping)
-        }
-        actual_paths = []
-        if event_path.parent.exists():
-            actual_paths.extend(
-                sorted(event_path.parent.glob(f"{event_path.name}.rotated-*"))
-            )
-        if event_path.exists() and not event_path.is_dir():
-            actual_paths.append(event_path)
-        actual: dict[str, dict[str, Any]] = {}
-        try:
-            actual = {
-                item.name: _file_record(item)
-                for item in actual_paths
-            }
-        except OSError:
-            valid_manifest = False
-        else:
-            valid_manifest = expected == actual
-    if valid_manifest:
-        return value
-    sources = []
-    if event_path.parent.exists():
-        sources.extend(sorted(event_path.parent.glob(f"{event_path.name}.rotated-*")))
-    if event_path.exists() and not event_path.is_dir():
-        sources.append(event_path)
-    records: list[dict[str, Any]] = []
-    for source in sources:
-        try:
-            records.append(_file_record(source))
-        except OSError:
-            continue
-    value = {
-        "schema": EVENT_LOG_MANIFEST_SCHEMA,
-        "generation": 0,
-        "updated_at": utc_now(),
-        "active_path": event_path.name,
-        "files": records,
-    }
-    value["manifest_digest"] = _event_manifest_digest(value)
-    _atomic_write_bytes(
-        manifest_path,
-        json.dumps(value, sort_keys=True, indent=2).encode("utf-8") + b"\n",
-    )
+        return None
+    if (
+        not isinstance(value, dict)
+        or value.get("schema") != EVENT_LOG_MANIFEST_SCHEMA
+        or value.get("manifest_digest") != _event_manifest_digest(value)
+        or not str(value.get("stream_id") or "")
+        or not str(value.get("snapshot_id") or "")
+    ):
+        return None
     return value
 
 
-def _write_event_manifest(path: Path) -> dict[str, Any]:
-    previous = event_log_manifest(path)
-    sources = sorted(path.parent.glob(f"{path.name}.rotated-*"))
-    if path.exists() and not path.is_dir():
-        sources.append(path)
-    records = [_file_record(source) for source in sources]
-    value = {
-        "schema": EVENT_LOG_MANIFEST_SCHEMA,
-        "generation": int(previous.get("generation", 0)) + 1,
-        "updated_at": utc_now(),
-        "active_path": path.name,
-        "files": records,
+def _manifest_matches_metadata(path: Path, value: Mapping[str, Any]) -> bool:
+    expected = {
+        str(item.get("path")): item
+        for item in value.get("files", ())
+        if isinstance(item, Mapping)
     }
-    value["manifest_digest"] = _event_manifest_digest(value)
+    actual_paths = _source_paths(path)
+    if set(expected) != {item.name for item in actual_paths}:
+        return False
+    for source in actual_paths:
+        record = expected[source.name]
+        try:
+            stat = source.stat()
+        except OSError:
+            return False
+        if (
+            int(record.get("size_bytes", -1)) != stat.st_size
+            or int(record.get("device", -1)) != stat.st_dev
+            or int(record.get("inode", -1)) != stat.st_ino
+            or int(record.get("mtime_ns", -1)) != stat.st_mtime_ns
+        ):
+            return False
+    return True
+
+
+def _write_manifest_value(path: Path, value: Mapping[str, Any]) -> None:
     _atomic_write_bytes(
         _event_manifest_path(path),
         json.dumps(value, sort_keys=True, indent=2).encode("utf-8") + b"\n",
     )
+
+
+def event_log_manifest(path: Path | str) -> dict[str, Any]:
+    """Return the cheap active/archive head, rebuilding only after drift.
+
+    A healthy v2 manifest is validated with bounded ``stat`` metadata. File
+    bodies are scanned only when the manifest is absent, corrupt, or disagrees
+    with the physical segments.
+    """
+
+    event_path = Path(path)
+    value = _load_event_manifest(event_path)
+    if value is not None and _manifest_matches_metadata(event_path, value):
+        return value
+    value = _scan_event_log(event_path, generation=0)
+    _write_manifest_value(event_path, value)
+    return value
+
+
+def _write_event_manifest(
+    path: Path,
+    *,
+    previous: Mapping[str, Any] | None = None,
+    increment_generation: bool = True,
+) -> dict[str, Any]:
+    prior = dict(previous or _load_event_manifest(path) or {})
+    value = _scan_event_log(
+        path,
+        generation=(
+            int(prior.get("generation", 0))
+            + (1 if increment_generation else 0)
+        ),
+        stream_id=str(prior.get("stream_id") or "") or None,
+        snapshot_id=str(prior.get("snapshot_id") or "") or None,
+    )
+    _write_manifest_value(path, value)
     return value
 
 
@@ -382,10 +621,36 @@ def read_jsonl_event_sources(
     """
 
     indexed: list[tuple[int, dict[str, Any]]] = []
+    seen_canonical: dict[
+        tuple[str, str, int],
+        str,
+    ] = {}
     index = 0
     for source in event_log_sources(paths, include_rotated=include_rotated):
         source_repair = repair and ".rotated-" not in source.name
         for event in read_jsonl_events(source, repair=source_repair):
+            sequence = event.get("sequence", event.get("position"))
+            stream_id = str(event.get("stream_id") or "")
+            snapshot_id = str(event.get("snapshot_id") or "")
+            event_id = str(event.get("event_id") or "")
+            canonical = (
+                stream_id
+                and snapshot_id
+                and isinstance(sequence, int)
+                and not isinstance(sequence, bool)
+                and sequence > 0
+                and event_id
+            )
+            if canonical:
+                identity = (stream_id, snapshot_id, int(sequence))
+                known = seen_canonical.get(identity)
+                if known == event_id:
+                    continue
+                if known is not None and known != event_id:
+                    # The compatibility reader remains best-effort. Strict
+                    # cursor replay below fails closed on the same conflict.
+                    continue
+                seen_canonical[identity] = event_id
             indexed.append((index, event))
             index += 1
 
@@ -396,6 +661,515 @@ def read_jsonl_event_sources(
 
     indexed.sort(key=timestamp_key)
     return [event for _index, event in indexed]
+
+
+def initial_event_cursor(path: Path | str) -> EventCursor:
+    """Return the canonical position before the first event in ``path``."""
+
+    event_path = Path(path)
+    with _EventLogLock(event_path):
+        manifest = _manifest_for_append(event_path)
+    return EventCursor.initial(
+        str(manifest["stream_id"]),
+        snapshot_id=str(manifest["snapshot_id"]),
+    )
+
+
+event_log_initial_cursor = initial_event_cursor
+
+
+def latest_event_cursor(path: Path | str) -> EventCursor:
+    """Return a cursor bound to the exact durable event-log head."""
+
+    event_path = Path(path)
+    with _EventLogLock(event_path):
+        manifest = _manifest_for_append(event_path)
+    position = int(manifest.get("latest_sequence") or 0)
+    if position == 0:
+        return EventCursor.initial(
+            str(manifest["stream_id"]),
+            snapshot_id=str(manifest["snapshot_id"]),
+        )
+    return EventCursor(
+        stream_id=str(manifest["stream_id"]),
+        snapshot_id=str(manifest["snapshot_id"]),
+        position=position,
+        last_event_id=str(manifest["last_event_id"]),
+    )
+
+
+event_log_latest_cursor = latest_event_cursor
+
+
+def _coerce_event_cursor(
+    cursor: EventCursor | Mapping[str, Any] | str,
+) -> EventCursor:
+    if isinstance(cursor, EventCursor):
+        return cursor
+    if isinstance(cursor, str):
+        return EventCursor.from_token(cursor)
+    if isinstance(cursor, Mapping):
+        return EventCursor.from_dict(cursor)
+    raise EventCursorError(
+        "cursor must be an EventCursor, canonical cursor record, or token"
+    )
+
+
+def _record_for_source(
+    manifest: Mapping[str, Any],
+    source: Path,
+) -> Mapping[str, Any]:
+    for item in manifest.get("files", ()):
+        if isinstance(item, Mapping) and str(item.get("path")) == source.name:
+            return item
+    return {}
+
+
+def _segment_seek_offset(
+    record: Mapping[str, Any],
+    wanted_sequence: int,
+) -> tuple[int, int]:
+    if not bool(record.get("canonical_events", False)):
+        return 0, int(record.get("first_sequence") or 1)
+    selected_offset = 0
+    selected_sequence = int(record.get("first_sequence") or 1)
+    for item in record.get("offset_index", ()):
+        if (
+            not isinstance(item, Sequence)
+            or isinstance(item, (str, bytes, bytearray))
+            or len(item) != 2
+        ):
+            continue
+        try:
+            sequence = int(item[0])
+            offset = int(item[1])
+        except (TypeError, ValueError):
+            continue
+        if sequence <= wanted_sequence and sequence >= selected_sequence:
+            selected_sequence = sequence
+            selected_offset = max(0, offset)
+    return selected_offset, selected_sequence
+
+
+def _read_segment_page_events(
+    source: Path,
+    record: Mapping[str, Any],
+    *,
+    stream_id: str,
+    snapshot_id: str,
+    wanted_sequence: int,
+    maximum_events: int,
+) -> list[dict[str, Any]]:
+    """Read a bounded logical suffix from one segment.
+
+    The sparse manifest offset avoids walking the segment prefix during
+    steady-state replay. Legacy records are enriched in memory only.
+    """
+
+    if maximum_events <= 0:
+        return []
+    offset, inferred_sequence = _segment_seek_offset(record, wanted_sequence)
+    previous_event_id = str(record.get("start_previous_event_id") or "")
+    events: list[dict[str, Any]] = []
+    with source.open("rb") as stream:
+        stream.seek(offset)
+        while len(events) < maximum_events:
+            raw_line = stream.readline()
+            if not raw_line:
+                break
+            if not raw_line.strip():
+                continue
+            try:
+                raw_event = json.loads(raw_line)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise CursorReplayError(
+                    f"event segment {source.name!r} contains malformed JSON"
+                ) from exc
+            if not isinstance(raw_event, dict):
+                raise CursorReplayError(
+                    f"event segment {source.name!r} contains a non-object event"
+                )
+            raw_sequence = raw_event.get(
+                "sequence", raw_event.get("position")
+            )
+            canonical = (
+                isinstance(raw_sequence, int)
+                and not isinstance(raw_sequence, bool)
+                and raw_sequence > 0
+                and str(raw_event.get("stream_id") or "") == stream_id
+                and str(raw_event.get("snapshot_id") or "") == snapshot_id
+            )
+            if canonical:
+                sequence = int(raw_sequence)
+            else:
+                sequence = inferred_sequence
+                inferred_sequence += 1
+            event = dict(raw_event)
+            if not canonical:
+                event.update(
+                    {
+                        "stream_id": stream_id,
+                        "snapshot_id": snapshot_id,
+                        "sequence": sequence,
+                        "previous_event_id": previous_event_id,
+                    }
+                )
+            event_id = str(event.get("event_id") or "")
+            expected_event_id = _event_identity(event)
+            if event_id and event_id != expected_event_id:
+                raise CursorReplayError(
+                    f"event {sequence} has a non-canonical event_id"
+                )
+            event["event_id"] = event_id or expected_event_id
+            previous_event_id = event["event_id"]
+            if sequence >= wanted_sequence:
+                events.append(event)
+    return events
+
+
+def read_jsonl_event_page(
+    path: Path | str,
+    cursor: EventCursor | Mapping[str, Any] | str,
+    *,
+    limit: int = 256,
+) -> EventPage:
+    """Replay at most ``limit`` canonical events strictly after ``cursor``.
+
+    Segment ranges and sparse byte offsets are consulted before bodies are
+    opened. Exact physical duplicates are coalesced; gaps, foreign cursors,
+    and conflicting identities fail closed.
+    """
+
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    event_path = Path(path)
+    manifest = event_log_manifest(event_path)
+    selected_cursor = _coerce_event_cursor(cursor)
+    stream_id = str(manifest["stream_id"])
+    snapshot_id = str(manifest["snapshot_id"])
+    selected_cursor.assert_replayable(
+        stream_id=stream_id,
+        earliest_position=int(manifest.get("earliest_sequence") or 0),
+        latest_position=int(manifest.get("latest_sequence") or 0),
+        snapshot_id=snapshot_id,
+    )
+    wanted_sequence = max(1, selected_cursor.position)
+    population: dict[int, dict[str, Any]] = {}
+    target_population = limit + 2
+    for source in _source_paths(event_path):
+        record = _record_for_source(manifest, source)
+        first_sequence = int(record.get("first_sequence") or 0)
+        last_sequence = int(record.get("last_sequence") or 0)
+        if not first_sequence or last_sequence < wanted_sequence:
+            continue
+        segment_events = _read_segment_page_events(
+            source,
+            record,
+            stream_id=stream_id,
+            snapshot_id=snapshot_id,
+            wanted_sequence=wanted_sequence,
+            maximum_events=target_population,
+        )
+        for event in segment_events:
+            sequence = int(event["sequence"])
+            known = population.get(sequence)
+            if known is not None:
+                if known["event_id"] != event["event_id"]:
+                    raise CursorReplayError(
+                        f"event sequence {sequence} has conflicting identities"
+                    )
+                continue
+            population[sequence] = event
+        if len(population) >= target_population:
+            break
+    ordered = [population[key] for key in sorted(population)]
+    page = replay_event_page(
+        ordered,
+        selected_cursor,
+        limit=limit,
+        stream_id=stream_id,
+        snapshot_id=snapshot_id,
+    )
+    manifest_has_more = (
+        page.next_cursor.position
+        < int(manifest.get("latest_sequence") or 0)
+    )
+    if manifest_has_more == page.has_more:
+        return page
+    return EventPage(
+        events=page.events,
+        next_cursor=page.next_cursor,
+        has_more=manifest_has_more,
+    )
+
+
+read_event_page = read_jsonl_event_page
+read_event_log_page = read_jsonl_event_page
+
+
+def write_event_cursor_checkpoint(
+    path: Path | str,
+    cursor: EventCursor | Mapping[str, Any] | str,
+) -> bool:
+    """Atomically persist a canonical cursor, returning ``False`` on no-op."""
+
+    checkpoint_path = Path(path)
+    selected = _coerce_event_cursor(cursor)
+    value: dict[str, Any] = {
+        "schema": EVENT_CURSOR_CHECKPOINT_SCHEMA,
+        "cursor": selected.to_record(),
+    }
+    value["checkpoint_digest"] = _canonical_identity(value)
+    payload = (
+        json.dumps(value, sort_keys=True, indent=2).encode("utf-8") + b"\n"
+    )
+    with _EventLogLock(checkpoint_path):
+        try:
+            if checkpoint_path.read_bytes() == payload:
+                return False
+        except OSError:
+            pass
+        _atomic_write_bytes(checkpoint_path, payload)
+        return True
+
+
+def read_event_cursor_checkpoint(
+    path: Path | str,
+    *,
+    stream_id: str = "",
+    snapshot_id: str = "",
+) -> EventCursor | None:
+    """Load and validate a durable canonical cursor checkpoint."""
+
+    checkpoint_path = Path(path)
+    try:
+        value = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EventCursorError("event cursor checkpoint is malformed") from exc
+    if (
+        not isinstance(value, dict)
+        or value.get("schema") != EVENT_CURSOR_CHECKPOINT_SCHEMA
+        or value.get("checkpoint_digest")
+        != _canonical_identity(
+            {
+                key: item
+                for key, item in value.items()
+                if key != "checkpoint_digest"
+            }
+        )
+        or not isinstance(value.get("cursor"), Mapping)
+    ):
+        raise EventCursorError("event cursor checkpoint is malformed")
+    cursor = EventCursor.from_dict(value["cursor"])
+    if stream_id and cursor.stream_id != stream_id:
+        raise CursorReplayError(
+            "event cursor checkpoint belongs to a different stream"
+        )
+    if snapshot_id and cursor.snapshot_id != snapshot_id:
+        raise CursorReplayError(
+            "event cursor checkpoint belongs to a different snapshot"
+        )
+    return cursor
+
+
+persist_event_cursor = write_event_cursor_checkpoint
+load_event_cursor = read_event_cursor_checkpoint
+
+
+def _manifest_for_append(path: Path) -> dict[str, Any]:
+    manifest = _load_event_manifest(path)
+    if manifest is not None and _manifest_matches_metadata(path, manifest):
+        return manifest
+    if manifest is not None:
+        reconciled = _reconcile_manifest_tail(path, manifest)
+        if reconciled is not None:
+            return reconciled
+    manifest = _scan_event_log(
+        path,
+        generation=int((manifest or {}).get("generation", 0)),
+        stream_id=str((manifest or {}).get("stream_id") or "") or None,
+        snapshot_id=str((manifest or {}).get("snapshot_id") or "") or None,
+    )
+    try:
+        _write_manifest_value(path, manifest)
+    except OSError:
+        # A manifest is an acceleration structure. The fsynced event stream
+        # remains authoritative and will be rebuilt on the next append.
+        pass
+    return manifest
+
+
+def _manifest_after_append(
+    path: Path,
+    manifest: Mapping[str, Any],
+    event: Mapping[str, Any],
+    *,
+    offset: int,
+) -> dict[str, Any]:
+    value = dict(manifest)
+    records = [
+        dict(item)
+        for item in manifest.get("files", ())
+        if isinstance(item, Mapping)
+    ]
+    active = next(
+        (item for item in records if item.get("path") == path.name),
+        None,
+    )
+    if active is None:
+        active = {
+            "path": path.name,
+            "size_bytes": 0,
+            "event_count": 0,
+            "sha256": "",
+            "first_sequence": 0,
+            "last_sequence": 0,
+            "start_previous_event_id": str(
+                event.get("previous_event_id") or ""
+            ),
+            "offset_index": [],
+            "canonical_events": True,
+        }
+        records.append(active)
+    sequence = int(event["sequence"])
+    count = int(active.get("event_count") or 0) + 1
+    first_sequence = int(active.get("first_sequence") or sequence)
+    offsets = [
+        list(item)
+        for item in active.get("offset_index", ())
+        if isinstance(item, Sequence)
+        and not isinstance(item, (str, bytes, bytearray))
+        and len(item) == 2
+    ]
+    if (
+        not offsets
+        or (sequence - first_sequence) % _EVENT_OFFSET_INDEX_STRIDE == 0
+    ):
+        offsets.append([sequence, offset])
+    stat = path.stat()
+    active.update(
+        {
+            "size_bytes": int(stat.st_size),
+            "event_count": count,
+            # The hash chain is authoritative for the mutable active segment.
+            # A sealed archive receives a physical sha256 during rotation.
+            "sha256": "",
+            "first_sequence": first_sequence,
+            "last_sequence": sequence,
+            "offset_index": offsets[-_EVENT_OFFSET_INDEX_MAX_ITEMS:],
+            "device": int(stat.st_dev),
+            "inode": int(stat.st_ino),
+            "mtime_ns": int(stat.st_mtime_ns),
+        }
+    )
+    value.update(
+        {
+            "updated_at": utc_now(),
+            "earliest_sequence": int(
+                value.get("earliest_sequence") or sequence
+            ),
+            "latest_sequence": sequence,
+            "last_event_id": str(event["event_id"]),
+            "active_indexed_bytes": int(stat.st_size),
+            "files": records,
+        }
+    )
+    value["manifest_digest"] = _event_manifest_digest(value)
+    return value
+
+
+def _reconcile_manifest_tail(
+    path: Path,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Reconcile a bounded unindexed active tail after a metadata-write crash."""
+
+    expected_records = {
+        str(item.get("path")): item
+        for item in manifest.get("files", ())
+        if isinstance(item, Mapping)
+    }
+    sources = _source_paths(path)
+    if set(expected_records) != {item.name for item in sources}:
+        return None
+    for source in sources:
+        if source == path:
+            continue
+        record = expected_records[source.name]
+        try:
+            stat = source.stat()
+        except OSError:
+            return None
+        if (
+            int(record.get("size_bytes", -1)) != stat.st_size
+            or int(record.get("device", -1)) != stat.st_dev
+            or int(record.get("inode", -1)) != stat.st_ino
+            or int(record.get("mtime_ns", -1)) != stat.st_mtime_ns
+        ):
+            return None
+    active = expected_records.get(path.name)
+    if active is None or not path.exists():
+        return None
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    indexed = int(manifest.get("active_indexed_bytes") or 0)
+    if (
+        int(active.get("device", -1)) != stat.st_dev
+        or int(active.get("inode", -1)) != stat.st_ino
+        or stat.st_size < indexed
+        or stat.st_size - indexed > _EVENT_RECOVERY_TAIL_MAX_BYTES
+    ):
+        return None
+    value = dict(manifest)
+    if stat.st_size == indexed:
+        records = [
+            dict(item)
+            for item in manifest.get("files", ())
+            if isinstance(item, Mapping)
+        ]
+        for record in records:
+            if record.get("path") == path.name:
+                record.update(_stat_fields(path))
+        value["files"] = records
+        value["manifest_digest"] = _event_manifest_digest(value)
+        return value
+    try:
+        with path.open("rb") as stream:
+            stream.seek(indexed)
+            while stream.tell() < stat.st_size:
+                offset = stream.tell()
+                raw_line = stream.readline()
+                if not raw_line.endswith(b"\n"):
+                    return None
+                raw_event = json.loads(raw_line)
+                if not isinstance(raw_event, dict):
+                    return None
+                expected_sequence = int(value.get("latest_sequence") or 0) + 1
+                if (
+                    raw_event.get("sequence") != expected_sequence
+                    or str(raw_event.get("stream_id") or "")
+                    != str(value.get("stream_id") or "")
+                    or str(raw_event.get("snapshot_id") or "")
+                    != str(value.get("snapshot_id") or "")
+                    or str(raw_event.get("previous_event_id") or "")
+                    != str(value.get("last_event_id") or "")
+                    or str(raw_event.get("event_id") or "")
+                    != _event_identity(raw_event)
+                ):
+                    return None
+                value = _manifest_after_append(
+                    path,
+                    value,
+                    raw_event,
+                    offset=offset,
+                )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return value
 
 
 def append_jsonl_event(
@@ -428,11 +1202,11 @@ def append_jsonl_event(
         if not isinstance(projected, Mapping):
             raise ValueError("event projection must be an object")
         compact_payload = projected
-    event = {
-        "type": event_type,
-        "timestamp": utc_now(),
-        **dict(compact_payload),
-    }
+    supplied_payload = dict(compact_payload)
+    for field_name in _RESERVED_EVENT_FIELDS:
+        supplied_payload.pop(field_name, None)
+    selected_timestamp = supplied_payload.pop("timestamp", None)
+    supplied_payload.pop("type", None)
     default_limit = (
         MAX_RECEIPT_BYTES
         if (
@@ -448,17 +1222,52 @@ def append_jsonl_event(
     ):
         raise ValueError("max_bytes must be a positive integer or None")
     limit = min(max_bytes or default_limit, default_limit)
-    encoded = _canonical_event_bytes(event, limit) + b"\n"
+    event: dict[str, Any]
     with _EventLogLock(path):
+        manifest = _manifest_for_append(path)
+        previous_sequence = int(manifest.get("latest_sequence") or 0)
+        previous_event_id = str(manifest.get("last_event_id") or "")
+        event = {
+            "type": event_type,
+            "timestamp": (
+                selected_timestamp
+                if selected_timestamp is not None
+                else utc_now()
+            ),
+            **supplied_payload,
+            "stream_id": str(manifest["stream_id"]),
+            "snapshot_id": str(manifest["snapshot_id"]),
+            "sequence": previous_sequence + 1,
+            "previous_event_id": previous_event_id,
+        }
+        event["event_id"] = _event_identity(event)
+        encoded = _canonical_event_bytes(event, limit) + b"\n"
+        offset = path.stat().st_size if path.exists() else 0
         with path.open("ab") as fh:
             fh.write(encoded)
             fh.flush()
             if fsync:
                 os.fsync(fh.fileno())
-        if _event_manifest_path(path).exists():
-            _write_event_manifest(path)
+        updated_manifest = _manifest_after_append(
+            path,
+            manifest,
+            event,
+            offset=offset,
+        )
+        try:
+            _write_manifest_value(path, updated_manifest)
+        except OSError:
+            # The line has crossed its durability boundary. Do not report the
+            # append as failed merely because its acceleration metadata could
+            # not be refreshed; the next locked append reconciles the stream.
+            pass
     # Auto-rotate if the log exceeds the size threshold
-    rotate_event_log_if_needed(path)
+    try:
+        rotate_event_log_if_needed(path)
+    except (OSError, ValueError):
+        # Rotation is post-commit maintenance. The acknowledged append remains
+        # available in the active file and the next pass may rotate it.
+        pass
     return event
 
 
