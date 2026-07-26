@@ -54,9 +54,9 @@ This model was contributed by [stefan-it](https://huggingface.co/stefan-it). The
 
 ## Usage tips
 
-- BORT's model architecture is based on BERT, refer to [BERT's documentation page](bert) for the
+- BORT's model architecture is based on BERT, refer to [BERT's documentation page](bert.md) for the
   model's API reference as well as usage examples.
-- BORT uses the RoBERTa tokenizer instead of the BERT tokenizer, refer to [RoBERTa's documentation page](roberta) for the tokenizer's API reference as well as usage examples.
+- BORT uses the RoBERTa tokenizer instead of the BERT tokenizer, refer to [RoBERTa's documentation page](roberta.md) for the tokenizer's API reference as well as usage examples.
 - BORT requires a specific fine-tuning algorithm, called [Agora](https://adewynter.github.io/notes/bort_algorithms_and_applications.html#fine-tuning-with-algebraic-topology) ,
   that is sadly not open-sourced yet. It would be very useful for the community, if someone tries to implement the
   algorithm to make BORT fine-tuning work.
