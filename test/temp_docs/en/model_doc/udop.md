@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License.
 ## Overview
 
 The UDOP model was proposed in [Unifying Vision, Text, and Layout for Universal Document Processing](https://arxiv.org/abs/2212.02623) by Zineng Tang, Ziyi Yang, Guoxin Wang, Yuwei Fang, Yang Liu, Chenguang Zhu, Michael Zeng, Cha Zhang, Mohit Bansal.
-UDOP adopts an encoder-decoder Transformer architecture based on [T5](t5) for document AI tasks like document image classification, document parsing and document visual question answering.
+UDOP adopts an encoder-decoder Transformer architecture based on [T5](t5.md) for document AI tasks like document image classification, document parsing and document visual question answering.
 
 The abstract from the paper is the following:
 
@@ -60,7 +60,7 @@ image = Image.open(name_of_your_document).convert("RGB")
 width, height = image.size
 ```
 
-One can use [`UdopProcessor`] to prepare images and text for the model, which takes care of all of this. By default, this class uses the Tesseract engine to extract a list of words and boxes (coordinates) from a given document. Its functionality is equivalent to that of [`LayoutLMv3Processor`], hence it supports passing either `apply_ocr=False` in case you prefer to use your own OCR engine or `apply_ocr=True` in case you want the default OCR engine to be used. Refer to the [usage guide of LayoutLMv2](layoutlmv2#usage-layoutlmv2processor) regarding all possible use cases (the functionality of `UdopProcessor` is identical).
+One can use [`UdopProcessor`] to prepare images and text for the model, which takes care of all of this. By default, this class uses the Tesseract engine to extract a list of words and boxes (coordinates) from a given document. Its functionality is equivalent to that of [`LayoutLMv3Processor`], hence it supports passing either `apply_ocr=False` in case you prefer to use your own OCR engine or `apply_ocr=True` in case you want the default OCR engine to be used. Refer to the [usage guide of LayoutLMv2](layoutlmv2.md#usage-layoutlmv2processor) regarding all possible use cases (the functionality of `UdopProcessor` is identical).
 
 - If using an own OCR engine of choice, one recommendation is Azure's [Read API](https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/how-to/call-read-api), which supports so-called line segments. Use of segment position embeddings typically results in better performance.
 - At inference time, it's recommended to use the `generate` method to autoregressively generate text given a document image.
@@ -78,7 +78,7 @@ review it! The resource should ideally demonstrate something new instead of dupl
 
 - Demo notebooks regarding UDOP can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/UDOP) that show how
 to fine-tune UDOP on a custom dataset as well as inference. 🌎
-- [Document question answering task guide](../tasks/document_question_answering)
+- [Document question answering task guide](../tasks/document_question_answering.md)
 
 ## UdopConfig
 
