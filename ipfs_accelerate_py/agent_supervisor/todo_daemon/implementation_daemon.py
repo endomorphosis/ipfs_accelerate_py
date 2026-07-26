@@ -175,6 +175,15 @@ DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
 MAX_PENDING_SCOPE_ADJUDICATIONS = 256
+# ProposalValidationPolicy's ordinary limits are intentionally small for
+# provider output. The daemon constructs this proposal from a local Git diff
+# whose entries contain complete before/after source, so a small patch across
+# established modules can exceed those limits. Retain the ordinary raw-patch
+# limit independently and cap the larger local materialization envelope.
+DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES = 2_000_000
+DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES = 2_500_000
+MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES = 16_000_000
+MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "600")
 )
@@ -8635,6 +8644,66 @@ class PortalImplementationDaemon:
                 sections.append(untracked.stdout)
         return "".join(sections)
 
+    @staticmethod
+    def _proposal_local_envelope_limits(proposal: Any) -> dict[str, int]:
+        """Return fail-closed limits for one locally collected proposal.
+
+        Full source is retained so the gate can verify content and baseline
+        identity, but it is not the effectful patch. The normal raw-patch limit
+        must pass before the materialized-source limits can be raised.
+        """
+
+        defaults = {
+            "max_patch_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
+            "max_output_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
+        }
+        patch_text = str(getattr(proposal, "patch_text", "") or "")
+        if (
+            len(patch_text.encode("utf-8", errors="surrogatepass"))
+            > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+        ):
+            return defaults
+
+        materialized_bytes = 0
+        for entry in tuple(getattr(proposal, "candidate_diff", ()) or ()):
+            for source_name in ("before_source", "after_source"):
+                source = getattr(entry, source_name, None)
+                if source is None:
+                    continue
+                materialized_bytes += len(
+                    str(source).encode("utf-8", errors="surrogatepass")
+                )
+                if (
+                    materialized_bytes
+                    > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+                ):
+                    return defaults
+
+        try:
+            serialized_bytes = len(
+                json.dumps(
+                    proposal.to_dict(),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8", errors="surrogatepass")
+            )
+        except (AttributeError, TypeError, ValueError):
+            return defaults
+        if serialized_bytes > MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES:
+            return defaults
+
+        return {
+            "max_patch_bytes": max(
+                DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
+                materialized_bytes,
+            ),
+            "max_output_bytes": max(
+                DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
+                serialized_bytes,
+            ),
+        }
+
     def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
         consumed: list[str] = []
         for event in reversed(list(self._iter_events())):
@@ -8847,6 +8916,7 @@ class PortalImplementationDaemon:
         allowed_validation_commands = tuple(
             step.command for step in validation_steps
         ) or (("python", "-m", "pytest"),)
+        local_envelope_limits = self._proposal_local_envelope_limits(proposal)
         policy = ProposalValidationPolicy(
             allowed_paths=allowed_paths,
             expected_task_id=authority["task_id"],
@@ -8863,7 +8933,8 @@ class PortalImplementationDaemon:
             allowed_validation_commands=allowed_validation_commands,
             require_structured_details=True,
             require_patch_text=True,
-            policy_version="strict-proposal-v2",
+            policy_version="strict-proposal-v2+local-envelope-v1",
+            **local_envelope_limits,
         )
         result = validate_implementation_proposal(proposal, policy=policy)
         finding_codes = tuple(
