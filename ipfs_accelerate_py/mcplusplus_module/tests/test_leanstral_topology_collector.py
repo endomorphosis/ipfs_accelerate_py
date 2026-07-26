@@ -3,12 +3,17 @@
 from copy import deepcopy
 from dataclasses import asdict
 import json
+import logging
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
 import trio
 
+from ipfs_accelerate_py.mcplusplus_module import (
+    leanstral_topology_collector as topology_collector,
+)
 from ipfs_accelerate_py.mcplusplus_module.leanstral_topology import (
     IndependentDialObservation,
     InterfaceAddress,
@@ -430,6 +435,48 @@ def test_independent_client_executes_from_the_same_source_repository(monkeypatch
     source_repo = Path(observed["cwd"])
     assert source_repo == Path(__file__).resolve().parents[3]
     assert (source_repo / ".git").exists()
+
+
+def test_main_keeps_lazy_dependency_logs_out_of_json_stdout(monkeypatch, capsys):
+    """A lazy libp2p-style ``basicConfig`` call cannot corrupt the receipt."""
+
+    def fake_trio_run(async_callable):
+        del async_callable
+        logging.basicConfig(
+            level=logging.INFO,
+            handlers=[logging.StreamHandler(sys.stdout)],
+        )
+        logging.getLogger("synthetic.lazy.libp2p").warning(
+            "synthetic dependency diagnostic"
+        )
+        return _client_receipt()
+
+    monkeypatch.setattr(topology_collector.trio, "run", fake_trio_run)
+
+    return_code = topology_collector.main(
+        [
+            "_client",
+            "--target-multiaddr",
+            _multiaddrs()[0],
+            "--endpoint-url",
+            ENDPOINT,
+            "--expected-transport-model-id",
+            DEFAULT_LEANSTRAL_MODEL_REF,
+            "--rendezvous-namespace",
+            "leanstral-local",
+            "--probe-timeout-s",
+            "2.0",
+            "--model-timeout-s",
+            "1.0",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert return_code == 0
+    assert json.loads(captured.out) == _client_receipt()
+    assert captured.out.count("\n") == 1
+    assert "synthetic dependency diagnostic" not in captured.out
+    assert "synthetic dependency diagnostic" in captured.err
 
 
 def test_collector_uses_one_service_node_and_existing_model_endpoint(monkeypatch):

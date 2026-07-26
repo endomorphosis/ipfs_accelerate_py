@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -1377,7 +1378,43 @@ def _build_client_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+@contextmanager
+def _protocol_stdout_logging_boundary():
+    """Keep dependency logs off the collector's JSON protocol channel.
+
+    Some optional P2P dependencies call :func:`logging.basicConfig` lazily
+    when their transports are imported.  ``basicConfig`` installs its own
+    handler only when the root logger has no handlers, so provide a temporary
+    stderr handler before any transport startup.  Restore the caller's exact
+    root handlers and level afterward because tests and embedding applications
+    may invoke :func:`main` in-process.
+    """
+
+    root_logger = logging.getLogger()
+    original_handlers = tuple(root_logger.handlers)
+    original_level = root_logger.level
+    protocol_handler = logging.StreamHandler(sys.stderr)
+    protocol_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
+        )
+    )
+    for handler in original_handlers:
+        root_logger.removeHandler(handler)
+    root_logger.addHandler(protocol_handler)
+    root_logger.setLevel(logging.INFO)
+    try:
+        yield
+    finally:
+        for handler in tuple(root_logger.handlers):
+            root_logger.removeHandler(handler)
+        protocol_handler.close()
+        for handler in original_handlers:
+            root_logger.addHandler(handler)
+        root_logger.setLevel(original_level)
+
+
+def _main(argv: Optional[Sequence[str]] = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     client_mode = bool(arguments and arguments[0] == "_client")
     parser = _build_client_parser() if client_mode else _build_parser()
@@ -1432,6 +1469,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         code = "collector_runtime_failed"
         print(canonical_identity_json(collector_failure_receipt(code)))
         return 1
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    with _protocol_stdout_logging_boundary():
+        return _main(argv)
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised through subprocess
