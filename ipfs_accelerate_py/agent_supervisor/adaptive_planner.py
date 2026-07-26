@@ -84,6 +84,9 @@ ADAPTIVE_PLAN_CANDIDATE_SNAPSHOT_SCHEMA: Final = (
 ADAPTIVE_PLANNING_RUN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-planning-run@1"
 )
+HARD_CONSTRAINED_PLAN_SELECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/hard-constrained-plan-selection@1"
+)
 EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "evidence-aware-planning-completion-evidence@1"
@@ -2378,12 +2381,529 @@ class EvidenceAwarePlanningCompletionEvidence:
         return evaluate_goal_completion(**values)
 
 
+def _plan_admission_receipt_type() -> type:
+    """Resolve the IR admission type lazily to keep compiler imports acyclic."""
+
+    from .ir_constraint_compiler import PlanAdmissionReceipt
+
+    return PlanAdmissionReceipt
+
+
+def _admission_candidate_plan_id(receipt: Any) -> str:
+    return _text(
+        getattr(
+            receipt,
+            "candidate_plan_id",
+            getattr(receipt, "candidate_id", ""),
+        ),
+        "admission receipt candidate_plan_id",
+    )
+
+
+def _admission_root_bindings(receipt: Any) -> tuple[tuple[str, str], ...]:
+    """Return the semantic roots carried by a plan-admission receipt."""
+
+    for name in (
+        "semantic_roots",
+        "semantic_root_ids",
+        "ir_root_ids",
+        "root_bindings",
+    ):
+        value = getattr(receipt, name, None)
+        if isinstance(value, Mapping):
+            return tuple(
+                sorted(
+                    (
+                        _text(key, f"{name} key"),
+                        _text(item, f"{name}[{key}]"),
+                    )
+                    for key, item in value.items()
+                )
+            )
+    roots: list[tuple[str, str]] = []
+    for name in (
+        "intent_root_id",
+        "legal_root_id",
+        "security_root_id",
+        "program_root_id",
+    ):
+        value = str(getattr(receipt, name, "") or "").strip()
+        if value:
+            roots.append((name.removesuffix("_id"), _text(value, name)))
+    return tuple(sorted(roots))
+
+
+def _receipt_projection(receipt: Any) -> dict[str, Any]:
+    converter = getattr(receipt, "to_dict", None)
+    if not callable(converter):
+        raise AdaptivePlannerValidationError(
+            "plan admission receipts must provide canonical to_dict()"
+        )
+    payload = converter()
+    if not isinstance(payload, Mapping):
+        raise AdaptivePlannerValidationError(
+            "plan admission receipt to_dict() must return a mapping"
+        )
+    return dict(payload)
+
+
+@dataclass(frozen=True)
+class HardConstrainedPlanSelectionReceipt:
+    """Admission-first adaptive selection over one exact candidate population.
+
+    IR admission and adaptive scoring intentionally remain separate receipts.
+    This wrapper records their exact join: a failed IR candidate never enters
+    the soft evaluator, while its complete diagnostics remain available to
+    dependency-local replanning.
+    """
+
+    frozen_goal: FrozenPlanningGoal
+    candidate_bindings: tuple[tuple[str, str], ...]
+    admission_receipts: tuple[Any, ...]
+    selection: AdaptivePlanSelectionReceipt | None
+    semantic_roots: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.frozen_goal, FrozenPlanningGoal):
+            raise AdaptivePlannerValidationError(
+                "frozen_goal must be FrozenPlanningGoal"
+            )
+        bindings = tuple(
+            (
+                _text(item[0], "candidate_id"),
+                _text(item[1], "candidate_plan_id"),
+            )
+            for item in self.candidate_bindings
+        )
+        if len({item[0] for item in bindings}) != len(bindings):
+            raise AdaptivePlannerValidationError(
+                "hard-constrained candidate ids must be unique"
+            )
+        if len({item[1] for item in bindings}) != len(bindings):
+            raise AdaptivePlannerValidationError(
+                "hard-constrained candidate plan ids must be unique"
+            )
+        bindings = tuple(sorted(bindings))
+        object.__setattr__(self, "candidate_bindings", bindings)
+
+        receipt_type = _plan_admission_receipt_type()
+        receipts = tuple(self.admission_receipts)
+        if any(not isinstance(item, receipt_type) for item in receipts):
+            raise AdaptivePlannerValidationError(
+                "admission_receipts must contain typed PlanAdmissionReceipt "
+                "instances"
+            )
+        by_plan_id = {
+            _admission_candidate_plan_id(item): item for item in receipts
+        }
+        expected_plan_ids = {item[1] for item in bindings}
+        if len(by_plan_id) != len(receipts) or set(by_plan_id) != expected_plan_ids:
+            raise AdaptivePlannerValidationError(
+                "plan admission receipts must exactly cover the candidate "
+                "plan ids"
+            )
+        for receipt in receipts:
+            if (
+                _text(
+                    getattr(receipt, "repository_tree_id", ""),
+                    "admission receipt repository_tree_id",
+                )
+                != self.frozen_goal.repository_tree_id
+            ):
+                raise AdaptivePlannerValidationError(
+                    "plan admission receipt repository tree is stale"
+                )
+            if bool(getattr(receipt, "authorizes_execution", False)):
+                raise AdaptivePlannerValidationError(
+                    "plan admission cannot grant execution authority"
+                )
+        object.__setattr__(
+            self,
+            "admission_receipts",
+            tuple(
+                sorted(receipts, key=_admission_candidate_plan_id)
+            ),
+        )
+
+        roots = tuple(
+            sorted(
+                (
+                    _text(item[0], "semantic root domain"),
+                    _text(item[1], "semantic root id"),
+                )
+                for item in self.semantic_roots
+            )
+        )
+        object.__setattr__(self, "semantic_roots", roots)
+        for receipt in receipts:
+            receipt_roots = _admission_root_bindings(receipt)
+            if roots and receipt_roots != roots:
+                raise AdaptivePlannerValidationError(
+                    "plan admission receipt semantic roots are stale"
+                )
+
+        adaptive_by_plan = {
+            plan_id: candidate_id for candidate_id, plan_id in bindings
+        }
+        admitted_ids = {
+            adaptive_by_plan[_admission_candidate_plan_id(item)]
+            for item in receipts
+            if bool(getattr(item, "admitted", False))
+        }
+        if self.selection is None:
+            if admitted_ids:
+                raise AdaptivePlannerValidationError(
+                    "an admitted candidate requires an adaptive selection"
+                )
+        else:
+            if not isinstance(self.selection, AdaptivePlanSelectionReceipt):
+                raise AdaptivePlannerValidationError(
+                    "selection must be AdaptivePlanSelectionReceipt"
+                )
+            if self.selection.frozen_goal != self.frozen_goal:
+                raise AdaptivePlannerValidationError(
+                    "adaptive selection does not match the frozen goal"
+                )
+            evaluated_ids = {
+                item.candidate_id for item in self.selection.evaluation.ranked
+            }
+            if evaluated_ids != admitted_ids:
+                raise AdaptivePlannerValidationError(
+                    "adaptive selection must evaluate exactly the admitted "
+                    "candidate population"
+                )
+
+    @property
+    def admitted_candidate_ids(self) -> tuple[str, ...]:
+        adaptive_by_plan = {
+            plan_id: candidate_id
+            for candidate_id, plan_id in self.candidate_bindings
+        }
+        return tuple(
+            sorted(
+                adaptive_by_plan[_admission_candidate_plan_id(item)]
+                for item in self.admission_receipts
+                if bool(getattr(item, "admitted", False))
+            )
+        )
+
+    @property
+    def rejected_candidate_ids(self) -> tuple[str, ...]:
+        admitted = set(self.admitted_candidate_ids)
+        return tuple(
+            item[0] for item in self.candidate_bindings if item[0] not in admitted
+        )
+
+    @property
+    def selected_candidate_id(self) -> str | None:
+        return (
+            self.selection.selected_candidate_id
+            if self.selection is not None
+            else None
+        )
+
+    @property
+    def selected_plan_id(self) -> str | None:
+        selected = self.selected_candidate_id
+        if selected is None:
+            return None
+        return dict(self.candidate_bindings)[selected]
+
+    @property
+    def used_no_model_fallback(self) -> bool:
+        """The admission-first path is entirely deterministic and model-free."""
+
+        return True
+
+    @property
+    def selection_source(self) -> str:
+        return "deterministic_no_model"
+
+    @property
+    def admission_receipt_ids(self) -> Mapping[str, str]:
+        adaptive_by_plan = {
+            plan_id: candidate_id
+            for candidate_id, plan_id in self.candidate_bindings
+        }
+        return MappingProxyType(
+            {
+                adaptive_by_plan[_admission_candidate_plan_id(item)]: _text(
+                    getattr(item, "receipt_id", ""),
+                    "plan admission receipt_id",
+                )
+                for item in self.admission_receipts
+            }
+        )
+
+    def _rejected_receipts_by_candidate(self) -> dict[str, Any]:
+        adaptive_by_plan = {
+            plan_id: candidate_id
+            for candidate_id, plan_id in self.candidate_bindings
+        }
+        return {
+            adaptive_by_plan[_admission_candidate_plan_id(item)]: item
+            for item in self.admission_receipts
+            if not bool(getattr(item, "admitted", False))
+        }
+
+    @property
+    def rejection_reasons(self) -> Mapping[str, tuple[Any, ...]]:
+        return MappingProxyType(
+            {
+                candidate_id: tuple(
+                    getattr(
+                        receipt,
+                        "rejection_reasons",
+                        getattr(receipt, "reason_codes", ()),
+                    )
+                )
+                for candidate_id, receipt in sorted(
+                    self._rejected_receipts_by_candidate().items()
+                )
+            }
+        )
+
+    @property
+    def counterexamples(self) -> Mapping[str, tuple[Any, ...]]:
+        return MappingProxyType(
+            {
+                candidate_id: tuple(getattr(receipt, "counterexamples", ()))
+                for candidate_id, receipt in sorted(
+                    self._rejected_receipts_by_candidate().items()
+                )
+            }
+        )
+
+    @property
+    def local_replan_action_ids(self) -> Mapping[str, tuple[str, ...]]:
+        return MappingProxyType(
+            {
+                candidate_id: tuple(
+                    getattr(
+                        receipt,
+                        "local_replan_action_ids",
+                        getattr(receipt, "replan_action_ids", ()),
+                    )
+                )
+                for candidate_id, receipt in sorted(
+                    self._rejected_receipts_by_candidate().items()
+                )
+            }
+        )
+
+    @property
+    def receipt_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": HARD_CONSTRAINED_PLAN_SELECTION_SCHEMA,
+            "planner_version": ADAPTIVE_PLANNER_VERSION,
+            "frozen_goal": self.frozen_goal.to_dict(),
+            "candidate_bindings": [
+                {
+                    "candidate_id": candidate_id,
+                    "candidate_plan_id": plan_id,
+                }
+                for candidate_id, plan_id in self.candidate_bindings
+            ],
+            "semantic_roots": dict(self.semantic_roots),
+            "admission_receipts": [
+                _receipt_projection(item) for item in self.admission_receipts
+            ],
+            "admitted_candidate_ids": list(self.admitted_candidate_ids),
+            "rejected_candidate_ids": list(self.rejected_candidate_ids),
+            "rejection_reasons": {
+                key: list(value) for key, value in self.rejection_reasons.items()
+            },
+            "counterexamples": {
+                key: [
+                    (
+                        item.to_dict()
+                        if callable(getattr(item, "to_dict", None))
+                        else item
+                    )
+                    for item in value
+                ]
+                for key, value in self.counterexamples.items()
+            },
+            "local_replan_action_ids": {
+                key: list(value)
+                for key, value in self.local_replan_action_ids.items()
+            },
+            "admission_receipt_ids": dict(self.admission_receipt_ids),
+            "selected_candidate_id": self.selected_candidate_id,
+            "selected_plan_id": self.selected_plan_id,
+            "used_no_model_fallback": self.used_no_model_fallback,
+            "selection_source": self.selection_source,
+            "selection": (
+                self.selection.to_dict()
+                if self.selection is not None
+                else None
+            ),
+        }
+        if include_identity:
+            payload["receipt_id"] = self.receipt_id
+        return payload
+
+
 class AdaptivePlanner:
     """Select an admissible branch for one frozen goal and emit its evidence."""
 
     def __init__(self, *, max_candidates: int = 32) -> None:
         self.max_candidates = _integer(
             max_candidates, "max_candidates", minimum=1
+        )
+
+    def select_hard_constrained(
+        self,
+        frozen_goal: FrozenPlanningGoal,
+        candidates: Iterable[AdaptivePlanCandidate],
+        admission_receipts: Mapping[str, Any],
+        *,
+        semantic_roots: Mapping[str, str] | None = None,
+    ) -> HardConstrainedPlanSelectionReceipt:
+        """Prune IR-rejected candidates before deterministic soft selection.
+
+        ``admission_receipts`` is keyed by the exact formal plan identity (or
+        by the adaptive candidate identity when no formal plan is attached).
+        Every candidate must have exactly one typed receipt and extra receipts
+        fail closed.  This keeps the admitted population independent of input
+        order and prevents a model or a soft score from compensating for an IR
+        domain failure.
+        """
+
+        if not isinstance(frozen_goal, FrozenPlanningGoal):
+            raise AdaptivePlannerValidationError(
+                "frozen_goal must be FrozenPlanningGoal"
+            )
+        normalized = tuple(candidates)
+        if not normalized:
+            raise AdaptivePlannerValidationError(
+                "at least one adaptive plan candidate is required"
+            )
+        if len(normalized) > self.max_candidates:
+            raise AdaptivePlannerValidationError(
+                "adaptive plan candidate budget exceeded"
+            )
+        if any(not isinstance(item, AdaptivePlanCandidate) for item in normalized):
+            raise AdaptivePlannerValidationError(
+                "candidates must be AdaptivePlanCandidate instances"
+            )
+        candidate_ids = [item.candidate_id for item in normalized]
+        if len(set(candidate_ids)) != len(candidate_ids):
+            raise AdaptivePlannerValidationError(
+                "adaptive candidate ids must be unique"
+            )
+
+        bindings = tuple(
+            (
+                candidate.candidate_id,
+                candidate.formal_plan_id or candidate.candidate_id,
+            )
+            for candidate in normalized
+        )
+        plan_ids = [item[1] for item in bindings]
+        if len(set(plan_ids)) != len(plan_ids):
+            raise AdaptivePlannerValidationError(
+                "adaptive candidate formal plan ids must be unique"
+            )
+        if not isinstance(admission_receipts, Mapping):
+            raise AdaptivePlannerValidationError(
+                "admission_receipts must be a mapping"
+            )
+        normalized_receipts = {
+            _text(key, "admission_receipts key"): value
+            for key, value in admission_receipts.items()
+        }
+        expected_plan_ids = set(plan_ids)
+        if set(normalized_receipts) != expected_plan_ids:
+            missing = sorted(expected_plan_ids - set(normalized_receipts))
+            extra = sorted(set(normalized_receipts) - expected_plan_ids)
+            details = []
+            if missing:
+                details.append("missing=" + ",".join(missing))
+            if extra:
+                details.append("extra=" + ",".join(extra))
+            raise AdaptivePlannerValidationError(
+                "plan admission receipt mapping must exactly cover candidate "
+                "plan ids"
+                + (": " + "; ".join(details) if details else "")
+            )
+
+        receipt_type = _plan_admission_receipt_type()
+        for plan_id, receipt in normalized_receipts.items():
+            if not isinstance(receipt, receipt_type):
+                raise AdaptivePlannerValidationError(
+                    "admission_receipts must contain typed "
+                    "PlanAdmissionReceipt instances"
+                )
+            if _admission_candidate_plan_id(receipt) != plan_id:
+                raise AdaptivePlannerValidationError(
+                    "plan admission receipt mapping key does not match its "
+                    "candidate plan id"
+                )
+
+        if semantic_roots is not None and not isinstance(semantic_roots, Mapping):
+            raise AdaptivePlannerValidationError(
+                "semantic_roots must be a mapping"
+            )
+        expected_roots = (
+            tuple(
+                sorted(
+                    (
+                        _text(key, "semantic_roots key"),
+                        _text(value, f"semantic_roots[{key}]"),
+                    )
+                    for key, value in semantic_roots.items()
+                )
+            )
+            if semantic_roots is not None
+            else ()
+        )
+        receipt_roots = tuple(
+            _admission_root_bindings(item)
+            for item in normalized_receipts.values()
+        )
+        observed_roots = {item for item in receipt_roots if item}
+        if observed_roots and any(not item for item in receipt_roots):
+            raise AdaptivePlannerValidationError(
+                "plan admission receipts incompletely bind semantic roots"
+            )
+        if expected_roots:
+            if observed_roots != {expected_roots}:
+                raise AdaptivePlannerValidationError(
+                    "plan admission receipts do not bind the expected semantic "
+                    "roots"
+                )
+        elif len(observed_roots) > 1:
+            raise AdaptivePlannerValidationError(
+                "plan admission receipts bind inconsistent semantic roots"
+            )
+        elif observed_roots:
+            expected_roots = next(iter(observed_roots))
+
+        adaptive_by_plan_id = {
+            plan_id: candidate
+            for candidate, (_, plan_id) in zip(normalized, bindings)
+        }
+        admitted = tuple(
+            sorted(
+                (
+                    adaptive_by_plan_id[plan_id]
+                    for plan_id, receipt in normalized_receipts.items()
+                    if bool(getattr(receipt, "admitted", False))
+                ),
+                key=lambda item: item.candidate_id,
+            )
+        )
+        selection = self.select(frozen_goal, admitted) if admitted else None
+        return HardConstrainedPlanSelectionReceipt(
+            frozen_goal=frozen_goal,
+            candidate_bindings=bindings,
+            admission_receipts=tuple(normalized_receipts.values()),
+            selection=selection,
+            semantic_roots=expected_roots,
         )
 
     def select(
@@ -4104,6 +4624,26 @@ def select_adaptive_plan(
     )
 
 
+def select_hard_constrained_plan(
+    frozen_goal: FrozenPlanningGoal,
+    candidates: Iterable[AdaptivePlanCandidate],
+    admission_receipts: Mapping[str, Any],
+    *,
+    semantic_roots: Mapping[str, str] | None = None,
+    max_candidates: int = 32,
+) -> HardConstrainedPlanSelectionReceipt:
+    """Functional admission-first wrapper around :class:`AdaptivePlanner`."""
+
+    return AdaptivePlanner(
+        max_candidates=max_candidates
+    ).select_hard_constrained(
+        frozen_goal,
+        candidates,
+        admission_receipts,
+        semantic_roots=semantic_roots,
+    )
+
+
 def plan_adaptively(
     frozen_goal: FrozenPlanningGoal,
     context: Mapping[str, Any],
@@ -4131,6 +4671,7 @@ __all__ = [
     "ADAPTIVE_PLANNER_VERSION",
     "ADAPTIVE_PLAN_SELECTION_SCHEMA",
     "ADAPTIVE_PLANNING_RUN_SCHEMA",
+    "HARD_CONSTRAINED_PLAN_SELECTION_SCHEMA",
     "AND_OR_GRAPH_SCHEMA",
     "AND_OR_PLANNER_VERSION",
     "AND_OR_SEARCH_RECEIPT_SCHEMA",
@@ -4166,6 +4707,7 @@ __all__ = [
     "FrozenPlanningGoal",
     "GateProducerKind",
     "HardConstraintReceipt",
+    "HardConstrainedPlanSelectionReceipt",
     "HardGateEvaluator",
     "HardPlanConstraint",
     "adaptive_plan_candidate_snapshot_id",
@@ -4180,4 +4722,5 @@ __all__ = [
     "search_and_or_plans",
     "search_typed_goal_plans",
     "select_adaptive_plan",
+    "select_hard_constrained_plan",
 ]
