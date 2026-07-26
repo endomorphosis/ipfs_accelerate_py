@@ -42,7 +42,7 @@ The abstract from the paper is the following:
 alt="drawing" width="600"/>
 </p>
 
-<small> TVLT architecture. Taken from the <a href="[https://arxiv.org/abs/2102.03334](https://arxiv.org/abs/2209.14156)">original paper</a>. </small>
+<small> TVLT architecture. Taken from the <a href="https://arxiv.org/abs/2209.14156">original paper</a>. </small>
 
 The original code can be found [here](https://github.com/zinengtang/TVLT). This model was contributed by [Zineng Tang](https://huggingface.co/ZinengTang).
 
@@ -51,7 +51,7 @@ The original code can be found [here](https://github.com/zinengtang/TVLT). This 
 - TVLT is a model that takes both `pixel_values` and `audio_values` as input. One can use [`TvltProcessor`] to prepare data for the model.
   This processor wraps an image processor (for the image/video modality) and an audio feature extractor (for the audio modality) into one.
 - TVLT is trained with images/videos and audios of various sizes: the authors resize and crop the input images/videos to 224 and limit the length of audio spectrogram to 2048. To make batching of videos and audios possible, the authors use a `pixel_mask` that indicates which pixels are real/padding and `audio_mask` that indicates which audio values are real/padding.
-- The design of TVLT is very similar to that of a standard Vision Transformer (ViT) and masked autoencoder (MAE) as in [ViTMAE](vitmae). The difference is that the model includes embedding layers for the audio modality.
+- The design of TVLT is very similar to that of a standard Vision Transformer (ViT) and masked autoencoder (MAE) as in [ViTMAE](./vit_mae.md). The difference is that the model includes embedding layers for the audio modality.
 - The PyTorch version of this model is only available in torch 1.10 and higher.
 
 ## TvltConfig
