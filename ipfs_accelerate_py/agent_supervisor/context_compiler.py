@@ -5108,6 +5108,26 @@ class ContextCompiler:
 
     compile_retry = compile_delta
 
+    def compile_decision_context(
+        self,
+        request: Any,
+        graph: Any,
+        retrieval_receipt: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Compile a generation-3 mandatory decision context.
+
+        The local import keeps the shared generation-1/2 compiler usable
+        without importing semantic-graph contracts during module import.
+        """
+
+        return DecisionContextCompiler.from_context_compiler(self).compile(
+            request,
+            graph,
+            retrieval_receipt,
+            **kwargs,
+        )
+
 
 def reconstruct_context(
     parent: ContextCapsule, delta: ContextDeltaCapsule
@@ -5213,6 +5233,978 @@ def reconstruct_context(
         truncated=bool(expansions),
         omissions=tuple(sorted(retained_omissions)),
     )
+
+
+class DecisionContextCompiler:
+    """Compile the complete authoritative closure for one decision.
+
+    Required dependencies are enumerated solely by the semantic graph's
+    mandatory closure and never enter :class:`EvidenceValuePolicy`.  The exact
+    canonical provider payload is remeasured after every representation and
+    split decision.
+    """
+
+    def __init__(
+        self,
+        budget: ContextBudget,
+        *,
+        tokenizer: Callable[[str], Any] | Any | None = None,
+        estimator: CalibratedTokenEstimator | None = None,
+        provider_context_window: int | None = None,
+        provider_max_input_tokens: int | None = None,
+        reserved_output_tokens: int | None = None,
+        reserved_tool_tokens: int | None = None,
+        require_provider_tokenizer: bool = True,
+        max_inline_node_bytes: int = 4_096,
+        max_inline_bytes: int | None = None,
+    ) -> None:
+        self.context_compiler = ContextCompiler(
+            budget,
+            tokenizer=tokenizer,
+            estimator=estimator,
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            reserved_output_tokens=reserved_output_tokens,
+            reserved_tool_tokens=reserved_tool_tokens,
+        )
+        self.estimator = self.context_compiler.estimator
+        self.effective_input_limit = (
+            self.context_compiler.effective_input_limit
+        )
+        self.effective_budget = self.context_compiler.effective_budget
+        self.require_provider_tokenizer = bool(require_provider_tokenizer)
+        selected_inline_bytes = (
+            max_inline_node_bytes
+            if max_inline_bytes is None
+            else max_inline_bytes
+        )
+        self.max_inline_node_bytes = _integer(
+            selected_inline_bytes,
+            "max_inline_node_bytes",
+            minimum=128,
+        )
+        if self.max_inline_node_bytes > self.effective_budget.max_item_bytes:
+            raise ContextCompilationError(
+                "max_inline_node_bytes exceeds the context item byte limit"
+            )
+
+    @classmethod
+    def from_context_compiler(
+        cls, compiler: ContextCompiler
+    ) -> "DecisionContextCompiler":
+        if not isinstance(compiler, ContextCompiler):
+            raise ContextCompilationError(
+                "compiler must be a ContextCompiler"
+            )
+        result = object.__new__(cls)
+        result.context_compiler = compiler
+        result.estimator = compiler.estimator
+        result.effective_input_limit = compiler.effective_input_limit
+        result.effective_budget = compiler.effective_budget
+        result.require_provider_tokenizer = True
+        result.max_inline_node_bytes = min(
+            4_096, compiler.effective_budget.max_item_bytes
+        )
+        return result
+
+    @staticmethod
+    def _has_unknown(value: Any) -> bool:
+        if isinstance(value, Mapping):
+            return any(
+                "unknown" in str(key).lower()
+                or "unresolved" in str(key).lower()
+                or DecisionContextCompiler._has_unknown(member)
+                for key, member in value.items()
+            )
+        if isinstance(value, (tuple, list)):
+            return any(
+                DecisionContextCompiler._has_unknown(member)
+                for member in value
+            )
+        if isinstance(value, str):
+            lowered = value.lower()
+            return "unknown" in lowered or "unresolved" in lowered
+        return False
+
+    @staticmethod
+    def _reference_ids(
+        nodes: Iterable[Any],
+        predicate: Callable[[Any], bool],
+    ) -> tuple[str, ...]:
+        return tuple(
+            f"mandatory:{node.node_id}"
+            for node in nodes
+            if predicate(node)
+        )
+
+    @staticmethod
+    def _path_edge_ids(
+        graph: Any,
+        path: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        result: list[str] = []
+        for source, target in zip(path, path[1:]):
+            candidates = tuple(
+                sorted(
+                    (
+                        edge
+                        for edge in graph.edges
+                        if edge.source == source
+                        and edge.target == target
+                        and edge.mandatory
+                        and edge.authoritative
+                    ),
+                    key=lambda edge: (edge.kind.value, edge.edge_id),
+                )
+            )
+            if not candidates:
+                from .decision_context import DecisionContextBindingError
+
+                raise DecisionContextBindingError(
+                    "mandatory dependency path is not present in the graph"
+                )
+            result.append(candidates[0].edge_id)
+        return tuple(result)
+
+    @staticmethod
+    def _summary(node: Any, *, byte_count: int) -> Mapping[str, Any]:
+        record_keys = tuple(sorted(str(key) for key in node.record)[:32])
+        return {
+            "node_id": node.node_id,
+            "kind": node.kind.value,
+            "content_id": node.content_id,
+            "root_id": node.root_id,
+            "source_root_id": node.source_root_id,
+            "provenance": node.provenance.value,
+            "provenance_id": node.provenance_id,
+            "trust": node.trust.value,
+            "authority": node.authority.value,
+            "version": node.version,
+            "canonical_byte_count": byte_count,
+            "record_keys": record_keys,
+        }
+
+    def _build_reference(
+        self,
+        *,
+        request: Any,
+        graph: Any,
+        node: Any,
+        artifact_store: ContentAddressedContextStore | None,
+    ) -> Any:
+        from .decision_context import (
+            DecisionContextReference,
+            DecisionContextRepresentation,
+            MissingDecisionContextExpansionError,
+        )
+
+        body = node.to_dict()
+        raw = canonical_context_json_bytes(body)
+        reference_id = f"mandatory:{node.node_id}"
+        summary = self._summary(node, byte_count=len(raw))
+        if len(raw) <= self.max_inline_node_bytes:
+            return DecisionContextReference(
+                reference_id=reference_id,
+                node_id=node.node_id,
+                node_kind=node.kind.value,
+                node_content_id=node.content_id,
+                representation=DecisionContextRepresentation.INLINE,
+                summary=summary,
+                body=body,
+            )
+        if artifact_store is None:
+            raise MissingDecisionContextExpansionError(
+                f"mandatory dependency {node.node_id!r} exceeds the inline "
+                "bound and requires a resolvable artifact_store"
+            )
+        text = raw.decode("utf-8")
+        target = artifact_store.put(text)
+        question = f"expand mandatory dependency {node.node_id}"
+        handle = ContextReference(
+            reference_id=reference_id,
+            kind="mandatory-decision-dependency",
+            tier=ContextTier.EXPANSION,
+            referenced_content_id=target,
+            repository_id=request.repository_id,
+            tree_id=request.dirty_worktree_root.cid_v1,
+            byte_count=len(raw),
+            metadata={
+                "mandatory_node_id": node.node_id,
+                "node_content_id": node.content_id,
+                "semantic_graph_root_id": graph.root_id,
+                "unresolved_questions": (question,),
+                "question_bound_expansion": True,
+            },
+        )
+        if artifact_store.get(handle.referenced_content_id) != raw:
+            raise MissingDecisionContextExpansionError(
+                "mandatory expansion handle did not resolve to its canonical body"
+            )
+        return DecisionContextReference(
+            reference_id=reference_id,
+            node_id=node.node_id,
+            node_kind=node.kind.value,
+            node_content_id=node.content_id,
+            representation=DecisionContextRepresentation.EXPANSION,
+            summary=summary,
+            expansion_handle=handle,
+        )
+
+    @staticmethod
+    def _bounded_index_metadata(
+        graph: Any, receipt: Any
+    ) -> Mapping[str, Any]:
+        maximum = 1_000_000
+
+        def bounded(value: Any) -> int:
+            if isinstance(value, bool) or not isinstance(value, int):
+                return 0
+            return min(maximum, max(0, value))
+
+        truncation = receipt.truncation
+        return {
+            "graph_node_count": bounded(len(graph.nodes)),
+            "graph_edge_count": bounded(len(graph.edges)),
+            "candidate_audit_count": bounded(len(receipt.candidates)),
+            "optional_included_count": bounded(
+                len(receipt.optional_node_ids)
+            ),
+            "optional_omitted_count": bounded(
+                len(receipt.omitted_node_ids)
+            ),
+            "candidate_truncation_count": bounded(
+                truncation.get("candidate_truncation_count", 0)
+            ),
+            "counts_saturated": any(
+                value >= maximum
+                for value in (
+                    len(graph.nodes),
+                    len(graph.edges),
+                    len(receipt.candidates),
+                    len(receipt.optional_node_ids),
+                    len(receipt.omitted_node_ids),
+                )
+            ),
+        }
+
+    def _core(
+        self,
+        request: Any,
+        closure_nodes: tuple[Any, ...],
+        graph: Any,
+        *,
+        acceptance: Any,
+        validation: Any,
+        failure_behavior: Any,
+    ) -> Mapping[str, Any]:
+        from .semantic_dependency_graph import (
+            SemanticEdgeKind,
+            SemanticNodeKind,
+        )
+
+        kinds = SemanticNodeKind
+        legal = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind.value.startswith("legal_"),
+        )
+        security = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind.value.startswith("security_"),
+        )
+        assumptions = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind
+            in {
+                kinds.ASSUMPTION,
+                kinds.PREMISE,
+                kinds.INTENT_ASSUMPTION,
+                kinds.LEGAL_ASSUMPTION,
+                kinds.SECURITY_THREAT_ASSUMPTION,
+            },
+        )
+        obligations = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind
+            in {
+                kinds.OBLIGATION,
+                kinds.INTENT_OBLIGATION,
+                kinds.LEGAL_OBLIGATION,
+                kinds.LEGAL_PROOF_OBLIGATION,
+                kinds.SECURITY_OBLIGATION,
+            },
+        )
+        proof_ids = self._reference_ids(
+            closure_nodes, lambda node: node.kind is kinds.PROOF
+        )
+        monitor_ids = self._reference_ids(
+            closure_nodes, lambda node: node.kind is kinds.MONITOR
+        )
+        validation_ids = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind
+            in {kinds.VALIDATION, kinds.INTENT_VERIFICATION},
+        )
+        intent_ids = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind.value.startswith("intent_")
+            or node.kind is kinds.ACTION,
+        )
+        program_ids = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind
+            in {
+                kinds.WORKTREE,
+                kinds.REPOSITORY_TREE,
+                kinds.FILE,
+                kinds.AST,
+                kinds.SYMBOL,
+                kinds.INTERFACE,
+                kinds.CALL,
+                kinds.DATA_FLOW,
+                kinds.PROGRAM,
+                kinds.ENVIRONMENT,
+                kinds.TOOLCHAIN,
+                kinds.TOOL,
+                kinds.RESOURCE,
+            },
+        )
+        effect_ids = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind
+            in {kinds.EFFECT, kinds.INTENT_EFFECT, kinds.INTENT_POSTCONDITION},
+        )
+        authorization_ids = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind
+            in {
+                kinds.AUTHORIZATION,
+                kinds.INTENT_RESULT_AUTHORITY,
+                kinds.LEGAL_RESULT_AUTHORITY,
+                kinds.SECURITY_RESULT_AUTHORITY,
+            },
+        )
+        failure_ids = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind
+            in {kinds.INTENT_FAILURE, kinds.INTENT_RETRY},
+        )
+        legal_unknowns = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind.value.startswith("legal_")
+            and (
+                node.kind is kinds.LEGAL_ASSUMPTION
+                or self._has_unknown(node.record)
+            ),
+        )
+        security_unknowns = self._reference_ids(
+            closure_nodes,
+            lambda node: node.kind.value.startswith("security_")
+            and (
+                node.kind is kinds.SECURITY_THREAT_ASSUMPTION
+                or self._has_unknown(node.record)
+            ),
+        )
+        closure_node_ids = {node.node_id for node in closure_nodes}
+        denial_edges = tuple(
+            edge.edge_id
+            for edge in graph.edges
+            if edge.kind is SemanticEdgeKind.DENIES
+            and edge.mandatory
+            and edge.authoritative
+            and edge.source in closure_node_ids
+            and edge.target in closure_node_ids
+        )
+        authorization_status = (
+            "denied"
+            if denial_edges
+            else (
+                "authorization_bound"
+                if request.authority.authorization is not None
+                else "authority_declared"
+            )
+        )
+        roots = tuple(root.to_record() for root in request.semantic_roots)
+        application_unknowns: list[str] = []
+        if not request.jurisdiction:
+            application_unknowns.append("jurisdiction")
+        if request.effective_at_ms is None:
+            application_unknowns.append("effective_at_ms")
+        return {
+            "decision": request.to_record(),
+            "roots": roots,
+            "intent_action_contract": {
+                "selected_action": request.action.to_record(),
+                "capabilities": tuple(
+                    item.to_record() for item in request.capabilities
+                ),
+                "mandatory_reference_ids": intent_ids,
+            },
+            "legal_constraints": {
+                "jurisdiction": request.jurisdiction,
+                "effective_at_ms": request.effective_at_ms,
+                "applicability_facts": tuple(
+                    item.to_record() for item in request.applicability_facts
+                ),
+                "mandatory_reference_ids": legal,
+            },
+            "legal_unknowns": {
+                "unknown_fields": tuple(application_unknowns),
+                "mandatory_reference_ids": legal_unknowns,
+            },
+            "security_constraints": {
+                "principal_id": request.authority.principal_id,
+                "requested_authority": (
+                    request.authority.requested_authority.value
+                ),
+                "capability_ids": request.authority.capability_ids,
+                "mandatory_reference_ids": security,
+            },
+            "security_unknowns": {
+                "mandatory_reference_ids": security_unknowns,
+            },
+            "authorization_state": {
+                "status": authorization_status,
+                "authority": request.authority.to_record(),
+                "authorization_reference_ids": authorization_ids,
+                "denial_edge_ids": tuple(sorted(denial_edges)),
+            },
+            "program_scope": {
+                "repository_id": request.repository_id,
+                "repository_path": request.repository_path,
+                "targets": tuple(
+                    item.to_record() for item in request.action.targets
+                ),
+                "mandatory_reference_ids": program_ids,
+            },
+            "effect_scope": {
+                "expected_effects": tuple(
+                    item.to_record() for item in request.expected_effects
+                ),
+                "mandatory_reference_ids": effect_ids,
+            },
+            "assumptions": {"mandatory_reference_ids": assumptions},
+            "obligations": {"mandatory_reference_ids": obligations},
+            "proof_state": {
+                "mandatory_reference_ids": proof_ids,
+                "proof_edge_ids": tuple(
+                    sorted(
+                        edge.edge_id
+                        for edge in graph.edges
+                        if edge.kind is SemanticEdgeKind.PROVEN_BY
+                        and edge.mandatory
+                        and edge.authoritative
+                        and edge.source in closure_node_ids
+                        and edge.target in closure_node_ids
+                    )
+                ),
+            },
+            "monitor_state": {
+                "mandatory_reference_ids": monitor_ids,
+                "monitor_edge_ids": tuple(
+                    sorted(
+                        edge.edge_id
+                        for edge in graph.edges
+                        if edge.kind is SemanticEdgeKind.MONITORED_BY
+                        and edge.mandatory
+                        and edge.authoritative
+                        and edge.source in closure_node_ids
+                        and edge.target in closure_node_ids
+                    )
+                ),
+            },
+            "validation": {
+                "acceptance_id": request.acceptance_id,
+                "mandatory_reference_ids": validation_ids,
+                "contract": (
+                    validation
+                    if validation is not None
+                    else {
+                        "required": True,
+                        "failure": "fail_closed",
+                    }
+                ),
+            },
+            "acceptance": (
+                acceptance
+                if acceptance is not None
+                else {"acceptance_id": request.acceptance_id}
+            ),
+            "failure_behavior": {
+                "mode": "fail_closed",
+                "mandatory_reference_ids": failure_ids,
+                "contract": (
+                    failure_behavior
+                    if failure_behavior is not None
+                    else {
+                        "on_missing_dependency": "fail_closed",
+                        "on_unresolvable_handle": "fail_closed",
+                        "on_mandatory_overflow": "split_or_fail_closed",
+                        "on_root_mismatch": "fail_closed",
+                    }
+                ),
+            },
+        }
+
+    def _measure_payload(
+        self,
+        *,
+        core: Mapping[str, Any],
+        references: tuple[Any, ...],
+        witness: Any,
+        entries: tuple[Any, ...],
+        index_metadata: Mapping[str, Any],
+        segment_index: int,
+        segment_count: int,
+        expansion_request: str,
+    ) -> int:
+        from .decision_context import DECISION_CONTEXT_SCHEMA
+
+        payload = {
+            "schema": DECISION_CONTEXT_SCHEMA,
+            "contract_version": 1,
+            "required_core": core,
+            "references": [item.to_record() for item in references],
+            "completeness_witness_id": witness.content_id,
+            "witness_entries": [item.to_record() for item in entries],
+            "index_metadata": index_metadata,
+            "segment": {
+                "index": segment_index,
+                "count": segment_count,
+                "expansion_request": expansion_request,
+            },
+        }
+        return self.estimator.estimate(
+            canonical_context_json_bytes(payload).decode("utf-8")
+        )
+
+    def verify(self, result: Any) -> Any:
+        from .decision_context import (
+            DecisionContextBindingError,
+            DecisionContextCompilation,
+            DecisionContextOverflowError,
+        )
+
+        if not isinstance(result, DecisionContextCompilation):
+            raise DecisionContextBindingError(
+                "result must be a DecisionContextCompilation"
+            )
+        total = 0
+        for context in result.contexts:
+            measured = self.estimator.estimate(
+                canonical_context_json_bytes(
+                    context.provider_payload()
+                ).decode("utf-8")
+            )
+            if measured != context.provider_input_tokens:
+                raise DecisionContextBindingError(
+                    "provider token accounting is not reproducible"
+                )
+            if measured > context.effective_input_limit:
+                raise DecisionContextOverflowError(
+                    "remeasured context exceeds its provider input limit"
+                )
+            total += measured
+        if total != result.complete_input_tokens:
+            raise DecisionContextBindingError(
+                "complete provider input token accounting is forged"
+            )
+        return result
+
+    verify_compilation = verify
+
+    def compile(
+        self,
+        request: Any,
+        graph: Any,
+        retrieval_receipt: Any,
+        *,
+        artifact_store: ContentAddressedContextStore | None = None,
+        acceptance: Any = None,
+        validation: Any = None,
+        failure_behavior: Any = None,
+        overflow_behavior: Any = "split",
+    ) -> Any:
+        from .decision_context import (
+            ContextCompletenessEntry,
+            ContextCompletenessWitness,
+            DecisionContext,
+            DecisionContextBindingError,
+            DecisionContextCompilation,
+            DecisionContextOverflowBehavior,
+            DecisionContextOverflowError,
+            DecisionContextRepresentation,
+        )
+        from .decision_contracts import DecisionRequest
+        from .proof_directed_retrieval import ProofDirectedRetrievalReceipt
+        from .semantic_dependency_graph import (
+            ClosureBounds,
+            SemanticDependencyGraph,
+        )
+
+        if not isinstance(request, DecisionRequest):
+            raise DecisionContextBindingError(
+                "request must be a DecisionRequest"
+            )
+        if not isinstance(graph, SemanticDependencyGraph):
+            raise DecisionContextBindingError(
+                "graph must be a SemanticDependencyGraph"
+            )
+        if not isinstance(
+            retrieval_receipt, ProofDirectedRetrievalReceipt
+        ):
+            raise DecisionContextBindingError(
+                "retrieval_receipt must be a ProofDirectedRetrievalReceipt"
+            )
+        try:
+            behavior = DecisionContextOverflowBehavior(
+                str(getattr(overflow_behavior, "value", overflow_behavior))
+            )
+        except ValueError as exc:
+            raise DecisionContextOverflowError(
+                "overflow_behavior must be split, request_expansion, or "
+                "fail_closed"
+            ) from exc
+        if self.require_provider_tokenizer and not self.estimator.provider_aware:
+            raise DecisionContextOverflowError(
+                "decision context requires a provider tokenizer for complete "
+                "input remeasurement"
+            )
+        effective_limit = min(
+            self.effective_input_limit, request.budget.max_input_tokens
+        )
+        if retrieval_receipt.decision_request_id != request.content_id:
+            raise DecisionContextBindingError(
+                "retrieval receipt belongs to a different decision"
+            )
+        if (
+            retrieval_receipt.roots.get("decision_request_id")
+            != request.content_id
+            or retrieval_receipt.roots.get("repository_id")
+            != request.repository_id
+        ):
+            raise DecisionContextBindingError(
+                "retrieval receipt decision roots do not match the request"
+            )
+        if (
+            retrieval_receipt.snapshot.graph_id != graph.graph_id
+            or retrieval_receipt.snapshot.graph_root_id != graph.root_id
+            or retrieval_receipt.roots.get("semantic_graph_id")
+            != graph.graph_id
+            or retrieval_receipt.roots.get("semantic_graph_root_id")
+            != graph.root_id
+        ):
+            raise DecisionContextBindingError(
+                "retrieval receipt belongs to a different semantic graph"
+            )
+        expected_roots = {
+            root.kind.value: {
+                "artifact_id": root.artifact.artifact_id,
+                "cid_v1": root.artifact.cid_v1,
+                "supervisor_digest": root.artifact.supervisor_digest,
+                "reference_id": root.artifact.content_id,
+            }
+            for root in request.semantic_roots
+        }
+        if retrieval_receipt.roots.get("semantic_roots") != expected_roots:
+            raise DecisionContextBindingError(
+                "retrieval receipt semantic roots do not match the decision"
+            )
+        closure = graph.mandatory_closure(
+            next(iter(retrieval_receipt.paths.values()))[0],
+            bounds=ClosureBounds(
+                max_nodes=retrieval_receipt.budgets.max_graph_nodes,
+                max_edges=retrieval_receipt.budgets.max_graph_edges,
+                max_depth=retrieval_receipt.budgets.max_graph_depth,
+                max_annotations=max(1, len(graph.nodes)),
+            ),
+        )
+        if (
+            closure.closure_id != retrieval_receipt.closure_id
+            or closure.node_ids != retrieval_receipt.closure_node_ids
+            or closure.edge_ids != retrieval_receipt.closure_edge_ids
+            or dict(closure.paths) != dict(retrieval_receipt.paths)
+        ):
+            raise DecisionContextBindingError(
+                "retrieval receipt does not bind the current mandatory closure"
+            )
+        node_by_id = {node.node_id: node for node in graph.nodes}
+        closure_nodes = tuple(
+            node_by_id[node_id] for node_id in closure.node_ids
+        )
+        references = tuple(
+            self._build_reference(
+                request=request,
+                graph=graph,
+                node=node,
+                artifact_store=artifact_store,
+            )
+            for node in closure_nodes
+        )
+        reference_by_node = {
+            reference.node_id: reference for reference in references
+        }
+        entries = tuple(
+            ContextCompletenessEntry(
+                node_id=node.node_id,
+                node_kind=node.kind.value,
+                node_content_id=node.content_id,
+                path=closure.paths[node.node_id],
+                path_edge_ids=self._path_edge_ids(
+                    graph, closure.paths[node.node_id]
+                ),
+                reference_id=reference_by_node[node.node_id].reference_id,
+                reference_content_id=(
+                    reference_by_node[node.node_id].resolvable_content_id
+                ),
+                representation=(
+                    reference_by_node[node.node_id].representation
+                ),
+            )
+            for node in closure_nodes
+        )
+        roots_digest = _canonical_digest(
+            tuple(root.to_record() for root in request.semantic_roots)
+        )
+        witness = ContextCompletenessWitness(
+            decision_request_id=request.content_id,
+            semantic_graph_root_id=graph.root_id,
+            semantic_graph_id=graph.graph_id,
+            retrieval_receipt_id=retrieval_receipt.receipt_id,
+            closure_id=closure.closure_id,
+            mandatory_node_ids=closure.node_ids,
+            mandatory_edge_ids=closure.edge_ids,
+            entries=entries,
+            inline_reference_ids=tuple(
+                item.reference_id
+                for item in references
+                if item.representation
+                is DecisionContextRepresentation.INLINE
+            ),
+            expansion_reference_ids=tuple(
+                item.reference_id
+                for item in references
+                if item.representation
+                is DecisionContextRepresentation.EXPANSION
+            ),
+            roots_digest=roots_digest,
+        )
+        core = self._core(
+            request,
+            closure_nodes,
+            graph,
+            acceptance=acceptance,
+            validation=validation,
+            failure_behavior=failure_behavior,
+        )
+        metadata = self._bounded_index_metadata(graph, retrieval_receipt)
+        entry_by_node = {entry.node_id: entry for entry in entries}
+
+        one_tokens = self._measure_payload(
+            core=core,
+            references=references,
+            witness=witness,
+            entries=entries,
+            index_metadata=metadata,
+            segment_index=0,
+            segment_count=1,
+            expansion_request="",
+        )
+        groups: list[tuple[Any, ...]]
+        if (
+            one_tokens <= effective_limit
+            and len(
+                canonical_context_json_bytes(
+                    {
+                        "core": core,
+                        "references": [
+                            item.to_record() for item in references
+                        ],
+                        "entries": [item.to_record() for item in entries],
+                    }
+                )
+            )
+            <= request.budget.max_serialized_bytes
+        ):
+            groups = [references]
+        else:
+            if behavior is DecisionContextOverflowBehavior.FAIL_CLOSED:
+                raise DecisionContextOverflowError(
+                    "complete mandatory closure exceeds the provider budget"
+                )
+            groups = []
+            current: list[Any] = []
+            conservative_count = max(1, len(references))
+            for reference in references:
+                candidate = tuple((*current, reference))
+                candidate_entries = tuple(
+                    entry_by_node[item.node_id] for item in candidate
+                )
+                name = (
+                    "expand mandatory decision context segment "
+                    f"{len(groups) + 1}"
+                )
+                tokens = self._measure_payload(
+                    core=core,
+                    references=candidate,
+                    witness=witness,
+                    entries=candidate_entries,
+                    index_metadata=metadata,
+                    segment_index=len(groups),
+                    segment_count=conservative_count,
+                    expansion_request=name,
+                )
+                byte_count = len(
+                    canonical_context_json_bytes(
+                        {
+                            "core": core,
+                            "references": [
+                                item.to_record() for item in candidate
+                            ],
+                            "entries": [
+                                item.to_record()
+                                for item in candidate_entries
+                            ],
+                        }
+                    )
+                )
+                if (
+                    tokens <= effective_limit
+                    and byte_count <= request.budget.max_serialized_bytes
+                ):
+                    current.append(reference)
+                    continue
+                if not current:
+                    raise DecisionContextOverflowError(
+                        f"mandatory dependency {reference.node_id!r} and "
+                        "the immutable core cannot fit one provider segment"
+                    )
+                groups.append(tuple(current))
+                current = []
+                candidate = (reference,)
+                candidate_entries = (entry_by_node[reference.node_id],)
+                tokens = self._measure_payload(
+                    core=core,
+                    references=candidate,
+                    witness=witness,
+                    entries=candidate_entries,
+                    index_metadata=metadata,
+                    segment_index=len(groups),
+                    segment_count=conservative_count,
+                    expansion_request=(
+                        "expand mandatory decision context segment "
+                        f"{len(groups) + 1}"
+                    ),
+                )
+                if tokens > effective_limit:
+                    raise DecisionContextOverflowError(
+                        f"mandatory dependency {reference.node_id!r} and "
+                        "the immutable core cannot fit one provider segment"
+                    )
+                current.append(reference)
+            if current:
+                groups.append(tuple(current))
+            if len(groups) - 1 > request.budget.max_expansions:
+                raise DecisionContextOverflowError(
+                    "deterministic mandatory-context split exceeds the "
+                    "decision expansion budget"
+                )
+
+        contexts: list[Any] = []
+        for index, group in enumerate(groups):
+            group_entries = tuple(
+                entry_by_node[item.node_id] for item in group
+            )
+            expansion_name = (
+                ""
+                if len(groups) == 1
+                else (
+                    "expand mandatory decision context segment "
+                    f"{index + 1} of {len(groups)}"
+                )
+            )
+            tokens = self._measure_payload(
+                core=core,
+                references=group,
+                witness=witness,
+                entries=group_entries,
+                index_metadata=metadata,
+                segment_index=index,
+                segment_count=len(groups),
+                expansion_request=expansion_name,
+            )
+            if tokens > effective_limit:
+                raise DecisionContextOverflowError(
+                    "final provider-token remeasurement exceeds the budget"
+                )
+            contexts.append(
+                DecisionContext(
+                    required_core=core,
+                    references=group,
+                    completeness_witness_id=witness.content_id,
+                    witness_entries=group_entries,
+                    index_metadata=metadata,
+                    provider_input_tokens=tokens,
+                    effective_input_limit=effective_limit,
+                    segment_index=index,
+                    segment_count=len(groups),
+                    expansion_request=expansion_name,
+                )
+            )
+            serialized_bytes = len(
+                canonical_context_json_bytes(
+                    contexts[-1].provider_payload()
+                )
+            )
+            serialized_limit = min(
+                request.budget.max_serialized_bytes,
+                self.effective_budget.max_serialized_bytes,
+            )
+            if serialized_bytes > serialized_limit:
+                raise DecisionContextOverflowError(
+                    "final mandatory context exceeds the serialized-byte budget"
+                )
+        result = DecisionContextCompilation(
+            contexts=tuple(contexts),
+            witness=witness,
+            complete_input_tokens=sum(
+                item.provider_input_tokens for item in contexts
+            ),
+            provider_tokenizer=self.estimator.name,
+            overflow_behavior=behavior,
+            required_nodes_participated_in_value_selection=False,
+            verifier=self,
+        )
+        return self.verify(result)
+
+
+def compile_decision_context(
+    budget: ContextBudget,
+    request: Any,
+    graph: Any,
+    retrieval_receipt: Any,
+    **kwargs: Any,
+) -> Any:
+    """Convenience wrapper for a complete generation-3 decision context."""
+
+    compiler_options = {
+        key: kwargs.pop(key)
+        for key in tuple(kwargs)
+        if key
+        in {
+            "tokenizer",
+            "estimator",
+            "provider_context_window",
+            "provider_max_input_tokens",
+            "reserved_output_tokens",
+            "reserved_tool_tokens",
+            "require_provider_tokenizer",
+            "max_inline_node_bytes",
+            "max_inline_bytes",
+        }
+    }
+    return DecisionContextCompiler(
+        budget, **compiler_options
+    ).compile(request, graph, retrieval_receipt, **kwargs)
 
 
 def compile_context_capsule(
@@ -5504,6 +6496,7 @@ __all__ = [
     "ContextCompilationResult",
     "ContextCompileResult",
     "ContextCompiler",
+    "DecisionContextCompiler",
     "ContextDeltaError",
     "ContextDeltaReceipt",
     "ContextDeltaResult",
@@ -5543,6 +6536,7 @@ __all__ = [
     "build_context_delta",
     "build_prefix_context",
     "compile_context_capsule",
+    "compile_decision_context",
     "compile_context_delta",
     "compile_prefix_context",
     "compile_prefix_context_capsule",
