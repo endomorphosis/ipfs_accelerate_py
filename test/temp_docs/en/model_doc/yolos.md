@@ -24,7 +24,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The YOLOS model was proposed in [You Only Look at One Sequence: Rethinking Transformer in Vision through Object Detection](https://arxiv.org/abs/2106.00666) by Yuxin Fang, Bencheng Liao, Xinggang Wang, Jiemin Fang, Jiyang Qi, Rui Wu, Jianwei Niu, Wenyu Liu.
-YOLOS proposes to just leverage the plain [Vision Transformer (ViT)](vit.md) for object detection, inspired by DETR. It turns out that a base-sized encoder-only Transformer can also achieve 42 AP on COCO, similar to DETR and much more complex frameworks such as Faster R-CNN.
+YOLOS proposes to just leverage the plain [Vision Transformer (ViT)](vit.md) for object detection, inspired by [DETR](detr.md). It turns out that a base-sized encoder-only Transformer can also achieve 42 AP on COCO, similar to DETR and much more complex frameworks such as Faster R-CNN.
 
 The abstract from the paper is the following:
 
