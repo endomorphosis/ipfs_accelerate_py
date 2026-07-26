@@ -3906,7 +3906,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-124 Define the canonical decision envelope and pinned artifact references
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-ir
