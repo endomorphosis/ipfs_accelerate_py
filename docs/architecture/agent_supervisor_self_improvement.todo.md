@@ -3672,7 +3672,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-111 Build conflict, resource, context, and validation-aware bundle planning
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: task-generation
