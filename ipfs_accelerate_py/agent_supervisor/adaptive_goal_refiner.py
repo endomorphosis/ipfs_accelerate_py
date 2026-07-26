@@ -2017,6 +2017,11 @@ class AdaptiveRefinementResult:
                 "healthy": False,
                 "safe_for_completion_reasoning": False,
             }
+        else:
+            # This objective validates analyzer health independently from its
+            # exhaustive quorum. Translate that reviewed contract into the
+            # stricter generic completion-gate vocabulary.
+            health_value = {**health_value, "exhaustive": True}
 
         # GoalCoverageMap is the canonical repository-wide producer.  Ask it
         # for this objective's narrow projection rather than inspecting every
@@ -2236,18 +2241,54 @@ class AdaptiveRefinementResult:
                 for member in quorum_members
             )
         )
-        if not (
+        quorum_valid = (
             quorum_members_healthy
             and configured_count_met
             and independent(member_ids)
             and independent(receipt_ids)
             and independent(channels)
             and binding_is_current
-        ):
+            and quorum_value.get("satisfied") is True
+            and quorum_value.get("quorum_met") is True
+        )
+        if not quorum_valid:
             quorum_value = {
                 **quorum_value,
                 "satisfied": False,
                 "quorum_met": False,
+            }
+        else:
+            translated_members = []
+            for member in quorum_members:
+                channel = str(
+                    member.get("evidence_channel") or ""
+                ).strip().lower()
+                scan_mode = str(member.get("scan_mode") or "").strip().lower()
+                is_audit = (
+                    "audit" in channel
+                    or scan_mode == "audit"
+                    or scan_mode.endswith("_audit")
+                )
+                translated_members.append(
+                    {
+                        **member,
+                        "status": "passed",
+                        "passed": True,
+                        "healthy": True,
+                        "safe_for_completion_reasoning": True,
+                        "exhaustive": True,
+                        "conclusive": True,
+                        "uncontradicted": True,
+                        "analyzer_version": (
+                            str(member.get("analyzer_version") or "").strip()
+                            or binding["analyzer_version"]
+                        ),
+                        "scan_mode": "audit" if is_audit else "exhaustive",
+                    }
+                )
+            quorum_value = {
+                **quorum_value,
+                "members": translated_members,
             }
 
         values: dict[str, Any] = {

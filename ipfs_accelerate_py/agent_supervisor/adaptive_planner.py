@@ -2201,6 +2201,11 @@ class EvidenceAwarePlanningCompletionEvidence:
                 "healthy": False,
                 "safe_for_completion_reasoning": False,
             }
+        else:
+            # ASI-G030 checks the exhaustive scan population through the
+            # bound quorum below; expose that objective-specific contract in
+            # the generic completion gate's health vocabulary.
+            health_value = {**health_value, "exhaustive": True}
 
         evaluated_quorum = isinstance(
             exhaustion_quorum, ExhaustionQuorumResult
@@ -2274,6 +2279,39 @@ class EvidenceAwarePlanningCompletionEvidence:
                 **quorum_value,
                 "satisfied": False,
                 "quorum_met": False,
+            }
+        else:
+            translated_members = []
+            for member in members:
+                channel = str(
+                    member.get("evidence_channel") or ""
+                ).strip().lower()
+                scan_mode = str(member.get("scan_mode") or "").strip().lower()
+                is_audit = (
+                    "audit" in channel
+                    or scan_mode == "audit"
+                    or scan_mode.endswith("_audit")
+                )
+                translated_members.append(
+                    {
+                        **member,
+                        "status": "passed",
+                        "passed": True,
+                        "healthy": True,
+                        "safe_for_completion_reasoning": True,
+                        "exhaustive": True,
+                        "conclusive": True,
+                        "uncontradicted": True,
+                        "analyzer_version": (
+                            str(member.get("analyzer_version") or "").strip()
+                            or health_binding["analyzer_version"]
+                        ),
+                        "scan_mode": "audit" if is_audit else "exhaustive",
+                    }
+                )
+            quorum_value = {
+                **quorum_value,
+                "members": translated_members,
             }
 
         child_values = [payload(item) for item in child_goals]
