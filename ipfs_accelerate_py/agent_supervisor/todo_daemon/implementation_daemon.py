@@ -159,6 +159,7 @@ DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE = 16_384
 DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
+MAX_PENDING_SCOPE_ADJUDICATIONS = 256
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "600")
 )
@@ -1506,6 +1507,7 @@ class PortalImplementationDaemon:
         ] = {}
         self._implementation_diagnostic_repeats: dict[str, int] = {}
         self._implementation_retry_not_before: dict[str, float] = {}
+        self._implementation_scope_adjudications: dict[str, Any] = {}
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
@@ -4713,6 +4715,18 @@ class PortalImplementationDaemon:
                 )
                 validation_proof["proof_gate"] = proof_gate_packet
                 metadata["proof_gate"] = proof_gate_packet
+            for gate_name in (
+                "proposal_gate",
+                "scope_adjudication",
+            ):
+                gate_record = validation_result.get(gate_name)
+                if isinstance(gate_record, Mapping):
+                    validation_proof[gate_name] = (
+                        _bounded_merge_proof_value(
+                            gate_record,
+                            field_name=gate_name,
+                        )
+                    )
             metadata["validation_proof"] = validation_proof
         if self.formal_verification_policy is not None:
             metadata["formal_verification_policy"] = _bounded_merge_proof_value(
@@ -4774,6 +4788,79 @@ class PortalImplementationDaemon:
         values.setdefault("priority", str(request.priority or "P2"))
         values.setdefault("track", "ops")
         return PortalTask(**values)
+
+    @staticmethod
+    def _scope_adjudication_merge_binding_error(
+        validation_proof: Mapping[str, Any],
+    ) -> str:
+        """Validate the compact scope-to-proposal authority chain."""
+
+        scope = validation_proof.get("scope_adjudication")
+        if scope is None:
+            return ""
+        proposal = validation_proof.get("proposal_gate")
+        if not isinstance(scope, Mapping):
+            return "scope_adjudication_malformed"
+        if not isinstance(proposal, Mapping):
+            return "scope_adjudication_proposal_missing"
+        if scope.get("accepted") is not True:
+            return "scope_adjudication_not_accepted"
+        if (
+            scope.get("proof_authoritative") is not False
+            or scope.get("completion_authoritative") is not False
+        ):
+            return "scope_adjudication_authority_forged"
+        proposal_id = str(scope.get("proposal_id") or "")
+        if (
+            not proposal_id
+            or proposal_id != str(proposal.get("proposal_id") or "")
+        ):
+            return "scope_adjudication_proposal_mismatch"
+        authorized_policy_id = str(
+            scope.get("authorized_policy_id") or ""
+        )
+        if (
+            not authorized_policy_id
+            or authorized_policy_id
+            != str(proposal.get("policy_id") or "")
+        ):
+            return "scope_adjudication_policy_mismatch"
+        if (
+            not str(scope.get("receipt_id") or "")
+            or str(scope.get("repository_tree_id") or "")
+            != str(proposal.get("repository_tree_id") or "")
+        ):
+            return "scope_adjudication_receipt_mismatch"
+        raw_authorized = scope.get("authorized_paths")
+        raw_denied = scope.get("denied_paths")
+        raw_changed = proposal.get("changed_paths")
+        if (
+            not isinstance(raw_authorized, Sequence)
+            or isinstance(raw_authorized, (str, bytes, bytearray))
+            or not raw_authorized
+            or not isinstance(raw_denied, Sequence)
+            or isinstance(raw_denied, (str, bytes, bytearray))
+            or bool(raw_denied)
+            or not isinstance(raw_changed, Sequence)
+            or isinstance(raw_changed, (str, bytes, bytearray))
+        ):
+            return "scope_adjudication_paths_malformed"
+        authorized = {
+            str(path).strip()
+            for path in raw_authorized
+            if str(path).strip()
+        }
+        changed = {
+            str(path).strip()
+            for path in raw_changed
+            if str(path).strip()
+        }
+        if (
+            len(authorized) != len(raw_authorized)
+            or not authorized.issubset(changed)
+        ):
+            return "scope_adjudication_paths_mismatch"
+        return ""
 
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
@@ -4864,6 +4951,21 @@ class PortalImplementationDaemon:
                         if not validation_proof.get("passed")
                         else "broad_pre_merge_scope_missing"
                     ),
+                }
+            scope_binding_error = (
+                self._scope_adjudication_merge_binding_error(
+                    validation_proof
+                )
+            )
+            if scope_binding_error:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "scope_adjudication_binding_invalid",
+                    "branch": branch_name,
+                    "validation_result": validation_proof,
+                    "validation_gate_reason": scope_binding_error,
                 }
         raw_changed_submodule_paths = metadata.get("changed_submodule_paths")
         changed_submodule_paths = (
@@ -7872,9 +7974,14 @@ class PortalImplementationDaemon:
             ImplementationProposal,
             ProposalOperation,
             ProposalRisk,
+            ProposalFindingCode,
             ProposalValidationStep,
             ProposalValidationPolicy,
             validate_implementation_proposal,
+        )
+        from ..scope_adjudication import (
+            adjudicate_scope_expansion,
+            compact_scope_adjudication,
         )
 
         authority = self._proposal_authority_values(
@@ -8034,6 +8141,89 @@ class PortalImplementationDaemon:
             policy_version="strict-proposal-v2",
         )
         result = validate_implementation_proposal(proposal, policy=policy)
+        finding_codes = tuple(
+            sorted(
+                {
+                    str(getattr(finding.code, "value", finding.code))
+                    for finding in result.findings
+                }
+            )
+        )
+        if (
+            not result.accepted
+            and finding_codes
+            == (ProposalFindingCode.PATH_OUTSIDE_SCOPE.value,)
+        ):
+            adjudication = adjudicate_scope_expansion(
+                task_id=task.task_id,
+                proposal_id=proposal.proposal_id,
+                initial_policy_id=policy.policy_id,
+                repository_id=authority["repository_id"],
+                repository_tree_id=authority["repository_tree_id"],
+                baseline_id=authority["baseline_id"],
+                original_scope_paths=scope_paths,
+                candidate_diff=entries,
+                initial_finding_codes=finding_codes,
+                validation_commands=task.validation,
+                workspace_path=workspace_path,
+            )
+            if adjudication.justified:
+                expanded_paths = tuple(
+                    sorted(
+                        {
+                            *allowed_paths,
+                            *adjudication.justified_paths,
+                        }
+                    )
+                )
+                expanded_policy_payload = policy.to_dict()
+                expanded_policy_payload.update(
+                    {
+                        "allowed_paths": expanded_paths,
+                        "task_owned_paths": expanded_paths,
+                        "policy_id": "",
+                        "policy_version": (
+                            "strict-proposal-v2"
+                            "+scope-adjudication-v1"
+                        ),
+                    }
+                )
+                expanded_policy = ProposalValidationPolicy.from_dict(
+                    expanded_policy_payload
+                )
+                adjudication = adjudication.bind_authorized_policy(
+                    expanded_policy.policy_id
+                )
+                result = validate_implementation_proposal(
+                    proposal,
+                    policy=expanded_policy,
+                )
+            adjudication_projection = compact_scope_adjudication(
+                adjudication
+            )
+            if (
+                proposal.proposal_id
+                not in self._implementation_scope_adjudications
+                and len(self._implementation_scope_adjudications)
+                >= MAX_PENDING_SCOPE_ADJUDICATIONS
+            ):
+                oldest_proposal_id = next(
+                    iter(self._implementation_scope_adjudications)
+                )
+                self._implementation_scope_adjudications.pop(
+                    oldest_proposal_id,
+                    None,
+                )
+            self._implementation_scope_adjudications[
+                proposal.proposal_id
+            ] = adjudication
+            self._record_event(
+                "implementation_scope_adjudicated",
+                {
+                    "task_id": task.task_id,
+                    **adjudication_projection,
+                },
+            )
         compact = self._compact_proposal_validation(
             result,
             error_code=(
@@ -8200,6 +8390,30 @@ class PortalImplementationDaemon:
                         }
                     )[:MAX_PERSISTED_PROPOSAL_REASON_CODES]
             result["proposal_gate"] = compact_proposal
+            proposal_id = str(
+                getattr(
+                    getattr(proposal_validation, "proposal", None),
+                    "proposal_id",
+                    "",
+                )
+                or ""
+            )
+            scope_adjudication = (
+                self._implementation_scope_adjudications.pop(
+                    proposal_id,
+                    None,
+                )
+                if proposal_id
+                else None
+            )
+            if scope_adjudication is not None:
+                from ..scope_adjudication import (
+                    compact_scope_adjudication,
+                )
+
+                result["scope_adjudication"] = (
+                    compact_scope_adjudication(scope_adjudication)
+                )
 
         scheduler_options = proof_options.get("proof_scheduler_options")
         proof_state_path = ""
@@ -8246,6 +8460,15 @@ class PortalImplementationDaemon:
                     f"complete={operator_state['complete']} "
                     f"succeeded={operator_state['succeeded']} "
                     f"active_leases={operator_state['active_leases']}\n"
+                )
+            scope_adjudication = result.get("scope_adjudication")
+            if isinstance(scope_adjudication, Mapping):
+                log_fh.write(
+                    "[scope adjudication] "
+                    f"accepted={scope_adjudication.get('accepted', False)} "
+                    "authorized="
+                    f"{scope_adjudication.get('authorized_paths', [])} "
+                    f"denied={scope_adjudication.get('denied_paths', [])}\n"
                 )
             for command_result in result.get("results", []):
                 if not isinstance(command_result, dict):
@@ -14008,6 +14231,21 @@ class PortalImplementationDaemon:
                         "repository_tree_id",
                     )
                     if proposal.get(key) not in (None, "", (), [], {})
+                }
+            scope_adjudication = validation.get("scope_adjudication")
+            if isinstance(scope_adjudication, Mapping):
+                selected["scope_adjudication"] = {
+                    key: scope_adjudication[key]
+                    for key in (
+                        "accepted",
+                        "receipt_id",
+                        "proposal_id",
+                        "authorized_paths",
+                        "denied_paths",
+                        "decisions",
+                    )
+                    if scope_adjudication.get(key)
+                    not in (None, "", (), [], {})
                 }
         if not selected:
             selected = {"kind": "implementation_failure", "reason": "unknown"}
