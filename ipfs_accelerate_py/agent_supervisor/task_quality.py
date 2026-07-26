@@ -3034,6 +3034,727 @@ def prove_task_split_refill(
     )
 
 
+SUCCESSOR_GOAL_QUALITY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/successor-goal-quality-lint@1"
+)
+SUCCESSOR_GOAL_QUALITY_POLICY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/successor-goal-quality-policy@1"
+)
+
+
+class GoalQualityIssueCode(str, Enum):
+    """Closed reasons a generated successor goal fails quality admission."""
+
+    MISSING_TITLE = "missing_title"
+    MISSING_PARENT_GOAL = "missing_parent_goal"
+    MISSING_OUTCOME = "missing_outcome"
+    MISSING_SCOPE = "missing_scope"
+    MISSING_ASSUMPTIONS = "missing_assumptions"
+    MISSING_NON_GOALS = "missing_non_goals"
+    MISSING_ACCEPTANCE = "missing_acceptance"
+    MISSING_EVIDENCE = "missing_evidence"
+    MISSING_VALIDATION = "missing_validation"
+    MISSING_OUTPUTS = "missing_outputs"
+    INVALID_KIND = "invalid_kind"
+    NON_FINITE_CONFIDENCE = "non_finite_confidence"
+    CONFIDENCE_BELOW_THRESHOLD = "confidence_below_threshold"
+    NON_FINITE_NOVELTY = "non_finite_novelty"
+    NOVELTY_BELOW_THRESHOLD = "novelty_below_threshold"
+    INVALID_DEPTH = "invalid_depth"
+    DEPTH_EXCEEDED = "depth_exceeded"
+    UNBOUNDED_SCOPE = "unbounded_scope"
+    BREADTH_EXCEEDED = "breadth_exceeded"
+    INVALID_TOKEN_ESTIMATE = "invalid_token_estimate"
+    TOKEN_BUDGET_EXCEEDED = "token_budget_exceeded"
+    INVALID_GOAL_COUNT = "invalid_goal_count"
+    GOAL_BUDGET_EXCEEDED = "goal_budget_exceeded"
+    INVALID_TASK_COUNT = "invalid_task_count"
+    TASK_BUDGET_EXCEEDED = "task_budget_exceeded"
+    INVALID_OPEN_WORK_COUNT = "invalid_open_work_count"
+    OPEN_WORK_BUDGET_EXCEEDED = "open_work_budget_exceeded"
+    UNSUPPORTED_DEPENDENCY = "unsupported_dependency"
+
+
+@dataclass(frozen=True)
+class GoalQualityLintPolicy:
+    """Finite local bounds for one mapping-based successor goal contract."""
+
+    minimum_confidence: float = 0.5
+    minimum_novelty: float = 0.5
+    max_depth: int = 3
+    max_scope_items: int = 16
+    max_acceptance_items: int = 12
+    max_evidence_items: int = 16
+    max_validation_commands: int = 12
+    max_dependencies: int = 16
+    max_outputs: int = 16
+    max_total_breadth: int = 64
+    max_estimated_tokens: int = 8_192
+    max_goals_per_batch: int = 8
+    max_tasks_per_goal: int = 3
+    max_open_work: int = 48
+    max_issues: int = 32
+
+    def __post_init__(self) -> None:
+        for name in ("minimum_confidence", "minimum_novelty"):
+            object.__setattr__(self, name, _finite_ratio(getattr(self, name), name))
+        for name in (
+            "max_scope_items",
+            "max_acceptance_items",
+            "max_evidence_items",
+            "max_validation_commands",
+            "max_dependencies",
+            "max_outputs",
+            "max_total_breadth",
+            "max_issues",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _positive_int(getattr(self, name), name),
+            )
+        for name in (
+            "max_depth",
+            "max_estimated_tokens",
+            "max_goals_per_batch",
+            "max_tasks_per_goal",
+            "max_open_work",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _non_negative_int(getattr(self, name), name),
+            )
+
+    @property
+    def policy_id(self) -> str:
+        return _task_quality_evidence_cid(
+            {
+                "schema": SUCCESSOR_GOAL_QUALITY_POLICY_SCHEMA,
+                **asdict(self),
+            }
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SUCCESSOR_GOAL_QUALITY_POLICY_SCHEMA,
+            **asdict(self),
+            "policy_id": self.policy_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalQualityLintPolicy":
+        if not isinstance(payload, Mapping):
+            raise TypeError("successor goal quality policy must be a mapping")
+        allowed = {"schema", "policy_id", *cls.__dataclass_fields__}
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "successor goal quality policy contains unknown fields: "
+                + ", ".join(unknown)
+            )
+        if payload.get("schema") != SUCCESSOR_GOAL_QUALITY_POLICY_SCHEMA:
+            raise ValueError("unsupported successor goal quality policy schema")
+        result = cls(
+            **{
+                name: payload.get(name, field_.default)
+                for name, field_ in cls.__dataclass_fields__.items()
+            }
+        )
+        if payload.get("policy_id") != result.policy_id:
+            raise ValueError("successor goal quality policy identity does not match")
+        return result
+
+
+@dataclass(frozen=True)
+class GoalQualityIssue:
+    """One typed, content-bound successor-goal lint finding."""
+
+    code: GoalQualityIssueCode | str
+    field: str
+    detail: str
+    related_values: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        try:
+            code = (
+                self.code
+                if isinstance(self.code, GoalQualityIssueCode)
+                else GoalQualityIssueCode(str(self.code))
+            )
+        except ValueError as exc:
+            raise ValueError(f"unknown successor goal quality issue: {self.code!r}") from exc
+        field_name = _normalized_display_text(self.field)
+        detail = _normalized_display_text(self.detail)
+        if not field_name or not detail:
+            raise ValueError("goal quality issues require field and detail")
+        if len(detail.encode("utf-8")) > 1_024:
+            raise ValueError("goal quality issue detail exceeds 1024 UTF-8 bytes")
+        related = _strings(self.related_values)
+        if len(related) > 8:
+            raise ValueError("goal quality issues may bind at most 8 related values")
+        object.__setattr__(self, "code", code)
+        object.__setattr__(self, "field", field_name)
+        object.__setattr__(self, "detail", detail)
+        object.__setattr__(self, "related_values", related)
+
+    @property
+    def reason(self) -> str:
+        return self.code.value
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "code": self.code.value,
+            "reason": self.reason,
+            "field": self.field,
+            "detail": self.detail,
+            "related_values": list(self.related_values),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalQualityIssue":
+        if not isinstance(payload, Mapping):
+            raise TypeError("successor goal quality issue must be a mapping")
+        allowed = {"code", "reason", "field", "detail", "related_values"}
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "successor goal quality issue contains unknown fields: "
+                + ", ".join(unknown)
+            )
+        result = cls(
+            code=payload.get("code", ""),
+            field=str(payload.get("field") or ""),
+            detail=str(payload.get("detail") or ""),
+            related_values=tuple(payload.get("related_values") or ()),
+        )
+        if payload.get("reason") != result.reason:
+            raise ValueError("successor goal quality issue reason does not match code")
+        return result
+
+
+@dataclass(frozen=True)
+class GoalQualityLintResult:
+    """Deterministic bounded accounting for one successor goal candidate."""
+
+    candidate_id: str
+    policy_id: str
+    issues: tuple[GoalQualityIssue, ...]
+    total_issue_count: int
+
+    def __post_init__(self) -> None:
+        for name in ("candidate_id", "policy_id"):
+            normalized = _normalized_display_text(getattr(self, name))
+            if not normalized:
+                raise ValueError(f"{name} is required")
+            object.__setattr__(self, name, normalized)
+        issues = tuple(self.issues)
+        if any(not isinstance(item, GoalQualityIssue) for item in issues):
+            raise TypeError("issues must contain GoalQualityIssue values")
+        total = _non_negative_int(self.total_issue_count, "total_issue_count")
+        if total < len(issues):
+            raise ValueError("total_issue_count cannot be smaller than retained issues")
+        object.__setattr__(self, "issues", issues)
+        object.__setattr__(self, "total_issue_count", total)
+
+    @property
+    def accepted(self) -> bool:
+        return self.total_issue_count == 0
+
+    @property
+    def rejection_reasons(self) -> tuple[str, ...]:
+        return tuple(item.code.value for item in self.issues)
+
+    @property
+    def issues_truncated(self) -> int:
+        return self.total_issue_count - len(self.issues)
+
+    @property
+    def result_id(self) -> str:
+        return _task_quality_evidence_cid(
+            {
+                "schema": SUCCESSOR_GOAL_QUALITY_SCHEMA,
+                "candidate_id": self.candidate_id,
+                "policy_id": self.policy_id,
+                "issues": [item.to_dict() for item in self.issues],
+                "total_issue_count": self.total_issue_count,
+            }
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SUCCESSOR_GOAL_QUALITY_SCHEMA,
+            "candidate_id": self.candidate_id,
+            "policy_id": self.policy_id,
+            "accepted": self.accepted,
+            "issues": [item.to_dict() for item in self.issues],
+            "rejection_reasons": list(self.rejection_reasons),
+            "total_issue_count": self.total_issue_count,
+            "issues_truncated": self.issues_truncated,
+            "result_id": self.result_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalQualityLintResult":
+        if not isinstance(payload, Mapping):
+            raise TypeError("successor goal quality result must be a mapping")
+        allowed = {
+            "schema",
+            "candidate_id",
+            "policy_id",
+            "accepted",
+            "issues",
+            "rejection_reasons",
+            "total_issue_count",
+            "issues_truncated",
+            "result_id",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "successor goal quality result contains unknown fields: "
+                + ", ".join(unknown)
+            )
+        if payload.get("schema") != SUCCESSOR_GOAL_QUALITY_SCHEMA:
+            raise ValueError("unsupported successor goal quality result schema")
+        raw_issues = payload.get("issues") or ()
+        if isinstance(raw_issues, (str, bytes, bytearray, Mapping)):
+            raise TypeError("successor goal quality result issues must be a sequence")
+        result = cls(
+            candidate_id=str(payload.get("candidate_id") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            issues=tuple(GoalQualityIssue.from_dict(item) for item in raw_issues),
+            total_issue_count=payload.get("total_issue_count", -1),
+        )
+        if payload.get("accepted") is not result.accepted:
+            raise ValueError("successor goal quality accepted projection was forged")
+        if tuple(payload.get("rejection_reasons") or ()) != result.rejection_reasons:
+            raise ValueError("successor goal quality rejection projection was forged")
+        if payload.get("issues_truncated") != result.issues_truncated:
+            raise ValueError("successor goal quality truncation projection was forged")
+        if payload.get("result_id") != result.result_id:
+            raise ValueError("successor goal quality result identity does not match")
+        return result
+
+
+def _successor_value(payload: Mapping[str, Any], *names: str) -> Any:
+    """Return the first present successor field, preserving false and zero."""
+
+    normalized = {
+        str(key).strip().casefold().replace("-", "_").replace(" ", "_"): value
+        for key, value in payload.items()
+    }
+    for name in names:
+        key = name.casefold().replace("-", "_").replace(" ", "_")
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def _successor_strings(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, Mapping):
+        value = _successor_value(value, "include", "items", "paths")
+    return _strings(value)
+
+
+def _successor_finite(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _successor_integer(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, float) and (
+        not math.isfinite(value) or not value.is_integer()
+    ):
+        return None
+    if isinstance(value, str) and not re.fullmatch(r"\+?[0-9]+", value.strip()):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def lint_successor_goal_candidate(
+    candidate: Mapping[str, Any],
+    *,
+    policy: GoalQualityLintPolicy | None = None,
+    supported_dependencies: Iterable[str] | None = None,
+    open_work_count: int | None = None,
+) -> GoalQualityLintResult:
+    """Lint one complete successor goal mapping without importing v2 runtime types.
+
+    The accepted spellings intentionally overlap :class:`ObjectiveWorkProposal`
+    so provider packets can be checked before constructing a mutation-capable
+    objective object.  ``supported_dependencies=None`` means the caller has not
+    supplied an authoritative dependency population; an empty iterable means
+    no external dependencies are available.
+    """
+
+    if not isinstance(candidate, Mapping):
+        raise TypeError("successor goal candidate must be a mapping")
+    selected = policy or GoalQualityLintPolicy()
+    if not isinstance(selected, GoalQualityLintPolicy):
+        raise TypeError("policy must be a GoalQualityLintPolicy")
+
+    title = _normalized_display_text(_successor_value(candidate, "title", "summary"))
+    parent_goal = _normalized_display_text(
+        _successor_value(candidate, "parent_goal_id", "parent_objective_id", "goal_id")
+    )
+    outcome = _normalized_display_text(
+        _successor_value(candidate, "outcome", "expected_outcome")
+    )
+    raw_scope = _successor_value(candidate, "scope", "scope_include")
+    scope = _successor_strings(raw_scope)
+    assumptions = _successor_strings(_successor_value(candidate, "assumptions"))
+    non_goals = _successor_strings(
+        _successor_value(candidate, "non_goals", "excluded_outcomes")
+    )
+    acceptance = _successor_strings(
+        _successor_value(
+            candidate,
+            "acceptance_subset",
+            "acceptance",
+            "acceptance_criteria",
+            "parent_objective_terms",
+        )
+    )
+    evidence = _successor_strings(
+        _successor_value(
+            candidate,
+            "expected_evidence_delta",
+            "evidence_subset",
+            "evidence",
+            "evidence_requirements",
+        )
+    )
+    validation = _successor_strings(
+        _successor_value(candidate, "validation_commands", "validation")
+    )
+    outputs = _successor_strings(
+        _successor_value(candidate, "predicted_files", "outputs", "predicted_paths")
+    )
+    dependencies = _successor_strings(
+        _successor_value(candidate, "dependencies", "depends_on")
+    )
+    explicit_unsupported = _successor_strings(
+        _successor_value(candidate, "unsupported_dependencies")
+    )
+    kind = _normalized_display_text(
+        _successor_value(candidate, "kind", "work_kind", "proposal_kind") or "goal"
+    ).casefold()
+    confidence = _successor_finite(
+        _successor_value(candidate, "confidence", "goal_confidence")
+    )
+    novelty = _successor_finite(
+        _successor_value(candidate, "novelty", "semantic_novelty")
+    )
+    depth = _successor_integer(
+        _successor_value(candidate, "depth", "graph_depth")
+    )
+    estimated_tokens = _successor_integer(
+        _successor_value(candidate, "estimated_tokens", "token_cost")
+    )
+    raw_goal_count = _successor_value(
+        candidate, "goal_count", "requested_goal_count"
+    )
+    goal_count = _successor_integer(
+        1 if raw_goal_count is None else raw_goal_count
+    )
+    tasks_value = _successor_value(candidate, "tasks", "task_candidates")
+    raw_task_count = _successor_value(candidate, "task_count", "estimated_task_count")
+    if raw_task_count is None and tasks_value is not None:
+        if isinstance(tasks_value, Sequence) and not isinstance(
+            tasks_value, (str, bytes, bytearray)
+        ):
+            raw_task_count = len(tasks_value)
+        else:
+            raw_task_count = -1
+    task_count = _successor_integer(raw_task_count)
+    if raw_task_count is None:
+        task_count = 1
+    raw_open_work = (
+        open_work_count
+        if open_work_count is not None
+        else _successor_value(candidate, "open_work_count", "current_open_work")
+    )
+    if raw_open_work is None:
+        raw_open_work = 0
+    current_open_work = _successor_integer(raw_open_work)
+
+    identity_material = {
+        "schema": SUCCESSOR_GOAL_QUALITY_SCHEMA,
+        "title": title,
+        "parent_goal_id": parent_goal,
+        "outcome": outcome,
+        "scope": scope,
+        "assumptions": assumptions,
+        "non_goals": non_goals,
+        "acceptance": acceptance,
+        "evidence": evidence,
+        "validation": validation,
+        "outputs": outputs,
+        "dependencies": dependencies,
+        "kind": kind,
+        "confidence": confidence if confidence is not None else str(
+            _successor_value(candidate, "confidence", "goal_confidence")
+        ),
+        "novelty": novelty if novelty is not None else str(
+            _successor_value(candidate, "novelty", "semantic_novelty")
+        ),
+        "depth": depth,
+        "estimated_tokens": estimated_tokens,
+        "goal_count": goal_count,
+        "task_count": task_count,
+    }
+    candidate_id = _task_quality_evidence_cid(identity_material)
+    findings: list[GoalQualityIssue] = []
+
+    def reject(
+        code: GoalQualityIssueCode,
+        field_name: str,
+        detail: str,
+        related: Iterable[str] = (),
+    ) -> None:
+        bounded_detail = detail.encode("utf-8")[:1_024].decode(
+            "utf-8", errors="ignore"
+        )
+        related_values = tuple(
+            sorted(
+                {
+                    str(item).encode("utf-8")[:256].decode(
+                        "utf-8", errors="ignore"
+                    )
+                    for item in related
+                }
+            )
+        )[:8]
+        findings.append(
+            GoalQualityIssue(code, field_name, bounded_detail, related_values)
+        )
+
+    for missing, code, field_name, detail in (
+        (not title, GoalQualityIssueCode.MISSING_TITLE, "title", "title is required"),
+        (
+            not parent_goal,
+            GoalQualityIssueCode.MISSING_PARENT_GOAL,
+            "parent_goal_id",
+            "parent_goal_id is required",
+        ),
+        (not outcome, GoalQualityIssueCode.MISSING_OUTCOME, "outcome", "outcome is required"),
+        (not scope, GoalQualityIssueCode.MISSING_SCOPE, "scope", "finite scope is required"),
+        (
+            not assumptions,
+            GoalQualityIssueCode.MISSING_ASSUMPTIONS,
+            "assumptions",
+            "assumptions require an explicit value or reviewed-none marker",
+        ),
+        (
+            not non_goals,
+            GoalQualityIssueCode.MISSING_NON_GOALS,
+            "non_goals",
+            "non_goals require an explicit value or reviewed-none marker",
+        ),
+        (
+            not acceptance,
+            GoalQualityIssueCode.MISSING_ACCEPTANCE,
+            "acceptance",
+            "acceptance criteria are required",
+        ),
+        (
+            not evidence,
+            GoalQualityIssueCode.MISSING_EVIDENCE,
+            "evidence",
+            "an evidence delta is required",
+        ),
+        (
+            not validation,
+            GoalQualityIssueCode.MISSING_VALIDATION,
+            "validation_commands",
+            "validation commands are required",
+        ),
+        (
+            not outputs,
+            GoalQualityIssueCode.MISSING_OUTPUTS,
+            "outputs",
+            "predicted output paths are required",
+        ),
+    ):
+        if missing:
+            reject(code, field_name, detail)
+    if kind not in {"goal", "subgoal"}:
+        reject(
+            GoalQualityIssueCode.INVALID_KIND,
+            "kind",
+            "successor work kind must be goal or subgoal",
+            (kind,),
+        )
+    if confidence is None or not 0.0 <= confidence <= 1.0:
+        reject(
+            GoalQualityIssueCode.NON_FINITE_CONFIDENCE,
+            "confidence",
+            "confidence must be a finite ratio between zero and one",
+        )
+    elif confidence < selected.minimum_confidence:
+        reject(
+            GoalQualityIssueCode.CONFIDENCE_BELOW_THRESHOLD,
+            "confidence",
+            f"{confidence:.6f} is below {selected.minimum_confidence:.6f}",
+        )
+    if novelty is None or not 0.0 <= novelty <= 1.0:
+        reject(
+            GoalQualityIssueCode.NON_FINITE_NOVELTY,
+            "novelty",
+            "novelty must be a finite ratio between zero and one",
+        )
+    elif novelty < selected.minimum_novelty:
+        reject(
+            GoalQualityIssueCode.NOVELTY_BELOW_THRESHOLD,
+            "novelty",
+            f"{novelty:.6f} is below {selected.minimum_novelty:.6f}",
+        )
+    if depth is None:
+        reject(GoalQualityIssueCode.INVALID_DEPTH, "depth", "depth must be non-negative")
+    elif depth > selected.max_depth:
+        reject(
+            GoalQualityIssueCode.DEPTH_EXCEEDED,
+            "depth",
+            f"{depth} exceeds {selected.max_depth}",
+        )
+    unbounded = tuple(
+        item
+        for item in scope
+        if item.casefold().strip() in {"*", "**", ".", "/", "all", "any", "repository"}
+        or "*" in item
+    )
+    if unbounded:
+        reject(
+            GoalQualityIssueCode.UNBOUNDED_SCOPE,
+            "scope",
+            "scope contains wildcard or repository-wide subjects",
+            unbounded,
+        )
+    breadth = {
+        "scope": (len(scope), selected.max_scope_items),
+        "acceptance": (len(acceptance), selected.max_acceptance_items),
+        "evidence": (len(evidence), selected.max_evidence_items),
+        "validation_commands": (len(validation), selected.max_validation_commands),
+        "dependencies": (len(dependencies), selected.max_dependencies),
+        "outputs": (len(outputs), selected.max_outputs),
+    }
+    for field_name, (count, limit) in breadth.items():
+        if count > limit:
+            reject(
+                GoalQualityIssueCode.BREADTH_EXCEEDED,
+                field_name,
+                f"{count} items exceed {limit}",
+            )
+    total_breadth = sum(count for count, _limit in breadth.values())
+    if total_breadth > selected.max_total_breadth:
+        reject(
+            GoalQualityIssueCode.BREADTH_EXCEEDED,
+            "total_breadth",
+            f"{total_breadth} items exceed {selected.max_total_breadth}",
+        )
+    if estimated_tokens is None:
+        reject(
+            GoalQualityIssueCode.INVALID_TOKEN_ESTIMATE,
+            "estimated_tokens",
+            "estimated_tokens must be a non-negative integer",
+        )
+    elif estimated_tokens > selected.max_estimated_tokens:
+        reject(
+            GoalQualityIssueCode.TOKEN_BUDGET_EXCEEDED,
+            "estimated_tokens",
+            f"{estimated_tokens} exceeds {selected.max_estimated_tokens}",
+        )
+    if goal_count is None or goal_count < 1:
+        reject(
+            GoalQualityIssueCode.INVALID_GOAL_COUNT,
+            "goal_count",
+            "goal_count must be a positive integer",
+        )
+    elif goal_count > selected.max_goals_per_batch:
+        reject(
+            GoalQualityIssueCode.GOAL_BUDGET_EXCEEDED,
+            "goal_count",
+            f"{goal_count} exceeds {selected.max_goals_per_batch}",
+        )
+    if task_count is None or task_count < 1:
+        reject(
+            GoalQualityIssueCode.INVALID_TASK_COUNT,
+            "task_count",
+            "task_count must be a positive integer",
+        )
+    elif task_count > selected.max_tasks_per_goal:
+        reject(
+            GoalQualityIssueCode.TASK_BUDGET_EXCEEDED,
+            "task_count",
+            f"{task_count} exceeds {selected.max_tasks_per_goal}",
+        )
+    if current_open_work is None:
+        reject(
+            GoalQualityIssueCode.INVALID_OPEN_WORK_COUNT,
+            "open_work_count",
+            "open_work_count must be a non-negative integer",
+        )
+    elif current_open_work + (task_count or 0) > selected.max_open_work:
+        reject(
+            GoalQualityIssueCode.OPEN_WORK_BUDGET_EXCEEDED,
+            "open_work_count",
+            f"{current_open_work} open plus {task_count or 0} new exceeds "
+            f"{selected.max_open_work}",
+        )
+
+    unsupported = set(explicit_unsupported)
+    if supported_dependencies is not None:
+        supported = set(_strings(supported_dependencies))
+        unsupported.update(item for item in dependencies if item not in supported)
+    if unsupported:
+        unsupported_values = tuple(
+            sorted(unsupported, key=lambda item: (item.casefold(), item))
+        )
+        reject(
+            GoalQualityIssueCode.UNSUPPORTED_DEPENDENCY,
+            "dependencies",
+            f"{len(unsupported_values)} declared dependencies are unavailable",
+            unsupported_values,
+        )
+
+    ordered = tuple(
+        sorted(
+            findings,
+            key=lambda item: (
+                item.code.value,
+                item.field.casefold(),
+                item.detail.casefold(),
+                item.related_values,
+            ),
+        )
+    )
+    return GoalQualityLintResult(
+        candidate_id=candidate_id,
+        policy_id=selected.policy_id,
+        issues=ordered[: selected.max_issues],
+        total_issue_count=len(ordered),
+    )
+
+
+# The shorter spelling is useful to callers which already operate exclusively
+# on successor candidates.
+lint_goal_candidate = lint_successor_goal_candidate
+
+
 # Compatibility spellings used by existing proposal evaluators and early ASI
 # design notes.
 TaskQualityResult = TaskAdmissionResult
@@ -3058,6 +3779,8 @@ __all__ = [
     "TASK_QUALITY_EVALUATOR_VERSION",
     "TASK_QUALITY_SCHEMA",
     "TASK_SEMANTIC_IDENTITY_SCHEMA",
+    "SUCCESSOR_GOAL_QUALITY_POLICY_SCHEMA",
+    "SUCCESSOR_GOAL_QUALITY_SCHEMA",
     "TASK_WORK_CONTRACT_SCHEMA",
     "TASK_COMPLETION_PROPAGATION_SCHEMA",
     "TASK_GRANULARITY_CALIBRATION_SCHEMA",
@@ -3066,6 +3789,10 @@ __all__ = [
     "TOKEN_CLASSES",
     "TOKEN_CLASS_LIMITS",
     "HistoricalTask",
+    "GoalQualityIssue",
+    "GoalQualityIssueCode",
+    "GoalQualityLintPolicy",
+    "GoalQualityLintResult",
     "TaskCompletionPropagation",
     "TaskCostMeasurement",
     "TaskGranularityCalibration",
@@ -3094,6 +3821,8 @@ __all__ = [
     "evaluate_task_candidates",
     "is_over_broad",
     "is_tiny",
+    "lint_goal_candidate",
+    "lint_successor_goal_candidate",
     "prove_task_split_refill",
     "propagate_task_completion",
     "refine_task_candidates",
