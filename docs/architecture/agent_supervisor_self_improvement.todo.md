@@ -3654,7 +3654,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-110 Calibrate task split and coalesce decisions from measured cost
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: task-generation
