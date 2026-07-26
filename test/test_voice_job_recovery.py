@@ -13,6 +13,7 @@ ABBY-VOICE-G016 residual evidence inventory (AUTO-026 gap closure):
   ``test_resource_saturation_backpressures_the_candidate_wave`` plus the resource-scheduler
   API suite in the same validation gate.
 - authoritative evidence map: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-015-objective-validation-repair.md
+- residual scan closure: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-026-objective-validation-repair.md
 """
 
 from __future__ import annotations
@@ -42,10 +43,15 @@ from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 
 # Residual AUTO-026 terms must remain discoverable as exact strings in this
 # authorized validation surface. Implementation ownership for G016 remains the
-# AUTO-015 repair map below.
+# AUTO-015 repair map below. AUTO-029 anchors residual scan closure of the
+# AUTO-026 repair receipt so objective scans re-find the same boundary.
 G016_AUTHORITATIVE_EVIDENCE_MAP = (
     "data/abby_voice/agent_supervisor/discovery/"
     "2026-07-26-abby-voice-auto-015-objective-validation-repair.md"
+)
+G016_RESIDUAL_SCAN_CLOSURE = (
+    "data/abby_voice/agent_supervisor/discovery/"
+    "2026-07-26-abby-voice-auto-026-objective-validation-repair.md"
 )
 G016_REQUIRED_EVIDENCE_TERMS = (
     "persisted attempt/backoff/lease state",
@@ -54,6 +60,7 @@ G016_REQUIRED_EVIDENCE_TERMS = (
     "existing sibling isolation and single-flight receipts",
     "existing `ResourceScheduler` CPU/RAM/disk/GPU/provider backpressure assertions",
     f"authoritative evidence map: {G016_AUTHORITATIVE_EVIDENCE_MAP}",
+    f"residual scan closure: {G016_RESIDUAL_SCAN_CLOSURE}",
 )
 
 
@@ -627,6 +634,7 @@ def test_g016_residual_evidence_terms_and_authoritative_map_are_recorded():
     - existing sibling isolation and single-flight receipts
     - existing `ResourceScheduler` CPU/RAM/disk/GPU/provider backpressure assertions
     - authoritative evidence map: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-015-objective-validation-repair.md
+    - residual scan closure: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-026-objective-validation-repair.md
     """
 
     module_text = Path(__file__).read_text(encoding="utf-8")
@@ -634,13 +642,47 @@ def test_g016_residual_evidence_terms_and_authoritative_map_are_recorded():
         assert term in module_text
 
     # Prefer the monorepo layout; fall back to submodule-relative discovery.
-    candidates = [
-        Path(__file__).resolve().parents[2]
-        / G016_AUTHORITATIVE_EVIDENCE_MAP,
-        Path(__file__).resolve().parents[1]
-        / ".."
-        / G016_AUTHORITATIVE_EVIDENCE_MAP,
-    ]
-    assert any(path.is_file() for path in candidates), (
-        f"missing authoritative evidence map: {G016_AUTHORITATIVE_EVIDENCE_MAP}"
+    repo_roots = (
+        Path(__file__).resolve().parents[2],
+        Path(__file__).resolve().parents[1] / "..",
     )
+    for relative in (
+        G016_AUTHORITATIVE_EVIDENCE_MAP,
+        G016_RESIDUAL_SCAN_CLOSURE,
+    ):
+        assert any((root / relative).is_file() for root in repo_roots), (
+            f"missing G016 evidence receipt: {relative}"
+        )
+
+
+def test_g016_residual_scan_closure_receipt_is_discoverable():
+    """AUTO-029 residual scan closure for the AUTO-026 repair receipt.
+
+    residual scan closure: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-026-objective-validation-repair.md
+    """
+
+    residual_term = f"residual scan closure: {G016_RESIDUAL_SCAN_CLOSURE}"
+    assert residual_term in G016_REQUIRED_EVIDENCE_TERMS
+    assert residual_term in Path(__file__).read_text(encoding="utf-8")
+
+    candidates = [
+        Path(__file__).resolve().parents[2] / G016_RESIDUAL_SCAN_CLOSURE,
+        Path(__file__).resolve().parents[1] / ".." / G016_RESIDUAL_SCAN_CLOSURE,
+    ]
+    residual_path = next((path for path in candidates if path.is_file()), None)
+    assert residual_path is not None, (
+        f"missing residual scan closure: {G016_RESIDUAL_SCAN_CLOSURE}"
+    )
+
+    residual_text = residual_path.read_text(encoding="utf-8")
+    # The residual receipt must keep the repaired map and the same frozen terms.
+    assert G016_AUTHORITATIVE_EVIDENCE_MAP in residual_text
+    for term in (
+        "persisted attempt/backoff/lease state",
+        "owner heartbeats",
+        "IndexTTS/Whisper batch-size-one policy",
+        "existing sibling isolation and single-flight receipts",
+        "existing `ResourceScheduler` CPU/RAM/disk/GPU/provider backpressure assertions",
+        f"authoritative evidence map: {G016_AUTHORITATIVE_EVIDENCE_MAP}",
+    ):
+        assert term in residual_text
