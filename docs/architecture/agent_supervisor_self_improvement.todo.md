@@ -3834,7 +3834,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-120 Generate successor goals only from typed residuals
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: self-refill
