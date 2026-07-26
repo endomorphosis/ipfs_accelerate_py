@@ -44,6 +44,7 @@ def _adjudicate(
     finding_codes: tuple[str, ...] = ("path_outside_scope",),
     validation_commands: tuple[str, ...] = (),
     max_expansion_paths: int = 8,
+    workspace_path: Path | None = None,
 ):
     return adjudicate_scope_expansion(
         task_id="ASI-TEST",
@@ -57,6 +58,7 @@ def _adjudicate(
         initial_finding_codes=finding_codes,
         validation_commands=validation_commands,
         max_expansion_paths=max_expansion_paths,
+        workspace_path=workspace_path,
     )
 
 
@@ -196,6 +198,79 @@ def test_unrelated_same_package_path_remains_denied() -> None:
     assert receipt.denied_paths == ("pkg/unrelated.py",)
     assert receipt.decisions[0].reason_codes == (
         ScopeExpansionReason.NO_DEPENDENCY_EVIDENCE,
+    )
+
+
+def test_package_import_closure_justifies_lazy_provider_fix(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "test").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text(
+        "from .runtime import runtime\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pkg" / "runtime.py").write_text(
+        "from .provider_bridge import provider\nruntime = provider\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pkg" / "provider_bridge.py").write_text(
+        "import importlib\nprovider = None\n"
+        "def load_provider():\n"
+        "    return importlib.import_module('optional_provider')\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pkg" / "control.py").write_text(
+        "def status():\n    return 'ready'\n",
+        encoding="utf-8",
+    )
+    test_source = (
+        "from pkg.control import status\n\n"
+        "def test_status():\n"
+        "    assert status() == 'ready'\n"
+    )
+    (tmp_path / "test" / "test_control.py").write_text(
+        test_source,
+        encoding="utf-8",
+    )
+
+    receipt = _adjudicate(
+        (
+            _entry(
+                "pkg/control.py",
+                "def status():\n    return 'old'\n",
+                "def status():\n    return 'ready'\n",
+            ),
+            _entry(
+                "test/test_control.py",
+                test_source.replace("'ready'", "'old'"),
+                test_source,
+            ),
+            _entry(
+                "pkg/provider_bridge.py",
+                "import optional_provider\nprovider = optional_provider\n",
+                (tmp_path / "pkg" / "provider_bridge.py").read_text(
+                    encoding="utf-8"
+                ),
+            ),
+        ),
+        scope=("pkg/control.py", "test/test_control.py"),
+        workspace_path=tmp_path,
+    )
+
+    assert receipt.justified is True
+    assert receipt.justified_paths == ("pkg/provider_bridge.py",)
+    assert receipt.decisions[0].reason_codes == (
+        (
+            ScopeExpansionReason
+            .DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE
+        ),
+    )
+    assert receipt.decisions[0].evidence_paths == (
+        "pkg/__init__.py",
+        "pkg/provider_bridge.py",
+        "pkg/runtime.py",
+        "test/test_control.py",
     )
 
 
