@@ -37,13 +37,26 @@ PATH_METADATA_SCHEMA: Final = (
 PROJECTION_DELTA_CHECKPOINT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/projection-delta-checkpoint@1"
 )
+TASKBOARD_MATERIALIZATION_JOURNAL_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/taskboard-materialization-journal@1"
+)
+TASKBOARD_MATERIALIZATION_TRANSACTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/taskboard-materialization-transaction@1"
+)
+TASKBOARD_MATERIALIZATION_PREVIEW_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/taskboard-materialization-preview@1"
+)
 EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID: Final = (
     "asi-117:event-driven-delta-checkpoint-runtime"
 )
 DEFAULT_METADATA_ENTRY_LIMIT: Final = 256
 DEFAULT_METADATA_DEPTH_LIMIT: Final = 6
 DEFAULT_SAFETY_INTERVAL_SECONDS: Final = 300.0
+MAX_TASKBOARD_MATERIALIZATION_ENTRIES: Final = 24
+_MAX_TASKBOARD_IDENTIFIER_BYTES: Final = 512
+_MAX_TASKBOARD_ENTRY_BYTES: Final = 128 * 1024
 _MAX_CHECKPOINT_BYTES: Final = 1024 * 1024
+_MAX_TASKBOARD_JOURNAL_BYTES: Final = 4 * 1024 * 1024
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -121,6 +134,663 @@ def replace_locked_taskboard(stream: TextIO, text: str) -> bool:
     stream.flush()
     os.fsync(stream.fileno())
     return True
+
+
+def taskboard_revision(text: str | bytes) -> str:
+    """Return an exact, content-addressed revision for taskboard bytes."""
+
+    if isinstance(text, str):
+        payload = text.encode("utf-8")
+    elif isinstance(text, bytes):
+        payload = text
+    else:
+        raise TypeError("taskboard content must be text or bytes")
+    digest = hashlib.sha256()
+    digest.update(b"agent-supervisor-taskboard-revision-v1\0")
+    digest.update(payload)
+    return f"taskboard:sha256:{digest.hexdigest()}"
+
+
+def _taskboard_identifier(value: Any, *, name: str) -> str:
+    selected = str(value).strip()
+    if not selected:
+        raise ValueError(f"{name} must not be empty")
+    if "\n" in selected or "\r" in selected or "\x00" in selected:
+        raise ValueError(f"{name} must be a single-line identifier")
+    if len(selected.encode("utf-8")) > _MAX_TASKBOARD_IDENTIFIER_BYTES:
+        raise ValueError(f"{name} exceeds its persistence bound")
+    return selected
+
+
+def _task_heading_pattern(task_id: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"^##[ \t]+{re.escape(task_id)}(?=[ \t]|$)",
+        flags=re.MULTILINE,
+    )
+
+
+def _goal_metadata_pattern(goal_id: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"^[ \t]*-[ \t]*Goal[ \t]+id:[ \t]*{re.escape(goal_id)}[ \t]*$",
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+
+
+@dataclass(frozen=True)
+class TaskboardMaterializationEntry:
+    """One exact task block and its unique admitted-goal ownership mapping."""
+
+    task_id: str
+    goal_id: str
+    rendered_block: str
+
+    def __post_init__(self) -> None:
+        task_id = _taskboard_identifier(self.task_id, name="task_id")
+        goal_id = _taskboard_identifier(self.goal_id, name="goal_id")
+        if not isinstance(self.rendered_block, str):
+            raise TypeError("rendered_block must be text")
+        rendered_block = self.rendered_block.strip()
+        if not rendered_block:
+            raise ValueError("rendered_block must not be empty")
+        if len(rendered_block.encode("utf-8")) > _MAX_TASKBOARD_ENTRY_BYTES:
+            raise ValueError("rendered_block exceeds its persistence bound")
+        if len(_task_heading_pattern(task_id).findall(rendered_block)) != 1:
+            raise ValueError(
+                "rendered_block must contain exactly one matching task heading"
+            )
+        if len(_goal_metadata_pattern(goal_id).findall(rendered_block)) != 1:
+            raise ValueError(
+                "rendered_block must contain exactly one matching goal metadata line"
+            )
+        object.__setattr__(self, "task_id", task_id)
+        object.__setattr__(self, "goal_id", goal_id)
+        object.__setattr__(self, "rendered_block", rendered_block)
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "task_id": self.task_id,
+            "goal_id": self.goal_id,
+            "rendered_block": self.rendered_block,
+        }
+
+
+def _append_taskboard_entries(
+    board_text: str,
+    entries: Iterable[TaskboardMaterializationEntry],
+) -> str:
+    result = board_text
+    for entry in entries:
+        prefix = result.rstrip()
+        separator = "\n\n" if prefix else ""
+        result = prefix + separator + entry.rendered_block + "\n"
+    return result
+
+
+@dataclass(frozen=True)
+class TaskboardMaterializationPreview:
+    """Immutable exact taskboard delta prepared without filesystem writes."""
+
+    base_text: str
+    candidate_text: str
+    entries: tuple[TaskboardMaterializationEntry, ...]
+    base_board_revision: str
+    candidate_board_revision: str
+    preview_id: str
+    schema: str = TASKBOARD_MATERIALIZATION_PREVIEW_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != TASKBOARD_MATERIALIZATION_PREVIEW_SCHEMA:
+            raise ValueError("unsupported taskboard materialization preview schema")
+        if not isinstance(self.base_text, str) or not isinstance(
+            self.candidate_text, str
+        ):
+            raise TypeError("taskboard preview content must be text")
+        entries = tuple(self.entries)
+        if len(entries) > MAX_TASKBOARD_MATERIALIZATION_ENTRIES:
+            raise ValueError(
+                "taskboard materialization exceeds the 24-task epoch limit"
+            )
+        if any(not isinstance(item, TaskboardMaterializationEntry) for item in entries):
+            raise TypeError(
+                "taskboard preview entries must be TaskboardMaterializationEntry values"
+            )
+        task_ids = [item.task_id for item in entries]
+        if len(set(task_ids)) != len(task_ids):
+            raise ValueError("taskboard materialization task IDs must be unique")
+        expected_base_revision = taskboard_revision(self.base_text)
+        if self.base_board_revision != expected_base_revision:
+            raise ValueError("taskboard preview base revision does not match")
+        expected_candidate = _append_taskboard_entries(self.base_text, entries)
+        if self.candidate_text != expected_candidate:
+            raise ValueError("taskboard preview candidate is not the exact entry delta")
+        expected_candidate_revision = taskboard_revision(self.candidate_text)
+        if self.candidate_board_revision != expected_candidate_revision:
+            raise ValueError("taskboard preview candidate revision does not match")
+        entries_by_goal: dict[str, list[TaskboardMaterializationEntry]] = {}
+        for entry in entries:
+            entries_by_goal.setdefault(entry.goal_id, []).append(entry)
+            if _task_heading_pattern(entry.task_id).search(self.base_text):
+                raise ValueError(
+                    f"taskboard already contains task ID {entry.task_id}"
+                )
+            if _goal_metadata_pattern(entry.goal_id).search(self.base_text):
+                raise ValueError(
+                    f"taskboard already maps admitted goal {entry.goal_id}"
+                )
+            if (
+                len(
+                    _task_heading_pattern(entry.task_id).findall(
+                        self.candidate_text
+                    )
+                )
+                != 1
+            ):
+                raise ValueError(
+                    f"candidate taskboard must map task {entry.task_id} exactly once"
+                )
+        for goal_id, owned_entries in entries_by_goal.items():
+            if len(
+                _goal_metadata_pattern(goal_id).findall(self.candidate_text)
+            ) != len(owned_entries):
+                raise ValueError(
+                    "candidate taskboard must map only the declared tasks for "
+                    f"goal {goal_id}"
+                )
+        expected_preview_id = _content_id(
+            "taskboard-materialization-preview",
+            self._identity_payload(),
+        )
+        if self.preview_id != expected_preview_id:
+            raise ValueError(
+                "taskboard materialization preview identity does not match"
+            )
+        object.__setattr__(self, "entries", entries)
+
+    @property
+    def changed(self) -> bool:
+        return self.base_board_revision != self.candidate_board_revision
+
+    @property
+    def task_ids(self) -> tuple[str, ...]:
+        return tuple(item.task_id for item in self.entries)
+
+    @property
+    def goal_ids(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(item.goal_id for item in self.entries))
+
+    @property
+    def goal_task_mappings(self) -> dict[str, tuple[str, ...]]:
+        mappings: dict[str, list[str]] = {}
+        for item in self.entries:
+            mappings.setdefault(item.goal_id, []).append(item.task_id)
+        return {
+            goal_id: tuple(task_ids)
+            for goal_id, task_ids in mappings.items()
+        }
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "base_board_revision": self.base_board_revision,
+            "candidate_board_revision": self.candidate_board_revision,
+            "entries": [item.to_dict() for item in self.entries],
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._identity_payload(),
+            "preview_id": self.preview_id,
+            "changed": self.changed,
+            "goal_task_mappings": self.goal_task_mappings,
+        }
+
+
+def preview_taskboard_materialization(
+    board_text: str,
+    entries: Iterable[TaskboardMaterializationEntry | Mapping[str, Any]],
+    expected_board_revision: str = "",
+) -> TaskboardMaterializationPreview:
+    """Preview one exact bounded task delta without reading or writing files."""
+
+    if not isinstance(board_text, str):
+        raise TypeError("board_text must be text")
+    normalized_items: list[TaskboardMaterializationEntry] = []
+    for item in entries:
+        if isinstance(item, TaskboardMaterializationEntry):
+            normalized_items.append(item)
+        elif isinstance(item, Mapping):
+            normalized_items.append(
+                TaskboardMaterializationEntry(
+                    task_id=item.get("task_id", ""),
+                    goal_id=item.get("goal_id", ""),
+                    rendered_block=item.get("rendered_block", ""),
+                )
+            )
+        else:
+            raise TypeError(
+                "entries must contain taskboard materialization entries"
+            )
+    normalized = tuple(normalized_items)
+    if len(normalized) > MAX_TASKBOARD_MATERIALIZATION_ENTRIES:
+        raise ValueError("taskboard materialization exceeds the 24-task epoch limit")
+    base_revision = taskboard_revision(board_text)
+    if expected_board_revision and expected_board_revision != base_revision:
+        raise ValueError("expected taskboard revision does not match preview input")
+    candidate_text = _append_taskboard_entries(board_text, normalized)
+    candidate_revision = taskboard_revision(candidate_text)
+    identity_payload = {
+        "schema": TASKBOARD_MATERIALIZATION_PREVIEW_SCHEMA,
+        "base_board_revision": base_revision,
+        "candidate_board_revision": candidate_revision,
+        "entries": [item.to_dict() for item in normalized],
+    }
+    return TaskboardMaterializationPreview(
+        base_text=board_text,
+        candidate_text=candidate_text,
+        entries=normalized,
+        base_board_revision=base_revision,
+        candidate_board_revision=candidate_revision,
+        preview_id=_content_id(
+            "taskboard-materialization-preview", identity_payload
+        ),
+    )
+
+
+class TaskboardMaterializationTransactionState(str, Enum):
+    """Durable state of one taskboard compare-and-swap transaction."""
+
+    PREPARED = "prepared"
+    COMMITTED = "committed"
+    BLOCKED = "blocked"
+
+
+@dataclass(frozen=True)
+class TaskboardMaterializationTransactionResult:
+    """Outcome of one journaled taskboard materialization transaction."""
+
+    taskboard_path: Path
+    journal_path: Path
+    transaction_id: str
+    state: TaskboardMaterializationTransactionState
+    epoch_id: str = ""
+    goal_task_mappings: Mapping[str, tuple[str, ...]] = field(
+        default_factory=dict
+    )
+    base_board_revision: str = ""
+    candidate_board_revision: str = ""
+    changed: bool = False
+    resumed: bool = False
+    reason_codes: tuple[str, ...] = ()
+    board_write_count: int = 0
+    journal_write_count: int = 0
+
+    @property
+    def committed(self) -> bool:
+        return self.state is TaskboardMaterializationTransactionState.COMMITTED
+
+    @property
+    def write_count(self) -> int:
+        return self.board_write_count + self.journal_write_count
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "taskboard-materialization-transaction-result@1"
+            ),
+            "taskboard_path": str(self.taskboard_path),
+            "journal_path": str(self.journal_path),
+            "transaction_id": self.transaction_id,
+            "state": self.state.value,
+            "epoch_id": self.epoch_id,
+            "goal_task_mappings": {
+                goal_id: list(task_ids)
+                for goal_id, task_ids in self.goal_task_mappings.items()
+            },
+            "base_board_revision": self.base_board_revision,
+            "candidate_board_revision": self.candidate_board_revision,
+            "changed": self.changed,
+            "resumed": self.resumed,
+            "reason_codes": list(self.reason_codes),
+            "board_write_count": self.board_write_count,
+            "journal_write_count": self.journal_write_count,
+            "write_count": self.write_count,
+            "committed": self.committed,
+        }
+
+
+def _load_taskboard_materialization_journal(path: Path) -> dict[str, Any]:
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return {
+            "schema": TASKBOARD_MATERIALIZATION_JOURNAL_SCHEMA,
+            "transactions": {},
+            "latest_transaction_id": "",
+        }
+    except OSError as exc:
+        raise ValueError(
+            f"cannot read taskboard materialization journal: {exc}"
+        ) from exc
+    if len(raw) > _MAX_TASKBOARD_JOURNAL_BYTES:
+        raise ValueError("taskboard materialization journal exceeds persistence bound")
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("taskboard materialization journal is malformed") from exc
+    if not isinstance(value, dict):
+        raise ValueError("taskboard materialization journal must be an object")
+    if value.get("schema") != TASKBOARD_MATERIALIZATION_JOURNAL_SCHEMA:
+        raise ValueError("unsupported taskboard materialization journal schema")
+    transactions = value.get("transactions")
+    if not isinstance(transactions, dict):
+        raise ValueError("taskboard materialization transactions must be an object")
+    return value
+
+
+def _taskboard_transaction_id(
+    preview: TaskboardMaterializationPreview,
+    epoch_id: str,
+) -> str:
+    return _content_id(
+        "taskboard-materialization-transaction",
+        {
+            "schema": TASKBOARD_MATERIALIZATION_TRANSACTION_SCHEMA,
+            "epoch_id": epoch_id,
+            "preview_id": preview.preview_id,
+        },
+    )
+
+
+def _taskboard_transaction_matches(
+    record: Mapping[str, Any],
+    preview: TaskboardMaterializationPreview,
+    epoch_id: str,
+) -> bool:
+    raw_mappings = record.get("goal_task_mappings")
+    if not isinstance(raw_mappings, Mapping):
+        return False
+    try:
+        stored_mappings = {
+            str(goal_id): tuple(str(task_id) for task_id in task_ids)
+            for goal_id, task_ids in raw_mappings.items()
+            if isinstance(task_ids, list)
+        }
+    except (TypeError, ValueError):
+        return False
+    return (
+        record.get("schema") == TASKBOARD_MATERIALIZATION_TRANSACTION_SCHEMA
+        and str(record.get("epoch_id") or "") == epoch_id
+        and str(record.get("preview_id") or "") == preview.preview_id
+        and str(record.get("base_board_revision") or "")
+        == preview.base_board_revision
+        and str(record.get("candidate_board_revision") or "")
+        == preview.candidate_board_revision
+        and stored_mappings == preview.goal_task_mappings
+    )
+
+
+def _taskboard_prefix_count(
+    current_revision: str,
+    preview: TaskboardMaterializationPreview,
+) -> int:
+    for count in range(0, len(preview.entries) + 1):
+        candidate = _append_taskboard_entries(
+            preview.base_text, preview.entries[:count]
+        )
+        if taskboard_revision(candidate) == current_revision:
+            return count
+    return -1
+
+
+def _taskboard_transaction_result(
+    *,
+    taskboard_path: Path,
+    journal_path: Path,
+    preview: TaskboardMaterializationPreview,
+    transaction_id: str,
+    state: TaskboardMaterializationTransactionState,
+    epoch_id: str,
+    changed: bool = False,
+    resumed: bool = False,
+    reason_codes: Iterable[str] = (),
+    board_write_count: int = 0,
+    journal_write_count: int = 0,
+) -> TaskboardMaterializationTransactionResult:
+    return TaskboardMaterializationTransactionResult(
+        taskboard_path=taskboard_path,
+        journal_path=journal_path,
+        transaction_id=transaction_id,
+        state=state,
+        epoch_id=epoch_id,
+        goal_task_mappings=preview.goal_task_mappings,
+        base_board_revision=preview.base_board_revision,
+        candidate_board_revision=preview.candidate_board_revision,
+        changed=changed,
+        resumed=resumed,
+        reason_codes=tuple(dict.fromkeys(str(item) for item in reason_codes if item)),
+        board_write_count=board_write_count,
+        journal_write_count=journal_write_count,
+    )
+
+
+def commit_taskboard_materialization(
+    taskboard_path: Path | str,
+    journal_path: Path | str,
+    preview: TaskboardMaterializationPreview,
+    epoch_id: str = "",
+    expected_board_revision: str = "",
+) -> TaskboardMaterializationTransactionResult:
+    """Journal and CAS-commit an exact task delta with crash-safe replay.
+
+    A sidecar lock fences atomic board replacement (locking the board inode
+    itself would be unsafe across ``os.replace``).  The durable journal is
+    published in ``prepared`` state before the board write and in ``committed``
+    state only after the exact candidate revision is observed.
+    """
+
+    if not isinstance(preview, TaskboardMaterializationPreview):
+        raise TypeError("preview must be a TaskboardMaterializationPreview")
+    board = Path(taskboard_path).resolve()
+    journal_file = Path(journal_path).resolve()
+    if board == journal_file:
+        raise ValueError("journal_path must be separate from taskboard_path")
+    epoch = str(epoch_id).strip()
+    expected = str(expected_board_revision).strip()
+    if (
+        "\x00" in epoch
+        or "\x00" in expected
+        or len(epoch.encode("utf-8")) > _MAX_TASKBOARD_IDENTIFIER_BYTES
+        or len(expected.encode("utf-8")) > _MAX_TASKBOARD_IDENTIFIER_BYTES
+    ):
+        raise ValueError("taskboard transaction fence exceeds its safe bound")
+    transaction_id = _taskboard_transaction_id(preview, epoch)
+    if expected and expected != preview.base_board_revision:
+        return _taskboard_transaction_result(
+            taskboard_path=board,
+            journal_path=journal_file,
+            preview=preview,
+            transaction_id=transaction_id,
+            state=TaskboardMaterializationTransactionState.BLOCKED,
+            epoch_id=epoch,
+            reason_codes=("expected_board_revision_conflict",),
+        )
+    if not preview.entries or not preview.changed:
+        return _taskboard_transaction_result(
+            taskboard_path=board,
+            journal_path=journal_file,
+            preview=preview,
+            transaction_id=transaction_id,
+            state=TaskboardMaterializationTransactionState.BLOCKED,
+            epoch_id=epoch,
+            reason_codes=("preview_not_changed",),
+        )
+
+    lock_path = board.with_name(f".{board.name}.materialization.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as lock_stream:
+        fcntl.flock(lock_stream.fileno(), fcntl.LOCK_EX)
+        try:
+            journal = _load_taskboard_materialization_journal(journal_file)
+            transactions = dict(journal["transactions"])
+            prior = transactions.get(transaction_id)
+            if prior is not None and not isinstance(prior, Mapping):
+                return _taskboard_transaction_result(
+                    taskboard_path=board,
+                    journal_path=journal_file,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=TaskboardMaterializationTransactionState.BLOCKED,
+                    epoch_id=epoch,
+                    resumed=True,
+                    reason_codes=("transaction_record_malformed",),
+                )
+            resumed = prior is not None
+            if prior is not None and not _taskboard_transaction_matches(
+                prior, preview, epoch
+            ):
+                return _taskboard_transaction_result(
+                    taskboard_path=board,
+                    journal_path=journal_file,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=TaskboardMaterializationTransactionState.BLOCKED,
+                    epoch_id=epoch,
+                    resumed=True,
+                    reason_codes=("transaction_identity_conflict",),
+                )
+
+            try:
+                current_bytes = board.read_bytes()
+            except FileNotFoundError:
+                current_bytes = b""
+            current_revision = taskboard_revision(current_bytes)
+            prefix_count = _taskboard_prefix_count(current_revision, preview)
+            if prefix_count < 0:
+                return _taskboard_transaction_result(
+                    taskboard_path=board,
+                    journal_path=journal_file,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=TaskboardMaterializationTransactionState.BLOCKED,
+                    epoch_id=epoch,
+                    resumed=resumed,
+                    reason_codes=("stale_taskboard_revision",),
+                )
+
+            if (
+                prior is not None
+                and str(prior.get("state") or "") == "committed"
+                and prefix_count == len(preview.entries)
+            ):
+                return _taskboard_transaction_result(
+                    taskboard_path=board,
+                    journal_path=journal_file,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=TaskboardMaterializationTransactionState.COMMITTED,
+                    epoch_id=epoch,
+                    resumed=True,
+                )
+
+            journal_write_count = 0
+            if prior is None or str(prior.get("state") or "") != "prepared":
+                prepared = {
+                    "schema": TASKBOARD_MATERIALIZATION_TRANSACTION_SCHEMA,
+                    "transaction_id": transaction_id,
+                    "state": "prepared",
+                    "epoch_id": epoch,
+                    "preview_id": preview.preview_id,
+                    "base_board_revision": preview.base_board_revision,
+                    "candidate_board_revision": preview.candidate_board_revision,
+                    "goal_task_mappings": {
+                        goal_id: list(task_ids)
+                        for goal_id, task_ids in preview.goal_task_mappings.items()
+                    },
+                    "task_ids": list(preview.task_ids),
+                    "goal_ids": list(preview.goal_ids),
+                    "rendered_block_digests": {
+                        item.task_id: hashlib.sha256(
+                            item.rendered_block.encode("utf-8")
+                        ).hexdigest()
+                        for item in preview.entries
+                    },
+                    "prepared_at_ns": time.time_ns(),
+                }
+                transactions[transaction_id] = prepared
+                journal.update(
+                    {
+                        "transactions": transactions,
+                        "latest_transaction_id": transaction_id,
+                    }
+                )
+                encoded = _canonical_json_bytes(journal) + b"\n"
+                if len(encoded) > _MAX_TASKBOARD_JOURNAL_BYTES:
+                    raise ValueError(
+                        "taskboard materialization journal exceeds persistence bound"
+                    )
+                _atomic_write(journal_file, encoded)
+                journal_write_count += 1
+            else:
+                prepared = dict(prior)
+
+            board_write_count = 0
+            if prefix_count < len(preview.entries):
+                _atomic_write(board, preview.candidate_text.encode("utf-8"))
+                board_write_count = 1
+            try:
+                persisted = board.read_bytes()
+            except FileNotFoundError:
+                persisted = b""
+            if taskboard_revision(persisted) != preview.candidate_board_revision:
+                return _taskboard_transaction_result(
+                    taskboard_path=board,
+                    journal_path=journal_file,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=TaskboardMaterializationTransactionState.PREPARED,
+                    epoch_id=epoch,
+                    changed=bool(board_write_count),
+                    resumed=resumed or prefix_count > 0,
+                    reason_codes=("partial_taskboard_write",),
+                    board_write_count=board_write_count,
+                    journal_write_count=journal_write_count,
+                )
+
+            prepared.update(
+                {
+                    "state": "committed",
+                    "committed_at_ns": time.time_ns(),
+                }
+            )
+            transactions[transaction_id] = prepared
+            journal.update(
+                {
+                    "transactions": transactions,
+                    "latest_transaction_id": transaction_id,
+                }
+            )
+            encoded = _canonical_json_bytes(journal) + b"\n"
+            if len(encoded) > _MAX_TASKBOARD_JOURNAL_BYTES:
+                raise ValueError(
+                    "taskboard materialization journal exceeds persistence bound"
+                )
+            _atomic_write(journal_file, encoded)
+            journal_write_count += 1
+            return _taskboard_transaction_result(
+                taskboard_path=board,
+                journal_path=journal_file,
+                preview=preview,
+                transaction_id=transaction_id,
+                state=TaskboardMaterializationTransactionState.COMMITTED,
+                epoch_id=epoch,
+                changed=bool(board_write_count),
+                resumed=resumed or prefix_count > 0,
+                board_write_count=board_write_count,
+                journal_write_count=journal_write_count,
+            )
+        finally:
+            fcntl.flock(lock_stream.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)

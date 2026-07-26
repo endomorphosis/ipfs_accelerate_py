@@ -17,13 +17,16 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Any, Callable, Final
 
 from .supervisor_v2_benchmark import (
     REQUIRED_V2_FIXTURE_KINDS,
@@ -3152,6 +3155,1376 @@ def replay_v2_self_evaluation(
     return result
 
 
+V2_REFILL_EPOCH_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/v2-refill-epoch-binding@1"
+)
+V2_REFILL_EPOCH_JOURNAL_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/v2-refill-epoch-journal@1"
+)
+V2_REFILL_WAIT_STATE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/v2-refill-wait-state@1"
+)
+V2_REFILL_COOLDOWN_SECONDS: Final[int] = 6 * 60 * 60
+V2_REFILL_REQUIRED_EXHAUSTION_RECEIPTS: Final[int] = 2
+
+
+def _v2_refill_timestamp(value: datetime | str, name: str) -> str:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value))
+        except ValueError as exc:
+            raise V2SelfEvaluationError(f"{name} must be ISO-8601 text") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise V2SelfEvaluationError(f"{name} must include a timezone")
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _v2_refill_datetime(value: datetime | str, name: str) -> datetime:
+    return datetime.fromisoformat(_v2_refill_timestamp(value, name))
+
+
+@dataclass(frozen=True)
+class V2RefillEpochBinding:
+    """Complete immutable input identity for one generation-2 refill epoch."""
+
+    repository_id: str
+    tree_id: str
+    objective_id: str
+    objective_revision: str
+    board_revision: str
+    benchmark_policy_id: str
+    benchmark_policy_revision: str
+    capability_id: str
+    capability_revision: str
+    operation_catalog_id: str
+    storage_policy_id: str
+    observation_window_start: datetime | str
+    observation_window_end: datetime | str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_id",
+            "tree_id",
+            "objective_id",
+            "objective_revision",
+            "board_revision",
+            "benchmark_policy_id",
+            "benchmark_policy_revision",
+            "capability_id",
+            "capability_revision",
+            "operation_catalog_id",
+            "storage_policy_id",
+        ):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), name, maximum=512)
+            )
+        start = _v2_refill_timestamp(
+            self.observation_window_start, "observation_window_start"
+        )
+        end = _v2_refill_timestamp(
+            self.observation_window_end, "observation_window_end"
+        )
+        if datetime.fromisoformat(end) <= datetime.fromisoformat(start):
+            raise V2SelfEvaluationError(
+                "observation_window_end must follow observation_window_start"
+            )
+        object.__setattr__(self, "observation_window_start", start)
+        object.__setattr__(self, "observation_window_end", end)
+
+    @property
+    def epoch_id(self) -> str:
+        return _digest(self.to_dict())
+
+    def to_dict(self, *, include_epoch_id: bool = False) -> dict[str, str]:
+        payload = {
+            "schema": V2_REFILL_EPOCH_BINDING_SCHEMA,
+            **{
+                name: str(getattr(self, name))
+                for name in self.__dataclass_fields__
+            },
+        }
+        if include_epoch_id:
+            payload["epoch_id"] = self.epoch_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "V2RefillEpochBinding":
+        if not isinstance(payload, Mapping) or set(payload).difference(
+            {"schema", "epoch_id", *cls.__dataclass_fields__.keys()}
+        ):
+            raise V2SelfEvaluationError(
+                "v2 refill epoch binding contains unsupported fields"
+            )
+        if payload.get("schema") not in (None, V2_REFILL_EPOCH_BINDING_SCHEMA):
+            raise V2SelfEvaluationError("unsupported v2 refill binding schema")
+        result = cls(
+            **{
+                name: payload.get(name, "")
+                for name in cls.__dataclass_fields__
+            }
+        )
+        if payload.get("epoch_id") not in (None, "", result.epoch_id):
+            raise V2SelfEvaluationError("v2 refill epoch identity does not match")
+        return result
+
+    @property
+    def meaningful_trigger_revision(self) -> str:
+        return _digest(
+            {
+                name: getattr(self, name)
+                for name in (
+                    "repository_id",
+                    "tree_id",
+                    "objective_id",
+                    "objective_revision",
+                    "board_revision",
+                    "benchmark_policy_id",
+                    "benchmark_policy_revision",
+                    "capability_id",
+                    "capability_revision",
+                    "operation_catalog_id",
+                    "storage_policy_id",
+                )
+            }
+        )
+
+
+@dataclass(frozen=True)
+class V2RefillObservation:
+    """Provider output: typed residuals plus optional exhaustion receipts."""
+
+    residuals: tuple[V2ResidualSignal | Mapping[str, Any], ...] = ()
+    exhaustion_receipts: tuple[Mapping[str, Any], ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "residuals", tuple(self.residuals))
+        object.__setattr__(
+            self, "exhaustion_receipts", tuple(self.exhaustion_receipts)
+        )
+        if len(self.residuals) > MAX_V2_SUCCESSOR_RESIDUALS:
+            raise V2SelfEvaluationError("refill residual population is unbounded")
+        if len(self.exhaustion_receipts) > 32:
+            raise V2SelfEvaluationError("exhaustion receipt population is unbounded")
+        if any(not isinstance(item, Mapping) for item in self.exhaustion_receipts):
+            raise V2SelfEvaluationError("exhaustion receipts must be mappings")
+
+    @classmethod
+    def from_value(cls, value: Any) -> "V2RefillObservation":
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, Mapping):
+            raise V2SelfEvaluationError(
+                "observation provider must return V2RefillObservation"
+            )
+        _strict_keys(
+            value,
+            {"residuals", "exhaustion_receipts"},
+            name="v2 refill observation",
+        )
+        return cls(
+            residuals=tuple(value.get("residuals") or ()),
+            exhaustion_receipts=tuple(value.get("exhaustion_receipts") or ()),
+        )
+
+
+class V2RefillEpochStatus(str, Enum):
+    """ASI-121 outcome without claiming ASI-122 promotion authority."""
+
+    PROPOSED = "proposed"
+    HEALTHY_EXHAUSTION = "healthy_exhaustion"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True)
+class V2GoalTaskMapping:
+    goal_id: str
+    task_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
+        object.__setattr__(
+            self,
+            "task_ids",
+            _successor_strings(
+                self.task_ids,
+                "task_ids",
+                maximum=MAX_V2_SUCCESSOR_TASKS,
+                item_bytes=192,
+            ),
+        )
+        if not self.task_ids:
+            raise V2SelfEvaluationError("each admitted goal must map to a task")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"goal_id": self.goal_id, "task_ids": list(self.task_ids)}
+
+
+@dataclass(frozen=True)
+class V2RefillEpochPreview:
+    """One exact, read-only objective/taskboard delta."""
+
+    binding: V2RefillEpochBinding
+    admission_id: str
+    goal_task_mappings: tuple[V2GoalTaskMapping, ...]
+    base_objective_revision: str
+    candidate_objective_revision: str
+    base_board_revision: str
+    candidate_board_revision: str
+    candidate_objective_text: str
+    candidate_board_text: str
+    objective_preview: Any = None
+    taskboard_preview: Any = None
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.binding, V2RefillEpochBinding):
+            raise V2SelfEvaluationError("preview requires a refill binding")
+        if len(self.goal_task_mappings) > MAX_V2_SUCCESSOR_GOALS:
+            raise V2SelfEvaluationError("refill preview exceeds eight goals")
+        if len(set(self.goal_ids)) != len(self.goal_ids):
+            raise V2SelfEvaluationError("refill preview maps a goal more than once")
+        if len(self.task_ids) > MAX_V2_SUCCESSOR_TASKS:
+            raise V2SelfEvaluationError("refill preview exceeds twenty-four tasks")
+        if len(set(self.task_ids)) != len(self.task_ids):
+            raise V2SelfEvaluationError("refill preview maps a task more than once")
+        if self.base_objective_revision != self.binding.objective_revision:
+            raise V2SelfEvaluationError("preview objective revision is detached")
+        if self.base_board_revision != self.binding.board_revision:
+            raise V2SelfEvaluationError("preview board revision is detached")
+
+    @property
+    def epoch_id(self) -> str:
+        return self.binding.epoch_id
+
+    @property
+    def goal_ids(self) -> tuple[str, ...]:
+        return tuple(item.goal_id for item in self.goal_task_mappings)
+
+    @property
+    def task_ids(self) -> tuple[str, ...]:
+        return tuple(
+            task_id
+            for item in self.goal_task_mappings
+            for task_id in item.task_ids
+        )
+
+    @property
+    def ready(self) -> bool:
+        return bool(self.goal_ids and not self.reason_codes)
+
+    def to_dict(self, *, include_text: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "epoch_id": self.epoch_id,
+            "admission_id": self.admission_id,
+            "goal_task_mappings": [
+                item.to_dict() for item in self.goal_task_mappings
+            ],
+            "goal_ids": list(self.goal_ids),
+            "task_ids": list(self.task_ids),
+            "base_objective_revision": self.base_objective_revision,
+            "candidate_objective_revision": self.candidate_objective_revision,
+            "base_board_revision": self.base_board_revision,
+            "candidate_board_revision": self.candidate_board_revision,
+            "reason_codes": list(self.reason_codes),
+        }
+        if include_text:
+            payload["candidate_objective_text"] = self.candidate_objective_text
+            payload["candidate_board_text"] = self.candidate_board_text
+        return payload
+
+
+@dataclass(frozen=True)
+class V2RefillEpochResult:
+    binding: V2RefillEpochBinding
+    status: V2RefillEpochStatus
+    preview: V2RefillEpochPreview | None = None
+    admission: V2SuccessorAdmission | None = None
+    created_goal_ids: tuple[str, ...] = ()
+    created_task_ids: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    replayed: bool = False
+    suppressed: bool = False
+    previous_epoch_id: str = ""
+    meaningful_trigger: str = ""
+    wait_state: Mapping[str, Any] | None = None
+    quorum: Mapping[str, Any] | None = None
+    objective_transaction: Any = None
+    taskboard_transaction: Any = None
+    journal_entry: Mapping[str, Any] | None = None
+    original_receipt_id: str = ""
+
+    @property
+    def epoch_id(self) -> str:
+        return self.binding.epoch_id
+
+    @property
+    def receipt_id(self) -> str:
+        if self.original_receipt_id:
+            return self.original_receipt_id
+        return _digest(
+            {
+                "schema": "v2-refill-epoch-result@1",
+                "epoch_id": self.epoch_id,
+                "status": self.status.value,
+                "created_goal_ids": self.created_goal_ids,
+                "created_task_ids": self.created_task_ids,
+                "reason_codes": self.reason_codes,
+                "previous_epoch_id": self.previous_epoch_id,
+            }
+        )
+
+
+def _v2_refill_atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        try:
+            parent_fd = os.open(path.parent, flags)
+        except OSError:
+            return
+        try:
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _load_v2_refill_journal(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "schema": V2_REFILL_EPOCH_JOURNAL_SCHEMA,
+            "transactions": {},
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise V2SelfEvaluationError("v2 refill journal is malformed") from exc
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("schema") != V2_REFILL_EPOCH_JOURNAL_SCHEMA
+        or not isinstance(payload.get("transactions"), Mapping)
+    ):
+        raise V2SelfEvaluationError("unsupported v2 refill journal")
+    return {
+        "schema": V2_REFILL_EPOCH_JOURNAL_SCHEMA,
+        "transactions": {
+            str(key): dict(value)
+            for key, value in payload["transactions"].items()
+            if isinstance(value, Mapping)
+        },
+    }
+
+
+def _v2_refill_meaningful_trigger(
+    previous: V2RefillEpochBinding,
+    current: V2RefillEpochBinding,
+) -> str:
+    for name in (
+        "repository_id",
+        "tree_id",
+        "objective_id",
+        "objective_revision",
+        "board_revision",
+        "benchmark_policy_id",
+        "benchmark_policy_revision",
+        "capability_id",
+        "capability_revision",
+        "operation_catalog_id",
+        "storage_policy_id",
+    ):
+        if getattr(previous, name) != getattr(current, name):
+            return f"{name}_changed"
+    return ""
+
+
+def _coerce_v2_refill_admission(value: Any) -> V2SuccessorAdmission:
+    if not isinstance(value, V2SuccessorAdmission):
+        raise V2SelfEvaluationError(
+            "proposal provider must return V2SuccessorAdmission"
+        )
+    if (
+        value.generated_goal_count > MAX_V2_SUCCESSOR_GOALS
+        or value.generated_task_count > MAX_V2_SUCCESSOR_TASKS
+    ):
+        raise V2SelfEvaluationError("proposal provider exceeded refill maxima")
+    return value
+
+
+def _render_v2_refill_task(
+    *,
+    epoch_id: str,
+    candidate: V2SuccessorCandidate,
+    goal_id: str,
+    task_id: str,
+    index: int,
+) -> str:
+    proposal = candidate.proposal
+    suffix = (
+        f" ({index + 1}/{candidate.task_count})"
+        if candidate.task_count > 1
+        else ""
+    )
+    lines = [
+        f"## {task_id} {proposal.title}{suffix}",
+        "",
+        "- Status: todo",
+        f"- Goal ID: {goal_id}",
+        f"- Refill epoch: {epoch_id}",
+        f"- Source residual: {candidate.source_residual_id}",
+        f"- Outputs: {', '.join(proposal.predicted_files)}",
+        f"- Predicted symbols: {', '.join(proposal.predicted_symbols)}",
+        f"- Validation: {'; '.join(proposal.validation_commands)}",
+    ]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def preview_v2_refill_epoch(
+    *,
+    binding: V2RefillEpochBinding,
+    admission: V2SuccessorAdmission,
+    objective_text: str,
+    taskboard_text: str,
+) -> V2RefillEpochPreview:
+    """Purely preview one exact goal/task delta for an admitted packet."""
+
+    from .objective_graph import (
+        ObjectiveGenerationLimits,
+        ObjectiveGoalMaterializationPolicy,
+        preview_objective_goal_materialization,
+    )
+    from .taskboard_store import (
+        TaskboardMaterializationEntry,
+        preview_taskboard_materialization,
+    )
+
+    selected = _coerce_v2_refill_admission(admission)
+    if not selected.accepted:
+        raise V2SelfEvaluationError("an empty admission has no materialization delta")
+    limits = ObjectiveGenerationLimits(
+        max_depth=selected.policy.max_depth,
+        max_breadth_per_parent=MAX_V2_SUCCESSOR_GOALS,
+        max_new_work=MAX_V2_SUCCESSOR_GOALS,
+        max_open_work=max(
+            selected.policy.max_open_work,
+            selected.initial_open_work + selected.generated_goal_count,
+        ),
+        token_budget=selected.policy.max_tokens,
+    )
+    objective_preview = preview_objective_goal_materialization(
+        objective_text,
+        tuple(item.proposal for item in selected.accepted),
+        policy=ObjectiveGoalMaterializationPolicy(
+            limits=limits,
+            expected_heap_content_id=binding.objective_revision,
+            lifecycle_owner="v2_refill_epoch",
+            atomic=True,
+        ),
+    )
+    mappings = tuple(
+        V2GoalTaskMapping(
+            goal_id=item.proposal.canonical_id,
+            task_ids=item.task_ids,
+        )
+        for item in selected.accepted
+    )
+    entries = tuple(
+        TaskboardMaterializationEntry(
+            task_id=task_id,
+            goal_id=item.proposal.canonical_id,
+            rendered_block=_render_v2_refill_task(
+                epoch_id=binding.epoch_id,
+                candidate=item,
+                goal_id=item.proposal.canonical_id,
+                task_id=task_id,
+                index=index,
+            ),
+        )
+        for item in selected.accepted
+        for index, task_id in enumerate(item.task_ids)
+    )
+    taskboard_preview = preview_taskboard_materialization(
+        taskboard_text,
+        entries,
+        expected_board_revision=binding.board_revision,
+    )
+    reasons = tuple(
+        dict.fromkeys(
+            [
+                *objective_preview.fatal_reasons,
+                *(item.reason for item in objective_preview.rejected),
+                *getattr(taskboard_preview, "reason_codes", ()),
+            ]
+        )
+    )
+    if not objective_preview.ready:
+        reasons = tuple(dict.fromkeys((*reasons, "objective_preview_rejected")))
+    if not getattr(taskboard_preview, "changed", False):
+        reasons = tuple(dict.fromkeys((*reasons, "taskboard_preview_rejected")))
+    mapped_goal_ids = tuple(item.goal_id for item in mappings)
+    materialized_goal_ids = tuple(
+        item.goal.goal_id for item in objective_preview.materialized
+    )
+    expected_task_mappings = {
+        item.goal_id: item.task_ids for item in mappings
+    }
+    if (
+        len(materialized_goal_ids) != len(mapped_goal_ids)
+        or set(materialized_goal_ids) != set(mapped_goal_ids)
+    ):
+        reasons = tuple(
+            dict.fromkeys((*reasons, "objective_goal_mapping_mismatch"))
+        )
+    if taskboard_preview.goal_task_mappings != expected_task_mappings:
+        reasons = tuple(
+            dict.fromkeys((*reasons, "taskboard_goal_mapping_mismatch"))
+        )
+    return V2RefillEpochPreview(
+        binding=binding,
+        admission_id=selected.admission_id,
+        goal_task_mappings=mappings,
+        base_objective_revision=binding.objective_revision,
+        candidate_objective_revision=objective_preview.candidate_heap_content_id,
+        base_board_revision=binding.board_revision,
+        candidate_board_revision=taskboard_preview.candidate_board_revision,
+        candidate_objective_text=objective_preview.candidate_text,
+        candidate_board_text=taskboard_preview.candidate_text,
+        objective_preview=objective_preview,
+        taskboard_preview=taskboard_preview,
+        reason_codes=reasons,
+    )
+
+
+def _evaluate_v2_healthy_exhaustion(
+    *,
+    binding: V2RefillEpochBinding,
+    receipts: Sequence[Mapping[str, Any]],
+    now: datetime,
+) -> dict[str, Any]:
+    """Require two independently fresh, healthy, exhaustive exact receipts."""
+
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    producers: set[str] = set()
+    channels: set[str] = set()
+    receipt_ids: set[str] = set()
+    implementations: set[str] = set()
+    expected_binding = binding.to_dict()
+    window_start = datetime.fromisoformat(binding.observation_window_start)
+    window_end = datetime.fromisoformat(binding.observation_window_end)
+    for raw in receipts:
+        receipt = dict(raw)
+        reasons: list[str] = []
+        receipt_id = str(
+            receipt.get("receipt_id") or receipt.get("receipt_cid") or ""
+        ).strip()
+        producer = str(receipt.get("producer_id") or "").strip()
+        channel = str(receipt.get("evidence_channel") or "").strip()
+        implementation = str(
+            receipt.get("implementation_id")
+            or receipt.get("implementation")
+            or ""
+        ).strip()
+        if not all((receipt_id, producer, channel, implementation)):
+            reasons.append("identity_incomplete")
+        if receipt.get("binding") != expected_binding:
+            reasons.append("foreign_binding")
+        if (
+            receipt.get("healthy") is not True
+            or receipt.get("exhaustive") is not True
+            or receipt.get("complete") is not True
+            or receipt.get("safe_for_completion_reasoning") is not True
+        ):
+            reasons.append("not_healthy_exhaustive")
+        try:
+            observed = _v2_refill_datetime(
+                receipt.get("observed_at", ""), "receipt observed_at"
+            )
+            fresh_until = _v2_refill_datetime(
+                receipt.get("fresh_until", ""), "receipt fresh_until"
+            )
+            if (
+                observed < window_start
+                or observed > window_end
+                or observed > now
+                or now > fresh_until
+            ):
+                reasons.append("stale_receipt")
+        except (TypeError, ValueError, V2SelfEvaluationError):
+            reasons.append("invalid_freshness")
+        if producer in producers:
+            reasons.append("duplicate_producer")
+        if channel in channels:
+            reasons.append("duplicate_channel")
+        if receipt_id in receipt_ids:
+            reasons.append("duplicate_receipt")
+        if implementation in implementations:
+            reasons.append("duplicate_implementation")
+        if reasons:
+            rejected.append(
+                {"receipt_id": receipt_id, "reason_codes": sorted(set(reasons))}
+            )
+            continue
+        producers.add(producer)
+        channels.add(channel)
+        receipt_ids.add(receipt_id)
+        implementations.add(implementation)
+        accepted.append(
+            {
+                "receipt_id": receipt_id,
+                "producer_id": producer,
+                "evidence_channel": channel,
+                "implementation_id": implementation,
+                "observed_at": receipt["observed_at"],
+                "fresh_until": receipt["fresh_until"],
+            }
+        )
+    return {
+        "required_members": V2_REFILL_REQUIRED_EXHAUSTION_RECEIPTS,
+        "member_count": len(accepted),
+        "satisfied": len(accepted)
+        >= V2_REFILL_REQUIRED_EXHAUSTION_RECEIPTS,
+        "members": accepted,
+        "rejected": rejected,
+        "binding_id": binding.epoch_id,
+    }
+
+
+def _v2_refill_preview_from_record(
+    binding: V2RefillEpochBinding,
+    payload: Mapping[str, Any] | None,
+) -> V2RefillEpochPreview | None:
+    if not isinstance(payload, Mapping):
+        return None
+    mappings = tuple(
+        V2GoalTaskMapping(
+            goal_id=str(item.get("goal_id") or ""),
+            task_ids=tuple(item.get("task_ids") or ()),
+        )
+        for item in payload.get("goal_task_mappings", ())
+        if isinstance(item, Mapping)
+    )
+    if not mappings:
+        return None
+    return V2RefillEpochPreview(
+        binding=binding,
+        admission_id=str(payload.get("admission_id") or ""),
+        goal_task_mappings=mappings,
+        base_objective_revision=str(
+            payload.get("base_objective_revision") or ""
+        ),
+        candidate_objective_revision=str(
+            payload.get("candidate_objective_revision") or ""
+        ),
+        base_board_revision=str(payload.get("base_board_revision") or ""),
+        candidate_board_revision=str(
+            payload.get("candidate_board_revision") or ""
+        ),
+        candidate_objective_text=str(
+            payload.get("candidate_objective_text") or ""
+        ),
+        candidate_board_text=str(payload.get("candidate_board_text") or ""),
+        reason_codes=tuple(payload.get("reason_codes") or ()),
+    )
+
+
+def _v2_refill_taskboard_preview_from_entry(entry: Mapping[str, Any]) -> Any:
+    """Rebuild the exact board child transaction after a process interruption."""
+
+    from .taskboard_store import preview_taskboard_materialization
+
+    recovery = entry.get("taskboard_recovery")
+    if not isinstance(recovery, Mapping):
+        raise V2SelfEvaluationError(
+            "incomplete refill transaction has no taskboard recovery packet"
+        )
+    base_text = recovery.get("base_text")
+    entries = recovery.get("entries")
+    if not isinstance(base_text, str) or not isinstance(entries, list):
+        raise V2SelfEvaluationError(
+            "incomplete refill taskboard recovery packet is malformed"
+        )
+    try:
+        preview = preview_taskboard_materialization(
+            base_text,
+            entries,
+            expected_board_revision=str(
+                entry.get("base_board_revision") or ""
+            ),
+        )
+    except (TypeError, ValueError) as exc:
+        raise V2SelfEvaluationError(
+            "incomplete refill taskboard recovery packet is invalid"
+        ) from exc
+    recorded_preview = entry.get("preview")
+    if not isinstance(recorded_preview, Mapping):
+        raise V2SelfEvaluationError(
+            "incomplete refill transaction has no exact preview"
+        )
+    if (
+        preview.candidate_board_revision
+        != str(entry.get("candidate_board_revision") or "")
+        or preview.candidate_text
+        != str(recorded_preview.get("candidate_board_text") or "")
+    ):
+        raise V2SelfEvaluationError(
+            "incomplete refill taskboard recovery packet changed identity"
+        )
+    return preview
+
+
+def _v2_refill_result_from_entry(
+    entry: Mapping[str, Any],
+    *,
+    replayed: bool,
+) -> V2RefillEpochResult:
+    binding = V2RefillEpochBinding.from_dict(entry.get("binding") or {})
+    preview = _v2_refill_preview_from_record(
+        binding,
+        entry.get("preview") if isinstance(entry.get("preview"), Mapping) else None,
+    )
+    return V2RefillEpochResult(
+        binding=binding,
+        status=V2RefillEpochStatus(str(entry.get("status") or "rejected")),
+        preview=preview,
+        created_goal_ids=tuple(entry.get("goal_ids") or ()),
+        created_task_ids=tuple(entry.get("task_ids") or ()),
+        reason_codes=tuple(entry.get("reason_codes") or ()),
+        replayed=replayed,
+        previous_epoch_id=str(entry.get("previous_epoch_id") or ""),
+        meaningful_trigger=str(entry.get("meaningful_trigger") or ""),
+        wait_state=(
+            dict(entry["wait_state"])
+            if isinstance(entry.get("wait_state"), Mapping)
+            else None
+        ),
+        quorum=(
+            dict(entry["quorum"])
+            if isinstance(entry.get("quorum"), Mapping)
+            else None
+        ),
+        journal_entry=dict(entry),
+        original_receipt_id=str(entry.get("receipt_id") or ""),
+    )
+
+
+def _v2_refill_external_binding_matches(
+    previous: V2RefillEpochBinding,
+    current: V2RefillEpochBinding,
+) -> bool:
+    return all(
+        getattr(previous, name) == getattr(current, name)
+        for name in (
+            "repository_id",
+            "tree_id",
+            "objective_id",
+            "benchmark_policy_id",
+            "benchmark_policy_revision",
+            "capability_id",
+            "capability_revision",
+            "operation_catalog_id",
+            "storage_policy_id",
+            "observation_window_start",
+            "observation_window_end",
+        )
+    )
+
+
+def _v2_refill_entry(
+    *,
+    binding: V2RefillEpochBinding,
+    state: str,
+    status: V2RefillEpochStatus,
+    preview: V2RefillEpochPreview | None = None,
+    reason_codes: Sequence[str] = (),
+    previous_epoch_id: str = "",
+    meaningful_trigger: str = "",
+    wait_state: Mapping[str, Any] | None = None,
+    quorum: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/v2-refill-transaction@1",
+        "epoch_id": binding.epoch_id,
+        "state": state,
+        "status": status.value,
+        "binding": binding.to_dict(include_epoch_id=True),
+        "base_objective_revision": binding.objective_revision,
+        "candidate_objective_revision": (
+            preview.candidate_objective_revision
+            if preview is not None
+            else binding.objective_revision
+        ),
+        "base_board_revision": binding.board_revision,
+        "candidate_board_revision": (
+            preview.candidate_board_revision
+            if preview is not None
+            else binding.board_revision
+        ),
+        "goal_ids": list(preview.goal_ids if preview is not None else ()),
+        "task_ids": list(preview.task_ids if preview is not None else ()),
+        "goal_task_mappings": (
+            [
+                item.to_dict()
+                for item in preview.goal_task_mappings
+            ]
+            if preview is not None
+            else []
+        ),
+        "preview": (
+            preview.to_dict(include_text=True) if preview is not None else None
+        ),
+        "taskboard_recovery": (
+            {
+                "base_text": preview.taskboard_preview.base_text,
+                "entries": [
+                    item.to_dict()
+                    for item in preview.taskboard_preview.entries
+                ],
+            }
+            if preview is not None and preview.taskboard_preview is not None
+            else None
+        ),
+        "reason_codes": list(dict.fromkeys(reason_codes)),
+        "previous_epoch_id": previous_epoch_id,
+        "meaningful_trigger": meaningful_trigger,
+        "wait_state": dict(wait_state) if wait_state is not None else None,
+        "quorum": dict(quorum) if quorum is not None else None,
+    }
+
+
+def _persist_v2_refill_entry(
+    journal_path: Path,
+    entry: Mapping[str, Any],
+) -> dict[str, Any]:
+    from .duckdb_state import exclusive_file_lock
+
+    lock_path = journal_path.with_name(f".{journal_path.name}.lock")
+    with exclusive_file_lock(lock_path):
+        journal = _load_v2_refill_journal(journal_path)
+        transactions = dict(journal["transactions"])
+        transactions[str(entry["epoch_id"])] = dict(entry)
+        journal["transactions"] = transactions
+        _v2_refill_atomic_json(journal_path, journal)
+    return dict(entry)
+
+
+def run_v2_refill_epoch(
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    taskboard_path: Path,
+    journal_path: Path,
+    observation_provider: Callable[
+        [V2RefillEpochBinding], V2RefillObservation | Mapping[str, Any]
+    ],
+    repository_id: str,
+    tree_id: str,
+    objective_id: str,
+    benchmark_policy_id: str,
+    benchmark_policy_revision: str,
+    capability_id: str,
+    capability_revision: str,
+    operation_catalog_id: str,
+    storage_policy_id: str,
+    observation_window_start: datetime | str,
+    observation_window_end: datetime | str,
+    wait_state_path: Path | None = None,
+    proposal_provider: Callable[..., V2SuccessorAdmission] | None = None,
+    successor_policy: V2SuccessorGenerationPolicy | None = None,
+    now: datetime | str | None = None,
+) -> V2RefillEpochResult:
+    """Run, jointly CAS-commit, or exactly replay one ASI-121 refill epoch."""
+
+    from .objective_graph import objective_heap_content_id
+    from .objective_tracker import (
+        ObjectiveMaterializationTransactionState,
+        commit_objective_goal_materialization,
+    )
+    from .taskboard_store import (
+        TaskboardMaterializationTransactionState,
+        commit_taskboard_materialization,
+        taskboard_revision,
+    )
+
+    if not callable(observation_provider):
+        raise TypeError("observation_provider must be callable")
+    root = Path(repo_root).resolve()
+    objective_file = Path(objective_path).resolve()
+    board_file = Path(taskboard_path).resolve()
+    epoch_journal = Path(journal_path).resolve()
+    wait_file = (
+        Path(wait_state_path).resolve()
+        if wait_state_path is not None
+        else epoch_journal.with_name(f"{epoch_journal.stem}-wait.json")
+    )
+    objective_journal = epoch_journal.with_name(
+        f"{epoch_journal.stem}-objective.json"
+    )
+    board_journal = epoch_journal.with_name(
+        f"{epoch_journal.stem}-taskboard.json"
+    )
+    observed_now = _v2_refill_datetime(
+        now or datetime.now(timezone.utc), "now"
+    )
+    objective_bytes = objective_file.read_bytes()
+    board_bytes = board_file.read_bytes()
+    objective_text = objective_bytes.decode("utf-8")
+    board_text = board_bytes.decode("utf-8")
+    binding = V2RefillEpochBinding(
+        repository_id=repository_id,
+        tree_id=tree_id,
+        objective_id=objective_id,
+        objective_revision=objective_heap_content_id(objective_text),
+        board_revision=taskboard_revision(board_bytes),
+        benchmark_policy_id=benchmark_policy_id,
+        benchmark_policy_revision=benchmark_policy_revision,
+        capability_id=capability_id,
+        capability_revision=capability_revision,
+        operation_catalog_id=operation_catalog_id,
+        storage_policy_id=storage_policy_id,
+        observation_window_start=observation_window_start,
+        observation_window_end=observation_window_end,
+    )
+
+    # This is deliberately the first stateful decision.  Completed exact
+    # replays return without provider/proposal calls, locks, writes, or tasks.
+    journal = _load_v2_refill_journal(epoch_journal)
+    transactions = journal["transactions"]
+    direct = transactions.get(binding.epoch_id)
+    if isinstance(direct, Mapping) and direct.get("state") in {
+        "committed",
+        "waiting",
+    }:
+        return _v2_refill_result_from_entry(direct, replayed=True)
+    for raw_entry in transactions.values():
+        if not isinstance(raw_entry, Mapping) or raw_entry.get("state") != "committed":
+            continue
+        try:
+            prior_binding = V2RefillEpochBinding.from_dict(
+                raw_entry.get("binding") or {}
+            )
+        except (TypeError, ValueError, V2SelfEvaluationError):
+            continue
+        if (
+            _v2_refill_external_binding_matches(prior_binding, binding)
+            and raw_entry.get("candidate_objective_revision")
+            == binding.objective_revision
+            and raw_entry.get("candidate_board_revision")
+            == binding.board_revision
+        ):
+            return _v2_refill_result_from_entry(raw_entry, replayed=True)
+
+    # If the process stopped after the heap CAS, finish the already-journaled
+    # board delta before consulting any provider.  The original epoch remains
+    # authoritative: current post-heap state must match its candidate exactly
+    # and the board must be either its base or its candidate.
+    for raw_entry in transactions.values():
+        if (
+            not isinstance(raw_entry, Mapping)
+            or raw_entry.get("state") not in {"prepared", "objective_committed"}
+        ):
+            continue
+        try:
+            prior_binding = V2RefillEpochBinding.from_dict(
+                raw_entry.get("binding") or {}
+            )
+        except (TypeError, ValueError, V2SelfEvaluationError):
+            continue
+        if (
+            not _v2_refill_external_binding_matches(prior_binding, binding)
+            or raw_entry.get("candidate_objective_revision")
+            != binding.objective_revision
+        ):
+            continue
+        allowed_board_revisions = {
+            str(raw_entry.get("base_board_revision") or ""),
+            str(raw_entry.get("candidate_board_revision") or ""),
+        }
+        if binding.board_revision not in allowed_board_revisions:
+            reasons = ("incomplete_epoch_board_revision_conflict",)
+            conflicted = dict(raw_entry)
+            conflicted["status"] = V2RefillEpochStatus.REJECTED.value
+            conflicted["reason_codes"] = list(reasons)
+            entry = _persist_v2_refill_entry(epoch_journal, conflicted)
+            return V2RefillEpochResult(
+                binding=prior_binding,
+                status=V2RefillEpochStatus.REJECTED,
+                preview=_v2_refill_preview_from_record(
+                    prior_binding,
+                    (
+                        raw_entry.get("preview")
+                        if isinstance(raw_entry.get("preview"), Mapping)
+                        else None
+                    ),
+                ),
+                reason_codes=reasons,
+                meaningful_trigger=str(
+                    raw_entry.get("meaningful_trigger") or ""
+                ),
+                journal_entry=entry,
+            )
+        recovered_board_preview = _v2_refill_taskboard_preview_from_entry(
+            raw_entry
+        )
+        taskboard_transaction = commit_taskboard_materialization(
+            board_file,
+            board_journal,
+            recovered_board_preview,
+            epoch_id=prior_binding.epoch_id,
+            expected_board_revision=prior_binding.board_revision,
+        )
+        recovered_preview = _v2_refill_preview_from_record(
+            prior_binding,
+            (
+                raw_entry.get("preview")
+                if isinstance(raw_entry.get("preview"), Mapping)
+                else None
+            ),
+        )
+        if (
+            taskboard_transaction.state
+            is not TaskboardMaterializationTransactionState.COMMITTED
+        ):
+            reasons = tuple(
+                dict.fromkeys(
+                    (
+                        "taskboard_recovery_blocked",
+                        *taskboard_transaction.reason_codes,
+                    )
+                )
+            )
+            incomplete = dict(raw_entry)
+            incomplete["state"] = "objective_committed"
+            incomplete["status"] = V2RefillEpochStatus.REJECTED.value
+            incomplete["reason_codes"] = list(reasons)
+            entry = _persist_v2_refill_entry(epoch_journal, incomplete)
+            return V2RefillEpochResult(
+                binding=prior_binding,
+                status=V2RefillEpochStatus.REJECTED,
+                preview=recovered_preview,
+                reason_codes=reasons,
+                meaningful_trigger=str(
+                    raw_entry.get("meaningful_trigger") or ""
+                ),
+                taskboard_transaction=taskboard_transaction,
+                journal_entry=entry,
+            )
+        completed = dict(raw_entry)
+        completed["state"] = "committed"
+        completed["status"] = V2RefillEpochStatus.PROPOSED.value
+        completed["reason_codes"] = []
+        result = V2RefillEpochResult(
+            binding=prior_binding,
+            status=V2RefillEpochStatus.PROPOSED,
+            preview=recovered_preview,
+            created_goal_ids=tuple(raw_entry.get("goal_ids") or ()),
+            created_task_ids=tuple(raw_entry.get("task_ids") or ()),
+            meaningful_trigger=str(raw_entry.get("meaningful_trigger") or ""),
+            taskboard_transaction=taskboard_transaction,
+        )
+        completed["receipt_id"] = result.receipt_id
+        entry = _persist_v2_refill_entry(epoch_journal, completed)
+        return replace(
+            result,
+            journal_entry=entry,
+            original_receipt_id=str(completed["receipt_id"]),
+        )
+
+    previous_wait: Mapping[str, Any] | None = None
+    if wait_file.exists():
+        try:
+            loaded_wait = json.loads(wait_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise V2SelfEvaluationError("v2 refill wait state is malformed") from exc
+        if not isinstance(loaded_wait, Mapping):
+            raise V2SelfEvaluationError("v2 refill wait state must be an object")
+        previous_wait = loaded_wait
+    meaningful_trigger = ""
+    if previous_wait is not None:
+        try:
+            prior_binding = V2RefillEpochBinding.from_dict(
+                previous_wait.get("binding") or {}
+            )
+            meaningful_trigger = _v2_refill_meaningful_trigger(
+                prior_binding, binding
+            )
+            suppress_until = _v2_refill_datetime(
+                previous_wait.get("suppress_until", ""),
+                "suppress_until",
+            )
+        except (TypeError, ValueError, V2SelfEvaluationError):
+            prior_binding = binding
+            suppress_until = observed_now
+        if not meaningful_trigger and observed_now < suppress_until:
+            return V2RefillEpochResult(
+                binding=binding,
+                status=V2RefillEpochStatus.HEALTHY_EXHAUSTION,
+                suppressed=True,
+                previous_epoch_id=str(previous_wait.get("epoch_id") or ""),
+                wait_state=dict(previous_wait),
+                quorum=(
+                    dict(previous_wait["quorum"])
+                    if isinstance(previous_wait.get("quorum"), Mapping)
+                    else None
+                ),
+            )
+
+    observation = V2RefillObservation.from_value(
+        observation_provider(binding)
+    )
+    if proposal_provider is None:
+        admission = generate_v2_successor_goals(
+            observation.residuals,
+            objective_text=objective_text,
+            policy=successor_policy,
+            observed_at=observed_now,
+        )
+    else:
+        admission = _coerce_v2_refill_admission(
+            proposal_provider(binding, observation)
+        )
+
+    if not admission.accepted:
+        quorum = _evaluate_v2_healthy_exhaustion(
+            binding=binding,
+            receipts=observation.exhaustion_receipts,
+            now=observed_now,
+        )
+        if not quorum["satisfied"]:
+            reasons = ("healthy_exhaustion_quorum_unsatisfied",)
+            entry = _v2_refill_entry(
+                binding=binding,
+                state="blocked",
+                status=V2RefillEpochStatus.REJECTED,
+                reason_codes=reasons,
+                previous_epoch_id=(
+                    str(previous_wait.get("epoch_id") or "")
+                    if previous_wait is not None
+                    else ""
+                ),
+                meaningful_trigger=meaningful_trigger,
+                quorum=quorum,
+            )
+            entry = _persist_v2_refill_entry(epoch_journal, entry)
+            result = V2RefillEpochResult(
+                binding=binding,
+                status=V2RefillEpochStatus.REJECTED,
+                admission=admission,
+                reason_codes=reasons,
+                previous_epoch_id=str(entry["previous_epoch_id"]),
+                meaningful_trigger=meaningful_trigger,
+                quorum=quorum,
+                journal_entry=entry,
+            )
+            receipt_id = result.receipt_id
+            entry["receipt_id"] = receipt_id
+            _persist_v2_refill_entry(epoch_journal, entry)
+            return replace(
+                result, journal_entry=entry, original_receipt_id=receipt_id
+            )
+        wait_state = {
+            "schema": V2_REFILL_WAIT_STATE_SCHEMA,
+            "state": "waiting_for_meaningful_trigger",
+            "epoch_id": binding.epoch_id,
+            "binding": binding.to_dict(include_epoch_id=True),
+            "meaningful_trigger_revision": binding.meaningful_trigger_revision,
+            "observed_at": observed_now.isoformat(),
+            "suppress_until": (
+                observed_now + timedelta(seconds=V2_REFILL_COOLDOWN_SECONDS)
+            ).isoformat(),
+            "quorum": quorum,
+        }
+        _v2_refill_atomic_json(wait_file, wait_state)
+        entry = _v2_refill_entry(
+            binding=binding,
+            state="waiting",
+            status=V2RefillEpochStatus.HEALTHY_EXHAUSTION,
+            previous_epoch_id=(
+                str(previous_wait.get("epoch_id") or "")
+                if previous_wait is not None
+                else ""
+            ),
+            meaningful_trigger=meaningful_trigger,
+            wait_state=wait_state,
+            quorum=quorum,
+        )
+        entry = _persist_v2_refill_entry(epoch_journal, entry)
+        result = V2RefillEpochResult(
+            binding=binding,
+            status=V2RefillEpochStatus.HEALTHY_EXHAUSTION,
+            admission=admission,
+            previous_epoch_id=str(entry["previous_epoch_id"]),
+            meaningful_trigger=meaningful_trigger,
+            wait_state=wait_state,
+            quorum=quorum,
+            journal_entry=entry,
+        )
+        receipt_id = result.receipt_id
+        entry["receipt_id"] = receipt_id
+        _persist_v2_refill_entry(epoch_journal, entry)
+        return replace(
+            result, journal_entry=entry, original_receipt_id=receipt_id
+        )
+
+    preview = preview_v2_refill_epoch(
+        binding=binding,
+        admission=admission,
+        objective_text=objective_text,
+        taskboard_text=board_text,
+    )
+    reasons = list(preview.reason_codes)
+    current_objective_revision = objective_heap_content_id(
+        objective_file.read_text(encoding="utf-8")
+    )
+    current_board_revision = taskboard_revision(board_file.read_bytes())
+    if current_objective_revision != binding.objective_revision:
+        reasons.append("stale_objective_revision")
+    if current_board_revision != binding.board_revision:
+        reasons.append("stale_board_revision")
+    if reasons:
+        unique_reasons = tuple(dict.fromkeys(reasons))
+        entry = _v2_refill_entry(
+            binding=binding,
+            state="blocked",
+            status=V2RefillEpochStatus.REJECTED,
+            preview=preview,
+            reason_codes=unique_reasons,
+            meaningful_trigger=meaningful_trigger,
+        )
+        entry = _persist_v2_refill_entry(epoch_journal, entry)
+        result = V2RefillEpochResult(
+            binding=binding,
+            status=V2RefillEpochStatus.REJECTED,
+            preview=preview,
+            admission=admission,
+            reason_codes=unique_reasons,
+            meaningful_trigger=meaningful_trigger,
+            journal_entry=entry,
+        )
+        receipt_id = result.receipt_id
+        entry["receipt_id"] = receipt_id
+        _persist_v2_refill_entry(epoch_journal, entry)
+        return replace(
+            result, journal_entry=entry, original_receipt_id=receipt_id
+        )
+
+    prepared = _v2_refill_entry(
+        binding=binding,
+        state="prepared",
+        status=V2RefillEpochStatus.PROPOSED,
+        preview=preview,
+        meaningful_trigger=meaningful_trigger,
+    )
+    _persist_v2_refill_entry(epoch_journal, prepared)
+    objective_transaction = commit_objective_goal_materialization(
+        repo_root=root,
+        objective_path=objective_file,
+        journal_path=objective_journal,
+        preview=preview.objective_preview,
+        epoch_id=binding.epoch_id,
+        expected_objective_revision=binding.objective_revision,
+        # The objective materializer emits its deterministic graph order,
+        # which can differ from successor-admission order when several goals
+        # are committed together.  Fence the exact ordered materializer
+        # output while the epoch preview retains the admission-to-task map.
+        expected_goal_ids=tuple(
+            item.goal.goal_id
+            for item in preview.objective_preview.materialized
+        ),
+        control_paths=(
+            board_file,
+            epoch_journal,
+            wait_file,
+            board_journal,
+        ),
+    )
+    if objective_transaction.state is not ObjectiveMaterializationTransactionState.COMMITTED:
+        reasons = tuple(
+            dict.fromkeys(
+                ("objective_transaction_blocked", *objective_transaction.reason_codes)
+            )
+        )
+        prepared.update({"state": "blocked", "status": "rejected"})
+        prepared["reason_codes"] = list(reasons)
+        entry = _persist_v2_refill_entry(epoch_journal, prepared)
+        return V2RefillEpochResult(
+            binding=binding,
+            status=V2RefillEpochStatus.REJECTED,
+            preview=preview,
+            admission=admission,
+            reason_codes=reasons,
+            meaningful_trigger=meaningful_trigger,
+            objective_transaction=objective_transaction,
+            journal_entry=entry,
+        )
+    prepared["state"] = "objective_committed"
+    _persist_v2_refill_entry(epoch_journal, prepared)
+    taskboard_transaction = commit_taskboard_materialization(
+        board_file,
+        board_journal,
+        preview.taskboard_preview,
+        epoch_id=binding.epoch_id,
+        expected_board_revision=binding.board_revision,
+    )
+    if taskboard_transaction.state is not TaskboardMaterializationTransactionState.COMMITTED:
+        reasons = tuple(
+            dict.fromkeys(
+                ("taskboard_transaction_blocked", *taskboard_transaction.reason_codes)
+            )
+        )
+        prepared["state"] = "objective_committed"
+        prepared["status"] = "rejected"
+        prepared["reason_codes"] = list(reasons)
+        entry = _persist_v2_refill_entry(epoch_journal, prepared)
+        return V2RefillEpochResult(
+            binding=binding,
+            status=V2RefillEpochStatus.REJECTED,
+            preview=preview,
+            admission=admission,
+            reason_codes=reasons,
+            meaningful_trigger=meaningful_trigger,
+            objective_transaction=objective_transaction,
+            taskboard_transaction=taskboard_transaction,
+            journal_entry=entry,
+        )
+
+    prepared["state"] = "committed"
+    prepared["status"] = V2RefillEpochStatus.PROPOSED.value
+    prepared["reason_codes"] = []
+    result = V2RefillEpochResult(
+        binding=binding,
+        status=V2RefillEpochStatus.PROPOSED,
+        preview=preview,
+        admission=admission,
+        created_goal_ids=preview.goal_ids,
+        created_task_ids=preview.task_ids,
+        meaningful_trigger=meaningful_trigger,
+        objective_transaction=objective_transaction,
+        taskboard_transaction=taskboard_transaction,
+    )
+    receipt_id = result.receipt_id
+    prepared["receipt_id"] = receipt_id
+    entry = _persist_v2_refill_entry(epoch_journal, prepared)
+    return replace(
+        result,
+        journal_entry=entry,
+        original_receipt_id=receipt_id,
+    )
+
+
 # Discoverable names retained for the later public-surface integration task.
 V2SelfEvaluationDimension = V2ObjectiveDimension
 V2ComponentReceipt = V2ProducerReceipt
@@ -3190,6 +4563,12 @@ __all__ = [
     "V2SelfImprovementEvaluator",
     "V2ResidualKind",
     "V2ResidualSignal",
+    "V2GoalTaskMapping",
+    "V2RefillEpochBinding",
+    "V2RefillEpochPreview",
+    "V2RefillEpochResult",
+    "V2RefillEpochStatus",
+    "V2RefillObservation",
     "V2SuccessorAdmission",
     "V2SuccessorCandidate",
     "V2SuccessorGenerationPolicy",
@@ -3200,12 +4579,16 @@ __all__ = [
     "V2_SELF_EVALUATION_CONTRACT_VERSION",
     "V2_SELF_EVALUATION_POLICY_ID",
     "V2_SELF_EVALUATION_SCHEMA",
+    "V2_REFILL_COOLDOWN_SECONDS",
+    "V2_REFILL_REQUIRED_EXHAUSTION_RECEIPTS",
     "build_frozen_v2_ablation_receipts",
     "build_frozen_v2_producer_receipts",
     "build_frozen_v2_self_evaluation_inputs",
     "build_reward_resistant_evaluation_report",
     "evaluate_v2_self_improvement",
     "generate_v2_successor_goals",
+    "preview_v2_refill_epoch",
     "replay_v2_self_evaluation",
+    "run_v2_refill_epoch",
     "verify_v2_self_evaluation_report",
 ]
