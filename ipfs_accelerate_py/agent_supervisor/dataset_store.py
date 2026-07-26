@@ -607,8 +607,11 @@ class ObjectiveDatasetStore:
     def load_proof_scope_index(
         self,
         index: str | Path | Mapping[str, Any] | DatasetProofScopeIndexArtifact = "proof-scope-index",
+        *,
+        canonical_artifacts: Iterable[Any] | None = None,
+        semantic_graph: Any = None,
     ) -> Any | None:
-        """Load a proof-scope index by name, artifact, manifest, or JSON path."""
+        """Load and, for cross-domain indexes, revalidate current artifacts."""
 
         from .proof_scope_index import ProofScopeIndex
 
@@ -643,7 +646,11 @@ class ObjectiveDatasetStore:
             return None
         if not isinstance(payload, Mapping):
             return None
-        return ProofScopeIndex.from_dict(payload)
+        return ProofScopeIndex.from_dict(
+            payload,
+            canonical_artifacts=canonical_artifacts,
+            semantic_graph=semantic_graph,
+        )
 
     def load_proof_scope_index_manifest(
         self, index_name: str = "proof-scope-index"
