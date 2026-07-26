@@ -25,6 +25,9 @@ from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationCommand,
     ValidationStage,
 )
+from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+    VALIDATION_PYTHON_ENV,
+)
 from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ImpactSelectedValidationDAG,
     ImpactDependencyGraph,
@@ -247,6 +250,62 @@ def _failing_transitive_report(
         runner=runner,
     )
     return report, calls
+
+
+def test_strict_validation_runner_receives_sanitized_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proposal = _proposal((_source_change(),))
+    validation = validate_implementation_proposal(proposal, policy=_policy())
+    graph = ImpactDependencyGraph(
+        repository_tree_id=TREE_ID,
+        dependencies={
+            "pkg/consumer.py": ("pkg/source.py",),
+            "test/api/test_transitive_consumer.py": ("pkg/consumer.py",),
+        },
+        validation_targets={
+            VALIDATION_ID: ("test/api/test_transitive_consumer.py",),
+        },
+    )
+    captured_environments: list[dict[str, str]] = []
+
+    def runner(
+        *,
+        spec: ValidationCommand,
+        environment: dict[str, str],
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        captured_environments.append(dict(environment))
+        return _result(spec)
+
+    monkeypatch.setenv(VALIDATION_PYTHON_ENV, "/usr/bin/python3")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "must-not-cross-validation-boundary")
+
+    report = ValidationScheduler(max_workers=1).run_validated(
+        validation,
+        _commands(),
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        dependency_state="fixture",
+        runner=runner,
+    )
+
+    assert report["attempted"] is True
+    assert captured_environments
+    assert all(
+        environment["IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"]
+        == str(Path("/usr/bin/python3").resolve())
+        for environment in captured_environments
+    )
+    assert all(
+        "AWS_SECRET_ACCESS_KEY" not in environment
+        for environment in captured_environments
+    )
+    assert all(
+        environment["HOME"] == "/nonexistent/ipfs-accelerate-validation"
+        for environment in captured_environments
+    )
 
 
 def test_transitive_impact_selects_failing_test_and_proves_exact_g101_requirement(
