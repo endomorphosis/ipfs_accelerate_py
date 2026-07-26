@@ -3870,7 +3870,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-122 Add the generation-2 paired rollout and automatic rollback gate
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: rollout
