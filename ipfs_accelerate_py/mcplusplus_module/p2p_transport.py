@@ -97,6 +97,8 @@ _VIRTUAL_INTERFACE_PREFIXES = (
     "virbr",
 )
 
+_DISABLED_ENV_VALUES = frozenset({"0", "false", "no", "off"})
+
 
 async def _bootstrap_dial_candidates(peer_addr: str) -> Tuple[str, ...]:
     """Resolve one configured dnsaddr peer to supported TCP descendants.
@@ -276,6 +278,14 @@ class MCPp2pNode:
             return None
         values = [item.strip() for item in os.environ[name].split(",") if item.strip()]
         return values if values or preserve_empty else None
+
+    @property
+    def mdns_enabled(self) -> bool:
+        """Whether local mDNS advertisement and discovery are enabled."""
+        return (
+            os.environ.get("MCPPP_P2P_MDNS", "1").strip().casefold()
+            not in _DISABLED_ENV_VALUES
+        )
 
     @property
     def peer_id(self) -> str:
@@ -496,9 +506,7 @@ class MCPp2pNode:
 
             self._started = True
             self._operational = True
-            if os.environ.get("MCPPP_P2P_MDNS", "1").lower() not in {
-                "0", "false", "no", "off"
-            }:
+            if self.mdns_enabled:
                 await self._start_mdns_advertisement()
             logger.info(
                 "MCPp2pNode started: peer_id=%s, addrs=%s",
@@ -660,6 +668,12 @@ class MCPp2pNode:
         for dial_addr in await _bootstrap_dial_candidates(peer_addr):
             try:
                 peer_info = peerinfo_from_multiaddr(dial_addr)
+                if str(peer_info.peer_id) == self.peer_id:
+                    logger.debug(
+                        "Ignoring local peer bootstrap candidate: %s",
+                        dial_addr,
+                    )
+                    continue
                 await self._host.connect(peer_info)
 
                 # Enforce max peers limit
@@ -1000,22 +1014,34 @@ class MCPp2pNode:
         """Discover peers via mDNS (local network).
 
         Uses Trio-compatible mDNS to find peers advertising the MCP++ service.
+        Discovery returns dial candidates; only a successful connection may
+        add a peer to the connected-peer registry.
         """
+        if not self.mdns_enabled:
+            logger.debug("mDNS discovery disabled by MCPPP_P2P_MDNS")
+            return []
+
+        browser = None
+        zeroconf = None
         try:
             import trio
             from zeroconf import Zeroconf, ServiceBrowser
 
-            discovered = []
-            zc = Zeroconf()
+            discovered: List[PeerInfo] = []
+            local_peer_id = self.peer_id
+            zeroconf = Zeroconf()
 
             class Listener:
                 def add_service(self, zc, type_, name):
                     info = zc.get_service_info(type_, name)
                     if info:
+                        peer_id = name.split(".", 1)[0].strip()
+                        if not peer_id or peer_id == local_peer_id:
+                            return
                         peer = PeerInfo(
-                            peer_id=name.split(".")[0],
+                            peer_id=peer_id,
                             multiaddrs=[
-                                f"/ip4/{address}/tcp/{info.port}/p2p/{name.split('.')[0]}"
+                                f"/ip4/{address}/tcp/{info.port}/p2p/{peer_id}"
                                 for address in info.parsed_addresses()
                             ],
                             protocols=[MCP_P2P_PROTOCOL],
@@ -1028,18 +1054,14 @@ class MCPp2pNode:
                 def update_service(self, zc, type_, name):
                     pass
 
-            browser = ServiceBrowser(zc, f"_{service_tag}._tcp.local.", Listener())
+            browser = ServiceBrowser(
+                zeroconf,
+                f"_{service_tag}._tcp.local.",
+                Listener(),
+            )
 
             # Wait briefly for discovery
             await trio.sleep(2.0)
-            zc.close()
-
-            # Register discovered peers (enforce MAX_PEERS limit)
-            for peer in discovered:
-                if len(self._peers) >= MAX_PEERS:
-                    oldest = min(self._peers.values(), key=lambda p: p.last_seen)
-                    self._peers.pop(oldest.peer_id, None)
-                self._peers[peer.peer_id] = peer
 
             return discovered
 
@@ -1049,12 +1071,21 @@ class MCPp2pNode:
         except Exception as e:
             logger.debug(f"mDNS discovery failed: {e}")
             return []
+        finally:
+            if browser is not None:
+                try:
+                    browser.cancel()
+                except Exception as exc:
+                    logger.debug("Failed to cancel mDNS browser: %s", exc)
+            if zeroconf is not None:
+                try:
+                    zeroconf.close()
+                except Exception as exc:
+                    logger.debug("Failed to close Zeroconf: %s", exc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize node state for status endpoints."""
-        mdns_configured = os.environ.get("MCPPP_P2P_MDNS", "1").lower() not in {
-            "0", "false", "no", "off"
-        }
+        mdns_configured = self.mdns_enabled
         rendezvous_target = os.environ.get(
             "IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", ""
         ).strip()
