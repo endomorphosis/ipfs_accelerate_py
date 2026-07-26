@@ -4086,7 +4086,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-134 Bind progressive expansion and retries to changed dependencies
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: proof-runtime-context
