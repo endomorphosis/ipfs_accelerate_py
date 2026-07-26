@@ -49,6 +49,8 @@ This model was contributed by [Susnato Dhar](https://huggingface.co/susnato). Th
 
 ## Resources
 
+The following task guides are maintained in this repository:
+
 - [Text classification task guide](../tasks/sequence_classification.md)
 - [Token classification task guide](../tasks/token_classification.md)
 - [Question answering task guide](../tasks/question_answering.md)
