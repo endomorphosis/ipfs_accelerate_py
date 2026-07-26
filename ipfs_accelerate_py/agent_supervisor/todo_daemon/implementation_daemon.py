@@ -88,6 +88,7 @@ DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
+WORKTREE_CONTEXT_SNAPSHOT_SCHEMA = "agent-supervisor-worktree-context-snapshot-v1"
 DEFAULT_WORKTREE_POOL_MAX_ENTRIES = 4
 SHARED_WORKTREE_SOURCE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT"
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
@@ -1533,6 +1534,12 @@ class PortalImplementationDaemon:
         self._worktree_pool_leases: dict[Path, WorktreeLease] = {}
         self._worktree_pool_effective_paths: dict[Path, Path] = {}
         self._worktree_setup_metrics: dict[Path, dict[str, Any]] = {}
+        self._seeded_worktree_context_snapshots: dict[
+            Path, dict[str, dict[str, Any]]
+        ] = {}
+        self.worktree_context_snapshot_path = self.state_path.with_name(
+            f"{self.state_path.stem}.worktree-context.json"
+        )
         self.merge_target_branch = str(merge_target_branch or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
@@ -6124,6 +6131,7 @@ class PortalImplementationDaemon:
                 self._link_shared_worktree_paths(lease_path)
                 self._seed_untracked_worktree_context(lease_path, task=task, overwrite_existing=True)
             except BaseException:
+                self._forget_seeded_worktree_context(lease_path)
                 self._worktree_pool_effective_paths.pop(requested_path, None)
                 self._worktree_pool_leases.pop(lease_path, None)
                 self._worktree_setup_metrics.pop(lease_path, None)
@@ -6165,6 +6173,7 @@ class PortalImplementationDaemon:
             lease_key = worktree_path.resolve()
         except OSError:
             lease_key = worktree_path
+        self._forget_seeded_worktree_context(worktree_path)
         lease = self._worktree_pool_leases.pop(lease_key, None)
         if lease is None:
             return {
@@ -6747,6 +6756,199 @@ class PortalImplementationDaemon:
         # Untracked source context is snapshotted when the worktree lease starts.
         # Re-reading the primary checkout here can attribute files created by a
         # concurrent user or lane to this implementation after its agent exits.
+        self._drop_unchanged_seeded_worktree_context(worktree_path, task=task)
+
+    @staticmethod
+    def _seeded_worktree_context_identity(path: Path) -> dict[str, Any]:
+        """Return the content and executable-bit identity of a seeded path."""
+
+        try:
+            initial_stat = path.lstat()
+        except FileNotFoundError:
+            return {"kind": "missing"}
+        except OSError as exc:
+            return {"kind": "error", "error_type": type(exc).__name__}
+
+        mode = int(stat_module.S_IMODE(initial_stat.st_mode))
+        if stat_module.S_ISLNK(initial_stat.st_mode):
+            try:
+                target = os.readlink(path)
+                final_stat = path.lstat()
+            except OSError as exc:
+                return {"kind": "error", "error_type": type(exc).__name__}
+            if (
+                initial_stat.st_dev,
+                initial_stat.st_ino,
+                initial_stat.st_mode,
+                initial_stat.st_mtime_ns,
+            ) != (
+                final_stat.st_dev,
+                final_stat.st_ino,
+                final_stat.st_mode,
+                final_stat.st_mtime_ns,
+            ):
+                return {"kind": "error", "error_type": "ConcurrentPathChange"}
+            return {"kind": "symlink", "mode": mode, "target": target}
+
+        if not stat_module.S_ISREG(initial_stat.st_mode):
+            return {"kind": "unsupported", "mode": mode}
+
+        flags = os.O_RDONLY
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(path, flags)
+            try:
+                opened_stat = os.fstat(fd)
+                if (
+                    initial_stat.st_dev,
+                    initial_stat.st_ino,
+                    initial_stat.st_mode,
+                ) != (
+                    opened_stat.st_dev,
+                    opened_stat.st_ino,
+                    opened_stat.st_mode,
+                ):
+                    return {"kind": "error", "error_type": "ConcurrentPathChange"}
+                digest = hashlib.sha256()
+                while True:
+                    chunk = os.read(fd, 1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                final_fd_stat = os.fstat(fd)
+            finally:
+                os.close(fd)
+            final_path_stat = path.lstat()
+        except OSError as exc:
+            return {"kind": "error", "error_type": type(exc).__name__}
+
+        def stable_stat(path_stat: os.stat_result) -> tuple[int, ...]:
+            return (
+                int(path_stat.st_dev),
+                int(path_stat.st_ino),
+                int(path_stat.st_mode),
+                int(path_stat.st_size),
+                int(path_stat.st_mtime_ns),
+                int(path_stat.st_ctime_ns),
+            )
+
+        if (
+            stable_stat(initial_stat) != stable_stat(final_fd_stat)
+            or stable_stat(initial_stat) != stable_stat(final_path_stat)
+        ):
+            return {"kind": "error", "error_type": "ConcurrentPathChange"}
+        return {
+            "kind": "regular_file",
+            "mode": mode,
+            "size": int(initial_stat.st_size),
+            "sha256": digest.hexdigest(),
+        }
+
+    def _persist_seeded_worktree_context(
+        self,
+        worktree_path: Path,
+        snapshots: Mapping[str, Mapping[str, Any]],
+        *,
+        task: PortalTask | None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "schema": WORKTREE_CONTEXT_SNAPSHOT_SCHEMA,
+            "worktree_path": str(worktree_path.resolve()),
+            "created_at": utc_now(),
+            "snapshots": {
+                relative: dict(identity)
+                for relative, identity in snapshots.items()
+            },
+        }
+        if task is not None:
+            payload["task_id"] = task.task_id
+        write_json_atomic(self.worktree_context_snapshot_path, payload)
+
+    def _load_seeded_worktree_context(
+        self,
+        worktree_path: Path,
+    ) -> dict[str, dict[str, Any]]:
+        key = worktree_path.resolve()
+        cached = self._seeded_worktree_context_snapshots.get(key)
+        if cached is not None:
+            return cached
+        payload = load_json_dict(self.worktree_context_snapshot_path)
+        if (
+            not payload
+            or payload.get("schema") != WORKTREE_CONTEXT_SNAPSHOT_SCHEMA
+            or str(payload.get("worktree_path") or "") != str(key)
+        ):
+            return {}
+        raw_snapshots = payload.get("snapshots")
+        if not isinstance(raw_snapshots, dict):
+            return {}
+        snapshots = {
+            str(relative): dict(identity)
+            for relative, identity in raw_snapshots.items()
+            if isinstance(relative, str)
+            and isinstance(identity, dict)
+            and self._untracked_context_path_allowed(relative)
+        }
+        self._seeded_worktree_context_snapshots[key] = snapshots
+        return snapshots
+
+    def _forget_seeded_worktree_context(self, worktree_path: Path) -> None:
+        key = worktree_path.resolve()
+        self._seeded_worktree_context_snapshots.pop(key, None)
+        payload = load_json_dict(self.worktree_context_snapshot_path)
+        if payload and str(payload.get("worktree_path") or "") == str(key):
+            self.worktree_context_snapshot_path.unlink(missing_ok=True)
+
+    def _drop_unchanged_seeded_worktree_context(
+        self,
+        worktree_path: Path,
+        *,
+        task: PortalTask | None = None,
+    ) -> list[str]:
+        """Remove lease-start context that the implementation did not change."""
+
+        snapshots = self._load_seeded_worktree_context(worktree_path)
+        if not snapshots:
+            return []
+
+        removed: list[str] = []
+        retained: list[str] = []
+        missing: list[str] = []
+        for relative, expected_identity in sorted(snapshots.items()):
+            target = worktree_path / relative
+            observed_identity = self._seeded_worktree_context_identity(target)
+            if observed_identity == expected_identity:
+                target.unlink(missing_ok=True)
+                removed.append(relative)
+                parent = target.parent
+                while parent != worktree_path:
+                    try:
+                        parent.rmdir()
+                    except OSError:
+                        break
+                    parent = parent.parent
+            elif observed_identity.get("kind") == "missing":
+                missing.append(relative)
+            else:
+                retained.append(relative)
+
+        self._forget_seeded_worktree_context(worktree_path)
+        payload: dict[str, Any] = {
+            "worktree_path": str(worktree_path),
+            "removed_paths": removed,
+            "removed_count": len(removed),
+            "retained_paths": retained,
+            "retained_count": len(retained),
+            "missing_paths": missing,
+            "missing_count": len(missing),
+        }
+        if task is not None:
+            payload["task_id"] = task.task_id
+        self._record_event("worktree_context_pruned", payload)
+        return removed
 
     def _seed_untracked_worktree_context(
         self,
@@ -6764,7 +6966,9 @@ class PortalImplementationDaemon:
         must use that stable snapshot rather than rescan the primary checkout.
         """
 
+        self._forget_seeded_worktree_context(worktree_path)
         seeded: list[str] = []
+        snapshots: dict[str, dict[str, Any]] = {}
         for relative in self._untracked_worktree_context_paths():
             if not self._untracked_context_path_allowed(relative):
                 continue
@@ -6784,8 +6988,14 @@ class PortalImplementationDaemon:
             else:
                 shutil.copy2(source, target)
             seeded.append(relative)
+            identity = self._seeded_worktree_context_identity(target)
+            if identity.get("kind") in {"regular_file", "symlink"}:
+                snapshots[relative] = identity
 
         if seeded:
+            key = worktree_path.resolve()
+            self._seeded_worktree_context_snapshots[key] = snapshots
+            self._persist_seeded_worktree_context(worktree_path, snapshots, task=task)
             payload: dict[str, Any] = {
                 "worktree_path": str(worktree_path),
                 "seeded_paths": seeded,
@@ -10869,6 +11079,7 @@ class PortalImplementationDaemon:
         lease: WorktreeLease | None = None
         lease_key: Path | None = None
         if worktree_path is not None:
+            self._forget_seeded_worktree_context(worktree_path)
             try:
                 lease_key = worktree_path.resolve()
             except OSError:

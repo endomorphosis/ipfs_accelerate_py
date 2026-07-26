@@ -1210,7 +1210,7 @@ def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
     assert "wallet_interface/ui/tracked.css" not in paths
 
 
-def test_validation_keeps_the_worktree_start_context_snapshot(tmp_path):
+def test_validation_prunes_unchanged_start_context_after_daemon_restart(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -1224,12 +1224,17 @@ def test_validation_keeps_the_worktree_start_context_snapshot(tmp_path):
     initial = repo / "docs" / "architecture" / "initial-context.md"
     initial.parent.mkdir(parents=True)
     initial.write_text("available at task start\n", encoding="utf-8")
+    changed = repo / "docs" / "architecture" / "changed-context.md"
+    changed.write_text("available at task start\n", encoding="utf-8")
     worktree_root = tmp_path / "worktrees"
+    state_path = tmp_path / "state" / "task_state.json"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    events_path = tmp_path / "state" / "events.jsonl"
     daemon = TodoImplementationDaemon(
         todo_path=tmp_path / "todo.md",
-        state_path=tmp_path / "state" / "task_state.json",
-        strategy_path=tmp_path / "state" / "strategy.json",
-        events_path=tmp_path / "state" / "events.jsonl",
+        state_path=state_path,
+        strategy_path=strategy_path,
+        events_path=events_path,
         repo_root=repo,
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
@@ -1243,16 +1248,31 @@ def test_validation_keeps_the_worktree_start_context_snapshot(tmp_path):
     assert (worktree / initial.relative_to(repo)).read_text(encoding="utf-8") == (
         "available at task start\n"
     )
+    changed_in_worktree = worktree / changed.relative_to(repo)
+    changed_in_worktree.write_text("changed by implementation\n", encoding="utf-8")
 
     late = repo / "docs" / "architecture" / "late-concurrent-context.md"
     late.write_text("created by another lane\n", encoding="utf-8")
-    (worktree / initial.relative_to(repo)).unlink()
-
-    daemon._prepare_worktree_for_validation(worktree, branch_name=branch)
+    restarted_daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_path,
+        strategy_path=strategy_path,
+        events_path=events_path,
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+    restarted_daemon._prepare_worktree_for_validation(worktree, branch_name=branch)
 
     assert not (worktree / late.relative_to(repo)).exists()
     assert not (worktree / initial.relative_to(repo)).exists()
-    cleanup = daemon._cleanup_merged_worktree(worktree, branch)
+    assert changed_in_worktree.read_text(encoding="utf-8") == "changed by implementation\n"
+    status = _git(worktree, "status", "--short", "--untracked-files=all")
+    assert status.splitlines() == ["?? docs/architecture/changed-context.md"]
+    assert not restarted_daemon.worktree_context_snapshot_path.exists()
+    cleanup = restarted_daemon._cleanup_merged_worktree(worktree, branch)
     assert cleanup["cleaned"] is True
 
 
