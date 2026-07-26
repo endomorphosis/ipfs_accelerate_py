@@ -28,6 +28,10 @@ Additional optional providers (opt-in by selecting provider):
     - `ipfs_accelerate_py_COPILOT_SDK_MODEL`, `ipfs_accelerate_py_COPILOT_SDK_TIMEOUT`
 - `gemini_cli`: Gemini CLI via `npx @google/gemini-cli`
     - `ipfs_accelerate_py_GEMINI_CLI_CMD` (supports `{prompt}` placeholder)
+- `grok_cli`: xAI Grok CLI via the official `grok` binary
+    - `ipfs_accelerate_py_GROK_CLI_CMD` (supports `{prompt}` and `{model}` placeholders)
+    - `ipfs_accelerate_py_GROK_CLI_MODEL` (optional model; otherwise the CLI default)
+    - Authenticate with `grok login` or `XAI_API_KEY`
 - `gemini_py`: Python wrapper in `ipfs_accelerate_py.utils.gemini_cli.GeminiCLI`
 - `claude_code`: Claude Code CLI command
     - `ipfs_accelerate_py_CLAUDE_CODE_CLI_CMD` (supports `{prompt}` placeholder)
@@ -107,6 +111,62 @@ class LLMRouterError(RuntimeError):
 
 
 _P2P_TASK_PREFIX = "p2p://"
+_HF_ARCH_ROUTER_MODEL_ID = "katanemo/Arch-Router-1.5B"
+_GROK_CLI_PROVIDER_ALIASES = {
+    "grok_cli",
+    "grok-cli",
+    "xai_cli",
+    "xai-cli",
+    "grok_build",
+    "grok-build",
+    "grok_build_cli",
+    "grok-build-cli",
+}
+_XAI_API_PROVIDER_ALIASES = {
+    "xai",
+    "xai_api",
+    "xai-api",
+    "xai_grok",
+    "grok_api",
+    "grok-api",
+}
+_LAST_GENERATION_TRACE = threading.local()
+_PROVIDER_ALIASES = {
+    "gpt4": "openai",
+    "gpt-4": "openai",
+    "codex": "codex_cli",
+    "codex-cli": "codex_cli",
+    "copilot": "copilot_cli",
+    "gemini": "gemini_cli",
+    "hf_api": "hf_inference_api",
+    "hf_inference": "hf_inference_api",
+    "huggingface_inference": "hf_inference_api",
+    "p2p": "p2p_task_queue",
+    "p2p_task": "p2p_task_queue",
+    "remote_queue": "p2p_task_queue",
+    "task_queue": "p2p_task_queue",
+    "llamacpp": "llama_cpp",
+    "llama.cpp": "llama_cpp",
+    "openai_compatible": "llama_cpp",
+    "local_openai": "llama_cpp",
+    "leanstral_local": "llama_cpp",
+    "llamacpp_native": "llama_cpp_native",
+    "llama.cpp_native": "llama_cpp_native",
+    "native_llama_cpp": "llama_cpp_native",
+}
+_UNPINNED_OPTIONAL_PROVIDER_ORDER = [
+    "codex_cli",
+    "copilot_cli",
+    "openai",
+    "hf_inference_api",
+    "openrouter",
+    "gemini_cli",
+    "claude_code",
+    "mistral_vibe",
+    "claude_py",
+    "gemini_py",
+    "copilot_sdk",
+]
 
 _LLM_GENERATE_PROVIDER_FORWARD_KEYS = (
     "max_new_tokens",
@@ -1304,14 +1364,28 @@ def _truthy(value: Optional[str]) -> bool:
 
 
 def _cache_enabled() -> bool:
-    return os.environ.get("ipfs_accelerate_py_ROUTER_CACHE", "1").strip() != "0"
+    value = (
+        os.environ.get("ipfs_accelerate_py_ROUTER_CACHE")
+        or os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_CACHE")
+        or "1"
+    )
+    return value.strip() != "0"
 
 
 def _response_cache_enabled() -> bool:
     # Default to enabled in benchmark contexts (determinism + speed), off otherwise.
-    value = os.environ.get("ipfs_accelerate_py_ROUTER_RESPONSE_CACHE")
+    value = (
+        os.environ.get("ipfs_accelerate_py_ROUTER_RESPONSE_CACHE")
+        or os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE")
+    )
     if value is None:
-        return _truthy(os.environ.get("ipfs_accelerate_py_BENCHMARK"))
+        return _truthy(
+            os.environ.get("ipfs_accelerate_py_BENCHMARK")
+            or os.environ.get("IPFS_ACCELERATE_PY_BENCHMARK")
+            or os.environ.get("IPFS_DATASETS_PY_BENCHMARK")
+        )
     return str(value).strip() != "0"
 
 
@@ -1322,11 +1396,21 @@ def _response_cache_key_strategy() -> str:
     - "cid": content-addressed CID (sha2-256, CIDv1) for the request payload
     """
 
-    return os.environ.get("ipfs_accelerate_py_ROUTER_CACHE_KEY", "sha256").strip().lower() or "sha256"
+    return (
+        os.environ.get("ipfs_accelerate_py_ROUTER_CACHE_KEY")
+        or os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE_KEY")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_CACHE_KEY")
+        or "sha256"
+    ).strip().lower() or "sha256"
 
 
 def _response_cache_cid_base() -> str:
-    return os.environ.get("ipfs_accelerate_py_ROUTER_CACHE_CID_BASE", "base32").strip() or "base32"
+    return (
+        os.environ.get("ipfs_accelerate_py_ROUTER_CACHE_CID_BASE")
+        or os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE_CID_BASE")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_CACHE_CID_BASE")
+        or "base32"
+    ).strip() or "base32"
 
 
 def _stable_kwargs_digest(kwargs: Dict[str, object]) -> str:
@@ -1362,37 +1446,81 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
         if text:
             return text
 
-    pk = (provider_key or "auto").strip().lower()
+    pk = _canonicalize_provider(provider_key or "auto")
     if pk == "openrouter":
         return (
-            os.getenv("ipfs_accelerate_py_OPENROUTER_MODEL")
-            or os.getenv("ipfs_accelerate_py_LLM_MODEL")
+            _coalesce_env(
+                "ipfs_accelerate_py_OPENROUTER_MODEL",
+                "IPFS_ACCELERATE_PY_OPENROUTER_MODEL",
+                "IPFS_DATASETS_PY_OPENROUTER_MODEL",
+            )
+            or _generic_llm_model_env()
             or "openai/gpt-4o-mini"
         ).strip()
     if pk in {"codex", "codex_cli"}:
         return (
-            _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL")
+            _coalesce_env(
+                "ipfs_accelerate_py_CODEX_CLI_MODEL",
+                "IPFS_ACCELERATE_PY_CODEX_CLI_MODEL",
+                "IPFS_DATASETS_PY_CODEX_CLI_MODEL",
+                "ipfs_accelerate_py_CODEX_MODEL",
+                "IPFS_ACCELERATE_PY_CODEX_MODEL",
+                "IPFS_DATASETS_PY_CODEX_MODEL",
+            )
             or "chatgpt-5.6-terra"
         ).strip()
     if pk == "copilot_sdk":
-        return (os.environ.get("ipfs_accelerate_py_COPILOT_SDK_MODEL", "") or "").strip()
-    if pk in {"xai", "grok", "xai_grok"}:
+        return _coalesce_env(
+            "ipfs_accelerate_py_COPILOT_SDK_MODEL",
+            "IPFS_ACCELERATE_PY_COPILOT_SDK_MODEL",
+            "IPFS_DATASETS_PY_COPILOT_SDK_MODEL",
+        )
+    if pk == "hf_inference_api":
         return (
-            os.getenv("ipfs_accelerate_py_XAI_MODEL")
-            or os.getenv("ipfs_accelerate_py_LLM_MODEL")
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL",
+                "IPFS_DATASETS_PY_HF_INFERENCE_MODEL",
+            )
+            or _generic_llm_model_env()
+            or "gpt2"
+        ).strip()
+    if pk in _GROK_CLI_PROVIDER_ALIASES or (
+        pk == "grok" and _cli_available(_grok_cli_command())
+    ):
+        return (
+            _coalesce_env(
+                "ipfs_accelerate_py_GROK_CLI_MODEL",
+                "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
+                "IPFS_DATASETS_PY_GROK_CLI_MODEL",
+                "GROK_CLI_MODEL",
+            )
+            or "grok-cli-default"
+        ).strip()
+    if pk == "grok" or pk in _XAI_API_PROVIDER_ALIASES:
+        return (
+            _coalesce_env(
+                "ipfs_accelerate_py_XAI_MODEL",
+                "IPFS_ACCELERATE_PY_XAI_MODEL",
+                "IPFS_DATASETS_PY_XAI_MODEL",
+            )
+            or _generic_llm_model_env()
             or "grok-3"
         ).strip()
     if pk in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
         return (
-            os.getenv("ipfs_accelerate_py_META_AI_MODEL")
-            or os.getenv("ipfs_accelerate_py_LLM_MODEL")
+            _coalesce_env(
+                "ipfs_accelerate_py_META_AI_MODEL",
+                "IPFS_ACCELERATE_PY_META_AI_MODEL",
+                "IPFS_DATASETS_PY_META_AI_MODEL",
+            )
+            or _generic_llm_model_env()
             or "meta-llama/Llama-3.3-70B-Instruct"
         ).strip()
     if pk in {"hf", "huggingface", "local_hf"}:
-        return (os.getenv("ipfs_accelerate_py_LLM_MODEL", "gpt2") or "gpt2").strip()
+        return (_generic_llm_model_env() or "gpt2").strip()
 
     # Provider unknown/auto: include the most common default.
-    return (os.getenv("ipfs_accelerate_py_LLM_MODEL", "") or "").strip()
+    return _generic_llm_model_env()
 
 
 def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], prompt: str, kwargs: Dict[str, object]) -> str:
@@ -1421,6 +1549,44 @@ def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], p
 @runtime_checkable
 class LLMProvider(Protocol):
     def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str: ...
+
+
+@runtime_checkable
+class BatchLLMProvider(Protocol):
+    def generate_batch(
+        self,
+        prompts: Sequence[str],
+        *,
+        model_name: Optional[str] = None,
+        **kwargs: object,
+    ) -> Sequence[str]: ...
+
+
+@runtime_checkable
+class TextBatchLLMProvider(Protocol):
+    def generate_text_batch(
+        self,
+        prompts: Sequence[str],
+        *,
+        model_name: Optional[str] = None,
+        **kwargs: object,
+    ) -> Sequence[str]: ...
+
+
+@runtime_checkable
+class NativeMultimodalProvider(Protocol):
+    def generate_multimodal(
+        self,
+        prompt: str,
+        *,
+        model_name: Optional[str] = None,
+        image_paths: Sequence[str] | None = None,
+        image_urls: Sequence[str] | None = None,
+        system_prompt: Optional[str] = None,
+        additional_text_blocks: Sequence[str] | None = None,
+        messages: Sequence[dict] | None = None,
+        **kwargs: object,
+    ) -> str: ...
 
 
 class ChatMessage(TypedDict):
@@ -1497,6 +1663,550 @@ def _coalesce_env(*names: str) -> str:
     return ""
 
 
+def _canonicalize_provider(name: Optional[str]) -> str:
+    key = str(name or "").strip().lower()
+    return _PROVIDER_ALIASES.get(key, key)
+
+
+def _generic_llm_model_env() -> str:
+    """Return the generic model override unless it actually names a provider."""
+
+    value = _coalesce_env(
+        "ipfs_accelerate_py_LLM_MODEL",
+        "IPFS_ACCELERATE_PY_LLM_MODEL",
+        "IPFS_DATASETS_PY_LLM_MODEL",
+    )
+    provider_names = {
+        *_PROVIDER_ALIASES,
+        *_PROVIDER_ALIASES.values(),
+        *_GROK_CLI_PROVIDER_ALIASES,
+        *_XAI_API_PROVIDER_ALIASES,
+        "accelerate",
+        "ipfs_accelerate_py",
+        "mock",
+        "dry_run",
+        "dry-run",
+        "openrouter",
+        "openai",
+        "copilot_cli",
+        "copilot_sdk",
+        "gemini_cli",
+        "gemini_py",
+        "claude",
+        "claude_code",
+        "claude_py",
+        "mistral_vibe",
+        "vibe",
+        "xai",
+        "meta_ai",
+        "hf",
+        "huggingface",
+        "local_hf",
+        "hf_inference_api",
+        "p2p_task_queue",
+        "llama_cpp",
+        "llama_cpp_native",
+    }
+    return "" if value.strip().lower() in provider_names else value
+
+
+def _resolve_hf_api_token() -> str:
+    token = _coalesce_env(
+        "IPFS_ACCELERATE_PY_HF_API_TOKEN",
+        "ipfs_accelerate_py_HF_API_TOKEN",
+        "IPFS_DATASETS_PY_HF_API_TOKEN",
+        "HUGGINGFACEHUB_API_TOKEN",
+        "HUGGINGFACE_API_TOKEN",
+        "HF_TOKEN",
+    )
+    if token:
+        return token
+    try:
+        hub = importlib.import_module("huggingface_hub")
+        getter = getattr(hub, "get_token", None)
+        resolved = getter() if callable(getter) else ""
+        return str(resolved or "").strip()
+    except Exception:
+        return ""
+
+
+def _resolve_openai_api_key() -> str:
+    return _coalesce_env(
+        "OPENAI_API_KEY",
+        "OPENAI_KEY",
+        "OPENAI_TOKEN",
+        "IPFS_ACCELERATE_PY_OPENAI_API_KEY",
+        "ipfs_accelerate_py_OPENAI_API_KEY",
+    )
+
+
+def _hf_token_fingerprint() -> str:
+    token = _resolve_hf_api_token()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:12] if token else ""
+
+
+def _resolve_hf_bill_to(*, kwargs: Optional[dict[str, object]] = None) -> str:
+    if kwargs:
+        for key in ("hf_bill_to", "bill_to", "organization", "org"):
+            value = kwargs.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+    return _coalesce_env(
+        "OPENROUTER_HF_BILL_TO",
+        "IPFS_ACCELERATE_PY_HF_BILL_TO",
+        "IPFS_DATASETS_PY_HF_BILL_TO",
+        "HUGGINGFACE_BILL_TO",
+        "HF_BILL_TO",
+        "HF_ORGANIZATION",
+        "HUGGINGFACE_ORG",
+    )
+
+
+def _resolve_hf_provider(*, kwargs: Optional[dict[str, object]] = None) -> str:
+    if kwargs:
+        for key in ("hf_provider", "hf_inference_provider", "huggingface_provider"):
+            value = kwargs.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+    return _coalesce_env(
+        "IPFS_ACCELERATE_PY_HF_PROVIDER",
+        "IPFS_ACCELERATE_PY_HF_INFERENCE_PROVIDER",
+        "IPFS_DATASETS_PY_HF_PROVIDER",
+        "IPFS_DATASETS_PY_HF_INFERENCE_PROVIDER",
+    )
+
+
+def _build_hf_inference_client_kwargs(
+    *,
+    provider: str,
+    token: str,
+    timeout: float,
+    bill_to: str = "",
+) -> dict[str, object]:
+    values: dict[str, object] = {
+        "provider": provider,
+        "token": token,
+        "timeout": timeout,
+    }
+    if bill_to.strip():
+        values["bill_to"] = bill_to.strip()
+    return values
+
+
+def _hf_model_uses_provider_policy(model_name: Optional[str]) -> bool:
+    return ":" in str(model_name or "").strip()
+
+
+def _hf_use_chat_completions(
+    *,
+    model_name: Optional[str],
+    kwargs: dict[str, object],
+) -> bool:
+    raw = kwargs.get("hf_use_chat_completions")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_USE_CHAT_COMPLETIONS",
+            "IPFS_DATASETS_PY_HF_USE_CHAT_COMPLETIONS",
+        )
+    if raw not in (None, ""):
+        return _truthy(str(raw))
+    provider_name = _resolve_hf_provider(kwargs=kwargs).strip().lower()
+    return bool(
+        (provider_name and provider_name != "hf-inference")
+        or _hf_model_uses_provider_policy(model_name)
+    )
+
+
+def _hf_to_jsonable(value: object) -> object:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_hf_to_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _hf_to_jsonable(item) for key, item in value.items()}
+    for method_name in ("model_dump", "dict"):
+        method = getattr(value, method_name, None)
+        if callable(method):
+            try:
+                return _hf_to_jsonable(method())
+            except Exception:
+                pass
+    if hasattr(value, "__dict__"):
+        try:
+            return _hf_to_jsonable(vars(value))
+        except Exception:
+            pass
+    return value
+
+
+def _is_hf_inference_provider_name(name: Optional[str]) -> bool:
+    return _canonicalize_provider(name) == "hf_inference_api"
+
+
+def _is_hf_model_compatibility_error(exc: BaseException) -> bool:
+    message = str(exc or "").lower()
+    return (
+        any(
+            token in message
+            for token in (
+                "http 404",
+                "not found",
+                "model",
+                "pipeline",
+                "task",
+                "unsupported",
+                "does not support",
+            )
+        )
+        and "http 402" not in message
+    )
+
+
+def _hf_llm_default_fallback_models() -> list[str]:
+    return [
+        "HuggingFaceH4/zephyr-7b-beta",
+        "Qwen/Qwen2.5-1.5B-Instruct",
+        "mistralai/Mistral-7B-Instruct-v0.2",
+    ]
+
+
+def _is_probably_text_generation_model(model_id: str) -> bool:
+    lower = str(model_id or "").strip().lower()
+    if not lower:
+        return False
+    return not any(
+        token in lower for token in ("bart", "pegasus", "t5", "mbart", "summar")
+    )
+
+
+def _hf_live_model_manager_candidate_models() -> list[str]:
+    try:
+        from ipfs_datasets_py.utils import model_manager
+
+        records = model_manager.list_hf_inference_models(model_kind="llm")
+    except Exception:
+        return []
+
+    def _score(record: dict[str, object]) -> tuple[int, int, str]:
+        model_id = str(record.get("model_id") or "").strip()
+        lower = model_id.lower()
+        pipeline_tag = str(record.get("pipeline_tag") or "").strip().lower()
+        if not model_id or not _is_probably_text_generation_model(model_id):
+            return (-100, -100, model_id)
+        score = 40 if pipeline_tag == "text-generation" else 20
+        if pipeline_tag == "summarization":
+            score -= 60
+        if any(
+            token in lower
+            for token in (
+                "instruct",
+                "chat",
+                "assistant",
+                "gpt",
+                "deepseek",
+                "qwen",
+                "mistral",
+                "llama",
+                "zephyr",
+                "oss",
+                "router",
+            )
+        ):
+            score += 50
+        return (score, len(model_id), model_id)
+
+    ordered: list[str] = []
+    for record in sorted(records, key=_score, reverse=True):
+        model_id = str(record.get("model_id") or "").strip()
+        if (
+            model_id
+            and model_id not in ordered
+            and _is_probably_text_generation_model(model_id)
+        ):
+            ordered.append(model_id)
+    return ordered
+
+
+def _hf_dynamic_model_discovery_enabled(*, kwargs: dict[str, object]) -> bool:
+    raw = kwargs.get("hf_dynamic_model_discovery")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_DYNAMIC_MODEL_DISCOVERY",
+            "IPFS_DATASETS_PY_HF_DYNAMIC_MODEL_DISCOVERY",
+        ) or "1"
+    return _truthy(str(raw))
+
+
+def _hf_llm_discovery_limit(*, kwargs: dict[str, object]) -> int:
+    raw = kwargs.get("hf_llm_discovery_limit")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_LLM_DISCOVERY_LIMIT",
+            "IPFS_DATASETS_PY_HF_LLM_DISCOVERY_LIMIT",
+        ) or "20"
+    try:
+        return max(1, int(raw))
+    except Exception:
+        return 20
+
+
+def _hf_llm_discovery_tags(*, kwargs: dict[str, object]) -> list[str]:
+    raw = kwargs.get("hf_llm_discovery_tags")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_LLM_DISCOVERY_TAGS",
+            "IPFS_DATASETS_PY_HF_LLM_DISCOVERY_TAGS",
+        ) or "text-generation,text2text-generation,summarization"
+    return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+
+@lru_cache(maxsize=32)
+def _discover_hf_models_for_pipeline(
+    *,
+    pipeline_tag: str,
+    limit: int,
+) -> tuple[str, ...]:
+    try:
+        hub = importlib.import_module("huggingface_hub")
+        api_cls = getattr(hub, "HfApi", None)
+        if api_cls is None:
+            return ()
+        models = api_cls().list_models(
+            inference_provider="hf-inference",
+            pipeline_tag=pipeline_tag,
+            limit=max(1, int(limit)),
+            token=_resolve_hf_api_token() or None,
+        )
+        output: list[str] = []
+        for item in models:
+            model_id = str(getattr(item, "id", "") or "").strip()
+            if model_id and model_id not in output:
+                output.append(model_id)
+        return tuple(output)
+    except Exception:
+        return ()
+
+
+def _hf_llm_fallback_models(*, kwargs: dict[str, object]) -> list[str]:
+    raw = kwargs.get("hf_model_fallbacks")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_LLM_FALLBACK_MODELS",
+            "IPFS_DATASETS_PY_HF_LLM_FALLBACK_MODELS",
+        )
+    if str(raw or "").strip():
+        return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+    models: list[str] = []
+    for model_id in _hf_live_model_manager_candidate_models():
+        if model_id not in models:
+            models.append(model_id)
+    if _hf_dynamic_model_discovery_enabled(kwargs=kwargs):
+        for tag in _hf_llm_discovery_tags(kwargs=kwargs):
+            for model_id in _discover_hf_models_for_pipeline(
+                pipeline_tag=tag,
+                limit=_hf_llm_discovery_limit(kwargs=kwargs),
+            ):
+                if model_id not in models:
+                    models.append(model_id)
+    for model_id in _hf_llm_default_fallback_models():
+        if model_id not in models:
+            models.append(model_id)
+    return models
+
+
+def _hf_arch_router_enabled(*, kwargs: dict[str, object]) -> bool:
+    raw = kwargs.get("hf_use_arch_router")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_USE_ARCH_ROUTER",
+            "IPFS_DATASETS_PY_HF_USE_ARCH_ROUTER",
+        ) or "1"
+    return _truthy(str(raw))
+
+
+def _hf_arch_router_model(*, kwargs: dict[str, object]) -> str:
+    raw = kwargs.get("hf_arch_router_model")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_ARCH_ROUTER_MODEL",
+            "IPFS_DATASETS_PY_HF_ARCH_ROUTER_MODEL",
+        )
+    return str(raw or _HF_ARCH_ROUTER_MODEL_ID).strip() or _HF_ARCH_ROUTER_MODEL_ID
+
+
+def _hf_arch_router_timeout(
+    *,
+    kwargs: dict[str, object],
+    request_timeout: float,
+) -> float:
+    raw = kwargs.get("hf_arch_router_timeout")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_ARCH_ROUTER_TIMEOUT",
+            "IPFS_DATASETS_PY_HF_ARCH_ROUTER_TIMEOUT",
+        )
+    if raw not in (None, ""):
+        try:
+            return max(1.0, float(raw))
+        except Exception:
+            pass
+    return max(1.0, min(float(request_timeout), 8.0))
+
+
+def _hf_arch_router_candidate_models(*, kwargs: dict[str, object]) -> list[str]:
+    raw = kwargs.get("hf_route_candidate_models")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_ROUTE_CANDIDATE_MODELS",
+            "IPFS_DATASETS_PY_HF_ROUTE_CANDIDATE_MODELS",
+        )
+
+    models: list[str] = []
+    values = raw if isinstance(raw, (list, tuple, set)) else str(raw or "").split(",")
+    for item in values:
+        model_id = str(item or "").strip()
+        if model_id and model_id not in models:
+            models.append(model_id)
+    if not models:
+        models.extend(_hf_live_model_manager_candidate_models())
+    if not models and _hf_dynamic_model_discovery_enabled(kwargs=kwargs):
+        models.extend(
+            _discover_hf_models_for_pipeline(
+                pipeline_tag="text-generation",
+                limit=_hf_llm_discovery_limit(kwargs=kwargs),
+            )
+        )
+    if not models:
+        models.extend(_hf_llm_default_fallback_models())
+    router_model = _hf_arch_router_model(kwargs=kwargs)
+    return [model_id for model_id in models if model_id and model_id != router_model]
+
+
+def _describe_hf_route_candidate(model_id: str) -> str:
+    lower = model_id.lower()
+    if "llama" in lower and "instruct" in lower:
+        return "General instruction-following, reasoning, coding, and multi-step assistant tasks."
+    if "bart" in lower or "pegasus" in lower or "xsum" in lower:
+        return "Summarization and concise rewriting of long passages or reports."
+    if "t5" in lower:
+        return "Instruction following, extraction, classification, and short structured responses."
+    return "General Hugging Face inference model for text generation tasks."
+
+
+def _build_hf_arch_router_prompt(
+    *,
+    route_config: list[dict[str, str]],
+    prompt: str,
+) -> str:
+    return (
+        "Choose the best route for the user request. Return JSON as "
+        '{"route": "route_name"} or {"route": "other"}.\n'
+        f"<routes>{json.dumps(route_config, ensure_ascii=False)}</routes>\n"
+        f"<conversation>{json.dumps([{'role': 'user', 'content': prompt}], ensure_ascii=False)}</conversation>"
+    )
+
+
+def _parse_hf_arch_router_response(
+    response_text: str,
+    *,
+    candidate_models: list[str],
+) -> Optional[str]:
+    text = str(response_text or "").strip()
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            route = str(data.get("route") or "").strip()
+            if route in candidate_models:
+                return route
+            if route.lower() == "other":
+                return None
+    except Exception:
+        pass
+    return next((model_id for model_id in candidate_models if model_id in text), None)
+
+
+def _route_hf_model_with_arch_router(
+    *,
+    prompt: str,
+    kwargs: dict[str, object],
+    request_timeout: float,
+    generate_fn: Callable[[str, str, float], str],
+) -> Optional[str]:
+    if not _hf_arch_router_enabled(kwargs=kwargs):
+        return None
+    candidate_models = _hf_arch_router_candidate_models(kwargs=kwargs)
+    if not candidate_models:
+        return None
+    route_config = [
+        {"name": model_id, "description": _describe_hf_route_candidate(model_id)}
+        for model_id in candidate_models
+    ]
+    try:
+        routed_text = generate_fn(
+            _build_hf_arch_router_prompt(route_config=route_config, prompt=prompt),
+            _hf_arch_router_model(kwargs=kwargs),
+            _hf_arch_router_timeout(
+                kwargs=kwargs,
+                request_timeout=request_timeout,
+            ),
+        )
+    except Exception:
+        return None
+    return _parse_hf_arch_router_response(
+        routed_text,
+        candidate_models=candidate_models,
+    )
+
+
+def _default_hf_inference_model(*, kwargs: dict[str, object]) -> str:
+    explicit = _coalesce_env(
+        "IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL",
+        "IPFS_DATASETS_PY_HF_INFERENCE_MODEL",
+    )
+    if explicit:
+        return explicit
+    generic_model = _generic_llm_model_env()
+    if generic_model:
+        return generic_model
+    candidates = _hf_arch_router_candidate_models(kwargs=kwargs)
+    return candidates[0] if candidates else "gpt2"
+
+
+def _ordered_hf_generation_models(
+    *,
+    kwargs: dict[str, object],
+    selected_model: str,
+    routed_model: Optional[str],
+) -> list[str]:
+    ordered: list[str] = []
+    for model_id in [
+        selected_model,
+        routed_model,
+        *_hf_arch_router_candidate_models(kwargs=kwargs),
+        *_hf_llm_fallback_models(kwargs=kwargs),
+    ]:
+        value = str(model_id or "").strip()
+        if value and value not in ordered:
+            ordered.append(value)
+    return ordered
+
+
+def _extract_hf_response_text(data: object) -> Optional[str]:
+    if isinstance(data, str):
+        return data.strip() or None
+    if isinstance(data, list) and data:
+        return _extract_hf_response_text(data[0])
+    if isinstance(data, dict):
+        for key in ("generated_text", "summary_text", "translation_text", "text"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    return None
+
+
 _LEADING_MARKER_RE = re.compile(r"^[\s\u2022\u25CF\u25E6\u25AA\u25AB\u2219\u00B7\*\-]+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
@@ -1536,6 +2246,99 @@ def _clean_mistral_vibe_output(text: str) -> str:
     return _clean_codex_output(text)
 
 
+def _clean_grok_cli_output(text: str) -> str:
+    return _clean_codex_output(text)
+
+
+def _grok_cli_command() -> str:
+    return (
+        _coalesce_env(
+            "ipfs_accelerate_py_GROK_CLI_CMD",
+            "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+            "IPFS_DATASETS_PY_GROK_CLI_CMD",
+            "GROK_CLI_CMD",
+        )
+        or "grok"
+    )
+
+
+def _grok_cli_auth_path() -> Path:
+    configured_home = os.getenv("GROK_HOME", "").strip()
+    grok_home = Path(configured_home).expanduser() if configured_home else Path.home() / ".grok"
+    return grok_home / "auth.json"
+
+
+def _grok_cli_auth_available() -> bool:
+    """Return whether headless Grok CLI authentication is configured."""
+
+    if _coalesce_env(
+        "XAI_API_KEY",
+        "ipfs_accelerate_py_XAI_API_KEY",
+        "IPFS_ACCELERATE_PY_XAI_API_KEY",
+        "IPFS_DATASETS_PY_XAI_API_KEY",
+        "GROK_AUTH_PROVIDER_COMMAND",
+    ):
+        return True
+    try:
+        auth_path = _grok_cli_auth_path()
+        return auth_path.is_file() and auth_path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _grok_cli_auth_fingerprint() -> tuple[str, int, int]:
+    """Return a non-secret cache fingerprint for the CLI OAuth credential."""
+
+    auth_path = _grok_cli_auth_path()
+    try:
+        stat_result = auth_path.stat()
+        return (str(auth_path), int(stat_result.st_mtime_ns), int(stat_result.st_size))
+    except OSError:
+        return (str(auth_path), 0, 0)
+
+
+def _grok_cli_json_payload(text: str) -> Optional[dict[str, object]]:
+    """Extract the final Grok headless JSON object from stdout."""
+
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    candidates = [raw, *reversed([line.strip() for line in raw.splitlines() if line.strip()])]
+    for candidate in candidates:
+        if not candidate.startswith("{"):
+            continue
+        try:
+            payload = json.loads(candidate)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def _grok_cli_error(stdout: str, stderr: str) -> LLMRouterError:
+    payload = _grok_cli_json_payload(stdout)
+    message = ""
+    if payload is not None:
+        message = str(payload.get("message") or payload.get("error") or "").strip()
+    if not message:
+        message = str(stderr or stdout or "Grok CLI failed").strip()
+    if "not signed in" in message.lower() or "not authenticated" in message.lower():
+        return LLMRouterError(
+            "Grok CLI is not authenticated. Run 'grok login --device-code' "
+            "or configure XAI_API_KEY."
+        )
+    return LLMRouterError(message or "Grok CLI failed")
+
+
+def _redact_grok_cli_command(command: Sequence[str], prompt: str) -> list[str]:
+    redacted: list[str] = []
+    for value in command:
+        text = str(value)
+        redacted.append(text.replace(prompt, "<prompt>") if prompt else text)
+    return redacted
+
+
 _MISTRAL_LABS_PRIVACY_URL = "https://admin.mistral.ai/plateforme/privacy"
 
 
@@ -1567,6 +2370,79 @@ def _cli_available(command: str) -> bool:
     if parts[0] == "npx":
         return True
     return shutil.which(parts[0]) is not None
+
+
+def find_standalone_copilot_cli() -> Optional[str]:
+    """Return the standalone Copilot executable when installed."""
+
+    return shutil.which("copilot")
+
+
+@lru_cache(maxsize=8)
+def _cli_help_text(command: str) -> str:
+    if not command:
+        return ""
+    try:
+        proc = subprocess.run(
+            shlex.split(command) + ["--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=20,
+            env=os.environ.copy(),
+        )
+    except Exception:
+        return ""
+    return f"{proc.stdout or ''}\n{proc.stderr or ''}".strip()
+
+
+def _copilot_cli_supports_image_inputs(command: str) -> bool:
+    help_text = _cli_help_text(command).lower()
+    return any(
+        marker in help_text
+        for marker in ("--image", "image input", "attach image")
+    )
+
+
+def _normalize_copilot_add_dirs(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        candidates: Sequence[object] = raw.split(os.pathsep)
+    elif isinstance(raw, Sequence) and not isinstance(
+        raw, (bytes, bytearray, str)
+    ):
+        candidates = raw
+    else:
+        candidates = [raw]
+    output: list[str] = []
+    for candidate in candidates:
+        value = str(candidate or "").strip()
+        if not value:
+            continue
+        normalized = os.path.abspath(os.path.expanduser(value))
+        if normalized not in output:
+            output.append(normalized)
+    return output
+
+
+def _copilot_cli_add_dirs_from_env() -> list[str]:
+    return _normalize_copilot_add_dirs(
+        _coalesce_env(
+            "ipfs_accelerate_py_COPILOT_CLI_ADD_DIRS",
+            "IPFS_ACCELERATE_PY_COPILOT_CLI_ADD_DIRS",
+            "IPFS_DATASETS_PY_COPILOT_CLI_ADD_DIRS",
+        )
+    )
+
+
+def _copilot_allow_all_paths_default() -> bool:
+    raw = _coalesce_env(
+        "ipfs_accelerate_py_COPILOT_CLI_ALLOW_ALL_PATHS",
+        "IPFS_ACCELERATE_PY_COPILOT_CLI_ALLOW_ALL_PATHS",
+        "IPFS_DATASETS_PY_COPILOT_CLI_ALLOW_ALL_PATHS",
+    )
+    return _truthy(raw)
 
 
 def _run_cli_command(
@@ -1624,13 +2500,25 @@ def _run_cli_command(
 
 
 def _get_openrouter_provider() -> Optional[LLMProvider]:
-    api_key = _coalesce_env("ipfs_accelerate_py_OPENROUTER_API_KEY", "OPENROUTER_API_KEY")
+    api_key = _coalesce_env(
+        "ipfs_accelerate_py_OPENROUTER_API_KEY",
+        "IPFS_ACCELERATE_PY_OPENROUTER_API_KEY",
+        "IPFS_DATASETS_PY_OPENROUTER_API_KEY",
+        "OPENROUTER_API_KEY",
+    )
     if not api_key:
         return None
 
-    base_url = os.getenv("ipfs_accelerate_py_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    base_url = (
+        _coalesce_env(
+            "ipfs_accelerate_py_OPENROUTER_BASE_URL",
+            "IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL",
+            "IPFS_DATASETS_PY_OPENROUTER_BASE_URL",
+        )
+        or "https://openrouter.ai/api/v1"
+    ).rstrip("/")
 
-    def _request(payload: dict, *, timeout: float) -> dict:
+    def _request(payload: dict, *, timeout: float, bill_to: str = "") -> dict:
         req = urllib.request.Request(
             f"{base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -1641,6 +2529,7 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
                 "Accept": "application/json",
                 **({"HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER")} if os.getenv("OPENROUTER_HTTP_REFERER") else {}),
                 **({"X-Title": os.getenv("OPENROUTER_APP_TITLE")} if os.getenv("OPENROUTER_APP_TITLE") else {}),
+                **({"X-HF-Bill-To": bill_to} if bill_to else {}),
             },
         )
 
@@ -1672,7 +2561,11 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
             model = (
                 model_name
                 or os.getenv("ipfs_accelerate_py_OPENROUTER_MODEL")
+                or os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_MODEL")
+                or os.getenv("IPFS_DATASETS_PY_OPENROUTER_MODEL")
                 or os.getenv("ipfs_accelerate_py_LLM_MODEL")
+                or os.getenv("IPFS_ACCELERATE_PY_LLM_MODEL")
+                or os.getenv("IPFS_DATASETS_PY_LLM_MODEL")
                 or "openai/gpt-4o-mini"
             )
 
@@ -1697,7 +2590,11 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
                 payload["seed"] = int(kwargs.get("seed"))
 
             timeout = float(kwargs.get("timeout", 120))
-            return _request(payload, timeout=timeout)
+            return _request(
+                payload,
+                timeout=timeout,
+                bill_to=_resolve_hf_bill_to(kwargs=dict(kwargs)),
+            )
 
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
             data = self.chat_completions(
@@ -1720,6 +2617,396 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
             raise RuntimeError("OpenRouter response missing choices")
 
     return _OpenRouterProvider()
+
+
+def _get_openai_provider() -> Optional[LLMProvider]:
+    api_key = _resolve_openai_api_key()
+    if not api_key:
+        return None
+    base_url = (
+        _coalesce_env(
+            "IPFS_ACCELERATE_PY_OPENAI_BASE_URL",
+            "ipfs_accelerate_py_OPENAI_BASE_URL",
+            "IPFS_DATASETS_PY_OPENAI_BASE_URL",
+        )
+        or "https://api.openai.com/v1"
+    ).rstrip("/")
+
+    def _request(payload: dict, *, timeout: float) -> dict:
+        request = urllib.request.Request(
+            f"{base_url}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            raise RuntimeError(
+                f"OpenAI HTTP {exc.code}: {detail or exc.reason}"
+            ) from exc
+        except Exception as exc:
+            raise RuntimeError(f"OpenAI request failed: {exc}") from exc
+        try:
+            data = json.loads(raw)
+        except Exception as exc:
+            raise RuntimeError("OpenAI returned invalid JSON") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("OpenAI returned invalid JSON")
+        return data
+
+    class _OpenAIProvider:
+        def chat_completions(
+            self,
+            messages: Sequence[ChatMessage],
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> dict:
+            model = model_name or _coalesce_env(
+                "IPFS_ACCELERATE_PY_OPENAI_MODEL",
+                "ipfs_accelerate_py_OPENAI_MODEL",
+                "IPFS_DATASETS_PY_OPENAI_MODEL",
+                "OPENAI_MODEL",
+                "IPFS_ACCELERATE_PY_LLM_MODEL",
+                "ipfs_accelerate_py_LLM_MODEL",
+                "IPFS_DATASETS_PY_LLM_MODEL",
+            ) or "gpt-4.1-mini"
+            payload: dict[str, object] = {
+                "model": model,
+                "messages": list(messages),
+                "max_tokens": int(
+                    kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))
+                ),
+                "temperature": float(kwargs.get("temperature", 0.2)),
+            }
+            for key in ("logprobs", "top_logprobs", "response_format", "seed"):
+                value = kwargs.get(key)
+                if value is not None:
+                    payload[key] = value
+            return _request(payload, timeout=float(kwargs.get("timeout", 120)))
+
+        def generate(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> str:
+            data = self.chat_completions(
+                [{"role": "user", "content": prompt}],
+                model_name=model_name,
+                **kwargs,
+            )
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                item = choices[0] if isinstance(choices[0], dict) else {}
+                message = item.get("message")
+                if isinstance(message, dict) and isinstance(
+                    message.get("content"), str
+                ):
+                    return message["content"].strip()
+                if isinstance(item.get("text"), str):
+                    return item["text"].strip()
+            raise RuntimeError("OpenAI response missing choices")
+
+    return _OpenAIProvider()
+
+
+def _get_hf_inference_api_provider() -> Optional[LLMProvider]:
+    api_token = _resolve_hf_api_token()
+    if not api_token:
+        return None
+    base_url = (
+        _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_INFERENCE_BASE_URL",
+            "IPFS_DATASETS_PY_HF_INFERENCE_BASE_URL",
+        )
+        or "https://router.huggingface.co/hf-inference/models"
+    ).rstrip("/")
+
+    class _HFInferenceAPIProvider:
+        def chat_completions(
+            self,
+            messages: Sequence[ChatMessage],
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> dict:
+            timeout = float(kwargs.get("timeout", 120))
+            bill_to = _resolve_hf_bill_to(kwargs=dict(kwargs))
+            provider_name = _resolve_hf_provider(kwargs=dict(kwargs)).strip() or "auto"
+            selected_model = (
+                model_name or _default_hf_inference_model(kwargs=dict(kwargs))
+            ).strip()
+            try:
+                hub = importlib.import_module("huggingface_hub")
+                client_cls = getattr(hub, "InferenceClient", None)
+                if client_cls is None:
+                    raise RuntimeError("huggingface_hub.InferenceClient not available")
+                client = client_cls(
+                    **_build_hf_inference_client_kwargs(
+                        provider=provider_name,
+                        token=api_token,
+                        bill_to=bill_to,
+                        timeout=timeout,
+                    )
+                )
+                chat = getattr(client, "chat", None)
+                completions = getattr(chat, "completions", None)
+                create = getattr(completions, "create", None)
+                if not callable(create):
+                    raise RuntimeError(
+                        "huggingface_hub.InferenceClient chat completions not available"
+                    )
+                payload: dict[str, object] = {
+                    "messages": list(messages),
+                    "model": selected_model,
+                    "stream": False,
+                }
+                max_tokens = kwargs.get("max_tokens", kwargs.get("max_new_tokens"))
+                if max_tokens is not None:
+                    payload["max_tokens"] = int(max_tokens)
+                for key in (
+                    "temperature",
+                    "top_p",
+                    "logprobs",
+                    "top_logprobs",
+                    "response_format",
+                    "seed",
+                    "tools",
+                    "tool_choice",
+                    "tool_prompt",
+                    "extra_body",
+                    "frequency_penalty",
+                    "presence_penalty",
+                ):
+                    value = kwargs.get(key)
+                    if value is not None:
+                        payload[key] = value
+                stop = kwargs.get("stop")
+                if stop is not None:
+                    payload["stop"] = (
+                        list(stop)
+                        if isinstance(stop, (list, tuple))
+                        else [str(stop)]
+                    )
+                result = create(**payload)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"HF Inference Providers chat request failed: {exc}"
+                ) from exc
+            data = _hf_to_jsonable(result)
+            if not isinstance(data, dict):
+                raise RuntimeError("HF Inference Providers chat response invalid")
+            return data
+
+        def generate(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> str:
+            effective_kwargs = dict(kwargs)
+            if _hf_use_chat_completions(
+                model_name=model_name,
+                kwargs=effective_kwargs,
+            ):
+                data = self.chat_completions(
+                    [{"role": "user", "content": prompt}],
+                    model_name=model_name,
+                    **kwargs,
+                )
+                parsed = _parse_openai_compat_response(data)
+                if parsed.choices and parsed.choices[0].message.content:
+                    return parsed.choices[0].message.content
+                raise RuntimeError(
+                    "HF Inference Providers chat response missing choices"
+                )
+
+            max_new_tokens = int(
+                kwargs.get("max_new_tokens", kwargs.get("max_tokens", 128))
+            )
+            temperature = float(kwargs.get("temperature", 0.2))
+            timeout = float(kwargs.get("timeout", 120))
+            wait_for_model_raw = kwargs.get("wait_for_model", True)
+            use_cache_raw = kwargs.get("use_cache", True)
+            wait_for_model = (
+                _truthy(wait_for_model_raw)
+                if isinstance(wait_for_model_raw, str)
+                else bool(wait_for_model_raw)
+            )
+            use_cache = (
+                _truthy(use_cache_raw)
+                if isinstance(use_cache_raw, str)
+                else bool(use_cache_raw)
+            )
+            parameters: dict[str, object] = {
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature,
+            }
+            for key in (
+                "top_p",
+                "top_k",
+                "repetition_penalty",
+                "do_sample",
+                "return_full_text",
+            ):
+                value = kwargs.get(key)
+                if value is not None:
+                    parameters[key] = value
+            payload: dict[str, object] = {
+                "inputs": prompt,
+                "parameters": parameters,
+                "options": {
+                    "wait_for_model": wait_for_model,
+                    "use_cache": use_cache,
+                },
+            }
+            bill_to = _resolve_hf_bill_to(kwargs=effective_kwargs)
+            headers = {
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            if bill_to:
+                headers["X-HF-Bill-To"] = bill_to
+
+            def _generate_with_model(selected_model: str) -> str:
+                request = urllib.request.Request(
+                    f"{base_url}/{selected_model}",
+                    data=json.dumps(payload).encode("utf-8"),
+                    method="POST",
+                    headers=headers,
+                )
+
+                def _generate_via_inference_client() -> str:
+                    try:
+                        hub = importlib.import_module("huggingface_hub")
+                        client_cls = getattr(hub, "InferenceClient", None)
+                        if client_cls is None:
+                            raise RuntimeError(
+                                "huggingface_hub.InferenceClient not available"
+                            )
+                        client = client_cls(
+                            **_build_hf_inference_client_kwargs(
+                                provider="hf-inference",
+                                token=api_token,
+                                bill_to=bill_to,
+                                timeout=timeout,
+                            )
+                        )
+                        result = client.text_generation(
+                            prompt,
+                            model=selected_model,
+                            max_new_tokens=max_new_tokens,
+                            temperature=temperature,
+                            top_p=parameters.get("top_p"),
+                            top_k=parameters.get("top_k"),
+                            repetition_penalty=parameters.get("repetition_penalty"),
+                            do_sample=parameters.get("do_sample"),
+                            return_full_text=parameters.get("return_full_text"),
+                        )
+                    except Exception as exc:
+                        raise RuntimeError(
+                            f"HF Inference Client request failed: {exc}"
+                        ) from exc
+                    if isinstance(result, str) and result:
+                        return result
+                    generated = getattr(result, "generated_text", None)
+                    if isinstance(generated, str) and generated:
+                        return generated
+                    raise RuntimeError(
+                        "HF Inference Client response missing generated text"
+                    )
+
+                try:
+                    with urllib.request.urlopen(request, timeout=timeout) as response:
+                        raw = response.read().decode("utf-8", errors="replace")
+                except urllib.error.HTTPError as exc:
+                    if exc.code in {400, 404, 422, 503}:
+                        return _generate_via_inference_client()
+                    detail = (
+                        exc.read().decode("utf-8", errors="replace")
+                        if exc.fp
+                        else ""
+                    )
+                    raise RuntimeError(
+                        f"HF Inference API HTTP {exc.code}: {detail or exc.reason}"
+                    ) from exc
+                except Exception as exc:
+                    if "404" in str(exc) or "Not Found" in str(exc):
+                        return _generate_via_inference_client()
+                    raise RuntimeError(
+                        f"HF Inference API request failed: {exc}"
+                    ) from exc
+                try:
+                    data = json.loads(raw)
+                except Exception as exc:
+                    raise RuntimeError(
+                        "HF Inference API returned invalid JSON"
+                    ) from exc
+                if isinstance(data, dict) and isinstance(data.get("error"), str):
+                    raise RuntimeError(
+                        f"HF Inference API error: {data.get('error')}"
+                    )
+                extracted = _extract_hf_response_text(data)
+                if extracted is None:
+                    raise RuntimeError(
+                        "HF Inference API response missing generated text"
+                    )
+                return extracted
+
+            selected_model = (
+                model_name or _default_hf_inference_model(kwargs=effective_kwargs)
+            ).strip()
+            routed_model: Optional[str] = None
+            if model_name is None and not bool(
+                kwargs.get("hf_skip_model_routing")
+            ):
+                routed_model = _route_hf_model_with_arch_router(
+                    prompt=prompt,
+                    kwargs=effective_kwargs,
+                    request_timeout=timeout,
+                    generate_fn=lambda router_prompt, router_model, router_timeout: _HFInferenceAPIProvider().generate(
+                        router_prompt,
+                        model_name=router_model,
+                        hf_skip_model_routing=True,
+                        max_new_tokens=128,
+                        temperature=0.0,
+                        timeout=router_timeout,
+                        return_full_text=False,
+                    ),
+                )
+                if routed_model:
+                    selected_model = routed_model
+            candidates = [selected_model]
+            if model_name is None:
+                candidates = _ordered_hf_generation_models(
+                    kwargs=effective_kwargs,
+                    selected_model=selected_model,
+                    routed_model=routed_model,
+                )
+            last_error: Optional[Exception] = None
+            for candidate in candidates:
+                try:
+                    return _generate_with_model(candidate)
+                except Exception as exc:
+                    last_error = exc
+                    if not _is_hf_model_compatibility_error(exc):
+                        raise
+            if last_error is not None:
+                raise last_error
+            return _generate_with_model(selected_model)
+
+    return _HFInferenceAPIProvider()
 
 
 def _get_llama_cpp_provider(*, auto_install: bool = False) -> Optional[LLMProvider]:
@@ -2192,16 +3479,25 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
     # mode with an auto-executed prompt (`-i`) so this works in non-interactive
     # worker subprocesses.
     default_command = "npx --yes @github/copilot"
-    command = os.environ.get("ipfs_accelerate_py_COPILOT_CLI_CMD", default_command)
+    command = _coalesce_env(
+        "ipfs_accelerate_py_COPILOT_CLI_CMD",
+        "IPFS_ACCELERATE_PY_COPILOT_CLI_CMD",
+        "IPFS_DATASETS_PY_COPILOT_CLI_CMD",
+    ) or default_command
     if not _cli_available(command):
         return None
+    supports_image_inputs = _copilot_cli_supports_image_inputs(command)
 
     class _CopilotCLIProvider:
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
             model = (
                 (model_name or "").strip()
-                or os.getenv("ipfs_accelerate_py_COPILOT_CLI_MODEL", "").strip()
-                or os.getenv("ipfs_accelerate_py_LLM_MODEL", "").strip()
+                or _coalesce_env(
+                    "ipfs_accelerate_py_COPILOT_CLI_MODEL",
+                    "IPFS_ACCELERATE_PY_COPILOT_CLI_MODEL",
+                    "IPFS_DATASETS_PY_COPILOT_CLI_MODEL",
+                )
+                or _generic_llm_model_env()
                 or "gpt-5-mini"
             )
             timeout = float(kwargs.get("timeout", 180))
@@ -2214,6 +3510,21 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
             copilot_log_dir = kwargs.pop("copilot_log_dir", None)
             resume_session_id = kwargs.pop("resume_session_id", None)
             continue_session = bool(kwargs.pop("continue_session", False))
+            copilot_add_dirs = _normalize_copilot_add_dirs(
+                kwargs.pop("copilot_add_dirs", None)
+            )
+            if not copilot_add_dirs:
+                copilot_add_dirs = _copilot_cli_add_dirs_from_env()
+            allow_paths_value = kwargs.pop("copilot_allow_all_paths", None)
+            copilot_allow_all_paths = (
+                _copilot_allow_all_paths_default()
+                if allow_paths_value is None
+                else (
+                    _truthy(str(allow_paths_value))
+                    if isinstance(allow_paths_value, str)
+                    else bool(allow_paths_value)
+                )
+            )
 
             needs_native = bool(
                 trace_enabled
@@ -2221,6 +3532,8 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                 or copilot_log_dir
                 or resume_session_id
                 or continue_session
+                or copilot_add_dirs
+                or copilot_allow_all_paths
             )
 
             # Template mode: allow deterministic stubs like `bash -lc "echo OK"`.
@@ -2263,11 +3576,47 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                         f"copilot_session_{_utc_stamp()}_{os.getpid()}.md",
                     )
 
-            # Structured mode: invoke Copilot CLI directly with supported args.
-            # Use `-i` (interactive with auto-executed prompt) for non-interactive
-            # worker processes.
-            cmd: list[str] = list(base_parts)
-            cmd.extend(["--silent", "--stream", "off", "--model", model, "-i", str(prompt)])
+            use_standalone_file_mode = bool(
+                copilot_add_dirs or copilot_allow_all_paths
+            )
+            if use_standalone_file_mode:
+                standalone = find_standalone_copilot_cli()
+                if standalone is None:
+                    raise RuntimeError(
+                        "copilot CLI binary not found on PATH (required for "
+                        "trusted-directory flags)"
+                    )
+                cmd = [
+                    standalone,
+                    "--silent",
+                    "--stream",
+                    "off",
+                    "--allow-all-tools",
+                    "--no-ask-user",
+                    "--model",
+                    model,
+                    "--prompt",
+                    str(prompt),
+                ]
+                if copilot_allow_all_paths:
+                    cmd.insert(5, "--allow-all-paths")
+                for add_dir in copilot_add_dirs:
+                    cmd.extend(["--add-dir", add_dir])
+            else:
+                # Use `-i` (interactive with an auto-executed prompt) for
+                # non-interactive worker subprocesses.
+                cmd = list(base_parts)
+                cmd.extend(
+                    [
+                        "--silent",
+                        "--stream",
+                        "off",
+                        "--model",
+                        model,
+                        "-i",
+                        str(prompt),
+                    ]
+                )
 
             if isinstance(copilot_config_dir, str) and copilot_config_dir.strip():
                 cmd.extend(["--config-dir", copilot_config_dir.strip()])
@@ -2342,6 +3691,137 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                     pass
 
             return cleaned
+
+        def generate_multimodal(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            image_paths: Sequence[str] | None = None,
+            image_urls: Sequence[str] | None = None,
+            system_prompt: Optional[str] = None,
+            additional_text_blocks: Sequence[str] | None = None,
+            messages: Sequence[dict] | None = None,
+            **kwargs: object,
+        ) -> str:
+            if not supports_image_inputs:
+                raise LLMRouterError(
+                    "copilot_cli multimodal path unavailable: installed "
+                    "Copilot CLI does not advertise image input support"
+                )
+            if image_urls:
+                raise LLMRouterError(
+                    "copilot_cli multimodal path requires local image_paths; "
+                    "image_urls are not supported"
+                )
+            copilot_cli = find_standalone_copilot_cli()
+            if copilot_cli is None:
+                raise LLMRouterError("Copilot CLI not found on PATH")
+
+            call_options = dict(kwargs)
+            timeout = float(call_options.pop("timeout", 180))
+            model = (
+                str(model_name or "").strip()
+                or _coalesce_env(
+                    "ipfs_accelerate_py_COPILOT_CLI_MODEL",
+                    "IPFS_ACCELERATE_PY_COPILOT_CLI_MODEL",
+                    "IPFS_DATASETS_PY_COPILOT_CLI_MODEL",
+                )
+                or _generic_llm_model_env()
+                or "gpt-5-mini"
+            )
+            add_dirs = _normalize_copilot_add_dirs(
+                call_options.pop("copilot_add_dirs", None)
+            )
+            if not add_dirs:
+                add_dirs = _copilot_cli_add_dirs_from_env()
+            allow_value = call_options.pop("copilot_allow_all_paths", None)
+            allow_all_paths = (
+                _copilot_allow_all_paths_default()
+                if allow_value is None
+                else (
+                    _truthy(str(allow_value))
+                    if isinstance(allow_value, str)
+                    else bool(allow_value)
+                )
+            )
+
+            prompt_sections: list[str] = []
+            if system_prompt and str(system_prompt).strip():
+                prompt_sections.append(str(system_prompt).strip())
+            if messages:
+                for message in messages:
+                    if not isinstance(message, dict):
+                        continue
+                    role = str(message.get("role") or "user").strip()
+                    content = message.get("content")
+                    if isinstance(content, list):
+                        text_parts = [
+                            str(part.get("text") or "").strip()
+                            for part in content
+                            if isinstance(part, dict)
+                            and str(part.get("type") or "").strip() == "text"
+                            and str(part.get("text") or "").strip()
+                        ]
+                        rendered = "\n".join(text_parts)
+                    else:
+                        rendered = str(content or "").strip()
+                    if rendered:
+                        prompt_sections.append(f"{role}: {rendered}")
+            else:
+                prompt_sections.append(str(prompt or "").strip())
+                prompt_sections.extend(
+                    str(block).strip()
+                    for block in additional_text_blocks or ()
+                    if str(block or "").strip()
+                )
+
+            cmd = [
+                copilot_cli,
+                "--silent",
+                "--stream",
+                "off",
+                "--allow-all-tools",
+                "--no-ask-user",
+                "--model",
+                model,
+                "--prompt",
+            ]
+            if allow_all_paths:
+                cmd.insert(5, "--allow-all-paths")
+            image_dirs: list[str] = []
+            for image_path in image_paths or ():
+                candidate = str(image_path or "").strip()
+                if not candidate:
+                    continue
+                image_dir = os.path.abspath(os.path.dirname(candidate) or ".")
+                if image_dir not in image_dirs:
+                    image_dirs.append(image_dir)
+                cmd.extend(["--image", candidate])
+            for add_dir in [*add_dirs, *image_dirs]:
+                if add_dir:
+                    cmd.extend(["--add-dir", add_dir])
+            cmd.append(
+                "\n\n".join(
+                    section for section in prompt_sections if section
+                ).strip()
+            )
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=timeout,
+                    env=os.environ.copy(),
+                )
+            except FileNotFoundError as exc:
+                raise LLMRouterError("Copilot CLI not found on PATH") from exc
+            if proc.returncode != 0:
+                raise LLMRouterError(
+                    (proc.stderr or "").strip() or "copilot CLI failed"
+                )
+            return _clean_copilot_output(proc.stdout or "")
 
     return _CopilotCLIProvider()
 
@@ -2504,6 +3984,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
         "IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD",
         "IPFS_ACCELERATE_PY_MISTRAL_VIBE_CLI_CMD",
         "ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD",
+        "IPFS_DATASETS_PY_MISTRAL_VIBE_CLI_CMD",
     )
     command = configured_command or "vibe --prompt {prompt} --output text --max-turns 1"
     if not _cli_available(command):
@@ -2533,6 +4014,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
                     "IPFS_ACCELERATE_MISTRAL_VIBE_MODEL",
                     "IPFS_ACCELERATE_PY_MISTRAL_VIBE_MODEL",
                     "ipfs_accelerate_py_MISTRAL_VIBE_MODEL",
+                    "IPFS_DATASETS_PY_MISTRAL_VIBE_MODEL",
                 )
                 or ""
             ).strip()
@@ -2558,6 +4040,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
                     "IPFS_ACCELERATE_MISTRAL_API_KEY",
                     "IPFS_ACCELERATE_PY_MISTRAL_API_KEY",
                     "ipfs_accelerate_py_MISTRAL_API_KEY",
+                    "IPFS_DATASETS_PY_MISTRAL_API_KEY",
                     "MISTRAL_API_KEY",
                 )
             )
@@ -2586,6 +4069,246 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
             return _clean_mistral_vibe_output(raw)
 
     return _MistralVibeProvider()
+
+
+def _get_grok_cli_provider() -> Optional[LLMProvider]:
+    """Return the official Grok CLI provider when its binary is available."""
+
+    command = _grok_cli_command()
+    if not _cli_available(command):
+        return None
+
+    class _GrokCLIProvider:
+        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            model = (
+                (model_name or "").strip()
+                or _coalesce_env(
+                    "ipfs_accelerate_py_GROK_CLI_MODEL",
+                    "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
+                    "IPFS_DATASETS_PY_GROK_CLI_MODEL",
+                    "GROK_CLI_MODEL",
+                )
+            )
+            timeout = float(kwargs.pop("timeout", 180))
+            trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
+            trace_dir = kwargs.pop("trace_dir", None)
+            trace_enabled = bool(kwargs.pop("trace", False) or trace_jsonl_path or trace_dir)
+
+            command_override = kwargs.pop("grok_cli_cmd", None)
+            if isinstance(command_override, list) and command_override:
+                base_parts = [str(value) for value in command_override]
+                command_text = ""
+                structured_cli = True
+            else:
+                command_text = (
+                    str(command_override).strip()
+                    if isinstance(command_override, str) and command_override.strip()
+                    else command
+                )
+                base_parts = shlex.split(command_text)
+                executable_name = Path(base_parts[0]).name.lower() if base_parts else ""
+                structured_cli = executable_name in {"grok", "agent"}
+
+            extra_env: Dict[str, Optional[str]] = {}
+            if not os.getenv("XAI_API_KEY", "").strip():
+                alternate_key = _coalesce_env(
+                    "ipfs_accelerate_py_XAI_API_KEY",
+                    "IPFS_ACCELERATE_PY_XAI_API_KEY",
+                    "IPFS_DATASETS_PY_XAI_API_KEY",
+                )
+                if alternate_key:
+                    extra_env["XAI_API_KEY"] = alternate_key
+
+            if not structured_cli:
+                raw = _run_cli_command(
+                    command_text,
+                    prompt,
+                    timeout_seconds=timeout,
+                    template_vars={"model": model},
+                    label="Grok CLI",
+                    extra_env=extra_env,
+                )
+                payload = _grok_cli_json_payload(raw)
+                if payload is not None:
+                    if str(payload.get("type") or "").lower() == "error":
+                        raise _grok_cli_error(raw, "")
+                    text = payload.get("text")
+                    if isinstance(text, str):
+                        return _clean_grok_cli_output(text)
+                return _clean_grok_cli_output(raw)
+
+            if not base_parts:
+                raise LLMRouterError("Grok CLI command is empty")
+
+            cmd = list(base_parts)
+            if model and "--model" not in cmd and "-m" not in cmd:
+                cmd.extend(["--model", model])
+            if "--output-format" not in cmd:
+                cmd.extend(["--output-format", "json"])
+            if "--no-plan" not in cmd:
+                cmd.append("--no-plan")
+            if "--no-subagents" not in cmd:
+                cmd.append("--no-subagents")
+            if "--disable-web-search" not in cmd:
+                cmd.append("--disable-web-search")
+            if "--no-memory" not in cmd:
+                cmd.append("--no-memory")
+            if "--verbatim" not in cmd:
+                cmd.append("--verbatim")
+
+            max_turns = max(
+                1,
+                int(
+                    kwargs.pop(
+                        "grok_max_turns",
+                        _coalesce_env(
+                            "ipfs_accelerate_py_GROK_CLI_MAX_TURNS",
+                            "IPFS_ACCELERATE_PY_GROK_CLI_MAX_TURNS",
+                        )
+                        or "1",
+                    )
+                ),
+            )
+            if "--max-turns" not in cmd:
+                cmd.extend(["--max-turns", str(max_turns)])
+
+            permission_mode = str(
+                kwargs.pop(
+                    "grok_permission_mode",
+                    _coalesce_env(
+                        "ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE",
+                        "IPFS_ACCELERATE_PY_GROK_CLI_PERMISSION_MODE",
+                    )
+                    or "dontAsk",
+                )
+            ).strip()
+            if permission_mode and "--permission-mode" not in cmd:
+                cmd.extend(["--permission-mode", permission_mode])
+
+            tools = kwargs.pop(
+                "grok_tools",
+                os.getenv(
+                    "ipfs_accelerate_py_GROK_CLI_TOOLS",
+                    os.getenv("IPFS_ACCELERATE_PY_GROK_CLI_TOOLS", ""),
+                ),
+            )
+            if "--tools" not in cmd:
+                cmd.extend(["--tools", str(tools or "")])
+
+            reasoning_effort = str(
+                kwargs.pop(
+                    "reasoning_effort",
+                    _coalesce_env(
+                        "ipfs_accelerate_py_GROK_CLI_REASONING_EFFORT",
+                        "IPFS_ACCELERATE_PY_GROK_CLI_REASONING_EFFORT",
+                    ),
+                )
+                or ""
+            ).strip()
+            if reasoning_effort and "--reasoning-effort" not in cmd and "--effort" not in cmd:
+                cmd.extend(["--reasoning-effort", reasoning_effort])
+
+            resume_session_id = str(kwargs.pop("resume_session_id", "") or "").strip()
+            continue_session = bool(kwargs.pop("continue_session", False))
+            chat_session_id = str(kwargs.pop("chat_session_id", "") or "").strip()
+            if resume_session_id:
+                cmd.extend(["--resume", resume_session_id])
+            elif continue_session:
+                cmd.append("--continue")
+            elif chat_session_id:
+                cmd.extend(["--session-id", chat_session_id])
+
+            prompt_path = ""
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    prefix="llm-router-grok-prompt-",
+                    suffix=".txt",
+                    delete=False,
+                ) as prompt_file:
+                    prompt_file.write(str(prompt))
+                    prompt_path = prompt_file.name
+                cmd.extend(["--prompt-file", prompt_path])
+
+                env = os.environ.copy()
+                for key, value in extra_env.items():
+                    if value is not None:
+                        env[key] = value
+                try:
+                    proc = subprocess.run(
+                        cmd,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                        timeout=timeout,
+                        env=env,
+                    )
+                except FileNotFoundError as exc:
+                    raise LLMRouterError("Grok CLI not found on PATH") from exc
+            finally:
+                if prompt_path:
+                    try:
+                        os.unlink(prompt_path)
+                    except OSError:
+                        pass
+
+            payload = _grok_cli_json_payload(proc.stdout or "")
+            if proc.returncode != 0:
+                raise _grok_cli_error(proc.stdout or "", proc.stderr or "")
+            if payload is not None and str(payload.get("type") or "").lower() == "error":
+                raise _grok_cli_error(proc.stdout or "", proc.stderr or "")
+
+            if trace_enabled:
+                trace_path = ""
+                if isinstance(trace_jsonl_path, str) and trace_jsonl_path.strip():
+                    trace_path = trace_jsonl_path.strip()
+                elif isinstance(trace_dir, (str, Path)) and str(trace_dir).strip():
+                    trace_path = os.path.join(str(trace_dir).strip(), "grok_cli_trace.jsonl")
+                if trace_path:
+                    record: dict[str, object] = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "provider": "grok_cli",
+                        "model": model,
+                        "cmd": _redact_grok_cli_command(cmd, prompt),
+                        "stdout_chars": len(proc.stdout or ""),
+                        "stderr_chars": len(proc.stderr or ""),
+                    }
+                    if payload is not None:
+                        for key in (
+                            "stopReason",
+                            "sessionId",
+                            "requestId",
+                            "num_turns",
+                            "usage",
+                            "modelUsage",
+                            "total_cost_usd",
+                            "total_cost_usd_ticks",
+                            "cost_is_partial",
+                            "usage_is_incomplete",
+                        ):
+                            if key in payload:
+                                record[key] = payload[key]
+                    try:
+                        os.makedirs(os.path.dirname(trace_path) or ".", exist_ok=True)
+                        with open(trace_path, "a", encoding="utf-8") as handle:
+                            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    except OSError:
+                        pass
+
+            if payload is not None:
+                text = payload.get("text")
+                if isinstance(text, str):
+                    cleaned_text = _clean_grok_cli_output(text)
+                    if cleaned_text:
+                        return cleaned_text
+                    raise LLMRouterError("Grok CLI returned no response text")
+            cleaned = _clean_grok_cli_output(proc.stdout or "")
+            if cleaned:
+                return cleaned
+            raise LLMRouterError("Grok CLI returned no response text")
+
+    return _GrokCLIProvider()
 
 
 def _get_xai_provider() -> Optional[LLMProvider]:
@@ -2773,80 +4496,227 @@ def _get_meta_ai_provider() -> Optional[LLMProvider]:
 
 
 def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
-    enable_value = os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE")
+    enable_value = (
+        os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE")
+        or os.getenv("IPFS_ACCELERATE_PY_ENABLE_IPFS_ACCELERATE")
+        or os.getenv("IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE")
+    )
     if enable_value is not None and enable_value.strip() and not _truthy(enable_value):
         return None
 
-    # If ipfs_accelerate_py isn't installed, skip without initializing anything.
     try:
-        # Best-effort support for vendored submodule layouts.
-        # In this repo, ipfs_accelerate_py lives at:
-        #   <submodule_root>/ipfs_accelerate_py/ipfs_accelerate_py/
-        # so we need to add <submodule_root>/ipfs_accelerate_py to sys.path.
-        from pathlib import Path
-        import sys
-
-        submodule_root = Path(__file__).resolve().parents[1]
-        candidate = submodule_root / "ipfs_accelerate_py"
-        if candidate.is_dir():
-            candidate_str = str(candidate)
-            if candidate_str not in sys.path:
-                sys.path.insert(0, candidate_str)
-
-        import importlib.util
-
-        if importlib.util.find_spec("ipfs_accelerate_py") is None:
-            return None
+        manager_factory = getattr(deps, "get_accelerate_manager", None)
+        if callable(manager_factory):
+            manager = manager_factory(
+                purpose="llm_router",
+                enable_distributed=True,
+                resources={"purpose": "llm_router"},
+            )
+        else:
+            # Compatibility for callers using this canonical router directly:
+            # the datasets integration remains an optional manager provider,
+            # not a second router implementation.
+            manager_module = importlib.import_module(
+                "ipfs_datasets_py.ml.accelerate_integration.manager"
+            )
+            manager_class = getattr(manager_module, "AccelerateManager", None)
+            manager = manager_class() if callable(manager_class) else None
     except Exception:
         return None
+    if manager is None:
+        return None
 
-    try:
-        manager = deps.get_accelerate_manager(
-            purpose="llm_router",
-            enable_distributed=True,
-            resources={"purpose": "llm_router"},
-        )
-        if manager is None:
-            return None
-
-        class _AccelerateLLMProvider:
-            def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-                # Best-effort hook: if accelerate cannot produce an answer, raise so
-                # the router can fall back.
-                payload = {"prompt": prompt, **kwargs}
-                result = manager.run_inference(
-                    model_name or os.getenv("ipfs_accelerate_py_LLM_MODEL", ""),
-                    payload,
-                    task_type="text-generation",
-                )
-                text = result.get("text")
-                if isinstance(text, str) and text:
+    def _extract_generated_text(result: object) -> Optional[str]:
+        if isinstance(result, str) and result.strip():
+            return result
+        if isinstance(result, list):
+            for item in result:
+                text = _extract_generated_text(item)
+                if text:
                     return text
-                raise RuntimeError("ipfs_accelerate_py provider did not return generated text")
-
-        return _AccelerateLLMProvider()
-    except Exception:
+            return None
+        if not isinstance(result, dict):
+            return None
+        if "heartbeat_ts" in result or (
+            "phase" in result and "worker_id" in result
+        ):
+            return None
+        for key in (
+            "text",
+            "generated_text",
+            "output_text",
+            "completion",
+            "content",
+        ):
+            value = result.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        choices = result.get("choices")
+        if isinstance(choices, list):
+            text = _extract_generated_text(choices)
+            if text:
+                return text
+        for key in ("result", "data", "output", "response", "payload"):
+            text = _extract_generated_text(result.get(key))
+            if text:
+                return text
+        message = result.get("message")
+        if isinstance(message, dict):
+            text = _extract_generated_text(message)
+            if text:
+                return text
         return None
+
+    def _image_path_to_data_url(path_value: str) -> str:
+        import base64
+        import mimetypes
+
+        path = Path(path_value).expanduser()
+        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:{mime_type};base64,{encoded}"
+
+    class _AccelerateLLMProvider:
+        router_provider_name = "accelerate"
+
+        def generate(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> str:
+            payload = {"prompt": prompt, **kwargs}
+            result = manager.run_inference(
+                model_name
+                or _coalesce_env(
+                    "ipfs_accelerate_py_LLM_MODEL",
+                    "IPFS_ACCELERATE_PY_LLM_MODEL",
+                    "IPFS_DATASETS_PY_LLM_MODEL",
+                ),
+                payload,
+                task_type="text-generation",
+            )
+            text = _extract_generated_text(result)
+            if text:
+                return text
+            if isinstance(result, dict) and isinstance(
+                result.get("message"), str
+            ):
+                raise RuntimeError(str(result["message"]))
+            raise RuntimeError(
+                "AccelerateManager provider did not return generated text"
+            )
+
+        def generate_multimodal(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            image_paths: Sequence[str] | None = None,
+            image_urls: Sequence[str] | None = None,
+            system_prompt: Optional[str] = None,
+            additional_text_blocks: Sequence[str] | None = None,
+            messages: Sequence[dict] | None = None,
+            **kwargs: object,
+        ) -> str:
+            call_options = dict(kwargs)
+            payload: dict[str, object] = {
+                "prompt": str(prompt or ""),
+                "image_urls": [
+                    str(url)
+                    for url in image_urls or ()
+                    if str(url or "").strip()
+                ],
+                "image_data_urls": [
+                    _image_path_to_data_url(path) for path in image_paths or ()
+                ],
+                "system_prompt": system_prompt,
+                "additional_text_blocks": [
+                    str(block)
+                    for block in additional_text_blocks or ()
+                    if str(block or "").strip()
+                ],
+            }
+            if messages is not None:
+                payload["messages"] = list(messages)
+            for key in (
+                "max_tokens",
+                "max_new_tokens",
+                "temperature",
+                "top_p",
+                "top_k",
+                "timeout",
+                "image_detail",
+            ):
+                if key in call_options:
+                    payload[key] = call_options[key]
+            result = manager.run_inference(
+                model_name
+                or _coalesce_env(
+                    "ipfs_accelerate_py_LLM_MODEL",
+                    "IPFS_ACCELERATE_PY_LLM_MODEL",
+                    "IPFS_DATASETS_PY_LLM_MODEL",
+                ),
+                payload,
+                task_type="multimodal-generation",
+                **call_options,
+            )
+            text = _extract_generated_text(result)
+            if text:
+                return text
+            raise RuntimeError(
+                "AccelerateManager multimodal provider did not return generated text"
+            )
+
+    return _AccelerateLLMProvider()
 
 
 def _provider_cache_key() -> tuple:
     # Include only env vars that change provider resolution.
     return (
         os.getenv("ipfs_accelerate_py_LLM_PROVIDER", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_LLM_PROVIDER", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_LLM_PROVIDER", "").strip(),
         os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE", "").strip(),
         os.getenv("ipfs_accelerate_py_OPENROUTER_API_KEY", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_API_KEY", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_OPENROUTER_API_KEY", "").strip(),
         os.getenv("OPENROUTER_API_KEY", "").strip(),
         os.getenv("ipfs_accelerate_py_OPENROUTER_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_MODEL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_OPENROUTER_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_OPENROUTER_BASE_URL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_OPENROUTER_BASE_URL", "").strip(),
+        bool(_resolve_openai_api_key()),
+        _hf_token_fingerprint(),
+        os.getenv("IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_HF_INFERENCE_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_HF_INFERENCE_BASE_URL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_HF_INFERENCE_BASE_URL", "").strip(),
         os.getenv("ipfs_accelerate_py_CODEX_CLI_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_CODEX_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_COPILOT_CLI_CMD", "").strip(),
         os.getenv("ipfs_accelerate_py_GEMINI_CLI_CMD", "").strip(),
+        os.getenv("ipfs_accelerate_py_GROK_CLI_CMD", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GROK_CLI_CMD", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_GROK_CLI_CMD", "").strip(),
+        os.getenv("GROK_CLI_CMD", "").strip(),
+        os.getenv("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GROK_CLI_MODEL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_GROK_CLI_MODEL", "").strip(),
+        os.getenv("GROK_CLI_MODEL", "").strip(),
+        os.getenv("GROK_HOME", "").strip(),
+        os.getenv("GROK_AUTH_PROVIDER_COMMAND", "").strip(),
+        _grok_cli_auth_fingerprint(),
         os.getenv("ipfs_accelerate_py_CLAUDE_CODE_CLI_CMD", "").strip(),
         os.getenv("ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD", "").strip(),
         os.getenv("ipfs_accelerate_py_MISTRAL_VIBE_MODEL", "").strip(),
         os.getenv("XAI_API_KEY", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_API_KEY", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_XAI_API_KEY", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_XAI_API_KEY", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "").strip(),
         os.getenv("META_AI_API_KEY", "").strip(),
@@ -2903,15 +4773,123 @@ def _get_local_hf_provider(*, deps: Optional[RouterDeps] = None) -> Optional[LLM
         def __init__(self) -> None:
             self._pipelines: Dict[str, object] = {}
 
+        def _prepare_prompt(
+            self,
+            *,
+            pipe: object,
+            prompt: str,
+            max_new_tokens: int,
+        ) -> tuple[str, int]:
+            tokenizer = getattr(pipe, "tokenizer", None)
+            if tokenizer is None:
+                return (
+                    prompt[-8000:] if len(prompt) > 8000 else prompt,
+                    max(1, min(max_new_tokens, 256)),
+                )
+            model_max_length = getattr(tokenizer, "model_max_length", None)
+            if (
+                not isinstance(model_max_length, int)
+                or model_max_length <= 0
+                or model_max_length > 100_000
+            ):
+                model_max_length = 1024
+            safe_max_new_tokens = max(
+                1,
+                min(
+                    max_new_tokens,
+                    max(8, model_max_length // 4),
+                    max(1, model_max_length // 2),
+                ),
+            )
+            prompt_budget = max(1, model_max_length - safe_max_new_tokens)
+            try:
+                encoded = tokenizer(
+                    prompt,
+                    truncation=True,
+                    max_length=prompt_budget,
+                    return_tensors=None,
+                )
+                input_ids = (
+                    encoded.get("input_ids") if isinstance(encoded, dict) else None
+                )
+                if input_ids:
+                    return (
+                        tokenizer.decode(input_ids, skip_special_tokens=False),
+                        safe_max_new_tokens,
+                    )
+            except Exception:
+                pass
+            return prompt[-max(512, prompt_budget * 4) :], safe_max_new_tokens
+
+        def _retry_after_context_error(
+            self,
+            *,
+            pipe: object,
+            prompt: str,
+            max_new_tokens: int,
+        ) -> tuple[str, int]:
+            tokenizer = getattr(pipe, "tokenizer", None)
+            model_max_length = getattr(tokenizer, "model_max_length", None)
+            if (
+                not isinstance(model_max_length, int)
+                or model_max_length <= 0
+                or model_max_length > 100_000
+            ):
+                model_max_length = 1024
+            retry_tokens = max(
+                1,
+                min(max_new_tokens, 32, max(1, model_max_length // 8)),
+            )
+            prompt_budget = max(1, min(128, max(1, model_max_length // 4)))
+            if tokenizer is not None:
+                try:
+                    encoded = tokenizer(
+                        prompt,
+                        truncation=True,
+                        max_length=prompt_budget,
+                        return_tensors=None,
+                    )
+                    input_ids = (
+                        encoded.get("input_ids")
+                        if isinstance(encoded, dict)
+                        else None
+                    )
+                    if input_ids:
+                        return (
+                            tokenizer.decode(
+                                input_ids,
+                                skip_special_tokens=False,
+                            ),
+                            retry_tokens,
+                        )
+                except Exception:
+                    pass
+            return prompt[-max(256, prompt_budget * 4) :], retry_tokens
+
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = model_name or os.getenv("ipfs_accelerate_py_LLM_MODEL", "gpt2")
+            model = model_name or _generic_llm_model_env() or "gpt2"
             pipe = self._pipelines.get(model)
             if pipe is None:
                 pipe = pipeline("text-generation", model=model)
                 self._pipelines[model] = pipe
 
             max_new_tokens = int(kwargs.pop("max_new_tokens", kwargs.pop("max_tokens", 128)))
-            out = pipe(prompt, max_new_tokens=max_new_tokens)
+            prepared_prompt, safe_tokens = self._prepare_prompt(
+                pipe=pipe,
+                prompt=prompt,
+                max_new_tokens=max_new_tokens,
+            )
+            try:
+                out = pipe(prepared_prompt, max_new_tokens=safe_tokens)
+            except (IndexError, RuntimeError) as exc:
+                if "index out of range" not in str(exc).lower():
+                    raise
+                retry_prompt, retry_tokens = self._retry_after_context_error(
+                    pipe=pipe,
+                    prompt=prompt,
+                    max_new_tokens=safe_tokens,
+                )
+                out = pipe(retry_prompt, max_new_tokens=retry_tokens)
             if isinstance(out, list) and out:
                 item = out[0]
                 if isinstance(item, dict) and isinstance(item.get("generated_text"), str):
@@ -2921,14 +4899,121 @@ def _get_local_hf_provider(*, deps: Optional[RouterDeps] = None) -> Optional[LLM
     return _LocalHFProvider()
 
 
+def _extract_generated_text_from_task_result(result: object) -> Optional[str]:
+    """Extract text from the result shapes accepted by task-queue workers."""
+
+    if isinstance(result, str):
+        return result
+    if not isinstance(result, dict):
+        return None
+    for key in ("text", "generated_text", "output", "response", "content"):
+        value = result.get(key)
+        if isinstance(value, str):
+            return value
+    choices = result.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        first = choices[0]
+        value = first.get("text")
+        if isinstance(value, str):
+            return value
+        message = first.get("message")
+        if isinstance(message, dict) and isinstance(message.get("content"), str):
+            return message["content"]
+    return None
+
+
+def _get_p2p_task_queue_provider() -> LLMProvider:
+    """Return the canonical TaskQueue-backed text-generation provider."""
+
+    class _P2PTaskQueueProvider:
+        router_provider_name = "p2p_task_queue"
+
+        def generate(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> str:
+            call_options = dict(kwargs)
+            queue_path = str(
+                call_options.pop("queue_path", None)
+                or call_options.pop("task_queue_path", None)
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_PY_TASK_QUEUE_PATH",
+                    "IPFS_DATASETS_PY_TASK_QUEUE_PATH",
+                )
+                or ""
+            ).strip()
+            timeout_value = (
+                call_options.pop("wait_timeout_s", None)
+                or call_options.pop("task_timeout_s", None)
+                or call_options.pop("timeout_s", None)
+                or call_options.pop("timeout", None)
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_PY_TASK_QUEUE_WAIT_TIMEOUT_S",
+                    "IPFS_DATASETS_PY_TASK_QUEUE_WAIT_TIMEOUT_S",
+                )
+                or 60.0
+            )
+            task_type = str(
+                call_options.pop("task_type", None) or "text-generation"
+            ).strip() or "text-generation"
+            task_id = submit_task(
+                prompt=str(prompt or ""),
+                model_name=model_name
+                or _coalesce_env(
+                    "ipfs_accelerate_py_LLM_MODEL",
+                    "IPFS_ACCELERATE_PY_LLM_MODEL",
+                    "IPFS_DATASETS_PY_LLM_MODEL",
+                )
+                or "gpt2",
+                task_type=task_type,
+                queue_path=queue_path or None,
+                **call_options,
+            )
+            task = wait_task(
+                str(task_id),
+                queue_path=queue_path or None,
+                timeout_s=float(timeout_value),
+            )
+            if not isinstance(task, dict):
+                raise LLMRouterError(
+                    f"TaskQueue task did not complete before timeout: {task_id}"
+                )
+            status = str(task.get("status") or "").strip().lower()
+            if status != "completed":
+                error = str(
+                    task.get("error")
+                    or task.get("message")
+                    or status
+                    or "unknown error"
+                )
+                raise LLMRouterError(f"TaskQueue task failed: {error}")
+            text = _extract_generated_text_from_task_result(task.get("result"))
+            if isinstance(text, str) and text.strip():
+                return text
+            raise LLMRouterError(
+                "TaskQueue task completed without generated text"
+            )
+
+    return _P2PTaskQueueProvider()
+
+
 def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optional[LLMProvider]:
-    key = (name or "").strip().lower()
+    key = _canonicalize_provider(name)
     if not key:
         return None
     if key in {"mock", "dry_run", "dry-run"}:
         return _get_mock_provider()
     if key == "openrouter":
         return _get_openrouter_provider()
+    if key == "openai":
+        return _get_openai_provider()
+    if key == "hf_inference_api":
+        return _get_hf_inference_api_provider()
+    if key == "p2p_task_queue":
+        return _get_p2p_task_queue_provider()
     if key in _LLAMA_CPP_SERVER_PROVIDER_ALIASES:
         return _get_llama_cpp_provider(auto_install=auto_install)
     if key in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
@@ -2941,6 +5026,10 @@ def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optio
         return _get_copilot_sdk_provider()
     if key in {"gemini_cli"}:
         return _get_gemini_cli_provider()
+    if key in _GROK_CLI_PROVIDER_ALIASES:
+        return _get_grok_cli_provider()
+    if key == "grok":
+        return _get_grok_cli_provider() or _get_xai_provider()
     if key in {"gemini_py"}:
         return _get_gemini_py_provider()
     if key in {"claude_code"}:
@@ -2949,7 +5038,7 @@ def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optio
         return _get_claude_py_provider()
     if key in {"mistral_vibe", "mistral-vibe", "vibe"}:
         return _get_mistral_vibe_provider(auto_install=auto_install)
-    if key in {"xai", "grok", "xai_grok"}:
+    if key in _XAI_API_PROVIDER_ALIASES:
         return _get_xai_provider()
     if key in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
         return _get_meta_ai_provider()
@@ -3098,7 +5187,7 @@ def _get_mock_provider() -> LLMProvider:
 def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) -> LLMProvider:
     preferred_value = (preferred or "").strip()
     if preferred_value:
-        name = preferred_value.lower()
+        name = _canonicalize_provider(preferred_value)
         if name in {"ipfs_accelerate_py", "accelerate"}:
             accelerate_provider = _get_accelerate_provider(deps)
             if accelerate_provider is None:
@@ -3131,9 +5220,13 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
             return builtin
         raise ValueError(f"Unknown LLM provider: {preferred_value}")
 
-    forced = os.getenv("ipfs_accelerate_py_LLM_PROVIDER", "").strip()
+    forced = _coalesce_env(
+        "ipfs_accelerate_py_LLM_PROVIDER",
+        "IPFS_ACCELERATE_PY_LLM_PROVIDER",
+        "IPFS_DATASETS_PY_LLM_PROVIDER",
+    )
     if forced:
-        forced_name = forced.strip().lower()
+        forced_name = _canonicalize_provider(forced)
         if forced_name in {"ipfs_accelerate_py", "accelerate"}:
             accelerate_provider = _get_accelerate_provider(deps)
             if accelerate_provider is None:
@@ -3169,9 +5262,14 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
     if accelerate_provider is not None:
         return accelerate_provider
 
-    # Try common optional CLI/API providers if available.
-    for name in [
+    # Try common optional CLI/API providers if available. Grok is only
+    # auto-discovered when an API key, external auth provider, or OAuth token
+    # is present; explicit ``provider="grok_cli"`` still returns an actionable
+    # authentication error when the binary is installed but logged out.
+    optional_provider_names = [
         "openrouter",
+        "openai",
+        "hf_inference_api",
         "xai",
         "meta_ai",
         "codex_cli",
@@ -3182,7 +5280,10 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         "claude_py",
         "gemini_py",
         "copilot_sdk",
-    ]:
+    ]
+    if _grok_cli_auth_available():
+        optional_provider_names.insert(1, "grok_cli")
+    for name in optional_provider_names:
         candidate = _builtin_provider_by_name(name)
         if candidate is not None:
             return candidate
@@ -3231,6 +5332,112 @@ def get_llm_provider(
     return _resolve_provider_cached(provider, _provider_cache_key())
 
 
+def _effective_llm_provider_name(explicit_provider: Optional[str]) -> str:
+    """Return the canonical provider name used for diagnostics and traces."""
+
+    key = (
+        explicit_provider
+        or os.getenv("ipfs_accelerate_py_LLM_PROVIDER")
+        or os.getenv("IPFS_ACCELERATE_PY_LLM_PROVIDER")
+        or os.getenv("IPFS_DATASETS_PY_LLM_PROVIDER")
+        or ""
+    ).strip().lower()
+    if key == "grok":
+        return "grok_cli" if _cli_available(_grok_cli_command()) else "xai"
+    if key in _GROK_CLI_PROVIDER_ALIASES:
+        return "grok_cli"
+    if key in _XAI_API_PROVIDER_ALIASES:
+        return "xai"
+    aliases = {
+        "codex": "codex_cli",
+        "copilot": "copilot_cli",
+        "gemini": "gemini_cli",
+        "mistral-vibe": "mistral_vibe",
+        "vibe": "mistral_vibe",
+        "meta-ai": "meta_ai",
+        "meta": "meta_ai",
+        "spark": "meta_ai",
+    }
+    return _canonicalize_provider(aliases.get(key, key))
+
+
+def _set_last_generation_trace(*, provider_name: str, model_name: Optional[str]) -> None:
+    _LAST_GENERATION_TRACE.payload = {
+        "effective_provider_name": str(provider_name or "").strip(),
+        "effective_model_name": str(model_name or "").strip(),
+    }
+
+
+def _clear_last_generation_trace() -> None:
+    _LAST_GENERATION_TRACE.payload = {
+        "effective_provider_name": "",
+        "effective_model_name": "",
+    }
+
+
+def get_last_generation_trace() -> dict[str, str]:
+    """Return the effective provider and model used by the latest call."""
+
+    payload = getattr(_LAST_GENERATION_TRACE, "payload", None)
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _iter_unpinned_optional_providers() -> list[tuple[str, LLMProvider]]:
+    providers: list[tuple[str, LLMProvider]] = []
+    names = list(_UNPINNED_OPTIONAL_PROVIDER_ORDER)
+    if _grok_cli_auth_available():
+        names.insert(1, "grok_cli")
+    for name in names:
+        candidate = _builtin_provider_by_name(name)
+        if candidate is not None:
+            providers.append((name, candidate))
+    return providers
+
+
+def _generate_with_provider_fallbacks(
+    provider_name: Optional[str],
+    backend: LLMProvider,
+    prompt: str,
+    *,
+    model_name: Optional[str],
+    kwargs: dict[str, object],
+) -> str:
+    effective_provider_name = _canonicalize_provider(provider_name)
+    disable_model_retry = bool(kwargs.pop("disable_model_retry", False))
+    try:
+        return backend.generate(prompt, model_name=model_name, **kwargs)
+    except Exception as initial_error:
+        if model_name is not None and not disable_model_retry:
+            try:
+                return backend.generate(prompt, model_name=None, **kwargs)
+            except Exception:
+                pass
+        if (
+            _is_hf_inference_provider_name(effective_provider_name)
+            and _is_hf_model_compatibility_error(initial_error)
+        ):
+            attempted = {
+                str(model_name or "").strip(),
+                _coalesce_env(
+                    "IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL",
+                    "IPFS_DATASETS_PY_HF_INFERENCE_MODEL",
+                ),
+            }
+            for fallback_model in _hf_llm_fallback_models(kwargs=dict(kwargs)):
+                if not fallback_model or fallback_model in attempted:
+                    continue
+                attempted.add(fallback_model)
+                try:
+                    return backend.generate(
+                        prompt,
+                        model_name=fallback_model,
+                        **kwargs,
+                    )
+                except Exception:
+                    continue
+        raise initial_error
+
+
 def generate_text(
     prompt: str,
     *,
@@ -3238,85 +5445,128 @@ def generate_text(
     provider: Optional[str] = None,
     provider_instance: Optional[LLMProvider] = None,
     deps: Optional[RouterDeps] = None,
+    allow_local_fallback: bool = True,
     **kwargs: object,
 ) -> str:
     """Generate text from an LLM."""
 
     resolved_deps = deps or get_default_router_deps()
+    effective_provider_name = _effective_llm_provider_name(provider)
+    _clear_last_generation_trace()
     if _response_cache_enabled():
         try:
             cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
             cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
             if isinstance(cached, str):
+                _set_last_generation_trace(
+                    provider_name=effective_provider_name,
+                    model_name=model_name,
+                )
                 return cached
         except Exception:
             pass
 
     backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
+
+    def _cache_result(value: str, *, used_model_name: Optional[str]) -> None:
+        if not _response_cache_enabled():
+            return
+        try:
+            cache_key = _response_cache_key(
+                provider=provider,
+                model_name=used_model_name,
+                prompt=prompt,
+                kwargs=dict(kwargs),
+            )
+            setter = getattr(resolved_deps, "set_cached_and_remote", None)
+            if callable(setter):
+                setter(cache_key, str(value))
+            else:
+                resolved_deps.set_cached(cache_key, str(value))
+        except Exception:
+            pass
+
     try:
-        result = backend.generate(prompt, model_name=model_name, **kwargs)
-        if _response_cache_enabled():
-            try:
-                cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
-                setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                if callable(setter):
-                    setter(cache_key, str(result))
-                else:
-                    resolved_deps.set_cached(cache_key, str(result))
-            except Exception:
-                pass
+        result = _generate_with_provider_fallbacks(
+            effective_provider_name,
+            backend,
+            prompt,
+            model_name=model_name,
+            kwargs=dict(kwargs),
+        )
+        _set_last_generation_trace(
+            provider_name=effective_provider_name,
+            model_name=model_name,
+        )
+        _cache_result(str(result), used_model_name=model_name)
         return result
     except Exception:
-        # If a specific model was requested but isn't available for this provider,
-        # retry with the provider's default model before other fallbacks.
-        if model_name is not None:
+        pinned_provider = _canonicalize_provider(provider)
+        pinned_optional = bool(
+            provider is not None
+            and pinned_provider in _UNPINNED_OPTIONAL_PROVIDER_ORDER
+        )
+        if provider is None or pinned_optional:
+            for fallback_name, fallback_provider in _iter_unpinned_optional_providers():
+                if fallback_provider is backend:
+                    continue
+                try:
+                    result = _generate_with_provider_fallbacks(
+                        fallback_name,
+                        fallback_provider,
+                        prompt,
+                        model_name=model_name,
+                        kwargs=dict(kwargs),
+                    )
+                    _set_last_generation_trace(
+                        provider_name=fallback_name,
+                        model_name=model_name,
+                    )
+                    _cache_result(str(result), used_model_name=model_name)
+                    return result
+                except Exception:
+                    pass
+
+        if pinned_optional:
             try:
-                result = backend.generate(prompt, model_name=None, **kwargs)
-                if _response_cache_enabled():
-                    try:
-                        cache_key = _response_cache_key(provider=provider, model_name=None, prompt=prompt, kwargs=dict(kwargs))
-                        setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                        if callable(setter):
-                            setter(cache_key, str(result))
-                        else:
-                            resolved_deps.set_cached(cache_key, str(result))
-                    except Exception:
-                        pass
-                return result
+                accelerate_provider = _get_accelerate_provider(resolved_deps)
+                if accelerate_provider is not None and accelerate_provider is not backend:
+                    result = _generate_with_provider_fallbacks(
+                        "ipfs_accelerate_py",
+                        accelerate_provider,
+                        prompt,
+                        model_name=model_name,
+                        kwargs=dict(kwargs),
+                    )
+                    _set_last_generation_trace(
+                        provider_name="ipfs_accelerate_py",
+                        model_name=model_name,
+                    )
+                    _cache_result(str(result), used_model_name=model_name)
+                    return result
             except Exception:
                 pass
 
-        # Fall back to local HF provider if optional provider fails.
-        if provider is None:
+        if allow_local_fallback and (provider is None or pinned_optional):
             local_hf = _get_local_hf_provider(deps=resolved_deps)
             if local_hf is not None and backend is not local_hf:
                 try:
                     result = local_hf.generate(prompt, model_name=model_name, **kwargs)
-                    if _response_cache_enabled():
-                        try:
-                            cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
-                            setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                            if callable(setter):
-                                setter(cache_key, str(result))
-                            else:
-                                resolved_deps.set_cached(cache_key, str(result))
-                        except Exception:
-                            pass
+                    _set_last_generation_trace(
+                        provider_name="local_hf",
+                        model_name=model_name,
+                    )
+                    _cache_result(str(result), used_model_name=model_name)
                     return result
                 except Exception:
                     if model_name is not None:
                         result = local_hf.generate(prompt, model_name=None, **kwargs)
-                        if _response_cache_enabled():
-                            try:
-                                cache_key = _response_cache_key(provider=provider, model_name=None, prompt=prompt, kwargs=dict(kwargs))
-                                setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                                if callable(setter):
-                                    setter(cache_key, str(result))
-                                else:
-                                    resolved_deps.set_cached(cache_key, str(result))
-                            except Exception:
-                                pass
+                        _set_last_generation_trace(
+                            provider_name="local_hf",
+                            model_name=None,
+                        )
+                        _cache_result(str(result), used_model_name=None)
                         return result
         raise
 
@@ -3337,6 +5587,7 @@ def _batch_worker_count(
             return 1
 
     raw = _coalesce_env(
+        "IPFS_DATASETS_PY_LLM_ROUTER_BATCH_WORKERS",
         "IPFS_ACCELERATE_LLM_ROUTER_BATCH_WORKERS",
         "IPFS_ACCELERATE_PY_LLM_ROUTER_BATCH_WORKERS",
         "ipfs_accelerate_py_LLM_ROUTER_BATCH_WORKERS",
@@ -3353,6 +5604,31 @@ def _batch_worker_count(
     return max(1, min(int(default_cap), size))
 
 
+def _normalize_text_batch_result(
+    value: object,
+    *,
+    expected_count: int,
+) -> list[str]:
+    if isinstance(value, str):
+        if expected_count == 1:
+            return [value]
+        raise RuntimeError(
+            "Batch LLM provider returned a single string for multiple prompts"
+        )
+    try:
+        values = list(value)  # type: ignore[arg-type]
+    except TypeError as exc:
+        raise RuntimeError(
+            "Batch LLM provider returned a non-iterable result"
+        ) from exc
+    if len(values) != expected_count:
+        raise RuntimeError(
+            "Batch LLM provider returned "
+            f"{len(values)} results for {expected_count} prompts"
+        )
+    return [str(item or "") for item in values]
+
+
 def generate_text_batch(
     prompts: Sequence[str],
     *,
@@ -3360,6 +5636,7 @@ def generate_text_batch(
     provider: Optional[str] = None,
     provider_instance: Optional[LLMProvider] = None,
     deps: Optional[RouterDeps] = None,
+    allow_local_fallback: bool = True,
     max_workers: Optional[int] = None,
     use_mesh: bool = False,
     timeout_s: float = 90.0,
@@ -3378,19 +5655,35 @@ def generate_text_batch(
     if not prompt_list:
         return []
     if use_mesh:
-        return generate_text_mesh_batch(
-            prompt_list,
-            model_name=model_name,
-            provider=str(provider or "copilot_cli"),
-            timeout_s=timeout_s,
-            max_route_attempts=max_route_attempts,
-            queue_path=queue_path,
-            max_workers=max_workers,
-            **kwargs,
-        )
+        try:
+            return generate_text_mesh_batch(
+                prompt_list,
+                model_name=model_name,
+                provider=str(provider or "copilot_cli"),
+                timeout_s=timeout_s,
+                max_route_attempts=max_route_attempts,
+                queue_path=queue_path,
+                max_workers=max_workers,
+                **kwargs,
+            )
+        except Exception:
+            if bool(kwargs.get("require_mesh") or kwargs.get("mesh_required")):
+                raise
 
     resolved_deps = deps or get_default_router_deps()
     backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
+    text_batch = getattr(backend, "generate_text_batch", None)
+    if callable(text_batch):
+        return _normalize_text_batch_result(
+            text_batch(prompt_list, model_name=model_name, **kwargs),
+            expected_count=len(prompt_list),
+        )
+    generic_batch = getattr(backend, "generate_batch", None)
+    if callable(generic_batch):
+        return _normalize_text_batch_result(
+            generic_batch(prompt_list, model_name=model_name, **kwargs),
+            expected_count=len(prompt_list),
+        )
 
     def _generate_one(prompt: str) -> str:
         return str(
@@ -3400,6 +5693,7 @@ def generate_text_batch(
                 provider=provider,
                 provider_instance=backend,
                 deps=resolved_deps,
+                allow_local_fallback=allow_local_fallback,
                 **kwargs,
             )
         )
@@ -3531,6 +5825,8 @@ def clear_llm_router_caches() -> None:
     """Clear internal provider caches (useful for tests)."""
 
     _resolve_provider_cached.cache_clear()
+    _discover_hf_models_for_pipeline.cache_clear()
+    _clear_last_generation_trace()
 
 
 def _messages_to_prompt(messages: Sequence[ChatMessage]) -> str:
