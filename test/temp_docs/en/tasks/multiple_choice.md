@@ -148,7 +148,7 @@ Your `compute_metrics` function is ready to go now, and you'll return to it when
 <pt>
 <Tip>
 
-If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the basic tutorial [here](../training#train-with-pytorch-trainer)!
+If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the basic tutorial [here](../training.md#train-with-pytorch-trainer)!
 
 </Tip>
 
@@ -202,7 +202,7 @@ Once training is completed, share your model to the Hub with the [`~transformers
 <tf>
 <Tip>
 
-If you aren't familiar with finetuning a model with Keras, take a look at the basic tutorial [here](../training#train-a-tensorflow-model-with-keras)!
+If you aren't familiar with finetuning a model with Keras, take a look at the basic tutorial [here](../training.md#train-a-tensorflow-model-with-keras)!
 
 </Tip>
 To finetune a model in TensorFlow, start by setting up an optimizer function, learning rate schedule, and some training hyperparameters:
@@ -249,7 +249,7 @@ Configure the model for training with [`compile`](https://keras.io/api/models/mo
 >>> model.compile(optimizer=optimizer)  # No loss argument!
 ```
 
-The last two things to setup before you start training is to compute the accuracy from the predictions, and provide a way to push your model to the Hub. Both are done by using [Keras callbacks](../main_classes/keras_callbacks).
+The last two things to setup before you start training is to compute the accuracy from the predictions, and provide a way to push your model to the Hub. Both are done by using [Keras callbacks](../main_classes/keras_callbacks.md).
 
 Pass your `compute_metrics` function to [`~transformers.KerasMetricCallback`]:
 
