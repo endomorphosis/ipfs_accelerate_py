@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The Deformable DETR model was proposed in [Deformable DETR: Deformable Transformers for End-to-End Object Detection](https://arxiv.org/abs/2010.04159) by Xizhou Zhu, Weijie Su, Lewei Lu, Bin Li, Xiaogang Wang, Jifeng Dai.
-Deformable DETR mitigates the slow convergence issues and limited feature spatial resolution of the original [DETR](detr.md) by leveraging a new deformable attention module which only attends to a small set of key sampling points around a reference.
+Deformable DETR mitigates the slow convergence issues and limited feature spatial resolution of the original [DETR](./detr.md) by leveraging a new deformable attention module which only attends to a small set of key sampling points around a reference.
 
 The abstract from the paper is the following:
 
