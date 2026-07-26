@@ -4032,7 +4032,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-131 Generalize proof scope to cross-domain reverse invalidation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-graph
