@@ -34,6 +34,7 @@ from .analyzer_health import (
     classify_analyzer_health,
     run_analyzer_canaries,
 )
+from .checkout_lock import BACKLOG_REFINERY_AUTHOR_EMAIL
 from .event_log import read_jsonl_events
 from .goal_completion import (
     DEFAULT_CLOCK_SKEW_SECONDS,
@@ -1627,7 +1628,7 @@ def commit_specific_path(repo: Path, relative: str, *, subject: str) -> dict[str
             "-c",
             "user.name=Accelerator Backlog Refinery",
             "-c",
-            "user.email=accelerator-backlog-refinery@example.invalid",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
             "commit",
             "-m",
             subject,

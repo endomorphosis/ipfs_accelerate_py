@@ -37,7 +37,12 @@ from ..formal_verification_contracts import canonical_json, content_identity
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
-from ..checkout_lock import checkout_lock_metadata, checkout_mutation_lock_path
+from ..checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
+)
 from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
 from ..merge_conflict_repair import (
     resolve_append_only_markdown_conflicts,
@@ -1927,7 +1932,11 @@ class PortalImplementationDaemon:
                     or subject.endswith(": update generated submodule pointer")
                 )
             )
-            if not daemon_owned:
+            generated_board_update = (
+                author_email == BACKLOG_REFINERY_AUTHOR_EMAIL
+                and subject.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER)
+            )
+            if not daemon_owned and not generated_board_update:
                 return {}
             commits.append(
                 {

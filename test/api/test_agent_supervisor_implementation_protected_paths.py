@@ -12,6 +12,10 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
 )
+from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    generated_protected_board_commit_subject,
+)
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
@@ -593,6 +597,43 @@ def test_ephemeral_fence_accepts_concurrent_daemon_owned_completion_commit(
     assert accepted[0]["protected_paths"] == [POLICY_PATH]
 
 
+def test_ephemeral_fence_accepts_tagged_generated_board_commit(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("generated retry repair\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Accelerator Backlog Refinery",
+        "-c",
+        f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+        "commit",
+        "-m",
+        generated_protected_board_commit_subject(
+            "Agent: record retry-budget guardrail outputs"
+        ),
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation == {}
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
 def test_ephemeral_fence_rejects_untrusted_shared_checkout_commit(
     tmp_path: Path,
 ) -> None:
@@ -627,6 +668,60 @@ def test_ephemeral_fence_rejects_untrusted_shared_checkout_commit(
     assert violation["reason"] == "implementation_protected_path_mutated"
     assert violation["protected_paths"] == [POLICY_PATH]
     assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_supervisor_commits_generated_updates_to_protected_todo_board(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text(
+        """# Tasks
+
+## EX-001 Missing dependency
+
+- Status: ready
+- Depends on: EX-999
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "tasks.todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "initial",
+    )
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--task-prefix",
+            "EX-",
+            "--implementation-protected-path",
+            "tasks.todo.md",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=repo)
+    )
+
+    findings = supervisor.record_dependency_guardrails()
+
+    assert len(findings) == 1
+    assert _git(repo, "status", "--porcelain", "--", "tasks.todo.md") == ""
+    assert _git(repo, "log", "-1", "--pretty=%ae") == BACKLOG_REFINERY_AUTHOR_EMAIL
+    assert _git(repo, "log", "-1", "--pretty=%s").endswith(
+        "[agent-supervisor:generated-protected-board]"
+    )
 
 
 def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(

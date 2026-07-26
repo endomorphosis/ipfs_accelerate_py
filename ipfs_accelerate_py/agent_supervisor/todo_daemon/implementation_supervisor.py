@@ -20,6 +20,7 @@ from ..checkout_lock import (
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
+    generated_protected_board_commit_subject,
 )
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from ..implementation_supervisor_runner import (
@@ -1414,6 +1415,93 @@ class PortalImplementationSupervisor:
 
     def _repo_merge_lock_path(self) -> Path:
         return checkout_mutation_lock_path(self.config.repo_root)
+
+    def _todo_board_is_implementation_protected(self) -> bool:
+        try:
+            relative = (
+                self.config.todo_path.resolve()
+                .relative_to(self.config.repo_root.resolve())
+                .as_posix()
+            )
+        except (OSError, ValueError):
+            return False
+        return relative in set(self.config.implementation_protected_paths)
+
+    def _generated_board_commit_policy(
+        self,
+        *,
+        configured_commit_outputs: bool,
+        configured_subject: str,
+    ) -> tuple[bool, str]:
+        protected = self._todo_board_is_implementation_protected()
+        commit_outputs = bool(configured_commit_outputs or protected)
+        subject = (
+            generated_protected_board_commit_subject(configured_subject)
+            if protected
+            else configured_subject
+        )
+        return commit_outputs, subject
+
+    def _run_generated_board_producer(
+        self,
+        *,
+        producer: str,
+        commit_outputs: bool,
+        callback,
+    ):
+        """Serialize a committed generated-board update with checkout mutations."""
+
+        if not commit_outputs:
+            return callback()
+        lock_path = self._repo_merge_lock_path()
+        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(
+            lock_path
+        )
+        if lock_fd is None:
+            payload: dict[str, Any] = {
+                "producer": producer,
+                "reason": f"checkout_mutation_{lock_reason}",
+                "lock_path": str(lock_path),
+            }
+            if existing_lock:
+                payload["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
+                payload["lock_owner_task_id"] = str(
+                    existing_lock.get("task_id") or ""
+                )
+                payload["lock_owner_branch"] = str(
+                    existing_lock.get("branch") or ""
+                )
+            self._record_event("generated_board_update_deferred", payload)
+            return []
+
+        try:
+            self._write_checkout_lock_metadata(
+                lock_fd,
+                checkout_lock_metadata(
+                    kind="merge",
+                    repo_root=self.config.repo_root,
+                    branch=f"generated-board:{producer}",
+                    owner_script=Path(sys.argv[0]).name,
+                    extra={
+                        "operation": "generated_board_update",
+                        "producer": producer,
+                        "state_dir": str(self.config.state_dir.resolve()),
+                        "state_path": str(self.config.state_path.resolve()),
+                        "started_at": utc_now(),
+                    },
+                ),
+            )
+            return callback()
+        finally:
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.warning(
+                    "Failed to remove generated-board checkout lock %s",
+                    lock_path,
+                )
 
     def _checkout_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         if not checkout_lock_owner_is_active(
@@ -3771,17 +3859,25 @@ class PortalImplementationSupervisor:
                 discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
             except ValueError:
                 discovery_output_path = str(discovery_dir)
-        findings = record_dependency_guardrail_findings(
-            todo_path=self.config.todo_path,
-            strategy_path=self.config.strategy_path,
-            discovery_dir=discovery_dir,
-            task_header_prefix_value=self.config.task_prefix,
-            task_prefix=task_id_prefix(self.config.task_prefix),
-            max_findings=self.config.dependency_guardrail_max_findings,
-            discovery_output_path=discovery_output_path,
-            commit_outputs=self.config.dependency_guardrail_commit_outputs,
-            repo_root=self.config.repo_root,
-            commit_subject=self.config.dependency_guardrail_commit_subject,
+        commit_outputs, commit_subject = self._generated_board_commit_policy(
+            configured_commit_outputs=self.config.dependency_guardrail_commit_outputs,
+            configured_subject=self.config.dependency_guardrail_commit_subject,
+        )
+        findings = self._run_generated_board_producer(
+            producer="dependency-guardrail",
+            commit_outputs=commit_outputs,
+            callback=lambda: record_dependency_guardrail_findings(
+                todo_path=self.config.todo_path,
+                strategy_path=self.config.strategy_path,
+                discovery_dir=discovery_dir,
+                task_header_prefix_value=self.config.task_prefix,
+                task_prefix=task_id_prefix(self.config.task_prefix),
+                max_findings=self.config.dependency_guardrail_max_findings,
+                discovery_output_path=discovery_output_path,
+                commit_outputs=commit_outputs,
+                repo_root=self.config.repo_root,
+                commit_subject=commit_subject,
+            ),
         )
         if findings:
             self._record_event(
@@ -3820,20 +3916,28 @@ class PortalImplementationSupervisor:
             except ValueError:
                 discovery_output_path = str(discovery_dir)
         generated_paths, generated_prefixes = self._generated_main_checkout_status_filters()
-        findings = record_reconciliation_guardrail_findings(
-            todo_path=self.config.todo_path,
-            strategy_path=self.config.strategy_path,
-            discovery_dir=discovery_dir,
-            reconciliation_result=worktree_reconciliation,
-            cleanup_result=worktree_cleanup,
-            task_prefix=task_id_prefix(self.config.task_prefix),
-            max_findings=self.config.reconciliation_guardrail_max_findings,
-            discovery_output_path=discovery_output_path,
-            commit_outputs=self.config.reconciliation_guardrail_commit_outputs,
-            repo_root=self.config.repo_root,
-            commit_subject=self.config.reconciliation_guardrail_commit_subject,
-            additional_generated_status_paths=generated_paths,
-            additional_generated_status_prefixes=generated_prefixes,
+        commit_outputs, commit_subject = self._generated_board_commit_policy(
+            configured_commit_outputs=self.config.reconciliation_guardrail_commit_outputs,
+            configured_subject=self.config.reconciliation_guardrail_commit_subject,
+        )
+        findings = self._run_generated_board_producer(
+            producer="reconciliation-guardrail",
+            commit_outputs=commit_outputs,
+            callback=lambda: record_reconciliation_guardrail_findings(
+                todo_path=self.config.todo_path,
+                strategy_path=self.config.strategy_path,
+                discovery_dir=discovery_dir,
+                reconciliation_result=worktree_reconciliation,
+                cleanup_result=worktree_cleanup,
+                task_prefix=task_id_prefix(self.config.task_prefix),
+                max_findings=self.config.reconciliation_guardrail_max_findings,
+                discovery_output_path=discovery_output_path,
+                commit_outputs=commit_outputs,
+                repo_root=self.config.repo_root,
+                commit_subject=commit_subject,
+                additional_generated_status_paths=generated_paths,
+                additional_generated_status_prefixes=generated_prefixes,
+            ),
         )
         if findings:
             self._record_event(
@@ -3867,20 +3971,29 @@ class PortalImplementationSupervisor:
                 discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
             except ValueError:
                 discovery_output_path = str(discovery_dir)
-        findings = record_retry_budget_findings(
-            todo_path=self.config.todo_path,
-            events_path=self.config.state_dir / f"{self.config.state_prefix}_events.jsonl",
-            strategy_path=self.config.strategy_path,
-            discovery_dir=discovery_dir,
-            task_header_prefix_value=self.config.task_prefix,
-            task_prefix=task_id_prefix(self.config.task_prefix),
-            validation_retry_budget=self.config.validation_retry_budget,
-            merge_retry_budget=self.config.merge_retry_budget,
-            implementation_retry_budget=self.config.implementation_retry_budget,
-            discovery_output_path=discovery_output_path,
-            commit_outputs=self.config.retry_budget_commit_outputs,
-            repo_root=self.config.repo_root,
-            commit_subject=self.config.retry_budget_commit_subject,
+        commit_outputs, commit_subject = self._generated_board_commit_policy(
+            configured_commit_outputs=self.config.retry_budget_commit_outputs,
+            configured_subject=self.config.retry_budget_commit_subject,
+        )
+        findings = self._run_generated_board_producer(
+            producer="retry-budget",
+            commit_outputs=commit_outputs,
+            callback=lambda: record_retry_budget_findings(
+                todo_path=self.config.todo_path,
+                events_path=self.config.state_dir
+                / f"{self.config.state_prefix}_events.jsonl",
+                strategy_path=self.config.strategy_path,
+                discovery_dir=discovery_dir,
+                task_header_prefix_value=self.config.task_prefix,
+                task_prefix=task_id_prefix(self.config.task_prefix),
+                validation_retry_budget=self.config.validation_retry_budget,
+                merge_retry_budget=self.config.merge_retry_budget,
+                implementation_retry_budget=self.config.implementation_retry_budget,
+                discovery_output_path=discovery_output_path,
+                commit_outputs=commit_outputs,
+                repo_root=self.config.repo_root,
+                commit_subject=commit_subject,
+            ),
         )
         if findings:
             self._record_event(
