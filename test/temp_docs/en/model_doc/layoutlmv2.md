@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The LayoutLMV2 model was proposed in [LayoutLMv2: Multi-modal Pre-training for Visually-Rich Document Understanding](https://arxiv.org/abs/2012.14740) by Yang Xu, Yiheng Xu, Tengchao Lv, Lei Cui, Furu Wei, Guoxin Wang, Yijuan Lu,
-Dinei Florencio, Cha Zhang, Wanxiang Che, Min Zhang, Lidong Zhou. LayoutLMV2 improves [LayoutLM](layoutlm) to obtain
+Dinei Florencio, Cha Zhang, Wanxiang Che, Min Zhang, Lidong Zhou. LayoutLMV2 improves [LayoutLM](layoutlm.md) to obtain
 state-of-the-art results across several document image understanding benchmarks:
 
 - information extraction from scanned documents: the [FUNSD](https://guillaumejaume.github.io/FUNSD/) dataset (a
@@ -127,7 +127,7 @@ section below.
   model in order to properly synchronize the batch normalization layers of the visual backbone.
 
 In addition, there's LayoutXLM, which is a multilingual version of LayoutLMv2. More information can be found on
-[LayoutXLM's documentation page](layoutxlm).
+[LayoutXLM's documentation page](layoutxlm.md).
 
 ## Resources
 
@@ -136,20 +136,20 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 <PipelineTag pipeline="text-classification"/>
 
 - A notebook on how to [finetune LayoutLMv2 for text-classification on RVL-CDIP dataset](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/RVL-CDIP/Fine_tuning_LayoutLMv2ForSequenceClassification_on_RVL_CDIP.ipynb).
-- See also: [Text classification task guide](../tasks/sequence_classification)
+- See also: [Text classification task guide](../tasks/sequence_classification.md)
 
 <PipelineTag pipeline="question-answering"/>
 
 - A notebook on how to [finetune LayoutLMv2 for question-answering on DocVQA dataset](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/DocVQA/Fine_tuning_LayoutLMv2ForQuestionAnswering_on_DocVQA.ipynb).
-- See also: [Question answering task guide](../tasks/question_answering)
-- See also: [Document question answering task guide](../tasks/document_question_answering)
+- See also: [Question answering task guide](../tasks/question_answering.md)
+- See also: [Document question answering task guide](../tasks/document_question_answering.md)
 
 
 <PipelineTag pipeline="token-classification"/>
 
 - A notebook on how to [finetune LayoutLMv2 for token-classification on CORD dataset](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/CORD/Fine_tuning_LayoutLMv2ForTokenClassification_on_CORD.ipynb).
 - A notebook on how to [finetune LayoutLMv2 for token-classification on FUNSD dataset](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/FUNSD/Fine_tuning_LayoutLMv2ForTokenClassification_on_FUNSD_using_HuggingFace_Trainer.ipynb).
-- See also: [Token classification task guide](../tasks/token_classification)
+- See also: [Token classification task guide](../tasks/token_classification.md)
 
 ## Usage: LayoutLMv2Processor
 
