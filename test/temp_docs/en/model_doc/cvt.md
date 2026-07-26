@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 
 ## Overview
 
-The CvT model was proposed in [CvT: Introducing Convolutions to Vision Transformers](https://arxiv.org/abs/2103.15808) by Haiping Wu, Bin Xiao, Noel Codella, Mengchen Liu, Xiyang Dai, Lu Yuan and Lei Zhang. The Convolutional vision Transformer (CvT) improves the [Vision Transformer (ViT)](vit.md) in performance and efficiency by introducing convolutions into ViT to yield the best of both designs.
+The CvT model was proposed in [CvT: Introducing Convolutions to Vision Transformers](https://arxiv.org/abs/2103.15808) by Haiping Wu, Bin Xiao, Noel Codella, Mengchen Liu, Xiyang Dai, Lu Yuan and Lei Zhang. The Convolutional vision Transformer (CvT) improves the [Vision Transformer (ViT)](../model_doc/vit.md) in performance and efficiency by introducing convolutions into ViT to yield the best of both designs.
 
 The abstract from the paper is the following:
 
@@ -42,7 +42,7 @@ This model was contributed by [anugunj](https://huggingface.co/anugunj). The ori
 
 ## Usage tips
 
-- CvT models are regular Vision Transformers, but trained with convolutions. They outperform the [original model (ViT)](vit.md) when fine-tuned on ImageNet-1K and CIFAR-100.
+- CvT models are regular Vision Transformers, but trained with convolutions. They outperform the [original model (ViT)](../model_doc/vit.md) when fine-tuned on ImageNet-1K and CIFAR-100.
 - You can check out demo notebooks regarding inference as well as fine-tuning on custom data [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/VisionTransformer) (you can just replace [`ViTFeatureExtractor`] by [`AutoImageProcessor`] and [`ViTForImageClassification`] by [`CvtForImageClassification`]).
 - The available checkpoints are either (1) pre-trained on [ImageNet-22k](http://www.image-net.org/) (a collection of 14 million images and 22k classes) only, (2) also fine-tuned on ImageNet-22k or (3) also fine-tuned on [ImageNet-1k](http://www.image-net.org/challenges/LSVRC/2012/) (also referred to as ILSVRC 2012, a collection of 1.3 million
   images and 1,000 classes).
