@@ -4068,7 +4068,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-133 Compile minimal decision contexts with completeness witnesses
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-context
