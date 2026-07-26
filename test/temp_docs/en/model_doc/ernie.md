@@ -53,7 +53,7 @@ model = AutoModel.from_pretrained("nghuyong/ernie-1.0-base-zh")
 
 You can find all the supported models from huggingface's model hub: [huggingface.co/nghuyong](https://huggingface.co/nghuyong), and model details from paddle's official
 repo: [PaddleNLP](https://paddlenlp.readthedocs.io/zh/latest/model_zoo/transformers/ERNIE/contents.html)
-and [ERNIE](https://github.com/PaddlePaddle/ERNIE/blob/repro).
+and [ERNIE](https://github.com/PaddlePaddle/ERNIE).
 
 ## Resources
 
@@ -106,4 +106,4 @@ and [ERNIE](https://github.com/PaddlePaddle/ERNIE/blob/repro).
 
 ## ErnieForQuestionAnswering
 
-[API documentation placeholder]
+[API documentation placeholder]
