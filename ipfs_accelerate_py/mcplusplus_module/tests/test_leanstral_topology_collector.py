@@ -399,6 +399,8 @@ def test_independent_client_executes_from_the_same_source_repository(monkeypatch
     async def fake_run_process(command, **options):
         observed["command"] = command
         observed["cwd"] = options["cwd"]
+        assert options["capture_stdout"] is True
+        assert "stdout" not in options
         return SimpleNamespace(
             returncode=0,
             stdout=canonical_identity_json(_client_receipt()).encode("utf-8"),

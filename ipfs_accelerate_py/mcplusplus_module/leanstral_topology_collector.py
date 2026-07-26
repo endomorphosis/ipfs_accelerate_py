@@ -1081,7 +1081,7 @@ async def _run_independent_client_subprocess(
         with trio.fail_after(float(process_timeout_s)):
             completed = await trio.run_process(
                 command,
-                stdout=subprocess.PIPE,
+                capture_stdout=True,
                 stderr=subprocess.DEVNULL,
                 check=False,
                 cwd=str(_find_source_repo()),
