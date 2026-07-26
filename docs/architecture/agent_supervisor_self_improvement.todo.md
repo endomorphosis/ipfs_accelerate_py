@@ -3903,3 +3903,291 @@ planner, and refill behavior defaults to shadow mode.
 - Predicted files: ipfs_accelerate_py/agent_supervisor/__init__.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md, test/api/test_agent_supervisor_v2_public_api.py
 - Conflict policy: Central exports, adapters, and documentation land last; preserve v1 compatibility and keep optional providers lazy.
 - Acceptance: Export only reviewed provider-free v2 contracts and control entry points through a stable lazy manifest; expose equivalent Python, CLI, and MCP discovery and control; document smoke, production, distributed, degraded, recovery, refill, rollback, and migration profiles with measured resource ceilings rather than fixed worker folklore; retain v1 compatibility; and prove in a fresh interpreter that import and capability discovery start no process, load no optional datasets/model/prover provider, and preserve canonical object and operation identities.
+
+## ASI-124 Define the canonical decision envelope and pinned artifact references
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-ir
+- Depends on: ASI-100, ASI-114
+- Goal id: ASI-G310
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_contracts.py, test/api/test_agent_supervisor_decision_contracts.py
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_contracts.py test/api/test_agent_supervisor_control_contracts.py test/api/test_agent_supervisor_artifact_store.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/ir
+- Parallel lane: decision-contracts
+- Resource class: cpu-small
+- Predicted files: ipfs_accelerate_py/agent_supervisor/decision_contracts.py, test/api/test_agent_supervisor_decision_contracts.py
+- Conflict policy: Add provider-free contracts beside existing context and control contracts; do not wire optional datasets providers, daemon dispatch, package exports, or mutation behavior.
+- Acceptance: Define immutable versioned bounded `PinnedArtifactRef`, `DecisionRequest`, action/effect, semantic-root, applicability-fact, budget, and authority envelopes. Bind principal, stage, objective, exact tool/action arguments, targets, expected effects, repository and dirty-worktree roots, IntentIR, LegalIR, SecurityIR, AST/program, tool-catalog and policy roots, jurisdiction/effective time when relevant, capabilities, lease, fence, and idempotency. Preserve both CIDv1 and supervisor digest only when they independently verify the same canonical bytes. Enforce canonical serialization, size/count/depth bounds, no ambient defaults for decision-changing fields, and rejection of missing roots, duplicate/conflicting references, unknown authority, root escapes, non-finite budgets, and changed round trips.
+
+## ASI-125 Add a lazy pinned IntentIR, LegalIR, and SecurityIR registry
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-ir
+- Depends on: ASI-097, ASI-099, ASI-124
+- Goal id: ASI-G310
+- Outputs: ipfs_accelerate_py/agent_supervisor/ir_registry.py, ipfs_accelerate_py/agent_supervisor/ir_adapters.py, test/api/test_agent_supervisor_ir_registry.py, test/api/test_agent_supervisor_ir_adapters.py
+- Validation: python -m pytest test/api/test_agent_supervisor_ir_registry.py test/api/test_agent_supervisor_ir_adapters.py test/api/test_agent_supervisor_analysis_transport.py test/api/test_agent_supervisor_analysis_consensus.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/ir
+- Parallel lane: pinned-ir-registry
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/ir_registry.py, ipfs_accelerate_py/agent_supervisor/ir_adapters.py, test/api/test_agent_supervisor_ir_registry.py, test/api/test_agent_supervisor_ir_adapters.py
+- Conflict policy: Own only registry, verification, and normalized adapter contracts; use the existing analysis transport for optional `ipfs_datasets_py` access and do not eagerly import datasets, models, graphs, or provers.
+- Acceptance: Discover supported shared IR-core, formalization, IntentIR, LegalIR, and SecurityIR schemas and operations lazily; load exact bounded local or remote artifacts by pinned reference; verify canonical bytes, CID/digest equivalence, schema/version, producer/configuration, provenance, review/trust state, declared authority, and root membership; normalize declarations, formal views, claims, assumptions, obligations, and result authority without copying source corpora into supervisor state. Return typed unsupported, unavailable, partial, stale, quarantined, ambiguous, contradiction, and bounds failures with deterministic local fixtures and fail closed for every required input. Fresh-interpreter import and capability discovery must start no process or optional provider.
+
+## ASI-126 Compile IntentIR action contracts into supervisor constraints
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-constraints
+- Depends on: ASI-125
+- Goal id: ASI-G340
+- Outputs: ipfs_accelerate_py/agent_supervisor/intent_constraint_adapter.py, test/api/test_agent_supervisor_intent_constraints.py
+- Validation: python -m pytest test/api/test_agent_supervisor_intent_constraints.py test/api/test_agent_supervisor_ir_adapters.py test/api/test_agent_supervisor_formal_plan_compiler.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/constraints
+- Parallel lane: intent-constraints
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/intent_constraint_adapter.py, test/api/test_agent_supervisor_intent_constraints.py
+- Conflict policy: Keep the IntentIR adapter standalone and declaration-only; do not make retrieved SkillCenter prose, GraphRAG premises, or intent modalities grant execution authority.
+- Acceptance: Compile a pinned IntentIR document and formalization artifact into exact goal, action, control-flow, precondition, guard, invariant, effect, postcondition, assumption, failure, retry, and verification constraints plus proof obligations and source bindings. Preserve grounded versus inferred nodes, review status, authority and context-only premises, action ordering/parallel joins, and undeclared or contradictory effects. Emit a canonical conformance request/result that checks an exact candidate plan and fails closed on missing required actions, unsatisfied guards/invariants, unbound inferred requirements, unsupported statements, graph truncation, changed intent roots, and attempts to treat intent or retrieval as authorization.
+
+## ASI-127 Compile LegalIR applicability, norms, exceptions, and conflicts
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-constraints
+- Depends on: ASI-125
+- Goal id: ASI-G340
+- Outputs: ipfs_accelerate_py/agent_supervisor/legal_constraint_adapter.py, test/api/test_agent_supervisor_legal_constraints.py
+- Validation: python -m pytest test/api/test_agent_supervisor_legal_constraints.py test/api/test_agent_supervisor_ir_adapters.py test/api/test_agent_supervisor_authorization_logic.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/constraints
+- Parallel lane: legal-constraints
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/legal_constraint_adapter.py, test/api/test_agent_supervisor_legal_constraints.py
+- Conflict policy: Own the supervisor-facing legal applicability and constraint adapter; preserve LegalIR formalization authority and do not convert legal permission into a security grant.
+- Acceptance: Select applicable pinned LegalIR declarations and formal views deterministically from exact jurisdiction, subject, principal, action, resource, effect, and effective-time facts; compile obligations, prohibitions, permissions, powers, exceptions, precedence, temporal conditions, conflicts, assumptions, and proof obligations with source/provenance bindings. Semantic retrieval may nominate candidates but cannot establish applicability or absence. Emit explicit applicable, inapplicable, unknown, conflicting, expired, superseded, and review-required outcomes; fail closed on unresolved mandatory applicability, exception, conflict, missing trusted source, changed root, or unsupported modality; and prove that similar but inapplicable provisions and a permission without SecurityIR authorization cannot admit an action.
+
+## ASI-128 Compile SecurityIR declarations into exact authorization decisions
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-constraints
+- Depends on: ASI-114, ASI-125
+- Goal id: ASI-G340
+- Outputs: ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py, test/api/test_agent_supervisor_security_constraints.py
+- Validation: python -m pytest test/api/test_agent_supervisor_security_constraints.py test/api/test_agent_supervisor_authorization_logic.py test/api/test_agent_supervisor_ir_adapters.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/constraints
+- Parallel lane: security-constraints
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py, test/api/test_agent_supervisor_security_constraints.py
+- Conflict policy: Adapt SecurityIR to the existing authorization engine without replacing it; keep declaration/formalization, policy evaluation, and eventual execution permits as separate authority stages.
+- Acceptance: Compile pinned SecurityIR principals, assets, resources, zones, channels, policies, state machines, threat assumptions, claims, and formal obligations into exact authorization inputs and checks for principal, action, tool, target, data flow, expected effect, current state, and requested authority. Preserve deny overrides, explicit unknown/conflict, state guards/transitions, trust zones, channel constraints, assumption dependencies, and claim/result authority. Produce canonical policy and decision receipts bound to the SecurityIR root and reject wildcard broadening, unknown resources, stale state, changed effects, unsupported policy, contradiction, and every attempt to use intent, legal permission, model output, or retrieval rank as a grant.
+
+## ASI-129 Bind dirty worktree bytes, AST behavior, tools, and proposed effects
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-graph
+- Depends on: ASI-100, ASI-124
+- Goal id: ASI-G320
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_behavior.py, test/api/test_agent_supervisor_program_behavior.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_behavior.py test/api/test_agent_supervisor_analysis_ast_index.py test/api/test_agent_supervisor_artifact_store.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/dependency-graph
+- Parallel lane: program-behavior-root
+- Resource class: io-artifact
+- Predicted files: ipfs_accelerate_py/agent_supervisor/program_behavior.py, test/api/test_agent_supervisor_program_behavior.py
+- Conflict policy: Add snapshot, behavior, and effect contracts without changing daemon dispatch; reuse the AST index and artifact store and never scan outside the declared repository and path budget.
+- Acceptance: Compute a canonical repository/worktree behavior root covering HEAD, index, relevant tracked modifications, deletions, renames, modes/symlinks, and in-scope untracked bytes instead of treating HEAD as the executed tree. Bind incremental AST/symbol/interface/call/data-flow observations, tool catalog and versions, environment/toolchain facts that affect behavior, and a typed proposed effect manifest for file, process, network, credential, dataset, task-board, commit, and merge operations. Use bounded referenced blobs rather than source bodies; preserve exact clean equivalence and incremental reuse; and reject root escapes, symlink escapes, races, unreadable or oversized required inputs, post-hash changes, unsupported effects, and hidden/untracked changes that would otherwise leave the decision identity unchanged.
+
+## ASI-130 Build the cross-domain semantic proof dependency graph
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-graph
+- Depends on: ASI-125, ASI-129
+- Goal id: ASI-G320
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_dependency_graph.py, ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py, test/api/test_agent_supervisor_semantic_dependency_graph.py
+- Validation: python -m pytest test/api/test_agent_supervisor_semantic_dependency_graph.py test/api/test_agent_supervisor_code_evidence_graph.py test/api/test_agent_supervisor_program_behavior.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/dependency-graph
+- Parallel lane: semantic-proof-graph
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_dependency_graph.py, ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py, test/api/test_agent_supervisor_semantic_dependency_graph.py
+- Conflict policy: Extend or layer over `CodeEvidenceGraph`; preserve its authoritative proof/validation/merge edges and prohibit GraphRAG or model annotations from manufacturing authority.
+- Acceptance: Add canonical typed nodes for decisions, plans, actions, effects, tools/resources, all normalized IntentIR, LegalIR and SecurityIR constraint families, worktree/AST/program elements, assumptions, premises, obligations, proofs, monitors, authorization, validation, and merge evidence. Add typed `requires`, `constrained_by`, `applies_to`, `exception_to`, `conflicts_with`, `authorizes`, `denies`, `implements`, `affects`, `depends_on`, `proven_by`, `monitored_by`, `invalidates`, and `sourced_from` edges with exact root, provenance, trust, authority, and version bindings. Compute deterministic bounded forward mandatory closure, retain proposal-only annotations outside authority closure, reject forged/cross-root edges and unsafe cycles, and prove that irrelevant graph growth does not change a decision closure.
+
+## ASI-131 Generalize proof scope to cross-domain reverse invalidation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-graph
+- Depends on: ASI-130
+- Goal id: ASI-G320
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof_scope_index.py, test/api/test_agent_supervisor_cross_domain_proof_scope.py
+- Validation: python -m pytest test/api/test_agent_supervisor_cross_domain_proof_scope.py test/api/test_agent_supervisor_proof_scope_index.py test/api/test_agent_supervisor_semantic_dependency_graph.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/dependency-graph
+- Parallel lane: cross-domain-proof-scope
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof_scope_index.py, test/api/test_agent_supervisor_cross_domain_proof_scope.py
+- Conflict policy: Extend existing proof-scope kinds and indexes compatibly; retain current file, symbol, interface, premise, toolchain, policy, and contradiction queries.
+- Acceptance: Add explicit scope keys for IR family/root/declaration/claim, intent action/statement, legal norm/applicability fact, security principal/resource/policy/state, program snapshot/AST edge/effect, tool operation, decision context, authorization decision, and execution permit. Index their forward obligations and reverse dependent contexts, plans, proofs, permits, validations, caches, and merges with active/stale state. A semantic input change must deterministically invalidate every transitive dependent and no independent artifact; preserve exact warm reuse; reject cycles, detached receipts, root mismatches, ambiguous aliases, forged activity, and restart-restored indexes that do not revalidate against current canonical artifacts.
+
+## ASI-132 Add retrieval-seed receipts and authoritative proof closure
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-context
+- Depends on: ASI-096, ASI-098, ASI-099, ASI-130, ASI-131
+- Goal id: ASI-G330
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof_directed_retrieval.py, ipfs_accelerate_py/agent_supervisor/analysis_retrieval.py, test/api/test_agent_supervisor_proof_directed_retrieval.py
+- Validation: python -m pytest test/api/test_agent_supervisor_proof_directed_retrieval.py test/api/test_agent_supervisor_analysis_retrieval.py test/api/test_agent_supervisor_analysis_consensus.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/context
+- Parallel lane: proof-directed-retrieval
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof_directed_retrieval.py, ipfs_accelerate_py/agent_supervisor/analysis_retrieval.py, test/api/test_agent_supervisor_proof_directed_retrieval.py
+- Conflict policy: Compose existing retrieval backends and the semantic dependency graph; do not promote BM25, vector, AST, GraphRAG, provider consensus, or embedding-guided traversal to proof or authorization authority.
+- Acceptance: Derive exact seeds from the `DecisionRequest`, optionally add bounded BM25/vector/AST/GraphRAG candidates, validate candidates against exact index/model/configuration/graph roots and partitions, and then compute the complete mandatory authority/proof closure by deterministic typed edges. Emit a canonical receipt binding query, roots, model and embedding fingerprint, budgets, seeds, candidates, scores, paths, included and omitted nodes, truncation, disagreement, fallback, and closure fixed point. Approximate/truncated retrieval may affect only optional evidence; missing required indexes use deterministic exact fallback or fail closed; poisoned embeddings, cross-partition neighbors, stale roots, malformed candidates, hidden denials, and graph-budget exhaustion cannot suppress a mandatory dependency.
+
+## ASI-133 Compile minimal decision contexts with completeness witnesses
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-context
+- Depends on: ASI-096, ASI-132
+- Goal id: ASI-G330
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_context.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, test/api/test_agent_supervisor_decision_context.py
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_context.py test/api/test_agent_supervisor_context_compiler.py test/api/test_agent_supervisor_evidence_value.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/context
+- Parallel lane: decision-context-compiler
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/decision_context.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, test/api/test_agent_supervisor_decision_context.py
+- Conflict policy: Layer the decision compiler over the existing context compiler and contracts; preserve generation-1/2 capsule behavior and keep large bodies in the artifact store.
+- Acceptance: Compile an immutable required core containing the exact decision and roots, selected intent action contract, applicable legal/security constraints and unknowns, authorization state, program/effect scope, assumptions, obligations, proof/monitor state, validation, acceptance, and failure behavior. Inline bounded canonical summaries, reference larger bodies by verified expansion handles, and emit a `ContextCompletenessWitness` mapping every mandatory dependency and path to an inline reference or resolvable handle. Required nodes never compete in value-of-information selection. Provider-token-remeasure the complete input and, when mandatory closure exceeds budget, deterministically split, request a named expansion, or fail closed rather than truncate. Prove that 10x irrelevant legal, skill, code, graph, and conversation growth leaves decision context unchanged except bounded index metadata.
+
+## ASI-134 Bind progressive expansion and retries to changed dependencies
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: proof-runtime-context
+- Depends on: ASI-133
+- Goal id: ASI-G330
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_context.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_decision_context_delta.py
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_context_delta.py test/api/test_agent_supervisor_context_delta.py test/api/test_agent_supervisor_decision_context.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/context
+- Parallel lane: decision-context-delta
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/decision_context.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_decision_context_delta.py
+- Conflict policy: Own decision-context expansion and retry integration only; coordinate edits to `implementation_daemon.py` with ASI-117 and defer full live-path dispatch replacement to ASI-137.
+- Acceptance: Require each expansion to name an unresolved question and a content-addressed handle admitted by the original dependency closure; reject arbitrary corpus browsing, cross-root handles, authority escalation, repeated equivalent requests, and expansion beyond count/token/byte/latency budgets. Build retry capsules from the exact parent decision/context witness plus changed diagnostics, dependencies, proofs, policies, IR roots, or explicitly expanded evidence. Reconstruct and revalidate the full mandatory closure and stable core while transmitting only the delta, invalidate on dirty-worktree and semantic-root changes, preserve omission reasons, and demonstrate lower retry tokens without required-coverage or safety loss.
+
+## ASI-135 Integrate all IR domains into hard-constrained plan admission
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-constraints
+- Depends on: ASI-104, ASI-126, ASI-127, ASI-128, ASI-130
+- Goal id: ASI-G340
+- Outputs: ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py, ipfs_accelerate_py/agent_supervisor/formal_plan_compiler.py, ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, test/api/test_agent_supervisor_ir_constraint_compiler.py
+- Validation: python -m pytest test/api/test_agent_supervisor_ir_constraint_compiler.py test/api/test_agent_supervisor_formal_plan_compiler.py test/api/test_agent_supervisor_and_or_planner.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/constraints
+- Parallel lane: cross-domain-plan-constraints
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py, ipfs_accelerate_py/agent_supervisor/formal_plan_compiler.py, ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, test/api/test_agent_supervisor_ir_constraint_compiler.py
+- Conflict policy: Integrate the three independent adapters only after their contracts land; preserve deterministic baseline planning and existing hard-constraint pruning and do not let a composite score compensate for a domain failure.
+- Acceptance: Compile one canonical plan-admission request and receipt over the exact candidate action/effect graph, IntentIR conformance, LegalIR applicability and constraints, SecurityIR authorization/state checks, program dependencies, assumptions, proof obligations/results, and validation requirements. Prune every candidate with an intent violation, applicable unresolved prohibition/obligation, security deny/unknown, undeclared effect, missing proof, stale root, or authority mismatch before soft scoring. Keep permissions distinct from grants and generated formulas distinct from proofs. Preserve complete rejection reasons and counterexamples for dependency-local replanning, deterministic no-model fallback, and invariant results under candidate order or irrelevant corpus growth.
+
+## ASI-136 Issue and verify exact short-lived execution permits
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-enforcement
+- Depends on: ASI-116, ASI-129, ASI-133, ASI-135
+- Goal id: ASI-G350
+- Outputs: ipfs_accelerate_py/agent_supervisor/execution_permit.py, ipfs_accelerate_py/agent_supervisor/authorization_logic.py, test/api/test_agent_supervisor_execution_permit.py
+- Validation: python -m pytest test/api/test_agent_supervisor_execution_permit.py test/api/test_agent_supervisor_authorization_logic.py test/api/test_agent_supervisor_control_transactions.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/enforcement
+- Parallel lane: exact-execution-permit
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/execution_permit.py, ipfs_accelerate_py/agent_supervisor/authorization_logic.py, test/api/test_agent_supervisor_execution_permit.py
+- Conflict policy: Extend the shared authorization and transaction boundary; do not wire individual daemon, CLI, MCP, tool, commit, or merge callers until the standalone verifier is complete.
+- Acceptance: Issue an immutable permit only after exact intent conformance, legal constraint, SecurityIR authorization, mandatory proof/monitor, context completeness, and effect-scope checks pass. Bind it to the complete `DecisionRequest`, candidate action/tool arguments, targets, expected effects, repository/worktree and all semantic roots, dependency closure, context witness, domain receipts, validation plan, caller, lease, fencing epoch, expiry, idempotency key, allowed use count, and policy. Verification immediately before effect must reject replay, changed arguments/targets/effects, stale roots or receipts, expired lease, fence loss, cross-task/principal use, broadened paths, partial authority, and unknown or contradictory mandatory state; a permit grants only the exact declared operation and never completion authority.
+
+## ASI-137 Wire the proof-directed runtime through every live supervisor path
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-enforcement
+- Depends on: ASI-136
+- Goal id: ASI-G350
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_runtime.py, ipfs_accelerate_py/agent_supervisor/task_proposal_router.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, test/api/test_agent_supervisor_decision_runtime_e2e.py
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_runtime_e2e.py test/api/test_agent_supervisor_task_proposal_router.py test/api/test_agent_supervisor_context_delta.py test/api/test_agent_supervisor_control_transactions.py test/api/test_agent_supervisor_merge_train.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/enforcement
+- Parallel lane: decision-runtime-live-path
+- Resource class: cpu-large
+- Predicted files: ipfs_accelerate_py/agent_supervisor/decision_runtime.py, ipfs_accelerate_py/agent_supervisor/task_proposal_router.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, test/api/test_agent_supervisor_decision_runtime_e2e.py
+- Conflict policy: This is the sole proof-runtime live-path integration lane; serialize overlapping daemon/control/merge edits with ASI-115 through ASI-118 and retain the current path behind an explicit shadow/off fallback.
+- Acceptance: Route task proposal, analysis request, plan selection, implementation context, retry, expansion, validation selection/execution, file and task-board mutation, command/tool invocation, commit, merge, and completion admission through one `DecisionRuntime`. Configure exact IR roots and applicability facts through provider-free contracts and equivalent Python/CLI/MCP controls. Move generic prompt policy and edit scope inside the authoritative decision/context identity; remove post-capsule authority text as an enforcement source; check a current permit at every mutation boundary; compare observed to expected effects; and require a new merged-tree decision and evidence assembly before completion. Prove no direct-call or transport bypass, safe off/shadow behavior, deterministic degradation, cancellation, and no eager optional-provider import.
+
+## ASI-138 Add dependency-local invalidation, re-proof, and recovery
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-enforcement
+- Depends on: ASI-101, ASI-118, ASI-131, ASI-137
+- Goal id: ASI-G350
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_runtime.py, ipfs_accelerate_py/agent_supervisor/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/event_log.py, ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py, test/api/test_agent_supervisor_decision_runtime_invalidation.py
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_runtime_invalidation.py test/api/test_agent_supervisor_runtime_cas.py test/api/test_agent_supervisor_fault_recovery_v2.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/enforcement
+- Parallel lane: decision-runtime-invalidation
+- Resource class: io-artifact
+- Predicted files: ipfs_accelerate_py/agent_supervisor/decision_runtime.py, ipfs_accelerate_py/agent_supervisor/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/event_log.py, ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py, test/api/test_agent_supervisor_decision_runtime_invalidation.py
+- Conflict policy: Own semantic-root event handling and proof-runtime cache/recovery integration; preserve existing CAS namespace authority, event cursors, and generation-2 recovery behavior.
+- Acceptance: Convert worktree/AST/effect, IntentIR, LegalIR, SecurityIR, policy, tool catalog, capability, proof, monitor, lease, and observed-effect changes into canonical events; traverse reverse proof scope; and invalidate every and only dependent retrievals, contexts, plans, permits, proofs, validations, caches, and merge/completion receipts. Recompute the affected plan suffix and minimum authoritative proof/validation closure while retaining independent artifacts. Bind checkpoints and replay to the same roots and event cursor; fence pre-crash actors and permits; detect missed/duplicate/reordered events, corrupt indexes, partial writes, root races, and stale restored artifacts; and recover deterministically or enter bounded fail-closed quarantine with an exact repair receipt.
+
+## ASI-139 Benchmark proof-dependency context scaling and gate rollout
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: proof-runtime-rollout
+- Depends on: ASI-119, ASI-137, ASI-138
+- Goal id: ASI-G360
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_runtime_benchmark.py, ipfs_accelerate_py/agent_supervisor/decision_runtime_rollout.py, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md, test/api/test_agent_supervisor_decision_runtime_benchmark.py, test/api/test_agent_supervisor_decision_runtime_adversarial.py, test/api/test_agent_supervisor_decision_runtime_rollout.py, test/api/test_agent_supervisor_decision_runtime_public_api.py
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_runtime_benchmark.py test/api/test_agent_supervisor_decision_runtime_adversarial.py test/api/test_agent_supervisor_decision_runtime_rollout.py test/api/test_agent_supervisor_decision_runtime_public_api.py -q
+- Board namespace: agent-supervisor-self-improvement-v3
+- Bundle: agent-supervisor/self-improvement-v3/rollout
+- Parallel lane: proof-runtime-rollout
+- Resource class: cpu-large
+- Predicted files: ipfs_accelerate_py/agent_supervisor/decision_runtime_benchmark.py, ipfs_accelerate_py/agent_supervisor/decision_runtime_rollout.py, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md, test/api/test_agent_supervisor_decision_runtime_benchmark.py, test/api/test_agent_supervisor_decision_runtime_adversarial.py, test/api/test_agent_supervisor_decision_runtime_rollout.py, test/api/test_agent_supervisor_decision_runtime_public_api.py
+- Conflict policy: Keep one closed paired/adversarial population and rollout owner; integrate public exports and documentation last, preserve v1/v2 behavior, and prohibit metric or fixture narrowing during promotion.
+- Acceptance: Compare the current and proof-directed live paths on the same frozen decisions while independently scaling irrelevant legal corpus, codebase, SkillCenter rows/graphs, and conversation history by at least 10x. Recompute provider tokens, mandatory closure nodes/bytes, total corpus nodes/bytes, cache reuse, invalidation precision, first-valid plans, retries, proof/validation cost, effects, and terminal results from producer receipts and causal ablations. Require zero forged-CID, canonicalization, schema, stale-root, cross-partition, prompt-injection, poisoned-embedding, inapplicable-law, legal-conflict, SecurityIR deny/unknown, intent-authority-confusion, dirty-file, changed-tool-argument, stale-lease, proof-replay, graph-truncation, recovery, path/effect escape, or mandatory-omission escapes. Context must grow with mandatory closure rather than total corpus; deterministic local degraded operation and lazy discovery must pass. Expose equivalent off, shadow, assist, policy-approved automatic, status, explanation, and rollback controls through Python/CLI/MCP, require a later separate current-root evaluation for automatic mode, and return affected behavior to shadow on any binding or safety regression.
