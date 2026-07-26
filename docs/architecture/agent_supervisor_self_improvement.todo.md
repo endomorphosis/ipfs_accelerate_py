@@ -3618,7 +3618,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-108 Add hermetic impact, differential, mutation, and flaky validation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: validation
