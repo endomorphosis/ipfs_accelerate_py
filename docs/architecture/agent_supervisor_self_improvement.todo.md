@@ -4140,7 +4140,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-137 Wire the proof-directed runtime through every live supervisor path
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-enforcement
