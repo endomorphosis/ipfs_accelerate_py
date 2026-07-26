@@ -4,7 +4,7 @@ Modular Transformers lowers the bar for contributing models and significantly re
 
 One of Transformers' core design feature is the [single model, single file](https://huggingface.co/blog/transformers-design-philosophy) policy. Model components - such as attention layers - are repeated across many files and any independent implementations tend to diverge as fixes and changes are applied to specific parts of the code.
 
-The [`# Copied from`](./pr_checks#check-copies) statements prevents the code from diverging, and it is enforced by our continuous integration tests and local commands. The downside is that this approach is tedious and adds significantly more lines of code, most of which is boilerplate.
+The [`# Copied from`](./pr_checks.md#check-copies "Check copies in pull-request checks") statements prevents the code from diverging, and it is enforced by our continuous integration tests and local commands. The downside is that this approach is tedious and adds significantly more lines of code, most of which is boilerplate.
 
 ## Motivation
 
@@ -94,7 +94,7 @@ ValueError: You defined `RobertaEmbeddings` in the modular_roberta.py, it should
 
 ## Implementing a modular file
 
-The easiest way to start is by browsing Transformers for a model similar to yours in order to inherit from it. Some good starting points are [Mistral](./model_doc/mistral), [Qwen2](./model_doc/qwen2), [Cohere](./model_doc/cohere) and [Cohere](./model_doc/cohere2), and [Llama](./model_doc/llama). Refer to the table below for components your model might be using and where you can inherit from.
+The easiest way to start is by browsing Transformers for a model similar to yours in order to inherit from it. Some good starting points are [Mistral](./model_doc/mistral.md), [Qwen2](./model_doc/qwen2.md), [Cohere](./model_doc/cohere.md) and [Cohere](./model_doc/cohere2.md), and [Llama](./model_doc/llama.md). Refer to the table below for components your model might be using and where you can inherit from.
 
 | Component | Model |
 |---|---|
@@ -107,7 +107,7 @@ The easiest way to start is by browsing Transformers for a model similar to your
 | QK normalization | Olmo2, Cohere |
 | Fused QKV (not recommended) | Phi3 |
 
-This section will walk you through how to implement [Olmo2](./model_doc/olmo2) from [Olmo](./model_doc/olmo) with modular Transformers (you can refer to the original [modeling.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/olmo2/modular_olmo2.py) file).
+This section will walk you through how to implement [Olmo2](./model_doc/olmo2.md) from [Olmo](./model_doc/olmo.md) with modular Transformers (you can refer to the original [modeling.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/olmo2/modular_olmo2.py) file).
 
 ### Config
 
@@ -118,7 +118,7 @@ from ..olmo.configuration_olmo import OlmoConfig
 
 class Olmo2Config(OlmoConfig):
     r"""
-    This is the configuration class to store the configuration of a [Olmo2Model](/docs/transformers/main/en/model_doc/olmo2#transformers.Olmo2Model).
+    This is the configuration class to store the configuration of a [Olmo2Model](./model_doc/olmo2.md#transformers.Olmo2Model).
     """
 
     def __init__(
@@ -548,7 +548,7 @@ This makes it very easy to switch decorators and makes it explicit that the only
 
 If an object defined in both the modular and modeling file from which it inherits, the modular definition has precedence unless for assignments containing the pattern `DOCSTRING`. These variables are typically used in `MODEL_START_DOCSTRING` and `MODEL_INPUT_DOCSTRING` in the modeling files. They are big blocks of docstrings and the linter rewrites the names everywhere. For this reason, assignments containing the `DOCSTRING` variable always uses the definition found in the source file instead of the modular file.
 
-This is very useful if you need the variable reference somewhere but you don't want to clutter the modular file with docstrings which are always the same. The example code below allows you to automatically use the same docstrings from [Mistral](./model_doc/mistral) in [Starcoder2](./model_doc/starcoder2).
+This is very useful if you need the variable reference somewhere but you don't want to clutter the modular file with docstrings which are always the same. The example code below allows you to automatically use the same docstrings from [Mistral](./model_doc/mistral.md) in [Starcoder2](./model_doc/starcoder2.md).
 
 ```py
 STARCODER2_INPUTS_DOCSTRING = None  # will be automatically redefined

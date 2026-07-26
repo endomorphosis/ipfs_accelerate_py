@@ -61,7 +61,7 @@ This model was contributed by [dqnguyen](https://huggingface.co/dqnguyen). The o
 
 <Tip> 
 
-PhoBERT implementation is the same as BERT, except for tokenization. Refer to [BERT documentation](bert) for information on 
+PhoBERT implementation is the same as BERT, except for tokenization. Refer to [BERT documentation](./bert.md) for information on
 configuration classes and their parameters. PhoBERT-specific tokenizer is documented below.  
 
 </Tip>

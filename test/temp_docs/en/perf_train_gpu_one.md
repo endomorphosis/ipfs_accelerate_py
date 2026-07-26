@@ -35,7 +35,7 @@ Refer to the table below to quickly help you identify the features relevant to y
 
 ## Trainer
 
-[Trainer](./trainer) supports many useful training features that can be configured through [`TrainingArguments`]. This section highlights some of the more important features for optimizing training.
+[Trainer](./trainer.md) supports many useful training features that can be configured through [`TrainingArguments`]. This section highlights some of the more important features for optimizing training.
 
 ### Batch size
 
@@ -191,7 +191,7 @@ args = TrainingArguments(
 
 There are many optimizers to choose from (refer to [OptimizerNames](https://github.com/huggingface/transformers/blob/34f4080ff59b1668d919a1ba9f8bc4a3a2a3f478/src/transformers/training_args.py#L145) for a full supported list) depending on your training scenario. For example, Adafactor can significantly reduce memory requirements by storing a weighted average of a row or column instead of each element in the matrix at the cost of slower convergence. Another example is using a [8-bit AdamW optimizer](https://huggingface.co/docs/bitsandbytes) from bitsandbytes to quantize optimizer states. The optimizer state is stored in a lower precision and dequantized before being used in the optimizer step.
 
-Refer to the [optimizer](./optimizers) guide for to learn about more specialized optimizers.
+Refer to the [optimizer](./optimizers.md) guide for to learn about more specialized optimizers.
 
 ### Data preloading
 

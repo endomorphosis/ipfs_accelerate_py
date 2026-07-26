@@ -23,7 +23,7 @@ can vary as the APIs or underlying models are prone to change.
 
 </Tip>
 
-To learn more about agents and tools make sure to read the [introductory guide](../transformers_agents). This page
+To learn more about agents and tools make sure to read the [introductory guide](../agents.md). This page
 contains the API docs for the underlying classes.
 
 ## Agents

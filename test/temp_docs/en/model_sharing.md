@@ -22,7 +22,7 @@ This guide will show you how to share a model to the Hub from Transformers.
 
 ## Set up
 
-To share a model to the Hub, you need a Hugging Face [account](https://hf.co/join). Create a [User Access Token](https://hf.co/docs/hub/security-tokens#user-access-tokens) (stored in the [cache](./installation#cache-directory) by default) and login to your account from either the command line or notebook.
+To share a model to the Hub, you need a Hugging Face [account](https://hf.co/join). Create a [User Access Token](https://hf.co/docs/hub/security-tokens#user-access-tokens) (stored in the [cache](installation.md#cache-directory) by default) and login to your account from either the command line or notebook.
 
 <hfoptions id="share">
 <hfoption id="huggingface-CLI">

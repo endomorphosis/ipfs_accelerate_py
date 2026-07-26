@@ -659,5 +659,5 @@ WEBNN_ENABLED=1 WEBNN_SIMULATION=1 python scripts/generators/models/test_model_i
 - [WebGPU API Specification](https://gpuweb.github.io/gpuweb/)
 - [ONNX Web API Documentation](https://github.com/microsoft/onnxruntime-web)
 - [Transformers.js Documentation](https://huggingface.co/docs/transformers.js/index)
-- [Phase 16 Implementation Summary](PHASE16_IMPLEMENTATION_SUMMARY.md)
+- [Web Platform Implementation Summary](WEB_PLATFORM_IMPLEMENTATION_SUMMARY.md)
 - [Web Platform Integration Guide](web_platform_integration_guide.md)

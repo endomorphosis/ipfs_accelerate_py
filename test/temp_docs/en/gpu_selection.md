@@ -16,7 +16,7 @@ rendered properly in your Markdown viewer.
 
 # GPU selection
 
-During distributed training, you can specify the number of GPUs to use and in what order. This can be useful when you have GPUs with different computing power and you want to use the faster GPU first. Or you could only use a subset of the available GPUs. The selection process works for both [DistributedDataParallel](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) and [DataParallel](https://pytorch.org/docs/stable/generated/torch.nn.DataParallel.html). You don't need Accelerate or [DeepSpeed integration](./main_classes/deepspeed).
+During distributed training, you can specify the number of GPUs to use and in what order. This can be useful when you have GPUs with different computing power and you want to use the faster GPU first. Or you could only use a subset of the available GPUs. The selection process works for both [DistributedDataParallel](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) and [DataParallel](https://pytorch.org/docs/stable/generated/torch.nn.DataParallel.html). You don't need Accelerate or [DeepSpeed integration](./deepspeed.md).
 
 This guide will show you how to select the number of GPUs to use and the order to use them in.
 

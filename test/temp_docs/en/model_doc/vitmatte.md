@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License.
 ## Overview
 
 The ViTMatte model was proposed in [Boosting Image Matting with Pretrained Plain Vision Transformers](https://arxiv.org/abs/2305.15272) by Jingfeng Yao, Xinggang Wang, Shusheng Yang, Baoyuan Wang.
-ViTMatte leverages plain [Vision Transformers](vit) for the task of image matting, which is the process of accurately estimating the foreground object in images and videos.
+ViTMatte leverages plain [Vision Transformers](vit.md) for the task of image matting, which is the process of accurately estimating the foreground object in images and videos.
 
 The abstract from the paper is the following:
 

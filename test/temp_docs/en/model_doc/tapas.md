@@ -580,8 +580,8 @@ In case of a conversational set-up, then each table-question pair must be provid
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
 
 ## TAPAS specific outputs
 [API documentation placeholder]

@@ -297,7 +297,7 @@ For additional guidance and examples, refer to the specific documentation for ea
 
 - [CI/CD Integration Guide](CI_CD_INTEGRATION_GUIDE.md): Detailed documentation for CI/CD integration
 - [Plugin Architecture Guide](../README_PLUGIN_ARCHITECTURE.md): Comprehensive guide to the plugin architecture
-- [Resource Pool Guide](../WEB_RESOURCE_POOL_INTEGRATION.md): Documentation for the WebGPU/WebNN resource pool
+- [Resource Pool Guide](../README_WEBGPU_RESOURCE_POOL.md): Documentation for the WebGPU/WebNN resource pool
 - [External Systems API Reference](EXTERNAL_SYSTEMS_API_REFERENCE.md): Comprehensive reference for the External Systems API
 
 The External Systems API Reference provides detailed documentation for all external system connectors, including JIRA, Slack, TestRail, Prometheus, Email, and MS Teams. It includes comprehensive examples, best practices, and troubleshooting guidance.

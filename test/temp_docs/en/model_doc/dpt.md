@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The DPT model was proposed in [Vision Transformers for Dense Prediction](https://arxiv.org/abs/2103.13413) by René Ranftl, Alexey Bochkovskiy, Vladlen Koltun.
-DPT is a model that leverages the [Vision Transformer (ViT)](vit) as backbone for dense prediction tasks like semantic segmentation and depth estimation.
+DPT is a model that leverages the [Vision Transformer (ViT)](./vit.md) as backbone for dense prediction tasks like semantic segmentation and depth estimation.
 
 The abstract from the paper is the following:
 
@@ -57,8 +57,8 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 - Demo notebooks for [`DPTForDepthEstimation`] can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/DPT).
 
-- [Semantic segmentation task guide](../tasks/semantic_segmentation)
-- [Monocular depth estimation task guide](../tasks/monocular_depth_estimation)
+- [Semantic segmentation task guide](../tasks/semantic_segmentation.md)
+- [Monocular depth estimation task guide](../tasks/monocular_depth_estimation.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 

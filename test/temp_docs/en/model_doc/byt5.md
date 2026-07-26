@@ -49,7 +49,7 @@ found [here](https://github.com/google-research/byt5).
 
 <Tip>
 
-ByT5's architecture is based on the T5v1.1 model, refer to [T5v1.1's documentation page](t5v1.1) for the API reference. They
+ByT5's architecture is based on the T5v1.1 model, refer to [T5v1.1's documentation page](./t5v1.1.md) for the API reference. They
 only differ in how inputs should be prepared for the model, see the code examples below.
 
 </Tip>
@@ -102,7 +102,7 @@ For batched inference and training it is however recommended to make use of the 
 17.9
 ```
 
-Similar to [T5](t5), ByT5 was trained on the span-mask denoising task. However, 
+Similar to [T5](t5.md), ByT5 was trained on the span-mask denoising task. However, 
 since the model works directly on characters, the pretraining task is a bit 
 different. Let's corrupt some characters of the 
 input sentence `"The dog chases a ball in the park."` and ask ByT5 to predict them 

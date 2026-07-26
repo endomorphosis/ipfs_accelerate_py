@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The LiLT model was proposed in [LiLT: A Simple yet Effective Language-Independent Layout Transformer for Structured Document Understanding](https://arxiv.org/abs/2202.13669) by Jiapeng Wang, Lianwen Jin, Kai Ding.
-LiLT allows to combine any pre-trained RoBERTa text encoder with a lightweight Layout Transformer, to enable [LayoutLM](layoutlm)-like document understanding for many
+LiLT allows to combine any pre-trained RoBERTa text encoder with a lightweight Layout Transformer, to enable [LayoutLM](./layoutlm.md)-like document understanding for many
 languages.
 
 The abstract from the paper is the following:
@@ -51,7 +51,7 @@ model.push_to_hub("name_of_repo_on_the_hub")
 ```
 
 - When preparing data for the model, make sure to use the token vocabulary that corresponds to the RoBERTa checkpoint you combined with the Layout Transformer.
-- As [lilt-roberta-en-base](https://huggingface.co/SCUT-DLVCLab/lilt-roberta-en-base) uses the same vocabulary as [LayoutLMv3](layoutlmv3), one can use [`LayoutLMv3TokenizerFast`] to prepare data for the model.
+- As [lilt-roberta-en-base](https://huggingface.co/SCUT-DLVCLab/lilt-roberta-en-base) uses the same vocabulary as [LayoutLMv3](layoutlmv3.md), one can use [`LayoutLMv3TokenizerFast`] to prepare data for the model.
 The same is true for [lilt-roberta-en-base](https://huggingface.co/SCUT-DLVCLab/lilt-infoxlm-base): one can use [`LayoutXLMTokenizerFast`] for that model.
 
 ## Resources
@@ -61,9 +61,9 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - Demo notebooks for LiLT can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/LiLT).
 
 **Documentation resources**
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 
@@ -85,4 +85,4 @@ If you're interested in submitting a resource to be included here, please feel f
 
 ## LiltForQuestionAnswering
 
-[API documentation placeholder]
+[API documentation placeholder]

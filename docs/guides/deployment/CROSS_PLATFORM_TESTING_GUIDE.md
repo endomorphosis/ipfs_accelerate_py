@@ -323,7 +323,7 @@ python test_cross_platform_cache.py
 ## Testing Between Two Laptops
 
 Use the dedicated two-machine smoke tool:
-- [tools/github_p2p_cache_smoke.py](tools/github_p2p_cache_smoke.py)
+- [scripts/utils/github_p2p_cache_smoke.py](../../../scripts/utils/github_p2p_cache_smoke.py)
 - Runbook: [GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md](../github/GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
 
 Quickstart (recommended):
@@ -339,14 +339,14 @@ export CACHE_P2P_SHARED_SECRET='replace-with-a-random-shared-secret'
 
 ```bash
 export CACHE_LISTEN_PORT=9101
-python tools/github_p2p_cache_smoke.py --read --target octocat/Hello-World --wait-seconds 120 --verbose
+python scripts/utils/github_p2p_cache_smoke.py --read --target octocat/Hello-World --wait-seconds 120 --verbose
 ```
 
 3) Laptop A (writer):
 
 ```bash
 export CACHE_LISTEN_PORT=9100
-python tools/github_p2p_cache_smoke.py --write --target octocat/Hello-World --verbose
+python scripts/utils/github_p2p_cache_smoke.py --write --target octocat/Hello-World --verbose
 ```
 
 Notes:

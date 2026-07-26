@@ -365,8 +365,8 @@ fig.write_html("interactive_performance_plot.html")
 
 ## Related Documentation
 
-- [Benchmark Database Guide](../BENCHMARK_DATABASE_GUIDE.md)
-- [Hardware Benchmarking Guide](../HARDWARE_BENCHMARKING_GUIDE.md)
+- [Benchmark Database Guide](../../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
+- [Hardware Benchmarking Guide](../../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)
 - [Compatibility Matrix Guide](COMPATIBILITY_MATRIX_GUIDE.md)
 - [Performance Dashboard Specification](../PERFORMANCE_DASHBOARD_SPECIFICATION.md)
 - [Benchmark Visualization Guide](benchmark_visualization.md)

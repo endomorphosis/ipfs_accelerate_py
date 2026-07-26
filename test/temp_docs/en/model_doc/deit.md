@@ -25,7 +25,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The DeiT model was proposed in [Training data-efficient image transformers & distillation through attention](https://arxiv.org/abs/2012.12877) by Hugo Touvron, Matthieu Cord, Matthijs Douze, Francisco Massa, Alexandre
-Sablayrolles, Hervé Jégou. The [Vision Transformer (ViT)](vit) introduced in [Dosovitskiy et al., 2020](https://arxiv.org/abs/2010.11929) has shown that one can match or even outperform existing convolutional neural
+Sablayrolles, Hervé Jégou. The [Vision Transformer (ViT)](./vit.md) introduced in [Dosovitskiy et al., 2020](https://arxiv.org/abs/2010.11929) has shown that one can match or even outperform existing convolutional neural
 networks using a Transformer encoder (BERT-like). However, the ViT models introduced in that paper required training on
 expensive infrastructure for multiple weeks, using external data. DeiT (data-efficient image transformers) are more
 efficiently trained transformers for image classification, requiring far less data and far less computing resources
@@ -109,7 +109,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 <PipelineTag pipeline="image-classification"/>
 
 - [`DeiTForImageClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/image-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/image_classification.ipynb).
-- See also: [Image classification task guide](../tasks/image_classification)
+- See also: [Image classification task guide](../tasks/image_classification.md)
 
 Besides that:
 

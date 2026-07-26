@@ -68,7 +68,7 @@ The conversion script is also different because the model was saved in t5x's lat
 
 <Tip> 
 
-Refer to [T5's documentation page](t5) for more tips, code examples and notebooks.
+Refer to [T5's documentation page](./t5.md) for more tips, code examples and notebooks.
 </Tip>
 
 ## UMT5Config

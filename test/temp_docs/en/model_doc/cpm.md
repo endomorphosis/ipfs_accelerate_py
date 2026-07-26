@@ -47,7 +47,7 @@ here: https://github.com/TsinghuaAI/CPM-Generate
 
 <Tip>
 
-CPM's architecture is the same as GPT-2, except for tokenization method. Refer to [GPT-2 documentation](gpt2) for 
+CPM's architecture is the same as GPT-2, except for tokenization method. Refer to [GPT-2 documentation](./gpt2.md) for
 API reference information.  
 
 </Tip>

@@ -204,8 +204,8 @@ python -m duckdb_api.distributed_testing.run_monitoring_dashboard --enable-visua
 ## Documentation
 
 For comprehensive documentation, see:
-- [ADVANCED_VISUALIZATION_GUIDE.md](../../../../ADVANCED_VISUALIZATION_GUIDE.md): Complete guide to the Advanced Visualization System
-- [WEB_RESOURCE_POOL_DOCUMENTATION.md](../../../../WEB_RESOURCE_POOL_DOCUMENTATION.md): Documentation for web resource pool with visualization integration
+- [ADVANCED_VISUALIZATION_GUIDE.md](../../../../test/ADVANCED_VISUALIZATION_GUIDE.md): Complete guide to the Advanced Visualization System
+- [WEB_RESOURCE_POOL_DOCUMENTATION.md](../../../../test/WEB_RESOURCE_POOL_DOCUMENTATION.md): Documentation for web resource pool with visualization integration
 
 ## Dependencies
 

@@ -370,9 +370,9 @@ The compatibility matrix is automatically updated as part of our CI/CD pipeline.
 
 ## Further Resources
 
-- [Hardware Selection Guide](HARDWARE_SELECTION_GUIDE.md) - Detailed guide for selecting the appropriate hardware
-- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md) - How to benchmark models on different hardware
-- [Web Platform Support Guide](WEB_PLATFORM_SUPPORT_GUIDE.md) - Details on WebNN and WebGPU support
-- [Qualcomm Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md) - Specialized guide for mobile deployment
-- [Matrix API Documentation](compatibility_matrix_api.md) - Programmatic access to compatibility data
+- [Hardware Selection Guide](../HARDWARE_SELECTION_GUIDE.md) - Detailed guide for selecting the appropriate hardware
+- [Hardware Benchmarking Guide](../../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md) - How to benchmark models on different hardware
+- [Web Platform Support Guide](../WEB_PLATFORM_MODEL_COMPATIBILITY.md) - Details on WebNN and WebGPU support
+- [Qualcomm Integration Guide](../QUALCOMM_INTEGRATION_GUIDE.md) - Specialized guide for mobile deployment
+- [Matrix API Documentation](../scripts/compatibility_matrix.py) - Programmatic access to compatibility data
 - [Interactive Dashboard](compatibility_dashboard.md) - How to use the interactive dashboard

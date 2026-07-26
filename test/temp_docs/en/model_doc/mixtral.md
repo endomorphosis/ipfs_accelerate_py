@@ -30,7 +30,7 @@ The introduction of the blog post says:
 
 *Today, the team is proud to release Mixtral 8x7B, a high-quality sparse mixture of experts models (SMoE) with open weights. Licensed under Apache 2.0. Mixtral outperforms Llama 2 70B on most benchmarks with 6x faster inference. It is the strongest open-weight model with a permissive license and the best model overall regarding cost/performance trade-offs. In particular, it matches or outperforms GPT3.5 on most standard benchmarks.*
 
-Mixtral-8x7B is the second large language model (LLM) released by [mistral.ai](https://mistral.ai/), after [Mistral-7B](mistral).
+Mixtral-8x7B is the second large language model (LLM) released by [mistral.ai](https://mistral.ai/), after [Mistral-7B](mistral.md).
 
 ### Architectural details
 
@@ -39,7 +39,7 @@ Mixtral-8x7B is a decoder-only Transformer with the following architectural choi
 - Mixtral is a Mixture of Experts (MoE) model with 8 experts per MLP, with a total of 45 billion parameters. To learn more about mixture-of-experts, refer to the [blog post](https://huggingface.co/blog/moe).
 - Despite the model having 45 billion parameters, the compute required for a single forward pass is the same as that of a 14 billion parameter model. This is because even though each of the experts have to be loaded in RAM (70B like ram requirement) each token from the hidden states are dispatched twice (top 2 routing) and thus the compute (the operation required at each forward computation) is just 2 X sequence_length. 
 
-The following implementation details are shared with Mistral AI's first model [Mistral-7B](mistral):
+The following implementation details are shared with Mistral AI's first model [Mistral-7B](mistral.md):
 - Sliding Window Attention - Trained with 8k context length and fixed cache size, with a theoretical attention span of 128K tokens
 - GQA (Grouped Query Attention) - allowing faster inference and lower cache size.
 - Byte-fallback BPE tokenizer - ensures that characters are never mapped to out of vocabulary tokens.
@@ -95,11 +95,11 @@ The instruction tuned model can be used as follows:
 "Mayonnaise can be made as follows: (...)"
 ```
 
-As can be seen, the instruction-tuned model requires a [chat template](../chat_templating) to be applied to make sure the inputs are prepared in the right format.
+As can be seen, the instruction-tuned model requires a [chat template](../chat_templating.md) to be applied to make sure the inputs are prepared in the right format.
 
 ## Speeding up Mixtral by using Flash Attention
 
-The code snippets above showcase inference without any optimization tricks. However, one can drastically speed up the model by leveraging [Flash Attention](../perf_train_gpu_one#flash-attention-2), which is a faster implementation of the attention mechanism used inside the model.
+The code snippets above showcase inference without any optimization tricks. However, one can drastically speed up the model by leveraging [Flash Attention](../perf_train_gpu_one.md#scaled-dot-production-attention), which is a faster implementation of the attention mechanism used inside the model.
 
 First, make sure to install the latest version of Flash Attention 2 to include the sliding window attention feature.
 
@@ -145,9 +145,9 @@ The Flash Attention-2 model uses also a more memory efficient cache slicing mech
 
 ## Shrinking down Mixtral using quantization
 
-As the Mixtral model has 45 billion parameters, that would require about 90GB of GPU RAM in half precision (float16), since each parameter is stored in 2 bytes. However, one can shrink down the size of the model using [quantization](../quantization.md). If the model is quantized to 4 bits (or half a byte per parameter), a single A100 with 40GB of RAM is enough to fit the entire model, as in that case only about 27 GB of RAM is required.
+As the Mixtral model has 45 billion parameters, that would require about 90GB of GPU RAM in half precision (float16), since each parameter is stored in 2 bytes. However, one can shrink down the size of the model using [quantization](../quantization/overview.md). If the model is quantized to 4 bits (or half a byte per parameter), a single A100 with 40GB of RAM is enough to fit the entire model, as in that case only about 27 GB of RAM is required.
 
-Quantizing a model is as simple as passing a `quantization_config` to the model. Below, we'll leverage the bitsandbytes quantization library (but refer to [this page](../quantization.md) for alternative quantization methods):
+Quantizing a model is as simple as passing a `quantization_config` to the model. Below, we'll leverage the bitsandbytes quantization library (but refer to [this page](../quantization/overview.md) for alternative quantization methods):
 
 ```python
 >>> import torch
@@ -190,7 +190,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - A demo notebook to perform supervised fine-tuning (SFT) of Mixtral-8x7B can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Mistral/Supervised_fine_tuning_(SFT)_of_an_LLM_using_Hugging_Face_tooling.ipynb). 🌎
 - A [blog post](https://medium.com/@prakharsaxena11111/finetuning-mixtral-7bx8-6071b0ebf114) on fine-tuning Mixtral-8x7B using PEFT. 🌎
 - The [Alignment Handbook](https://github.com/huggingface/alignment-handbook) by Hugging Face includes scripts and recipes to perform supervised fine-tuning (SFT) and direct preference optimization with Mistral-7B. This includes scripts for full fine-tuning, QLoRa on a single GPU as well as multi-GPU fine-tuning.
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## MixtralConfig
 

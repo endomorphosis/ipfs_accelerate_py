@@ -887,4 +887,4 @@ The test validates:
 - Fault tolerance and recovery
 - Performance optimization
 
-For more detailed information, see [DYNAMIC_RESOURCE_MANAGEMENT_TESTING.md](/home/barberb/ipfs_accelerate_py/test/DYNAMIC_RESOURCE_MANAGEMENT_TESTING.md).
+For more detailed information, see [DYNAMIC_RESOURCE_MANAGEMENT_TESTING.md](../../DYNAMIC_RESOURCE_MANAGEMENT_TESTING.md).

@@ -236,4 +236,4 @@ The implementation has been successfully completed and verified, with all compon
 For more information, refer to the following resources:
 - [Web Platform Integration Guide](WEB_PLATFORM_INTEGRATION_GUIDE.md)
 - [WebNN API Documentation](https://www.w3.org/TR/webnn/)
-- [Browser-Specific Optimizations](BROWSER_SPECIFIC_OPTIMIZATIONS.md)
+- [Browser-Specific Optimizations](browser_specific_optimizations.md)

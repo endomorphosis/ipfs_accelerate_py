@@ -24,7 +24,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The YOLOS model was proposed in [You Only Look at One Sequence: Rethinking Transformer in Vision through Object Detection](https://arxiv.org/abs/2106.00666) by Yuxin Fang, Bencheng Liao, Xinggang Wang, Jiemin Fang, Jiyang Qi, Rui Wu, Jianwei Niu, Wenyu Liu.
-YOLOS proposes to just leverage the plain [Vision Transformer (ViT)](vit) for object detection, inspired by DETR. It turns out that a base-sized encoder-only Transformer can also achieve 42 AP on COCO, similar to DETR and much more complex frameworks such as Faster R-CNN.
+YOLOS proposes to just leverage the plain [Vision Transformer (ViT)](vit.md) for object detection, inspired by [DETR](detr.md). It turns out that a base-sized encoder-only Transformer can also achieve 42 AP on COCO, similar to DETR and much more complex frameworks such as Faster R-CNN.
 
 The abstract from the paper is the following:
 
@@ -73,13 +73,13 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 - All example notebooks illustrating inference + fine-tuning [`YolosForObjectDetection`] on a custom dataset can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/YOLOS).
 - Scripts for finetuning [`YolosForObjectDetection`] with [`Trainer`] or [Accelerate](https://huggingface.co/docs/accelerate/index) can be found [here](https://github.com/huggingface/transformers/tree/main/examples/pytorch/object-detection).
-- See also: [Object detection task guide](../tasks/object_detection)
+- See also: [Object detection task guide](../tasks/object_detection.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 
 <Tip>
 
-Use [`YolosImageProcessor`] for preparing images (and optional targets) for the model. Contrary to [DETR](detr), YOLOS doesn't require a `pixel_mask` to be created.
+Use [`YolosImageProcessor`] for preparing images (and optional targets) for the model. Contrary to [DETR](detr.md), YOLOS doesn't require a `pixel_mask` to be created.
 
 </Tip>
 

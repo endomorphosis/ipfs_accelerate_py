@@ -73,7 +73,7 @@ Each pretrained model inherits from three base classes.
 | [`PreTrainedModel`] | A model (or architecture) defined by the model attributes from the configuration file. A pretrained model only returns the raw hidden states. For a specific task, use the appropriate model head to convert the raw hidden states into a meaningful result (for example, [`LlamaModel`] versus [`LlamaForCausalLM`]). |
 | Preprocessor | A class for converting raw inputs (text, images, audio, multimodal) into numerical inputs to the model. For example, [`PreTrainedTokenizer`] converts text into tensors and [`ImageProcessingMixin`] converts pixels into tensors. |
 
-We recommend using the [AutoClass](./model_doc/auto) API to load models and preprocessors because it automatically infers the appropriate architecture for each task and machine learning framework based on the name or path to the pretrained weights and configuration file.
+We recommend using the [AutoClass](./model_doc/auto.md) API to load models and preprocessors because it automatically infers the appropriate architecture for each task and machine learning framework based on the name or path to the pretrained weights and configuration file.
 
 Use [`~PreTrainedModel.from_pretrained`] to load the weights and configuration file from the Hub into the model and preprocessor class.
 
@@ -145,7 +145,7 @@ tokenizer.batch_decode(generated_ids)[0]
 The [`Pipeline`] class is the most convenient way to inference with a pretrained model. It supports many tasks such as text generation, image segmentation, automatic speech recognition, document question answering, and more.
 
 > [!TIP]
-> Refer to the [Pipeline](./main_classes/pipelines) API reference for a complete list of available tasks.
+> Refer to the [Pipeline](./main_classes/pipelines.md) API reference for a complete list of available tasks.
 
 Create a [`Pipeline`] object and select a task. By default, [`Pipeline`] downloads and caches a default pretrained model for a given task. Pass the model name to the `model` parameter to choose a specific model.
 

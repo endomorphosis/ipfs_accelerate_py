@@ -100,8 +100,8 @@ python duckdb_api/core/benchmark_db_maintenance.py --backup --backup-dir ./db_ba
 
 ## Related Documentation
 
-- [Benchmark Database Guide](../test/BENCHMARK_DATABASE_GUIDE.md)
-- [Database Migration Guide](../test/DATABASE_MIGRATION_GUIDE.md)
-- [Benchmark Timing Report Guide](../test/BENCHMARK_TIMING_REPORT_GUIDE.md)
-- [Benchmark JSON Deprecation Guide](../test/BENCHMARK_JSON_DEPRECATION_GUIDE.md)
-- [Migration Guide](../test/MIGRATION_GUIDE.md)
+- [Benchmark Database Guide](../benchmarks/BENCHMARK_DATABASE_GUIDE.md)
+- [Database Migration Guide](../../test/DATABASE_MIGRATION_GUIDE.md)
+- [Benchmark Timing Report Guide](../benchmarks/BENCHMARK_TIMING_REPORT_GUIDE.md)
+- [Benchmark JSON Deprecation Guide](../benchmarks/BENCHMARK_JSON_DEPRECATION_GUIDE.md)
+- [Migration Guide](../../test/MIGRATION_GUIDE.md)

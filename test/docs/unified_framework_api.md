@@ -542,6 +542,6 @@ platform = UnifiedWebPlatform(
 - [Error Handling Guide](ERROR_HANDLING_GUIDE.md)
 - [Browser-Specific Optimizations](browser_specific_optimizations.md)
 - [Hardware Selection Guide](../HARDWARE_SELECTION_GUIDE.md)
-- [Model-Specific Optimization Guides](../model_specific_optimizations/)
+- [Model-Specific Optimization Guides](model_specific_optimizations/)
 - [Configuration Validation Guide](../CONFIGURATION_VALIDATION_GUIDE.md)
-- [WebSocket Protocol Specification](../websocket_protocol_spec.md)
+- [WebSocket Protocol Specification](websocket_protocol_spec.md)

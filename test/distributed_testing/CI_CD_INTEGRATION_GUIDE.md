@@ -50,7 +50,7 @@ After adding the user to the docker group, either log out and back in, or restar
 sudo systemctl restart actions-runner
 ```
 
-For complete self-hosted runner setup instructions, including hardware-specific configurations, see [SELF_HOSTED_RUNNER_SETUP.md](../../docs/SELF_HOSTED_RUNNER_SETUP.md).
+For complete self-hosted runner setup instructions, including hardware-specific configurations, see [SELF_HOSTED_RUNNER_SETUP.md](../../docs/guides/github/SELF_HOSTED_RUNNER_SETUP.md).
 
 ## Workflows
 

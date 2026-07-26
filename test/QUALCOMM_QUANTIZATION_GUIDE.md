@@ -508,12 +508,12 @@ Planned enhancements for the Qualcomm quantization support:
 
 ## Related Documentation
 
-- [Qualcomm Implementation Summary](QUALCOMM_IMPLEMENTATION_SUMMARY.md)
+- [Qualcomm Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md)
 - [Qualcomm Power Metrics Guide](QUALCOMM_POWER_METRICS_GUIDE.md)
 - [Model Compression Guide](MODEL_COMPRESSION_GUIDE.md)
 - [Hardware Selection Guide](HARDWARE_SELECTION_GUIDE.md)
 - [Cross-Platform Test Coverage](CROSS_PLATFORM_TEST_COVERAGE.md)
-- [Power Consumption Analysis Guide](POWER_CONSUMPTION_ANALYSIS_GUIDE.md)
+- [Power-Efficient Model Deployment Guide](POWER_EFFICIENT_DEPLOYMENT_GUIDE.md)
 
 ---
 

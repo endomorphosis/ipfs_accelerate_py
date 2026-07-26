@@ -6099,14 +6099,42 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     captured: dict[str, object] = {}
     hostile_bin = tmp_path / "hostile-bin"
     hostile_bin.mkdir()
+    hostile_home = tmp_path / "hostile-home"
+    hostile_home.mkdir()
     monkeypatch.setenv("BASH_ENV", str(tmp_path / "hostile-bash-env"))
     monkeypatch.setenv("ENV", str(tmp_path / "hostile-env"))
+    monkeypatch.setenv("HOME", str(hostile_home))
     monkeypatch.setenv("VALIDATION_SECRET", "must-not-leak")
     monkeypatch.setenv("PATH", f"{hostile_bin}{os.pathsep}{os.environ['PATH']}")
 
     def fake_run(*args, **kwargs):
+        if "env" not in kwargs:
+            return subprocess.CompletedProcess(
+                args=args[0],
+                returncode=1,
+                stdout="",
+                stderr="",
+            )
         captured["args"] = args
         captured["kwargs"] = kwargs
+        environment = kwargs["env"]
+        validation_home = Path(environment["HOME"])
+        captured["validation_home"] = validation_home
+        captured["home_existed_during_run"] = validation_home.is_dir()
+        captured["home_mode_during_run"] = validation_home.stat().st_mode & 0o777
+        captured["xdg_dirs_existed_during_run"] = all(
+            Path(environment[key]).is_dir()
+            for key in (
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_STATE_HOME",
+            )
+        )
+        (validation_home / "writable-state").write_text(
+            "ok\n",
+            encoding="utf-8",
+        )
         return subprocess.CompletedProcess(args=args[0], returncode=0)
 
     monkeypatch.setattr(
@@ -6148,6 +6176,11 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     environment = captured["kwargs"]["env"]
     assert isinstance(environment, dict)
     assert hostile_bin.as_posix() not in environment["PATH"].split(os.pathsep)
+    assert Path(environment["HOME"]) != hostile_home
+    assert captured["home_existed_during_run"] is True
+    assert captured["home_mode_during_run"] == 0o700
+    assert captured["xdg_dirs_existed_during_run"] is True
+    assert not Path(captured["validation_home"]).exists()
     assert not {"BASH_ENV", "ENV", "VALIDATION_SECRET"} & set(environment)
 
 
@@ -6875,6 +6908,42 @@ def test_parse_task_file_preserves_quoted_validation_semicolons(tmp_path):
     task = parse_task_file(todo_path, task_header_prefix="## ACCEL-")[0]
 
     assert task.validation == [inline_python, "test -f src/config.yml"]
+
+
+def test_parse_task_file_keeps_mixed_lane_metadata_isolated(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text(
+        """# Shared taskboard
+
+## ACCEL-001 Accelerate task
+
+- Status: todo
+- Track: accelerate
+- Validation: python validate.py --track accelerate
+
+## DATA-001 Datasets task
+
+- Status: todo
+- Track: datasets
+- Validation: python validate.py --track datasets
+
+## ACCEL-002 Second accelerate task
+
+- Status: todo
+- Track: accelerate
+- Validation: python validate.py --track accelerate --path README.md
+""",
+        encoding="utf-8",
+    )
+
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+
+    assert [task.task_id for task in tasks] == ["ACCEL-001", "ACCEL-002"]
+    assert tasks[0].track == "accelerate"
+    assert tasks[0].validation == ["python validate.py --track accelerate"]
+    assert tasks[1].validation == [
+        "python validate.py --track accelerate --path README.md"
+    ]
 
 
 def test_implementation_daemon_clears_active_task_when_finished(tmp_path):

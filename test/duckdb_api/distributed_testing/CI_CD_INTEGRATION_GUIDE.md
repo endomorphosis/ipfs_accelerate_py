@@ -459,7 +459,7 @@ python -m distributed_testing.test_reporter_artifact_integration
 python -m distributed_testing.examples.enhanced_reporter_artifact_url_example --provider github
 ```
 
-For complete documentation and details, see the [Artifact URL Retrieval Guide](../../../distributed_testing/ARTIFACT_URL_RETRIEVAL_GUIDE.md).
+For complete documentation and details, see the [Artifact URL Retrieval Guide](../../distributed_testing/ARTIFACT_URL_RETRIEVAL_GUIDE.md).
 
 ### Advanced Reporting
 

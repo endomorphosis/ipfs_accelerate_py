@@ -85,7 +85,7 @@ Detected a cat with confidence 0.426 at location [11.74, 51.55, 316.51, 473.22]
 
 ## Grounded SAM
 
-One can combine Grounding DINO with the [Segment Anything](sam) model for text-based mask generation as introduced in [Grounded SAM: Assembling Open-World Models for Diverse Visual Tasks](https://arxiv.org/abs/2401.14159). You can refer to this [demo notebook](https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Grounding%20DINO/GroundingDINO_with_Segment_Anything.ipynb) 🌍 for details.
+One can combine Grounding DINO with the [Segment Anything](./sam.md) model for text-based mask generation as introduced in [Grounded SAM: Assembling Open-World Models for Diverse Visual Tasks](https://arxiv.org/abs/2401.14159). You can refer to this [demo notebook](https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Grounding%20DINO/GroundingDINO_with_Segment_Anything.ipynb) 🌍 for details.
 
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/model_doc/grounded_sam.png"
 alt="drawing" width="900"/>
@@ -96,7 +96,7 @@ alt="drawing" width="900"/>
 
 A list of official Hugging Face and community (indicated by 🌎) resources to help you get started with Grounding DINO. If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 
-- Demo notebooks regarding inference with Grounding DINO as well as combining it with [SAM](sam) can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/Grounding%20DINO). 🌎
+- Demo notebooks regarding inference with Grounding DINO as well as combining it with [SAM](./sam.md) can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/Grounding%20DINO). 🌎
 
 ## GroundingDinoImageProcessor
 
@@ -116,4 +116,4 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 ## GroundingDinoForObjectDetection
 
-[API documentation placeholder]
+[API documentation placeholder]

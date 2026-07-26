@@ -60,8 +60,8 @@ found [here](https://github.com/google-research/multilingual-t5).
 
 ## Resources
 
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Translation task guide](../tasks/translation.md#translation)
+- [Summarization task guide](../tasks/summarization.md#summarization)
 
 ## MT5Config
 

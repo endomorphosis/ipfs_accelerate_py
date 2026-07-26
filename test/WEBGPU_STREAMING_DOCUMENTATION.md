@@ -670,16 +670,16 @@ For current implementation status and upcoming features, see [Implementation Sta
 - [Developer Tutorial](docs/DEVELOPER_TUTORIAL.md) - Step-by-step tutorial with working examples
 - [WebGPU Shader Precompilation Guide](docs/WEBGPU_SHADER_PRECOMPILATION.md) - Guide to shader precompilation optimization
 - [Browser-Specific Optimizations](docs/browser_specific_optimizations.md) - Tailored configurations for different browsers
-- [Firefox Audio Optimizations Guide](docs/FIREFOX_AUDIO_OPTIMIZATIONS.md) - Guide to Firefox's 20-25% faster audio processing
+- [Firefox Audio Optimizations Guide](docs/WEB_PLATFORM_FIREFOX_AUDIO_GUIDE.md) - Guide to Firefox's 20-25% faster audio processing
 - [Error Handling Guide](docs/ERROR_HANDLING_GUIDE.md) - Comprehensive error handling strategy
 - [Model-Specific Optimization Guides](docs/model_specific_optimizations/) - Guides for different model types
-- [Audio Model Optimization Guide](docs/model_specific_optimizations/AUDIO_MODEL_GUIDE.md) - Specialized guide for audio model optimization
+- [Audio Model Optimization Guide](docs/model_specific_optimizations/audio_models.md) - Specialized guide for audio model optimization
 
 ### Framework Resources
 
 - [Unified Framework Guide](UNIFIED_FRAMEWORK_WITH_STREAMING_GUIDE.md) - Guide to the unified web framework
-- [Implementation Plan](IMPLEMENTATION_PLAN.md) - Development roadmap and implementation status
+- [Implementation Plan](IPFS_WEBNN_WEBGPU_IMPLEMENTATION_PLAN.md) - Development roadmap and implementation status
 - [WebGPU Streaming Demo](WebGPUStreamingDemo.html) - Interactive demo of streaming capabilities
 - [Tutorial: Streaming Integration](tutorial_stream_integration.py) - Tutorial on integrating streaming
-- [API Reference](API_REFERENCE.md) - Detailed API documentation
+- [API Reference](docs/api_reference/webgpu_streaming_inference.md) - Detailed API documentation
 - [Configuration Validation Guide](CONFIGURATION_VALIDATION_GUIDE.md) - Guide to configuration validation

@@ -35,7 +35,7 @@ from huggingface_hub import login
 login()
 ```
 
-Start by loading the [Yelp Reviews](https://hf.co/datasets/yelp_review_full) dataset and [preprocess](./fast_tokenizers#preprocess) (tokenize, pad, and truncate) it for training. Use [`~datasets.Dataset.map`] to preprocess the entire dataset in one step.
+Start by loading the [Yelp Reviews](https://hf.co/datasets/yelp_review_full) dataset and [preprocess](./fast_tokenizers.md#preprocess) (tokenize, pad, and truncate) it for training. Use [`~datasets.Dataset.map`] to preprocess the entire dataset in one step.
 
 ```py
 from datasets import load_dataset
@@ -61,7 +61,7 @@ dataset = dataset.map(tokenize, batched=True)
 
 <Youtube id="nvBXf7s7vTI"/>
 
-[Trainer](./trainer) is an optimized training loop for Transformers models, making it easy to start training right away without manually writing your own training code. Pick and choose from a wide range of training features in [`TrainingArguments`] such as gradient accumulation, mixed precision, and options for reporting and logging training metrics.
+[Trainer](./trainer.md) is an optimized training loop for Transformers models, making it easy to start training right away without manually writing your own training code. Pick and choose from a wide range of training features in [`TrainingArguments`] such as gradient accumulation, mixed precision, and options for reporting and logging training metrics.
 
 Load a model and provide the number of expected labels (you can find this information on the Yelp Review [dataset card](https://huggingface.co/datasets/yelp_review_full#data-fields)).
 
@@ -172,4 +172,4 @@ model.fit(tf_dataset)
 
 ## Resources
 
-Refer to the Transformers [examples](https://github.com/huggingface/transformers/tree/main/examples) for more detailed training scripts on various tasks. You can also check out the [notebooks](./notebooks) for interactive examples.
+Refer to the Transformers [examples](https://github.com/huggingface/transformers/tree/main/examples) for more detailed training scripts on various tasks. You can also check out the [notebooks](./notebooks.md) for interactive examples.

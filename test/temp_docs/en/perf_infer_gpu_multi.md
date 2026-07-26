@@ -15,7 +15,7 @@ rendered properly in your Markdown viewer.
 
 # Distributed GPU inference
 
-[Tensor parallelism](./perf_train_gpu_many#tensor-parallelism) shards a model onto multiple GPUs and parallelizes computations such as matrix multiplication. It enables fitting larger model sizes into memory and is faster because each GPU can process a tensor slice.
+[Tensor parallelism](./perf_train_gpu_many.md#tensor-parallelism) shards a model onto multiple GPUs and parallelizes computations such as matrix multiplication. It enables fitting larger model sizes into memory and is faster because each GPU can process a tensor slice.
 
 > [!TIP]
 > Expand the list below to see which models support tensor parallelism. Open a GitHub issue or pull request to add support for a model not currently below.
@@ -23,17 +23,17 @@ rendered properly in your Markdown viewer.
 <details>
 <summary>Supported models</summary>
 
-* [Cohere](./model_doc/cohere) and [Cohere 2](./model_doc/cohere2)
-* [Gemma](./model_doc/gemma) and [Gemma 2](./model_doc/gemma2)
-* [GLM](./model_doc/glm)
-* [Granite](./model_doc/granite)
-* [Llama](./model_doc/llama)
-* [Mistral](./model_doc/mistral)
-* [Mixtral](./model_doc/mixtral)
-* [OLMo](./model_doc/olmo) and [OLMo2](./model_doc/olmo2)
-* [Phi](./model_doc/phi) and [Phi-3](./model_doc/phi3)
-* [Qwen2](./model_doc/qwen2), [Qwen2Moe](./model_doc/qwen2_moe), and [Qwen2-VL](./model_doc/qwen2_5_vl)
-* [Starcoder2](./model_doc/starcoder2)
+* [Cohere](./model_doc/cohere.md) and [Cohere 2](./model_doc/cohere2.md)
+* [Gemma](./model_doc/gemma.md) and [Gemma 2](./model_doc/gemma2.md)
+* [GLM](./model_doc/glm.md)
+* [Granite](./model_doc/granite.md)
+* [Llama](./model_doc/llama.md)
+* [Mistral](./model_doc/mistral.md)
+* [Mixtral](./model_doc/mixtral.md)
+* [OLMo](./model_doc/olmo.md) and [OLMo2](./model_doc/olmo2.md)
+* [Phi](./model_doc/phi.md) and [Phi-3](./model_doc/phi3.md)
+* [Qwen2](./model_doc/qwen2.md), [Qwen2Moe](./model_doc/qwen2_moe.md), and [Qwen2-VL](./model_doc/qwen2_5_vl.md)
+* [Starcoder2](./model_doc/starcoder2.md)
 
 </details>
 
@@ -73,7 +73,7 @@ torchrun --nproc-per-node 4 demo.py
 
 You can benefit from considerable speed ups for inference, especially for inputs with large batch size or long sequences.
 
-For a single forward pass on [Llama](./model_doc/llama) with a sequence length of 512 and various batch sizes, you can expect the following speed ups.
+For a single forward pass on [Llama](./model_doc/llama.md) with a sequence length of 512 and various batch sizes, you can expect the following speed ups.
 
 <div style="text-align: center">
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/Meta-Llama-3-8B-Instruct%2C%20seqlen%20%3D%20512%2C%20python%2C%20w_%20compile.png">

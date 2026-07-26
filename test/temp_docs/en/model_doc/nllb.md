@@ -85,7 +85,7 @@ Our model achieves an improvement of 44% BLEU relative to the previous state-of-
 
 This implementation contains the dense models available on release.
 
-**The sparse model NLLB-MoE (Mixture of Expert) is now available! More details [here](nllb-moe)**
+**The sparse model NLLB-MoE (Mixture of Expert) is now available! More details [here](./nllb-moe.md)**
 
 This model was contributed by [Lysandre](https://huggingface.co/lysandre). The authors' code can be found [here](https://github.com/facebookresearch/fairseq/tree/nllb).
 
@@ -140,8 +140,8 @@ UN-Chef sagt, es gibt keine militärische Lösung in Syrien
 
 ## Resources
 
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## NllbTokenizer
 

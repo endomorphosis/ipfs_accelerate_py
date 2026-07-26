@@ -825,8 +825,8 @@ For a complete reference of the TypeScript SDK API, see the [TypeScript API Docu
 
 - [TypeScript API Documentation](API_DOCUMENTATION.md)
 - [Python API Documentation](API_DOCUMENTATION.md)
-- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md)
+- [Hardware Benchmarking Guide](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)
 - [WebNN/WebGPU Integration Guide](WEBNN_WEBGPU_INTEGRATION_GUIDE.md)
-- [Database Integration Guide](DATABASE_INTEGRATION_GUIDE.md)
-- [P2P Network Optimization Guide](P2P_NETWORK_OPTIMIZATION_GUIDE.md)
+- [Database Integration Guide](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
+- [P2P Network Optimization Guide](../docs/guides/p2p/P2P_SETUP_GUIDE.md)
 - [TypeScript Implementation Summary](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md)

@@ -483,7 +483,7 @@ metrics = integration.get_validation_metrics()
 
 For comprehensive details, see:
 - [MULTI_MODEL_EXECUTION_GUIDE.md](MULTI_MODEL_EXECUTION_GUIDE.md)
-- [WEB_RESOURCE_POOL_INTEGRATION_GUIDE.md](WEB_RESOURCE_POOL_INTEGRATION_GUIDE.md)
+- [MULTI_MODEL_RESOURCE_POOL_INTEGRATION_GUIDE.md](MULTI_MODEL_RESOURCE_POOL_INTEGRATION_GUIDE.md)
 
 ## Integration with Existing Systems
 

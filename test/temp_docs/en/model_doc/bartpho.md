@@ -66,7 +66,7 @@ This model was contributed by [dqnguyen](https://huggingface.co/dqnguyen). The o
 ## Usage tips
 
 - Following mBART, BARTpho uses the "large" architecture of BART with an additional layer-normalization layer on top of
-  both the encoder and decoder. Thus, usage examples in the [documentation of BART](bart), when adapting to use
+  both the encoder and decoder. Thus, usage examples in the [documentation of BART](bart.md), when adapting to use
   with BARTpho, should be adjusted by replacing the BART-specialized classes with the mBART-specialized counterparts.
   For example:
 

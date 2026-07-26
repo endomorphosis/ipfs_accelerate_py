@@ -1905,6 +1905,6 @@ Following the recommended workflow with proper template adjustment and systemati
 For additional details on specific components, refer to the following documentation:
 - [PHASE16_CROSS_PLATFORM_TESTING.md](PHASE16_CROSS_PLATFORM_TESTING.md) - Overview of cross-platform testing approach
 - [HARDWARE_MODEL_VALIDATION_GUIDE.md](HARDWARE_MODEL_VALIDATION_GUIDE.md) - Details on model validation across hardware
-- [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) - Information on the benchmark database architecture
+- [BENCHMARK_DATABASE_GUIDE.md](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md) - Information on the benchmark database architecture
 - [WEB_PLATFORM_TESTING_GUIDE.md](WEB_PLATFORM_TESTING_GUIDE.md) - Guide to web platform testing
 - [HARDWARE_SELECTION_GUIDE.md](HARDWARE_SELECTION_GUIDE.md) - Guide to hardware selection and optimization

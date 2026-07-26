@@ -25,7 +25,7 @@ rendered properly in your Markdown viewer.
 The MarkupLM model was proposed in [MarkupLM: Pre-training of Text and Markup Language for Visually-rich Document
 Understanding](https://arxiv.org/abs/2110.08518) by Junlong Li, Yiheng Xu, Lei Cui, Furu Wei. MarkupLM is BERT, but
 applied to HTML pages instead of raw text documents. The model incorporates additional embedding layers to improve
-performance, similar to [LayoutLM](layoutlm).
+performance, similar to [LayoutLM](./layoutlm.md).
 
 The model can be used for tasks like question answering on web pages or information extraction from web pages. It obtains
 state-of-the-art results on 2 important benchmarks:
@@ -204,9 +204,9 @@ dict_keys(['input_ids', 'token_type_ids', 'attention_mask', 'xpath_tags_seq', 'x
 ## Resources
 
 - [Demo notebooks](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/MarkupLM)
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
 
 ## MarkupLMConfig
 

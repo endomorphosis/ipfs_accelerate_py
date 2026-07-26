@@ -348,7 +348,7 @@ python run_multi_model_web_integration.py --detect-browsers --compare-strategies
 
 ## Contributing
 
-Contributions to the Predictive Performance System are welcome. Please see the [CONTRIBUTING.md](../CONTRIBUTING.md) file for more information.
+Contributions to the Predictive Performance System are welcome. Please see the [CONTRIBUTING.md](../../CONTRIBUTING.md) file for more information.
 
 ## License
 

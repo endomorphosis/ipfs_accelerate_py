@@ -20,7 +20,7 @@ A chat template is a [Jinja](https://jinja.palletsprojects.com/en/3.1.x/template
 
 1. Print the role enclosed in `<|` and `|>` (`<|user|>`, `<|assistant|>`, etc.).
 2. Print the message followed by an end-of-sequence (`EOS`) token.
-3. Print the assistant token if [add_generation_prompt=True](./chat_templating#add_generation_prompt) so the model generates an assistant response.
+3. Print the assistant token if [add_generation_prompt=True](./chat_templating.md#add_generation_prompt) so the model generates an assistant response.
 
 An example template is shown below.
 
@@ -119,7 +119,7 @@ Make the changes below to ensure compatibility across all Jinja implementations.
 
 ### Big templates
 
-Newer models or models with features like [tool-calling](./chat_extras#tools) and [RAG](./chat_extras#retrieval-augmented-generation-rag) require larger templates that can be longer than 100 lines. It may be easier to write larger templates in a separate file. The line numbers in the separate file corresponds exactly to the line numbers in template parsing or execution errors, making it easier to debug any potential issues.
+Newer models or models with features like [tool-calling](./chat_extras.md#tools) and [RAG](./chat_extras.md#retrieval-augmented-generation-rag) require larger templates that can be longer than 100 lines. It may be easier to write larger templates in a separate file. The line numbers in the separate file corresponds exactly to the line numbers in template parsing or execution errors, making it easier to debug any potential issues.
 
 Write the template in a separate file and extract it to the chat template.
 
@@ -146,7 +146,7 @@ The following section lists elements of the standard API for writing templates f
 
 Transformers chat template methods allow a user to pass tools as Python functions or a JSON schema. When functions are passed, a JSON schema is automatically generated and passed to the template. The `tools` variable in a template always takes a list of JSON schemas.
 
-The specific tokens and tool descriptions should match the ones your model was trained with. Your model doesn't need to understand the JSON schema input because your template can translate the JSON schema into your models format. For example, [Command-R](./model_doc/cohere) was trained with tools defined with Python function headers, but the Command-R tool template accepts JSON schemas. The template internally converts types and renders the input tools as Python headers.
+The specific tokens and tool descriptions should match the ones your model was trained with. Your model doesn't need to understand the JSON schema input because your template can translate the JSON schema into your models format. For example, [Command-R](./model_doc/cohere.md) was trained with tools defined with Python function headers, but the Command-R tool template accepts JSON schemas. The template internally converts types and renders the input tools as Python headers.
 
 ```json
 {

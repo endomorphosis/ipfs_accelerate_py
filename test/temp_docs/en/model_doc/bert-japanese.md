@@ -78,7 +78,7 @@ This model was contributed by [cl-tohoku](https://huggingface.co/cl-tohoku).
 
 <Tip> 
 
-This implementation is the same as BERT, except for tokenization method. Refer to [BERT documentation](bert) for 
+This implementation is the same as BERT, except for tokenization method. Refer to [BERT documentation](bert.md) for
 API reference information.  
 
 </Tip>

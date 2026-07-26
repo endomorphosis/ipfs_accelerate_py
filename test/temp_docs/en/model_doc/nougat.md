@@ -25,7 +25,7 @@ specific language governing permissions and limitations under the License. -->
 ## Overview
 
 The Nougat model was proposed in [Nougat: Neural Optical Understanding for Academic Documents](https://arxiv.org/abs/2308.13418) by
-Lukas Blecher, Guillem Cucurull, Thomas Scialom, Robert Stojnic. Nougat uses the same architecture as [Donut](donut), meaning an image Transformer
+Lukas Blecher, Guillem Cucurull, Thomas Scialom, Robert Stojnic. Nougat uses the same architecture as [Donut](donut.md), meaning an image Transformer
 encoder and an autoregressive text Transformer decoder to translate scientific PDFs to markdown, enabling easier access to them.
 
 The abstract from the paper is the following:
@@ -45,7 +45,7 @@ This model was contributed by [nielsr](https://huggingface.co/nielsr). The origi
 - The quickest way to get started with Nougat is by checking the [tutorial
   notebooks](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/Nougat), which show how to use the model
   at inference time as well as fine-tuning on custom data.
-- Nougat is always used within the [VisionEncoderDecoder](vision-encoder-decoder) framework. The model is identical to [Donut](donut) in terms of architecture.
+- Nougat is always used within the [VisionEncoderDecoder](vision-encoder-decoder.md) framework. The model is identical to [Donut](donut.md) in terms of architecture.
 
 ## Inference
 
@@ -98,7 +98,7 @@ See the [model hub](https://huggingface.co/models?filter=nougat) to look for Nou
 
 <Tip>
 
-The model is identical to [Donut](donut) in terms of architecture.
+The model is identical to [Donut](donut.md) in terms of architecture.
 
 </Tip>
 

@@ -389,8 +389,8 @@ Pretrained models are available for two different sizes - [300M](https://hugging
 
 <Tip>
 
-The MMS for ASR architecture is based on the Wav2Vec2 model, refer to [Wav2Vec2's documentation page](wav2vec2) for further 
+The MMS for ASR architecture is based on the Wav2Vec2 model, refer to [Wav2Vec2's documentation page](./wav2vec2.md) for further
 details on how to finetune with models for various downstream tasks.
 
-MMS-TTS uses the same model architecture as VITS, refer to [VITS's documentation page](vits) for API reference.
+MMS-TTS uses the same model architecture as VITS, refer to [VITS's documentation page](vits.md) for API reference.
 </Tip>

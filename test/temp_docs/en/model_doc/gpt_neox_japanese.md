@@ -58,7 +58,7 @@ The `generate()` method can be used to generate text using GPT NeoX Japanese mod
 
 ## Resources
 
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## GPTNeoXJapaneseConfig
 

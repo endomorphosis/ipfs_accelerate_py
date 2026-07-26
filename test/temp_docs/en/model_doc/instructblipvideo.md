@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License.
 ## Overview
 
 The InstructBLIPVideo is an extension of the models proposed in [InstructBLIP: Towards General-purpose Vision-Language Models with Instruction Tuning](https://arxiv.org/abs/2305.06500) by Wenliang Dai, Junnan Li, Dongxu Li, Anthony Meng Huat Tiong, Junqi Zhao, Weisheng Wang, Boyang Li, Pascale Fung, Steven Hoi.
-InstructBLIPVideo uses the same architecture as [InstructBLIP](instructblip) and works with the same checkpoints as [InstructBLIP](instructblip). The only difference is the ability to process videos.
+InstructBLIPVideo uses the same architecture as [InstructBLIP](instructblip.md) and works with the same checkpoints as [InstructBLIP](instructblip.md). The only difference is the ability to process videos.
 
 The abstract from the paper is the following:
 

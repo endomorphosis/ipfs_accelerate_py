@@ -775,7 +775,7 @@ Recent execution (2026-03-08):
 6. Added focused CLI startup coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_cli.py`, confirming the CLI still constructs the compatibility facade and delegates to `mcp_server.run()` with the parsed host/port contract in normal and `--dev` modes after the canonical-default startup change (`2 passed`).
 7. Ran an aggregate post-cutover validation bundle across rollback telemetry, legacy bootstrap compatibility, subprocess/FastAPI entrypoints, process helpers, p2p bridge dispatch, and CLI startup (`28 passed, 148 deselected`), confirming the canonical-default startup change remains stable across the main compatibility-facade entry surfaces.
 8. Ran a focused release-candidate matrix across cutover, transport entrypoints, MCP+p2p handler interop, and representative MCP++ profile chapters (`test_mcp_server_uni007_cutover_rollback.py`, `test_mcp_transport_process_level.py`, `test_mcp_transport_mcp_p2p_handler_limits.py`, `test_mcp_server_transport_e2e_matrix.py`, `test_mcp_server_mcplusplus_idl.py`, `test_mcp_server_mcplusplus_artifacts.py`, `test_mcp_server_mcplusplus_ucan.py`, `test_mcp_server_mcplusplus_policy.py`, `test_mcp_server_mcplusplus_event_dag.py`, `test_mcp_server_mcplusplus_risk_scheduler.py`), with the matrix completing successfully (`120 passed`).
-9. Published [MCP_CUTOVER_CHECKLIST.md](MCP_CUTOVER_CHECKLIST.md) to freeze the cutover delta set, record the approved operational gates, and anchor the release-candidate evidence bundle used for canonical-default startup approval.
+9. Published [MCP cutover checklist](mcpplusplus/CUTOVER_CHECKLIST.md) to freeze the cutover delta set, record the approved operational gates, and anchor the release-candidate evidence bundle used for canonical-default startup approval.
 
 Exit:
 
@@ -786,7 +786,7 @@ Exit:
 1. Default startup path points to `mcp_server`.
 2. Keep `mcp` facade for one release window.
 3. Instrument facade usage telemetry. ✅
-4. Published cutover checklist: [MCP_CUTOVER_CHECKLIST.md](MCP_CUTOVER_CHECKLIST.md). ✅
+4. Published cutover checklist: [MCP cutover checklist](mcpplusplus/CUTOVER_CHECKLIST.md). ✅
 5. Deprecate shim runtime behavior in phases:
    - Phase D1: warn-only,
    - Phase D2: opt-in only,

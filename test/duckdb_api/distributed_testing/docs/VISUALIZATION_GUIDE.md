@@ -29,31 +29,31 @@ Key features:
 
 This visualization shows resource utilization (CPU, memory, GPU) across all workers over time, making it easy to identify patterns and potential bottlenecks.
 
-![Resource Utilization Heatmap](../docs/images/resource_utilization_heatmap_example.png)
+![Resource Utilization Heatmap](../visualization_output/resource_utilization_heatmap_20250321_015214.png)
 
 ### Scaling History Visualization
 
 This visualization tracks scaling decisions (scale up, scale down, maintain) over time alongside resource utilization, helping to understand the effectiveness of scaling policies.
 
-![Scaling History](../docs/images/scaling_history_example.png)
+![Scaling History](../visualization_output/scaling_history_20250321_015215.png)
 
 ### Resource Allocation Visualization
 
 This visualization shows how different resources (CPU, memory, GPU) are allocated across worker nodes, helping to identify imbalances or optimization opportunities.
 
-![Resource Allocation](../docs/images/resource_allocation_example.png)
+![Resource Allocation](../visualization_output/resource_allocation_20250321_015216.png)
 
 ### Resource Efficiency Visualization
 
 This visualization measures how efficiently allocated resources are being utilized, identifying potential over-provisioning or under-provisioning.
 
-![Resource Efficiency](../docs/images/resource_efficiency_example.png)
+![Resource Efficiency](../visualization_output/resource_efficiency_20250321_015216.png)
 
 ### Cloud Resource Visualization
 
 If cloud provider integration is available, this visualization tracks resource usage and costs across different cloud providers.
 
-![Cloud Resources](../docs/images/cloud_resources_example.png)
+![Cloud Resources](../visualization_output/cloud_resource_usage_20250321_015216.png)
 
 ## Integration with DRM
 

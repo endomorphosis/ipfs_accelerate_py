@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The BiT model was proposed in [Big Transfer (BiT): General Visual Representation Learning](https://arxiv.org/abs/1912.11370) by Alexander Kolesnikov, Lucas Beyer, Xiaohua Zhai, Joan Puigcerver, Jessica Yung, Sylvain Gelly, Neil Houlsby.
-BiT is a simple recipe for scaling up pre-training of [ResNet](resnet)-like architectures (specifically, ResNetv2). The method results in significant improvements for transfer learning.
+BiT is a simple recipe for scaling up pre-training of [ResNet](./resnet.md)-like architectures (specifically, ResNetv2). The method results in significant improvements for transfer learning.
 
 The abstract from the paper is the following:
 
@@ -45,7 +45,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 <PipelineTag pipeline="image-classification"/>
 
 - [`BitForImageClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/image-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/image_classification.ipynb).
-- See also: [Image classification task guide](../tasks/image_classification)
+- See also: [Image classification task guide](../tasks/image_classification.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 

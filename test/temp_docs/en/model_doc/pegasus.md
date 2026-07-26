@@ -98,9 +98,9 @@ All the [checkpoints](https://huggingface.co/models?search=pegasus) are fine-tun
 
 - [Script](https://github.com/huggingface/transformers-research-projects/tree/main/seq2seq-distillation/finetune_pegasus_xsum.sh) to fine-tune pegasus
   on the XSUM dataset. Data download instructions at [examples/pytorch/summarization/](https://github.com/huggingface/transformers/tree/main/examples/pytorch/summarization/README.md).
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## PegasusConfig
 

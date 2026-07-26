@@ -53,6 +53,6 @@ The original code can be found [here](https://github.com/pytorch/fairseq/tree/ma
 
 <Tip>
 
-XLS-R's architecture is based on the Wav2Vec2 model, refer to [Wav2Vec2's documentation page](wav2vec2) for API reference.
+XLS-R's architecture is based on the Wav2Vec2 model, refer to [Wav2Vec2's documentation page](./wav2vec2.md) for API reference.
 
 </Tip>

@@ -169,8 +169,8 @@ The embeddings module integrates with:
 
 ## See Also
 
-- [Vector Stores](../vector_stores/README.md) - Storage backends for embeddings
-- [Search Module](../search/README.md) - Search and retrieval using embeddings
-- [GraphRAG Optimizers](../optimizers/graphrag/README.md) - Graph-enhanced retrieval
-- [Utils Module](../utils/README.md) - Text processing utilities
-- [Performance Guide](../../docs/performance_optimization.md) - Optimization strategies
+- [Vector Stores](../api_integrations/storage.py) - Storage integration for embeddings
+- [Search Module](../huggingface_search_engine.py) - Search and retrieval using embeddings
+- [GraphRAG Processor](../caselaw_graphrag_processor.py) - Graph-enhanced retrieval
+- [Utils Module](../utils/) - Text processing utilities
+- [Performance Guide](../../docs/EMBEDDINGS_ROUTER.md) - Embedding performance and routing strategies

@@ -47,7 +47,7 @@ This model was contributed by [moussakam](https://huggingface.co/moussakam). The
 
 <Tip> 
 
-BARThez implementation is the same as BART, except for tokenization. Refer to [BART documentation](bart) for information on 
+BARThez implementation is the same as BART, except for tokenization. Refer to [BART documentation](./bart.md) for information on
 configuration classes and their parameters. BARThez-specific tokenizers are documented below.  
 
 </Tip>

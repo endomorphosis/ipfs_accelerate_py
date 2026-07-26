@@ -42,7 +42,7 @@ The original code can be found [here](https://github.com/usefulsensors/moonshine
 
 ## Resources
 
-- [Automatic speech recognition task guide](../tasks/asr)
+- [Automatic speech recognition task guide](../tasks/asr.md)
 
 ## MoonshineConfig
 
