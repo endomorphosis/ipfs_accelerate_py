@@ -3762,7 +3762,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-116 Add policy authorization, dry-run effects, idempotency, and transactions to every mutation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
