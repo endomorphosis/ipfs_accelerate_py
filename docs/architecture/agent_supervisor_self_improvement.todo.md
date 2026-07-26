@@ -3546,7 +3546,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-104 Add bounded AND/OR plan search with hard-constraint pruning
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: planning
