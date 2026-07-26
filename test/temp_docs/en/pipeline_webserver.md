@@ -16,7 +16,7 @@ rendered properly in your Markdown viewer.
 
 # Web server inference
 
-A web server is a system that waits for requests and serves them as they come in. This means you can use [`Pipeline`] as an inference engine on a web server, since you can use an iterator (similar to how you would [iterate over a dataset](./pipeline_tutorial#large-datasets)) to handle each incoming request.
+A web server is a system that waits for requests and serves them as they come in. This means you can use [`Pipeline`] as an inference engine on a web server, since you can use an iterator (similar to how you would [iterate over a dataset](./pipeline_tutorial.md#large-datasets)) to handle each incoming request.
 
 Designing a web server with [`Pipeline`] is unique though because they're fundamentally different. Web servers are multiplexed (multithreaded, async, etc.) to handle multiple requests concurrently. [`Pipeline`] and its underlying model on the other hand are not designed for parallelism because they take a lot of memory. It's best to give a [`Pipeline`] all the available resources when they're running or for a compute intensive job.
 
@@ -152,4 +152,4 @@ For this reason, it's better to run PyTorch on its own separate thread or proces
 
 ## Dynamic batching
 
-Dynamic batching can be very effective when used in the correct setting, but it's not necessary when you're only passing 1 request at a time (see [batch inference](./pipeline_tutorial#batch-inference) for more details).
+Dynamic batching can be very effective when used in the correct setting, but it's not necessary when you're only passing 1 request at a time (see [batch inference](./pipeline_tutorial.md#batch-inference) for more details).
