@@ -3924,7 +3924,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-125 Add a lazy pinned IntentIR, LegalIR, and SecurityIR registry
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-ir
