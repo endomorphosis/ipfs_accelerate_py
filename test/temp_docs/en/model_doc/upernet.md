@@ -24,7 +24,7 @@ rendered properly in your Markdown viewer.
 
 The UPerNet model was proposed in [Unified Perceptual Parsing for Scene Understanding](https://arxiv.org/abs/1807.10221)
 by Tete Xiao, Yingcheng Liu, Bolei Zhou, Yuning Jiang, Jian Sun. UPerNet is a general framework to effectively segment
-a wide range of concepts from images, leveraging any vision backbone like [ConvNeXt](convnext) or [Swin](swin).
+a wide range of concepts from images, leveraging any vision backbone like [ConvNeXt](convnext.md) or [Swin](swin.md).
 
 The abstract from the paper is the following:
 
@@ -50,7 +50,7 @@ config = UperNetConfig(backbone_config=backbone_config)
 model = UperNetForSemanticSegmentation(config)
 ```
 
-To use another vision backbone, like [ConvNeXt](convnext), simply instantiate the model with the appropriate backbone:
+To use another vision backbone, like [ConvNeXt](convnext.md), simply instantiate the model with the appropriate backbone:
 
 ```py
 from transformers import ConvNextConfig, UperNetConfig, UperNetForSemanticSegmentation
@@ -69,7 +69,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 - Demo notebooks for UPerNet can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/UPerNet).
 - [`UperNetForSemanticSegmentation`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/semantic-segmentation) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/semantic_segmentation.ipynb).
-- See also: [Semantic segmentation task guide](../tasks/semantic_segmentation)
+- See also: [Semantic segmentation task guide](../tasks/semantic_segmentation.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 
