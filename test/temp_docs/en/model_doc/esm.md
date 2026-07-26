@@ -95,9 +95,9 @@ help throughout the process!
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
 
 ## EsmConfig
 
