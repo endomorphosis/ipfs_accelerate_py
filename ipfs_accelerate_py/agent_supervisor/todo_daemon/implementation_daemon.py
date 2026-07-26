@@ -2126,6 +2126,46 @@ class PortalImplementationDaemon:
                     )
         return errors
 
+    def _missing_ephemeral_workspace_shared_snapshot(
+        self,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, Mapping[str, Any]] | None:
+        """Return a valid shared baseline when a managed disposable checkout vanished."""
+
+        try:
+            workspace = workspace_path.resolve(strict=False)
+            shared_checkout = self.repo_root.resolve(strict=False)
+            worktree_root = self.worktree_root.resolve(strict=False)
+        except (OSError, RuntimeError):
+            return None
+        if (
+            workspace == shared_checkout
+            or workspace.exists()
+            or not self._path_is_under(workspace, worktree_root)
+        ):
+            return None
+
+        workspace_snapshot = before.get("workspace")
+        shared_snapshot = before.get("shared_checkout")
+        if not isinstance(workspace_snapshot, Mapping) or not isinstance(
+            shared_snapshot,
+            Mapping,
+        ):
+            return None
+        expected_paths = set(self.implementation_protected_paths)
+        for scope_snapshot in (workspace_snapshot, shared_snapshot):
+            paths = scope_snapshot.get("paths")
+            if not isinstance(paths, Mapping) or set(map(str, paths)) != expected_paths:
+                return None
+        candidate = {
+            "workspace": workspace_snapshot,
+            "shared_checkout": shared_snapshot,
+        }
+        if self._implementation_protected_snapshot_errors(candidate):
+            return None
+        return {"shared_checkout": shared_snapshot}
+
     @staticmethod
     def _implementation_protected_change_kind(
         before: Mapping[str, Any],
@@ -2162,10 +2202,20 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Fail closed when any protected identity changes after agent execution."""
 
-        after = self._implementation_protected_path_snapshot(workspace_path)
+        missing_ephemeral_before = (
+            self._missing_ephemeral_workspace_shared_snapshot(
+                workspace_path,
+                before,
+            )
+        )
+        comparison_before = missing_ephemeral_before or before
+        comparison_workspace = (
+            self.repo_root if missing_ephemeral_before is not None else workspace_path
+        )
+        after = self._implementation_protected_path_snapshot(comparison_workspace)
         mutations: list[dict[str, Any]] = []
-        for scope in sorted(set(before) | set(after)):
-            before_scope = before.get(scope) or {}
+        for scope in sorted(set(comparison_before) | set(after)):
+            before_scope = comparison_before.get(scope) or {}
             after_scope = after.get(scope) or {}
             before_paths = before_scope.get("paths")
             after_paths = after_scope.get("paths")
@@ -2201,11 +2251,21 @@ class PortalImplementationDaemon:
                     }
                 )
         if not mutations:
+            if missing_ephemeral_before is not None:
+                self._record_event(
+                    "implementation_protected_path_missing_ephemeral_checked",
+                    {
+                        "task_id": task.task_id if task is not None else task_id,
+                        "attempt": attempt,
+                        "workspace_path": str(workspace_path),
+                        "shared_checkout_unchanged": True,
+                    },
+                )
             return {}
         resolved_task_id = task.task_id if task is not None else task_id
         concurrent_update = self._authorized_concurrent_protected_path_update(
             workspace_path=workspace_path,
-            before=before,
+            before=comparison_before,
             after=after,
             mutations=mutations,
         )
@@ -2279,6 +2339,13 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         if not self.implementation_protected_paths:
             return {}
+        missing_ephemeral_workspace = (
+            self._missing_ephemeral_workspace_shared_snapshot(
+                workspace_path,
+                before,
+            )
+            is not None
+        )
         violation = self._implementation_protected_path_violation(
             task=task,
             attempt=attempt,
@@ -2286,11 +2353,26 @@ class PortalImplementationDaemon:
             before=before,
         )
         if not violation:
+            clear_reason = (
+                "ephemeral_workspace_missing_shared_checkout_unchanged"
+                if missing_ephemeral_workspace
+                else reason
+            )
             self._clear_implementation_protected_snapshot(
                 task_id=task.task_id,
                 attempt=attempt,
-                reason=reason,
+                reason=clear_reason,
             )
+            if missing_ephemeral_workspace:
+                self._record_event(
+                    "implementation_protected_path_missing_ephemeral_reconciled",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "workspace_path": str(workspace_path),
+                        "terminal_reason": reason,
+                    },
+                )
         return violation
 
     def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
@@ -2339,9 +2421,23 @@ class PortalImplementationDaemon:
             attempt = 0
         workspace_value = str(active.get("workspace_path") or "")
         snapshot = active.get("snapshot")
+        missing_ephemeral_workspace = False
         try:
-            workspace_path = Path(workspace_value).resolve(strict=True)
+            workspace_path = Path(workspace_value).resolve(strict=False)
+            workspace_exists = workspace_path.exists()
+            missing_ephemeral_workspace = bool(
+                active.get("ephemeral_worktree") is True
+                and not workspace_exists
+                and isinstance(snapshot, Mapping)
+                and self._missing_ephemeral_workspace_shared_snapshot(
+                    workspace_path,
+                    snapshot,
+                )
+                is not None
+            )
             workspace_allowed = (
+                workspace_exists or missing_ephemeral_workspace
+            ) and (
                 workspace_path == self.repo_root.resolve()
                 or self._path_is_under(workspace_path, self.worktree_root.resolve())
             )
@@ -2385,16 +2481,22 @@ class PortalImplementationDaemon:
                 "reason": "implementation_protected_path_mutated",
                 "incident": violation,
             }
+        reconciliation_reason = (
+            "crash_reconciliation_ephemeral_workspace_missing"
+            if missing_ephemeral_workspace
+            else "crash_reconciliation_unchanged"
+        )
         self._clear_implementation_protected_snapshot(
             task_id=task_id,
             attempt=attempt,
-            reason="crash_reconciliation_unchanged",
+            reason=reconciliation_reason,
         )
         result = {
             "blocked": False,
-            "reason": "crash_reconciliation_unchanged",
+            "reason": reconciliation_reason,
             "task_id": task_id,
             "attempt": attempt,
+            "workspace_path": str(workspace_path),
         }
         self._record_event(
             "implementation_protected_path_snapshot_reconciled",
@@ -6314,6 +6416,28 @@ class PortalImplementationDaemon:
                         "implementation_timeout_salvage_failed",
                         timeout_result,
                     )
+            if not worktree_path.exists():
+                if (
+                    protected_path_snapshot is not None
+                    and not protected_path_violation
+                    and self._implementation_protected_active_snapshot_path().exists()
+                ):
+                    protected_path_violation = (
+                        self._finalize_implementation_protected_path_fence(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=worktree_path,
+                            before=protected_path_snapshot,
+                            reason="timeout_workspace_missing",
+                        )
+                    )
+                cleanup_result = self._cleanup_failed_setup_worktree(
+                    worktree_path,
+                    branch_name,
+                    task=task,
+                    attempt=attempt,
+                    exception_result=timeout_result,
+                )
         except Exception as exc:
             returncode = 1
             if protected_path_snapshot is not None and not protected_path_violation:
@@ -6341,38 +6465,37 @@ class PortalImplementationDaemon:
             # Preserve an implementation candidate when an operator-side
             # protected-path update interrupts it. Other setup failures retain
             # their existing cleanup path.
-            if worktree_path.exists():
-                try:
-                    if protected_path_violation:
-                        failed_preservation_result = (
-                            self._preserve_protected_path_interrupted_worktree(
-                                worktree_path,
-                                branch_name,
-                                task,
-                                attempt,
-                                protected_path_violation,
-                            )
-                        )
-                        commit_result = dict(
-                            failed_preservation_result.get("commit_result")
-                            or commit_result
-                        )
-                        implementation_commit = str(commit_result.get("commit", ""))
-                        cleanup_result = dict(
-                            failed_preservation_result.get("cleanup_result")
-                            or cleanup_result
-                        )
-                    else:
-                        cleanup_result = self._cleanup_failed_setup_worktree(
+            try:
+                if protected_path_violation and worktree_path.exists():
+                    failed_preservation_result = (
+                        self._preserve_protected_path_interrupted_worktree(
                             worktree_path,
                             branch_name,
-                            task=task,
-                            attempt=attempt,
-                            exception_result=exception_result,
+                            task,
+                            attempt,
+                            protected_path_violation,
                         )
-                    exception_result["cleanup_result"] = cleanup_result
-                except Exception as cleanup_exc:
-                    exception_result["cleanup_error"] = str(cleanup_exc)[-1000:]
+                    )
+                    commit_result = dict(
+                        failed_preservation_result.get("commit_result")
+                        or commit_result
+                    )
+                    implementation_commit = str(commit_result.get("commit", ""))
+                    cleanup_result = dict(
+                        failed_preservation_result.get("cleanup_result")
+                        or cleanup_result
+                    )
+                else:
+                    cleanup_result = self._cleanup_failed_setup_worktree(
+                        worktree_path,
+                        branch_name,
+                        task=task,
+                        attempt=attempt,
+                        exception_result=exception_result,
+                    )
+                exception_result["cleanup_result"] = cleanup_result
+            except Exception as cleanup_exc:
+                exception_result["cleanup_error"] = str(cleanup_exc)[-1000:]
             self._record_event(
                 "implementation_exception",
                 {
@@ -6575,7 +6698,11 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Remove partial worktrees when setup fails before the implementation command starts."""
 
-        cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+        cleanup_result = self._cleanup_merged_worktree(
+            worktree_path,
+            branch_name,
+            reusable=False,
+        )
         self._record_event(
             "failed_setup_worktree_cleanup",
             {
@@ -6793,6 +6920,7 @@ class PortalImplementationDaemon:
         worktree_path: Path,
         *,
         reason: str,
+        reusable: bool = True,
     ) -> dict[str, Any]:
         """Release a pooled checkout while retaining its durable task branch."""
 
@@ -6809,7 +6937,7 @@ class PortalImplementationDaemon:
                 "reason": "worktree_not_pooled",
                 "worktree_path": str(worktree_path),
             }
-        release_result = lease.release(reusable=True)
+        release_result = lease.release(reusable=reusable)
         result = {
             "attempted": True,
             "handoff_reason": reason,
