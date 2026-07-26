@@ -22,7 +22,7 @@ However, if you want to use DeepSpeed without the [`Trainer`], Transformers prov
 
 <Tip>
 
-Learn more about using DeepSpeed with [`Trainer`] in the [DeepSpeed](../deepspeed) guide.
+Learn more about using DeepSpeed with [`Trainer`] in the [DeepSpeed](../deepspeed.md) guide.
 
 </Tip>
 
