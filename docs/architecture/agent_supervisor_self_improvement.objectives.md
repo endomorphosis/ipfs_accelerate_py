@@ -1318,6 +1318,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Preserve the nine workstream partition. Refine inside a child from a typed benchmark residual or uncovered criterion, and add a new direct child only through an explicit objective revision that also updates the closed v2 completion population.
 - Embedding query: generation two agent supervisor causal tokens software reasoning planning validation cache parallel goals tasks bundles control event driven bounded refill
 - AST query: V2PairedBenchmark V2SupervisorContract V2SelfImprovementEpoch V2RolloutDecision
+- Goal completion schema version: 1
+- Completion confidence: 0.083333
+- Uncovered criteria: ["All nine direct child goals have fresh current-tree evidence","every exact v2 producing task is terminally accepted","the closed paired population satisfies every safety and quantitative gate","Python, CLI, and MCP agree","drained-board idle work and unchanged writes satisfy their bounds","refill is bounded and idempotent","generation-1 compatibility remains green","and any later regression returns affected behavior to shadow."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G210 Causal token efficiency and prefix-stable context
 
@@ -1340,6 +1347,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep token accounting, prefix layout, and evidence selection as separate sequential concerns because they share the context contract but have distinct evidence producers.
 - Embedding query: provider tokenizer token ledger accepted criterion prompt cache kv cache stable prefix value information evidence expansion
 - AST query: SupervisorTokenLedger ContextCompiler ContextCapsule EvidenceSelectionDecision
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Median input tokens per accepted criterion fall by at least 40 percent and retry-input tokens by at least 60 percent","at least 70 percent of eligible stable-prefix tokens are reused on warm fixtures","required evidence coverage and safety do not regress","and semantic dependency changes cause exact invalidation."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G220 Software-first analysis and ipfs_datasets reasoning fabric
 
@@ -1362,6 +1376,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Split transport, operation population, and result reconciliation so optional-provider work can evolve without destabilizing core orchestration.
 - Embedding query: ipfs datasets software reasoning AST GraphRAG premise selection contradiction legal logic proof candidate provenance disagreement fallback
 - AST query: AnalysisTransport AnalysisOperationRegistry AnalysisConsensusReceipt IPFSDatasetsAnalysisProvider
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["At least 70 percent of eligible repeated analysis is reused or offloaded","every timeout, disagreement, capability change, and fallback is typed and bounded","local deterministic fallback remains available","no provider gains mutation, proof, merge, or completion authority","and TDFOL, DCEC, FLogic, modal/deontic, frame, KG, and event-calculus families remain distinguishable."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G230 Constraint-based planning and responsive goals
 
@@ -1384,6 +1405,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep goal linting independent, then serialize search, delta replanning, and objective refinement where their state transitions depend on the previous contract.
 - Embedding query: goal grammar uncertainty debt AND OR search hard constraints plan branches counterexample delta replanning event refinement
 - AST query: GoalQualityReport AdaptivePlanner PlanEvaluator PlanFailureMemory AdaptiveGoalRefiner
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["First-valid-plan rate improves by at least 15 percentage points or invalid branches fall by at least 25 percent","no hard constraint is violated","changed counterexamples or capabilities trigger one bounded affected-suffix replan","unchanged failures back off","and polls without semantic change consume no planning tokens or objective writes."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G240 Hermetic output, semantic, proof, and merge validation
 
@@ -1406,6 +1434,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Preserve fail-fast proposal admission, hermetic execution, and post-merge evidence assembly as distinct dependency-ordered authority owners.
 - Embedding query: untrusted output patch path authority hermetic impact differential mutation flaky semantic theorem proof merged tree evidence
 - AST query: ProposalValidationReceipt ValidationDAGReceipt HermeticValidationRuntime CodeEvidenceGraph CompletionAdmissionGate
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Zero seeded defects, path escapes, forged authority, validation omissions, stale receipts, or contradictory proofs escape","median time to first useful failure is at least 30 percent lower","flaky outcomes never grant authority","and every accepted criterion maps to fresh merged-tree implementation, validation, semantic/proof, and merge evidence."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G250 Tiered content-addressed caching and bounded persistence
 
@@ -1428,6 +1463,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Separate CAS dependency modeling, lease coordination, and storage lifecycle because they have different failure and authority boundaries.
 - Embedding query: tiered content addressed cache semantic dependency invalidation distributed single flight lease bounded receipt artifact retention compaction
 - AST query: RuntimeCAS CacheCoordinator LeaseCoordinator ArtifactStore EventLog
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Warm exact reuse is at least 80 percent and duplicate-miss collapse at least 60 percent","stale authoritative hits are zero","receipts are at most 256 KiB and routine projections at most 1 MiB","payload graphs are referenced rather than duplicated","compaction and corruption recovery preserve identities","and aggregate storage remains within policy."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G260 Measured task granularity and adaptive parallel runtime
 
@@ -1450,6 +1492,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Preserve task sizing, bundle optimization, local stage scheduling, and distributed execution as separate layers joined by canonical identities and receipts.
 - Embedding query: task granularity split coalesce acceptance bundle conflict graph critical path work stealing batching backpressure distributed lane merge train
 - AST query: TaskQualityPolicy BundleOptimizer ResourceScheduler ProviderBatchScheduler BundleSupervisor MergeTrain
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Independent work achieves at least 3x one-lane accepted throughput with less than 5 percent duplicate compute, stable memory and disk, no conflict or escaped-defect regression, no starvation, exact acceptance coverage, fewer model calls per accepted criterion, and deterministic fallback when distributed capacity is absent."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G270 Catalog-driven Python, CLI, and MCP control
 
@@ -1472,6 +1521,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Land the provider-free catalog first, transport parity second, and real mutation policy last to keep discovery separate from authority.
 - Embedding query: supervisor control capability catalog Python CLI MCP schema parity event cursor authorization dry run idempotency transaction lease fencing
 - AST query: OperationCatalog SupervisorControlService SupervisorClient register_agent_cli native_agent_supervisor_tools
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Python, CLI, and MCP expose exactly the cataloged operations and produce canonical equivalent results and effects","discovery and imports are side-effect-free","every mutation enforces authorization, roots, expected effects, idempotency, lease, fencing, compare-and-swap revision, audit, and repair","and no transport-specific bypass exists."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G280 Event-driven idle efficiency and bounded recovery
 
@@ -1494,6 +1550,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep event/delta runtime work separate from fault recovery so the steady-state path remains small and independently measurable.
 - Embedding query: event driven daemon idle cpu delta checkpoint event cursor fault injection crash recovery bounded retry quarantine watchdog
 - AST query: PortalImplementationDaemon EventLog TaskboardStore SupervisorRecovery SupervisorWatchdog
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["A drained board averages less than 2 percent of one CPU core for 10 minutes and performs zero unchanged state writes","no event is lost or double-applied","restart and compaction preserve canonical state","every injected crash, partial write, stale lease, corrupt cache, duplicate event, provider loss, disk fault, interrupted validation, and merge interruption has a bounded deterministic recovery or fail-closed quarantine path."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G290 Reward-resistant bounded self-refill and rollout
 
@@ -1516,3 +1579,10 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Serialize evaluation, successor admission, transaction, rollout, and public integration. After the initial tranche, refine only from a current epoch receipt under novelty, cooldown, depth, breadth, token, goal, and task limits.
 - Embedding query: reward hacking Pareto self evaluation ablation typed residual successor goal dedup cooldown refill epoch healthy exhaustion rollout rollback public API
 - AST query: V2SelfImprovementEvaluator V2SuccessorAdmission V2RefillEpoch V2RolloutDecision V2StableExports
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Every non-compensable and quantitative v2 gate passes on the complete population","metric gaming and denominator shifts fail closed","only typed novel residuals create work","no epoch exceeds 8 goals or 24 tasks","identical replay makes zero provider calls or writes","healthy exhaustion waits 6 hours or for a meaningful trigger","a later separate evaluation is required for automatic mode","regressions return to shadow","and stable Python, CLI, and MCP surfaces remain lazy and v1-compatible."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
