@@ -52,7 +52,7 @@ contributed by [kamalkraj](https://huggingface.co/kamalkraj). The original code 
 ## Usage tips
 
 - BEiT models are regular Vision Transformers, but pre-trained in a self-supervised way rather than supervised. They
-  outperform both the [original model (ViT)](vit) as well as [Data-efficient Image Transformers (DeiT)](deit) when fine-tuned on ImageNet-1K and CIFAR-100. You can check out demo notebooks regarding inference as well as
+  outperform both the [original model (ViT)](vit.md) as well as [Data-efficient Image Transformers (DeiT)](deit.md) when fine-tuned on ImageNet-1K and CIFAR-100. You can check out demo notebooks regarding inference as well as
   fine-tuning on custom data [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/VisionTransformer) (you can just replace
   [`ViTFeatureExtractor`] by [`BeitImageProcessor`] and
   [`ViTForImageClassification`] by [`BeitForImageClassification`]).
@@ -122,10 +122,10 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 <PipelineTag pipeline="image-classification"/>
 
 - [`BeitForImageClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/image-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/image_classification.ipynb).
-- See also: [Image classification task guide](../tasks/image_classification)
+- See also: [Image classification task guide](../tasks/image_classification.md)
 
 **Semantic segmentation**
-- [Semantic segmentation task guide](../tasks/semantic_segmentation)
+- [Semantic segmentation task guide](../tasks/semantic_segmentation.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 
