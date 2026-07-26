@@ -3366,7 +3366,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-094 Add provider-native token and accepted-criterion attribution
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
