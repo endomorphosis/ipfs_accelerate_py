@@ -1193,6 +1193,8 @@ class ObjectiveMaterializationTransactionResult:
     repository_tree_id: str = ""
     root_goal_id: str = ""
     root_content_id: str = ""
+    epoch_id: str = ""
+    mapped_goal_ids: tuple[str, ...] = ()
 
     @property
     def committed(self) -> bool:
@@ -1214,6 +1216,7 @@ class ObjectiveMaterializationTransactionResult:
                 "journal_path": str(self.journal_path),
                 "state": self.state.value,
                 "admitted_proposal_ids": list(self.admitted_proposal_ids),
+                "mapped_goal_ids": list(self.mapped_goal_ids),
                 "reason_codes": list(self.reason_codes),
                 "committed": self.committed,
                 "resumable": self.resumable,
@@ -3308,6 +3311,9 @@ def _load_objective_materialization_journal(path: Path) -> dict[str, Any]:
 
 def _objective_materialization_transaction_id(
     preview: ObjectiveGoalMaterializationPreview,
+    *,
+    epoch_id: str = "",
+    expected_goal_ids: Sequence[str] = (),
 ) -> str:
     material = {
         "schema": (
@@ -3321,6 +3327,12 @@ def _objective_materialization_transaction_id(
         "proposal_ids": list(preview.admitted_proposal_ids),
         "lifecycle_owner": preview.policy.lifecycle_owner,
     }
+    # Preserve the historical identity for legacy callers while making an
+    # epoch-bound transaction impossible to alias to an unbound transaction.
+    if epoch_id:
+        material["epoch_id"] = epoch_id
+    if expected_goal_ids:
+        material["mapped_goal_ids"] = list(expected_goal_ids)
     digest = sha256(
         json.dumps(
             material,
@@ -3340,6 +3352,8 @@ def _objective_transaction_result(
     transaction_id: str,
     state: ObjectiveMaterializationTransactionState,
     repository_tree_id: str,
+    epoch_id: str = "",
+    expected_goal_ids: Sequence[str] = (),
     changed: bool = False,
     resumed: bool = False,
     reason_codes: Iterable[str] = (),
@@ -3366,14 +3380,26 @@ def _objective_transaction_result(
         repository_tree_id=repository_tree_id,
         root_goal_id=preview.root_goal_id,
         root_content_id=preview.root_content_id,
+        epoch_id=epoch_id,
+        mapped_goal_ids=(
+            (
+                tuple(expected_goal_ids)
+                or tuple(item.goal.goal_id for item in preview.materialized)
+            )
+            if state is ObjectiveMaterializationTransactionState.COMMITTED
+            else ()
+        ),
     )
 
 
 def _materialization_record_matches_preview(
     record: Mapping[str, Any],
     preview: ObjectiveGoalMaterializationPreview,
+    *,
+    epoch_id: str = "",
+    expected_goal_ids: Sequence[str] = (),
 ) -> bool:
-    return (
+    matches = (
         str(record.get("base_heap_content_id") or "")
         == preview.base_heap_content_id
         and str(record.get("candidate_heap_content_id") or "")
@@ -3384,6 +3410,69 @@ def _materialization_record_matches_preview(
         == preview.admitted_proposal_ids
         and str(record.get("candidate_text") or "") == preview.candidate_text
     )
+    if epoch_id:
+        matches = matches and str(record.get("epoch_id") or "") == epoch_id
+    if expected_goal_ids:
+        matches = matches and tuple(record.get("mapped_goal_ids") or ()) == tuple(
+            expected_goal_ids
+        )
+    return matches
+
+
+def _normalize_objective_epoch_fences(
+    *,
+    preview: ObjectiveGoalMaterializationPreview,
+    epoch_id: str,
+    expected_objective_revision: str,
+    expected_goal_ids: Sequence[str],
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    """Normalize optional refill-epoch fences without weakening legacy calls."""
+
+    if not isinstance(epoch_id, str):
+        raise TypeError("epoch_id must be a string")
+    normalized_epoch_id = epoch_id.strip()
+    if (
+        "\x00" in normalized_epoch_id
+        or len(normalized_epoch_id.encode("utf-8")) > 512
+    ):
+        raise ValueError("epoch_id exceeds its safe text bound")
+    if not isinstance(expected_objective_revision, str):
+        raise TypeError("expected_objective_revision must be a string")
+    normalized_revision = expected_objective_revision.strip()
+    if (
+        "\x00" in normalized_revision
+        or len(normalized_revision.encode("utf-8")) > 512
+    ):
+        raise ValueError("expected_objective_revision exceeds its safe text bound")
+    if isinstance(expected_goal_ids, (str, bytes)) or not isinstance(
+        expected_goal_ids, Sequence
+    ):
+        raise TypeError("expected_goal_ids must be a sequence of goal IDs")
+    normalized_goal_ids = tuple(
+        str(item).strip() for item in expected_goal_ids
+    )
+    if any(
+        not item or "\x00" in item or len(item.encode("utf-8")) > 512
+        for item in normalized_goal_ids
+    ):
+        raise ValueError("expected_goal_ids must contain bounded non-empty text")
+    if len(normalized_goal_ids) > 8:
+        raise ValueError("a refill epoch may map at most 8 objective goals")
+    if len(set(normalized_goal_ids)) != len(normalized_goal_ids):
+        raise ValueError("expected_goal_ids must be unique")
+
+    preview_goal_ids = tuple(
+        item.goal.goal_id for item in preview.materialized
+    )
+    reason_codes: list[str] = []
+    if (
+        normalized_revision
+        and normalized_revision != preview.base_heap_content_id
+    ):
+        reason_codes.append("objective_revision_conflict")
+    if normalized_goal_ids and normalized_goal_ids != preview_goal_ids:
+        reason_codes.append("goal_mapping_conflict")
+    return normalized_epoch_id, normalized_goal_ids, tuple(reason_codes)
 
 
 def _materialization_goal_errors(
@@ -3558,6 +3647,9 @@ def commit_objective_goal_materialization(
     journal_path: Path,
     preview: ObjectiveGoalMaterializationPreview,
     expected_repository_tree_id: str = "",
+    epoch_id: str = "",
+    expected_objective_revision: str = "",
+    expected_goal_ids: Sequence[str] = (),
     lease_guard: Callable[..., Any] | None = None,
     expected_lease_token: str | int | None = None,
     lock_timeout_seconds: float = 30.0,
@@ -3570,11 +3662,39 @@ def commit_objective_goal_materialization(
     committed, a later call recognizes either the exact candidate or an exact
     prefix of its rendered blocks and safely completes the same transaction.
     Stale source trees, roots, heap content, and lease fencing tokens leave the
-    prepared record intact for a fresh preview or lease to resume.
+    prepared record intact for a fresh preview or lease to resume.  Refill
+    callers may additionally bind the transaction to an epoch, its frozen
+    objective revision, and the exact (maximum eight) goal IDs expected from
+    the immutable preview.
     """
 
     if not isinstance(preview, ObjectiveGoalMaterializationPreview):
         raise TypeError("preview must be ObjectiveGoalMaterializationPreview")
+    normalized_epoch_id, normalized_goal_ids, fence_errors = (
+        _normalize_objective_epoch_fences(
+            preview=preview,
+            epoch_id=epoch_id,
+            expected_objective_revision=expected_objective_revision,
+            expected_goal_ids=expected_goal_ids,
+        )
+    )
+    transaction_id = _objective_materialization_transaction_id(
+        preview,
+        epoch_id=normalized_epoch_id,
+        expected_goal_ids=normalized_goal_ids,
+    )
+    if fence_errors:
+        return _objective_transaction_result(
+            objective_path=objective_path,
+            journal_path=journal_path,
+            preview=preview,
+            transaction_id=transaction_id,
+            state=ObjectiveMaterializationTransactionState.BLOCKED,
+            repository_tree_id=str(expected_repository_tree_id or ""),
+            epoch_id=normalized_epoch_id,
+            expected_goal_ids=normalized_goal_ids,
+            reason_codes=fence_errors,
+        )
     if not preview.ready or not preview.changed:
         reasons = [
             "preview_not_ready",
@@ -3585,9 +3705,11 @@ def commit_objective_goal_materialization(
             objective_path=objective_path,
             journal_path=journal_path,
             preview=preview,
-            transaction_id=_objective_materialization_transaction_id(preview),
+            transaction_id=transaction_id,
             state=ObjectiveMaterializationTransactionState.BLOCKED,
             repository_tree_id=str(expected_repository_tree_id or ""),
+            epoch_id=normalized_epoch_id,
+            expected_goal_ids=normalized_goal_ids,
             reason_codes=reasons,
         )
 
@@ -3596,7 +3718,6 @@ def commit_objective_goal_materialization(
     repo_root = repo_root.resolve()
     if objective_path == journal_path:
         raise ValueError("journal_path must be separate from objective_path")
-    transaction_id = _objective_materialization_transaction_id(preview)
     lock_path = objective_path.with_name(f".{objective_path.name}.admission.lock")
 
     from .duckdb_state import exclusive_file_lock
@@ -3611,7 +3732,10 @@ def commit_objective_goal_materialization(
             prior = transactions.get(transaction_id)
             resumed = prior is not None
             if prior is not None and not _materialization_record_matches_preview(
-                prior, preview
+                prior,
+                preview,
+                epoch_id=normalized_epoch_id,
+                expected_goal_ids=normalized_goal_ids,
             ):
                 return _objective_transaction_result(
                     objective_path=objective_path,
@@ -3624,6 +3748,8 @@ def commit_objective_goal_materialization(
                         or expected_repository_tree_id
                         or ""
                     ),
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     resumed=True,
                     reason_codes=("transaction_identity_conflict",),
                 )
@@ -3657,6 +3783,8 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.BLOCKED,
                     repository_tree_id=str(expected_repository_tree_id or ""),
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     resumed=resumed,
                     reason_codes=("changed_root",),
                 )
@@ -3676,6 +3804,8 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.BLOCKED,
                     repository_tree_id=str(expected_repository_tree_id or ""),
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     resumed=resumed,
                     reason_codes=("partial_write_conflict", *conflicting_metadata),
                 )
@@ -3699,6 +3829,8 @@ def commit_objective_goal_materialization(
                             or expected_repository_tree_id
                             or ""
                         ),
+                        epoch_id=normalized_epoch_id,
+                        expected_goal_ids=normalized_goal_ids,
                         resumed=True,
                     )
                 return _objective_transaction_result(
@@ -3712,6 +3844,8 @@ def commit_objective_goal_materialization(
                         or expected_repository_tree_id
                         or ""
                     ),
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     resumed=True,
                     reason_codes=("committed_heap_conflict", *complete_errors),
                 )
@@ -3737,6 +3871,8 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.BLOCKED,
                     repository_tree_id=frozen_tree_id,
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     resumed=resumed,
                     reason_codes=("transaction_tree_conflict",),
                 )
@@ -3748,6 +3884,8 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.BLOCKED,
                     repository_tree_id=frozen_tree_id,
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     resumed=resumed,
                     reason_codes=("stale_repository_tree",),
                 )
@@ -3764,7 +3902,10 @@ def commit_objective_goal_materialization(
                     ) == current_content_id:
                         prefix_count = count
                         break
-            if current_content_id == preview.candidate_heap_content_id:
+            if (
+                current_content_id == preview.candidate_heap_content_id
+                and (prior is not None or not normalized_epoch_id)
+            ):
                 prefix_count = len(preview.materialized)
             if prefix_count < 0:
                 return _objective_transaction_result(
@@ -3774,6 +3915,8 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.BLOCKED,
                     repository_tree_id=frozen_tree_id,
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     resumed=resumed,
                     reason_codes=("stale_objective_heap",),
                 )
@@ -3798,6 +3941,14 @@ def commit_objective_goal_materialization(
                     "repository_id": identity.repository_id,
                     "repository_tree_id": frozen_tree_id,
                     "proposal_ids": list(preview.admitted_proposal_ids),
+                    "epoch_id": normalized_epoch_id,
+                    "mapped_goal_ids": list(
+                        normalized_goal_ids
+                        or tuple(
+                            item.goal.goal_id
+                            for item in preview.materialized
+                        )
+                    ),
                     "candidate_text": preview.candidate_text,
                     "base_text": base_text,
                     "rendered_block_digests": {
@@ -3836,6 +3987,8 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.PREPARED,
                     repository_tree_id=frozen_tree_id,
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     resumed=resumed,
                     reason_codes=("lease_conflict",),
                 )
@@ -3861,6 +4014,8 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.PREPARED,
                     repository_tree_id=frozen_tree_id,
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     changed=changed,
                     resumed=resumed,
                     reason_codes=("partial_write",),
@@ -3882,6 +4037,8 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.PREPARED,
                     repository_tree_id=frozen_tree_id,
+                    epoch_id=normalized_epoch_id,
+                    expected_goal_ids=normalized_goal_ids,
                     changed=changed,
                     resumed=resumed,
                     reason_codes=("partial_write", *persisted_errors),
@@ -3906,6 +4063,13 @@ def commit_objective_goal_materialization(
                 transaction_id=transaction_id,
                 state=ObjectiveMaterializationTransactionState.COMMITTED,
                 repository_tree_id=frozen_tree_id,
+                epoch_id=normalized_epoch_id,
+                expected_goal_ids=(
+                    normalized_goal_ids
+                    or tuple(
+                        item.goal.goal_id for item in preview.materialized
+                    )
+                ),
                 changed=changed,
                 resumed=resumed or prefix_count > 0,
             )
@@ -3917,6 +4081,8 @@ def commit_objective_goal_materialization(
             transaction_id=transaction_id,
             state=ObjectiveMaterializationTransactionState.BLOCKED,
             repository_tree_id=str(expected_repository_tree_id or ""),
+            epoch_id=normalized_epoch_id,
+            expected_goal_ids=normalized_goal_ids,
             reason_codes=("lease_conflict",),
         )
 

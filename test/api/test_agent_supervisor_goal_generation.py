@@ -1672,6 +1672,119 @@ def test_goal_materialization_is_preview_first_lossless_and_transactional(
     ) == 1
 
 
+def test_goal_materialization_binds_epoch_revision_and_exact_goal_mapping(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    objective_path = repo_root / "objective-heap.md"
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    journal_path = tmp_path / "epoch-objective-journal.json"
+    goal, subgoal = _hierarchical_goal_work()
+    preview = preview_objective_goal_materialization(
+        _objective_heap(),
+        (goal, subgoal),
+        root_goal_id="ROOT",
+    )
+    goal_ids = tuple(item.goal.goal_id for item in preview.materialized)
+
+    result = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=journal_path,
+        preview=preview,
+        epoch_id="refill-epoch:sha256:test",
+        expected_objective_revision=preview.base_heap_content_id,
+        expected_goal_ids=goal_ids,
+    )
+
+    assert result.committed
+    assert result.epoch_id == "refill-epoch:sha256:test"
+    assert result.mapped_goal_ids == goal_ids
+    transaction = json.loads(journal_path.read_text(encoding="utf-8"))[
+        "transactions"
+    ][result.transaction_id]
+    assert transaction["epoch_id"] == result.epoch_id
+    assert tuple(transaction["mapped_goal_ids"]) == goal_ids
+
+    # A committed exact replay validates the journal and heap but performs no
+    # objective or journal write.
+    monkeypatch.setattr(
+        objective_tracker_module,
+        "_atomic_write_json",
+        lambda *_args, **_kwargs: pytest.fail("exact replay wrote its journal"),
+    )
+    monkeypatch.setattr(
+        objective_tracker_module,
+        "_atomic_rewrite",
+        lambda *_args, **_kwargs: pytest.fail("exact replay wrote its heap"),
+    )
+    replay = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=journal_path,
+        preview=preview,
+        epoch_id=result.epoch_id,
+        expected_objective_revision=preview.base_heap_content_id,
+        expected_goal_ids=goal_ids,
+    )
+    assert replay.committed and replay.resumed and not replay.changed
+    assert replay.mapped_goal_ids == goal_ids
+
+    remap = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=journal_path,
+        preview=preview,
+        epoch_id="refill-epoch:sha256:different",
+        expected_objective_revision=preview.base_heap_content_id,
+        expected_goal_ids=goal_ids,
+    )
+    assert remap.state is ObjectiveMaterializationTransactionState.BLOCKED
+    assert remap.reason_codes == ("stale_objective_heap",)
+
+
+def test_goal_materialization_rejects_epoch_revision_or_mapping_conflict(
+    tmp_path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    objective_path = repo_root / "objective-heap.md"
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    goal, _subgoal = _hierarchical_goal_work()
+    preview = preview_objective_goal_materialization(
+        _objective_heap(),
+        (goal,),
+        root_goal_id="ROOT",
+    )
+
+    stale = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=tmp_path / "stale-epoch-journal.json",
+        preview=preview,
+        epoch_id="refill-epoch:stale",
+        expected_objective_revision="objective:stale",
+        expected_goal_ids=(goal.canonical_id,),
+    )
+    assert stale.state is ObjectiveMaterializationTransactionState.BLOCKED
+    assert stale.reason_codes == ("objective_revision_conflict",)
+
+    wrong_mapping = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=tmp_path / "mapping-epoch-journal.json",
+        preview=preview,
+        epoch_id="refill-epoch:mapping",
+        expected_objective_revision=preview.base_heap_content_id,
+        expected_goal_ids=("OTHER-GOAL",),
+    )
+    assert wrong_mapping.state is ObjectiveMaterializationTransactionState.BLOCKED
+    assert wrong_mapping.reason_codes == ("goal_mapping_conflict",)
+    assert objective_path.read_text(encoding="utf-8") == _objective_heap()
+
+
 def test_goal_materialization_keeps_semantic_and_structural_breadth_bounds() -> None:
     goal, _subgoal = _hierarchical_goal_work()
     first = preview_objective_goal_materialization(
