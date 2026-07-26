@@ -7828,20 +7828,53 @@ class PortalImplementationDaemon:
         timeout_seconds: float,
         environment: dict[str, str],
     ) -> dict[str, Any]:
-        """Run one command through the daemon's patchable subprocess seam."""
+        """Run one command through the daemon's patchable subprocess seam.
+
+        The validation runtime deliberately removes the operator's real home
+        directory from the child environment.  Some repositories nevertheless
+        need writable per-process state for contract tests (for example, a VFS
+        mount registry).  Give every command a fresh private home rather than
+        exposing the operator's profile or sharing mutable state between
+        validations.
+        """
 
         started_at = utc_now()
-        completed = subprocess.run(
-            validation_shell_command(str(spec.command)),
-            cwd=workspace_path,
-            text=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=timeout_seconds,
-            check=False,
-            env=environment,
-        )
+        with tempfile.TemporaryDirectory(
+            prefix="ipfs-accelerate-validation-home-"
+        ) as temporary_home:
+            home_path = Path(temporary_home)
+            child_environment = dict(environment)
+            child_environment.update(
+                {
+                    "HOME": str(home_path),
+                    "XDG_CACHE_HOME": str(home_path / ".cache"),
+                    "XDG_CONFIG_HOME": str(home_path / ".config"),
+                    "XDG_DATA_HOME": str(home_path / ".local" / "share"),
+                    "XDG_STATE_HOME": str(home_path / ".local" / "state"),
+                }
+            )
+            for key in (
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_STATE_HOME",
+            ):
+                Path(child_environment[key]).mkdir(
+                    mode=0o700,
+                    parents=True,
+                    exist_ok=True,
+                )
+            completed = subprocess.run(
+                validation_shell_command(str(spec.command)),
+                cwd=workspace_path,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=timeout_seconds,
+                check=False,
+                env=child_environment,
+            )
         return {
             "command": str(spec.command),
             "raw_command": str(spec.raw_command or spec.command),
