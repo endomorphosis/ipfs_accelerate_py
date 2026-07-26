@@ -45,15 +45,15 @@ here: https://github.com/yitu-opensource/ConvBert
 
 ## Usage tips
 
-ConvBERT training tips are similar to those of BERT. For usage tips refer to [BERT documentation](bert).
+ConvBERT training tips are similar to those of BERT. For usage tips refer to [BERT documentation](bert.md).
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## ConvBertConfig
 
