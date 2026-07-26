@@ -3708,7 +3708,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-113 Add distributed lane execution and merge-train fencing
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: parallelism
