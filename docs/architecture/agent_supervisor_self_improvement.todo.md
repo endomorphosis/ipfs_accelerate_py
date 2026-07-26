@@ -3528,7 +3528,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-103 Add a typed goal grammar, quality linter, and uncertainty debt
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: goal-refinement
