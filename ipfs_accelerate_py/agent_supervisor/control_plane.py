@@ -4322,6 +4322,8 @@ class SupervisorControlService:
         service_version: str = CONTROL_SERVICE_VERSION,
         max_query_items: int = DEFAULT_MAX_QUERY_ITEMS,
         require_lease_validator: bool = True,
+        decision_runtime: Any = None,
+        decision_runtime_cancellation: Any = None,
         clock_ms: Callable[[], int] = _now_ms,
     ) -> None:
         repositories = (
@@ -4360,6 +4362,9 @@ class SupervisorControlService:
             raise ValueError("max_query_items must be a positive integer")
         self._max_query_items = min(max_query_items, DEFAULT_MAX_QUERY_ITEMS)
         self._require_lease_validator = bool(require_lease_validator)
+        self._decision_runtime = decision_runtime
+        self._decision_runtime_cancellation = decision_runtime_cancellation
+        self._pending_runtime_decision: Any = None
         self._clock_ms = clock_ms
         self._lock = threading.RLock()
         self._mutation_dispatch_count = 0
@@ -4518,6 +4523,7 @@ class SupervisorControlService:
             self._check_bounds(request)
             self._check_authorization(request)
             self._check_lease(request)
+            self._prepare_decision_runtime(request)
             current = self._state_store.get_mutation(request)
             if current is None:
                 raise TransactionConflictError("mutation transaction is absent")
@@ -4536,7 +4542,32 @@ class SupervisorControlService:
                 raise OperationUnavailableError(
                     f"backend does not implement {selected.value} recovery"
                 )
-            outcome = hook(request, current)
+            if self._decision_runtime is None:
+                outcome = hook(request, current)
+            else:
+                decision = self._pending_runtime_decision
+
+                def recover_dispatch() -> dict[str, Any]:
+                    value = hook(request, current)
+                    runtime_request = getattr(
+                        decision, "decision_request", None
+                    )
+                    return {
+                        "outcome": value,
+                        "observed_effects": tuple(
+                            getattr(runtime_request, "expected_effects", ())
+                        ),
+                    }
+
+                executed = self._decision_runtime.authorize_mutation(
+                    decision, recover_dispatch
+                )
+                wrapped = getattr(executed, "value", executed)
+                outcome = (
+                    wrapped.get("outcome")
+                    if isinstance(wrapped, Mapping)
+                    else wrapped
+                )
             if outcome is False:
                 raise BackendConflictError(
                     f"backend rejected {selected.value} recovery"
@@ -4875,6 +4906,14 @@ class SupervisorControlService:
             code = ErrorCode.IDEMPOTENCY_CONFLICT
         elif isinstance(exc, (TransactionConflictError, PartialMutationError)):
             code = ErrorCode.CONFLICT
+        elif type(exc).__name__ in {
+            "DecisionRuntimeDenied",
+            "DecisionRuntimeBypassError",
+            "DecisionRuntimeEffectMismatch",
+        }:
+            code = ErrorCode.UNAUTHORIZED
+        elif type(exc).__name__ == "DecisionRuntimeCancelled":
+            code = ErrorCode.CANCELLED
         elif isinstance(exc, BackendNotFoundError) or isinstance(
             exc, FileNotFoundError
         ):
@@ -5181,7 +5220,137 @@ class SupervisorControlService:
         if replay is not None:
             return replay
         self._check_lease(request)
+        self._prepare_decision_runtime(request)
         return None
+
+    @staticmethod
+    def _control_runtime_boundary(request: OperationRequest) -> str:
+        if request.operation is Operation.VALIDATION_REPLAY:
+            return "validation_execution"
+        if request.operation in {
+            Operation.OBJECTIVE_REFINE,
+            Operation.OBJECTIVE_RECONCILE,
+            Operation.BACKLOG_REFILL,
+        }:
+            return "task_board_mutation"
+        return "tool_invocation"
+
+    def _runtime_cancelled(self) -> bool:
+        value = self._decision_runtime_cancellation
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        if callable(value):
+            return bool(value())
+        checker = getattr(value, "is_set", None)
+        if callable(checker):
+            return bool(checker())
+        raise TypeError(
+            "decision_runtime_cancellation must be a boolean, predicate, "
+            "event, or None"
+        )
+
+    def _prepare_decision_runtime(self, request: OperationRequest) -> None:
+        """Resolve one shared Python/CLI/MCP decision before dispatch."""
+
+        self._pending_runtime_decision = None
+        if request.operation not in MUTATION_OPERATIONS or request.dry_run:
+            return
+        if self._runtime_cancelled():
+            raise BackendCancelledError(
+                "control operation cancelled before runtime decision"
+            )
+        runtime = self._decision_runtime
+        runtime_config = request.parameters.get("decision_runtime")
+        if runtime_config is not None:
+            from .decision_runtime import (
+                DecisionRuntime,
+                DecisionRuntimeConfig,
+            )
+
+            decoded = DecisionRuntimeConfig.from_dict(runtime_config)
+            if runtime is None:
+                runtime = DecisionRuntime(
+                    decoded,
+                    cancellation=self._decision_runtime_cancellation,
+                )
+                self._decision_runtime = runtime
+            elif (
+                getattr(runtime, "config", None) is not None
+                and getattr(runtime.config, "config_id", None)
+                != decoded.config_id
+            ):
+                raise ControlContractError(
+                    "control request decision_runtime config differs from "
+                    "the active service runtime"
+                )
+        if runtime is None:
+            return
+        route = getattr(runtime, "route", None)
+        if not callable(route):
+            raise TypeError("decision_runtime must expose route()")
+        self._pending_runtime_decision = route(
+            self._control_runtime_boundary(request),
+            {
+                "transport_request_id": request.request_id,
+                "operation": request.operation.value,
+                "repository_id": request.repository_id,
+                "tree_id": request.tree_id,
+                "objective_id": request.objective_id,
+                "policy_id": request.policy_id,
+                "policy_revision": request.policy_revision,
+                "caller": request.caller,
+                "lease_id": request.lease_id,
+                "fencing_epoch": request.fencing_epoch,
+                "idempotency_key": request.idempotency_key,
+                "expected_effect_ids": tuple(
+                    item.effect_id for item in request.expected_effects
+                ),
+            },
+        )
+
+    def _dispatch_with_decision_runtime(
+        self, request: OperationRequest
+    ) -> BackendResponse:
+        """Check the current permit immediately adjacent to backend dispatch."""
+
+        runtime = self._decision_runtime
+        decision = self._pending_runtime_decision
+        if runtime is None:
+            return self._dispatch(request)
+        if self._runtime_cancelled():
+            raise BackendCancelledError(
+                "control operation cancelled before backend dispatch"
+            )
+        authorize = getattr(runtime, "authorize_mutation", None)
+        if not callable(authorize):
+            raise TypeError(
+                "decision_runtime must expose authorize_mutation()"
+            )
+
+        def dispatch() -> dict[str, Any]:
+            response = self._dispatch(request)
+            runtime_request = getattr(decision, "decision_request", None)
+            expected = tuple(
+                effect
+                for effect in getattr(runtime_request, "expected_effects", ())
+                if effect.effect_id in set(response.applied_effect_ids)
+            )
+            return {
+                "response": response,
+                "observed_effects": expected,
+            }
+
+        result = authorize(decision, dispatch)
+        wrapped = getattr(result, "value", result)
+        if not isinstance(wrapped, Mapping) or not isinstance(
+            wrapped.get("response"), BackendResponse
+        ):
+            raise ControlContractError(
+                "decision runtime returned an invalid backend response"
+            )
+        return wrapped["response"]
 
     def execute(
         self, request: Union[OperationRequest, Mapping[str, Any]]
@@ -5244,7 +5413,7 @@ class SupervisorControlService:
                         checks=("authorization", "bounds", "allowlists", "expected_effects"),
                     )
                 else:
-                    response = self._dispatch(request)
+                    response = self._dispatch_with_decision_runtime(request)
                     backend_accepted = True
                 return self._success_result(
                     request,

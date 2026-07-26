@@ -1516,6 +1516,8 @@ class PortalImplementationDaemon:
         implementation_provider_max_input_tokens: int | None = None,
         implementation_max_repair_rounds: int = 3,
         implementation_cancelled: Any = None,
+        decision_runtime: Any = None,
+        decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -1553,6 +1555,32 @@ class PortalImplementationDaemon:
             implementation_max_repair_rounds
         )
         self.implementation_cancelled = implementation_cancelled
+        if decision_runtime is not None and decision_runtime_config is not None:
+            configured = getattr(decision_runtime, "config", None)
+            if configured is None:
+                raise ValueError(
+                    "decision_runtime_config cannot accompany a runtime "
+                    "without an inspectable config"
+                )
+            from ..decision_runtime import DecisionRuntimeConfig
+
+            expected_config = DecisionRuntimeConfig.from_dict(
+                decision_runtime_config
+            )
+            if getattr(configured, "config_id", None) != expected_config.config_id:
+                raise ValueError(
+                    "decision_runtime and decision_runtime_config disagree"
+                )
+        if decision_runtime is None and decision_runtime_config is not None:
+            from ..decision_runtime import DecisionRuntime
+
+            decision_runtime = DecisionRuntime(
+                decision_runtime_config,
+                cancellation=implementation_cancelled,
+            )
+        self.decision_runtime = decision_runtime
+        self._last_runtime_decision: Any = None
+        self._last_runtime_effect_observation: Any = None
         self._last_implementation_context: (
             ContextCompileResult | ContextDeltaResult
         ) | None = None
@@ -1737,6 +1765,92 @@ class PortalImplementationDaemon:
             dict(cached_result) if isinstance(cached_result, Mapping) else None
         )
         self._last_safety_reconciliation_monotonic = time.monotonic()
+
+    def _decision_runtime_route(
+        self,
+        boundary: str,
+        payload: Mapping[str, Any],
+    ) -> Any:
+        """Route a live daemon boundary through the configured runtime."""
+
+        if self._implementation_cancel_requested():
+            from ..decision_runtime import DecisionRuntimeCancelled
+
+            raise DecisionRuntimeCancelled(
+                ("cancelled", f"cancelled_before_{boundary}")
+            )
+        if self.decision_runtime is None:
+            return None
+        route = getattr(self.decision_runtime, "route", None)
+        if not callable(route):
+            raise TypeError("decision_runtime must expose route()")
+        decision = route(boundary, dict(payload))
+        self._last_runtime_decision = decision
+        return decision
+
+    def _decision_runtime_mutation(
+        self,
+        boundary: str,
+        payload: Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        """Verify a current permit immediately before a daemon effect."""
+
+        decision = self._decision_runtime_route(boundary, payload)
+        if decision is None:
+            return callback()
+        authorize = getattr(
+            self.decision_runtime, "authorize_mutation", None
+        )
+        if not callable(authorize):
+            raise TypeError(
+                "decision_runtime must expose authorize_mutation()"
+            )
+
+        def dispatch() -> dict[str, Any]:
+            value = callback()
+            request = getattr(decision, "decision_request", None)
+            return {
+                "value": value,
+                "observed_effects": tuple(
+                    getattr(request, "expected_effects", ())
+                ),
+            }
+
+        execution = authorize(decision, dispatch)
+        self._last_runtime_effect_observation = getattr(
+            execution, "effect_observation", None
+        )
+        wrapped = getattr(execution, "value", execution)
+        return wrapped.get("value") if isinstance(wrapped, Mapping) else wrapped
+
+    def _decision_runtime_completion(
+        self,
+        task: PortalTask,
+        *,
+        merged_tree_id: str,
+        evidence: Mapping[str, Any],
+    ) -> Any:
+        """Admit completion only from a fresh merged-tree decision."""
+
+        previous = getattr(self._last_runtime_decision, "receipt", None)
+        observation = self._last_runtime_effect_observation
+        return self._decision_runtime_route(
+            "completion",
+            {
+                "task_id": task.task_id,
+                "task_cid": self._canonical_ref(task),
+                "merged_tree_id": merged_tree_id,
+                "prior_decision_receipt_id": str(
+                    getattr(previous, "receipt_id", "")
+                ),
+                "effect_observation_receipt_id": str(
+                    getattr(observation, "receipt_id", "")
+                ),
+                "post_merge_evidence": dict(evidence),
+                "fresh_merged_tree_required": True,
+            },
+        )
 
     @staticmethod
     def _implementation_protected_path_identity(
@@ -4008,12 +4122,23 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Started: {started_at}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
                 log_fh.flush()
-                completed = run_process_group_stream(
-                    command,
-                    cwd=workspace_path,
-                    stdout=log_fh,
-                    input_text=prompt,
-                    timeout_seconds=self.implementation_timeout,
+                completed = self._decision_runtime_mutation(
+                    "command_invocation",
+                    {
+                        "operation": "implementation_provider",
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "command": tuple(command),
+                        "workspace_path": str(workspace_path),
+                        "context_receipt_path": str(context_receipt_path),
+                    },
+                    lambda: run_process_group_stream(
+                        command,
+                        cwd=workspace_path,
+                        stdout=log_fh,
+                        input_text=prompt,
+                        timeout_seconds=self.implementation_timeout,
+                    ),
                 )
             effective_returncode = completed.returncode
             protected_path_violation = (
@@ -4126,6 +4251,21 @@ class PortalImplementationDaemon:
                         "protected_path_violation": protected_path_violation,
                     }
             if effective_returncode == 0:
+                _repository_id, completion_tree_id = (
+                    self._implementation_repository_and_tree_ids(task)
+                )
+                self._decision_runtime_completion(
+                    task,
+                    merged_tree_id=completion_tree_id,
+                    evidence={
+                        "passed": bool(
+                            validation_result.get("passed", False)
+                        ),
+                        "completion_authoritative": True,
+                        "repository_tree_id": completion_tree_id,
+                        "validation": dict(validation_result),
+                    },
+                )
                 todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
             finished_at = utc_now()
             self._record_task_attempt(state, task, attempt)
@@ -4447,6 +4587,31 @@ class PortalImplementationDaemon:
         )
 
     def _mark_tasks_completed_in_todo(
+        self,
+        task_ids: Sequence[str],
+        *,
+        primary_task_id: str,
+        completion_reason: str,
+        bundle_work_order: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._decision_runtime_mutation(
+            "task_board_mutation",
+            {
+                "operation": "mark_tasks_completed",
+                "todo_path": str(self.todo_path),
+                "task_ids": tuple(task_ids),
+                "primary_task_id": primary_task_id,
+                "completion_reason": completion_reason,
+            },
+            lambda: self._mark_tasks_completed_in_todo_unchecked(
+                task_ids,
+                primary_task_id=primary_task_id,
+                completion_reason=completion_reason,
+                bundle_work_order=bundle_work_order,
+            ),
+        )
+
+    def _mark_tasks_completed_in_todo_unchecked(
         self,
         task_ids: Sequence[str],
         *,
@@ -5625,7 +5790,31 @@ class PortalImplementationDaemon:
                         worktree_submodule_paths=self.worktree_submodule_paths,
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,
+                        decision_runtime=self.decision_runtime,
                     )
+                completion_tree_id = str(
+                    result.get("merge_commit")
+                    or result.get("target_commit")
+                    or implementation_commit
+                )
+                completion_daemon._decision_runtime_completion(
+                    task,
+                    merged_tree_id=completion_tree_id,
+                    evidence={
+                        "passed": True,
+                        "completion_authoritative": True,
+                        "repository_tree_id": completion_tree_id,
+                        "merge_result": {
+                            key: result.get(key)
+                            for key in (
+                                "merged",
+                                "already_merged",
+                                "reason",
+                                "merge_commit",
+                            )
+                        },
+                    },
+                )
                 bundle_payload = metadata.get("bundle_work_order")
                 if isinstance(bundle_payload, dict):
                     task_ids = [
@@ -5781,6 +5970,8 @@ class PortalImplementationDaemon:
             formal_verification_policy=self.formal_verification_policy,
             proof_gate=self.proof_gate,
             proof_cache_dir=self.proof_cache_dir,
+            decision_runtime=self.decision_runtime,
+            decision_runtime_cancellation=self.implementation_cancelled,
         )
         return train.run_once()
 
@@ -5980,12 +6171,23 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Baseline: {baseline_ref}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
                 log_fh.flush()
-                completed = run_process_group_stream(
-                    command,
-                    cwd=worktree_path,
-                    stdout=log_fh,
-                    input_text=prompt,
-                    timeout_seconds=self.implementation_timeout,
+                completed = self._decision_runtime_mutation(
+                    "command_invocation",
+                    {
+                        "operation": "implementation_provider",
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "command": tuple(command),
+                        "workspace_path": str(worktree_path),
+                        "branch": branch_name,
+                    },
+                    lambda: run_process_group_stream(
+                        command,
+                        cwd=worktree_path,
+                        stdout=log_fh,
+                        input_text=prompt,
+                        timeout_seconds=self.implementation_timeout,
+                    ),
                 )
             returncode = completed.returncode
             protected_path_violation = (
@@ -6573,6 +6775,21 @@ class PortalImplementationDaemon:
                 and no_change_guard.get("allowed")
             )
         ):
+            completion_tree_id = str(
+                merge_result.get("merge_commit")
+                or implementation_commit
+                or baseline_ref
+            )
+            self._decision_runtime_completion(
+                task,
+                merged_tree_id=completion_tree_id,
+                evidence={
+                    "passed": bool(validation_result.get("passed", False)),
+                    "completion_authoritative": True,
+                    "repository_tree_id": completion_tree_id,
+                    "validation": dict(validation_result),
+                },
+            )
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
@@ -7806,6 +8023,20 @@ class PortalImplementationDaemon:
         return relative == normalized or relative.startswith(f"{normalized}/")
 
     def _commit_worktree_changes(self, worktree_path: Path, task: PortalTask, attempt: int) -> dict[str, Any]:
+        return self._decision_runtime_mutation(
+            "commit",
+            {
+                "operation": "commit_worktree_changes",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "worktree_path": str(worktree_path),
+            },
+            lambda: self._commit_worktree_changes_unchecked(
+                worktree_path, task, attempt
+            ),
+        )
+
+    def _commit_worktree_changes_unchecked(self, worktree_path: Path, task: PortalTask, attempt: int) -> dict[str, Any]:
         submodule_results = self._commit_worktree_submodule_changes(worktree_path, task, attempt)
         self._restore_ephemeral_worktree_paths_for_commit(worktree_path)
         self._restore_uncommitted_submodule_pointers(worktree_path, submodule_results)
@@ -9054,6 +9285,16 @@ class PortalImplementationDaemon:
             return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
 
         proof_options = self._proof_workflow_options(workspace_path, task)
+        self._decision_runtime_route(
+            "validation_selection",
+            {
+                "task_id": task.task_id,
+                "workspace_path": str(workspace_path),
+                "declared_commands": tuple(task.validation),
+                "proposal_bound": proposal_validation is not None,
+                "proof_workflow": bool(proof_options),
+            },
+        )
         if (
             not task.validation
             and not proof_options
@@ -9079,13 +9320,22 @@ class PortalImplementationDaemon:
         # still recorded and used for staging, but every unrelated targeted
         # check is escalated into the broad pre-merge stage here.
         if proposal_validation is None:
-            result = self.validation_scheduler.run(
-                commands,
-                workspace_path=workspace_path,
-                require_full_validation=True,
-                scope="pre_merge",
-                runner=self._validation_command_runner,
-                **proof_options,
+            result = self._decision_runtime_mutation(
+                "validation_execution",
+                {
+                    "task_id": task.task_id,
+                    "workspace_path": str(workspace_path),
+                    "commands": tuple(commands),
+                    "scope": "pre_merge",
+                },
+                lambda: self.validation_scheduler.run(
+                    commands,
+                    workspace_path=workspace_path,
+                    require_full_validation=True,
+                    scope="pre_merge",
+                    runner=self._validation_command_runner,
+                    **proof_options,
+                ),
             )
         else:
             strict_runner = getattr(self.validation_scheduler, "run_validated", None)
@@ -9129,16 +9379,26 @@ class PortalImplementationDaemon:
                         "configuration_detail": str(exc)[:1000],
                     }
                 else:
-                    result = strict_runner(
-                        proposal_validation,
-                        bound_commands,
-                        workspace_path=workspace_path,
-                        impact_graph=declared_graph,
-                        require_impact_graph=True,
-                        require_full_validation=True,
-                        scope="pre_merge",
-                        runner=self._validation_command_runner,
-                        **proof_options,
+                    result = self._decision_runtime_mutation(
+                        "validation_execution",
+                        {
+                            "task_id": task.task_id,
+                            "workspace_path": str(workspace_path),
+                            "commands": tuple(commands),
+                            "scope": "pre_merge",
+                            "validation_graph_id": declared_graph.graph_id,
+                        },
+                        lambda: strict_runner(
+                            proposal_validation,
+                            bound_commands,
+                            workspace_path=workspace_path,
+                            impact_graph=declared_graph,
+                            require_impact_graph=True,
+                            require_full_validation=True,
+                            scope="pre_merge",
+                            runner=self._validation_command_runner,
+                            **proof_options,
+                        ),
                     )
                     result["validation_plan_binding"] = {
                         "source": "proposal_declared_validation_plan",
@@ -15350,6 +15610,17 @@ class PortalImplementationDaemon:
             ) from exc
         self._last_implementation_context = result.delta_result
         self._last_implementation_retry = result
+        self._decision_runtime_route(
+            "retry",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "repair_round": int(repair_round),
+                "prior_decision_id": prior_decision_id,
+                "diagnostic_receipt_id": diagnostic.receipt_id,
+                "context_receipt_id": result.delta_result.receipt.receipt_id,
+            },
+        )
         return result
 
     def _compile_implementation_context(
@@ -15389,10 +15660,47 @@ class PortalImplementationDaemon:
                 *rules,
                 "Use sub-agents or parallel execution when useful for independent output files.",
             )
+        allowed_edit_paths = tuple(
+            completion_scope
+            if completion_scope is not None
+            else task.outputs
+        )
+        protected_edit_paths = tuple(self.implementation_protected_paths)
+        read_only_outputs = tuple(
+            path for path in task.outputs if path not in allowed_edit_paths
+        )
+        protected_policy_text = (
+            "Operator-protected repository files (read-only; overrides every "
+            "task, output, and breadth instruction):\n"
+            + "\n".join(f"- {path}" for path in protected_edit_paths)
+            + "\nNever create, modify, rename, delete, replace, or regenerate "
+            "these exact files."
+            if protected_edit_paths
+            else ""
+        )
+        edit_policy = {
+            "mode": (
+                "completion_gap_exact"
+                if completion_scope is not None
+                else "task_output_exact"
+            ),
+            "allowed_paths": allowed_edit_paths,
+            "protected_paths": protected_edit_paths,
+            "read_only_outputs": read_only_outputs,
+            "validation_may_read_other_paths": True,
+            "subagents_allowed": not _env_bool(
+                DISABLE_SUBAGENTS_ENV, False
+            ),
+            "operator_directive": protected_policy_text,
+        }
         policy_revision = "sha256:" + hashlib.sha256(
             json.dumps(
-                rules,
+                {
+                    "generic_prompt_policy": rules,
+                    "edit_policy": edit_policy,
+                },
                 ensure_ascii=False,
+                sort_keys=True,
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
@@ -15482,7 +15790,8 @@ class PortalImplementationDaemon:
             authority={
                 "todo_file": todo_file,
                 "source_line": int(task.source_line),
-                "rules": rules,
+                "generic_prompt_policy": rules,
+                "edit_policy": edit_policy,
                 "primary_plan_documents": {
                     "AGENT-": "docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md",
                     "PORTAL-": "docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md",
@@ -15492,6 +15801,8 @@ class PortalImplementationDaemon:
             scope={
                 "depends_on": tuple(task.depends_on),
                 "expected_outputs": tuple(task.outputs),
+                "allowed_edit_paths": allowed_edit_paths,
+                "protected_edit_paths": protected_edit_paths,
             },
             acceptance={
                 "criteria": task.acceptance or "none listed",
@@ -15503,9 +15814,38 @@ class PortalImplementationDaemon:
         self._last_implementation_context = result
         self._last_implementation_retry = None
         self._implementation_base_contexts[self._canonical_ref(task)] = result
+        self._decision_runtime_route(
+            "implementation_context",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "context_receipt_id": result.receipt.receipt_id,
+                "policy_revision": policy_revision,
+                "allowed_edit_paths": allowed_edit_paths,
+                "protected_edit_paths": protected_edit_paths,
+            },
+        )
         return result
 
     def _persist_implementation_context_receipt(
+        self,
+        task: PortalTask,
+        attempt: int,
+    ) -> Path:
+        return self._decision_runtime_mutation(
+            "file_mutation",
+            {
+                "operation": "persist_implementation_context",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "directory": str(self.implementation_log_dir),
+            },
+            lambda: self._persist_implementation_context_receipt_unchecked(
+                task, attempt
+            ),
+        )
+
+    def _persist_implementation_context_receipt_unchecked(
         self,
         task: PortalTask,
         attempt: int,
@@ -15551,67 +15891,10 @@ class PortalImplementationDaemon:
         return path
 
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:
-        """Render dispatch policy that must survive context compaction."""
+        """Compatibility hook; all enforcement policy is capsule-bound."""
 
-        sections: list[str] = []
-        completion_scope = completion_gap_edit_scope(
-            task,
-            repo_root=self.repo_root,
-        )
-        if completion_scope is not None:
-            if completion_scope:
-                authorized_lines = "\n".join(
-                    f"- {path}" for path in completion_scope
-                )
-                read_only_outputs = [
-                    path for path in task.outputs if path not in completion_scope
-                ]
-                read_only_output_text = (
-                    ", ".join(read_only_outputs)
-                    if read_only_outputs
-                    else "none listed"
-                )
-                sections.append(
-                    f"""Strict completion-gap edit authorization (overrides every general breadth or output instruction):
-- You may create, modify, rename, or delete ONLY these exact repository-relative files:
-{authorized_lines}
-- These are exact file paths, not directory prefixes. Every other repository path is read-only.
-- Task outputs outside that allowlist are control/evidence references and are read-only: {read_only_output_text}
-- In particular, do not edit the task board, objective heap, discovery records, bundle shards/indexes,
-  objective-generation or completion artifacts, or supervisor state. You may read them for context.
-- Validation may read other paths, but it does not authorize edits outside the allowlist."""
-                )
-            else:
-                sections.append(
-                    """Strict completion-gap edit authorization:
-- No safe, precise Predicted files were authorized. Do not modify any repository file.
-- This task requires manual review and must remain non-executable until exact repository-relative
-  file targets are supplied by the completion-gap producer."""
-                )
-
-        if self.implementation_protected_paths:
-            protected_lines = "\n".join(
-                f"- {path}" for path in self.implementation_protected_paths
-            )
-            sections.append(
-                f"""Operator-protected repository files (read-only; overrides every task, output, and breadth instruction):
-{protected_lines}
-- Never create, modify, rename, delete, replace, or regenerate these exact files.
-- If the task appears to require changing one, stop and report the policy conflict."""
-            )
-
-        if _env_bool(DISABLE_SUBAGENTS_ENV, False):
-            sections.append(
-                """- Do not invoke collaboration or sub-agent tools in this implementation run.
-  The noninteractive supervisor session may not have a registered collaboration
-  thread; perform the task locally instead of waiting on unavailable workers."""
-            )
-        elif completion_scope is None and len(task.outputs) > 3:
-            sections.append(
-                """- This task has many expected outputs. Use sub-agents or parallel execution when possible:
-  decompose independent file or module implementations and work on them concurrently."""
-            )
-        return "\n\n".join(sections)
+        del task
+        return ""
 
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         if self._implementation_cancel_requested():
@@ -15663,12 +15946,7 @@ class PortalImplementationDaemon:
         if not rendered:
             result = self._compile_implementation_context(task, attempt)
             rendered = render_context_capsule(result.capsule)
-        policy_appendix = self._implementation_prompt_policy_appendix(task)
-        return (
-            f"{rendered}\n\n{policy_appendix}"
-            if policy_appendix
-            else rendered
-        )
+        return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
         actions = [f"Implement outputs for {task.task_id}: {', '.join(task.outputs)}"]
