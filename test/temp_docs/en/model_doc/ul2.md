@@ -41,7 +41,7 @@ This model was contributed by [DanielHesslow](https://huggingface.co/Seledorn). 
 
 <Tip> 
 
-As UL2 has the same architecture as T5v1.1,  refer to [T5's documentation page](./t5.md) for API reference, tips, code examples and notebooks.
+As UL2 has the same architecture as T5v1.1, refer to [T5's documentation page](./t5.md) for API reference, tips, code examples and notebooks.
 
 </Tip>
 
