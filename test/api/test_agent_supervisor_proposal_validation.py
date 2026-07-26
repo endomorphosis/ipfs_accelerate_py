@@ -972,6 +972,34 @@ def test_sensitive_file_change_is_rejected_even_when_path_is_in_scope() -> None:
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
 
 
+def test_unrelated_change_with_preexisting_secret_like_content_is_accepted() -> None:
+    before = 'api_key = _coalesce_env("EXAMPLE_API_KEY")\nVALUE = 1\n'
+    after = 'api_key = _coalesce_env("EXAMPLE_API_KEY")\nVALUE = 2\n'
+
+    result = validate_implementation_proposal(
+        _proposal(_entry(before=before, after=after)),
+        policy=_policy(),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+def test_new_secret_like_content_remains_rejected() -> None:
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after='VALUE = 2\napi_key = "abcdefghijklmnop"\n',
+            )
+        ),
+        policy=_policy(),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
 def test_binary_policy_remains_non_compensable_for_v2() -> None:
     result = validate_implementation_proposal(
         _v2_proposal(

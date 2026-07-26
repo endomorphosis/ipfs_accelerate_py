@@ -15,6 +15,7 @@ import hashlib
 import json
 import re
 import shlex
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -22,7 +23,6 @@ from pathlib import PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .code_proof_obligations import CandidateDiffEntry, DiffChangeKind
-
 
 NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID = (
     "314133036252270790078901745919131980427"
@@ -2307,6 +2307,32 @@ _SECRET_CONTENT_RE = re.compile(
     r"\s*[:=]\s*[\"']?[A-Za-z0-9_+/.-]{12,}"
     r")"
 )
+
+
+def _introduces_secret_content(
+    before_source: str | None,
+    after_source: str | None,
+) -> bool:
+    """Return whether a candidate adds or changes secret-like content.
+
+    Candidate entries contain the complete before and after source. Scanning
+    only the latter rejects unrelated edits whenever a file already contains
+    a secret-like environment lookup. Compare match populations so unchanged
+    pre-existing content does not acquire new secret-mutation authority.
+    """
+
+    before_matches = Counter(
+        match.group(0) for match in _SECRET_CONTENT_RE.finditer(before_source or "")
+    )
+    after_matches = Counter(
+        match.group(0) for match in _SECRET_CONTENT_RE.finditer(after_source or "")
+    )
+    return any(
+        count > before_matches.get(value, 0)
+        for value, count in after_matches.items()
+    )
+
+
 _TEST_SKIP_RE = re.compile(
     r"(?im)(?:pytest[.]mark[.](?:skip|xfail)|unittest[.]skip|"
     r"\bskipTest\s*\(|\bassert\s+True\b)"
@@ -2930,8 +2956,9 @@ class ProposalValidator:
                 or fnmatch.fnmatchcase(entry.path.rsplit("/", 1)[-1], pattern)
                 for pattern in policy.sensitive_path_patterns
             )
-            sensitive_content = bool(
-                _SECRET_CONTENT_RE.search(entry.after_source or "")
+            sensitive_content = _introduces_secret_content(
+                entry.before_source,
+                entry.after_source,
             )
             if not policy.allow_secrets and (sensitive_path or sensitive_content):
                 add(

@@ -4138,6 +4138,79 @@ def test_implementation_proposal_keeps_unconfigured_gitlink_fail_closed(tmp_path
     assert result.proposal.changed_paths == ("libs/child",)
 
 
+def test_post_validation_candidate_binding_rejects_late_source_change(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "README.md").write_text("validated candidate\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Bind validation to the candidate",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python -m pytest"],
+        acceptance="Only the proposal-validated source may be enqueued.",
+    )
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    validation_result = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "results": [],
+    }
+
+    unchanged = daemon._verify_post_validation_candidate_binding(
+        repo,
+        task,
+        baseline_ref=baseline,
+        proposal_validation=proposal_validation,
+        validation_result=validation_result,
+    )
+    (repo / "README.md").write_text(
+        "changed after validation\n",
+        encoding="utf-8",
+    )
+    changed = daemon._verify_post_validation_candidate_binding(
+        repo,
+        task,
+        baseline_ref=baseline,
+        proposal_validation=proposal_validation,
+        validation_result=validation_result,
+    )
+
+    assert proposal_validation.accepted is True
+    assert unchanged["passed"] is True
+    assert unchanged["candidate_binding"]["verified"] is True
+    assert changed["passed"] is False
+    assert changed["reason"] == "candidate_changed_during_validation"
+    assert changed["candidate_binding"]["verified"] is False
+
+
 def test_stale_submodule_rebase_skips_branch_already_merged_without_switching_checkout(
     tmp_path: Path,
 ):
@@ -4384,6 +4457,151 @@ def test_implementation_daemon_handoffs_clean_provider_submodule_commit(
     assert _git(repo, "diff", "--name-only", baseline, result["commit"]) == (
         "libs/child"
     )
+
+
+def test_implementation_daemon_handoffs_clean_provider_superproject_commit(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "README.md").write_text("provider-created commit\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "provider root change")
+    provider_commit = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        PortalTask(
+            task_id="AUTO-121",
+            title="Preserve provider root commit",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+            outputs=("README.md",),
+        ),
+        1,
+        baseline_ref=baseline,
+    )
+
+    assert result == {
+        "committed": True,
+        "commit": provider_commit,
+        "baseline_ref": baseline,
+        "reason": "existing_commit",
+    }
+    assert _git(repo, "rev-parse", "HEAD") == provider_commit
+    assert _git(repo, "log", "--format=%s", "-1") == "provider root change"
+
+
+def test_implementation_daemon_handoffs_provider_committed_gitlink(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text(
+        "provider-created child commit\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "commit", "-am", "provider child change")
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "provider root handoff")
+    provider_commit = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        _submodule_proposal_task("libs/child/child.txt"),
+        1,
+        baseline_ref=baseline,
+    )
+
+    assert result["committed"] is True
+    assert result["commit"] == provider_commit
+    assert result["reason"] == "existing_commit"
+    assert result["submodule_results"] == [
+        {
+            "path": "libs/child",
+            "committed": False,
+            "reason": "no_changes",
+        }
+    ]
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == child_commit
+    assert _git(repo, "log", "--format=%s", "-1") == "provider root handoff"
+
+
+def test_implementation_daemon_rejects_clean_divergent_provider_commit(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "--orphan", "divergent")
+    (repo / "README.md").write_text("divergent\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "divergent provider commit")
+    divergent_commit = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        PortalTask(
+            task_id="AUTO-122",
+            title="Reject divergent root commit",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+            outputs=("README.md",),
+        ),
+        1,
+        baseline_ref=baseline,
+    )
+
+    assert result["committed"] is False
+    assert result["reason"] == "existing_commit_not_descendant"
+    assert result["baseline_commit"] == baseline
+    assert result["candidate_commit"] == divergent_commit
 
 
 def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
@@ -8765,6 +8983,136 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
     assert events[-1]["type"] == "daemon_pass"
 
 
+def test_provider_superproject_commit_is_queued_before_todo_completion(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+    )
+    task = PortalTask(
+        task_id="ACCEL-013",
+        title="Queue a provider-created root commit",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python -m pytest"],
+    )
+    state = TodoTaskState()
+    enqueued: list[dict[str, object]] = []
+    queue_outcomes: list[tuple[object, ...]] = []
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        return "baseline-commit"
+
+    def fake_enqueue(**kwargs):
+        enqueued.append(kwargs)
+        return {"queued": True, "merged": False, "reason": "queued"}
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_implementation_patch",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            proposal=SimpleNamespace(candidate_diff=())
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(validation_result),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        lambda *_args, **_kwargs: {
+            "committed": True,
+            "commit": "provider-root-commit",
+            "reason": "existing_commit",
+        },
+    )
+    monkeypatch.setattr(daemon, "_enqueue_validated_worktree", fake_enqueue)
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: pytest.fail(
+            "TODO completion must wait for the merge train"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 0
+    assert result["implementation_commit"] == "provider-root-commit"
+    assert result["merge_result"]["queued"] is True
+    assert enqueued[0]["baseline_ref"] == "baseline-commit"
+    assert enqueued[0]["implementation_commit"] == "provider-root-commit"
+    assert "todo_update_result" not in result
+    assert queue_outcomes == []
+
+
 def test_implementation_daemon_promotes_fully_validated_timeout_work(
     tmp_path,
     monkeypatch,
@@ -8820,6 +9168,11 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
             "returncode": 0,
             "results": [{"command": "test -f validated.txt", "returncode": 0}],
         },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(validation_result),
     )
     monkeypatch.setattr(
         daemon,

@@ -5318,6 +5318,15 @@ class PortalImplementationDaemon:
                         state=state,
                         proposal_validation=proposal_validation,
                     )
+                    validation_result = (
+                        self._verify_post_validation_candidate_binding(
+                            worktree_path,
+                            task,
+                            baseline_ref=baseline_ref,
+                            proposal_validation=proposal_validation,
+                            validation_result=validation_result,
+                        )
+                    )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
@@ -5343,7 +5352,12 @@ class PortalImplementationDaemon:
                             reusable=False,
                         )
                 elif validation_result.get("passed", False):
-                    commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
+                    commit_result = self._commit_worktree_changes(
+                        worktree_path,
+                        task,
+                        attempt,
+                        baseline_ref=baseline_ref,
+                    )
                     implementation_commit = str(commit_result.get("commit", ""))
                     if implementation_commit:
                         merge_result = self._enqueue_validated_worktree(
@@ -5359,6 +5373,29 @@ class PortalImplementationDaemon:
                         )
                     elif commit_result.get("reason") == "no_changes":
                         cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+                    else:
+                        returncode = 1
+                        validation_result = {
+                            **validation_result,
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": "implementation_commit_handoff_failed",
+                            "commit_result": commit_result,
+                        }
+                        failed_preservation_result = (
+                            self._preserve_failed_validation_worktree(
+                                worktree_path,
+                                branch_name,
+                                task,
+                                attempt,
+                                validation_result,
+                                baseline_ref=baseline_ref,
+                            )
+                        )
+                        cleanup_result = dict(
+                            failed_preservation_result.get("cleanup_result")
+                            or cleanup_result
+                        )
                 else:
                     returncode = int(validation_result.get("returncode") or 1)
                     if worktree_path.exists():
@@ -5368,6 +5405,7 @@ class PortalImplementationDaemon:
                             task,
                             attempt,
                             validation_result,
+                            baseline_ref=baseline_ref,
                         )
                         commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
                         implementation_commit = str(commit_result.get("commit", ""))
@@ -5449,6 +5487,15 @@ class PortalImplementationDaemon:
                         state=state,
                         proposal_validation=proposal_validation,
                     )
+                    validation_result = (
+                        self._verify_post_validation_candidate_binding(
+                            worktree_path,
+                            task,
+                            baseline_ref=baseline_ref,
+                            proposal_validation=proposal_validation,
+                            validation_result=validation_result,
+                        )
+                    )
                     protected_path_violation = (
                         self._finalize_implementation_protected_path_fence(
                             task=task,
@@ -5480,10 +5527,12 @@ class PortalImplementationDaemon:
                         and validation_result.get("passed")
                     )
                     if can_promote:
+                        commit_handoff_ready = False
                         commit_result = self._commit_worktree_changes(
                             worktree_path,
                             task,
                             attempt,
+                            baseline_ref=baseline_ref,
                         )
                         implementation_commit = str(commit_result.get("commit", ""))
                         if implementation_commit:
@@ -5498,23 +5547,61 @@ class PortalImplementationDaemon:
                                 commit_result=commit_result,
                                 validation_result=validation_result,
                             )
+                            commit_handoff_ready = True
                         elif commit_result.get("reason") == "no_changes":
                             cleanup_result = self._cleanup_merged_worktree(
                                 worktree_path,
                                 branch_name,
                             )
-                        returncode = 0
-                        timeout_result.update(
-                            {
-                                "salvaged": True,
-                                "implementation_commit": implementation_commit,
-                                "validation_result": validation_result,
+                            commit_handoff_ready = True
+                        else:
+                            returncode = 1
+                            validation_result = {
+                                **validation_result,
+                                "passed": False,
+                                "returncode": 1,
+                                "reason": "implementation_commit_handoff_failed",
+                                "commit_result": commit_result,
                             }
-                        )
-                        self._record_event(
-                            "implementation_timeout_salvaged",
-                            timeout_result,
-                        )
+                            failed_preservation_result = (
+                                self._preserve_timed_out_worktree(
+                                    worktree_path,
+                                    branch_name,
+                                    task,
+                                    attempt,
+                                    validation_result,
+                                    baseline_ref=baseline_ref,
+                                )
+                            )
+                            cleanup_result = dict(
+                                failed_preservation_result.get("cleanup_result")
+                                or cleanup_result
+                            )
+                            timeout_result.update(
+                                {
+                                    "reason": "implementation_commit_handoff_failed",
+                                    "validation_result": validation_result,
+                                    "preservation_result": failed_preservation_result,
+                                }
+                            )
+                        if commit_handoff_ready:
+                            returncode = 0
+                            timeout_result.update(
+                                {
+                                    "salvaged": True,
+                                    "implementation_commit": implementation_commit,
+                                    "validation_result": validation_result,
+                                }
+                            )
+                            self._record_event(
+                                "implementation_timeout_salvaged",
+                                timeout_result,
+                            )
+                        else:
+                            self._record_event(
+                                "implementation_timeout_salvage_failed",
+                                timeout_result,
+                            )
                     elif protected_path_violation:
                         cleanup_result = self._cleanup_merged_worktree(
                             worktree_path,
@@ -5528,6 +5615,7 @@ class PortalImplementationDaemon:
                             task,
                             attempt,
                             validation_result,
+                            baseline_ref=baseline_ref,
                         )
                         commit_result = dict(
                             failed_preservation_result.get("commit_result")
@@ -5657,17 +5745,37 @@ class PortalImplementationDaemon:
             if merge_result.get("queued")
             else str(merge_result.get("stderr") or merge_result.get("reason") or "")
         )
-        if returncode == 0 and (not implementation_commit or merge_result.get("merged")):
+        no_change_completion = bool(
+            not implementation_commit
+            and commit_result.get("reason") == "no_changes"
+            and validation_result.get("passed", False)
+        )
+        if returncode == 0 and (
+            no_change_completion or merge_result.get("merged")
+        ):
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
         # completion.  The train consumer records the terminal merge outcome.
+        terminal_outcome = bool(
+            no_change_completion or merge_result.get("merged")
+        )
         if not merge_result.get("queued"):
+            outcome_returncode = returncode
+            outcome_reason = str(
+                exception_result.get("message")
+                or merge_result.get("reason")
+                or validation_result.get("reason")
+                or "implementation_failed"
+            )
+            if outcome_returncode == 0 and not terminal_outcome:
+                outcome_returncode = 1
+                outcome_reason = "implementation_not_integrated"
             self._record_task_queue_outcome(
                 task,
-                returncode,
-                reason=str(exception_result.get("message") or merge_result.get("reason") or "implementation_failed"),
+                outcome_returncode,
+                reason=outcome_reason,
             )
         result = {
             "task_id": task.task_id,
@@ -6648,7 +6756,14 @@ class PortalImplementationDaemon:
         normalized = prefix.rstrip("/")
         return relative == normalized or relative.startswith(f"{normalized}/")
 
-    def _commit_worktree_changes(self, worktree_path: Path, task: PortalTask, attempt: int) -> dict[str, Any]:
+    def _commit_worktree_changes(
+        self,
+        worktree_path: Path,
+        task: PortalTask,
+        attempt: int,
+        *,
+        baseline_ref: str = "",
+    ) -> dict[str, Any]:
         submodule_results = self._commit_worktree_submodule_changes(worktree_path, task, attempt)
         self._restore_ephemeral_worktree_paths_for_commit(worktree_path)
         self._restore_uncommitted_submodule_pointers(worktree_path, submodule_results)
@@ -6658,6 +6773,47 @@ class PortalImplementationDaemon:
         status = self._run_git(["status", "--porcelain"], cwd=worktree_path).stdout.strip()
         staged_status = self._staged_worktree_status(worktree_path)
         if not staged_status:
+            current_commit = (
+                self._resolved_commit_ref(worktree_path, "HEAD")
+                if not status and baseline_ref
+                else ""
+            )
+            baseline_commit = (
+                self._resolved_commit_ref(worktree_path, baseline_ref)
+                if current_commit
+                else ""
+            )
+            existing_commit = (
+                self._validated_existing_worktree_commit(
+                    worktree_path,
+                    baseline_ref=baseline_ref,
+                )
+                if not status
+                else None
+            )
+            if existing_commit is not None:
+                if submodule_results:
+                    existing_commit["submodule_results"] = submodule_results
+                return existing_commit
+            if (
+                not status
+                and baseline_ref
+                and (
+                    not current_commit
+                    or not baseline_commit
+                    or current_commit != baseline_commit
+                )
+            ):
+                result = {
+                    "committed": False,
+                    "reason": "existing_commit_not_descendant",
+                    "baseline_ref": str(baseline_ref),
+                    "baseline_commit": baseline_commit,
+                    "candidate_commit": current_commit,
+                }
+                if submodule_results:
+                    result["submodule_results"] = submodule_results
+                return result
             if self._submodule_results_have_commits(submodule_results):
                 self._run_git(
                     [
@@ -6713,6 +6869,62 @@ class PortalImplementationDaemon:
         if submodule_results:
             result["submodule_results"] = submodule_results
         return result
+
+    @staticmethod
+    def _resolved_commit_ref(cwd: Path, ref: str) -> str:
+        normalized = str(ref or "").strip()
+        if not normalized:
+            return ""
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{normalized}^{{commit}}"],
+            cwd=cwd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    def _validated_existing_worktree_commit(
+        self,
+        worktree_path: Path,
+        *,
+        baseline_ref: str,
+    ) -> dict[str, Any] | None:
+        """Recognize a clean provider-created superproject commit.
+
+        A provider may commit the root worktree after committing task-owned
+        submodules. Proposal validation has already checked the complete
+        baseline-to-HEAD candidate at this point. Preserve that validated
+        commit for the merge train instead of treating the clean checkout as
+        an effectless implementation and marking its task complete.
+        """
+
+        normalized_baseline = str(baseline_ref or "").strip()
+        if not normalized_baseline:
+            return None
+        current_commit = self._resolved_commit_ref(worktree_path, "HEAD")
+        baseline_commit = self._resolved_commit_ref(
+            worktree_path,
+            normalized_baseline,
+        )
+        if (
+            not current_commit
+            or not baseline_commit
+            or current_commit == baseline_commit
+            or not self._git_ref_is_ancestor_in_repo(
+                worktree_path,
+                baseline_commit,
+                current_commit,
+            )
+        ):
+            return None
+        return {
+            "committed": True,
+            "commit": current_commit,
+            "baseline_ref": normalized_baseline,
+            "reason": "existing_commit",
+        }
 
     @classmethod
     def _submodule_results_have_commits(cls, results: Sequence[dict[str, Any]]) -> bool:
@@ -6965,6 +7177,8 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         validation_result: dict[str, Any],
+        *,
+        baseline_ref: str = "",
     ) -> dict[str, Any]:
         return self._preserve_interrupted_worktree(
             worktree_path,
@@ -6975,6 +7189,7 @@ class PortalImplementationDaemon:
             rescue_suffix="failed-validation",
             event_type="failed_validation_worktree_preserved",
             evidence_field="validation_result",
+            baseline_ref=baseline_ref,
         )
 
     def _preserve_timed_out_worktree(
@@ -6984,6 +7199,8 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         validation_result: dict[str, Any],
+        *,
+        baseline_ref: str = "",
     ) -> dict[str, Any]:
         return self._preserve_interrupted_worktree(
             worktree_path,
@@ -6994,6 +7211,7 @@ class PortalImplementationDaemon:
             rescue_suffix="timed-out",
             event_type="timed_out_worktree_preserved",
             evidence_field="validation_result",
+            baseline_ref=baseline_ref,
         )
 
     def _preserve_interrupted_worktree(
@@ -7007,17 +7225,30 @@ class PortalImplementationDaemon:
         rescue_suffix: str,
         event_type: str,
         evidence_field: str,
+        baseline_ref: str = "",
     ) -> dict[str, Any]:
         started_at = utc_now()
-        commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
+        commit_result = self._commit_worktree_changes(
+            worktree_path,
+            task,
+            attempt,
+            baseline_ref=baseline_ref,
+        )
         rescue_branch = ""
         implementation_commit = str(commit_result.get("commit", ""))
-        if implementation_commit:
+        preserved_commit = (
+            implementation_commit
+            or str(commit_result.get("candidate_commit", ""))
+        )
+        if preserved_commit:
             rescue_branch = self._interrupted_worktree_rescue_branch_name(
                 branch_name,
                 rescue_suffix,
             )
-            self._run_git(["branch", "-f", rescue_branch, implementation_commit], cwd=self.repo_root)
+            self._run_git(
+                ["branch", "-f", rescue_branch, preserved_commit],
+                cwd=self.repo_root,
+            )
         cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
         result = {
             "task_id": task.task_id,
@@ -7026,9 +7257,10 @@ class PortalImplementationDaemon:
             "worktree_path": str(worktree_path),
             "started_at": started_at,
             "finished_at": utc_now(),
-            "preserved": bool(implementation_commit),
+            "preserved": bool(preserved_commit),
             "rescue_branch": rescue_branch,
             "implementation_commit": implementation_commit,
+            "preserved_commit": preserved_commit,
             "commit_result": commit_result,
             "cleanup_result": cleanup_result,
             evidence_field: dict(evidence),
@@ -8153,6 +8385,115 @@ class PortalImplementationDaemon:
             },
         )
         return result
+
+    @staticmethod
+    def _proposal_candidate_fingerprint(entries: Sequence[Any]) -> str:
+        """Return a source-bound identity for one collected candidate diff."""
+
+        payload = [
+            (
+                entry.to_dict(include_sources=True)
+                if callable(getattr(entry, "to_dict", None))
+                else {
+                    "old_path": str(getattr(entry, "old_path", "") or ""),
+                    "new_path": str(getattr(entry, "new_path", "") or ""),
+                    "change_kind": str(
+                        getattr(
+                            getattr(entry, "change_kind", ""),
+                            "value",
+                            getattr(entry, "change_kind", ""),
+                        )
+                        or ""
+                    ),
+                    "before_source": getattr(entry, "before_source", None),
+                    "after_source": getattr(entry, "after_source", None),
+                    "before_blob_id": str(
+                        getattr(entry, "before_blob_id", "") or ""
+                    ),
+                    "after_blob_id": str(
+                        getattr(entry, "after_blob_id", "") or ""
+                    ),
+                    "binary": bool(getattr(entry, "binary", False)),
+                }
+            )
+            for entry in entries
+        ]
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        ).encode("utf-8", errors="surrogatepass")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def _verify_post_validation_candidate_binding(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+        proposal_validation: Any,
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Fail closed if validation changed the proposal-authorized candidate."""
+
+        result = dict(validation_result)
+        if not result.get("passed", False):
+            return result
+        proposal = getattr(proposal_validation, "proposal", None)
+        expected_entries = tuple(
+            getattr(proposal, "candidate_diff", ()) or ()
+        )
+        expected_fingerprint = self._proposal_candidate_fingerprint(
+            expected_entries
+        )
+        collection_error = ""
+        try:
+            current_entries, _ = self._collect_proposal_candidate_diff(
+                workspace_path,
+                baseline_ref=baseline_ref,
+                scope_paths=self._proposal_scope_paths(task),
+            )
+            current_fingerprint = self._proposal_candidate_fingerprint(
+                current_entries
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            current_fingerprint = ""
+            collection_error = type(exc).__name__
+
+        verified = bool(
+            current_fingerprint
+            and current_fingerprint == expected_fingerprint
+        )
+        binding = {
+            "verified": verified,
+            "expected_fingerprint": expected_fingerprint,
+            "current_fingerprint": current_fingerprint,
+        }
+        if collection_error:
+            binding["collection_error"] = collection_error
+        result["candidate_binding"] = binding
+        self._record_event(
+            (
+                "implementation_candidate_binding_verified"
+                if verified
+                else "implementation_candidate_binding_rejected"
+            ),
+            {
+                "task_id": task.task_id,
+                **binding,
+            },
+        )
+        if verified:
+            return result
+        return {
+            **result,
+            "passed": False,
+            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+            "reason": "candidate_changed_during_validation",
+            "error": "proposal_candidate_binding_failed",
+        }
 
     def _run_validation_commands(
         self,
