@@ -62,6 +62,12 @@ RUNTIME_PROJECTION_SCHEMA: Final = (
 RUNTIME_INVALIDATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-invalidation@1"
 )
+RUNTIME_INVALIDATION_TRANSACTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/runtime-invalidation-transaction@1"
+)
+RUNTIME_CAS_AUDIT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/runtime-cas-audit@1"
+)
 DEPENDENCY_CAS_REQUIREMENT_ID: Final = (
     "asi-100:tiered-dependency-aware-content-addressed-runtime-store"
 )
@@ -914,6 +920,223 @@ class InvalidationResult:
 
 
 @dataclass(frozen=True)
+class CASInvalidationReceipt:
+    """Crash-recoverable exact closure for one batch invalidation."""
+
+    root_artifact_ids: tuple[str, ...]
+    semantic_dependency_ids: tuple[str, ...]
+    invalidated_artifact_ids: tuple[str, ...]
+    preserved_artifact_ids: tuple[str, ...]
+    reason: str
+    roots_id: str = ""
+    event_cursor: str = ""
+    committed: bool = True
+    transaction_id: str = ""
+    schema: str = RUNTIME_INVALIDATION_TRANSACTION_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != RUNTIME_INVALIDATION_TRANSACTION_SCHEMA:
+            raise ArtifactIntegrityError(
+                "unsupported invalidation transaction schema"
+            )
+        for name in (
+            "root_artifact_ids",
+            "semantic_dependency_ids",
+            "invalidated_artifact_ids",
+            "preserved_artifact_ids",
+        ):
+            values = tuple(
+                sorted({_required_text(item, f"{name} item") for item in getattr(self, name)})
+            )
+            if len(values) != len(tuple(getattr(self, name))):
+                raise ArtifactIntegrityError(
+                    f"{name} contains duplicate identities"
+                )
+            object.__setattr__(self, name, values)
+        object.__setattr__(self, "reason", _required_text(self.reason, "reason"))
+        object.__setattr__(self, "roots_id", str(self.roots_id or "").strip())
+        object.__setattr__(
+            self, "event_cursor", str(self.event_cursor or "").strip()
+        )
+        if set(self.invalidated_artifact_ids).intersection(
+            self.preserved_artifact_ids
+        ):
+            raise ArtifactIntegrityError(
+                "invalidation receipt cannot preserve an invalidated artifact"
+            )
+        identity_body = self.to_dict(include_identity=False)
+        identity_body.pop("committed", None)
+        expected = "runtime-invalidation:sha256:" + hashlib.sha256(
+            canonical_runtime_json_bytes(identity_body)
+        ).hexdigest()
+        if self.transaction_id and self.transaction_id != expected:
+            raise ArtifactIntegrityError(
+                "invalidation transaction identity mismatch"
+            )
+        object.__setattr__(self, "transaction_id", expected)
+
+    @property
+    def invalidated_count(self) -> int:
+        return len(self.invalidated_artifact_ids)
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        value = {
+            "schema": self.schema,
+            "root_artifact_ids": list(self.root_artifact_ids),
+            "semantic_dependency_ids": list(self.semantic_dependency_ids),
+            "invalidated_artifact_ids": list(self.invalidated_artifact_ids),
+            "preserved_artifact_ids": list(self.preserved_artifact_ids),
+            "invalidated_count": self.invalidated_count,
+            "reason": self.reason,
+            "roots_id": self.roots_id,
+            "event_cursor": self.event_cursor,
+            "committed": self.committed,
+        }
+        if include_identity:
+            value["transaction_id"] = self.transaction_id
+        return value
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "CASInvalidationReceipt":
+        if not isinstance(value, Mapping):
+            raise ArtifactIntegrityError(
+                "invalidation transaction must be an object"
+            )
+        allowed = {
+            "schema",
+            "root_artifact_ids",
+            "semantic_dependency_ids",
+            "invalidated_artifact_ids",
+            "preserved_artifact_ids",
+            "invalidated_count",
+            "reason",
+            "roots_id",
+            "event_cursor",
+            "committed",
+            "transaction_id",
+        }
+        if set(value).difference(allowed):
+            raise ArtifactIntegrityError(
+                "invalidation transaction contains unknown fields"
+            )
+        if not isinstance(value.get("committed"), bool):
+            raise ArtifactIntegrityError(
+                "invalidation transaction committed flag must be boolean"
+            )
+        result = cls(
+            schema=str(value.get("schema") or ""),
+            root_artifact_ids=tuple(value.get("root_artifact_ids") or ()),
+            semantic_dependency_ids=tuple(
+                value.get("semantic_dependency_ids") or ()
+            ),
+            invalidated_artifact_ids=tuple(
+                value.get("invalidated_artifact_ids") or ()
+            ),
+            preserved_artifact_ids=tuple(
+                value.get("preserved_artifact_ids") or ()
+            ),
+            reason=str(value.get("reason") or ""),
+            roots_id=str(value.get("roots_id") or ""),
+            event_cursor=str(value.get("event_cursor") or ""),
+            committed=value["committed"],
+            transaction_id=str(value.get("transaction_id") or ""),
+        )
+        if value.get("invalidated_count") not in (
+            None,
+            result.invalidated_count,
+        ):
+            raise ArtifactIntegrityError(
+                "invalidation transaction count mismatch"
+            )
+        return result
+
+
+@dataclass(frozen=True)
+class RuntimeCASAuditReceipt:
+    """Content-addressed health statement for disposable CAS indexes."""
+
+    artifact_ids: tuple[str, ...]
+    tombstoned_artifact_ids: tuple[str, ...]
+    issue_codes: tuple[str, ...] = ()
+    rebuilt: bool = False
+    schema: str = RUNTIME_CAS_AUDIT_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != RUNTIME_CAS_AUDIT_SCHEMA:
+            raise ArtifactIntegrityError(
+                "unsupported runtime CAS audit schema"
+            )
+        for name in (
+            "artifact_ids",
+            "tombstoned_artifact_ids",
+            "issue_codes",
+        ):
+            values = tuple(
+                sorted(
+                    {
+                        _required_text(item, f"{name} item")
+                        for item in getattr(self, name)
+                    }
+                )
+            )
+            if len(values) != len(tuple(getattr(self, name))):
+                raise ArtifactIntegrityError(
+                    f"{name} contains duplicate identities"
+                )
+            object.__setattr__(self, name, values)
+
+    @property
+    def healthy(self) -> bool:
+        return not self.issue_codes
+
+    @property
+    def receipt_id(self) -> str:
+        return "runtime-cas-audit:sha256:" + hashlib.sha256(
+            canonical_runtime_json_bytes(self.to_dict(include_identity=False))
+        ).hexdigest()
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        value = {
+            "schema": self.schema,
+            "artifact_ids": list(self.artifact_ids),
+            "tombstoned_artifact_ids": list(
+                self.tombstoned_artifact_ids
+            ),
+            "issue_codes": list(self.issue_codes),
+            "rebuilt": self.rebuilt,
+            "healthy": self.healthy,
+        }
+        if include_identity:
+            value["receipt_id"] = self.receipt_id
+        return value
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RuntimeCASAuditReceipt":
+        if not isinstance(value, Mapping):
+            raise ArtifactIntegrityError(
+                "runtime CAS audit receipt must be an object"
+            )
+        result = cls(
+            schema=str(value.get("schema") or ""),
+            artifact_ids=tuple(value.get("artifact_ids") or ()),
+            tombstoned_artifact_ids=tuple(
+                value.get("tombstoned_artifact_ids") or ()
+            ),
+            issue_codes=tuple(value.get("issue_codes") or ()),
+            rebuilt=bool(value.get("rebuilt", False)),
+        )
+        if value.get("healthy") not in (None, result.healthy):
+            raise ArtifactIntegrityError(
+                "runtime CAS audit health mismatch"
+            )
+        if value.get("receipt_id") not in (None, result.receipt_id):
+            raise ArtifactIntegrityError(
+                "runtime CAS audit receipt identity mismatch"
+            )
+        return result
+
+
+@dataclass(frozen=True)
 class RuntimeCASMetrics:
     lookups: int = 0
     process_hits: int = 0
@@ -1051,12 +1274,17 @@ class RuntimeCAS:
         self.keys_path = self.path / "keys"
         self.projections_path = self.path / "projections"
         self.tombstones_path = self.path / "tombstones"
+        self.invalidations_path = self.path / "invalidation-transactions"
+        self.quarantine_path = self.path / "quarantine"
+        self.invalidation_head_path = self.path / "invalidation-head.json"
         self.locks_path = self.path / "locks"
         for directory in (
             self.objects_path,
             self.keys_path,
             self.projections_path,
             self.tombstones_path,
+            self.invalidations_path,
+            self.quarantine_path,
             self.locks_path,
         ):
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -1075,12 +1303,14 @@ class RuntimeCAS:
         self._children: dict[str, set[str]] = {}
         self._semantic_children: dict[str, set[str]] = {}
         self._known_artifact_ids: set[str] = set()
+        self._quarantine_reasons: set[str] = set()
         self._metrics_lock = threading.Lock()
         self._metrics_values = {
             name: 0 for name in RuntimeCASMetrics.__dataclass_fields__
         }
         self._graph_lock = _process_lock(self.path / ".graph")
         self._rebuild_graph()
+        self._recover_invalidation_transactions()
 
     def _increment(self, name: str, amount: int = 1) -> None:
         with self._metrics_lock:
@@ -1116,6 +1346,21 @@ class RuntimeCAS:
     def _tombstone_path(self, artifact_id: str) -> Path:
         digest = self._digest_from_id(artifact_id)
         return self.tombstones_path / digest[:2] / f"{digest}.json"
+
+    def _invalidation_path(self, transaction_id: str) -> Path:
+        prefix = "runtime-invalidation:sha256:"
+        if not transaction_id.startswith(prefix):
+            raise ArtifactIntegrityError(
+                "invalidation transaction ID is not canonical"
+            )
+        digest = transaction_id[len(prefix):]
+        if len(digest) != 64 or any(
+            character not in "0123456789abcdef" for character in digest
+        ):
+            raise ArtifactIntegrityError(
+                "invalidation transaction ID is not canonical"
+            )
+        return self.invalidations_path / f"{digest}.json"
 
     def _projection_path(self, namespace: str, projection_key: str) -> Path:
         namespace_digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()
@@ -1201,6 +1446,20 @@ class RuntimeCAS:
             self._remove_graph_node(artifact_id)
         self._increment("corruption_recoveries")
 
+    def _quarantine_index_file(self, path: Path, reason: str) -> None:
+        """Quarantine disposable coordination metadata and fail closed."""
+
+        self._quarantine_reasons.add(_required_text(reason, "reason"))
+        if not path.exists():
+            return
+        digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()
+        target = self.quarantine_path / f"{digest}-{path.name}"
+        try:
+            os.replace(path, target)
+        except OSError:
+            pass
+        self._increment("corruption_recoveries")
+
     def _rebuild_graph(self) -> None:
         with self._graph_lock:
             self._dependencies.clear()
@@ -1219,7 +1478,127 @@ class RuntimeCAS:
                     self._recover_corrupt(path)
 
     def _is_invalidated(self, artifact_id: str) -> bool:
-        return self._tombstone_path(artifact_id).exists()
+        path = self._tombstone_path(artifact_id)
+        try:
+            value = json.loads(path.read_bytes())
+        except FileNotFoundError:
+            return False
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            self._quarantine_index_file(path, "corrupt_tombstone")
+            return True
+        try:
+            if (
+                not isinstance(value, Mapping)
+                or value.get("schema") != RUNTIME_INVALIDATION_SCHEMA
+                or value.get("artifact_id") != artifact_id
+            ):
+                raise ArtifactIntegrityError("tombstone binding mismatch")
+            claimed = str(value.get("tombstone_digest") or "")
+            body = {
+                key: item
+                for key, item in value.items()
+                if key != "tombstone_digest"
+            }
+            if claimed != _sha256(canonical_runtime_json_bytes(body)):
+                raise ArtifactIntegrityError("tombstone digest mismatch")
+        except (RuntimeCASError, TypeError, ValueError):
+            self._quarantine_index_file(path, "corrupt_tombstone")
+            return True
+        return True
+
+    def _write_invalidation_tombstones(
+        self, receipt: CASInvalidationReceipt
+    ) -> None:
+        now_ms = self._now_ms()
+        for artifact_id in receipt.invalidated_artifact_ids:
+            tombstone = {
+                "schema": RUNTIME_INVALIDATION_SCHEMA,
+                "artifact_id": artifact_id,
+                "root_artifact_ids": list(receipt.root_artifact_ids),
+                "semantic_dependency_ids": list(
+                    receipt.semantic_dependency_ids
+                ),
+                "invalidation_transaction_id": receipt.transaction_id,
+                "invalidated_at_ms": now_ms,
+                "reason": receipt.reason,
+                "roots_id": receipt.roots_id,
+                "event_cursor": receipt.event_cursor,
+            }
+            tombstone["tombstone_digest"] = _sha256(
+                canonical_runtime_json_bytes(tombstone)
+            )
+            _atomic_write(
+                self._tombstone_path(artifact_id),
+                canonical_runtime_json_bytes(tombstone) + b"\n",
+            )
+            self._memory.pop(artifact_id, None)
+
+    def _commit_invalidation(
+        self, receipt: CASInvalidationReceipt, *, count_metric: bool
+    ) -> CASInvalidationReceipt:
+        self._write_invalidation_tombstones(receipt)
+        invalidated = set(receipt.invalidated_artifact_ids)
+        for key_id, target in tuple(self._key_memory.items()):
+            if target in invalidated:
+                self._key_memory.pop(key_id, None)
+        self._remove_live_pointers(invalidated)
+        committed = replace(receipt, committed=True, transaction_id="")
+        _atomic_write(
+            self._invalidation_path(committed.transaction_id),
+            canonical_runtime_json_bytes(committed.to_dict()) + b"\n",
+        )
+        head = {
+            "schema": RUNTIME_INVALIDATION_TRANSACTION_SCHEMA,
+            "transaction_id": committed.transaction_id,
+        }
+        head["head_digest"] = _sha256(canonical_runtime_json_bytes(head))
+        _atomic_write(
+            self.invalidation_head_path,
+            canonical_runtime_json_bytes(head) + b"\n",
+        )
+        if count_metric:
+            self._increment("invalidated", len(invalidated))
+        return committed
+
+    def _recover_invalidation_transactions(self) -> None:
+        """Finish valid intents and quarantine malformed journals."""
+
+        for path in sorted(self.invalidations_path.glob("*.json")):
+            try:
+                value = json.loads(path.read_bytes())
+                receipt = CASInvalidationReceipt.from_dict(value)
+                if path != self._invalidation_path(receipt.transaction_id):
+                    raise ArtifactIntegrityError(
+                        "invalidation journal path mismatch"
+                    )
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                RuntimeCASError,
+                TypeError,
+                ValueError,
+            ):
+                self._quarantine_index_file(
+                    path, "corrupt_invalidation_journal"
+                )
+                continue
+            if receipt.committed:
+                # Every committed receipt must have a complete tombstone set.
+                if not all(
+                    self._is_invalidated(item)
+                    for item in receipt.invalidated_artifact_ids
+                ):
+                    self._quarantine_reasons.add(
+                        "partial_invalidation_transaction"
+                    )
+                continue
+            try:
+                self._commit_invalidation(receipt, count_metric=False)
+            except (OSError, RuntimeCASError, TypeError, ValueError):
+                self._quarantine_reasons.add(
+                    "partial_invalidation_transaction"
+                )
 
     def _read_host(
         self, artifact_id: str
@@ -1400,6 +1779,15 @@ class RuntimeCAS:
         """Look up an exact artifact ID or complete computation key."""
 
         self._increment("lookups")
+        if self._quarantine_reasons:
+            self._increment("misses")
+            return RuntimeCASLookup(
+                None,
+                reason_codes=(
+                    "runtime_cas_quarantined",
+                    *tuple(sorted(self._quarantine_reasons)),
+                ),
+            )
         key: RuntimeArtifactKey | None = None
         if isinstance(identity, RuntimeArtifactKey):
             key = identity
@@ -1633,6 +2021,10 @@ class RuntimeCAS:
     ) -> RuntimeArtifactRecord:
         """Persist one immutable result and its exact computation-key pointer."""
 
+        if self._quarantine_reasons:
+            raise RuntimeCASError(
+                "runtime CAS is quarantined and cannot accept writes"
+            )
         native_binding = _coerce_binding(binding)
         native_namespace = _required_text(namespace, "namespace")
         native_authority = _coerce_authority(authority)
@@ -1877,6 +2269,10 @@ class RuntimeCAS:
     ) -> AuthoritativeProjection:
         """Atomically publish a fresh authoritative current-tree pointer."""
 
+        if self._quarantine_reasons:
+            raise RuntimeCASError(
+                "runtime CAS is quarantined and cannot publish projections"
+            )
         projection_key = _required_text(projection_key, "projection_key")
         record = (
             artifact
@@ -2012,6 +2408,40 @@ class RuntimeCAS:
         self._rebuild_graph()
         return tuple(sorted(self._dependencies.get(artifact_id, set())))
 
+    def inspect_artifact(
+        self, artifact_id: str
+    ) -> RuntimeArtifactRecord | None:
+        """Read an immutable envelope for audit, even when it is tombstoned."""
+
+        self._digest_from_id(artifact_id)
+        return self._read_host(artifact_id)
+
+    def semantic_dependency_ids(
+        self,
+        *,
+        namespace: str = "",
+        key: str = "",
+        revision: str = "",
+        digest: str = "",
+    ) -> tuple[str, ...]:
+        """Resolve exact semantic identities without treating names as authority."""
+
+        matches: set[str] = set()
+        self._rebuild_graph()
+        for artifact_id in sorted(self._known_artifact_ids):
+            artifact = self._read_host(artifact_id)
+            if artifact is None:
+                continue
+            for dependency in artifact.binding.semantic_dependencies:
+                if (
+                    (not namespace or dependency.namespace == namespace)
+                    and (not key or dependency.key == key)
+                    and (not revision or dependency.revision == revision)
+                    and (not digest or dependency.digest == digest)
+                ):
+                    matches.add(dependency.dependency_id)
+        return tuple(sorted(matches))
+
     def descendants_of(
         self, artifact_id: str, *, include_root: bool = False
     ) -> tuple[str, ...]:
@@ -2048,6 +2478,128 @@ class RuntimeCAS:
             except (OSError, TypeError, ValueError, json.JSONDecodeError):
                 self._recover_corrupt(path)
 
+    def invalidate_batch(
+        self,
+        *,
+        artifact_ids: Sequence[str] = (),
+        semantic_dependency_ids: Sequence[str] = (),
+        include_artifact_roots: bool = True,
+        reason: str = "semantic_dependency_changed",
+        roots_id: str = "",
+        event_cursor: str = "",
+    ) -> CASInvalidationReceipt:
+        """Atomically tombstone the union of exact reverse dependency closures.
+
+        An intent is durable before the first tombstone and a committed receipt
+        is durable after pointers are removed. Startup completes a valid intent
+        idempotently; malformed or incomplete metadata places the store in a
+        fail-closed quarantined state visible through :meth:`audit`.
+        """
+
+        roots = tuple(
+            sorted({_required_text(item, "artifact_id") for item in artifact_ids})
+        )
+        semantic_roots = tuple(
+            sorted(
+                {
+                    _required_text(item, "semantic_dependency_id")
+                    for item in semantic_dependency_ids
+                }
+            )
+        )
+        if not roots and not semantic_roots:
+            raise ValueError(
+                "batch invalidation requires an artifact or semantic dependency"
+            )
+        for artifact_id in roots:
+            self._digest_from_id(artifact_id)
+        reason = _required_text(reason, "reason")
+        with self._key_lock("dependency-graph-invalidation"):
+            if self._quarantine_reasons:
+                raise RuntimeCASError(
+                    "runtime CAS is quarantined and cannot invalidate"
+                )
+            self._rebuild_graph()
+            missing_roots = sorted(
+                set(roots).difference(self._known_artifact_ids)
+            )
+            if missing_roots:
+                raise ArtifactIntegrityError(
+                    "invalidation roots do not exist: "
+                    + ", ".join(missing_roots)
+                )
+            affected: set[str] = set()
+            for artifact_id in roots:
+                affected.update(
+                    self.descendants_of(
+                        artifact_id, include_root=include_artifact_roots
+                    )
+                )
+            for dependency_id in semantic_roots:
+                frontier = sorted(
+                    self._semantic_children.get(dependency_id, set())
+                )
+                while frontier:
+                    artifact_id = frontier.pop(0)
+                    if artifact_id in affected:
+                        continue
+                    affected.add(artifact_id)
+                    frontier.extend(
+                        sorted(self._children.get(artifact_id, set()))
+                    )
+            live = {
+                item
+                for item in self._known_artifact_ids
+                if not self._is_invalidated(item)
+            }
+            receipt = CASInvalidationReceipt(
+                root_artifact_ids=roots,
+                semantic_dependency_ids=semantic_roots,
+                invalidated_artifact_ids=tuple(sorted(affected)),
+                preserved_artifact_ids=tuple(sorted(live.difference(affected))),
+                reason=reason,
+                roots_id=str(roots_id or ""),
+                event_cursor=str(event_cursor or ""),
+                committed=False,
+            )
+            journal_path = self._invalidation_path(receipt.transaction_id)
+            try:
+                existing = CASInvalidationReceipt.from_dict(
+                    json.loads(journal_path.read_bytes())
+                )
+            except FileNotFoundError:
+                existing = None
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                RuntimeCASError,
+                TypeError,
+                ValueError,
+            ):
+                self._quarantine_index_file(
+                    journal_path, "corrupt_invalidation_journal"
+                )
+                raise ArtifactIntegrityError(
+                    "invalidation transaction journal is corrupt"
+                )
+            if existing is not None:
+                if existing.transaction_id != receipt.transaction_id:
+                    raise ArtifactIntegrityError(
+                        "invalidation transaction binding conflict"
+                    )
+                if existing.committed:
+                    return existing
+                receipt = existing
+            else:
+                _atomic_write(
+                    journal_path,
+                    canonical_runtime_json_bytes(receipt.to_dict()) + b"\n",
+                )
+            return self._commit_invalidation(
+                receipt, count_metric=True
+            )
+
     def invalidate(
         self,
         artifact_id: str,
@@ -2056,41 +2608,15 @@ class RuntimeCAS:
         reason: str = "semantic_dependency_changed",
     ) -> InvalidationResult:
         """Tombstone an artifact and only its transitive dependents."""
-
-        self._digest_from_id(artifact_id)
-        affected = self.descendants_of(
-            artifact_id, include_root=include_root
+        receipt = self.invalidate_batch(
+            artifact_ids=(artifact_id,),
+            include_artifact_roots=include_root,
+            reason=reason,
         )
-        invalidated = set(affected)
-        now_ms = self._now_ms()
-        for target in affected:
-            tombstone = {
-                "schema": RUNTIME_INVALIDATION_SCHEMA,
-                "artifact_id": target,
-                "root_artifact_id": artifact_id,
-                "invalidated_at_ms": now_ms,
-                "reason": _required_text(reason, "reason"),
-            }
-            tombstone["tombstone_digest"] = _sha256(
-                canonical_runtime_json_bytes(tombstone)
-            )
-            _atomic_write(
-                self._tombstone_path(target),
-                canonical_runtime_json_bytes(tombstone) + b"\n",
-            )
-            self._memory.pop(target, None)
-        for key_id, target in tuple(self._key_memory.items()):
-            if target in invalidated:
-                self._key_memory.pop(key_id, None)
-        self._remove_live_pointers(invalidated)
-        preserved = tuple(
-            sorted(self._known_artifact_ids.difference(invalidated))
-        )
-        self._increment("invalidated", len(invalidated))
         return InvalidationResult(
             root_artifact_ids=(artifact_id,),
-            invalidated_artifact_ids=affected,
-            preserved_artifact_ids=preserved,
+            invalidated_artifact_ids=receipt.invalidated_artifact_ids,
+            preserved_artifact_ids=receipt.preserved_artifact_ids,
             reason=reason,
         )
 
@@ -2145,52 +2671,190 @@ class RuntimeCAS:
                 raise ValueError(
                     "semantic dependency replacement must have a new identity"
                 )
-        self._rebuild_graph()
-        direct = sorted(self._semantic_children.get(dependency_id, set()))
-        affected: list[str] = []
-        seen: set[str] = set()
-        frontier = list(direct)
-        while frontier:
-            artifact_id = frontier.pop(0)
-            if artifact_id in seen:
-                continue
-            seen.add(artifact_id)
-            affected.append(artifact_id)
-            frontier.extend(
-                sorted(self._children.get(artifact_id, set()))
-            )
-        invalidated = set(affected)
-        now_ms = self._now_ms()
-        for target in affected:
-            tombstone = {
-                "schema": RUNTIME_INVALIDATION_SCHEMA,
-                "artifact_id": target,
-                "semantic_dependency_id": dependency_id,
-                "invalidated_at_ms": now_ms,
-                "reason": _required_text(reason, "reason"),
-            }
-            tombstone["tombstone_digest"] = _sha256(
-                canonical_runtime_json_bytes(tombstone)
-            )
-            _atomic_write(
-                self._tombstone_path(target),
-                canonical_runtime_json_bytes(tombstone) + b"\n",
-            )
-            self._memory.pop(target, None)
-        for key_id, target in tuple(self._key_memory.items()):
-            if target in invalidated:
-                self._key_memory.pop(key_id, None)
-        self._remove_live_pointers(invalidated)
-        preserved = tuple(
-            sorted(self._known_artifact_ids.difference(invalidated))
-        )
-        self._increment("invalidated", len(invalidated))
-        return InvalidationResult(
-            root_artifact_ids=(dependency_id,),
-            invalidated_artifact_ids=tuple(affected),
-            preserved_artifact_ids=preserved,
+        receipt = self.invalidate_batch(
+            semantic_dependency_ids=(dependency_id,),
             reason=reason,
         )
+        return InvalidationResult(
+            root_artifact_ids=(dependency_id,),
+            invalidated_artifact_ids=receipt.invalidated_artifact_ids,
+            preserved_artifact_ids=receipt.preserved_artifact_ids,
+            reason=reason,
+        )
+
+    def audit(self, *, rebuild: bool = True) -> RuntimeCASAuditReceipt:
+        """Verify the disposable reverse index, tombstones, and journals."""
+
+        issues = set(self._quarantine_reasons)
+        before = set(self._known_artifact_ids)
+        if rebuild:
+            self._rebuild_graph()
+        if before and before != self._known_artifact_ids:
+            issues.add("corrupt_dependency_index")
+        for path in sorted(self.keys_path.glob("*/*.json")):
+            try:
+                pointer = json.loads(path.read_bytes())
+                if not isinstance(pointer, Mapping):
+                    raise ArtifactIntegrityError("key pointer must be an object")
+                content = {
+                    "schema": pointer.get("schema"),
+                    "key_id": pointer.get("key_id"),
+                    "artifact_id": pointer.get("artifact_id"),
+                }
+                if (
+                    content["schema"] != RUNTIME_CAS_SCHEMA
+                    or path != self._key_path(
+                        _required_text(content["key_id"], "key_id")
+                    )
+                    or pointer.get("pointer_digest")
+                    != _sha256(canonical_runtime_json_bytes(content))
+                    or content["artifact_id"] not in self._known_artifact_ids
+                    or self._is_invalidated(str(content["artifact_id"]))
+                ):
+                    raise ArtifactIntegrityError(
+                        "key pointer binding is corrupt or stale"
+                    )
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                RuntimeCASError,
+                TypeError,
+                ValueError,
+            ):
+                issues.add("corrupt_dependency_index")
+                self._quarantine_index_file(
+                    path, "corrupt_dependency_index"
+                )
+        for path in sorted(self.projections_path.glob("*/*.json")):
+            try:
+                projection = AuthoritativeProjection.from_dict(
+                    json.loads(path.read_bytes())
+                )
+                if (
+                    path
+                    != self._projection_path(
+                        projection.namespace, projection.projection_key
+                    )
+                    or projection.artifact_id
+                    not in self._known_artifact_ids
+                    or self._is_invalidated(projection.artifact_id)
+                ):
+                    raise ArtifactIntegrityError(
+                        "authoritative projection is corrupt or stale"
+                    )
+                artifact = self._read_host(projection.artifact_id)
+                if (
+                    artifact is None
+                    or artifact.key.key_id != projection.key_id
+                    or artifact.binding.tree_id != projection.tree_id
+                ):
+                    raise ArtifactIntegrityError(
+                        "authoritative projection target is stale"
+                    )
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                RuntimeCASError,
+                TypeError,
+                ValueError,
+            ):
+                issues.add("corrupt_dependency_index")
+                self._quarantine_index_file(
+                    path, "corrupt_dependency_index"
+                )
+        tombstoned: list[str] = []
+        for path in sorted(self.tombstones_path.glob("*/*.json")):
+            digest = path.stem
+            artifact_id = f"runtime-artifact:sha256:{digest}"
+            if self._is_invalidated(artifact_id):
+                tombstoned.append(artifact_id)
+            else:
+                issues.add("corrupt_tombstone")
+        for path in sorted(self.invalidations_path.glob("*.json")):
+            try:
+                receipt = CASInvalidationReceipt.from_dict(
+                    json.loads(path.read_bytes())
+                )
+                if (
+                    not receipt.committed
+                    or path != self._invalidation_path(receipt.transaction_id)
+                ):
+                    issues.add("partial_invalidation_transaction")
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                RuntimeCASError,
+                TypeError,
+                ValueError,
+            ):
+                issues.add("corrupt_invalidation_journal")
+        journal_exists = any(self.invalidations_path.glob("*.json"))
+        if self.invalidation_head_path.exists():
+            try:
+                self.latest_invalidation()
+            except (OSError, RuntimeCASError, TypeError, ValueError):
+                issues.add("corrupt_invalidation_head")
+                self._quarantine_index_file(
+                    self.invalidation_head_path,
+                    "corrupt_invalidation_head",
+                )
+        elif journal_exists:
+            issues.add("missing_invalidation_head")
+            self._quarantine_reasons.add("missing_invalidation_head")
+        issues.update(self._quarantine_reasons)
+        return RuntimeCASAuditReceipt(
+            artifact_ids=tuple(sorted(self._known_artifact_ids)),
+            tombstoned_artifact_ids=tuple(sorted(set(tombstoned))),
+            issue_codes=tuple(sorted(issues)),
+            rebuilt=rebuild,
+        )
+
+    audit_dependency_index = audit
+
+    @property
+    def quarantined(self) -> bool:
+        return bool(self._quarantine_reasons)
+
+    def latest_invalidation(self) -> CASInvalidationReceipt | None:
+        try:
+            value = json.loads(self.invalidation_head_path.read_bytes())
+            claimed = str(value.get("head_digest") or "")
+            body = {
+                key: item for key, item in value.items() if key != "head_digest"
+            }
+            if (
+                value.get("schema")
+                != RUNTIME_INVALIDATION_TRANSACTION_SCHEMA
+                or claimed != _sha256(canonical_runtime_json_bytes(body))
+            ):
+                raise ArtifactIntegrityError("invalidation head is corrupt")
+            path = self._invalidation_path(str(value["transaction_id"]))
+            receipt = CASInvalidationReceipt.from_dict(
+                json.loads(path.read_bytes())
+            )
+            if not receipt.committed:
+                raise ArtifactIntegrityError(
+                    "invalidation head references an incomplete transaction"
+                )
+            return receipt
+        except FileNotFoundError:
+            return None
+        except (
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            KeyError,
+            RuntimeCASError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            self._quarantine_reasons.add("corrupt_invalidation_head")
+            raise ArtifactIntegrityError(
+                "invalidation head is corrupt"
+            ) from exc
 
     def semantic_dependency_changed(
         self,
@@ -2277,6 +2941,7 @@ __all__ = [
     "ArtifactTier",
     "AuthorityIsolationError",
     "AuthoritativeProjection",
+    "CASInvalidationReceipt",
     "CanonicalArtifactIdentity",
     "DEFAULT_LOCK_TIMEOUT_SECONDS",
     "DEFAULT_MAX_PAYLOAD_BYTES",
@@ -2297,6 +2962,8 @@ __all__ = [
     "RUNTIME_CAS_SCHEMA",
     "RUNTIME_DEPENDENCY_SCHEMA",
     "RUNTIME_INVALIDATION_SCHEMA",
+    "RUNTIME_INVALIDATION_TRANSACTION_SCHEMA",
+    "RUNTIME_CAS_AUDIT_SCHEMA",
     "RUNTIME_PROJECTION_SCHEMA",
     "RuntimeArtifact",
     "RuntimeArtifactKey",
@@ -2304,6 +2971,7 @@ __all__ = [
     "RuntimeArtifactStore",
     "RuntimeAuthority",
     "RuntimeCAS",
+    "RuntimeCASAuditReceipt",
     "RuntimeCASError",
     "RuntimeCASLookup",
     "RuntimeCASMetrics",

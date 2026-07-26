@@ -22,6 +22,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Final
 
+from .control_contracts import EventCursor
 from .decision_context import ContextCompletenessWitness
 from .decision_contracts import (
     ApplicabilityFact,
@@ -40,6 +41,14 @@ from .execution_permit import (
     PermitUseReceipt,
     PermitVerificationError,
 )
+from .event_log import (
+    CursorReplayError,
+    SemanticChange,
+    SemanticChangeIntegrityError,
+    SemanticChangeKind,
+    read_jsonl_event_page,
+    read_semantic_change_page,
+)
 from .formal_verification_contracts import canonical_json_bytes, content_identity
 from .ir_constraint_compiler import (
     PlanAdmissionReceipt,
@@ -57,6 +66,12 @@ DECISION_RUNTIME_RECEIPT_SCHEMA: Final[str] = (
 )
 EFFECT_OBSERVATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/effect-observation@1"
+)
+RUNTIME_INVALIDATION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/runtime-invalidation-receipt@1"
+)
+INCREMENTAL_REVALIDATION_REQUIREMENT_ID: Final[str] = (
+    "asi-138:dependency-local-invalidation-reproof-recovery"
 )
 DEFAULT_RUNTIME_CALLER: Final[str] = "agent-supervisor:decision-runtime"
 DEFAULT_RUNTIME_POLICY_ID: Final[str] = "policy:decision-runtime"
@@ -202,6 +217,83 @@ def _boundary(value: DecisionBoundary | str) -> DecisionBoundary:
         raise DecisionRuntimeConfigurationError(
             f"unknown decision boundary {value!r}"
         ) from exc
+
+
+_CHANGE_SCOPE_KINDS: Final[Mapping[SemanticChangeKind, str]] = MappingProxyType(
+    {
+        SemanticChangeKind.WORKTREE: "program_snapshot",
+        SemanticChangeKind.AST: "ast_edge",
+        SemanticChangeKind.EFFECT: "effect",
+        SemanticChangeKind.INTENT_IR: "ir_root",
+        SemanticChangeKind.LEGAL_IR: "ir_root",
+        SemanticChangeKind.SECURITY_IR: "ir_root",
+        SemanticChangeKind.POLICY: "policy",
+        SemanticChangeKind.TOOL_CATALOG: "tool_operation",
+        SemanticChangeKind.CAPABILITY: "assumption",
+        SemanticChangeKind.PROOF: "premise",
+        SemanticChangeKind.MONITOR: "assumption",
+        SemanticChangeKind.LEASE: "execution_permit",
+        SemanticChangeKind.OBSERVED_EFFECT: "effect",
+    }
+)
+
+_CHANGE_ROOT_KEYS: Final[Mapping[SemanticChangeKind, tuple[str, ...]]] = (
+    MappingProxyType(
+        {
+            SemanticChangeKind.WORKTREE: ("dirty_worktree", "worktree"),
+            SemanticChangeKind.AST: ("program", "ast"),
+            SemanticChangeKind.EFFECT: ("program", "effect"),
+            SemanticChangeKind.INTENT_IR: ("intent_ir",),
+            SemanticChangeKind.LEGAL_IR: ("legal_ir",),
+            SemanticChangeKind.SECURITY_IR: ("security_ir",),
+            SemanticChangeKind.POLICY: ("policy",),
+            SemanticChangeKind.TOOL_CATALOG: ("tool_catalog",),
+            SemanticChangeKind.CAPABILITY: ("capability",),
+            SemanticChangeKind.PROOF: ("proof",),
+            SemanticChangeKind.MONITOR: ("monitor",),
+            SemanticChangeKind.LEASE: ("lease",),
+            SemanticChangeKind.OBSERVED_EFFECT: ("program", "observed_effect"),
+        }
+    )
+)
+
+
+def canonical_dependency_change(
+    kind: SemanticChangeKind | str,
+    *,
+    subject_id: str,
+    previous_root_id: str,
+    current_root_id: str,
+    scope_value: str = "",
+    scope_kind: str = "",
+    repository_id: str = "",
+    tree_id: str = "",
+    semantic_dependency_ids: Sequence[str] = (),
+    metadata: Mapping[str, Any] | None = None,
+) -> SemanticChange:
+    """Create the canonical proof-scope event for any authority input change."""
+
+    selected = (
+        kind
+        if isinstance(kind, SemanticChangeKind)
+        else SemanticChangeKind(str(kind))
+    )
+    return SemanticChange(
+        kind=selected,
+        subject_id=subject_id,
+        previous_root_id=previous_root_id,
+        current_root_id=current_root_id,
+        scope_kind=scope_kind or _CHANGE_SCOPE_KINDS[selected],
+        scope_value=scope_value or subject_id,
+        repository_id=repository_id,
+        tree_id=tree_id,
+        semantic_dependency_ids=tuple(semantic_dependency_ids),
+        metadata=metadata or {},
+    )
+
+
+DependencyChangeEvent = SemanticChange
+CanonicalDependencyChange = SemanticChange
 
 
 @dataclass(frozen=True)
@@ -783,6 +875,39 @@ class EffectObservationReceipt:
 
     to_record = to_dict
 
+    def semantic_changes(self) -> tuple[SemanticChange, ...]:
+        """Project mismatches/root movement into canonical invalidation inputs."""
+
+        if self.matched and (
+            not self.pre_root_id
+            or not self.post_root_id
+            or self.pre_root_id == self.post_root_id
+        ):
+            return ()
+        previous = self.pre_root_id or content_identity(
+            [item.to_dict() for item in self.expected_effects]
+        )
+        current = self.post_root_id or content_identity(
+            [item.to_dict() for item in self.observed_effects]
+        )
+        subject = (
+            self.decision_receipt_id
+            or self.receipt_id
+        )
+        return (
+            canonical_dependency_change(
+                SemanticChangeKind.OBSERVED_EFFECT,
+                subject_id=subject,
+                previous_root_id=previous,
+                current_root_id=current,
+                scope_value=subject,
+                metadata={
+                    "effect_observation_receipt_id": self.receipt_id,
+                    "reason_codes": list(self.reason_codes),
+                },
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class DecisionExecutionResult:
@@ -790,6 +915,278 @@ class DecisionExecutionResult:
     decision: DecisionRuntimeDecision
     permit_use: PermitUseReceipt | None
     effect_observation: EffectObservationReceipt | None
+
+
+@dataclass(frozen=True)
+class RuntimeInvalidationReceipt:
+    """Exact dependency-local invalidation and minimum revalidation closure."""
+
+    runtime_id: str
+    change_ids: tuple[str, ...]
+    previous_roots: Mapping[str, str]
+    current_roots: Mapping[str, str]
+    event_cursor: EventCursor | None = None
+    proof_index_id: str = ""
+    cas_transaction_ids: tuple[str, ...] = ()
+    retrieval_ids: tuple[str, ...] = ()
+    context_ids: tuple[str, ...] = ()
+    plan_ids: tuple[str, ...] = ()
+    plan_suffix_ids: tuple[str, ...] = ()
+    permit_ids: tuple[str, ...] = ()
+    proof_ids: tuple[str, ...] = ()
+    obligation_ids: tuple[str, ...] = ()
+    validation_ids: tuple[str, ...] = ()
+    cache_ids: tuple[str, ...] = ()
+    merge_receipt_ids: tuple[str, ...] = ()
+    completion_receipt_ids: tuple[str, ...] = ()
+    preserved_artifact_ids: tuple[str, ...] = ()
+    recomputed_artifact_ids: tuple[str, ...] = ()
+    fencing_epoch: int = 0
+    authoritative: bool = False
+    reason_codes: tuple[str, ...] = ()
+    requirement_id: str = INCREMENTAL_REVALIDATION_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        if self.requirement_id != INCREMENTAL_REVALIDATION_REQUIREMENT_ID:
+            raise DecisionRuntimeConfigurationError(
+                "runtime invalidation receipt requirement mismatch"
+            )
+        object.__setattr__(self, "runtime_id", _text(self.runtime_id, "runtime_id"))
+        object.__setattr__(
+            self,
+            "proof_index_id",
+            _text(self.proof_index_id, "proof_index_id"),
+        )
+        for name in (
+            "change_ids",
+            "cas_transaction_ids",
+            "retrieval_ids",
+            "context_ids",
+            "plan_ids",
+            "plan_suffix_ids",
+            "permit_ids",
+            "proof_ids",
+            "obligation_ids",
+            "validation_ids",
+            "cache_ids",
+            "merge_receipt_ids",
+            "completion_receipt_ids",
+            "preserved_artifact_ids",
+            "recomputed_artifact_ids",
+            "reason_codes",
+        ):
+            values = tuple(
+                sorted({str(item) for item in getattr(self, name) if str(item)})
+            )
+            if len(values) != len(tuple(getattr(self, name))):
+                raise DecisionRuntimeConfigurationError(
+                    f"{name} contains empty or duplicate identities"
+                )
+            object.__setattr__(self, name, values)
+        if not self.change_ids:
+            raise DecisionRuntimeConfigurationError(
+                "invalidation receipt requires a semantic change"
+            )
+        previous = {
+            _text(str(key), "previous root kind"):
+            _text(str(item), "previous root identity")
+            for key, item in sorted(self.previous_roots.items())
+        }
+        current = {
+            _text(str(key), "current root kind"):
+            _text(str(item), "current root identity")
+            for key, item in sorted(self.current_roots.items())
+        }
+        if not previous or not current or previous == current:
+            raise DecisionRuntimeConfigurationError(
+                "invalidation receipt must bind a changed semantic root set"
+            )
+        object.__setattr__(
+            self, "previous_roots", MappingProxyType(previous)
+        )
+        object.__setattr__(
+            self, "current_roots", MappingProxyType(current)
+        )
+        if (
+            isinstance(self.fencing_epoch, bool)
+            or not isinstance(self.fencing_epoch, int)
+            or self.fencing_epoch < 0
+        ):
+            raise DecisionRuntimeConfigurationError(
+                "fencing_epoch must be a nonnegative integer"
+            )
+        if self.event_cursor is not None and not isinstance(
+            self.event_cursor, EventCursor
+        ):
+            raise DecisionRuntimeConfigurationError(
+                "event_cursor must be an EventCursor or None"
+            )
+        if not set(self.plan_suffix_ids).issubset(self.plan_ids):
+            raise DecisionRuntimeConfigurationError(
+                "plan suffix contains plans outside the invalidation closure"
+            )
+        if set(self.invalidated_artifact_ids).intersection(
+            self.preserved_artifact_ids
+        ):
+            raise DecisionRuntimeConfigurationError(
+                "invalidation receipt preserves an invalidated artifact"
+            )
+        if self.authoritative and self.reason_codes:
+            raise DecisionRuntimeConfigurationError(
+                "an authoritative revalidation receipt cannot contain failures"
+            )
+
+    @property
+    def invalidated_artifact_ids(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    *self.retrieval_ids,
+                    *self.context_ids,
+                    *self.plan_ids,
+                    *self.permit_ids,
+                    *self.proof_ids,
+                    *self.obligation_ids,
+                    *self.validation_ids,
+                    *self.cache_ids,
+                    *self.merge_receipt_ids,
+                    *self.completion_receipt_ids,
+                }
+            )
+        )
+
+    @property
+    def minimum_reproof_ids(self) -> tuple[str, ...]:
+        return tuple(sorted({*self.obligation_ids, *self.proof_ids}))
+
+    @property
+    def receipt_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        value = {
+            "schema": RUNTIME_INVALIDATION_RECEIPT_SCHEMA,
+            "version": 1,
+            "requirement_id": self.requirement_id,
+            "runtime_id": self.runtime_id,
+            "change_ids": list(self.change_ids),
+            "previous_roots": dict(self.previous_roots),
+            "current_roots": dict(self.current_roots),
+            "event_cursor": (
+                self.event_cursor.to_record()
+                if self.event_cursor is not None
+                else None
+            ),
+            "proof_index_id": self.proof_index_id,
+            "cas_transaction_ids": list(self.cas_transaction_ids),
+            "retrieval_ids": list(self.retrieval_ids),
+            "context_ids": list(self.context_ids),
+            "plan_ids": list(self.plan_ids),
+            "plan_suffix_ids": list(self.plan_suffix_ids),
+            "permit_ids": list(self.permit_ids),
+            "proof_ids": list(self.proof_ids),
+            "obligation_ids": list(self.obligation_ids),
+            "validation_ids": list(self.validation_ids),
+            "cache_ids": list(self.cache_ids),
+            "merge_receipt_ids": list(self.merge_receipt_ids),
+            "completion_receipt_ids": list(
+                self.completion_receipt_ids
+            ),
+            "preserved_artifact_ids": list(self.preserved_artifact_ids),
+            "recomputed_artifact_ids": list(
+                self.recomputed_artifact_ids
+            ),
+            "fencing_epoch": self.fencing_epoch,
+            "authoritative": self.authoritative,
+            "reason_codes": list(self.reason_codes),
+            "invalidated_artifact_ids": list(
+                self.invalidated_artifact_ids
+            ),
+            "minimum_reproof_ids": list(self.minimum_reproof_ids),
+        }
+        if include_identity:
+            value["receipt_id"] = self.receipt_id
+        return value
+
+    to_record = to_dict
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "RuntimeInvalidationReceipt":
+        if (
+            value.get("schema") != RUNTIME_INVALIDATION_RECEIPT_SCHEMA
+            or value.get("version") != 1
+        ):
+            raise DecisionRuntimeConfigurationError(
+                "unsupported runtime invalidation receipt schema"
+            )
+        cursor_value = value.get("event_cursor")
+        result = cls(
+            runtime_id=str(value.get("runtime_id") or ""),
+            change_ids=tuple(value.get("change_ids") or ()),
+            previous_roots=value.get("previous_roots") or {},
+            current_roots=value.get("current_roots") or {},
+            event_cursor=(
+                EventCursor.from_dict(cursor_value)
+                if isinstance(cursor_value, Mapping)
+                else None
+            ),
+            proof_index_id=str(value.get("proof_index_id") or ""),
+            cas_transaction_ids=tuple(
+                value.get("cas_transaction_ids") or ()
+            ),
+            retrieval_ids=tuple(value.get("retrieval_ids") or ()),
+            context_ids=tuple(value.get("context_ids") or ()),
+            plan_ids=tuple(value.get("plan_ids") or ()),
+            plan_suffix_ids=tuple(value.get("plan_suffix_ids") or ()),
+            permit_ids=tuple(value.get("permit_ids") or ()),
+            proof_ids=tuple(value.get("proof_ids") or ()),
+            obligation_ids=tuple(value.get("obligation_ids") or ()),
+            validation_ids=tuple(value.get("validation_ids") or ()),
+            cache_ids=tuple(value.get("cache_ids") or ()),
+            merge_receipt_ids=tuple(
+                value.get("merge_receipt_ids") or ()
+            ),
+            completion_receipt_ids=tuple(
+                value.get("completion_receipt_ids") or ()
+            ),
+            preserved_artifact_ids=tuple(
+                value.get("preserved_artifact_ids") or ()
+            ),
+            recomputed_artifact_ids=tuple(
+                value.get("recomputed_artifact_ids") or ()
+            ),
+            fencing_epoch=value.get("fencing_epoch", 0),
+            authoritative=bool(value.get("authoritative", False)),
+            reason_codes=tuple(value.get("reason_codes") or ()),
+            requirement_id=str(
+                value.get("requirement_id")
+                or INCREMENTAL_REVALIDATION_REQUIREMENT_ID
+            ),
+        )
+        if value.get("receipt_id") not in (None, result.receipt_id):
+            raise DecisionRuntimeConfigurationError(
+                "runtime invalidation receipt identity mismatch"
+            )
+        return result
+
+
+@dataclass(frozen=True)
+class RuntimeInvalidationResult:
+    """Updated proof index plus its exact invalidation/revalidation receipt."""
+
+    proof_index: Any
+    receipt: RuntimeInvalidationReceipt
+    recomputed: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def invalidation_receipt(self) -> RuntimeInvalidationReceipt:
+        return self.receipt
+
+    def __iter__(self):
+        yield self.proof_index
+        yield self.receipt
 
 
 DecisionResolver = Callable[
@@ -826,6 +1223,18 @@ class DecisionRuntime:
         self._sequence = 0
         self._receipts: list[DecisionRuntimeReceipt] = []
         self._effect_receipts: list[EffectObservationReceipt] = []
+        self._invalidation_receipts: list[RuntimeInvalidationReceipt] = []
+        self._invalidated_permit_ids: set[str] = set()
+        self._invalidated_decision_receipt_ids: set[str] = set()
+        self._issued_permits: dict[str, ExecutionPermit] = {}
+        self._seen_change_ids: set[str] = set()
+        self._invalidation_quarantine_reasons: set[str] = set()
+        self._event_cursor: EventCursor | None = None
+        self._fencing_epoch = 0
+        self._semantic_root_state: dict[str, str] = {
+            item.kind.value: item.artifact.cid_v1
+            for item in self.config.semantic_roots
+        }
         self.runtime_id = runtime_id or content_identity(
             {
                 "kind": "decision-runtime",
@@ -845,6 +1254,11 @@ class DecisionRuntime:
         with self._lock:
             return tuple(self._effect_receipts)
 
+    @property
+    def invalidation_receipts(self) -> tuple[RuntimeInvalidationReceipt, ...]:
+        with self._lock:
+            return tuple(self._invalidation_receipts)
+
     def status(self) -> dict[str, Any]:
         with self._lock:
             return {
@@ -852,6 +1266,23 @@ class DecisionRuntime:
                 "config": self.config.to_dict(),
                 "decision_count": len(self._receipts),
                 "effect_observation_count": len(self._effect_receipts),
+                "invalidation_count": len(self._invalidation_receipts),
+                "invalidated_permit_count": len(
+                    self._invalidated_permit_ids
+                ),
+                "invalidation_quarantined": bool(
+                    self._invalidation_quarantine_reasons
+                ),
+                "invalidation_quarantine_reasons": sorted(
+                    self._invalidation_quarantine_reasons
+                ),
+                "semantic_roots": dict(self._semantic_root_state),
+                "event_cursor": (
+                    self._event_cursor.to_record()
+                    if self._event_cursor is not None
+                    else None
+                ),
+                "fencing_epoch": self._fencing_epoch,
                 "optional_providers_loaded": False,
                 "processes_started": False,
             }
@@ -1016,6 +1447,534 @@ class DecisionRuntime:
         self._check_cancelled("expansion")
         return result
 
+    @staticmethod
+    def _result_identity(value: Any) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            return (value,) if value else ()
+        if isinstance(value, Mapping):
+            for name in (
+                "artifact_id",
+                "receipt_id",
+                "content_id",
+                "result_id",
+            ):
+                if value.get(name):
+                    return (str(value[name]),)
+            return tuple(
+                sorted(
+                    {
+                        item
+                        for nested in value.values()
+                        for item in DecisionRuntime._result_identity(nested)
+                    }
+                )
+            )
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
+            return tuple(
+                sorted(
+                    {
+                        item
+                        for nested in value
+                        for item in DecisionRuntime._result_identity(nested)
+                    }
+                )
+            )
+        for name in ("artifact_id", "receipt_id", "content_id", "result_id"):
+            selected = getattr(value, name, "")
+            if selected:
+                return (str(selected),)
+        return ()
+
+    @staticmethod
+    def _runtime_artifact_family(record: Any) -> str:
+        if record is None:
+            return ""
+        identity = getattr(record, "identity", None)
+        text = " ".join(
+            (
+                str(getattr(identity, "namespace", "")),
+                str(getattr(identity, "artifact_kind", "")),
+                str(getattr(identity, "payload_schema", "")),
+            )
+        ).casefold()
+        payload = getattr(record, "payload", None)
+        if isinstance(payload, Mapping):
+            text += " " + " ".join(
+                str(payload.get(name) or "")
+                for name in (
+                    "kind",
+                    "artifact_kind",
+                    "receipt_kind",
+                    "cache_kind",
+                    "stage",
+                )
+            ).casefold()
+        for family in (
+            "completion",
+            "retrieval",
+            "context",
+            "plan",
+            "permit",
+            "proof",
+            "monitor",
+            "validation",
+            "merge",
+            "cache",
+        ):
+            if family in text:
+                return family
+        return "cache"
+
+    @staticmethod
+    def _replacement_is_current(
+        value: Any, current_roots: Mapping[str, str]
+    ) -> tuple[str, ...]:
+        reasons: list[str] = []
+        values = (
+            value
+            if isinstance(value, Sequence)
+            and not isinstance(value, (str, bytes, bytearray, Mapping))
+            else (value,)
+        )
+        current_values = set(current_roots.values())
+        for item in values:
+            if isinstance(item, Mapping):
+                if item.get("authoritative") is False:
+                    reasons.append("replacement_not_authoritative")
+                bound = str(
+                    item.get("root_id")
+                    or item.get("tree_id")
+                    or item.get("roots_id")
+                    or ""
+                )
+                if bound and bound not in current_values and bound != content_identity(
+                    dict(current_roots)
+                ):
+                    reasons.append("replacement_root_mismatch")
+        return tuple(sorted(set(reasons)))
+
+    def apply_dependency_change(
+        self,
+        change: SemanticChange | Mapping[str, Any],
+        proof_index: Any,
+        *,
+        cas: Any = None,
+        event_cursor: EventCursor | Mapping[str, Any] | str | None = None,
+        recompute: Mapping[str, Callable[[tuple[str, ...], SemanticChange, Any], Any]]
+        | None = None,
+        root_reader: Callable[[], Mapping[str, str]] | None = None,
+    ) -> RuntimeInvalidationResult:
+        """Invalidate exactly the reverse proof/CAS closure and revalidate it.
+
+        Recompute callbacks use the closed keys ``context``, ``plan``,
+        ``proof``, and ``validation`` and are invoked only for non-empty
+        affected populations. Independent artifacts are never passed to a
+        producer and remain reusable.
+        """
+
+        selected = (
+            change
+            if isinstance(change, SemanticChange)
+            else SemanticChange.from_dict(change)
+        )
+        selected_cursor: EventCursor | None
+        if event_cursor is None:
+            selected_cursor = None
+        elif isinstance(event_cursor, EventCursor):
+            selected_cursor = event_cursor
+        elif isinstance(event_cursor, str):
+            selected_cursor = EventCursor.from_token(event_cursor)
+        elif isinstance(event_cursor, Mapping):
+            selected_cursor = EventCursor.from_dict(event_cursor)
+        else:
+            raise DecisionRuntimeConfigurationError(
+                "event_cursor must be an EventCursor, record, token, or None"
+            )
+        with self._lock:
+            if selected.change_id in self._seen_change_ids:
+                raise DecisionRuntimeDenied(
+                    ("duplicate_semantic_change",),
+                    "semantic change was already applied",
+                )
+            if self._event_cursor is not None and selected_cursor is not None:
+                if (
+                    selected_cursor.stream_id != self._event_cursor.stream_id
+                    or selected_cursor.snapshot_id
+                    != self._event_cursor.snapshot_id
+                    or selected_cursor.position <= self._event_cursor.position
+                ):
+                    raise DecisionRuntimeDenied(
+                        ("event_cursor_reordered",)
+                    )
+            root_key = selected.subject_id
+            known_root = self._semantic_root_state.get(root_key)
+            if known_root is None:
+                for candidate in _CHANGE_ROOT_KEYS[selected.kind]:
+                    known_root = self._semantic_root_state.get(candidate)
+                    if known_root is not None:
+                        root_key = candidate
+                        break
+            if (
+                known_root is not None
+                and selected.previous_root_id != known_root
+            ):
+                raise DecisionRuntimeDenied(
+                    ("missed_or_reordered_semantic_change", "stale_root")
+                )
+            previous_roots = dict(self._semantic_root_state)
+            if root_key not in previous_roots:
+                previous_roots[root_key] = selected.previous_root_id
+            target_roots = dict(previous_roots)
+            target_roots[root_key] = selected.current_root_id
+            before_snapshot = (
+                {
+                    str(key): str(item)
+                    for key, item in root_reader().items()
+                }
+                if root_reader is not None
+                else None
+            )
+
+            from .proof_scope_index import (
+                ProofInputKind,
+                ProofScopeIndex,
+                ProofScopeKey,
+                invalidate_proof_scope_inputs,
+            )
+
+            if not isinstance(proof_index, ProofScopeIndex):
+                raise DecisionRuntimeConfigurationError(
+                    "proof_index must be a verified ProofScopeIndex"
+                )
+            try:
+                key = ProofScopeKey(
+                    ProofInputKind(selected.scope_kind),
+                    selected.scope_value,
+                )
+                dependents = proof_index.reverse_dependents(key)
+                changed_index = invalidate_proof_scope_inputs(
+                    proof_index, (key,)
+                )
+            except Exception as exc:
+                raise DecisionRuntimeDenied(
+                    ("corrupt_or_unusable_proof_index", type(exc).__name__)
+                ) from exc
+
+            artifacts = {
+                item.artifact_id: item for item in proof_index.artifacts
+            }
+            retrieval_ids: set[str] = set()
+            cache_ids = set(dependents.cache_ids)
+            for artifact_id in dependents.cache_ids:
+                artifact = artifacts.get(artifact_id)
+                text = (
+                    artifact_id
+                    + " "
+                    + str(getattr(artifact, "payload", {}))
+                ).casefold()
+                if "retriev" in text:
+                    retrieval_ids.add(artifact_id)
+            merge_ids: set[str] = set()
+            completion_ids: set[str] = set()
+            for artifact_id in dependents.merge_ids:
+                artifact = artifacts.get(artifact_id)
+                text = (
+                    artifact_id
+                    + " "
+                    + str(getattr(artifact, "payload", {}))
+                ).casefold()
+                if "completion" in text:
+                    completion_ids.add(artifact_id)
+                else:
+                    merge_ids.add(artifact_id)
+            context_ids = set(dependents.context_ids)
+            plan_ids = set(dependents.plan_ids)
+            permit_ids = set(dependents.permit_ids)
+            proof_ids = set(dependents.proof_ids)
+            validation_ids = set(dependents.validation_ids)
+            obligation_ids = set(dependents.obligation_ids)
+            # Indexed receipts are proof evidence rather than retrieval output.
+            proof_ids.update(dependents.receipt_ids)
+            preserved = set(changed_index.active_artifact_ids)
+            cas_transaction_ids: list[str] = []
+            if cas is not None:
+                dependency_ids = set(selected.semantic_dependency_ids)
+                if not dependency_ids:
+                    resolver = getattr(cas, "semantic_dependency_ids", None)
+                    if callable(resolver):
+                        dependency_ids.update(
+                            resolver(
+                                namespace=selected.scope_kind,
+                                key=selected.scope_value,
+                                revision=selected.previous_root_id,
+                            )
+                        )
+                        dependency_ids.update(
+                            resolver(
+                                key=selected.scope_value,
+                                digest=selected.previous_root_id,
+                            )
+                        )
+                artifact_roots = tuple(
+                    item
+                    for item in (
+                        *context_ids,
+                        *plan_ids,
+                        *permit_ids,
+                        *proof_ids,
+                        *validation_ids,
+                        *cache_ids,
+                        *merge_ids,
+                        *completion_ids,
+                    )
+                    if str(item).startswith("runtime-artifact:sha256:")
+                )
+                if dependency_ids or artifact_roots:
+                    transaction = cas.invalidate_batch(
+                        artifact_ids=artifact_roots,
+                        semantic_dependency_ids=tuple(dependency_ids),
+                        reason=f"{selected.kind.value}_changed",
+                        roots_id=content_identity(target_roots),
+                        event_cursor=(
+                            selected_cursor.to_token()
+                            if selected_cursor is not None
+                            else ""
+                        ),
+                    )
+                    cas_transaction_ids.append(transaction.transaction_id)
+                    preserved.update(transaction.preserved_artifact_ids)
+                    for artifact_id in transaction.invalidated_artifact_ids:
+                        record = cas.inspect_artifact(artifact_id)
+                        family = self._runtime_artifact_family(record)
+                        {
+                            "retrieval": retrieval_ids,
+                            "context": context_ids,
+                            "plan": plan_ids,
+                            "permit": permit_ids,
+                            "proof": proof_ids,
+                            "monitor": proof_ids,
+                            "validation": validation_ids,
+                            "merge": merge_ids,
+                            "completion": completion_ids,
+                            "cache": cache_ids,
+                        }[family].add(artifact_id)
+
+            # A live permit is dependent only when one of its exact root,
+            # evidence, lease, plan, or closure bindings changed.
+            for permit_id, permit in self._issued_permits.items():
+                evidence_ids = {
+                    item.receipt_id for item in permit.evidence_receipts
+                }
+                if (
+                    permit_id in permit_ids
+                    or selected.previous_root_id
+                    in {
+                        permit.repository_tree_id,
+                        permit.worktree_root_id,
+                        *permit.semantic_roots.values(),
+                    }
+                    or selected.subject_id
+                    in {
+                        permit.lease_id,
+                        permit.candidate_plan_id,
+                        permit.mandatory_closure.closure_id,
+                        *evidence_ids,
+                    }
+                    or evidence_ids.intersection(proof_ids)
+                ):
+                    permit_ids.add(permit_id)
+
+            plan_suffix_ids = tuple(sorted(plan_ids))
+            callbacks = dict(recompute or {})
+            recomputed: dict[str, Any] = {}
+            recomputed_ids: set[str] = set()
+            reasons: list[str] = []
+            closure = (
+                ("context", tuple(sorted(context_ids))),
+                ("plan", plan_suffix_ids),
+                (
+                    "proof",
+                    tuple(sorted({*obligation_ids, *proof_ids})),
+                ),
+                ("validation", tuple(sorted(validation_ids))),
+            )
+            for family, identities in closure:
+                if not identities:
+                    continue
+                callback = callbacks.get(family)
+                if callback is None:
+                    reasons.append(f"{family}_recompute_missing")
+                    continue
+                value = callback(identities, selected, changed_index)
+                recomputed[family] = value
+                replacement_ids = self._result_identity(value)
+                if not replacement_ids:
+                    reasons.append(f"{family}_recompute_empty")
+                recomputed_ids.update(replacement_ids)
+                reasons.extend(
+                    self._replacement_is_current(value, target_roots)
+                )
+            after_snapshot = (
+                {
+                    str(key): str(item)
+                    for key, item in root_reader().items()
+                }
+                if root_reader is not None
+                else None
+            )
+            if (
+                before_snapshot is not None
+                and after_snapshot != before_snapshot
+            ):
+                reasons.append("root_race")
+            if (
+                after_snapshot is not None
+                and selected.current_root_id
+                not in after_snapshot.values()
+            ):
+                reasons.append("current_root_not_observed")
+
+            self._invalidated_permit_ids.update(permit_ids)
+            for item in self._receipts:
+                if item.permit_id in permit_ids:
+                    self._invalidated_decision_receipt_ids.add(
+                        item.receipt_id
+                    )
+            self._seen_change_ids.add(selected.change_id)
+            self._semantic_root_state = target_roots
+            if selected_cursor is not None:
+                self._event_cursor = selected_cursor
+            self._fencing_epoch += 1
+            cache_ids.difference_update(retrieval_ids)
+            receipt = RuntimeInvalidationReceipt(
+                runtime_id=self.runtime_id,
+                change_ids=(selected.change_id,),
+                previous_roots=previous_roots,
+                current_roots=target_roots,
+                event_cursor=selected_cursor,
+                proof_index_id=changed_index.index_id,
+                cas_transaction_ids=tuple(cas_transaction_ids),
+                retrieval_ids=tuple(retrieval_ids),
+                context_ids=tuple(context_ids),
+                plan_ids=tuple(plan_ids),
+                plan_suffix_ids=plan_suffix_ids,
+                permit_ids=tuple(permit_ids),
+                proof_ids=tuple(proof_ids),
+                obligation_ids=tuple(obligation_ids),
+                validation_ids=tuple(validation_ids),
+                cache_ids=tuple(cache_ids),
+                merge_receipt_ids=tuple(merge_ids),
+                completion_receipt_ids=tuple(completion_ids),
+                preserved_artifact_ids=tuple(preserved),
+                recomputed_artifact_ids=tuple(recomputed_ids),
+                fencing_epoch=self._fencing_epoch,
+                authoritative=not reasons,
+                reason_codes=tuple(sorted(set(reasons))),
+            )
+            self._invalidation_receipts.append(receipt)
+            if reasons:
+                self._invalidation_quarantine_reasons.update(
+                    receipt.reason_codes
+                )
+            return RuntimeInvalidationResult(
+                changed_index,
+                receipt,
+                MappingProxyType(recomputed),
+            )
+
+    invalidate_dependency_change = apply_dependency_change
+    apply_semantic_change = apply_dependency_change
+
+    def replay_dependency_events(
+        self,
+        event_log_path: Any,
+        cursor: EventCursor | Mapping[str, Any] | str,
+        proof_index: Any,
+        *,
+        cas: Any = None,
+        recompute: Mapping[str, Callable[[tuple[str, ...], SemanticChange, Any], Any]]
+        | None = None,
+        root_reader: Callable[[], Mapping[str, str]] | None = None,
+        page_size: int = 256,
+        max_events: int = 4096,
+    ) -> tuple[Any, tuple[RuntimeInvalidationReceipt, ...], EventCursor]:
+        """Strictly replay canonical dependency changes from one checkpoint."""
+
+        selected_cursor = (
+            cursor
+            if isinstance(cursor, EventCursor)
+            else EventCursor.from_token(cursor)
+            if isinstance(cursor, str)
+            else EventCursor.from_dict(cursor)
+        )
+        index = proof_index
+        receipts: list[RuntimeInvalidationReceipt] = []
+        consumed = 0
+        if page_size < 1 or max_events < 1:
+            raise DecisionRuntimeConfigurationError(
+                "page_size and max_events must be positive integers"
+            )
+        while True:
+            page_limit = min(page_size, max_events - consumed)
+            try:
+                page = read_semantic_change_page(
+                    event_log_path,
+                    selected_cursor,
+                    limit=page_limit,
+                    known_change_ids=self._seen_change_ids,
+                    expected_roots=self._semantic_root_state,
+                )
+                physical_page = read_jsonl_event_page(
+                    event_log_path, selected_cursor, limit=page_limit
+                )
+            except (SemanticChangeIntegrityError, CursorReplayError) as exc:
+                raise DecisionRuntimeDenied(
+                    ("semantic_event_replay_failed", type(exc).__name__)
+                ) from exc
+            # Each logical change shares the page cursor only if it is the last
+            # semantic event. Reconstruct its exact physical cursor from the
+            # event sequence and identity for checkpoint-safe application.
+            for change, event_id in zip(page.changes, page.event_ids):
+                position = selected_cursor.position + 1
+                # Non-semantic events may precede this change. The content ID
+                # is enough to locate the exact sequence in the verified page.
+                physical = next(
+                    event
+                    for event in physical_page.events
+                    if str(event.get("event_id") or "") == event_id
+                )
+                position = int(physical["sequence"])
+                change_cursor = EventCursor(
+                    stream_id=page.next_cursor.stream_id,
+                    snapshot_id=page.next_cursor.snapshot_id,
+                    position=position,
+                    last_event_id=event_id,
+                )
+                result = self.apply_dependency_change(
+                    change,
+                    index,
+                    cas=cas,
+                    event_cursor=change_cursor,
+                    recompute=recompute,
+                    root_reader=root_reader,
+                )
+                index = result.proof_index
+                receipts.append(result.receipt)
+            consumed += len(physical_page.events)
+            selected_cursor = page.next_cursor
+            self._event_cursor = selected_cursor
+            if not page.has_more:
+                break
+            if consumed >= max_events:
+                raise DecisionRuntimeDenied(
+                    ("semantic_event_replay_bound_exceeded",)
+                )
+        return index, tuple(receipts), selected_cursor
+
     def decide(self, value: DecisionRuntimeInput) -> DecisionRuntimeDecision:
         self._check_cancelled("decision")
         if not isinstance(value, DecisionRuntimeInput):
@@ -1034,6 +1993,13 @@ class DecisionRuntime:
             return DecisionRuntimeDecision(receipt, request)
 
         reasons = list(self._validate_bindings(request))
+        if self._invalidation_quarantine_reasons:
+            reasons.extend(
+                (
+                    "invalidation_quarantined",
+                    *sorted(self._invalidation_quarantine_reasons),
+                )
+            )
         compilation = value.context_compilation
         if compilation is None and value.graph is not None and value.retrieval_receipt is not None:
             try:
@@ -1137,6 +2103,7 @@ class DecisionRuntime:
                 evidence_receipts=value.evidence_receipts,
                 issued_at_ms=now,
             )
+            self._issued_permits[permit.permit_id] = permit
         receipt = self._record(
             boundary=boundary,
             outcome=DecisionOutcome.ADMITTED,
@@ -1380,6 +2347,15 @@ class DecisionRuntime:
         self._check_cancelled("pre_effect")
         permit_use: PermitUseReceipt | None = None
         if self.config.mode is DecisionRuntimeMode.ENFORCE:
+            if self._invalidation_quarantine_reasons:
+                raise DecisionRuntimeDenied(
+                    (
+                        "invalidation_quarantined",
+                        *tuple(
+                            sorted(self._invalidation_quarantine_reasons)
+                        ),
+                    )
+                )
             if (
                 not isinstance(decision, DecisionRuntimeDecision)
                 or decision.receipt.runtime_id != self.runtime_id
@@ -1390,6 +2366,24 @@ class DecisionRuntime:
                     ("current_permit_missing", "direct_call_bypass")
                 )
             permit = decision.permit
+            if (
+                permit.permit_id in self._invalidated_permit_ids
+                or decision.receipt.receipt_id
+                in self._invalidated_decision_receipt_ids
+            ):
+                self._record(
+                    boundary=decision.receipt.boundary,
+                    outcome=DecisionOutcome.DENIED,
+                    decision_request_id=decision.receipt.decision_request_id,
+                    permit_id=permit.permit_id,
+                    reason_codes=(
+                        "dependency_invalidated",
+                        "current_permit_rejected",
+                    ),
+                )
+                raise DecisionRuntimeDenied(
+                    ("dependency_invalidated", "current_permit_rejected")
+                )
             attempt = ExecutionAttempt.from_permit(
                 permit,
                 now_ms=self._clock_ms() if now_ms is None else now_ms,
@@ -1528,6 +2522,10 @@ __all__ = [
     "DECISION_RUNTIME_RECEIPT_SCHEMA",
     "DECISION_RUNTIME_VERSION",
     "EFFECT_OBSERVATION_SCHEMA",
+    "INCREMENTAL_REVALIDATION_REQUIREMENT_ID",
+    "RUNTIME_INVALIDATION_RECEIPT_SCHEMA",
+    "CanonicalDependencyChange",
+    "DependencyChangeEvent",
     "DecisionBoundary",
     "DecisionExecutionResult",
     "DecisionOutcome",
@@ -1546,5 +2544,10 @@ __all__ = [
     "DecisionRuntimeReceipt",
     "EffectObservationReceipt",
     "ObservedEffect",
+    "RuntimeInvalidationReceipt",
+    "RuntimeInvalidationResult",
+    "SemanticChange",
+    "SemanticChangeKind",
+    "canonical_dependency_change",
     "runtime_config_from_control_parameters",
 ]
