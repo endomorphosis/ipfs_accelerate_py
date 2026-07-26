@@ -34,6 +34,8 @@ The abstract from the paper is the following:
 
 This model was contributed by [HuggingFaceM4](https://huggingface.co/HuggingFaceM4). The original code can be found in the [Transformers IDEFICS implementation](https://github.com/huggingface/transformers/tree/main/src/transformers/models/idefics).
 
+For usage guidance, see the [IDEFICS task documentation](../tasks/idefics.md).
+
 
 <Tip warning={true}>
 
