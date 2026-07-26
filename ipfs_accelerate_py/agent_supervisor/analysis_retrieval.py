@@ -21,6 +21,7 @@ import re
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
@@ -29,6 +30,12 @@ ANALYSIS_RETRIEVAL_SCHEMA = (
 )
 ANALYSIS_EVIDENCE_REFERENCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.analysis-evidence-reference@1"
+)
+RETRIEVAL_SNAPSHOT_BINDING_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.retrieval-snapshot-binding@1"
+)
+BOUND_RETRIEVAL_CANDIDATE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.bound-retrieval-candidate@1"
 )
 DEFAULT_SIGNAL_WEIGHTS: Mapping[str, float] = {
     "lexical": 0.28,
@@ -81,6 +88,10 @@ class RetrievalValidationError(ValueError):
 
 class RetrievalBudgetError(RetrievalValidationError):
     """Raised when mandatory health and truncation metadata cannot fit."""
+
+
+class RetrievalBindingError(RetrievalValidationError):
+    """A candidate is not bound to the exact pinned retrieval snapshot."""
 
 
 class BackendState(str, Enum):
@@ -254,6 +265,274 @@ def _score(value: Any) -> float:
     if not math.isfinite(number):
         return 0.0
     return round(max(0.0, min(1.0, number)), 6)
+
+
+def _binding_text(value: Any, name: str, *, required: bool = True) -> str:
+    """Validate an identity without lossy whitespace or length normalization."""
+
+    if not isinstance(value, str):
+        raise RetrievalBindingError(f"{name} must be a string")
+    if value != value.strip() or "\x00" in value:
+        raise RetrievalBindingError(
+            f"{name} must not contain surrounding whitespace or NUL"
+        )
+    if required and not value:
+        raise RetrievalBindingError(f"{name} is required")
+    if len(value.encode("utf-8")) > 2048:
+        raise RetrievalBindingError(f"{name} exceeds 2048 UTF-8 bytes")
+    return value
+
+
+@dataclass(frozen=True)
+class RetrievalSnapshotBinding:
+    """Exact immutable roots against which advisory candidates are checked.
+
+    Approximate backends may rank only nodes from this snapshot and partition.
+    The binding deliberately carries model and embedding configuration even for
+    non-vector signals so a replay cannot silently substitute a mixed release.
+    """
+
+    graph_root_id: str
+    graph_id: str
+    partition_id: str
+    configuration_id: str
+    model_id: str
+    embedding_fingerprint: str
+    index_roots: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "graph_root_id",
+            "graph_id",
+            "partition_id",
+            "configuration_id",
+            "model_id",
+            "embedding_fingerprint",
+        ):
+            object.__setattr__(
+                self, name, _binding_text(getattr(self, name), name)
+            )
+        if not isinstance(self.index_roots, Mapping):
+            raise RetrievalBindingError("index_roots must be a mapping")
+        roots: dict[str, str] = {}
+        for raw_name, raw_root in self.index_roots.items():
+            name = _binding_text(raw_name, "index root name")
+            root = _binding_text(raw_root, f"index root {name}")
+            roots[name] = root
+        object.__setattr__(
+            self,
+            "index_roots",
+            MappingProxyType({
+                name: roots[name]
+                for name in sorted(roots, key=lambda item: (item.casefold(), item))
+            }),
+        )
+
+    @property
+    def binding_id(self) -> str:
+        return _digest("retrieval-snapshot", self.to_dict(include_binding_id=False))
+
+    def to_dict(self, *, include_binding_id: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": RETRIEVAL_SNAPSHOT_BINDING_SCHEMA,
+            "graph_root_id": self.graph_root_id,
+            "graph_id": self.graph_id,
+            "partition_id": self.partition_id,
+            "configuration_id": self.configuration_id,
+            "model_id": self.model_id,
+            "embedding_fingerprint": self.embedding_fingerprint,
+            "index_roots": dict(self.index_roots),
+        }
+        if include_binding_id:
+            payload["binding_id"] = self.binding_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RetrievalSnapshotBinding":
+        if not isinstance(payload, Mapping):
+            raise RetrievalBindingError("retrieval snapshot binding must be an object")
+        unknown = set(payload).difference(
+            {
+                "schema",
+                "binding_id",
+                "graph_root_id",
+                "graph_id",
+                "partition_id",
+                "configuration_id",
+                "model_id",
+                "embedding_fingerprint",
+                "index_roots",
+            }
+        )
+        if unknown:
+            raise RetrievalBindingError(
+                "retrieval snapshot binding contains unsupported fields: "
+                + ", ".join(sorted(str(item) for item in unknown))
+            )
+        schema = payload.get("schema", RETRIEVAL_SNAPSHOT_BINDING_SCHEMA)
+        if schema != RETRIEVAL_SNAPSHOT_BINDING_SCHEMA:
+            raise RetrievalBindingError(f"unsupported retrieval binding schema: {schema}")
+        result = cls(
+            graph_root_id=payload.get("graph_root_id", ""),
+            graph_id=payload.get("graph_id", ""),
+            partition_id=payload.get("partition_id", ""),
+            configuration_id=payload.get("configuration_id", ""),
+            model_id=payload.get("model_id", ""),
+            embedding_fingerprint=payload.get("embedding_fingerprint", ""),
+            index_roots=payload.get("index_roots") or {},
+        )
+        claimed = payload.get("binding_id")
+        if claimed not in (None, result.binding_id):
+            raise RetrievalBindingError("retrieval snapshot binding identity mismatch")
+        return result
+
+
+@dataclass(frozen=True)
+class BoundRetrievalCandidate:
+    """A compact context-only candidate with exact release bindings."""
+
+    node_id: str
+    source: str
+    score_millionths: int
+    binding: RetrievalSnapshotBinding
+    index_root_id: str
+    rank: int = 0
+    candidate_id: str = ""
+
+    def __post_init__(self) -> None:
+        node_id = _binding_text(self.node_id, "candidate node_id")
+        source = _binding_text(self.source, "candidate source")
+        index_root = _binding_text(
+            self.index_root_id, "candidate index_root_id", required=False
+        )
+        if (
+            isinstance(self.score_millionths, bool)
+            or not isinstance(self.score_millionths, int)
+            or not 0 <= self.score_millionths <= 1_000_000
+        ):
+            raise RetrievalBindingError(
+                "candidate score_millionths must be an integer from 0 through 1000000"
+            )
+        if (
+            isinstance(self.rank, bool)
+            or not isinstance(self.rank, int)
+            or self.rank < 0
+        ):
+            raise RetrievalBindingError("candidate rank must be a non-negative integer")
+        binding = self.binding
+        if not isinstance(binding, RetrievalSnapshotBinding):
+            if not isinstance(binding, Mapping):
+                raise RetrievalBindingError(
+                    "candidate binding must be a RetrievalSnapshotBinding"
+                )
+            binding = RetrievalSnapshotBinding.from_dict(binding)
+        expected_root = binding.index_roots.get(source, "")
+        if expected_root and index_root != expected_root:
+            raise RetrievalBindingError(
+                f"candidate index root does not match pinned {source} root"
+            )
+        if source in binding.index_roots and not index_root:
+            raise RetrievalBindingError(
+                f"candidate is missing pinned {source} index root"
+            )
+        object.__setattr__(self, "node_id", node_id)
+        object.__setattr__(self, "source", source)
+        object.__setattr__(self, "index_root_id", index_root)
+        object.__setattr__(self, "binding", binding)
+        derived = _digest(
+            "bound-retrieval-candidate",
+            self.to_dict(include_candidate_id=False),
+        )
+        if self.candidate_id and self.candidate_id != derived:
+            raise RetrievalBindingError("bound candidate identity mismatch")
+        object.__setattr__(self, "candidate_id", derived)
+
+    def to_dict(self, *, include_candidate_id: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": BOUND_RETRIEVAL_CANDIDATE_SCHEMA,
+            "node_id": self.node_id,
+            "source": self.source,
+            "score_millionths": self.score_millionths,
+            "rank": self.rank,
+            "index_root_id": self.index_root_id,
+            "binding": self.binding.to_dict(),
+            "authority": "context_only",
+            "proof_authority": False,
+        }
+        if include_candidate_id:
+            payload["candidate_id"] = self.candidate_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "BoundRetrievalCandidate":
+        if not isinstance(payload, Mapping):
+            raise RetrievalBindingError("bound retrieval candidate must be an object")
+        unknown = set(payload).difference(
+            {
+                "schema",
+                "candidate_id",
+                "node_id",
+                "source",
+                "score_millionths",
+                "rank",
+                "index_root_id",
+                "binding",
+                "authority",
+                "proof_authority",
+            }
+        )
+        if unknown:
+            raise RetrievalBindingError(
+                "bound candidate contains unsupported fields: "
+                + ", ".join(sorted(str(item) for item in unknown))
+            )
+        schema = payload.get("schema", BOUND_RETRIEVAL_CANDIDATE_SCHEMA)
+        if schema != BOUND_RETRIEVAL_CANDIDATE_SCHEMA:
+            raise RetrievalBindingError(f"unsupported bound candidate schema: {schema}")
+        if payload.get("proof_authority") not in (None, False):
+            raise RetrievalBindingError("retrieval candidate cannot claim proof authority")
+        if payload.get("authority") not in (None, "context_only"):
+            raise RetrievalBindingError("retrieval candidate authority must be context_only")
+        return cls(
+            node_id=payload.get("node_id", ""),
+            source=payload.get("source", ""),
+            score_millionths=payload.get("score_millionths", -1),
+            rank=payload.get("rank", 0),
+            index_root_id=payload.get("index_root_id", ""),
+            binding=payload.get("binding") or {},
+            candidate_id=payload.get("candidate_id", ""),
+        )
+
+    def validate_against(
+        self,
+        expected: RetrievalSnapshotBinding,
+        *,
+        node_ids: Iterable[str] = (),
+    ) -> None:
+        if self.binding.binding_id != expected.binding_id:
+            raise RetrievalBindingError(
+                "candidate snapshot, model, configuration, or partition is stale"
+            )
+        allowed = frozenset(str(item) for item in node_ids)
+        if allowed and self.node_id not in allowed:
+            raise RetrievalBindingError("candidate references a node outside the graph")
+
+
+def validate_bound_retrieval_candidate(
+    candidate: BoundRetrievalCandidate | Mapping[str, Any],
+    expected: RetrievalSnapshotBinding,
+    *,
+    node_ids: Iterable[str] = (),
+) -> BoundRetrievalCandidate:
+    """Normalize and verify one advisory hit against an exact snapshot."""
+
+    result = (
+        candidate
+        if isinstance(candidate, BoundRetrievalCandidate)
+        else BoundRetrievalCandidate.from_dict(candidate)
+    )
+    result.validate_against(expected, node_ids=node_ids)
+    return result
 
 
 def _cosine(left: Sequence[Any], right: Sequence[Any]) -> float:
@@ -2358,6 +2637,7 @@ AnalysisRetrievalQuery = RetrievalQuery
 AnalysisRetrievalLimits = RetrievalLimits
 AnalysisRetrievalResponse = RetrievalResponse
 AnalysisRetrievalError = RetrievalValidationError
+RetrievalCandidateBinding = RetrievalSnapshotBinding
 retrieve_graph_evidence = retrieve_analysis_evidence
 retrieve = retrieve_analysis_evidence
 retrieval_results_to_context_references = (
@@ -2368,7 +2648,9 @@ retrieval_results_to_context_references = (
 __all__ = [
     "ANALYSIS_EVIDENCE_REFERENCE_SCHEMA",
     "ANALYSIS_RETRIEVAL_SCHEMA",
+    "BOUND_RETRIEVAL_CANDIDATE_SCHEMA",
     "DEFAULT_SIGNAL_WEIGHTS",
+    "RETRIEVAL_SNAPSHOT_BINDING_SCHEMA",
     "SIGNAL_ORDER",
     "AnalysisRetrievalLimits",
     "AnalysisRetrievalError",
@@ -2377,21 +2659,26 @@ __all__ = [
     "AnalysisRetriever",
     "BackendHealth",
     "BackendState",
+    "BoundRetrievalCandidate",
     "BoundedGraphRAGRetriever",
     "EvidenceReference",
     "GraphRAGRetriever",
     "MultiSignalGraphRAGRetriever",
     "RetrievalLimits",
     "RetrievalBudgetError",
+    "RetrievalBindingError",
+    "RetrievalCandidateBinding",
     "RetrievalQuery",
     "RetrievalResponse",
     "RetrievalResult",
+    "RetrievalSnapshotBinding",
     "RetrievalValidationError",
     "SignalScore",
     "TruncationMetadata",
     "retrieve",
     "retrieve_analysis_evidence",
     "retrieve_graph_evidence",
+    "validate_bound_retrieval_candidate",
     "retrieval_response_to_context_references",
     "retrieval_results_to_context_references",
     "retrieval_result_to_context_reference",
