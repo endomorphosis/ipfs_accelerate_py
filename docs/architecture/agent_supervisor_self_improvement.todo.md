@@ -3780,7 +3780,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-117 Replace idle polling and full-state rewrites with event-driven delta checkpoints
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: reliability
