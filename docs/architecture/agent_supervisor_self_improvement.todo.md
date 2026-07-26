@@ -3636,7 +3636,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-109 Assemble authoritative post-merge semantic and proof evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: validation
