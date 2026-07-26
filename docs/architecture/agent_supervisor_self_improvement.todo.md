@@ -3798,7 +3798,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-118 Add bounded crash recovery, fault injection, and state repair evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: reliability
