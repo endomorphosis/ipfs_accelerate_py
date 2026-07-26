@@ -4202,3 +4202,14 @@ planner, and refill behavior defaults to shadow mode.
 - Outputs: ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/test_agent_supervisor_control_conformance_v2.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-26-asi-140-asi-115-retry-budget.md
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASI-115. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-26-asi-140-asi-115-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASI-115 from strategy blocked_tasks.
+
+## ASI-141 Resolve validation retry-budget failure for ASI-137
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASI-136
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_runtime.py, ipfs_accelerate_py/agent_supervisor/task_proposal_router.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, test/api/test_agent_supervisor_decision_runtime_e2e.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-26-asi-141-asi-137-retry-budget.md
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASI-137. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-26-asi-141-asi-137-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASI-137 from strategy blocked_tasks.
