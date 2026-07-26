@@ -51,7 +51,7 @@ This model was contributed by [ylacombe](https://huggingface.co/ylacombe). The o
 <PipelineTag pipeline="audio-classification"/>
 
 - [`Wav2Vec2BertForSequenceClassification`] can be used by adapting this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/audio-classification).
-- See also: [Audio classification task guide](../tasks/audio_classification)
+- See also: [Audio classification task guide](../tasks/audio_classification.md)
 
 
 ## Wav2Vec2BertConfig
