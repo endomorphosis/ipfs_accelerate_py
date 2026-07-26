@@ -164,7 +164,7 @@ following speedups during training and inference.
 
 ## Resources
 
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## GPTNeoXConfig
 
