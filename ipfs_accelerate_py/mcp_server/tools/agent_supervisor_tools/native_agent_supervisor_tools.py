@@ -436,6 +436,14 @@ def register_native_agent_supervisor_tools(manager: Any) -> None:
         manager.register_tool(**definition)
 
 
+# Stable generation-2 spellings are aliases, not wrappers.  Keeping the
+# callable objects identical preserves the reviewed discovery and publication
+# behavior (including their operation/schema identities) while retaining the
+# original names for generation-1 callers.
+agent_supervisor_v2_discovery_manifest = agent_supervisor_discovery_manifest
+mcp_v2_control_surface_publication = mcp_control_surface_publication
+
+
 __all__ = [
     "AGENT_SUPERVISOR_MCP_CATEGORY",
     "AGENT_SUPERVISOR_MCP_DISPATCH_MODE",
@@ -444,11 +452,13 @@ __all__ = [
     "AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV",
     "AgentSupervisorMCPConfigurationError",
     "agent_supervisor_discovery_manifest",
+    "agent_supervisor_v2_discovery_manifest",
     "agent_supervisor_service_resolution_count",
     "agent_supervisor_control",
     "configure_agent_supervisor_control",
     "execute_agent_supervisor_operation",
     "mcp_control_surface_publication",
+    "mcp_v2_control_surface_publication",
     "register_native_agent_supervisor_tools",
     "validate_agent_supervisor_mcp_catalog",
     *[tool.__name__ for tool in AGENT_SUPERVISOR_OPERATION_TOOLS.values()],
