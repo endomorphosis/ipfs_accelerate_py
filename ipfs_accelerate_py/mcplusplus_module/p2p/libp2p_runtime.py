@@ -680,17 +680,32 @@ def make_rendezvous_service(host: Any) -> Any | None:
     )
 
 
-def make_rendezvous_client(host: Any) -> Any | None:
-    """Construct a py-libp2p RendezvousClient across API variants."""
+def make_rendezvous_client(
+    host: Any,
+    rendezvous_peer: Any | None = None,
+) -> Any | None:
+    """Construct a py-libp2p RendezvousClient across API variants.
 
-    return _make_first_available(
-        (
-            ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
-            ("libp2p.discovery.rendezvous", "RendezvousClient"),
-            ("libp2p.rendezvous", "RendezvousClient"),
-        ),
-        host,
+    Current py-libp2p requires the exact rendezvous server peer ID in addition
+    to the host.  Older builds accepted only ``host``.  The previous one-arg
+    call silently returned ``None`` on current builds, making rendezvous appear
+    configured while it could never run.
+    """
+
+    module_symbols = (
+        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
+        ("libp2p.discovery.rendezvous", "RendezvousClient"),
+        ("libp2p.rendezvous", "RendezvousClient"),
     )
+    if rendezvous_peer is not None:
+        client = _make_first_available(
+            module_symbols,
+            host,
+            rendezvous_peer,
+        )
+        if client is not None:
+            return client
+    return _make_first_available(module_symbols, host)
 
 
 def get_background_trio_service():

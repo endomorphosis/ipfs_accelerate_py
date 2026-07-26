@@ -37,6 +37,7 @@ Additional optional providers (opt-in by selecting provider):
 from __future__ import annotations
 
 import concurrent.futures
+import importlib
 import json
 import os
 import hashlib
@@ -53,6 +54,58 @@ from typing import Callable, Dict, Iterable, List, Optional, Protocol, Sequence,
 from .router_deps import RouterDeps, get_default_router_deps
 
 logger = logging.getLogger(__name__)
+
+
+def get_accelerate_manager(
+    *,
+    deps: Optional[RouterDeps] = None,
+    purpose: str = "embeddings",
+    enable_distributed: bool = True,
+    resources: Optional[dict[str, object]] = None,
+    ipfs_gateway: Optional[str] = None,
+) -> object | None:
+    """Return a router dependency's cached accelerator manager when supported."""
+
+    resolved = deps or get_default_router_deps()
+    factory = getattr(resolved, "get_accelerate_manager", None)
+    if not callable(factory):
+        return None
+    try:
+        return factory(
+            purpose=purpose,
+            enable_distributed=enable_distributed,
+            resources=resources,
+            ipfs_gateway=ipfs_gateway,
+        )
+    except Exception:
+        return None
+
+
+def get_accelerate_status() -> dict[str, object]:
+    """Return lightweight availability status without initializing a backend."""
+
+    env_value = os.environ.get("IPFS_ACCELERATE_ENABLED", "1").lower()
+    env_disabled = env_value in {"0", "false", "no", "disabled"}
+    if env_disabled:
+        return {
+            "available": False,
+            "enabled": False,
+            "env_disabled": True,
+            "env_var": env_value,
+        }
+
+    try:
+        import importlib.util
+
+        available = importlib.util.find_spec("ipfs_accelerate_py") is not None
+    except Exception:
+        available = False
+    return {
+        "available": available,
+        "enabled": True,
+        "env_disabled": False,
+        "env_var": env_value,
+    }
 
 
 class EmbeddingsRouterError(RuntimeError):
@@ -106,22 +159,38 @@ def _truthy(value: Optional[str]) -> bool:
 
 
 def _cache_enabled() -> bool:
-    return os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE", "1").strip() != "0"
+    value = (
+        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_CACHE")
+        or "1"
+    )
+    return value.strip() != "0"
 
 
 def _response_cache_enabled() -> bool:
-    value = os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE")
+    value = (
+        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE")
+    )
     if value is None:
         return True  # Default to enabled
     return str(value).strip() != "0"
 
 
 def _response_cache_key_strategy() -> str:
-    return os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE_KEY", "sha256").strip().lower() or "sha256"
+    return (
+        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE_KEY")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_CACHE_KEY")
+        or "sha256"
+    ).strip().lower() or "sha256"
 
 
 def _response_cache_cid_base() -> str:
-    return os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE_CID_BASE", "base32").strip() or "base32"
+    return (
+        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE_CID_BASE")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_CACHE_CID_BASE")
+        or "base32"
+    ).strip() or "base32"
 
 
 def _stable_kwargs_digest(kwargs: Dict[str, object]) -> str:
@@ -165,12 +234,27 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
     if pk == "openrouter":
         return (
             os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_EMBEDDINGS_MODEL")
+            or os.getenv("IPFS_DATASETS_PY_OPENROUTER_EMBEDDINGS_MODEL")
             or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL")
+            or os.getenv("IPFS_DATASETS_PY_EMBEDDINGS_MODEL")
+            or ""
+        ).strip()
+    if _is_hf_inference_provider_name(pk):
+        return (
+            os.getenv("IPFS_ACCELERATE_PY_HF_EMBEDDINGS_MODEL")
+            or os.getenv("IPFS_DATASETS_PY_HF_EMBEDDINGS_MODEL")
+            or os.getenv("IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL")
+            or os.getenv("IPFS_DATASETS_PY_HF_INFERENCE_MODEL")
+            or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL")
+            or os.getenv("IPFS_DATASETS_PY_EMBEDDINGS_MODEL")
             or ""
         ).strip()
 
     # Local adapter / default.
-    return (os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL", "") or "").strip()
+    return _coalesce_env(
+        "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+        "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+    )
 
 
 def _response_cache_key(
@@ -188,7 +272,8 @@ def _response_cache_key(
     strategy = _response_cache_key_strategy()
     if strategy == "cid":
         try:
-            from .ipfs_multiformats import cid_for_obj
+            from .utils.cid_utils import cid_for_obj
+
             payload = {
                 "type": "embeddings_response",
                 "provider": provider_key,
@@ -311,13 +396,182 @@ def _coalesce_env(*names: str) -> str:
     return ""
 
 
+def _resolve_hf_api_token() -> str:
+    token = _coalesce_env(
+        "IPFS_ACCELERATE_PY_HF_API_TOKEN",
+        "IPFS_DATASETS_PY_HF_API_TOKEN",
+        "HUGGINGFACEHUB_API_TOKEN",
+        "HUGGINGFACE_API_TOKEN",
+        "HF_TOKEN",
+    )
+    if token:
+        return token
+    try:
+        hub = importlib.import_module("huggingface_hub")
+        getter = getattr(hub, "get_token", None)
+        return str(getter() if callable(getter) else "").strip()
+    except Exception:
+        return ""
+
+
+def _hf_token_fingerprint() -> str:
+    token = _resolve_hf_api_token()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:12] if token else ""
+
+
+def _resolve_hf_bill_to(*, kwargs: Optional[dict[str, object]] = None) -> str:
+    if kwargs:
+        for key in ("hf_bill_to", "bill_to", "organization", "org"):
+            value = kwargs.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+    return _coalesce_env(
+        "OPENROUTER_HF_BILL_TO",
+        "IPFS_ACCELERATE_PY_HF_BILL_TO",
+        "IPFS_DATASETS_PY_HF_BILL_TO",
+        "HUGGINGFACE_BILL_TO",
+        "HF_BILL_TO",
+        "HF_ORGANIZATION",
+        "HUGGINGFACE_ORG",
+    )
+
+
+def _is_hf_inference_provider_name(name: Optional[str]) -> bool:
+    return str(name or "").strip().lower() in {
+        "hf_api",
+        "hf_inference",
+        "hf_inference_api",
+        "huggingface_inference",
+    }
+
+
+def _is_hf_embedding_compatibility_error(exc: BaseException) -> bool:
+    message = str(exc or "").lower()
+    if "http 402" in message:
+        return False
+    return any(
+        token in message
+        for token in (
+            "http 404",
+            "not found",
+            "missing 1 required positional argument: 'sentences'",
+            "pipeline",
+            "task",
+            "unsupported",
+            "does not support",
+        )
+    )
+
+
+def _hf_embeddings_default_fallback_models() -> list[str]:
+    return [
+        "BAAI/bge-small-en-v1.5",
+        "sentence-transformers/all-MiniLM-L6-v2",
+        "thenlper/gte-small",
+    ]
+
+
+def _hf_dynamic_model_discovery_enabled(*, kwargs: dict[str, object]) -> bool:
+    raw = kwargs.get("hf_dynamic_model_discovery")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_DYNAMIC_MODEL_DISCOVERY",
+            "IPFS_DATASETS_PY_HF_DYNAMIC_MODEL_DISCOVERY",
+        ) or "1"
+    return _truthy(str(raw))
+
+
+def _hf_embeddings_discovery_limit(*, kwargs: dict[str, object]) -> int:
+    raw = kwargs.get("hf_embeddings_discovery_limit")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_DISCOVERY_LIMIT",
+            "IPFS_DATASETS_PY_HF_EMBEDDINGS_DISCOVERY_LIMIT",
+        ) or "20"
+    try:
+        return max(1, int(raw))
+    except Exception:
+        return 20
+
+
+def _hf_embeddings_discovery_tags(*, kwargs: dict[str, object]) -> list[str]:
+    raw = kwargs.get("hf_embeddings_discovery_tags")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_DISCOVERY_TAGS",
+            "IPFS_DATASETS_PY_HF_EMBEDDINGS_DISCOVERY_TAGS",
+        ) or "feature-extraction,sentence-similarity"
+    return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+
+@lru_cache(maxsize=32)
+def _discover_hf_models_for_pipeline(
+    *,
+    pipeline_tag: str,
+    limit: int,
+) -> tuple[str, ...]:
+    try:
+        hub = importlib.import_module("huggingface_hub")
+        api_cls = getattr(hub, "HfApi", None)
+        if api_cls is None:
+            return ()
+        models = api_cls().list_models(
+            inference_provider="hf-inference",
+            pipeline_tag=pipeline_tag,
+            limit=max(1, int(limit)),
+            token=_resolve_hf_api_token() or None,
+        )
+        output: list[str] = []
+        for item in models:
+            model_id = str(getattr(item, "id", "") or "").strip()
+            if model_id and model_id not in output:
+                output.append(model_id)
+        return tuple(output)
+    except Exception:
+        return ()
+
+
+def _hf_embeddings_fallback_models(*, kwargs: dict[str, object]) -> list[str]:
+    raw = kwargs.get("hf_model_fallbacks")
+    if raw is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_FALLBACK_MODELS",
+            "IPFS_DATASETS_PY_HF_EMBEDDINGS_FALLBACK_MODELS",
+        )
+    if str(raw or "").strip():
+        return [item.strip() for item in str(raw).split(",") if item.strip()]
+    models: list[str] = []
+    if _hf_dynamic_model_discovery_enabled(kwargs=kwargs):
+        for tag in _hf_embeddings_discovery_tags(kwargs=kwargs):
+            for model_id in _discover_hf_models_for_pipeline(
+                pipeline_tag=tag,
+                limit=_hf_embeddings_discovery_limit(kwargs=kwargs),
+            ):
+                if model_id not in models:
+                    models.append(model_id)
+    for model_id in _hf_embeddings_default_fallback_models():
+        if model_id not in models:
+            models.append(model_id)
+    return models
+
+
 def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
     """Get OpenRouter embeddings provider."""
-    api_key = _coalesce_env("IPFS_ACCELERATE_PY_OPENROUTER_API_KEY", "OPENROUTER_API_KEY")
+    api_key = _coalesce_env(
+        "IPFS_ACCELERATE_PY_OPENROUTER_API_KEY",
+        "IPFS_DATASETS_PY_OPENROUTER_API_KEY",
+        "OPENROUTER_API_KEY",
+    )
     if not api_key:
         return None
 
-    base_url = os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    base_url = (
+        _coalesce_env(
+            "IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL",
+            "IPFS_DATASETS_PY_OPENROUTER_BASE_URL",
+        )
+        or "https://openrouter.ai/api/v1"
+    ).rstrip("/")
     referer = os.getenv("OPENROUTER_HTTP_REFERER")
     app_title = os.getenv("OPENROUTER_APP_TITLE")
 
@@ -336,7 +590,9 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
             model = (
                 model_name
                 or os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_EMBEDDINGS_MODEL")
+                or os.getenv("IPFS_DATASETS_PY_OPENROUTER_EMBEDDINGS_MODEL")
                 or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL")
+                or os.getenv("IPFS_DATASETS_PY_EMBEDDINGS_MODEL")
                 or "text-embedding-3-small"
             )
             inputs = list(texts)
@@ -351,6 +607,9 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
                 headers["HTTP-Referer"] = referer
             if app_title:
                 headers["X-Title"] = app_title
+            bill_to = _resolve_hf_bill_to(kwargs=dict(kwargs))
+            if bill_to:
+                headers["X-HF-Bill-To"] = bill_to
 
             req = urllib.request.Request(
                 f"{base_url}/embeddings",
@@ -392,6 +651,130 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
             return embeddings
 
     return _OpenRouterEmbeddingsProvider()
+
+
+def _normalize_hf_embedding_payload(data: object) -> List[List[float]]:
+    if isinstance(data, dict):
+        if isinstance(data.get("error"), str):
+            raise RuntimeError(f"HF Inference API error: {data.get('error')}")
+        if isinstance(data.get("embeddings"), list):
+            data = data["embeddings"]
+    if not isinstance(data, list) or not data:
+        raise RuntimeError("HF Inference API embeddings response missing vectors")
+    if isinstance(data[0], (int, float)):
+        return [[float(value) for value in data]]
+    vectors: List[List[float]] = []
+    for item in data:
+        if isinstance(item, list):
+            vectors.append([float(value) for value in item])
+        elif isinstance(item, dict) and isinstance(item.get("embedding"), list):
+            vectors.append([float(value) for value in item["embedding"]])
+        else:
+            raise RuntimeError(
+                "HF Inference API returned malformed embedding vector"
+            )
+    return vectors
+
+
+def _get_hf_inference_api_provider() -> Optional[EmbeddingsProvider]:
+    api_token = _resolve_hf_api_token()
+    if not api_token:
+        return None
+    base_url = (
+        _coalesce_env(
+            "IPFS_ACCELERATE_PY_HF_INFERENCE_BASE_URL",
+            "IPFS_DATASETS_PY_HF_INFERENCE_BASE_URL",
+        )
+        or "https://router.huggingface.co/hf-inference/models"
+    ).rstrip("/")
+
+    class _HFInferenceAPIEmbeddingsProvider:
+        router_provider_name = "hf_inference_api"
+
+        def embed_texts(
+            self,
+            texts: Iterable[str],
+            *,
+            model_name: Optional[str] = None,
+            device: Optional[str] = None,
+            **kwargs: object,
+        ) -> List[List[float]]:
+            _ = device
+            model = model_name or _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_MODEL",
+                "IPFS_DATASETS_PY_HF_EMBEDDINGS_MODEL",
+                "IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL",
+                "IPFS_DATASETS_PY_HF_INFERENCE_MODEL",
+                "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+                "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+            ) or "sentence-transformers/all-MiniLM-L6-v2"
+            inputs = list(texts)
+            if not inputs:
+                return []
+            timeout = float(kwargs.get("timeout", 120))
+            wait_for_model_raw = kwargs.get("wait_for_model", True)
+            use_cache_raw = kwargs.get("use_cache", True)
+            wait_for_model = (
+                _truthy(wait_for_model_raw)
+                if isinstance(wait_for_model_raw, str)
+                else bool(wait_for_model_raw)
+            )
+            use_cache = (
+                _truthy(use_cache_raw)
+                if isinstance(use_cache_raw, str)
+                else bool(use_cache_raw)
+            )
+            payload: dict[str, object] = {
+                "inputs": inputs,
+                "options": {
+                    "wait_for_model": wait_for_model,
+                    "use_cache": use_cache,
+                },
+            }
+            for key in ("truncate", "truncation", "normalize"):
+                value = kwargs.get(key)
+                if value is not None:
+                    payload[key] = value
+            headers = {
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            bill_to = _resolve_hf_bill_to(kwargs=dict(kwargs))
+            if bill_to:
+                headers["X-HF-Bill-To"] = bill_to
+            request = urllib.request.Request(
+                f"{base_url}/{model}",
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers=headers,
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    raw = response.read().decode("utf-8", errors="replace")
+            except urllib.error.HTTPError as exc:
+                detail = (
+                    exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+                )
+                raise RuntimeError(
+                    f"HF Inference API HTTP {exc.code}: {detail or exc.reason}"
+                ) from exc
+            except Exception as exc:
+                raise RuntimeError(
+                    f"HF Inference API request failed: {exc}"
+                ) from exc
+            try:
+                data = json.loads(raw)
+            except Exception as exc:
+                raise RuntimeError(
+                    "HF Inference API returned invalid JSON"
+                ) from exc
+            vectors = _normalize_hf_embedding_payload(data)
+            if not vectors:
+                raise RuntimeError("HF Inference API returned no embeddings")
+            return vectors
+
+    return _HFInferenceAPIEmbeddingsProvider()
 
 
 def _get_xai_embeddings_provider() -> Optional[EmbeddingsProvider]:
@@ -618,8 +1001,14 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
             device: Optional[str] = None,
             **kwargs: object,
         ) -> List[List[float]]:
-            model = model_name or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-            device_str = device or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE", "cpu")
+            model = model_name or _coalesce_env(
+                "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+                "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+            ) or "sentence-transformers/all-MiniLM-L6-v2"
+            device_str = device or _coalesce_env(
+                "IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE",
+                "IPFS_DATASETS_PY_EMBEDDINGS_DEVICE",
+            ) or "cpu"
             
             # Get or create model
             cache_key = f"{model}::{device_str}"
@@ -679,6 +1068,193 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
             return embeddings
 
     return _HuggingFaceEmbeddingsProvider()
+
+
+def _get_local_adapter_provider(
+    *,
+    deps: Optional[RouterDeps] = None,
+) -> Optional[EmbeddingsProvider]:
+    """Build the dependency-injectable local transformers adapter."""
+
+    resolved_deps = deps or get_default_router_deps()
+
+    def _resolve_module(name: str) -> object | None:
+        cache_key = f"pip::{name}"
+        getter = getattr(resolved_deps, "get_cached", None)
+        cached = getter(cache_key) if callable(getter) else None
+        if cached is not None:
+            return cached
+        try:
+            module = importlib.import_module(name)
+        except Exception:
+            return None
+        setter = getattr(resolved_deps, "set_cached", None)
+        if callable(setter):
+            setter(cache_key, module)
+        return module
+
+    torch_module = _resolve_module("torch")
+    transformers_module = _resolve_module("transformers")
+    if torch_module is None or transformers_module is None:
+        return None
+
+    auto_tokenizer = getattr(transformers_module, "AutoTokenizer", None)
+    auto_model = getattr(transformers_module, "AutoModel", None)
+    if auto_tokenizer is None or auto_model is None:
+        return None
+
+    class _LocalAdapterProvider:
+        router_provider_name = "adapter"
+
+        def __init__(self) -> None:
+            self._runtimes: dict[tuple[str, str], tuple[object, object]] = {}
+
+        def embed_texts(
+            self,
+            texts: Iterable[str],
+            *,
+            model_name: Optional[str] = None,
+            device: Optional[str] = None,
+            **kwargs: object,
+        ) -> List[List[float]]:
+            inputs = list(texts)
+            if not inputs:
+                return []
+            model = model_name or _coalesce_env(
+                "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+                "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+            ) or "sentence-transformers/all-MiniLM-L6-v2"
+            device_name = device or _coalesce_env(
+                "IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE",
+                "IPFS_DATASETS_PY_EMBEDDINGS_DEVICE",
+            )
+            if not device_name:
+                try:
+                    device_name = (
+                        "cuda"
+                        if bool(torch_module.cuda.is_available())
+                        else "cpu"
+                    )
+                except Exception:
+                    device_name = "cpu"
+
+            runtime_key = (model, device_name)
+            runtime = self._runtimes.get(runtime_key)
+            if runtime is None:
+                tokenizer = auto_tokenizer.from_pretrained(model)
+                model_object = auto_model.from_pretrained(model)
+                move_model = getattr(model_object, "to", None)
+                if callable(move_model):
+                    model_object = move_model(device_name)
+                evaluate = getattr(model_object, "eval", None)
+                if callable(evaluate):
+                    evaluate()
+                runtime = (tokenizer, model_object)
+                self._runtimes[runtime_key] = runtime
+
+            tokenizer, model_object = runtime
+            tokenizer_kwargs: dict[str, object] = {
+                "padding": True,
+                "truncation": True,
+                "return_tensors": "pt",
+            }
+            max_length = kwargs.get("max_length")
+            if max_length is not None:
+                tokenizer_kwargs["max_length"] = int(max_length)
+            encoded = tokenizer(inputs, **tokenizer_kwargs)
+            if isinstance(encoded, dict):
+                encoded = {
+                    key: (
+                        value.to(device_name)
+                        if callable(getattr(value, "to", None))
+                        else value
+                    )
+                    for key, value in encoded.items()
+                }
+            no_grad = getattr(torch_module, "no_grad", None)
+            if not callable(no_grad):
+                raise RuntimeError("torch.no_grad is unavailable")
+            with no_grad():
+                output = model_object(**encoded)
+                hidden = getattr(output, "last_hidden_state", None)
+                if hidden is None:
+                    raise RuntimeError(
+                        "transformers model did not return last_hidden_state"
+                    )
+                pooled = hidden.mean(dim=1)
+            detach = getattr(pooled, "detach", None)
+            if callable(detach):
+                pooled = detach()
+            cpu = getattr(pooled, "cpu", None)
+            if callable(cpu):
+                pooled = cpu()
+            tolist = getattr(pooled, "tolist", None)
+            values = tolist() if callable(tolist) else pooled
+            if (
+                len(inputs) == 1
+                and isinstance(values, list)
+                and values
+                and isinstance(values[0], (int, float))
+            ):
+                values = [values]
+            return _normalize_embedding_vectors(
+                values,
+                expected_count=len(inputs),
+            )
+
+    return _LocalAdapterProvider()
+
+
+def _get_accelerate_provider(deps: RouterDeps) -> Optional[EmbeddingsProvider]:
+    enable_value = (
+        os.getenv("IPFS_ACCELERATE_PY_ENABLE_IPFS_ACCELERATE")
+        or os.getenv("IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE")
+    )
+    if enable_value and not _truthy(enable_value):
+        return None
+    manager_factory = getattr(deps, "get_accelerate_manager", None)
+    if not callable(manager_factory):
+        return None
+    try:
+        manager = manager_factory(
+            purpose="embeddings_router",
+            enable_distributed=True,
+            resources={"purpose": "embeddings_router"},
+        )
+    except Exception:
+        return None
+    if manager is None:
+        return None
+
+    class _AccelerateEmbeddingsProvider:
+        router_provider_name = "accelerate"
+
+        def embed_texts(
+            self,
+            texts: Iterable[str],
+            *,
+            model_name: Optional[str] = None,
+            device: Optional[str] = None,
+            **kwargs: object,
+        ) -> List[List[float]]:
+            payload = {"texts": list(texts), "device": device, **kwargs}
+            result = manager.run_inference(
+                model_name
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+                    "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+                ),
+                payload,
+                task_type="embedding",
+            )
+            embedded = result.get("embeddings")
+            if isinstance(embedded, list):
+                return [[float(value) for value in row] for row in embedded]
+            raise RuntimeError(
+                "ipfs_accelerate_py provider did not return embeddings"
+            )
+
+    return _AccelerateEmbeddingsProvider()
 
 
 def _get_backend_manager_provider(deps: RouterDeps) -> Optional[EmbeddingsProvider]:
@@ -745,11 +1321,21 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[EmbeddingsProvid
 def _provider_cache_key() -> tuple:
     return (
         os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_EMBEDDINGS_PROVIDER", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_API_KEY", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_OPENROUTER_API_KEY", "").strip(),
         os.getenv("OPENROUTER_API_KEY", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_EMBEDDINGS_MODEL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_OPENROUTER_EMBEDDINGS_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_OPENROUTER_BASE_URL", "").strip(),
+        _hf_token_fingerprint(),
+        os.getenv("IPFS_ACCELERATE_PY_HF_EMBEDDINGS_MODEL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_HF_EMBEDDINGS_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_HF_INFERENCE_BASE_URL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_HF_INFERENCE_BASE_URL", "").strip(),
         os.getenv("XAI_API_KEY", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_API_KEY", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_EMBEDDINGS_MODEL", "").strip(),
@@ -760,7 +1346,9 @@ def _provider_cache_key() -> tuple:
         os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_BACKEND", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_EMBEDDINGS_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_EMBEDDINGS_DEVICE", "").strip(),
     )
 
 
@@ -781,6 +1369,8 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[Embedding
         return None
     if key == "openrouter":
         return _get_openrouter_provider()
+    if _is_hf_inference_provider_name(key):
+        return _get_hf_inference_api_provider()
     if key in {"xai", "grok", "xai_grok"}:
         return _get_xai_embeddings_provider()
     if key in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
@@ -789,7 +1379,11 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[Embedding
         return _get_gemini_cli_provider()
     if key in {"hf", "huggingface", "local_hf"}:
         return _get_huggingface_provider()
-    if key in {"backend_manager", "accelerate"}:
+    if key in {"adapter", "local", "local_adapter"}:
+        return _get_local_adapter_provider(deps=deps)
+    if key == "accelerate":
+        return _get_accelerate_provider(deps) or _get_backend_manager_provider(deps)
+    if key == "backend_manager":
         return _get_backend_manager_provider(deps)
     return None
 
@@ -806,11 +1400,10 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         raise ValueError(f"Unknown embeddings provider: {preferred}")
 
     # 1) Registered providers can opt-in via env ordering if desired.
-    preferred_env = (
-        os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER", "")
-        .strip()
-        .lower()
-    )
+    preferred_env = _coalesce_env(
+        "IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER",
+        "IPFS_DATASETS_PY_EMBEDDINGS_PROVIDER",
+    ).lower()
     if preferred_env:
         info = _PROVIDER_REGISTRY.get(preferred_env)
         if info is not None:
@@ -819,13 +1412,22 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         if builtin is not None:
             return builtin
 
-    # 2) Optional backend manager provider.
+    # 2) Optional injected accelerator or backend manager provider.
+    accelerate_provider = _get_accelerate_provider(deps)
+    if accelerate_provider is not None:
+        return accelerate_provider
     backend_manager_provider = _get_backend_manager_provider(deps)
     if backend_manager_provider is not None:
         return backend_manager_provider
 
     # Try optional providers if available.
-    for name in ["openrouter", "xai", "meta_ai", "gemini_cli"]:
+    for name in [
+        "openrouter",
+        "hf_inference_api",
+        "xai",
+        "meta_ai",
+        "gemini_cli",
+    ]:
         candidate = _builtin_provider_by_name(name, deps=deps)
         if candidate is not None:
             return candidate
@@ -954,12 +1556,14 @@ def embed_texts(
 
     cache_hits = len(inputs) - len(missing_indices)
     fallback_used = False
+    used_model_name = model_name
 
     def _cache_vectors(
         source_texts: Sequence[str],
         vectors: Sequence[Sequence[float]],
         *,
         cache_provider: str,
+        cache_model_name: Optional[str],
     ) -> None:
         if not cache_enabled:
             return
@@ -967,7 +1571,7 @@ def embed_texts(
             try:
                 cache_key = _response_cache_key(
                     provider=cache_provider,
-                    model_name=model_name,
+                    model_name=cache_model_name,
                     device=device,
                     text=text,
                     kwargs=dict(kwargs),
@@ -985,16 +1589,55 @@ def embed_texts(
         active_backend: EmbeddingsProvider,
         source_texts: Sequence[str],
     ) -> List[List[float]]:
-        raw = active_backend.embed_texts(
-            source_texts,
-            model_name=model_name,
-            device=device,
-            **kwargs,
-        )
-        return _normalize_embedding_vectors(
-            raw,
-            expected_count=len(source_texts),
-        )
+        nonlocal fallback_used, used_model_name
+
+        def _generate_for_model(active_model_name: Optional[str]) -> List[List[float]]:
+            raw = active_backend.embed_texts(
+                source_texts,
+                model_name=active_model_name,
+                device=device,
+                **kwargs,
+            )
+            return _normalize_embedding_vectors(
+                raw,
+                expected_count=len(source_texts),
+            )
+
+        try:
+            used_model_name = model_name
+            return _generate_for_model(model_name)
+        except Exception as initial_error:
+            if not (
+                _is_hf_inference_provider_name(provider_used)
+                and _is_hf_embedding_compatibility_error(initial_error)
+            ):
+                raise
+
+            attempted = {
+                value
+                for value in (
+                    str(model_name or "").strip(),
+                    _coalesce_env(
+                        "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_MODEL",
+                        "IPFS_DATASETS_PY_HF_EMBEDDINGS_MODEL",
+                    ),
+                )
+                if value
+            }
+            for fallback_model in _hf_embeddings_fallback_models(
+                kwargs=dict(kwargs)
+            ):
+                if fallback_model in attempted:
+                    continue
+                attempted.add(fallback_model)
+                try:
+                    vectors = _generate_for_model(fallback_model)
+                except Exception:
+                    continue
+                used_model_name = fallback_model
+                fallback_used = True
+                return vectors
+            raise initial_error
 
     try:
         if missing_indices:
@@ -1006,6 +1649,7 @@ def embed_texts(
                 missing_texts,
                 generated,
                 cache_provider=provider_used,
+                cache_model_name=used_model_name,
             )
 
         try:
@@ -1021,7 +1665,12 @@ def embed_texts(
             result = _generate(backend, inputs)
             cache_hits = 0
             missing_indices = list(range(len(inputs)))
-            _cache_vectors(inputs, result, cache_provider=provider_used)
+            _cache_vectors(
+                inputs,
+                result,
+                cache_provider=provider_used,
+                cache_model_name=used_model_name,
+            )
     except Exception as primary_error:
         logger.debug("Primary embeddings provider failed: %s", primary_error)
         if (
@@ -1043,7 +1692,12 @@ def embed_texts(
                     fallback_used = True
                     cache_hits = 0
                     missing_indices = list(range(len(inputs)))
-                    _cache_vectors(inputs, result, cache_provider=provider_used)
+                    _cache_vectors(
+                        inputs,
+                        result,
+                        cache_provider=provider_used,
+                        cache_model_name=used_model_name,
+                    )
                 except Exception:
                     _set_last_embedding_trace(
                         status="error",
@@ -1338,6 +1992,7 @@ def embed_texts_batched(
 def clear_embeddings_router_caches() -> None:
     """Clear internal provider caches (useful for tests)."""
     _resolve_provider_cached.cache_clear()
+    _discover_hf_models_for_pipeline.cache_clear()
     _set_last_embedding_trace()
     _reset_embedding_progress(
         stage="",

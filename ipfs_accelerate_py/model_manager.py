@@ -1372,8 +1372,15 @@ class ModelManager:
 
         Unreachable endpoints are skipped so model discovery remains a safe MCP
         health operation. Configure multiple endpoints with
-        ``IPFS_ACCELERATE_SERVED_MODEL_ENDPOINTS``.
+        ``IPFS_ACCELERATE_SERVED_MODEL_ENDPOINTS``.  An upstream model that
+        explicitly names Leanstral is exposed under the stable MCP logical ID
+        ``leanstral_local`` while preserving its raw transport model ID and the
+        ``llamacpp`` HTTP transport identity.
         """
+        from .mcplusplus_module.leanstral_topology import (
+            normalize_served_model_record,
+        )
+
         served: List[Dict[str, Any]] = []
         seen: Set[Tuple[str, str]] = set()
         for base_url in self._served_model_endpoints(endpoint_url):
@@ -1402,20 +1409,30 @@ class ModelManager:
                 if not isinstance(raw, dict):
                     continue
                 model_id = str(raw.get("id") or raw.get("model") or raw.get("name") or "")
-                if not model_id or (base_url, model_id) in seen:
+                if not model_id:
                     continue
-                seen.add((base_url, model_id))
-                served.append({
-                    "id": model_id,
-                    "model_id": model_id,
-                    "name": str(raw.get("name") or model_id),
-                    "provider": str(raw.get("owned_by") or "llama_cpp"),
-                    "endpoint": base_url,
-                    "status": "available",
-                    "served": True,
-                    "capabilities": raw.get("capabilities") or ["text-generation"],
-                    "metadata": raw.get("meta") or {},
-                })
+                capabilities = raw.get("capabilities")
+                if not isinstance(capabilities, (list, tuple)):
+                    capabilities = ["text-generation"]
+                metadata = raw.get("meta")
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                record = normalize_served_model_record(
+                    transport_model_id=model_id,
+                    endpoint=base_url,
+                    owned_by=str(raw.get("owned_by") or "llama_cpp"),
+                    name=str(raw.get("name") or model_id),
+                    capabilities=capabilities,
+                    metadata=metadata,
+                )
+                # Keep distinct upstream transport models visible even when
+                # they normalize to the same MCP logical alias.  Consumers
+                # must fail closed on an ambiguous logical lookup.
+                identity = (base_url, str(record["transport_model_id"]))
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                served.append(record)
         return served
 
     def get_served_model(
@@ -1427,13 +1444,31 @@ class ModelManager:
         """Return a currently served model by ID or configured Leanstral alias."""
         aliases = {"leanstral", "leanstral_local", "labs-leanstral-1-5"}
         models = self.list_served_models(endpoint_url=endpoint_url, timeout=timeout)
-        for model in models:
-            if model["id"] == model_id:
+        exact_matches = [
+            model
+            for model in models
+            if (
+                model["id"] == model_id
+                or model.get("transport_model_id") == model_id
+            )
+        ]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+        if len(exact_matches) > 1:
+            return None
+        if model_id.lower() in aliases:
+            leanstral_matches = [
+                model
+                for model in models
+                if model.get("logical_model_id") == "leanstral_local"
+                and "leanstral" in str(
+                    model.get("transport_model_id") or ""
+                ).casefold()
+            ]
+            if len(leanstral_matches) == 1:
+                model = dict(leanstral_matches[0])
+                model["requested_alias"] = model_id
                 return model
-        if model_id.lower() in aliases and len(models) == 1:
-            model = dict(models[0])
-            model["requested_alias"] = model_id
-            return model
         return None
     
     def search_models(self, query: str) -> List[ModelMetadata]:

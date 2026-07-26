@@ -40,6 +40,13 @@ from .goal_completion import (
     evaluate_goal_completion,
     normalize_goal_state,
 )
+from .external_completion import (
+    EXTERNAL_COMPLETION_EVIDENCE_SCHEMA,
+    EXTERNAL_COMPLETION_VALIDATION_SCHEMA,
+    ExternalCompletionAuthority,
+    ExternalCompletionEvaluation,
+    evaluate_external_completion_authority,
+)
 from .objective_graph import (
     DEFAULT_EMBEDDING_MIN_SCORE,
     OPAQUE_EVIDENCE_REQUIREMENT_PATTERN,
@@ -49,6 +56,7 @@ from .objective_graph import (
     canonical_interoperability_component,
     completion_evidence_source_decision,
     evidence_index,
+    external_authority_goal_fence,
     goal_graph,
     normalize_field_key,
     objective_goal_content_id,
@@ -56,6 +64,7 @@ from .objective_graph import (
     objective_heap_schedule,
     parse_goal_heap,
     safe_bundle_key,
+    resolve_scan_exclude_paths,
     split_terms,
     utc_now,
 )
@@ -1132,6 +1141,7 @@ class ObjectiveCompletionResult:
     state_counts: dict[str, int] = field(default_factory=dict)
     decisions: dict[str, dict[str, Any]] = field(default_factory=dict)
     migration: dict[str, Any] = field(default_factory=dict)
+    external_completion: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -2409,6 +2419,7 @@ def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> 
         seen_keys: set[str] = set()
         output: list[str] = []
         last_field_index = 0
+        replaced_wrapped_field = False
         for line in block:
             if line.startswith("- ") and ":" in line:
                 key, _value = line[2:].split(":", 1)
@@ -2416,11 +2427,19 @@ def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> 
                 if normalized in normalized_updates:
                     output.append(f"- {normalized_updates[normalized][0]}: {normalized_updates[normalized][1]}")
                     seen_keys.add(normalized)
+                    replaced_wrapped_field = True
                 else:
                     output.append(line)
+                    replaced_wrapped_field = False
                 last_field_index = len(output)
+            elif replaced_wrapped_field and line[:1].isspace() and line.strip():
+                # The parser treats this as part of the replaced field. Keeping
+                # it would append stale prose to the new value on reparse.
+                continue
             else:
                 output.append(line)
+                if not line.strip() or not line[:1].isspace():
+                    replaced_wrapped_field = False
 
         missing_lines = [
             f"- {key}: {value}"
@@ -2907,10 +2926,25 @@ def _control_tree_identity(
             excluded_paths=excluded_paths,
             visited_repositories=_visited_repositories,
         )
-    base = scan_identity(root)
+    common_dir_text = str(
+        _git_output(root, "rev-parse", "--git-common-dir") or ""
+    )
+    if common_dir_text:
+        common_dir = Path(common_dir_text)
+        if not common_dir.is_absolute():
+            common_dir = root / common_dir
+        repository_id = str(common_dir.resolve())
+    else:
+        repository_id = str(top)
     head_tree = str(_git_output(root, "rev-parse", "HEAD^{tree}") or "")
     if not head_tree:
-        return base
+        return RepositoryTreeIdentity(
+            repository_id=repository_id,
+            tree_id=(
+                "unversioned:"
+                + sha256(str(root).encode("utf-8")).hexdigest()
+            ),
+        )
     # Hash the tracked manifest after removing control paths.  Starting from
     # ``HEAD^{tree}`` would still include the last committed bytes of an
     # excluded artifact, so committing a regenerated proof would make that
@@ -2957,7 +2991,7 @@ def _control_tree_identity(
         return _bind_submodule_worktree_identities(
             root,
             RepositoryTreeIdentity(
-                repository_id=base.repository_id,
+                repository_id=repository_id,
                 tree_id=f"sha256:{digest.hexdigest()}",
             ),
             excluded_paths=excluded_paths,
@@ -3004,7 +3038,7 @@ def _control_tree_identity(
     return _bind_submodule_worktree_identities(
         root,
         RepositoryTreeIdentity(
-            repository_id=base.repository_id,
+            repository_id=repository_id,
             tree_id=f"sha256:{digest.hexdigest()}",
         ),
         excluded_paths=excluded_paths,
@@ -3095,6 +3129,7 @@ def completion_tree_identity(
     *,
     objective_path: Path,
     control_paths: Sequence[Path] = (),
+    scan_exclude_paths: Iterable[str | Path] = (),
 ) -> RepositoryTreeIdentity:
     """Return source-tree identity without self-invalidating tracker writes.
 
@@ -3106,9 +3141,17 @@ def completion_tree_identity(
     remains in the digest.
     """
 
+    resolved_scan_excludes = resolve_scan_exclude_paths(
+        repo_root,
+        scan_exclude_paths,
+    )
     return _control_tree_identity(
         repo_root,
-        excluded_paths=(objective_path, *(Path(path) for path in control_paths)),
+        excluded_paths=(
+            objective_path,
+            *(Path(path) for path in control_paths),
+            *resolved_scan_excludes,
+        ),
     )
 
 
@@ -3145,7 +3188,7 @@ def _goal_completion_records(
         item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item)
         for item in supplied_records.get(goal.goal_id, ())
     ]
-    if records:
+    if goal.goal_id in supplied_records:
         return records
     raw_records = str(
         goal.fields.get("completion_evidence_records")
@@ -3196,6 +3239,14 @@ def _apply_completion_evidence_source_policy(
         payload["metadata"] = metadata
         evaluated.append(CompletionEvidence.from_dict(payload))
     return evaluated
+
+
+def _requires_external_completion(goal: ObjectiveGoal) -> bool:
+    """Return whether a goal is explicitly or durably external-governed."""
+
+    # The objective graph owns the canonical declaration and durable-history
+    # aliases so reconciliation, generation, and task scheduling cannot drift.
+    return goal.requires_external_completion
 
 
 def _goal_completion_gate_record(
@@ -4105,6 +4156,7 @@ def migrate_legacy_objective_goals(
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
     completion_control_paths: Sequence[Path] = (),
     require_artifact_binding: bool = False,
+    scan_exclude_paths: Iterable[str | Path] = (),
     goal_ids: Iterable[str] | None = None,
     preview: bool = False,
     max_goals: int | None = None,
@@ -4129,16 +4181,46 @@ def migrate_legacy_objective_goals(
         )
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
+    _external_goal_ids, external_blocked_goal_ids = (
+        external_authority_goal_fence(goals)
+    )
+    supplied_records = completion_evidence_records or {}
+
+    def supplied_external_records(goal_id: str) -> bool:
+        raw_records = supplied_records.get(goal_id, ())
+        if not raw_records:
+            return False
+        normalized: list[CompletionEvidence] = []
+        for raw in raw_records:
+            try:
+                normalized.append(
+                    raw
+                    if isinstance(raw, CompletionEvidence)
+                    else CompletionEvidence.from_dict(raw)
+                )
+            except (TypeError, ValueError):
+                return False
+        return bool(normalized) and all(
+            record.metadata.get("external_operational_completion") is True
+            for record in normalized
+        )
+
     selected_ids = {str(item).strip() for item in goal_ids or () if str(item).strip()}
     candidates = [
         goal for goal in goals
         if is_legacy_completed_goal_state(goal.status)
+        and (
+            goal.goal_id not in external_blocked_goal_ids
+            or (
+                goal.goal_id in _external_goal_ids
+                and supplied_external_records(goal.goal_id)
+            )
+        )
         and (not selected_ids or goal.goal_id in selected_ids)
     ]
     limit = len(candidates) if max_goals is None else max_goals
     batch = candidates[:limit]
     remaining = candidates[limit:]
-    supplied_records = completion_evidence_records or {}
     gate_records = completion_gate_records or {}
     boards: list[tuple[Path, str]] = []
     if todo_path is not None:
@@ -4149,6 +4231,7 @@ def migrate_legacy_objective_goals(
         repo_root,
         objective_path=objective_path,
         control_paths=completion_control_paths,
+        scan_exclude_paths=scan_exclude_paths,
     )
     hierarchy = goal_graph(goals)
     goals_by_id = {goal.goal_id: goal for goal in goals}
@@ -4282,6 +4365,10 @@ def reconcile_objective_goal_completion(
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
     completion_control_paths: Sequence[Path] = (),
     require_artifact_binding: bool = False,
+    external_completion_authority: (
+        ExternalCompletionAuthority | Mapping[str, Any] | None
+    ) = None,
+    scan_exclude_paths: Iterable[str | Path] = (),
     now: str | None = None,
     evidence_freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
 ) -> ObjectiveCompletionResult:
@@ -4303,8 +4390,44 @@ def reconcile_objective_goal_completion(
             validation_results={},
         )
 
-    supplied_records = completion_evidence_records or {}
+    supplied_records = dict(completion_evidence_records or {})
     supplied_gate_records = completion_gate_records or {}
+    initial_text = objective_path.read_text(encoding="utf-8")
+    initial_goals = parse_goal_heap(initial_text)
+    external_completion: ExternalCompletionEvaluation | None = None
+    current_authority_goal_ids: set[str] = set()
+    externally_governed_goal_ids = {
+        goal.goal_id
+        for goal in initial_goals
+        if goal.goal_id and _requires_external_completion(goal)
+    }
+    for goal_id in externally_governed_goal_ids:
+        # Once an operational goal has external provenance, omitting the
+        # explicit authority cannot downgrade it into ordinary local evidence.
+        supplied_records[goal_id] = []
+    if external_completion_authority is not None:
+        external_completion = evaluate_external_completion_authority(
+            external_completion_authority,
+            repo_root=repo_root,
+            objective_path=objective_path,
+            goal_evidence_terms={
+                goal.goal_id: tuple(goal.required_evidence)
+                for goal in initial_goals
+                if goal.goal_id
+            },
+            now=now,
+            freshness_seconds=evidence_freshness_seconds,
+        )
+        current_authority_goal_ids = set(
+            external_completion.governed_goal_ids
+        )
+        externally_governed_goal_ids.update(current_authority_goal_ids)
+        for goal_id in current_authority_goal_ids:
+            # External authority replaces, rather than augments, locally
+            # persisted/task-produced evidence for governed operational goals.
+            supplied_records[goal_id] = list(
+                external_completion.evidence_records.get(goal_id, ())
+            )
     migration_result = migrate_legacy_objective_goals(
         repo_root=repo_root,
         objective_path=objective_path,
@@ -4315,6 +4438,7 @@ def reconcile_objective_goal_completion(
         completion_gate_records=supplied_gate_records,
         completion_control_paths=completion_control_paths,
         require_artifact_binding=require_artifact_binding,
+        scan_exclude_paths=scan_exclude_paths,
         now=now,
         evidence_freshness_seconds=evidence_freshness_seconds,
     )
@@ -4374,10 +4498,43 @@ def reconcile_objective_goal_completion(
 
         for goal_id in sorted(parents_by_goal):
             verify_acyclic(goal_id)
+    externally_governed_goal_ids.update(
+        goal.goal_id
+        for goal in goals
+        if goal.goal_id and _requires_external_completion(goal)
+    )
+    if external_completion_authority is not None:
+        # Migration may rewrite the tracked objective heap. Reinspect after
+        # that phase so no pre-migration clean snapshot can authorize the
+        # resulting source state.
+        external_completion = evaluate_external_completion_authority(
+            external_completion_authority,
+            repo_root=repo_root,
+            objective_path=objective_path,
+            goal_evidence_terms={
+                goal.goal_id: tuple(goal.required_evidence)
+                for goal in goals
+                if goal.goal_id
+            },
+            now=now,
+            freshness_seconds=evidence_freshness_seconds,
+        )
+        current_authority_goal_ids = set(
+            external_completion.governed_goal_ids
+        )
+        externally_governed_goal_ids.update(current_authority_goal_ids)
+        for goal_id in externally_governed_goal_ids:
+            supplied_records[goal_id] = list(
+                external_completion.evidence_records.get(goal_id, ())
+            )
+    else:
+        for goal_id in externally_governed_goal_ids:
+            supplied_records[goal_id] = []
     repository_identity = completion_tree_identity(
         repo_root,
         objective_path=objective_path,
         control_paths=completion_control_paths,
+        scan_exclude_paths=scan_exclude_paths,
     )
     candidate_goals = []
     persisted_records: dict[str, list[CompletionEvidence]] = {}
@@ -4391,6 +4548,28 @@ def reconcile_objective_goal_completion(
             ]
         else:
             records = _goal_completion_records(goal, supplied_records)
+        if (
+            external_completion is not None
+            and goal.goal_id in current_authority_goal_ids
+        ):
+            rebound_records: list[CompletionEvidence] = []
+            for record in records:
+                payload = record.to_dict()
+                metadata = dict(payload.get("metadata") or {})
+                metadata.setdefault(
+                    "external_source_repository_tree",
+                    str(payload.get("repository_tree") or ""),
+                )
+                payload.update(
+                    {
+                        "repository_id": repository_identity.repository_id,
+                        "repository_tree": repository_identity.tree_id,
+                        "tree_id": repository_identity.tree_id,
+                        "metadata": metadata,
+                    }
+                )
+                rebound_records.append(CompletionEvidence.from_dict(payload))
+            records = rebound_records
         records = _apply_completion_evidence_source_policy(
             records,
             repository_tree=repository_identity.tree_id,
@@ -4402,20 +4581,23 @@ def reconcile_objective_goal_completion(
             GoalState.REOPENED,
             GoalState.PROVISIONALLY_COMPLETE,
             GoalState.ANALYSIS_INCONCLUSIVE,
-        } or (
-            goal.status == GoalState.VERIFIED_COMPLETE.value
-            and (records or require_artifact_binding)
-        ):
+            # A status label is not completion authority. Re-evaluate every
+            # verified goal so a manually asserted label without durable,
+            # current evidence fails closed into the reopened lifecycle.
+            GoalState.VERIFIED_COMPLETE,
+        }:
             candidate_goals.append(goal)
 
     terms: list[str] = []
     for goal in candidate_goals:
-        terms.extend(goal.required_evidence)
+        if goal.goal_id not in externally_governed_goal_ids:
+            terms.extend(goal.required_evidence)
     discovered_evidence = evidence_index(
         repo_root,
         objective_path=objective_path,
         terms=terms,
         embedding_min_score=embedding_min_score,
+        scan_exclude_paths=scan_exclude_paths,
     )
 
     updates: dict[str, dict[str, str]] = {}
@@ -4442,9 +4624,48 @@ def reconcile_objective_goal_completion(
         goal_id: normalize_goal_state(goal.status)
         for goal_id, goal in goals_by_id.items()
     }
+    external_final_states = {
+        goal_id: effective_states[goal_id]
+        for goal_id in externally_governed_goal_ids
+        if goal_id in effective_states
+    }
+
+    def governing_external_ancestors(goal_id: str) -> set[str]:
+        """Return every transitive external gate governing ``goal_id``."""
+
+        goal = goals_by_id.get(goal_id)
+        pending = list(goal.parent_goal_ids if goal is not None else ())
+        seen: set[str] = set()
+        external_ancestors: set[str] = set()
+        while pending:
+            parent_id = str(pending.pop(0))
+            if not parent_id or parent_id in seen:
+                continue
+            seen.add(parent_id)
+            if parent_id in externally_governed_goal_ids:
+                external_ancestors.add(parent_id)
+            parent_goal = goals_by_id.get(parent_id)
+            if parent_goal is not None:
+                pending.extend(parent_goal.parent_goal_ids)
+        return external_ancestors
+
     candidate_by_id = {goal.goal_id: goal for goal in candidate_goals}
     evaluation_goal_ids: list[str] = []
-    visited_goal_ids: set[str] = set()
+    external_evaluation_goal_ids = [
+        goal.goal_id
+        for goal in sorted(
+            candidate_goals,
+            key=lambda item: (
+                int(hierarchy.get("depths", {}).get(item.goal_id, 0)),
+                item.goal_id,
+            ),
+        )
+        if goal.goal_id in externally_governed_goal_ids
+    ]
+    # External authority gates must be decided before locally executable
+    # descendants. All remaining goals retain the descendants-first order
+    # needed for truthful parent aggregation.
+    visited_goal_ids: set[str] = set(external_evaluation_goal_ids)
     visiting_goal_ids: set[str] = set()
 
     def visit_descendants_first(goal_id: str) -> None:
@@ -4463,8 +4684,12 @@ def reconcile_objective_goal_completion(
             evaluation_goal_ids.append(goal_id)
 
     for candidate in candidate_goals:
-        visit_descendants_first(candidate.goal_id)
-    evaluation_goals = [candidate_by_id[goal_id] for goal_id in evaluation_goal_ids]
+        if candidate.goal_id not in externally_governed_goal_ids:
+            visit_descendants_first(candidate.goal_id)
+    evaluation_goals = [
+        candidate_by_id[goal_id]
+        for goal_id in (*external_evaluation_goal_ids, *evaluation_goal_ids)
+    ]
 
     def descendant_states(goal_id: str) -> list[dict[str, Any]]:
         pending = list(hierarchy.get("children", {}).get(goal_id, ()))
@@ -4487,6 +4712,18 @@ def reconcile_objective_goal_completion(
         return descendants
 
     for goal in evaluation_goals:
+        if goal.goal_id not in externally_governed_goal_ids:
+            external_ancestors = governing_external_ancestors(goal.goal_id)
+            if any(
+                external_final_states.get(goal_id)
+                is not GoalState.VERIFIED_COMPLETE
+                for goal_id in external_ancestors
+            ):
+                # The governing external decision either has not been
+                # evaluated or failed current reconciliation.  Do not let
+                # locally discoverable evidence advance the descendant in the
+                # same cycle that reopens its authorization gate.
+                continue
         current_state = normalize_goal_state(goal.status)
         records = persisted_records.get(goal.goal_id, [])
         source_evidence_complete = bool(goal.required_evidence) and all(
@@ -4499,6 +4736,7 @@ def reconcile_objective_goal_completion(
                 or goal.goal_id in referenced_goal_ids
                 or bool(records)
                 or source_evidence_complete
+                or goal.goal_id in externally_governed_goal_ids
                 or is_legacy_completed_goal_state(
                     str(goal.fields.get("legacy_completion_state") or "")
                 )
@@ -4521,7 +4759,14 @@ def reconcile_objective_goal_completion(
             or goal.fields.get("acceptance")
             or ""
         ).strip()
-        criteria: Sequence[str] | str = criteria_text or goal.required_evidence
+        criteria: Sequence[str] | str = (
+            (
+                goal.required_evidence
+                or ("external_operational_completion_receipt",)
+            )
+            if goal.goal_id in externally_governed_goal_ids
+            else criteria_text or goal.required_evidence
+        )
 
         if not tasks_complete:
             referenced_boards = referenced_goal_ids.get(goal.goal_id, [])
@@ -4557,12 +4802,39 @@ def reconcile_objective_goal_completion(
                 # reconciliation receipt; overwriting the producer receipt
                 # would leave provenance_cid referring to bytes no longer
                 # present in the evidence record.
+                local_validation = validation_results[goal.goal_id]
+                if record.metadata.get("external_operational_completion") is True:
+                    reconciliation_validation_receipt: Mapping[str, Any] = {
+                        "schema": EXTERNAL_COMPLETION_EVIDENCE_SCHEMA
+                        + "/local-validation-join",
+                        "attempted": bool(
+                            local_validation.get("attempted", False)
+                        ),
+                        "passed": bool(local_validation.get("passed", False)),
+                        "status": (
+                            "verified"
+                            if local_validation.get("passed") is True
+                            else "failed"
+                        ),
+                        "tree_id": str(local_validation.get("tree_id") or ""),
+                        "receipt_cid": str(
+                            local_validation.get("receipt_cid") or ""
+                        ),
+                        "external_validator_receipt_cid": str(
+                            record.metadata.get("validator_receipt_cid") or ""
+                        ),
+                        "external_operational_receipt_cid": (
+                            record.provenance_cid
+                        ),
+                    }
+                else:
+                    reconciliation_validation_receipt = local_validation
                 metadata["reconciliation_validation_receipt"] = (
-                    validation_results[goal.goal_id]
+                    reconciliation_validation_receipt
                 )
                 payload["metadata"] = metadata
                 payload["validation_passed"] = bool(
-                    validation_results[goal.goal_id].get("passed", False)
+                    local_validation.get("passed", False)
                 )
                 reconciled_records.append(CompletionEvidence.from_dict(payload))
             records = reconciled_records
@@ -4583,7 +4855,11 @@ def reconcile_objective_goal_completion(
             analyzer_health=gate_record.get("analyzer_health"),
             exhaustion_quorum=gate_record.get("exhaustion_quorum"),
             child_goals=[
-                *descendant_states(goal.goal_id),
+                *(
+                    ()
+                    if goal.goal_id in externally_governed_goal_ids
+                    else descendant_states(goal.goal_id)
+                ),
                 *gate_record.get("child_goals", ()),
             ],
             required_child_goal_ids=gate_record.get(
@@ -4594,13 +4870,66 @@ def reconcile_objective_goal_completion(
                 gate_record.get("analysis_inconclusive", False)
             ),
         )
+        if goal.goal_id in externally_governed_goal_ids:
+            external_final_states[goal.goal_id] = decision.state
         decisions[goal.goal_id] = decision.to_dict()
+        if (
+            external_completion is not None
+            and goal.goal_id in current_authority_goal_ids
+        ):
+            decisions[goal.goal_id]["external_completion"] = {
+                "authority_cid": external_completion.authority_cid,
+                "results": list(
+                    external_completion.results_for_goal(goal.goal_id)
+                ),
+            }
+        elif goal.goal_id in externally_governed_goal_ids:
+            missing_authority_reason = (
+                "external_authority_not_supplied"
+                if external_completion_authority is None
+                else "external_authority_binding_missing"
+            )
+            missing_authority_results = [
+                {
+                    "schema": EXTERNAL_COMPLETION_VALIDATION_SCHEMA,
+                    "goal_id": goal.goal_id,
+                    "evidence_term": term,
+                    "valid": False,
+                    "reason_codes": [missing_authority_reason],
+                    "receipt_cid": "",
+                    "requirement_cid": "",
+                }
+                for term in (
+                    goal.required_evidence
+                    or ("external_operational_completion_receipt",)
+                )
+            ]
+            decisions[goal.goal_id]["external_completion"] = {
+                "authority_cid": str(
+                    goal.fields.get("external_completion_authority_cid")
+                    or ""
+                ).strip(),
+                "results": missing_authority_results,
+            }
         effective_states[goal.goal_id] = decision.state
         diagnostics = decisions[goal.goal_id]["diagnostics"]
-        goal_evidence = {
-            term: list(discovered_evidence.get(term, []))
-            for term in goal.required_evidence
-        }
+        if goal.goal_id in externally_governed_goal_ids:
+            goal_evidence = {
+                term: [
+                    (
+                        f"{record.provenance_cid} "
+                        "(external-operational-receipt)"
+                    )
+                    for record in records
+                    if record.acceptance_criterion == term
+                ]
+                for term in goal.required_evidence
+            }
+        else:
+            goal_evidence = {
+                term: list(discovered_evidence.get(term, []))
+                for term in goal.required_evidence
+            }
         if any(goal_evidence.values()):
             completion_evidence[goal.goal_id] = goal_evidence
 
@@ -4613,6 +4942,45 @@ def reconcile_objective_goal_completion(
             "Exhaustion quorum": json.dumps(diagnostics["exhaustion_quorum"], sort_keys=True, separators=(",", ":")),
             "Reopen reasons": json.dumps(diagnostics["reopen_reasons"], separators=(",", ":")),
         }
+        if (
+            external_completion is not None
+            and goal.goal_id in current_authority_goal_ids
+        ):
+            external_results = external_completion.results_for_goal(goal.goal_id)
+            goal_updates.update(
+                {
+                    "External completion authority CID": (
+                        external_completion.authority_cid
+                    ),
+                    "External completion receipt CIDs": json.dumps(
+                        sorted(
+                            result["receipt_cid"]
+                            for result in external_results
+                            if result.get("valid") is True
+                            and result.get("receipt_cid")
+                        ),
+                        separators=(",", ":"),
+                    ),
+                    "External completion validation": json.dumps(
+                        list(external_results),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                }
+            )
+        elif goal.goal_id in externally_governed_goal_ids:
+            goal_updates.update(
+                {
+                    "External completion receipt CIDs": "[]",
+                    "External completion validation": json.dumps(
+                        decisions[goal.goal_id]["external_completion"][
+                            "results"
+                        ],
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                }
+            )
         if decision.state is current_state:
             updates[goal.goal_id] = goal_updates
             continue
@@ -4622,7 +4990,7 @@ def reconcile_objective_goal_completion(
             "State transitioned at": transitioned_at,
             "State transition reason": reason,
         })
-        if records:
+        if records or goal.goal_id in externally_governed_goal_ids:
             goal_updates["Completion evidence records"] = json.dumps(
                 [record.to_dict() for record in records],
                 sort_keys=True,
@@ -4662,6 +5030,7 @@ def reconcile_objective_goal_completion(
         repo_root,
         objective_path=objective_path,
         control_paths=completion_control_paths,
+        scan_exclude_paths=scan_exclude_paths,
     )
     if final_repository_identity != repository_identity:
         raise RuntimeError(
@@ -4694,6 +5063,28 @@ def reconcile_objective_goal_completion(
         state_counts=state_counts,
         decisions=decisions,
         migration=migration_result.to_dict(),
+        external_completion=(
+            external_completion.to_dict()
+            if external_completion is not None
+            else {
+                "schema": (
+                    EXTERNAL_COMPLETION_VALIDATION_SCHEMA + "/authority"
+                ),
+                "authority_cid": "",
+                "governed_goal_ids": sorted(
+                    externally_governed_goal_ids
+                ),
+                "valid_receipt_cids": [],
+                "source_inspection": {},
+                "results": [
+                    result
+                    for goal_id in sorted(externally_governed_goal_ids)
+                    for result in decisions.get(goal_id, {})
+                    .get("external_completion", {})
+                    .get("results", [])
+                ],
+            }
+        ),
     )
 
 

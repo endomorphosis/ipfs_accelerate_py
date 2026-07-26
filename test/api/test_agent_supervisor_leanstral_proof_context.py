@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -26,11 +28,14 @@ from ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider import (
 )
 from ipfs_accelerate_py.agent_supervisor.proof_context import (
     LEANSTRAL_PROOF_OUTPUT_SCHEMA,
+    ContextEntry,
     ContextTrust,
     FixedTheoremIdentity,
     LeanstralPromptLimits,
+    LeanstralProofContext,
     ProofContextBudgetError,
     ProofContextBuilder,
+    ProofContextError,
     ProofContextLimits,
     ProofContextQuery,
     ProofContextTarget,
@@ -182,6 +187,253 @@ def test_prompt_contains_fixed_identity_evidence_failures_and_schema(
     }
     assert context.prompt_bytes <= context.limits.max_bytes
     assert context.prompt_tokens <= context.limits.max_tokens
+
+
+def test_semantic_stage_context_reaches_final_prompt_without_authority(
+    tmp_path: Path,
+) -> None:
+    capsule = _capsule(tmp_path)
+    semantic_context = {
+        "schema": "example.semantic-stage-context@1",
+        "entities": ["Ada", "archivist"],
+        "normalized_predicates": ["trained(Ada)"],
+        # These labels remain visible as untrusted model input but must not be
+        # promoted into the typed compact-failure lane.
+        "status": "failed",
+        "failure_reason": "untrusted semantic-stage label",
+    }
+    duplicate_late = ContextEntry(
+        trust=ContextTrust.UNTRUSTED_SUGGESTION,
+        kind="semantic_stage_context",
+        record_id="semantic-a",
+        fields=semantic_context,
+    )
+    duplicate_early = replace(duplicate_late)
+    capsule = replace(
+        capsule,
+        untrusted_suggestions=(
+            *capsule.untrusted_suggestions,
+            duplicate_late,
+            duplicate_early,
+        ),
+    )
+
+    context = build_leanstral_proof_context(capsule, _theorem())
+    prompt = json.loads(context.to_prompt())
+
+    # Exact duplicate records are collapsed without losing distinct provenance.
+    assert [item["hint_id"] for item in prompt["untrusted_semantic_hints"]] == [
+        "semantic-a"
+    ]
+    hint = prompt["untrusted_semantic_hints"][0]
+    assert hint["semantic_context"] == semantic_context
+    assert hint["trust"] == ContextTrust.UNTRUSTED_SUGGESTION.value
+    assert hint["checked_evidence"] is False
+    assert hint["authoritative"] is False
+    assert hint["usable_as_premise"] is False
+    assert hint["usable_as_proof_evidence"] is False
+    assert hint["usable_as_failure_evidence"] is False
+    assert prompt["semantic_hint_policy"]["semantic_guidance_only"] is True
+    assert all(
+        item["failure_id"] != "semantic-a"
+        for item in prompt["compact_failures"]
+    )
+    assert context.omitted["untrusted_semantic_hints"] == 0
+    assert (
+        context.prompt_sha256
+        == hashlib.sha256(context.to_prompt().encode("utf-8")).hexdigest()
+    )
+    assert LeanstralProofContext.from_json(context.to_prompt()) == context
+
+    changed_entry = replace(
+        duplicate_early,
+        fields={**semantic_context, "entities": ["Grace"]},
+    )
+    changed = build_leanstral_proof_context(
+        replace(
+            capsule,
+            untrusted_suggestions=(
+                *tuple(
+                    item
+                    for item in capsule.untrusted_suggestions
+                    if item.kind != "semantic_stage_context"
+                ),
+                changed_entry,
+            ),
+        ),
+        _theorem(),
+    )
+    assert changed.context_id != context.context_id
+    assert changed.prompt_sha256 != context.prompt_sha256
+
+
+def test_semantic_hint_count_and_byte_limits_fail_closed(tmp_path: Path) -> None:
+    capsule = _capsule(tmp_path)
+    hints = tuple(
+        ContextEntry(
+            trust=ContextTrust.UNTRUSTED_SUGGESTION,
+            kind="semantic_stage_context",
+            record_id=f"semantic-{index}",
+            fields={"candidate": character * 96},
+        )
+        for index, character in enumerate(("a", "b"))
+    )
+    capsule = replace(
+        capsule,
+        untrusted_suggestions=(*capsule.untrusted_suggestions, *hints),
+    )
+
+    with pytest.raises(ProofContextBudgetError, match="cannot fit"):
+        build_leanstral_proof_context(
+            capsule,
+            _theorem(),
+            limits=LeanstralPromptLimits(
+                max_bytes=24_000,
+                max_tokens=6_000,
+                max_semantic_hints=1,
+            ),
+        )
+    with pytest.raises(ProofContextBudgetError, match="cannot fit"):
+        build_leanstral_proof_context(
+            replace(
+                capsule,
+                untrusted_suggestions=(
+                    *tuple(
+                        item
+                        for item in capsule.untrusted_suggestions
+                        if item.kind != "semantic_stage_context"
+                    ),
+                    hints[0],
+                ),
+            ),
+            _theorem(),
+            limits=LeanstralPromptLimits(
+                max_bytes=24_000,
+                max_tokens=6_000,
+                max_semantic_hint_bytes=128,
+            ),
+        )
+
+
+def test_realistic_ten_kib_semantic_hint_is_fully_included(tmp_path: Path) -> None:
+    capsule = _capsule(tmp_path)
+    hint = ContextEntry(
+        trust=ContextTrust.UNTRUSTED_SUGGESTION,
+        kind="semantic_stage_context",
+        record_id="semantic-realistic-size",
+        fields={"candidate_ir": "x" * 10_240},
+    )
+    capsule = replace(
+        capsule,
+        untrusted_suggestions=(*capsule.untrusted_suggestions, hint),
+    )
+
+    context = build_leanstral_proof_context(capsule, _theorem())
+
+    assert len(context.untrusted_semantic_hints) == 1
+    assert context.untrusted_semantic_hints[0].byte_count > 10_002
+    assert context.omitted["untrusted_semantic_hints"] == 0
+    assert json.loads(context.to_prompt())["untrusted_semantic_hints"][0][
+        "semantic_context"
+    ] == hint.fields
+
+
+def test_legacy_v1_prompt_without_semantic_hints_deserializes(
+    tmp_path: Path,
+) -> None:
+    context = build_leanstral_proof_context(_capsule(tmp_path), _theorem())
+    legacy = context.to_dict()
+    legacy["schema"] = (
+        "ipfs_accelerate_py.agent_supervisor.leanstral-proof-context@1"
+    )
+    legacy["instruction"] = (
+        "Prove the fixed Lean theorem or decompose it into proof subgoals. "
+        "Use only allowed_premises and trusted_prior_receipts as checked "
+        "evidence. Compact failures and reusable drafts are diagnostic "
+        "hints, not checked evidence. Return only JSON matching output_schema."
+    )
+    legacy.pop("untrusted_semantic_hints")
+    legacy.pop("semantic_hint_policy")
+    legacy["limits"]["schema"] = (
+        "ipfs_accelerate_py.agent_supervisor.leanstral-prompt-limits@1"
+    )
+    for name in (
+        "max_semantic_hints",
+        "max_semantic_hint_bytes",
+        "max_semantic_hint_bytes_total",
+    ):
+        legacy["limits"].pop(name)
+
+    restored = LeanstralProofContext.from_dict(legacy)
+
+    assert restored.untrusted_semantic_hints == ()
+    assert restored.to_dict()["schema"].endswith("@2")
+
+
+def test_semantic_hint_strict_json_and_identity_collisions_fail_closed(
+    tmp_path: Path,
+) -> None:
+    capsule = _capsule(tmp_path)
+    not_finite = ContextEntry(
+        trust=ContextTrust.UNTRUSTED_SUGGESTION,
+        kind="semantic_stage_context",
+        record_id="semantic-nan",
+        fields={"confidence": float("nan")},
+    )
+    with pytest.raises(ProofContextError, match="non-finite"):
+        build_leanstral_proof_context(
+            replace(
+                capsule,
+                untrusted_suggestions=(
+                    *capsule.untrusted_suggestions,
+                    not_finite,
+                ),
+            ),
+            _theorem(),
+        )
+
+    finite_float = replace(
+        not_finite,
+        record_id="semantic-float",
+        fields={"confidence": 0.8},
+    )
+    with pytest.raises(ProofContextError, match="string-tagged"):
+        build_leanstral_proof_context(
+            replace(
+                capsule,
+                untrusted_suggestions=(
+                    *capsule.untrusted_suggestions,
+                    finite_float,
+                ),
+            ),
+            _theorem(),
+        )
+
+    collisions = (
+        ContextEntry(
+            trust=ContextTrust.UNTRUSTED_SUGGESTION,
+            kind="semantic_stage_context",
+            record_id="semantic-collision",
+            fields={"candidate": "first"},
+        ),
+        ContextEntry(
+            trust=ContextTrust.UNTRUSTED_SUGGESTION,
+            kind="semantic_stage_context",
+            record_id="semantic-collision",
+            fields={"candidate": "second"},
+        ),
+    )
+    with pytest.raises(ProofContextError, match="conflicting"):
+        build_leanstral_proof_context(
+            replace(
+                capsule,
+                untrusted_suggestions=(
+                    *capsule.untrusted_suggestions,
+                    *collisions,
+                ),
+            ),
+            _theorem(),
+        )
 
 
 def test_provider_builds_prompt_and_accepts_only_bound_output(tmp_path: Path) -> None:

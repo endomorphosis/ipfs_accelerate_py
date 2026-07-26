@@ -33,9 +33,14 @@ from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
     install_libp2p_runtime,
     install_libp2p_runtime_async,
     make_multiaddr,
+    make_rendezvous_service,
     new_libp2p_host,
     peer_id_from_base58,
     peerinfo_from_multiaddr,
+)
+from ipfs_accelerate_py.mcplusplus_module.leanstral_topology import (
+    LEANSTRAL_P2P_LISTEN_ADDR,
+    LEANSTRAL_P2P_PORT,
 )
 
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.p2p_transport")
@@ -76,8 +81,66 @@ MAX_PEERS = 500
 
 # Default bootstrap peers for the MCP++ network
 DEFAULT_BOOTSTRAP_PEERS = [
-    "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
+    "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+    "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+    "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+    "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
 ]
+
+_VIRTUAL_INTERFACE_PREFIXES = (
+    "br-",
+    "cni",
+    "docker",
+    "flannel",
+    "podman",
+    "veth",
+    "virbr",
+)
+
+_DISABLED_ENV_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+async def _bootstrap_dial_candidates(peer_addr: str) -> Tuple[str, ...]:
+    """Resolve one configured dnsaddr peer to supported TCP descendants.
+
+    The py-libp2p TCP transport cannot dial ``/dnsaddr`` directly.  The
+    multiaddr package already implements the libp2p TXT-record algorithm, so
+    preserve the configured dnsaddr as the public policy/receipt target while
+    dialing its exact same-peer TCP descendants internally.
+    """
+
+    configured = str(peer_addr or "").strip()
+    if not configured.startswith("/dnsaddr/"):
+        return (configured,)
+    try:
+        from multiaddr import Multiaddr
+
+        resolved = await Multiaddr(configured).resolve()
+    except Exception:
+        return (configured,)
+    peer_suffix = (
+        f"/p2p/{configured.rsplit('/p2p/', 1)[-1]}"
+        if "/p2p/" in configured
+        else ""
+    )
+    candidates = {
+        str(value)
+        for value in resolved
+        if "/tcp/" in str(value)
+        and "/ws" not in str(value)
+        and "/wss" not in str(value)
+        and (not peer_suffix or str(value).endswith(peer_suffix))
+    }
+    return tuple(
+        sorted(
+            candidates,
+            key=lambda value: (
+                0 if "/tcp/4001/" in value else 1,
+                0 if value.startswith("/ip4/") else 1,
+                value,
+            ),
+        )
+    ) or (configured,)
 
 
 @dataclass
@@ -177,9 +240,10 @@ class MCPp2pNode:
         env_listen = self._env_list("MCPPP_P2P_LISTEN_ADDRS")
         env_bootstrap = self._env_list("MCPPP_P2P_BOOTSTRAP_PEERS", preserve_empty=True)
         env_advertise = self._env_list("MCPPP_P2P_ADVERTISE_ADDRS")
+        env_advertise_interfaces = self._env_list("MCPPP_P2P_ADVERTISE_INTERFACES")
         self._listen_addrs = (
             list(listen_addrs) if listen_addrs is not None
-            else env_listen or ["/ip4/0.0.0.0/tcp/0"]
+            else env_listen or [LEANSTRAL_P2P_LISTEN_ADDR]
         )
         self._bootstrap_peers = (
             list(bootstrap_peers) if bootstrap_peers is not None
@@ -189,6 +253,7 @@ class MCPp2pNode:
         self._advertise_addrs = (
             list(advertise_addrs) if advertise_addrs is not None else env_advertise or []
         )
+        self._advertise_interfaces = env_advertise_interfaces or []
         self._host = None
         self._peers: Dict[str, PeerInfo] = {}
         self._tool_handler: Optional[Callable] = None
@@ -201,6 +266,10 @@ class MCPp2pNode:
         self._host_stopped_event = None
         self._mdns_zeroconf = None
         self._mdns_service_info = None
+        self._bootstrap_attempts: List[Dict[str, Any]] = []
+        self._rendezvous_connectivity = None
+        self._rendezvous_service = None
+        self._rendezvous_attempts: List[Dict[str, Any]] = []
 
     @staticmethod
     def _env_list(name: str, preserve_empty: bool = False) -> Optional[List[str]]:
@@ -209,6 +278,14 @@ class MCPp2pNode:
             return None
         values = [item.strip() for item in os.environ[name].split(",") if item.strip()]
         return values if values or preserve_empty else None
+
+    @property
+    def mdns_enabled(self) -> bool:
+        """Whether local mDNS advertisement and discovery are enabled."""
+        return (
+            os.environ.get("MCPPP_P2P_MDNS", "1").strip().casefold()
+            not in _DISABLED_ENV_VALUES
+        )
 
     @property
     def peer_id(self) -> str:
@@ -236,7 +313,9 @@ class MCPp2pNode:
                 and port
                 and any(address.startswith("/ip4/0.0.0.0/") for address in bound)
             ):
-                local_ips = self._local_ipv4_addresses()
+                local_ips = self._local_ipv4_addresses(
+                    allowed_interfaces=self._advertise_interfaces or None
+                )
                 if local_ips:
                     addresses = [f"/ip4/{address}/tcp/{port}" for address in local_ips]
             result = []
@@ -249,9 +328,24 @@ class MCPp2pNode:
         return []
 
     @staticmethod
-    def _local_ipv4_addresses() -> List[str]:
-        """Return all active, non-loopback IPv4 interface addresses."""
+    def _local_ipv4_addresses(
+        allowed_interfaces: Optional[List[str]] = None,
+    ) -> List[str]:
+        """Return active, non-loopback IPv4 addresses allowed for advertisement.
+
+        When ``MCPPP_P2P_ADVERTISE_INTERFACES`` is set, only those interfaces
+        are considered.  Known container/overlay interface names are rejected
+        even if present in the allow-list.  Operators in a container network
+        namespace should use ``MCPPP_P2P_ADVERTISE_ADDRS`` to provide the
+        independently dialable host addresses because the host interfaces are
+        not visible from the container.
+        """
         addresses = set()
+        allowed = {
+            str(interface).strip()
+            for interface in (allowed_interfaces or [])
+            if str(interface).strip()
+        }
         try:
             import psutil
 
@@ -259,10 +353,33 @@ class MCPp2pNode:
             for interface, entries in psutil.net_if_addrs().items():
                 if interface in stats and not stats[interface].isup:
                     continue
+                normalized = str(interface).casefold()
+                if any(normalized.startswith(prefix) for prefix in _VIRTUAL_INTERFACE_PREFIXES):
+                    continue
+                if allowed and interface not in allowed:
+                    continue
                 for entry in entries:
-                    if entry.family == socket.AF_INET and not entry.address.startswith("127."):
-                        addresses.add(entry.address)
+                    if entry.family != socket.AF_INET:
+                        continue
+                    try:
+                        import ipaddress
+
+                        address = ipaddress.ip_address(entry.address)
+                    except ValueError:
+                        continue
+                    if (
+                        address.version == 4
+                        and not address.is_loopback
+                        and not address.is_unspecified
+                        and not address.is_link_local
+                        and not address.is_multicast
+                    ):
+                        addresses.add(str(address))
         except Exception:
+            # A hostname lookup cannot honor an interface allow-list.  Fail
+            # closed instead of advertising an unrelated address.
+            if allowed:
+                return []
             try:
                 for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
                     address = item[4][0]
@@ -271,6 +388,25 @@ class MCPp2pNode:
             except OSError:
                 pass
         return sorted(addresses)
+
+    @property
+    def listen_port(self) -> Optional[int]:
+        """Return the bound TCP port without confusing it with the HTTP port."""
+        addresses = []
+        if self._host:
+            try:
+                addresses = [str(address) for address in self._host.get_addrs()]
+            except Exception:
+                addresses = []
+        addresses.extend(self._listen_addrs)
+        for address in addresses:
+            parts = str(address).split("/")
+            try:
+                index = parts.index("tcp")
+                return int(parts[index + 1])
+            except (ValueError, IndexError):
+                continue
+        return None
 
     @staticmethod
     def _load_or_create_key_pair():
@@ -300,6 +436,22 @@ class MCPp2pNode:
         """Currently connected peers."""
         return list(self._peers.values())
 
+    def _mount_rendezvous_service(self) -> bool:
+        """Mount the rendezvous protocol on this exact service peer when requested."""
+
+        mode = os.environ.get(
+            "MCPPP_P2P_RENDEZVOUS_SERVICE", ""
+        ).strip().casefold()
+        if mode != "same_as_service_peer" or self._host is None:
+            self._rendezvous_service = None
+            return False
+        try:
+            self._rendezvous_service = make_rendezvous_service(self._host)
+        except Exception as exc:
+            self._rendezvous_service = None
+            logger.warning("Rendezvous service unavailable: %s", exc)
+        return self._rendezvous_service is not None
+
     def set_tool_handler(self, handler: Callable) -> None:
         """Set the handler for incoming MCP tool calls.
 
@@ -313,7 +465,13 @@ class MCPp2pNode:
         Creates the host, starts listening, registers protocol handler,
         and initiates peer discovery.
         """
+        if self._started:
+            return
         self._nursery = nursery
+        # Attempts belong to this process lifetime; never carry stale evidence
+        # across a stopped/restarted node.
+        self._bootstrap_attempts.clear()
+        self._rendezvous_attempts.clear()
 
         # Auto-install libp2p if missing (run in thread to avoid blocking event loop)
         installed = await ensure_libp2p_installed_async()
@@ -334,6 +492,8 @@ class MCPp2pNode:
             # Create libp2p host
             self._host = await new_libp2p_host(key_pair=key_pair)
 
+            self._mount_rendezvous_service()
+
             # Register protocol handler for all supported versions
             for proto_version in MCP_P2P_SUPPORTED_VERSIONS:
                 self._host.set_stream_handler(proto_version, self._handle_stream)
@@ -346,9 +506,7 @@ class MCPp2pNode:
 
             self._started = True
             self._operational = True
-            if os.environ.get("MCPPP_P2P_MDNS", "1").lower() not in {
-                "0", "false", "no", "off"
-            }:
+            if self.mdns_enabled:
                 await self._start_mdns_advertisement()
             logger.info(
                 "MCPp2pNode started: peer_id=%s, addrs=%s",
@@ -358,6 +516,14 @@ class MCPp2pNode:
             # Bootstrap: connect to known peers (with timeout)
             for peer_addr in self._bootstrap_peers:
                 nursery.start_soon(self._connect_bootstrap_with_timeout, peer_addr)
+            rendezvous_peer = os.environ.get(
+                "IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", ""
+            ).strip()
+            rendezvous_auto = os.environ.get(
+                "MCPPP_P2P_RENDEZVOUS_AUTO", "1"
+            ).strip().casefold() not in {"0", "false", "no", "off"}
+            if rendezvous_peer and rendezvous_auto:
+                nursery.start_soon(self._exercise_rendezvous_after_startup)
 
         except ImportError as e:
             logger.warning(
@@ -394,6 +560,8 @@ class MCPp2pNode:
         self._started = False
         self._operational = False
         self._peers.clear()
+        self._rendezvous_service = None
+        self._rendezvous_connectivity = None
         logger.info("MCPp2pNode stopped")
 
     async def _start_mdns_advertisement(self) -> None:
@@ -472,31 +640,177 @@ class MCPp2pNode:
     async def _connect_bootstrap_with_timeout(self, peer_addr: str) -> None:
         """Connect to a bootstrap peer with a 10-second timeout."""
         import trio
+        started = time.monotonic()
+        success = False
+        error = None
         with trio.move_on_after(10.0) as cancel_scope:
-            await self._connect_bootstrap(peer_addr)
+            success = await self._connect_bootstrap(peer_addr)
         if cancel_scope.cancelled_caught:
+            error = "timeout"
             logger.debug(f"Bootstrap peer connection timed out: {peer_addr}")
+        elif not success:
+            error = "connect_failed"
+        self._bootstrap_attempts.append({
+            "mechanism": "bootstrap",
+            "target": peer_addr,
+            "attempted": True,
+            "success": bool(success and not cancel_scope.cancelled_caught),
+            "timeout_s": 10.0,
+            "duration_ms": (time.monotonic() - started) * 1000.0,
+            "error": error,
+            "observer_peer_id": self.peer_id,
+            "namespace": "",
+            "details": {},
+        })
 
-    async def _connect_bootstrap(self, peer_addr: str) -> None:
+    async def _connect_bootstrap(self, peer_addr: str) -> bool:
         """Connect to a bootstrap peer."""
+        for dial_addr in await _bootstrap_dial_candidates(peer_addr):
+            try:
+                peer_info = peerinfo_from_multiaddr(dial_addr)
+                if str(peer_info.peer_id) == self.peer_id:
+                    logger.debug(
+                        "Ignoring local peer bootstrap candidate: %s",
+                        dial_addr,
+                    )
+                    continue
+                await self._host.connect(peer_info)
+
+                # Enforce max peers limit
+                if len(self._peers) >= MAX_PEERS:
+                    # Evict oldest peer
+                    oldest = min(
+                        self._peers.values(),
+                        key=lambda p: p.last_seen,
+                    )
+                    self._peers.pop(oldest.peer_id, None)
+
+                self._peers[str(peer_info.peer_id)] = PeerInfo(
+                    peer_id=str(peer_info.peer_id),
+                    multiaddrs=[dial_addr],
+                    protocols=[MCP_P2P_PROTOCOL],
+                )
+                logger.info(
+                    "Connected to bootstrap peer: %s",
+                    peer_info.peer_id,
+                )
+                return True
+            except Exception as exc:
+                logger.debug(
+                    "Failed to connect to bootstrap %s via %s: %s",
+                    peer_addr,
+                    dial_addr,
+                    exc,
+                )
+        return False
+
+    async def _exercise_rendezvous_after_startup(self) -> None:
+        """Give bootstrap dialing a brief head start, then exercise rendezvous."""
+        import trio
+
+        await trio.sleep(0.25)
+        await self.exercise_rendezvous()
+
+    async def exercise_rendezvous(
+        self,
+        namespace: Optional[str] = None,
+        *,
+        timeout: float = 10.0,
+    ) -> Dict[str, Any]:
+        """Run one bounded rendezvous registration/discovery exercise.
+
+        The operation is opt-in through an exact
+        ``IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER`` peer ID or multiaddr.  It never
+        invokes an MCP tool or model inference.
+        """
+        import trio
+
+        if not (0.0 < float(timeout) <= 10.0):
+            raise ValueError("rendezvous timeout must be within (0, 10] seconds")
+
+        target = os.environ.get(
+            "IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", ""
+        ).strip()
+        rendezvous_namespace = (
+            namespace
+            or os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_NS", "")
+            or "leanstral-local"
+        ).strip()
+        receipt: Dict[str, Any] = {
+            "mechanism": "rendezvous",
+            "target": target,
+            "namespace": rendezvous_namespace,
+            "observer_peer_id": self.peer_id,
+            "attempted": False,
+            "success": False,
+            "timeout_s": float(timeout),
+            "duration_ms": 0.0,
+            "error": None,
+            "details": {
+                "registered": False,
+                "discovered_peers": [],
+            },
+        }
+        started = time.monotonic()
+        if not self._host:
+            receipt["error"] = "p2p_node_not_operational"
+            self._rendezvous_attempts.append(receipt)
+            return dict(receipt)
+        if not target:
+            receipt["error"] = "rendezvous_peer_not_configured"
+            self._rendezvous_attempts.append(receipt)
+            return dict(receipt)
+        target_peer_id = target.rsplit("/p2p/", 1)[-1] if "/p2p/" in target else target
+        if target_peer_id == self.peer_id:
+            receipt["error"] = "rendezvous_client_not_independent"
+            self._rendezvous_attempts.append(receipt)
+            return dict(receipt)
+
+        receipt["attempted"] = True
         try:
-            peer_info = peerinfo_from_multiaddr(peer_addr)
-            await self._host.connect(peer_info)
-
-            # Enforce max peers limit
-            if len(self._peers) >= MAX_PEERS:
-                # Evict oldest peer
-                oldest = min(self._peers.values(), key=lambda p: p.last_seen)
-                self._peers.pop(oldest.peer_id, None)
-
-            self._peers[str(peer_info.peer_id)] = PeerInfo(
-                peer_id=str(peer_info.peer_id),
-                multiaddrs=[peer_addr],
-                protocols=[MCP_P2P_PROTOCOL],
+            from ipfs_accelerate_py.mcplusplus_module.p2p.connectivity import (
+                ConnectivityConfig,
+                UniversalConnectivity,
             )
-            logger.info(f"Connected to bootstrap peer: {peer_info.peer_id}")
-        except Exception as e:
-            logger.debug(f"Failed to connect to bootstrap {peer_addr}: {e}")
+
+            connectivity = UniversalConnectivity(
+                ConnectivityConfig(
+                    enable_mdns=False,
+                    enable_dht=False,
+                    enable_relay=False,
+                    enable_autonat=False,
+                    enable_hole_punching=False,
+                )
+            )
+            with trio.move_on_after(float(timeout)) as cancel_scope:
+                if "/p2p/" in target:
+                    await self._connect_bootstrap(target)
+                await connectivity.configure_rendezvous(
+                    self._host,
+                    rendezvous_peer=target,
+                )
+                if connectivity.implemented.get("rendezvous"):
+                    self._rendezvous_connectivity = connectivity
+                receipt["details"]["registered"] = await connectivity.rendezvous_register(
+                    rendezvous_namespace
+                )
+                receipt["details"]["discovered_peers"] = await connectivity.rendezvous_discover(
+                    rendezvous_namespace
+                )
+
+            if cancel_scope.cancelled_caught:
+                receipt["error"] = "timeout"
+            elif not connectivity.implemented.get("rendezvous"):
+                receipt["error"] = "rendezvous_not_implemented_by_runtime"
+            elif not receipt["details"]["registered"]:
+                receipt["error"] = "rendezvous_registration_failed"
+            else:
+                receipt["success"] = True
+        except Exception as exc:
+            receipt["error"] = f"{type(exc).__name__}: {exc}"
+        receipt["duration_ms"] = (time.monotonic() - started) * 1000.0
+        self._rendezvous_attempts.append(receipt)
+        return dict(receipt)
 
     async def _handle_stream(self, stream) -> None:
         """Handle an incoming /mcp+p2p/1.0.0 stream with backpressure."""
@@ -700,22 +1014,34 @@ class MCPp2pNode:
         """Discover peers via mDNS (local network).
 
         Uses Trio-compatible mDNS to find peers advertising the MCP++ service.
+        Discovery returns dial candidates; only a successful connection may
+        add a peer to the connected-peer registry.
         """
+        if not self.mdns_enabled:
+            logger.debug("mDNS discovery disabled by MCPPP_P2P_MDNS")
+            return []
+
+        browser = None
+        zeroconf = None
         try:
             import trio
             from zeroconf import Zeroconf, ServiceBrowser
 
-            discovered = []
-            zc = Zeroconf()
+            discovered: List[PeerInfo] = []
+            local_peer_id = self.peer_id
+            zeroconf = Zeroconf()
 
             class Listener:
                 def add_service(self, zc, type_, name):
                     info = zc.get_service_info(type_, name)
                     if info:
+                        peer_id = name.split(".", 1)[0].strip()
+                        if not peer_id or peer_id == local_peer_id:
+                            return
                         peer = PeerInfo(
-                            peer_id=name.split(".")[0],
+                            peer_id=peer_id,
                             multiaddrs=[
-                                f"/ip4/{address}/tcp/{info.port}/p2p/{name.split('.')[0]}"
+                                f"/ip4/{address}/tcp/{info.port}/p2p/{peer_id}"
                                 for address in info.parsed_addresses()
                             ],
                             protocols=[MCP_P2P_PROTOCOL],
@@ -728,18 +1054,14 @@ class MCPp2pNode:
                 def update_service(self, zc, type_, name):
                     pass
 
-            browser = ServiceBrowser(zc, f"_{service_tag}._tcp.local.", Listener())
+            browser = ServiceBrowser(
+                zeroconf,
+                f"_{service_tag}._tcp.local.",
+                Listener(),
+            )
 
             # Wait briefly for discovery
             await trio.sleep(2.0)
-            zc.close()
-
-            # Register discovered peers (enforce MAX_PEERS limit)
-            for peer in discovered:
-                if len(self._peers) >= MAX_PEERS:
-                    oldest = min(self._peers.values(), key=lambda p: p.last_seen)
-                    self._peers.pop(oldest.peer_id, None)
-                self._peers[peer.peer_id] = peer
 
             return discovered
 
@@ -749,17 +1071,119 @@ class MCPp2pNode:
         except Exception as e:
             logger.debug(f"mDNS discovery failed: {e}")
             return []
+        finally:
+            if browser is not None:
+                try:
+                    browser.cancel()
+                except Exception as exc:
+                    logger.debug("Failed to cancel mDNS browser: %s", exc)
+            if zeroconf is not None:
+                try:
+                    zeroconf.close()
+                except Exception as exc:
+                    logger.debug("Failed to close Zeroconf: %s", exc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize node state for status endpoints."""
+        mdns_configured = self.mdns_enabled
+        rendezvous_target = os.environ.get(
+            "IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", ""
+        ).strip()
+        rendezvous_service_mode = os.environ.get(
+            "MCPPP_P2P_RENDEZVOUS_SERVICE", ""
+        ).strip().casefold()
+        rendezvous_service_implemented = self._rendezvous_service is not None
+        rendezvous_client_implemented = bool(
+            self._rendezvous_connectivity
+            and self._rendezvous_connectivity.implemented.get("rendezvous")
+        )
+        rendezvous_client_exercised = bool(
+            rendezvous_client_implemented
+            and any(attempt.get("success") for attempt in self._rendezvous_attempts)
+        )
+        rendezvous_implemented = bool(
+            rendezvous_service_implemented or rendezvous_client_implemented
+        )
+        rendezvous_advertised = bool(
+            self._operational and rendezvous_service_implemented
+        )
         return {
+            "p2p_requested": True,
+            "p2p_enabled": self._started,
             "peer_id": self.peer_id,
             "multiaddrs": self.multiaddrs,
             "protocol": MCP_P2P_PROTOCOL,
+            "listen_addrs": list(self._listen_addrs),
+            "listen_port": self.listen_port,
+            "advertisement_policy": {
+                "explicit_multiaddrs": list(self._advertise_addrs),
+                "allowed_interfaces": list(self._advertise_interfaces),
+                "reject_known_container_interfaces": True,
+            },
             "started": self._started,
             "operational": self._operational,
             "connected_peers": len(self._peers),
             "peers": [p.to_dict() for p in self._peers.values()],
+            "bootstrap": {
+                "configured_peers": list(self._bootstrap_peers),
+                "attempts": list(self._bootstrap_attempts),
+            },
+            "rendezvous": {
+                "service": {
+                    "mode": rendezvous_service_mode,
+                    "configured": rendezvous_service_mode == "same_as_service_peer",
+                    "implemented": rendezvous_service_implemented,
+                    "peer_id": self.peer_id if rendezvous_service_implemented else "",
+                },
+                "client": {
+                    "configured_peer": rendezvous_target,
+                    "implemented": rendezvous_client_implemented,
+                    "exercise_success": rendezvous_client_exercised,
+                },
+                "namespace": (
+                    os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_NS", "").strip()
+                    or "leanstral-local"
+                ),
+                "attempts": list(self._rendezvous_attempts),
+                "external_exercise_receipt_required": True,
+            },
+            "capabilities": {
+                "mcp_stream": {
+                    "configured": True,
+                    "implemented": True,
+                    "advertised": self._operational,
+                },
+                "bootstrap": {
+                    "configured": bool(self._bootstrap_peers),
+                    "implemented": True,
+                    "advertised": bool(self._operational and self._bootstrap_peers),
+                },
+                "mdns": {
+                    "configured": mdns_configured,
+                    "implemented": self._mdns_zeroconf is not None,
+                    "advertised": self._mdns_zeroconf is not None,
+                },
+                "rendezvous": {
+                    "configured": bool(
+                        rendezvous_target
+                        or rendezvous_service_mode == "same_as_service_peer"
+                    ),
+                    "implemented": rendezvous_implemented,
+                    "advertised": rendezvous_advertised,
+                },
+                "pubsub": {
+                    "configured": False,
+                    "implemented": False,
+                    "advertised": False,
+                    "policy": "disabled_until_implemented",
+                },
+                "floodsub": {
+                    "configured": False,
+                    "implemented": False,
+                    "advertised": False,
+                    "policy": "disabled_until_implemented",
+                },
+            },
         }
 
 

@@ -18,6 +18,7 @@ It is intentionally lightweight and safe to import in CI/minimal contexts.
 
 from __future__ import annotations
 
+import importlib
 import threading
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
@@ -48,6 +49,7 @@ class RouterDeps:
 
     accelerate_managers: dict[str, Any] = field(default_factory=dict)
     backend_manager: Any | None = None
+    ipfs_backend: Any | None = None
     # Generic cache for router-resolved instances (providers, clients, etc.).
     # Keys should be stable strings; values are arbitrary objects.
     router_cache: dict[str, Any] = field(default_factory=dict)
@@ -113,6 +115,59 @@ class RouterDeps:
         with self._lock:
             self.router_cache[key] = value
         return value
+
+    def get_accelerate_manager(
+        self,
+        *,
+        purpose: str,
+        enable_distributed: bool = True,
+        resources: Optional[dict[str, Any]] = None,
+        ipfs_gateway: Optional[str] = None,
+    ) -> Any | None:
+        """Return a cached optional datasets ``AccelerateManager``.
+
+        The manager is an integration dependency consumed by these canonical
+        routers; it does not own a second router implementation.
+        """
+
+        normalized_purpose = str(purpose or "router").strip() or "router"
+        with self._lock:
+            cached = self.accelerate_managers.get(normalized_purpose)
+        if cached is not None:
+            return cached
+
+        try:
+            integration = importlib.import_module(
+                "ipfs_datasets_py.ml.accelerate_integration"
+            )
+            available = getattr(integration, "is_accelerate_available", None)
+            if callable(available) and not bool(available()):
+                return None
+            manager_module = importlib.import_module(
+                "ipfs_datasets_py.ml.accelerate_integration.manager"
+            )
+            manager_class = getattr(manager_module, "AccelerateManager", None)
+            if not callable(manager_class):
+                return None
+            try:
+                manager = manager_class(
+                    resources=resources or {"purpose": normalized_purpose},
+                    ipfs_gateway=ipfs_gateway,
+                    enable_distributed=bool(enable_distributed),
+                )
+            except TypeError:
+                # Lightweight injected test managers may intentionally expose a
+                # no-argument constructor.
+                manager = manager_class()
+        except Exception:
+            return None
+
+        with self._lock:
+            existing = self.accelerate_managers.get(normalized_purpose)
+            if existing is not None:
+                return existing
+            self.accelerate_managers[normalized_purpose] = manager
+        return manager
 
     def get_backend_manager(
         self,

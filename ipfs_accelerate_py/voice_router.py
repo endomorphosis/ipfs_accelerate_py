@@ -86,11 +86,19 @@ def _truthy(value: Optional[str]) -> bool:
 
 
 def _cache_enabled() -> bool:
-    return os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE", "1").strip() != "0"
+    value = (
+        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_CACHE")
+        or "1"
+    )
+    return value.strip() != "0"
 
 
 def _response_cache_enabled() -> bool:
-    value = os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE")
+    value = (
+        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE")
+        or os.environ.get("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE")
+    )
     if value is None:
         return True
     return str(value).strip() != "0"

@@ -37,6 +37,7 @@ from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
     make_kad_dht,
     make_multiaddr,
     make_rendezvous_client,
+    peer_id_from_base58,
     peer_id_text,
     peerinfo_from_multiaddr,
 )
@@ -132,6 +133,12 @@ class UniversalConnectivity:
         self._portal = None
 
         self._rv = None
+        self._rv_peer_id = None
+        self._rv_peer_source = (
+            os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER")
+            or os.environ.get("CACHE_P2P_RENDEZVOUS_PEER")
+            or ""
+        ).strip()
         self._rv_namespace = (
             os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_NS")
             or os.environ.get("CACHE_P2P_RENDEZVOUS_NS")
@@ -147,6 +154,8 @@ class UniversalConnectivity:
             "mdns": False,
             "dht": False,
             "rendezvous": False,
+            "pubsub": False,
+            "floodsub": False,
             "relay": False,
             "autonat": False,
             "hole_punching": False,
@@ -547,10 +556,38 @@ class UniversalConnectivity:
             return []
         return self._peerinfo_addrs_to_multiaddrs(peers)
 
-    async def configure_rendezvous(self, host) -> None:
-        """Configure rendezvous client (best-effort)."""
+    async def configure_rendezvous(
+        self,
+        host,
+        rendezvous_peer: Optional[object] = None,
+    ) -> None:
+        """Configure a rendezvous client for an exact server peer.
+
+        Current py-libp2p requires the rendezvous peer ID at construction time.
+        A multiaddr or base58 peer ID may be supplied directly; otherwise the
+        explicit ``IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER`` setting is used.
+        Missing identity fails closed instead of claiming rendezvous support.
+        """
         try:
-            self._rv = make_rendezvous_client(host)
+            target = rendezvous_peer or self._rv_peer_source
+            if isinstance(target, str):
+                target = target.strip()
+                if not target:
+                    self._rv = None
+                    self._rv_peer_id = None
+                    self.implemented["rendezvous"] = False
+                    return
+                if "/p2p/" in target:
+                    target = peerinfo_from_multiaddr(target).peer_id
+                else:
+                    target = peer_id_from_base58(target)
+            if target is None:
+                self._rv = None
+                self._rv_peer_id = None
+                self.implemented["rendezvous"] = False
+                return
+            self._rv_peer_id = target
+            self._rv = make_rendezvous_client(host, target)
             if self._rv is not None:
                 self.implemented["rendezvous"] = True
                 logger.info("✓ Rendezvous client enabled")
@@ -558,6 +595,8 @@ class UniversalConnectivity:
         except Exception:
             pass
         self._rv = None
+        self._rv_peer_id = None
+        self.implemented["rendezvous"] = False
 
     async def rendezvous_register(self, namespace: Optional[str] = None, *, ttl_s: int = 7200) -> bool:
         if not (self._rv and self.implemented.get("rendezvous")):
@@ -844,6 +883,11 @@ class UniversalConnectivity:
                 "hole_punching": self.config.enable_hole_punching,
             },
             "implemented": dict(self.implemented),
+            "rendezvous": {
+                "namespace": self._rv_namespace,
+                "peer_configured": bool(self._rv_peer_source or self._rv_peer_id),
+                "implemented": bool(self.implemented.get("rendezvous")),
+            },
         }
 
 
