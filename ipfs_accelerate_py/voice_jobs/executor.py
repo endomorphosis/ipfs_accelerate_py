@@ -8,6 +8,8 @@ Provider retries and circuit breaking remain owned by :mod:`voice_router`.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import gzip
 import hashlib
 import io
@@ -25,6 +27,13 @@ from typing import Any
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 from ..p2p_tasks.task_types import VOICE_TASK_TYPES, canonical_task_type
+from .contracts import (
+    ArtifactDescriptor,
+    VoiceJob,
+    VoiceJobContractError,
+    VoiceJobResult,
+    voice_job_from_payload,
+)
 
 
 class VoiceJobExecutionError(ValueError):
@@ -51,7 +60,7 @@ class ArtifactPolicy:
         )
     )
     allowed_file_roots: tuple[Path, ...] = ()
-    allowed_schemes: frozenset[str] = frozenset({"artifact", "file"})
+    allowed_schemes: frozenset[str] = frozenset({"artifact", "file", "ipfs"})
     max_input_bytes: int = 32 * 1024 * 1024
     max_decoded_bytes: int = 64 * 1024 * 1024
     max_duration_ms: int = 30 * 60 * 1000
@@ -162,12 +171,58 @@ class ArtifactResolver:
             raise VoiceJobExecutionError("artifact_too_large")
         return data
 
+    @staticmethod
+    def _raw_sha256_cid(digest: str) -> str:
+        """Return the canonical CIDv1/raw identifier for a SHA-256 digest."""
+
+        try:
+            digest_bytes = bytes.fromhex(digest)
+        except ValueError as exc:
+            raise VoiceJobExecutionError("artifact_sha256_required") from exc
+        if len(digest_bytes) != 32:
+            raise VoiceJobExecutionError("artifact_sha256_required")
+        cid_bytes = b"\x01\x55\x12\x20" + digest_bytes
+        encoded = base64.b32encode(cid_bytes).decode("ascii").lower().rstrip("=")
+        return f"b{encoded}"
+
+    def _cached_ipfs_path(self, parsed: Any) -> Path | None:
+        """Map an executor-produced IPFS descriptor to its verified local cache."""
+
+        if parsed.path not in {"", "/"}:
+            return None
+        encoded = parsed.netloc
+        if not encoded.startswith("b"):
+            return None
+        payload = encoded[1:].upper()
+        payload += "=" * (-len(payload) % 8)
+        try:
+            cid_bytes = base64.b32decode(payload, casefold=True)
+        except (ValueError, binascii.Error):
+            return None
+        if len(cid_bytes) != 36 or cid_bytes[:4] != b"\x01\x55\x12\x20":
+            return None
+        digest = cid_bytes[4:].hex()
+        directory = (self.policy.output_root / digest[:2]).resolve()
+        if not self._inside(directory, self.policy.output_root):
+            return None
+        for candidate in sorted(directory.glob(f"{digest}.*")):
+            if candidate.is_symlink():
+                continue
+            resolved = candidate.resolve()
+            if self._inside(resolved, self.policy.output_root) and resolved.is_file():
+                return resolved
+        return None
+
     def _fetch(self, uri: str, parsed: Any) -> bytes:
         scheme = parsed.scheme.lower()
         if scheme == "artifact":
             return self._read_bounded(self._artifact_path(parsed))
         if scheme == "file":
             return self._read_bounded(self._file_path(parsed))
+        if scheme == "ipfs":
+            cached_path = self._cached_ipfs_path(parsed)
+            if cached_path is not None and cached_path.is_file():
+                return self._read_bounded(cached_path)
         if scheme in {"http", "https"}:
             self._reject_private_network(parsed)
         if self.fetcher is None:
@@ -305,8 +360,10 @@ class ArtifactResolver:
         stored = self._read_bounded(target)
         if stored != data or hashlib.sha256(stored).hexdigest() != digest:
             raise VoiceJobExecutionError("artifact_persistence_mismatch")
+        cid = self._raw_sha256_cid(digest)
         return {
-            "uri": f"artifact://voice/{relative.as_posix()}",
+            "uri": f"ipfs://{cid}",
+            "cid": cid,
             "sha256": digest,
             "size_bytes": len(stored),
             "media_type": str(media_type),
@@ -325,6 +382,23 @@ def _job_mapping(job: Mapping[str, Any] | Any) -> dict[str, Any]:
     raise VoiceJobExecutionError("voice_job_mapping_required")
 
 
+def _canonical_job(
+    job: Mapping[str, Any] | Any,
+    *,
+    expected_task_type: str,
+) -> tuple[VoiceJob, dict[str, Any]]:
+    payload = _job_mapping(job)
+    try:
+        canonical_job = voice_job_from_payload(payload)
+    except VoiceJobContractError as exc:
+        raise VoiceJobExecutionError("voice_job_contract_invalid") from exc
+    if canonical_job.task_type != expected_task_type:
+        raise VoiceJobExecutionError(
+            f"{expected_task_type.replace('.', '_').replace('-', '_')}_job_required"
+        )
+    return canonical_job, canonical_job.to_payload()
+
+
 def _provider_receipt(job: Mapping[str, Any], *, latency_ms: int) -> dict[str, Any]:
     receipt: dict[str, Any] = {
         "provider": str(job.get("provider") or "default"),
@@ -341,30 +415,24 @@ def _provider_receipt(job: Mapping[str, Any], *, latency_ms: int) -> dict[str, A
 
 
 def _result(
-    job: Mapping[str, Any],
+    job: VoiceJob,
     *,
     artifact: Mapping[str, Any] | None,
     receipt: Mapping[str, Any],
     quality_metrics: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    task_type = canonical_task_type(job.get("task_type"))
-    output: dict[str, Any] = {
-        "schema_version": "abby_voice_job_result_v1",
-        "status": "succeeded",
-        "task_type": task_type,
-        "task_id": str(job.get("task_id") or ""),
-        "provider_receipt": dict(receipt),
-        "quality_metrics": dict(quality_metrics or {}),
-        "artifacts": [dict(artifact)] if artifact is not None else [],
-    }
-    if artifact is not None:
-        output["artifact"] = dict(artifact)
-    lineage = job.get("lineage")
-    if not isinstance(lineage, Mapping):
-        lineage = job.get("_lineage")
-    if isinstance(lineage, Mapping):
-        output["lineage"] = dict(lineage)
-    return output
+    artifacts = (
+        (ArtifactDescriptor.from_dict(artifact),)
+        if artifact is not None
+        else ()
+    )
+    return VoiceJobResult.from_job(
+        job,
+        status="completed",
+        artifacts=artifacts,
+        provider_receipt=receipt,
+        quality_metrics=quality_metrics or {},
+    ).to_payload()
 
 
 def _inspect_wav(data: bytes, policy: ArtifactPolicy) -> dict[str, int]:
@@ -414,9 +482,10 @@ def execute_voice_tts_job(
     text_to_speech_fn: Callable[..., Any] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
-    payload = _job_mapping(job)
-    if canonical_task_type(payload.get("task_type")) != "voice.tts":
-        raise VoiceJobExecutionError("voice_tts_job_required")
+    canonical_job, payload = _canonical_job(
+        job,
+        expected_task_type="voice.tts",
+    )
     spoken_text = payload.get("spoken_text")
     if not isinstance(spoken_text, str) or not spoken_text.strip():
         raise VoiceJobExecutionError("spoken_text_required")
@@ -459,7 +528,7 @@ def execute_voice_tts_job(
     artifact = active_resolver.persist(audio, suffix=codec, media_type=media_type)
     latency_ms = round(max(0.0, clock() - started) * 1000)
     return _result(
-        payload,
+        canonical_job,
         artifact=artifact,
         receipt=_provider_receipt(payload, latency_ms=latency_ms),
         quality_metrics={key: int(value) for key, value in metrics.items()},
@@ -473,9 +542,10 @@ def execute_voice_asr_job(
     speech_to_text_fn: Callable[..., Any] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
-    payload = _job_mapping(job)
-    if canonical_task_type(payload.get("task_type")) != "voice.asr":
-        raise VoiceJobExecutionError("voice_asr_job_required")
+    canonical_job, payload = _canonical_job(
+        job,
+        expected_task_type="voice.asr",
+    )
     active_resolver = resolver or ArtifactResolver()
     audio, descriptor = active_resolver.resolve_source(payload)
     metrics = _audio_metrics(audio, descriptor, active_resolver.policy)
@@ -510,16 +580,20 @@ def execute_voice_asr_job(
         artifact = active_resolver.persist(
             transcript_bytes,
             suffix="txt",
-            media_type="text/plain; charset=utf-8",
+            media_type="text/plain;charset=utf-8",
         )
     latency_ms = round(max(0.0, clock() - started) * 1000)
+    receipt = _provider_receipt(payload, latency_ms=latency_ms)
+    if artifact is None:
+        # Runtime STT intentionally retains no transcript artifact.  Preserve
+        # only its privacy-safe digest in the contract-approved response hash.
+        receipt["response_id_sha256"] = hashlib.sha256(transcript_bytes).hexdigest()
     result = _result(
-        payload,
+        canonical_job,
         artifact=artifact,
-        receipt=_provider_receipt(payload, latency_ms=latency_ms),
+        receipt=receipt,
         quality_metrics={**{key: int(value) for key, value in metrics.items()}, "transcript_bytes": len(transcript_bytes)},
     )
-    result["transcript_sha256"] = hashlib.sha256(transcript_bytes).hexdigest()
     return result
 
 
@@ -528,9 +602,10 @@ def execute_voice_audio_validation_job(
     *,
     resolver: ArtifactResolver | None = None,
 ) -> dict[str, Any]:
-    payload = _job_mapping(job)
-    if canonical_task_type(payload.get("task_type")) != "voice.audio-validate":
-        raise VoiceJobExecutionError("voice_audio_validation_job_required")
+    canonical_job, payload = _canonical_job(
+        job,
+        expected_task_type="voice.audio-validate",
+    )
     active_resolver = resolver or ArtifactResolver()
     audio, descriptor = active_resolver.resolve_source(payload)
     metrics = _audio_metrics(audio, descriptor, active_resolver.policy)
@@ -544,7 +619,7 @@ def execute_voice_audio_validation_job(
         if isinstance(maximum, int) and duration is not None and duration > maximum:
             raise VoiceJobExecutionError("audio_duration_above_policy")
     return _result(
-        payload,
+        canonical_job,
         artifact=dict(descriptor),
         receipt=_provider_receipt(payload, latency_ms=0),
         quality_metrics={key: int(value) for key, value in metrics.items()},

@@ -31,6 +31,14 @@ from ipfs_accelerate_py.p2p_tasks.worker import (
     _mesh_safe_task_types,
     run_worker,
 )
+from ipfs_accelerate_py.voice_jobs.contracts import (
+    ArtifactDescriptor,
+    VoiceASRJob,
+    VoiceAudioValidationJob,
+    VoiceJobLineage,
+    VoiceJobResult,
+    VoiceTTSJob,
+)
 from ipfs_accelerate_py.voice_jobs.executor import (
     ArtifactPolicy,
     ArtifactResolver,
@@ -68,6 +76,40 @@ def _write_audio_descriptor(root: Path, name: str, data: bytes) -> dict[str, obj
     }
 
 
+def _lineage(
+    *,
+    depends_on_task_ids: tuple[str, ...] = (),
+    publication_id: str = "",
+) -> VoiceJobLineage:
+    return VoiceJobLineage(
+        workset_id="abby-voice-workset:sha256:" + "1" * 64,
+        manifest_id="abby-voice-work-manifest:sha256:" + "2" * 64,
+        source_manifest_id="abby-voice-source:sha256:" + "3" * 64,
+        work_item_id="abby-voice-work:sha256:" + "4" * 64,
+        subject_id="response:sha256:" + "5" * 64,
+        subject_schema_version="abby_voice_response_v2",
+        policy_id="policy:sha256:" + "6" * 64,
+        depends_on_task_ids=depends_on_task_ids,
+        publication_id=publication_id,
+    )
+
+
+def _external_audio_descriptor(
+    data: bytes,
+    *,
+    name: str = "audio.wav",
+) -> ArtifactDescriptor:
+    digest = hashlib.sha256(data).hexdigest()
+    cid = "bafybeigdyrztexternalfixture"
+    return ArtifactDescriptor(
+        uri=f"ipfs://{cid}/{name}",
+        cid=cid,
+        sha256=digest,
+        size_bytes=len(data),
+        media_type="audio/wav",
+    )
+
+
 def _resolver(
     tmp_path: Path,
     *,
@@ -75,7 +117,7 @@ def _resolver(
     max_input_bytes: int = 1_000_000,
     max_decoded_bytes: int = 1_000_000,
     max_duration_ms: int = 60_000,
-    allowed_schemes: frozenset[str] = frozenset({"artifact", "file"}),
+    allowed_schemes: frozenset[str] = frozenset({"artifact", "file", "ipfs"}),
     fetcher: Any = None,
     source_task_resolver: Any = None,
 ) -> ArtifactResolver:
@@ -105,20 +147,21 @@ def test_tts_execution_persists_rehashed_audio_without_queue_bytes(
         return audio
 
     resolver = _resolver(tmp_path)
+    job = VoiceTTSJob(
+        spoken_text="A safe offline response.",
+        locale="en-US",
+        provider="fixture-tts",
+        model_name="fixture-model",
+        voice="abby",
+        provider_version="fixture-1",
+        lineage=_lineage(),
+        codec="wav",
+        sample_rate_hz=8_000,
+        channels=1,
+        generation_settings={"temperature": 0},
+    )
     result = execute_voice_tts_job(
-        {
-            "task_id": "tts-job",
-            "task_type": "text-to-speech",
-            "spoken_text": "A safe offline response.",
-            "provider": "fixture-tts",
-            "model_name": "fixture-model",
-            "voice": "abby",
-            "device": "cuda:2",
-            "codec": "wav",
-            "locale": "en-US",
-            "generation_settings": {"temperature": 0},
-            "lineage": {"workflow_id": "workflow-1"},
-        },
+        job,
         resolver=resolver,
         text_to_speech_fn=synthesize,
         clock=iter((1.0, 1.025)).__next__,
@@ -129,25 +172,43 @@ def test_tts_execution_persists_rehashed_audio_without_queue_bytes(
             "text": "A safe offline response.",
             "voice": "abby",
             "model_name": "fixture-model",
-            "device": "cuda:2",
+            "device": None,
             "output_format": "wav",
             "provider": "fixture-tts",
             "temperature": 0,
         }
     ]
-    assert result["status"] == "succeeded"
+    assert result["status"] == "completed"
     assert result["task_type"] == "voice.tts"
+    assert set(result) == {
+        "artifacts",
+        "error",
+        "lineage",
+        "provider_receipt",
+        "quality_metrics",
+        "schema_version",
+        "status",
+        "task_id",
+        "task_type",
+    }
     assert result["provider_receipt"] == {
         "provider": "fixture-tts",
         "model": "fixture-model",
+        "provider_version": "fixture-1",
         "latency_ms": 25,
         "attempt_count": 1,
     }
-    assert result["lineage"] == {"workflow_id": "workflow-1"}
-    assert result["artifact"]["sha256"] == hashlib.sha256(audio).hexdigest()
-    assert result["artifact"]["size_bytes"] == len(audio)
-    assert resolver.resolve(result["artifact"]) == audio
+    assert result["lineage"] == job.lineage.to_dict()
+    assert result["error"] is None
+    assert len(result["artifacts"]) == 1
+    artifact = result["artifacts"][0]
+    assert artifact["cid"]
+    assert artifact["uri"] == f"ipfs://{artifact['cid']}"
+    assert artifact["sha256"] == hashlib.sha256(audio).hexdigest()
+    assert artifact["size_bytes"] == len(audio)
+    assert resolver.resolve(artifact) == audio
     assert result["quality_metrics"]["duration_ms"] == 100
+    assert VoiceJobResult.from_payload(result).to_payload() == result
     serialized = json.dumps(result, sort_keys=True)
     assert "A safe offline response." not in serialized
     assert base64.b64encode(audio).decode("ascii") not in serialized
@@ -157,16 +218,15 @@ def test_tts_execution_persists_rehashed_audio_without_queue_bytes(
 def test_asr_execution_verifies_source_task_and_keeps_transcript_private(
     tmp_path: Path,
 ) -> None:
-    input_root = tmp_path / "inputs"
-    input_root.mkdir()
     audio = _wav_bytes(frames=400)
-    descriptor = _write_audio_descriptor(input_root, "caller.wav", audio)
+    descriptor = _external_audio_descriptor(audio, name="caller.wav")
+    source_task_id = "a" * 64
     source_calls: list[str] = []
     provider_calls: list[tuple[bytes, dict[str, object]]] = []
 
     def source_task(task_id: str) -> dict[str, object]:
         source_calls.append(task_id)
-        return {"artifacts": [descriptor]}
+        return {"artifacts": [descriptor.to_dict()]}
 
     def transcribe(data: bytes, **kwargs: object) -> str:
         provider_calls.append((data, kwargs))
@@ -174,34 +234,34 @@ def test_asr_execution_verifies_source_task_and_keeps_transcript_private(
 
     resolver = _resolver(
         tmp_path,
-        input_root=input_root,
+        fetcher=lambda uri, limit: audio,
         source_task_resolver=source_task,
     )
+    job = VoiceASRJob(
+        provider="fixture-asr",
+        model_name="fixture-whisper",
+        provider_version="fixture-1",
+        lineage=_lineage(depends_on_task_ids=(source_task_id,)),
+        source_task_id=source_task_id,
+        purpose="dataset_asr_validation",
+        locale="en",
+        decoding_settings={"beam_size": 1},
+    )
     result = execute_voice_asr_job(
-        {
-            "task_id": "asr-job",
-            "task_type": "STT",
-            "source_task_id": "tts-job",
-            "purpose": "dataset_asr_validation",
-            "provider": "fixture-asr",
-            "model_name": "fixture-whisper",
-            "device": "cpu",
-            "locale": "en",
-            "decoding_settings": {"beam_size": 1},
-        },
+        job,
         resolver=resolver,
         speech_to_text_fn=transcribe,
         clock=iter((3.0, 3.009)).__next__,
     )
 
-    assert source_calls == ["tts-job"]
+    assert source_calls == [source_task_id]
     assert provider_calls == [
         (
             audio,
             {
                 "model_name": "fixture-whisper",
                 "language": "en",
-                "device": "cpu",
+                "device": None,
                 "provider": "fixture-asr",
                 "beam_size": 1,
             },
@@ -212,56 +272,95 @@ def test_asr_execution_verifies_source_task_and_keeps_transcript_private(
     assert result["quality_metrics"]["transcript_bytes"] == len(
         b"private offline transcript"
     )
-    assert result["transcript_sha256"] == hashlib.sha256(
+    assert len(result["artifacts"]) == 1
+    transcript_artifact = result["artifacts"][0]
+    assert transcript_artifact["sha256"] == hashlib.sha256(
         b"private offline transcript"
     ).hexdigest()
-    assert resolver.resolve(result["artifact"]) == b"private offline transcript"
+    assert transcript_artifact["media_type"] == "text/plain;charset=utf-8"
+    assert resolver.resolve(transcript_artifact) == b"private offline transcript"
+    assert VoiceJobResult.from_payload(result).to_payload() == result
     serialized = json.dumps(result, sort_keys=True)
     assert "private offline transcript" not in serialized
-    assert str(input_root) not in serialized
+    assert str(tmp_path) not in serialized
 
+    runtime_job = VoiceASRJob(
+        provider="fixture-asr",
+        model_name="fixture-whisper",
+        provider_version="fixture-1",
+        lineage=_lineage(),
+        source_audio=descriptor,
+        purpose="runtime_stt",
+        locale="en",
+    )
     runtime_result = execute_task(
         {
-            "task_id": "runtime-asr",
-            "task_type": "automatic-speech-recognition",
-            "payload": {
-                "source_audio": descriptor,
-                "purpose": "runtime_stt",
-                "provider": "fixture-asr",
-            },
+            "task_id": runtime_job.task_id,
+            "task_type": runtime_job.task_type,
+            "model_name": runtime_job.model_name,
+            "payload": runtime_job.to_payload(),
         },
         resolver=resolver,
         speech_to_text_fn=lambda data, **kwargs: "ephemeral transcript",
     )
     assert runtime_result["task_type"] == "voice.asr"
     assert runtime_result["artifacts"] == []
-    assert "artifact" not in runtime_result
+    assert "transcript_sha256" not in runtime_result
+    assert runtime_result["provider_receipt"]["response_id_sha256"] == hashlib.sha256(
+        b"ephemeral transcript"
+    ).hexdigest()
+    assert VoiceJobResult.from_payload(runtime_result).to_payload() == runtime_result
     assert "ephemeral transcript" not in json.dumps(runtime_result)
+
+
+def test_executor_rejects_noncanonical_legacy_job_mapping(
+    tmp_path: Path,
+) -> None:
+    provider_called = False
+
+    def synthesize(text: str, **kwargs: object) -> bytes:
+        nonlocal provider_called
+        provider_called = True
+        return _wav_bytes()
+
+    with pytest.raises(
+        VoiceJobExecutionError,
+        match="^voice_job_contract_invalid$",
+    ):
+        execute_voice_tts_job(
+            {
+                "task_id": "legacy-task-id",
+                "task_type": "tts",
+                "spoken_text": "This mapping lacks canonical lineage.",
+            },
+            resolver=_resolver(tmp_path),
+            text_to_speech_fn=synthesize,
+        )
+    assert provider_called is False
 
 
 def test_audio_validation_decodes_wav_and_enforces_job_duration_policy(
     tmp_path: Path,
 ) -> None:
-    input_root = tmp_path / "inputs"
-    input_root.mkdir()
     audio = _wav_bytes(frames=2_000, sample_rate=8_000, channels=2)
-    descriptor = _write_audio_descriptor(input_root, "validation.wav", audio)
-    resolver = _resolver(tmp_path, input_root=input_root)
+    descriptor = _external_audio_descriptor(audio, name="validation.wav")
+    resolver = _resolver(tmp_path, fetcher=lambda uri, limit: audio)
 
-    result = execute_voice_audio_validation_job(
-        {
-            "task_id": "validate-job",
-            "task_type": "audio-validation",
-            "source_audio": descriptor,
-            "validation_policy": {
-                "minimum_duration_ms": 200,
-                "maximum_duration_ms": 300,
-            },
+    job = VoiceAudioValidationJob(
+        model_name="fixture-quality",
+        lineage=_lineage(),
+        source_audio=descriptor,
+        validation_policy={
+            "minimum_duration_ms": 200,
+            "maximum_duration_ms": 300,
         },
+    )
+    result = execute_voice_audio_validation_job(
+        job,
         resolver=resolver,
     )
     assert result["task_type"] == "voice.audio-validate"
-    assert result["artifact"] == descriptor
+    assert result["artifacts"] == [descriptor.to_dict()]
     assert result["quality_metrics"] == {
         "channels": 2,
         "sample_rate_hz": 8_000,
@@ -269,16 +368,18 @@ def test_audio_validation_decodes_wav_and_enforces_job_duration_policy(
         "duration_ms": 250,
         "decoded_bytes": 8_000,
     }
+    assert VoiceJobResult.from_payload(result).to_payload() == result
 
     with pytest.raises(
         VoiceJobExecutionError, match="^audio_duration_below_policy$"
     ):
         execute_voice_audio_validation_job(
-            {
-                "task_type": "voice.audio-validate",
-                "source_audio": descriptor,
-                "validation_policy": {"minimum_duration_ms": 251},
-            },
+            VoiceAudioValidationJob(
+                model_name="fixture-quality",
+                lineage=_lineage(),
+                source_audio=descriptor,
+                validation_policy={"minimum_duration_ms": 251},
+            ),
             resolver=resolver,
         )
 
@@ -389,20 +490,19 @@ def test_audio_validation_rejects_decode_and_duration_bombs(
     expected_code: str,
 ) -> None:
     data = b"not-a-wave" if case == "invalid" else _wav_bytes(frames=8_001)
-    input_root = tmp_path / "inputs"
-    input_root.mkdir()
-    descriptor = _write_audio_descriptor(input_root, "untrusted.wav", data)
+    descriptor = _external_audio_descriptor(data, name="untrusted.wav")
     resolver = _resolver(
         tmp_path,
-        input_root=input_root,
+        fetcher=lambda uri, limit: data,
         max_duration_ms=max_duration_ms,
     )
     with pytest.raises(VoiceJobExecutionError, match=f"^{expected_code}$"):
         execute_voice_audio_validation_job(
-            {
-                "task_type": "voice.audio-validate",
-                "source_audio": descriptor,
-            },
+            VoiceAudioValidationJob(
+                model_name="fixture-quality",
+                lineage=_lineage(),
+                source_audio=descriptor,
+            ),
             resolver=resolver,
         )
 
