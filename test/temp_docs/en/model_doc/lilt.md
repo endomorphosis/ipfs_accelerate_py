@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The LiLT model was proposed in [LiLT: A Simple yet Effective Language-Independent Layout Transformer for Structured Document Understanding](https://arxiv.org/abs/2202.13669) by Jiapeng Wang, Lianwen Jin, Kai Ding.
-LiLT allows to combine any pre-trained RoBERTa text encoder with a lightweight Layout Transformer, to enable [LayoutLM](layoutlm.md)-like document understanding for many
+LiLT allows to combine any pre-trained RoBERTa text encoder with a lightweight Layout Transformer, to enable [LayoutLM](./layoutlm.md)-like document understanding for many
 languages.
 
 The abstract from the paper is the following:
@@ -85,4 +85,4 @@ If you're interested in submitting a resource to be included here, please feel f
 
 ## LiltForQuestionAnswering
 
-[API documentation placeholder]
+[API documentation placeholder]
