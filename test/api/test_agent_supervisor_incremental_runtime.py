@@ -546,3 +546,54 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
     assert result["cleanup_result"]["pool_release"]["released"] is True
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
+
+
+def test_missing_pooled_workspace_is_discarded_after_setup_race(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command="python -c \"raise AssertionError('must not run')\"",
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+
+    def remove_workspace_before_launch(*_args, **kwargs) -> None:
+        workspace = Path(kwargs["worktree_path"])
+        _git(repo, "worktree", "remove", "--force", str(workspace))
+        raise FileNotFoundError(f"workspace disappeared: {workspace}")
+
+    monkeypatch.setattr(
+        daemon,
+        "_mark_implementation_started",
+        remove_workspace_before_launch,
+    )
+    task = PortalTask(
+        task_id="INC-003",
+        title="Discard missing pooled implementation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    assert result["returncode"] == 1
+    assert result["exception_result"]["exception_type"] == "FileNotFoundError"
+    assert result["cleanup_result"]["pool_release"]["reason"] == "reuse_disabled"
+    assert daemon._worktree_pool_leases == {}
+    assert list((worktree_root / ".pool-state").glob("*.json")) == []
+    assert list((worktree_root / ".pool-state").glob("*.lock")) == []

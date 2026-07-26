@@ -549,6 +549,52 @@ def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
     assert protected.read_text(encoding="utf-8") == "after\n"
 
 
+def test_crash_reconciliation_accepts_missing_ephemeral_workspace_when_shared_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result == {
+        "blocked": False,
+        "reason": "crash_reconciliation_ephemeral_workspace_missing",
+        "task_id": task.task_id,
+        "attempt": 1,
+        "workspace_path": str(workspace),
+    }
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_crash_reconciliation_rejects_missing_ephemeral_workspace_when_shared_changed(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+    protected.write_text("untrusted shared mutation\n", encoding="utf-8")
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is True
+    assert result["reason"] == "implementation_protected_path_mutated"
+    assert result["incident"]["protected_paths"] == [POLICY_PATH]
+    assert daemon._implementation_protected_incident_path().exists()
+
+
 def test_ephemeral_fence_accepts_concurrent_daemon_owned_completion_commit(
     tmp_path: Path,
 ) -> None:
