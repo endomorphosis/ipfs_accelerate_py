@@ -5462,7 +5462,50 @@ class PortalImplementationDaemon:
                             validation_result=validation_result,
                         )
                     elif commit_result.get("reason") == "no_changes":
-                        cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+                        current_head = self._run_git(
+                            ["rev-parse", "HEAD"],
+                            cwd=worktree_path,
+                        ).stdout.strip()
+                        current_branch = self._git_current_branch(worktree_path)
+                        no_change_guard = (
+                            self._validated_no_change_completion_guard(
+                                baseline_ref=baseline_ref,
+                                current_head=current_head,
+                                expected_branch=branch_name,
+                                current_branch=current_branch,
+                                validation_result=validation_result,
+                            )
+                        )
+                        commit_result["no_change_guard"] = no_change_guard
+                        if no_change_guard["allowed"]:
+                            cleanup_result = self._cleanup_merged_worktree(
+                                worktree_path,
+                                branch_name,
+                            )
+                        else:
+                            returncode = 1
+                            reason = "validated_candidate_missing_before_commit"
+                            validation_result = {
+                                **validation_result,
+                                "passed": False,
+                                "returncode": 1,
+                                "reason": reason,
+                                "no_change_guard": no_change_guard,
+                            }
+                            merge_result = {
+                                "merged": False,
+                                "reason": reason,
+                            }
+                            self._record_event(
+                                "implementation_candidate_lost_before_commit",
+                                {
+                                    "task_id": task.task_id,
+                                    "attempt": attempt,
+                                    "worktree_path": str(worktree_path),
+                                    "branch": branch_name,
+                                    **no_change_guard,
+                                },
+                            )
                 else:
                     returncode = int(validation_result.get("returncode") or 1)
                     if worktree_path.exists():
@@ -5761,7 +5804,15 @@ class PortalImplementationDaemon:
             if merge_result.get("queued")
             else str(merge_result.get("stderr") or merge_result.get("reason") or "")
         )
-        if returncode == 0 and (not implementation_commit or merge_result.get("merged")):
+        no_change_guard = commit_result.get("no_change_guard") or {}
+        if returncode == 0 and (
+            merge_result.get("merged")
+            or (
+                not implementation_commit
+                and isinstance(no_change_guard, dict)
+                and no_change_guard.get("allowed")
+            )
+        ):
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
@@ -5815,6 +5866,43 @@ class PortalImplementationDaemon:
             result["todo_update_result"] = todo_update_result
         self._record_event("implementation_finished", result)
         return result
+
+    @staticmethod
+    def _validated_no_change_completion_guard(
+        *,
+        baseline_ref: str,
+        current_head: str,
+        expected_branch: str,
+        current_branch: str,
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        selection = validation_result.get("selection") or {}
+        changed_files = (
+            selection.get("changed_files") or []
+            if isinstance(selection, Mapping)
+            else []
+        )
+        normalized_changed_files = [
+            str(path)
+            for path in changed_files
+            if str(path).strip()
+        ]
+        reasons: list[str] = []
+        if normalized_changed_files:
+            reasons.append("validated_diff_disappeared")
+        if baseline_ref and current_head != baseline_ref:
+            reasons.append("head_changed_before_commit")
+        if expected_branch and current_branch != expected_branch:
+            reasons.append("branch_changed_before_commit")
+        return {
+            "allowed": not reasons,
+            "reasons": reasons,
+            "baseline_ref": baseline_ref,
+            "current_head": current_head,
+            "expected_branch": expected_branch,
+            "current_branch": current_branch,
+            "validated_changed_files": normalized_changed_files,
+        }
 
     def _missing_validation_workspace_result(
         self,
@@ -12914,6 +13002,12 @@ class PortalImplementationDaemon:
         if not isinstance(commit_result, dict):
             return False
         if commit_result.get("reason") != "no_changes":
+            return False
+        no_change_guard = commit_result.get("no_change_guard") or {}
+        if (
+            not isinstance(no_change_guard, dict)
+            or not no_change_guard.get("allowed")
+        ):
             return False
         if int(latest.get("returncode") or 0) != 0:
             return False

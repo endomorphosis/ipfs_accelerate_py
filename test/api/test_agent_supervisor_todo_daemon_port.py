@@ -14596,6 +14596,74 @@ def test_implementation_supervisor_cleans_merged_backlogged_worktrees(tmp_path):
     assert branch_exists.returncode != 0
 
 
+def test_implementation_supervisor_keeps_peer_lane_active_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+
+    branch = "implementation/peer-active"
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "peer-active"
+    _git(repo, "branch", branch)
+    _git(repo, "worktree", "add", str(worktree_path), branch)
+    (worktree_path / "feature.py").write_text(
+        "VALUE = 'candidate'\n",
+        encoding="utf-8",
+    )
+
+    shared_state_root = repo / "state"
+    own_state_dir = shared_state_root / "lane-0"
+    peer_state_dir = shared_state_root / "lane-1"
+    own_state_dir.mkdir(parents=True)
+    peer_state_dir.mkdir(parents=True)
+    peer_state_path = peer_state_dir / "lane_1_task_state.json"
+    TodoTaskState(
+        active_task_id="ACCEL-PEER",
+        active_task_title="Peer candidate",
+        active_attempt=1,
+        active_phase="validating",
+        active_worktree_path=str(worktree_path),
+        active_branch=branch,
+        implementation_in_progress=True,
+    ).save(peer_state_path)
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=own_state_dir / "lane_0_task_state.json",
+            strategy_path=own_state_dir / "strategy.json",
+            events_path=own_state_dir / "events.jsonl",
+            state_dir=own_state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 0
+    peer_skip = next(
+        item
+        for item in result["skipped"]
+        if item["reason"] == "active_peer_state_worktree"
+    )
+    assert peer_skip["owner_task_id"] == "ACCEL-PEER"
+    assert peer_skip["owner_state_path"] == str(peer_state_path)
+    assert worktree_path.exists()
+    assert _git(worktree_path, "branch", "--show-current") == branch
+    assert (worktree_path / "feature.py").read_text(encoding="utf-8") == (
+        "VALUE = 'candidate'\n"
+    )
+
+
 def test_implementation_supervisor_cleans_redundant_dirty_merged_worktree(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

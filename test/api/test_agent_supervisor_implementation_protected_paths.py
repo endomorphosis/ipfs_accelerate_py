@@ -432,6 +432,43 @@ def test_validation_mutation_fails_before_shared_checkout_completion(
     assert protected.read_text(encoding="utf-8") == "changed-by-validation\n"
 
 
+def test_validated_no_change_guard_rejects_disappeared_candidate() -> None:
+    guard = PortalImplementationDaemon._validated_no_change_completion_guard(
+        baseline_ref="baseline",
+        current_head="rescued-candidate",
+        expected_branch="implementation/task-attempt-1",
+        current_branch="rescue/worktree/task",
+        validation_result={
+            "selection": {
+                "changed_files": [
+                    "src/feature.py",
+                    "test/test_feature.py",
+                ]
+            }
+        },
+    )
+
+    assert guard["allowed"] is False
+    assert guard["reasons"] == [
+        "validated_diff_disappeared",
+        "head_changed_before_commit",
+        "branch_changed_before_commit",
+    ]
+
+
+def test_validated_no_change_guard_accepts_exact_unchanged_baseline() -> None:
+    guard = PortalImplementationDaemon._validated_no_change_completion_guard(
+        baseline_ref="baseline",
+        current_head="baseline",
+        expected_branch="implementation/task-attempt-1",
+        current_branch="implementation/task-attempt-1",
+        validation_result={"selection": {"changed_files": []}},
+    )
+
+    assert guard["allowed"] is True
+    assert guard["reasons"] == []
+
+
 def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

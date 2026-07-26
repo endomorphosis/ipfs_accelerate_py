@@ -2025,7 +2025,9 @@ class PortalImplementationSupervisor:
             root_resolved = worktree_root
         process_lines = self._list_process_commands()
         state = PortalTaskState.load(self.config.state_path)
-        active_worktree = state.active_worktree_path.strip()
+        active_worktree_owners = self._shared_active_worktree_owners(
+            worktree_root
+        )
         target_ref = self._git_current_branch(repo_root) or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
         stale_items: list[dict[str, Any]] = []
@@ -2058,8 +2060,12 @@ class PortalImplementationSupervisor:
                 "head": head,
                 "kind": "worktree",
             }
-            if active_worktree and path_resolved == Path(active_worktree).resolve():
-                skipped.append({**detail, "reason": "active_state_worktree"})
+            active_skip = self._active_worktree_skip_detail(
+                path_resolved,
+                active_worktree_owners,
+            )
+            if active_skip is not None:
+                skipped.append({**detail, **active_skip})
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
@@ -2153,11 +2159,9 @@ class PortalImplementationSupervisor:
         except OSError:
             root_resolved = worktree_root
         process_lines = self._list_process_commands()
-        active_worktree = ""
-        try:
-            active_worktree = PortalTaskState.load(self.config.state_path).active_worktree_path
-        except Exception:
-            active_worktree = ""
+        active_worktree_owners = self._shared_active_worktree_owners(
+            worktree_root
+        )
         target_ref = self._git_current_branch(repo_root) or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
         raw_main_status = self._main_status_for_worktree_reconciliation(repo_root, worktree_root)
@@ -2193,8 +2197,12 @@ class PortalImplementationSupervisor:
             branch = str(record.get("branch") or "").removeprefix("refs/heads/")
             head = str(record.get("HEAD") or "")
             detail: dict[str, Any] = {"path": str(path), "branch": branch, "head": head}
-            if active_worktree and path_resolved == Path(active_worktree).resolve():
-                skipped.append({**detail, "reason": "active_state_worktree"})
+            active_skip = self._active_worktree_skip_detail(
+                path_resolved,
+                active_worktree_owners,
+            )
+            if active_skip is not None:
+                skipped.append({**detail, **active_skip})
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
@@ -2800,6 +2808,126 @@ class PortalImplementationSupervisor:
     def _worktree_branch_can_delete_after_merge(branch: str) -> bool:
         return PortalImplementationSupervisor._worktree_branch_is_reconcilable(branch)
 
+    def _shared_active_worktree_owners(
+        self,
+        worktree_root: Path,
+    ) -> dict[Path, dict[str, str]]:
+        """Return durable active-worktree claims from every sibling lane.
+
+        A provider process can exit a few seconds before its daemon validates
+        and commits the candidate. Process inspection alone therefore has a
+        destructive false-negative window. The task state and protected-path
+        snapshot remain durable throughout that handoff and are authoritative
+        reasons for every supervisor sharing the worktree root to stand down.
+        """
+
+        try:
+            root_resolved = worktree_root.resolve()
+        except OSError:
+            root_resolved = worktree_root
+
+        owners: dict[Path, dict[str, str]] = {}
+
+        def register(raw_path: object, **metadata: object) -> None:
+            path_text = str(raw_path or "").strip()
+            if not path_text:
+                return
+            try:
+                resolved = Path(path_text).resolve()
+                resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                return
+            owners[resolved] = {
+                key: str(value or "")
+                for key, value in metadata.items()
+            }
+
+        state_paths = {self.config.state_path}
+        namespace_root = self.config.state_path.parent.parent
+        try:
+            sibling_dirs = [
+                path
+                for path in namespace_root.iterdir()
+                if path.is_dir()
+            ]
+        except OSError:
+            sibling_dirs = [self.config.state_path.parent]
+
+        for state_dir in sibling_dirs:
+            try:
+                state_paths.update(state_dir.glob("*task_state.json"))
+            except OSError:
+                continue
+
+        for state_path in sorted(state_paths):
+            try:
+                state = PortalTaskState.load(state_path)
+            except Exception:
+                continue
+            if not state.implementation_in_progress:
+                continue
+            register(
+                state.active_worktree_path,
+                source="task_state",
+                state_path=state_path,
+                task_id=state.active_task_id,
+                branch=state.active_branch,
+            )
+
+        for state_dir in sibling_dirs:
+            snapshot_path = (
+                state_dir / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+            )
+            payload = load_json_dict(snapshot_path)
+            if not payload:
+                continue
+            register(
+                payload.get("workspace_path"),
+                source="protected_path_snapshot",
+                snapshot_path=snapshot_path,
+                task_id=payload.get("task_id"),
+            )
+
+        return owners
+
+    def _active_worktree_skip_detail(
+        self,
+        path: Path,
+        owners: Mapping[Path, Mapping[str, str]],
+    ) -> dict[str, str] | None:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        owner = owners.get(resolved)
+        if owner is None:
+            return None
+        own_state_path = str(self.config.state_path.resolve())
+        owner_state_path = str(owner.get("state_path") or "")
+        owner_snapshot_path = str(owner.get("snapshot_path") or "")
+        own_snapshot_path = str(
+            (
+                self.config.state_path.parent
+                / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+            ).resolve()
+        )
+        own_lane = (
+            owner_state_path == own_state_path
+            or owner_snapshot_path == own_snapshot_path
+        )
+        return {
+            "reason": (
+                "active_state_worktree"
+                if own_lane
+                else "active_peer_state_worktree"
+            ),
+            "owner_source": str(owner.get("source") or ""),
+            "owner_state_path": owner_state_path,
+            "owner_snapshot_path": owner_snapshot_path,
+            "owner_task_id": str(owner.get("task_id") or ""),
+            "owner_branch": str(owner.get("branch") or ""),
+        }
+
     @staticmethod
     def _safe_rescue_branch_fragment(value: str) -> str:
         normalized = []
@@ -3023,11 +3151,9 @@ class PortalImplementationSupervisor:
         except OSError:
             root_resolved = worktree_root
         process_lines = self._list_process_commands()
-        active_worktree = ""
-        try:
-            active_worktree = PortalTaskState.load(self.config.state_path).active_worktree_path
-        except Exception:
-            active_worktree = ""
+        active_worktree_owners = self._shared_active_worktree_owners(
+            worktree_root
+        )
         target_ref = self._git_current_branch(repo_root) or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
         scan_cache = self._load_worktree_scan_cache()
@@ -3046,8 +3172,12 @@ class PortalImplementationSupervisor:
                 path_resolved.relative_to(root_resolved)
             except (OSError, ValueError):
                 continue
-            if active_worktree and path_resolved == Path(active_worktree).resolve():
-                skipped.append({"path": str(path), "reason": "active_state_worktree"})
+            active_skip = self._active_worktree_skip_detail(
+                path_resolved,
+                active_worktree_owners,
+            )
+            if active_skip is not None:
+                skipped.append({"path": str(path), **active_skip})
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({"path": str(path), "reason": "active_process"})
