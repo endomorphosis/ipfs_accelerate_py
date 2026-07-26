@@ -43,7 +43,13 @@ from ..checkout_lock import (
     checkout_lock_metadata,
     checkout_mutation_lock_path,
 )
-from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
+from ..event_log import (
+    append_jsonl_event,
+    latest_event_cursor,
+    read_jsonl_events,
+    repair_jsonl_event_log,
+    unique_backup_path,
+)
 from ..merge_conflict_repair import (
     resolve_append_only_markdown_conflicts,
     resolve_launch_readiness_conflicts,
@@ -52,7 +58,11 @@ from ..merge_conflict_repair import (
 from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
 from ..task_identity import TaskIdentity, canonical_task_identity
-from ..taskboard_store import locked_taskboard, replace_locked_taskboard
+from ..taskboard_store import (
+    ProjectionDeltaCheckpointStore,
+    locked_taskboard,
+    replace_locked_taskboard,
+)
 from ..git_gc import GitGarbageCollector
 from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
@@ -174,6 +184,26 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID = (
+    "asi-117:event-driven-delta-checkpoint-runtime"
+)
+RUNTIME_CHECKPOINT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.event-driven-runtime-checkpoint@1"
+)
+RUNTIME_WAKE_KINDS = frozenset(
+    {
+        "task_board",
+        "objective",
+        "repository",
+        "child_process",
+        "lease",
+        "validation",
+        "provider_capacity",
+        "policy",
+        "observation_window",
+    }
+)
+DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
 
 
 def default_llm_merge_resolver_command() -> str:
@@ -697,6 +727,19 @@ def write_json_atomic(path: Path, payload: Any) -> None:
     write_text_atomic(path, json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def write_json_atomic_if_changed(path: Path, payload: Any) -> bool:
+    """Atomically persist canonical JSON only when its bytes changed."""
+
+    rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    try:
+        if path.is_file() and path.read_text(encoding="utf-8") == rendered:
+            return False
+    except (OSError, UnicodeDecodeError):
+        pass
+    write_text_atomic(path, rendered, encoding="utf-8")
+    return True
+
+
 def load_json_dict(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
@@ -1093,8 +1136,10 @@ class PortalTaskState:
     strategy_generation: int = 0
     selection_idle_reason: str = ""
 
-    def save(self, path: Path) -> None:
-        write_json_atomic(path, asdict(self))
+    def save(self, path: Path) -> bool:
+        """Persist the projection if it changed and report whether bytes moved."""
+
+        return write_json_atomic_if_changed(path, asdict(self))
 
     @classmethod
     def load(cls, path: Path) -> "PortalTaskState":
@@ -1664,6 +1709,25 @@ class PortalImplementationDaemon:
             repo_root=self.repo_root,
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
         )
+        self.runtime_checkpoint_path = self.state_path.with_name(
+            f"{self.state_path.stem}.event-driven-checkpoint.json"
+        )
+        self.runtime_checkpoint_store = ProjectionDeltaCheckpointStore(
+            self.runtime_checkpoint_path
+        )
+        self._runtime_wake_coordinator: Any | None = None
+        self._pending_runtime_wake_events: list[Any] = []
+        self._current_runtime_wake_events: list[Any] = []
+        self._current_runtime_wake_kinds: set[str] = set()
+        self._runtime_checkpoint = self._load_runtime_checkpoint()
+        self._runtime_last_source_digest = str(
+            self._runtime_checkpoint.get("source_digest") or ""
+        )
+        cached_result = self._runtime_checkpoint.get("result")
+        self._runtime_last_result = (
+            dict(cached_result) if isinstance(cached_result, Mapping) else None
+        )
+        self._last_safety_reconciliation_monotonic = time.monotonic()
 
     @staticmethod
     def _implementation_protected_path_identity(
@@ -2552,6 +2616,284 @@ class PortalImplementationDaemon:
         merged["deprioritized_tasks"] = [str(item) for item in merged.get("deprioritized_tasks", [])]
         return merged
 
+    @staticmethod
+    def _runtime_path_metadata(path: Path) -> dict[str, Any]:
+        """Read a bounded, non-following source head before expensive work."""
+
+        try:
+            value = path.lstat()
+        except FileNotFoundError:
+            return {"path": str(path), "state": "missing"}
+        except OSError as exc:
+            return {
+                "path": str(path),
+                "state": "unreadable",
+                "errno": int(exc.errno or 0),
+            }
+        return {
+            "path": str(path),
+            "state": "present",
+            "device": int(value.st_dev),
+            "inode": int(value.st_ino),
+            "mode": int(value.st_mode),
+            "size": int(value.st_size),
+            "mtime_ns": int(value.st_mtime_ns),
+            "ctime_ns": int(value.st_ctime_ns),
+        }
+
+    def _runtime_source_paths(self) -> dict[str, tuple[Path, ...]]:
+        git_path = self.repo_root / ".git"
+        git_dir = git_path
+        if git_path.is_file():
+            try:
+                marker = git_path.read_text(encoding="utf-8").strip()
+            except (OSError, UnicodeDecodeError):
+                marker = ""
+            if marker.casefold().startswith("gitdir:"):
+                candidate = Path(marker.split(":", 1)[1].strip())
+                git_dir = (
+                    candidate
+                    if candidate.is_absolute()
+                    else (self.repo_root / candidate)
+                ).resolve()
+        objective_paths: list[Path] = []
+        if self.objective_path is not None:
+            objective_paths.append(Path(self.objective_path))
+        if self.objective_bundle_dir is not None:
+            objective_paths.append(Path(self.objective_bundle_dir))
+        lease_paths = [
+            Path(self.merge_queue_dir),
+            self.state_path.parent / IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+            *self.external_reservation_manifest_paths,
+        ]
+        policy_paths = [
+            self.strategy_path,
+            self._implementation_protected_active_snapshot_path(),
+            self._implementation_protected_incident_path(),
+        ]
+        return {
+            "task_board": (self.todo_path,),
+            "objective": tuple(objective_paths),
+            "repository": (
+                self.repo_root,
+                git_dir / "HEAD",
+                git_dir / "index",
+                git_dir / "MERGE_HEAD",
+                git_dir / "refs" / "heads",
+            ),
+            "child_process": (),
+            "lease": tuple(lease_paths),
+            "validation": (Path(self.validation_cache_dir),),
+            "provider_capacity": (),
+            "policy": tuple(policy_paths),
+            "observation_window": (),
+        }
+
+    def _runtime_source_head(self) -> tuple[str, dict[str, Any]]:
+        sources = {
+            kind: [
+                self._runtime_path_metadata(path)
+                for path in dict.fromkeys(paths)
+            ]
+            for kind, paths in self._runtime_source_paths().items()
+        }
+        # The daemon's event stream is also a durable coordination input. Its
+        # own writes are captured after a materialized pass, so they do not
+        # create a feedback loop on the next preflight.
+        sources["event_log"] = [self._runtime_path_metadata(self.events_path)]
+        sources["state"] = [self._runtime_path_metadata(self.state_path)]
+        encoded = json.dumps(
+            sources,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest(), sources
+
+    def _load_runtime_checkpoint(self) -> dict[str, Any]:
+        try:
+            loaded = self.runtime_checkpoint_store.load()
+        except (OSError, TypeError, ValueError):
+            return {}
+        if loaded is None:
+            return {}
+        projection, cursor = loaded
+        if (
+            projection.get("schema") != RUNTIME_CHECKPOINT_SCHEMA
+            or projection.get("requirement_id")
+            != EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID
+        ):
+            return {}
+        return {**projection, "cursor": cursor.to_record()}
+
+    @staticmethod
+    def _runtime_result_projection(result: Mapping[str, Any]) -> dict[str, Any]:
+        keys = (
+            "task_count",
+            "completed_count",
+            "ready_count",
+            "selectable_ready_count",
+            "eligible_ready_count",
+            "strict_deprioritized_ready_count",
+            "waiting_count",
+            "blocked_count",
+            "active_task_id",
+            "selection_idle_reason",
+            "state_path",
+            "strategy_path",
+            "events_path",
+            "reason",
+        )
+        return {key: result[key] for key in keys if key in result}
+
+    def _save_runtime_checkpoint(
+        self,
+        *,
+        source_digest: str,
+        sources: Mapping[str, Any],
+        result: Mapping[str, Any],
+        projection_delta: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        projection = {
+            "schema": RUNTIME_CHECKPOINT_SCHEMA,
+            "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+            "source_digest": source_digest,
+            "result": self._runtime_result_projection(result),
+            "task_state": asdict(PortalTaskState.load(self.state_path)),
+            "source_kinds": sorted(sources),
+        }
+        event_cursor = latest_event_cursor(self.events_path)
+        materialized = self.runtime_checkpoint_store.materialize(
+            projection,
+            event_cursor,
+        )
+        self._runtime_checkpoint = {
+            **projection,
+            "cursor": event_cursor.to_record(),
+        }
+        return {
+            "changed": materialized.changed,
+            "write_count": materialized.write_count,
+            "checkpoint_id": materialized.checkpoint_id,
+            "projection_id": materialized.projection_id,
+            "delta": dict(materialized.delta),
+            "event_cursor": self._runtime_checkpoint["cursor"],
+            "state_delta_keys": sorted(projection_delta),
+        }
+
+    @staticmethod
+    def _projection_delta(
+        previous: PortalTaskState,
+        current: PortalTaskState,
+    ) -> dict[str, Any]:
+        before = asdict(previous)
+        after = asdict(current)
+        return {
+            key: value
+            for key, value in after.items()
+            if before.get(key) != value
+        }
+
+    def _consume_runtime_wake_kinds(self) -> set[str]:
+        events = self._pending_runtime_wake_events
+        self._pending_runtime_wake_events = []
+        self._current_runtime_wake_events = list(events)
+        kinds: set[str] = set()
+        for event in events:
+            if isinstance(event, Mapping):
+                kind = str(event.get("kind") or "")
+                event_kinds = event.get("kinds") or ()
+            else:
+                raw_kind = getattr(event, "kind", "")
+                kind = str(getattr(raw_kind, "value", raw_kind) or "")
+                event_kinds = getattr(event, "kinds", ())
+            if kind in RUNTIME_WAKE_KINDS:
+                kinds.add(kind)
+            for raw_kind in event_kinds:
+                selected = str(getattr(raw_kind, "value", raw_kind) or "")
+                if selected in RUNTIME_WAKE_KINDS:
+                    kinds.add(selected)
+        return kinds
+
+    def _acknowledge_runtime_events(self) -> None:
+        coordinator = self._runtime_wake_coordinator
+        if coordinator is None:
+            self._current_runtime_wake_events = []
+            return
+        for event in self._current_runtime_wake_events:
+            coordinator.acknowledge(event)
+        self._current_runtime_wake_events = []
+
+    def _unchanged_runtime_result(
+        self,
+        *,
+        source_digest: str,
+        wake_kinds: set[str],
+    ) -> dict[str, Any]:
+        result = dict(self._runtime_last_result or {})
+        result.update(
+            {
+                "unchanged": True,
+                "write_count": 0,
+                "projection_delta": {},
+                "implementation_result": None,
+                "merge_reconciliation": [],
+                "source_digest": source_digest,
+                "wake_kinds": sorted(wake_kinds),
+                "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+            }
+        )
+        self._acknowledge_runtime_events()
+        return result
+
+    def notify_runtime_event(
+        self,
+        kind: str,
+        payload: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Wake the runtime for a non-filesystem semantic source."""
+
+        if kind not in RUNTIME_WAKE_KINDS:
+            raise ValueError(f"unsupported runtime wake kind: {kind}")
+        coordinator = self._ensure_runtime_wake_coordinator()
+        revision = "sha256:" + hashlib.sha256(
+            json.dumps(
+                dict(payload or {}),
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        coordinator.notify(kind, revision=revision)
+
+    def _ensure_runtime_wake_coordinator(self) -> Any:
+        if self._runtime_wake_coordinator is None:
+            from ..taskboard_store import RuntimeWakeCoordinator
+
+            self._runtime_wake_coordinator = RuntimeWakeCoordinator(
+                self._runtime_source_paths(),
+            )
+        return self._runtime_wake_coordinator
+
+    def wait_for_wake(self, timeout: float | None = None) -> list[Any]:
+        """Block for semantic input, using ``timeout`` as the safety deadline."""
+
+        coordinator = self._ensure_runtime_wake_coordinator()
+        event = coordinator.wait(timeout=timeout)
+        events = [event]
+        self._pending_runtime_wake_events.extend(events)
+        return events
+
+    def close_event_runtime(self) -> None:
+        """Release watcher resources owned by the event-driven runtime."""
+
+        coordinator = self._runtime_wake_coordinator
+        self._runtime_wake_coordinator = None
+        self._pending_runtime_wake_events = []
+        self._current_runtime_wake_events = []
+        if coordinator is not None:
+            coordinator.close()
+
     def _mark_long_running_phase(self, *, task_id: str, phase: str, detail: str = "") -> None:
         state = PortalTaskState.load(self.state_path)
         now = utc_now()
@@ -2582,7 +2924,7 @@ class PortalImplementationDaemon:
         live_inflight_implementation = self._find_live_inflight_implementation()
         now = utc_now()
         state = PortalTaskState.load(self.state_path)
-        state.heartbeat_at = now
+        state.heartbeat_at = previous.heartbeat_at
         if not state.last_progress_at:
             state.last_progress_at = now
         state.completed_task_ids = []
@@ -2618,7 +2960,11 @@ class PortalImplementationDaemon:
             state.recommended_task_id = ""
             state.recommended_actions = []
         state.selection_idle_reason = reason
-        state.save(self.state_path)
+        projection_delta = self._projection_delta(previous, state)
+        if projection_delta:
+            state.heartbeat_at = now
+            projection_delta = self._projection_delta(previous, state)
+        state_written = state.save(self.state_path)
         payload = {
             "reason": reason,
             "todo_path": str(self.todo_path),
@@ -2627,8 +2973,9 @@ class PortalImplementationDaemon:
         }
         if error:
             payload["error"] = error[-4000:]
-        self._record_event("daemon_no_tasks", payload)
-        return {
+        if state_written:
+            self._record_event("daemon_no_tasks", payload)
+        result = {
             "task_count": 0,
             "completed_count": 0,
             "ready_count": 0,
@@ -2645,7 +2992,27 @@ class PortalImplementationDaemon:
             "implementation_result": None,
             "merge_reconciliation": [],
             "reason": reason,
+            "unchanged": not state_written,
+            "state_written": state_written,
+            "write_count": int(state_written),
+            "projection_delta": projection_delta,
+            "wake_kinds": sorted(self._current_runtime_wake_kinds),
+            "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
+        final_source_digest, final_sources = self._runtime_source_head()
+        if state_written:
+            checkpoint_result = self._save_runtime_checkpoint(
+                source_digest=final_source_digest,
+                sources=final_sources,
+                result=result,
+                projection_delta=projection_delta,
+            )
+            result["delta_checkpoint"] = checkpoint_result
+            result["write_count"] += int(checkpoint_result["write_count"])
+        self._runtime_last_source_digest = final_source_digest
+        self._runtime_last_result = self._runtime_result_projection(result)
+        self._acknowledge_runtime_events()
+        return result
 
     def ensure_state_file(self) -> dict[str, Any]:
         """Repair malformed durable state before this pass reads it."""
@@ -2668,6 +3035,24 @@ class PortalImplementationDaemon:
         return result
 
     def run_once(self) -> dict[str, Any]:
+        wake_kinds = self._consume_runtime_wake_kinds()
+        self._current_runtime_wake_kinds = set(wake_kinds)
+        source_digest, _source_metadata = self._runtime_source_head()
+        forced_wake_kinds = wake_kinds.difference({"observation_window"})
+        safety_reconciliation_due = (
+            time.monotonic() - self._last_safety_reconciliation_monotonic
+            >= DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
+        )
+        if (
+            source_digest == self._runtime_last_source_digest
+            and not forced_wake_kinds
+            and not safety_reconciliation_due
+        ):
+            return self._unchanged_runtime_result(
+                source_digest=source_digest,
+                wake_kinds=wake_kinds,
+            )
+        self._last_safety_reconciliation_monotonic = time.monotonic()
         event_log_repair = self.ensure_event_log_file()
         state_file_repair = self.ensure_state_file()
         protected_path_reconciliation = (
@@ -2971,7 +3356,7 @@ class PortalImplementationDaemon:
         if selected is None and attempt_limit_idle_reason:
             selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
         state = PortalTaskState.load(self.state_path)
-        state.heartbeat_at = now
+        state.heartbeat_at = previous.heartbeat_at
         if newly_completed or not state.last_progress_at:
             state.last_progress_at = now
         state.completed_task_ids = sorted(completed_set)
@@ -3077,7 +3462,11 @@ class PortalImplementationDaemon:
             state.recommended_actions = []
             state.selection_idle_reason = str(selection_scope["selection_idle_reason"])
 
-        state.save(self.state_path)
+        projection_delta = self._projection_delta(previous, state)
+        if projection_delta:
+            state.heartbeat_at = now
+            projection_delta = self._projection_delta(previous, state)
+        state_written = state.save(self.state_path)
         if revision_reset_task_ids:
             self._record_event(
                 "task_revision_attempt_budget_reset",
@@ -3107,27 +3496,29 @@ class PortalImplementationDaemon:
                 self._record_event("implementation_skipped", implementation_result)
             else:
                 implementation_result = self._run_implementation(selected, state)
-        self._record_event(
-            "daemon_pass",
-            {
-                "completed_count": state.completed_count,
-                "ready_count": state.ready_count,
-                "waiting_count": state.waiting_count,
-                "blocked_count": state.blocked_count,
-                "active_task_id": state.active_task_id,
-                "selectable_ready_count": state.selectable_ready_count,
-                "eligible_ready_count": state.eligible_ready_count,
-                "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
-                "selection_idle_reason": state.selection_idle_reason,
-                "max_task_attempts": self.max_task_attempts,
-                "attempt_limited_task_ids": [
-                    item["task_id"] for item in attempt_limited_tasks
-                ],
-                "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
-                "shared_completed_task_ids": sorted(shared_completed_task_ids),
-            },
-        )
-        return {
+        if state_written or implementation_result is not None:
+            self._record_event(
+                "daemon_pass",
+                {
+                    "completed_count": state.completed_count,
+                    "ready_count": state.ready_count,
+                    "waiting_count": state.waiting_count,
+                    "blocked_count": state.blocked_count,
+                    "active_task_id": state.active_task_id,
+                    "selectable_ready_count": state.selectable_ready_count,
+                    "eligible_ready_count": state.eligible_ready_count,
+                    "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
+                    "selection_idle_reason": state.selection_idle_reason,
+                    "max_task_attempts": self.max_task_attempts,
+                    "attempt_limited_task_ids": [
+                        item["task_id"] for item in attempt_limited_tasks
+                    ],
+                    "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
+                    "shared_completed_task_ids": sorted(shared_completed_task_ids),
+                    "projection_delta_keys": sorted(projection_delta),
+                },
+            )
+        result = {
             "task_count": state.task_count,
             "completed_count": state.completed_count,
             "ready_count": state.ready_count,
@@ -3161,7 +3552,33 @@ class PortalImplementationDaemon:
             "canonical_task_count": len(aliases_by_cid),
             "merge_train_progress": merge_train_progress,
             "protected_path_reconciliation": protected_path_reconciliation,
+            "unchanged": not state_written and implementation_result is None,
+            "state_written": state_written,
+            "write_count": int(state_written),
+            "projection_delta": projection_delta,
+            "wake_kinds": sorted(wake_kinds),
+            "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
+        final_source_digest, final_sources = self._runtime_source_head()
+        # An implementation may mutate attempt, lease, validation, and active
+        # execution state after the board projection above was selected. Do
+        # not acknowledge that source head until a follow-up pass reconciles
+        # those effects into the task projection.
+        if state_written and implementation_result is None:
+            checkpoint_result = self._save_runtime_checkpoint(
+                source_digest=final_source_digest,
+                sources=final_sources,
+                result=result,
+                projection_delta=projection_delta,
+            )
+            result["delta_checkpoint"] = checkpoint_result
+            result["write_count"] += int(checkpoint_result["write_count"])
+        self._runtime_last_source_digest = (
+            final_source_digest if implementation_result is None else ""
+        )
+        self._runtime_last_result = self._runtime_result_projection(result)
+        self._acknowledge_runtime_events()
+        return result
 
     @staticmethod
     def _provider_capacity_backoff_seconds() -> float:
@@ -15815,12 +16232,15 @@ def main(argv: list[str] | None = None) -> None:
         validation_resource_budget=args.validation_resource_budget,
         maintenance_interval_seconds=args.maintenance_interval_seconds,
     )
-    while True:
-        result = daemon.run_once()
-        logger.info("Portal implementation daemon pass complete: %s", result)
-        if args.once:
-            break
-        time.sleep(args.interval)
+    try:
+        while True:
+            result = daemon.run_once()
+            logger.info("Portal implementation daemon pass complete: %s", result)
+            if args.once:
+                break
+            daemon.wait_for_wake(timeout=args.interval)
+    finally:
+        daemon.close_event_runtime()
 
 
 if __name__ == "__main__":
