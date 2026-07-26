@@ -44,6 +44,7 @@ from .objective_graph import (
     canonical_interoperability_component,
     completion_evidence_source_decision,
     evidence_index,
+    external_authority_goal_fence,
     goal_graph,
     normalize_field_key,
     objective_goal_content_id,
@@ -2081,6 +2082,7 @@ def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> 
         seen_keys: set[str] = set()
         output: list[str] = []
         last_field_index = 0
+        replaced_wrapped_field = False
         for line in block:
             if line.startswith("- ") and ":" in line:
                 key, _value = line[2:].split(":", 1)
@@ -2088,11 +2090,19 @@ def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> 
                 if normalized in normalized_updates:
                     output.append(f"- {normalized_updates[normalized][0]}: {normalized_updates[normalized][1]}")
                     seen_keys.add(normalized)
+                    replaced_wrapped_field = True
                 else:
                     output.append(line)
+                    replaced_wrapped_field = False
                 last_field_index = len(output)
+            elif replaced_wrapped_field and line[:1].isspace() and line.strip():
+                # The parser treats this as part of the replaced field. Keeping
+                # it would append stale prose to the new value on reparse.
+                continue
             else:
                 output.append(line)
+                if not line.strip() or not line[:1].isspace():
+                    replaced_wrapped_field = False
 
         missing_lines = [
             f"- {key}: {value}"
@@ -2897,23 +2907,9 @@ def _apply_completion_evidence_source_policy(
 def _requires_external_completion(goal: ObjectiveGoal) -> bool:
     """Return whether a goal is explicitly or durably external-governed."""
 
-    declared_authority = str(
-        goal.fields.get("completion_authority") or ""
-    ).strip().casefold().replace("-", "_").replace(" ", "_")
-    if declared_authority in {
-        "external",
-        "external_receipt",
-        "typed_external_receipt",
-    }:
-        return True
-    if str(
-        goal.fields.get("external_completion_authority_cid") or ""
-    ).strip():
-        return True
-    return any(
-        record.metadata.get("external_operational_completion") is True
-        for record in _goal_completion_records(goal, {})
-    )
+    # The objective graph owns the canonical declaration and durable-history
+    # aliases so reconciliation, generation, and task scheduling cannot drift.
+    return goal.requires_external_completion
 
 
 def _goal_completion_gate_record(
@@ -3685,16 +3681,46 @@ def migrate_legacy_objective_goals(
         )
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
+    _external_goal_ids, external_blocked_goal_ids = (
+        external_authority_goal_fence(goals)
+    )
+    supplied_records = completion_evidence_records or {}
+
+    def supplied_external_records(goal_id: str) -> bool:
+        raw_records = supplied_records.get(goal_id, ())
+        if not raw_records:
+            return False
+        normalized: list[CompletionEvidence] = []
+        for raw in raw_records:
+            try:
+                normalized.append(
+                    raw
+                    if isinstance(raw, CompletionEvidence)
+                    else CompletionEvidence.from_dict(raw)
+                )
+            except (TypeError, ValueError):
+                return False
+        return bool(normalized) and all(
+            record.metadata.get("external_operational_completion") is True
+            for record in normalized
+        )
+
     selected_ids = {str(item).strip() for item in goal_ids or () if str(item).strip()}
     candidates = [
         goal for goal in goals
         if is_legacy_completed_goal_state(goal.status)
+        and (
+            goal.goal_id not in external_blocked_goal_ids
+            or (
+                goal.goal_id in _external_goal_ids
+                and supplied_external_records(goal.goal_id)
+            )
+        )
         and (not selected_ids or goal.goal_id in selected_ids)
     ]
     limit = len(candidates) if max_goals is None else max_goals
     batch = candidates[:limit]
     remaining = candidates[limit:]
-    supplied_records = completion_evidence_records or {}
     gate_records = completion_gate_records or {}
     boards: list[tuple[Path, str]] = []
     if todo_path is not None:
@@ -4098,9 +4124,48 @@ def reconcile_objective_goal_completion(
         goal_id: normalize_goal_state(goal.status)
         for goal_id, goal in goals_by_id.items()
     }
+    external_final_states = {
+        goal_id: effective_states[goal_id]
+        for goal_id in externally_governed_goal_ids
+        if goal_id in effective_states
+    }
+
+    def governing_external_ancestors(goal_id: str) -> set[str]:
+        """Return every transitive external gate governing ``goal_id``."""
+
+        goal = goals_by_id.get(goal_id)
+        pending = list(goal.parent_goal_ids if goal is not None else ())
+        seen: set[str] = set()
+        external_ancestors: set[str] = set()
+        while pending:
+            parent_id = str(pending.pop(0))
+            if not parent_id or parent_id in seen:
+                continue
+            seen.add(parent_id)
+            if parent_id in externally_governed_goal_ids:
+                external_ancestors.add(parent_id)
+            parent_goal = goals_by_id.get(parent_id)
+            if parent_goal is not None:
+                pending.extend(parent_goal.parent_goal_ids)
+        return external_ancestors
+
     candidate_by_id = {goal.goal_id: goal for goal in candidate_goals}
     evaluation_goal_ids: list[str] = []
-    visited_goal_ids: set[str] = set()
+    external_evaluation_goal_ids = [
+        goal.goal_id
+        for goal in sorted(
+            candidate_goals,
+            key=lambda item: (
+                int(hierarchy.get("depths", {}).get(item.goal_id, 0)),
+                item.goal_id,
+            ),
+        )
+        if goal.goal_id in externally_governed_goal_ids
+    ]
+    # External authority gates must be decided before locally executable
+    # descendants. All remaining goals retain the descendants-first order
+    # needed for truthful parent aggregation.
+    visited_goal_ids: set[str] = set(external_evaluation_goal_ids)
     visiting_goal_ids: set[str] = set()
 
     def visit_descendants_first(goal_id: str) -> None:
@@ -4119,8 +4184,12 @@ def reconcile_objective_goal_completion(
             evaluation_goal_ids.append(goal_id)
 
     for candidate in candidate_goals:
-        visit_descendants_first(candidate.goal_id)
-    evaluation_goals = [candidate_by_id[goal_id] for goal_id in evaluation_goal_ids]
+        if candidate.goal_id not in externally_governed_goal_ids:
+            visit_descendants_first(candidate.goal_id)
+    evaluation_goals = [
+        candidate_by_id[goal_id]
+        for goal_id in (*external_evaluation_goal_ids, *evaluation_goal_ids)
+    ]
 
     def descendant_states(goal_id: str) -> list[dict[str, Any]]:
         pending = list(hierarchy.get("children", {}).get(goal_id, ()))
@@ -4143,6 +4212,18 @@ def reconcile_objective_goal_completion(
         return descendants
 
     for goal in evaluation_goals:
+        if goal.goal_id not in externally_governed_goal_ids:
+            external_ancestors = governing_external_ancestors(goal.goal_id)
+            if any(
+                external_final_states.get(goal_id)
+                is not GoalState.VERIFIED_COMPLETE
+                for goal_id in external_ancestors
+            ):
+                # The governing external decision either has not been
+                # evaluated or failed current reconciliation.  Do not let
+                # locally discoverable evidence advance the descendant in the
+                # same cycle that reopens its authorization gate.
+                continue
         current_state = normalize_goal_state(goal.status)
         records = persisted_records.get(goal.goal_id, [])
         source_evidence_complete = bool(goal.required_evidence) and all(
@@ -4274,7 +4355,11 @@ def reconcile_objective_goal_completion(
             analyzer_health=gate_record.get("analyzer_health"),
             exhaustion_quorum=gate_record.get("exhaustion_quorum"),
             child_goals=[
-                *descendant_states(goal.goal_id),
+                *(
+                    ()
+                    if goal.goal_id in externally_governed_goal_ids
+                    else descendant_states(goal.goal_id)
+                ),
                 *gate_record.get("child_goals", ()),
             ],
             required_child_goal_ids=gate_record.get(
@@ -4285,6 +4370,8 @@ def reconcile_objective_goal_completion(
                 gate_record.get("analysis_inconclusive", False)
             ),
         )
+        if goal.goal_id in externally_governed_goal_ids:
+            external_final_states[goal.goal_id] = decision.state
         decisions[goal.goal_id] = decision.to_dict()
         if (
             external_completion is not None

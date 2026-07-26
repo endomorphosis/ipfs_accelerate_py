@@ -7,6 +7,8 @@ import types
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
@@ -28,32 +30,38 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     run_configured_merge_resolver_cli,
 )
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import plan_bundle_lanes
+from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+    build_arg_parser as build_objective_daemon_arg_parser,
+    completion_gate_work_terms,
+    objective_generation_proposals,
+    objective_generation_task_findings,
+    run_objective_daemon,
+)
 from ipfs_accelerate_py.agent_supervisor.goal_completion import CompletionEvidence
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
     build_goal_completion_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    EXTERNAL_AUTHORITY_BENCHMARK_GOAL_IDS,
     ObjectiveFinding,
     add_goal_packet_aggregate_findings,
     assign_goal_subgoal_packets,
+    collect_ast_dataset_records,
     evidence_index,
     materialize_task_dependency_dag,
     materialize_task_planning_graph,
     objective_fingerprint,
     objective_finding_conflict_record,
     objective_finding_task_identity,
+    tracked_files,
     write_bundle_shards,
-)
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
-    build_arg_parser as build_objective_daemon_arg_parser,
-    completion_gate_work_terms,
-    run_objective_daemon,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     append_refinement_goals,
     completion_tree_identity,
     migrate_legacy_objective_goals,
     reconcile_objective_goal_completion,
+    rewrite_goal_fields,
 )
 
 
@@ -132,6 +140,75 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     _git(repo, "add", "todo.md", "objective-heap.md", "src/runtime_router.py", "docs/runtime_notes.md")
     _git(repo, "commit", "-m", "seed objective heap")
     return repo, objective_path, todo_path
+
+
+def test_goal_heap_parser_preserves_wrapped_fields_across_rewrite():
+    objective_text = """# Objective Heap
+
+## HSSL-G240 Bind runtime namespaces
+
+- Status: active
+- Parent: HSSL-G211,
+  HSSL-G230
+- Goal: Implement the fail-closed source executor and detached-replay boundary
+  that proves the actual environment, cache, process, and state namespaces
+  came from the exact preregistered policy.
+- Outputs: benchmarks/logic_pipeline/source_orchestration.py,
+  benchmarks/logic_pipeline/runtime_confinement.py,
+  tests/integration/benchmarks/logic_pipeline/test_source_orchestration.py
+- Validation: python -m pytest
+  tests/integration/benchmarks/logic_pipeline/test_source_orchestration.py -q
+- Acceptance: Source-safe tests prove disjoint namespace CIDs;
+  production children enforce the pinned runtime and confinement policy;
+  no protected input enters public evidence.
+- Gap task: Finish the pinned runtime and cache-truth implementation;
+  pass the complete source-safe regression suite.
+"""
+
+    goal = parse_goal_heap(objective_text)[0]
+
+    assert goal.parent_goal_ids == ["HSSL-G211", "HSSL-G230"]
+    assert goal.fields["goal"] == (
+        "Implement the fail-closed source executor and detached-replay boundary "
+        "that proves the actual environment, cache, process, and state namespaces "
+        "came from the exact preregistered policy."
+    )
+    assert goal.fields["outputs"].endswith(
+        "tests/integration/benchmarks/logic_pipeline/test_source_orchestration.py"
+    )
+    assert goal.fields["validation"] == (
+        "python -m pytest "
+        "tests/integration/benchmarks/logic_pipeline/test_source_orchestration.py -q"
+    )
+    assert "production children enforce" in goal.fields["acceptance"]
+    assert goal.fields["gap_task"].endswith(
+        "pass the complete source-safe regression suite."
+    )
+
+    rewritten = rewrite_goal_fields(
+        objective_text,
+        {"HSSL-G240": {"Status": "reopened"}},
+    )
+    reparsed = parse_goal_heap(rewritten)[0]
+    assert reparsed.status == "reopened"
+    assert reparsed.fields["goal"] == goal.fields["goal"]
+    assert reparsed.fields["outputs"] == goal.fields["outputs"]
+    assert reparsed.fields["acceptance"] == goal.fields["acceptance"]
+    assert reparsed.fields["gap_task"] == goal.fields["gap_task"]
+
+    replaced = rewrite_goal_fields(
+        objective_text,
+        {
+            "HSSL-G240": {
+                "Goal": "Use the reviewed replacement boundary.",
+            }
+        },
+    )
+    replaced_goal = parse_goal_heap(replaced)[0]
+    assert replaced_goal.fields["goal"] == (
+        "Use the reviewed replacement boundary."
+    )
+    assert "actual environment" not in replaced_goal.fields["goal"]
 
 
 def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
@@ -271,6 +348,533 @@ def test_objective_scanner_excludes_sensitive_root_without_reading_it(
         scan_exclude_paths=["private_inputs"],
     )
     assert stale_cached_evidence == {"HSSLEV_PRIVATE_INPUT": []}
+
+
+def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule(
+    tmp_path,
+    monkeypatch,
+):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    protected_marker = "HSSL_SOURCE_PROTECTED_MARKER"
+    artifact_source = repo / "artifacts" / "private_answer.py"
+    fixture_source = (
+        repo
+        / "tests"
+        / "unit_tests"
+        / "ui"
+        / "html_fixtures"
+        / "private_answer.html"
+    )
+    artifact_source.parent.mkdir()
+    fixture_source.parent.mkdir(parents=True)
+    artifact_source.write_text(
+        f"def {protected_marker}():\n    return 'private artifact'\n",
+        encoding="utf-8",
+    )
+    fixture_source.write_text(
+        f"<div>{protected_marker}</div>\n",
+        encoding="utf-8",
+    )
+    protected_alias = repo / "src" / "public_answer.py"
+    protected_alias.symlink_to(artifact_source)
+
+    submodule_source = tmp_path / "protected-submodule-source"
+    submodule_source.mkdir()
+    _git(submodule_source, "init")
+    _git(submodule_source, "checkout", "-b", "main")
+    _git(submodule_source, "config", "user.name", "Test User")
+    _git(submodule_source, "config", "user.email", "test@example.invalid")
+    submodule_fixture = (
+        submodule_source / "tests" / "model_fixtures" / "private_answer.py"
+    )
+    submodule_fixture.parent.mkdir(parents=True)
+    submodule_fixture.write_text(
+        f"def {protected_marker}():\n    return 'private submodule fixture'\n",
+        encoding="utf-8",
+    )
+    _git(submodule_source, "add", ".")
+    _git(submodule_source, "commit", "-m", "seed protected fixture")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule_source),
+        "vendor/protected-model",
+    )
+    checked_out_submodule_fixture = (
+        repo
+        / "vendor"
+        / "protected-model"
+        / "tests"
+        / "model_fixtures"
+        / "private_answer.py"
+    )
+    objective_path.write_text(
+        f"""# Objective Heap
+
+## TEST-G002 Require public evidence
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: test
+- Priority: P0
+- Bundle: objective/test/source-policy
+- Goal: Keep source-protected evidence unavailable to the objective scanner.
+- Evidence: {protected_marker}
+- Outputs: src
+- Validation: true
+- Gap task: Produce public evidence.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed source-protected evidence")
+
+    original_read_text = Path.read_text
+    original_read_bytes = Path.read_bytes
+    protected_paths = {
+        artifact_source.resolve(),
+        fixture_source.resolve(),
+        checked_out_submodule_fixture.resolve(),
+    }
+
+    def guarded_read_text(path, *args, **kwargs):
+        assert path.resolve() not in protected_paths
+        return original_read_text(path, *args, **kwargs)
+
+    def guarded_read_bytes(path, *args, **kwargs):
+        assert path.resolve() not in protected_paths
+        return original_read_bytes(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+
+    dataset_dir = tmp_path / "protected-policy-dataset"
+    stats = {}
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        embedding_min_score=2.0,
+        dataset_dir=dataset_dir,
+        dataset_id="source-policy-test",
+        scan_stats=stats,
+    )
+
+    assert [finding.goal_id for finding in findings] == ["TEST-G002"]
+    assert findings[0].missing_evidence == [protected_marker]
+    assert stats["source_protected_scan_policy"]["deny_symlinks"] is True
+    assert "artifacts" in stats["source_protected_scan_policy"]["deny_components"]
+    dataset_rows = (
+        dataset_dir / "source-policy-test.jsonl"
+    ).read_text(encoding="utf-8")
+    assert "private_answer" not in dataset_rows
+
+    explicit_path_evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=[
+            "artifacts/private_answer.py",
+            "src/public_answer.py",
+            (
+                "vendor/protected-model/tests/model_fixtures/"
+                "private_answer.py"
+            ),
+        ],
+        records=[],
+    )
+    assert explicit_path_evidence == {
+        "artifacts/private_answer.py": [],
+        "src/public_answer.py": [],
+        (
+            "vendor/protected-model/tests/model_fixtures/"
+            "private_answer.py"
+        ): [],
+    }
+
+    class ProtectedCachedRow(dict):
+        def get(self, key, default=None):
+            if key != "root_relative_path":
+                raise AssertionError(
+                    "protected cached evidence was inspected before denial"
+                )
+            return super().get(key, default)
+
+    poisoned_cached_evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=[protected_marker],
+        embedding_min_score=2.0,
+        records=[
+            ProtectedCachedRow(
+                root_relative_path="artifacts/private_answer.py"
+            ),
+            ProtectedCachedRow(
+                root_relative_path=(
+                    "vendor/protected-model/tests/model_fixtures/"
+                    "private_answer.py"
+                )
+            ),
+        ],
+    )
+    assert poisoned_cached_evidence == {protected_marker: []}
+
+
+def test_tracked_file_inventory_failure_never_falls_back_to_filesystem_walk(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    protected = repo / "fixtures" / "private_answer.py"
+    protected.parent.mkdir(parents=True)
+    protected.write_text("secret = True\n", encoding="utf-8")
+
+    def failed_git_inventory(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["git", "ls-files", "-z"],
+            returncode=128,
+            stdout=b"",
+            stderr=b"not a Git worktree",
+        )
+
+    def forbidden_filesystem_walk(*_args, **_kwargs):
+        raise AssertionError(
+            "failed tracked-file inventory attempted a filesystem walk"
+        )
+
+    monkeypatch.setattr(subprocess, "run", failed_git_inventory)
+    monkeypatch.setattr(Path, "rglob", forbidden_filesystem_walk)
+
+    assert tracked_files(repo) == []
+
+
+def test_ast_dataset_discards_protected_prior_rows_before_blob_reuse(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    source_blob = _git(repo, "rev-parse", ":src/runtime_router.py")
+    protected_marker = "HSSL_PROTECTED_PRIOR_CACHE_PAYLOAD"
+    previous_records = [
+        {
+            "record_schema_version": 2,
+            "root_relative_path": "fixtures/private_answer.py",
+            # A cache row is untrusted and must not be able to claim a public
+            # source blob in order to transplant protected evidence.
+            "blob_hash": source_blob,
+            "source_sha1": source_blob,
+            "evidence_text": protected_marker,
+            "symbols_json": json.dumps([protected_marker]),
+            "document_tokens_json": json.dumps([protected_marker.lower()]),
+            "document_embedding_json": json.dumps([1.0]),
+        }
+    ]
+
+    rows = collect_ast_dataset_records(
+        repo,
+        objective_path=objective_path,
+        previous_records=previous_records,
+    )
+
+    serialized = json.dumps(rows, sort_keys=True)
+    assert protected_marker not in serialized
+    runtime_row = next(
+        row
+        for row in rows
+        if row["root_relative_path"] == "src/runtime_router.py"
+    )
+    assert "CapabilityRouter" in runtime_row["evidence_text"]
+
+
+def test_ast_dataset_recomputes_poisoned_benign_path_and_blob_rows(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    source_blob = _git(repo, "rev-parse", ":src/runtime_router.py")
+    injected_text = "HSSL_INJECTED_BENIGN_CACHE_TEXT"
+    injected_symbol = "HSSL_INJECTED_BENIGN_CACHE_SYMBOL"
+    previous_records = [
+        {
+            "record_schema_version": 2,
+            "root_relative_path": "src/runtime_router.py",
+            "blob_hash": source_blob,
+            "source_sha1": source_blob,
+            "evidence_text": injected_text,
+            "symbols_json": json.dumps([injected_symbol]),
+            "document_tokens_json": json.dumps(
+                [injected_text.lower(), injected_symbol.lower()]
+            ),
+            "document_embedding_json": json.dumps([1.0]),
+            "ast_text": injected_text,
+            "parse_elapsed_seconds": 99,
+        }
+    ]
+    stats = {}
+
+    rows = collect_ast_dataset_records(
+        repo,
+        objective_path=objective_path,
+        previous_records=previous_records,
+        scan_stats=stats,
+    )
+
+    serialized = json.dumps(rows, sort_keys=True)
+    assert injected_text not in serialized
+    assert injected_symbol not in serialized
+    runtime_row = next(
+        row
+        for row in rows
+        if row["root_relative_path"] == "src/runtime_router.py"
+    )
+    assert "CapabilityRouter" in runtime_row["evidence_text"]
+    assert "capabilityrouter" in runtime_row["symbols_json"].lower()
+    assert stats["reused_record_count"] == 0
+    assert stats["parsed_record_count"] == len(rows)
+
+
+def test_external_authority_goals_and_descendants_never_generate_local_work(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        """# Objective Heap
+
+## HSSL-G202 Pilot authorization gate without copied metadata
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: benchmark
+- Priority: P0
+- Goal: Await pilot authorization.
+- Evidence: HSSL_EXTERNAL_GATE_ONLY
+- Outputs: artifacts/pilot.json
+- Validation: true
+
+## HSSL-G204 Child of pilot authorization
+
+- Status: active
+- Parent: HSSL-G202
+- Fib priority: 2
+- Track: benchmark
+- Priority: P0
+- Goal: Run a child stage only after pilot authorization.
+- Evidence: HSSL_EXTERNAL_CHILD_ONLY
+- Outputs: artifacts/child.json
+- Validation: true
+
+## EXT-G001 Generic external gate
+
+- Status: active
+- Parent:
+- Fib priority: 3
+- Track: benchmark
+- Priority: P0
+- Completion authority: external
+- Goal: Await generic external authorization.
+- Evidence: HSSL_GENERIC_EXTERNAL_ONLY
+- Outputs: artifacts/generic.json
+- Validation: true
+
+## EXT-G002 Child of generic external gate
+
+- Status: active
+- Parent: EXT-G001
+- Fib priority: 4
+- Track: benchmark
+- Priority: P0
+- Goal: Run a child stage only after generic authorization.
+- Evidence: HSSL_GENERIC_EXTERNAL_CHILD_ONLY
+- Outputs: artifacts/generic-child.json
+- Validation: true
+
+## LOCAL-G001 Independent local repair
+
+- Status: active
+- Parent:
+- Fib priority: 5
+- Track: benchmark
+- Priority: P1
+- Goal: Produce an independent local repair.
+- Evidence: HSSL_LOCAL_REPAIR_ONLY
+- Outputs: src/local_repair.py
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective-heap.md")
+    _git(repo, "commit", "-m", "seed external authority fences")
+
+    stats = {}
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=10,
+        embedding_min_score=2.0,
+        scan_stats=stats,
+    )
+
+    assert [finding.goal_id for finding in findings] == ["LOCAL-G001"]
+    assert set(stats["external_authority_goal_ids"]) == {
+        "EXT-G001",
+        "HSSL-G202",
+    }
+    assert set(stats["external_authority_blocked_goal_ids"]) == {
+        "EXT-G001",
+        "EXT-G002",
+        "HSSL-G202",
+        "HSSL-G204",
+    }
+
+    decisions = {
+        goal_id: {
+            "verified": False,
+            "state": "active",
+            "actionable_reasons": ["missing_evidence"],
+        }
+        for goal_id in (
+            "HSSL-G202",
+            "HSSL-G204",
+            "EXT-G001",
+            "EXT-G002",
+            "LOCAL-G001",
+        )
+    }
+    proposals = objective_generation_proposals(
+        objective_path=objective_path,
+        completion_decisions=decisions,
+    )
+    assert {proposal.parent_goal_id for proposal in proposals} == {
+        "LOCAL-G001"
+    }
+    generated_findings = objective_generation_task_findings(
+        [proposal.to_dict() for proposal in proposals],
+        repo_root=repo,
+        objective_path=objective_path,
+        generation_path=repo / "data" / "objective-generation.json",
+        # The current generation pipeline admits only proposals bound to a
+        # durable family/instance record.  Supplying that receipt explicitly
+        # keeps this authority-fence test from relying on the removed legacy
+        # fallback that treated an unrecorded proposal as executable work.
+        gap_family_states={
+            proposal.family_key: {
+                "resolved": False,
+                "outcome": "review_required",
+                "instance_key": proposal.instance_key,
+                "canonical_id": proposal.canonical_id,
+                "occurrence": 1,
+                "attempt_count": 1,
+            }
+            for proposal in proposals
+        },
+    )
+    assert {finding.goal_id for finding in generated_findings} == {
+        "LOCAL-G001"
+    }
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=repo / "data" / "agent_supervisor" / "discovery",
+        bundle_dir=repo / "data" / "agent_supervisor" / "objective_bundles",
+        task_prefix="FENCE-",
+        max_findings=10,
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert {record.finding.goal_id for record in records} == {
+        "LOCAL-G001"
+    }
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "HSSL-G202" not in todo_text
+    assert "EXT-G001" not in todo_text
+
+
+def test_durable_external_history_keeps_generic_goals_and_descendants_fenced(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    typed_evidence = json.dumps(
+        [
+            {
+                "acceptance_criterion": "EXT-EVIDENCE",
+                "provenance_cid": "bafkreibogusbutroutingonly",
+                "metadata": {"external_operational_completion": True},
+            }
+        ],
+        separators=(",", ":"),
+    )
+    objective_path.write_text(
+        f"""# Objective Heap
+
+## EXT-CID Prior authority CID with declaration removed
+
+- Status: reopened
+- External completion authority CID: bafkreiauthorityroutingonly
+- Evidence: EXT-CID
+- Outputs: src/external_cid.py
+- Validation: true
+
+## EXT-CID-CHILD Descendant of prior CID authority
+
+- Status: active
+- Parent: EXT-CID
+- Evidence: EXT-CID-CHILD
+- Outputs: src/external_cid_child.py
+- Validation: true
+
+## EXT-EVIDENCE Prior typed evidence with declaration removed
+
+- Status: reopened
+- Completion evidence records: {typed_evidence}
+- Evidence: EXT-EVIDENCE
+- Outputs: src/external_evidence.py
+- Validation: true
+
+## LOCAL-G001 Independent local repair
+
+- Status: active
+- Evidence: LOCAL-MISSING
+- Outputs: src/local.py
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective-heap.md")
+    _git(repo, "commit", "-m", "seed sticky external history")
+    stats = {}
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=10,
+        embedding_min_score=2.0,
+        scan_stats=stats,
+        trust_recorded_external_completion=False,
+    )
+
+    assert [finding.goal_id for finding in findings] == ["LOCAL-G001"]
+    assert set(stats["external_authority_goal_ids"]) == {
+        "EXT-CID",
+        "EXT-EVIDENCE",
+    }
+    assert set(stats["external_authority_blocked_goal_ids"]) == {
+        "EXT-CID",
+        "EXT-CID-CHILD",
+        "EXT-EVIDENCE",
+    }
+    generated = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=repo / "discovery",
+        bundle_dir=repo / "bundles",
+        task_prefix="STICKY-",
+        max_findings=10,
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        trust_recorded_external_completion=False,
+    )
+    assert [record.finding.goal_id for record in generated] == ["LOCAL-G001"]
 
 
 def test_hsslev0097b20_empty_symbol_normalizations_are_not_ast_evidence(tmp_path):
@@ -2836,6 +3440,350 @@ def test_task_dependency_dag_requires_successful_merge_receipts_and_scores_criti
     unblocked_schedule = {item.task_cid: item for item in unblocked.schedule}
     assert unblocked_schedule["cid-a"].claimable is False
     assert unblocked_schedule["cid-b"].claimable is True
+
+
+def test_external_authority_fence_rejects_local_status_and_merge_receipts(
+    tmp_path,
+):
+    assert EXTERNAL_AUTHORITY_BENCHMARK_GOAL_IDS == {
+        "HSSL-G201",
+        "HSSL-G202",
+        "HSSL-G203",
+        "HSSL-G212",
+        "HSSL-G220",
+        "HSSL-G232",
+        "HSSL-G241",
+        "HSSL-G242",
+        "HSSL-G243",
+    }
+    local_readiness = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "LOCAL-G231-READINESS",
+                "task_cid": "cid-local-g231-readiness",
+                "goal_id": "HSSL-G231",
+            },
+            {
+                "task_id": "LOCAL-G240-READINESS",
+                "task_cid": "cid-local-g240-readiness",
+                "goal_id": "HSSL-G240",
+            },
+        ]
+    )
+    assert local_readiness.invalid_task_cids == []
+    assert all(item.claimable for item in local_readiness.schedule)
+
+    duplicate_external = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "FIRST-LOCAL-ALIAS",
+                "task_cid": "cid-duplicate-authority",
+                "goal_id": "LOCAL-G001",
+            },
+            {
+                "task_id": "SECOND-EXTERNAL-ALIAS",
+                "task_cid": "cid-duplicate-authority",
+                "goal_id": "HSSL-G242",
+                "status": "completed",
+            },
+        ],
+        merge_receipts={
+            "cid-duplicate-authority": {
+                "status": "succeeded",
+                "receipt_cid": "local-duplicate-receipt",
+            }
+        },
+    )
+    assert duplicate_external.invalid_task_cids == [
+        "cid-duplicate-authority"
+    ]
+    assert duplicate_external.schedule[0].claimable is False
+    assert any(
+        item.kind == "external_authority_required"
+        for item in duplicate_external.repair_evidence
+    )
+
+    tasks = [
+        {
+            "task_id": "KNOWN-GATE",
+            "task_cid": "cid-known-gate",
+            "goal_id": "HSSL-G202",
+            "status": "completed",
+        },
+        {
+            "task_id": "KNOWN-CHILD",
+            "task_cid": "cid-known-child",
+            "goal_id": "HSSL-G204",
+            "parent_goal_ids": ["HSSL-G202"],
+            "depends_on": ["KNOWN-GATE"],
+        },
+        {
+            "task_id": "LEGACY-G242",
+            "task_cid": "cid-legacy-g242",
+            "goal_id": "HSSL-G242",
+            "status": "completed",
+        },
+        {
+            "task_id": "LEGACY-G243-CHILD",
+            "task_cid": "cid-legacy-g243-child",
+            "goal_id": "HSSL-G244",
+            "parent_goal_ids": ["HSSL-G243"],
+            "status": "completed",
+        },
+        {
+            "task_id": "GENERIC-GATE",
+            "task_cid": "cid-generic-gate",
+            "goal_id": "EXT-G001",
+            "completion_authority": "external",
+            "status": "completed",
+        },
+        {
+            "task_id": "GENERIC-CHILD",
+            "task_cid": "cid-generic-child",
+            "goal_id": "LOCAL-G002",
+            "depends_on": ["GENERIC-GATE"],
+        },
+        {
+            "task_id": "INDEPENDENT",
+            "task_cid": "cid-independent",
+            "goal_id": "LOCAL-G001",
+        },
+    ]
+    forged_local_receipts = {
+        "cid-known-gate": {
+            "status": "succeeded",
+            "receipt_cid": "local-known-receipt",
+        },
+        "cid-generic-gate": {
+            "status": "succeeded",
+            "receipt_cid": "local-generic-receipt",
+        },
+        "cid-legacy-g242": {
+            "status": "succeeded",
+            "receipt_cid": "local-g242-receipt",
+        },
+        "cid-legacy-g243-child": {
+            "status": "succeeded",
+            "receipt_cid": "local-g243-child-receipt",
+        },
+    }
+
+    graph = materialize_task_dependency_dag(
+        tasks,
+        merge_receipts=forged_local_receipts,
+        now=10_000,
+    )
+    schedule = {item.task_cid: item for item in graph.schedule}
+
+    assert {
+        "cid-known-gate",
+        "cid-known-child",
+        "cid-legacy-g242",
+        "cid-legacy-g243-child",
+        "cid-generic-gate",
+    } <= set(graph.invalid_task_cids)
+    assert schedule["cid-known-gate"].claimable is False
+    assert schedule["cid-known-child"].claimable is False
+    assert schedule["cid-legacy-g242"].claimable is False
+    assert schedule["cid-legacy-g243-child"].claimable is False
+    assert schedule["cid-generic-gate"].claimable is False
+    assert schedule["cid-generic-child"].claimable is False
+    assert schedule["cid-generic-child"].blocking_task_cids == [
+        "cid-generic-gate"
+    ]
+    assert schedule["cid-independent"].claimable is True
+    assert {
+        item.task_cid
+        for item in graph.repair_evidence
+        if item.kind == "external_authority_required"
+    } == {
+        "cid-generic-gate",
+        "cid-known-child",
+        "cid-known-gate",
+        "cid-legacy-g242",
+        "cid-legacy-g243-child",
+    }
+
+    index_path = tmp_path / "external-authority-index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/known": {
+                        "shard_path": "known.todo.md",
+                        "tasks": tasks[:4],
+                    },
+                    "objective/generic": {
+                        "shard_path": "generic.todo.md",
+                        "tasks": tasks[4:6],
+                    },
+                    "objective/local": {
+                        "shard_path": "local.todo.md",
+                        "tasks": tasks[6:],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    payloads = {
+        payload["bundle_key"]: payload
+        for payload in build_bundle_task_payloads(
+            index_path,
+            merge_receipts=forged_local_receipts,
+        )
+    }
+
+    assert payloads["objective/known"]["completed_member_task_ids"] == []
+    assert payloads["objective/known"]["claimable"] is False
+    assert payloads["objective/generic"]["completed_member_task_ids"] == []
+    assert payloads["objective/generic"]["claimable"] is False
+    assert payloads["objective/local"]["ready_member_task_ids"] == [
+        "INDEPENDENT"
+    ]
+    assert payloads["objective/local"]["claimable"] is True
+
+
+def test_task_dag_keeps_durable_external_history_fenced_from_local_receipts():
+    typed_evidence = [
+        {
+            "acceptance_criterion": "EXT-EVIDENCE",
+            "provenance_cid": "bafkreiroutinghint",
+            "metadata": {"external_operational_completion": True},
+        }
+    ]
+    tasks = [
+        {
+            "task_id": "DURABLE-CID",
+            "task_cid": "cid-durable-cid",
+            "goal_id": "EXT-CID",
+            "status": "completed",
+            "external_completion_authority_cid": "bafkreiauthorityroutinghint",
+        },
+        {
+            "task_id": "DURABLE-EVIDENCE",
+            "task_cid": "cid-durable-evidence",
+            "goal_id": "EXT-EVIDENCE",
+            "status": "completed",
+            "completion_evidence_records": typed_evidence,
+        },
+        {
+            "task_id": "LOCAL",
+            "task_cid": "cid-local",
+            "goal_id": "LOCAL-G001",
+        },
+    ]
+    graph = materialize_task_dependency_dag(
+        tasks,
+        merge_receipts={
+            "cid-durable-cid": {"status": "succeeded"},
+            "cid-durable-evidence": {"status": "succeeded"},
+        },
+    )
+    schedule = {item.task_cid: item for item in graph.schedule}
+
+    assert {
+        "cid-durable-cid",
+        "cid-durable-evidence",
+    } <= set(graph.invalid_task_cids)
+    assert schedule["cid-durable-cid"].claimable is False
+    assert schedule["cid-durable-evidence"].claimable is False
+    assert schedule["cid-local"].claimable is True
+
+
+@pytest.mark.parametrize("reverse_records", (False, True))
+def test_semantically_conflicting_duplicate_task_cids_fail_closed_in_all_orders(
+    tmp_path,
+    reverse_records,
+):
+    completed = {
+        "task_id": "COMPLETED-A",
+        "task_cid": "cid-conflicting-duplicate",
+        "goal_id": "LOCAL-A",
+        "status": "completed",
+        "outputs": ["src/a.py"],
+        "validation": ["test -f src/a.py"],
+    }
+    blocked = {
+        "task_id": "BLOCKED-B",
+        "task_cid": "cid-conflicting-duplicate",
+        "goal_id": "LOCAL-B",
+        "status": "todo",
+        "outputs": ["src/b.py"],
+        "depends_on": ["MISSING-PREREQUISITE"],
+        "validation": ["test -f src/b.py"],
+    }
+    tasks = [completed, blocked]
+    if reverse_records:
+        tasks.reverse()
+
+    graph = materialize_task_dependency_dag(tasks)
+
+    assert graph.invalid_task_cids == ["cid-conflicting-duplicate"]
+    assert graph.schedule[0].claimable is False
+    assert any(
+        repair.kind == "conflicting_duplicate_task_identity"
+        for repair in graph.repair_evidence
+    )
+
+    index_path = tmp_path / f"duplicate-{int(reverse_records)}.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/a": {
+                        "shard_path": "a.todo.md",
+                        "tasks": [tasks[0]],
+                    },
+                    "objective/b": {
+                        "shard_path": "b.todo.md",
+                        "tasks": [tasks[1]],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    payloads = build_bundle_task_payloads(index_path)
+
+    assert all(
+        payload["completed_member_task_ids"] == []
+        and payload["claimable"] is False
+        for payload in payloads
+    )
+
+
+@pytest.mark.parametrize("completed_record_first", (False, True))
+def test_semantically_equivalent_duplicate_task_cids_merge_terminal_status(
+    completed_record_first,
+):
+    todo = {
+        "task_id": "ALIAS-TODO",
+        "task_cid": "cid-equivalent-duplicate",
+        "goal_id": "LOCAL-G001",
+        "status": "todo",
+        "outputs": ["src/shared.py"],
+        "depends_on": [],
+        "validation": ["test -f src/shared.py"],
+    }
+    completed = {
+        **todo,
+        "task_id": "ALIAS-COMPLETED",
+        "status": "completed",
+    }
+    tasks = [completed, todo] if completed_record_first else [todo, completed]
+
+    graph = materialize_task_dependency_dag(tasks)
+
+    assert graph.invalid_task_cids == []
+    assert graph.repair_evidence == []
+    assert graph.nodes["cid-equivalent-duplicate"].status == "completed"
+    assert graph.nodes["cid-equivalent-duplicate"].metadata[
+        "task_id_aliases"
+    ] == ["ALIAS-COMPLETED", "ALIAS-TODO"]
+    assert graph.schedule[0].claimable is False
 
 
 def test_task_dependency_dag_bounds_cycle_and_missing_dependency_repairs_without_deadlock():

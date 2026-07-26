@@ -33,12 +33,14 @@ from .objective_graph import (
     ObjectiveFinding,
     ObjectiveWorkKind,
     ObjectiveWorkProposal,
+    external_authority_goal_fence,
     generate_objective_todos,
     parse_goal_heap,
     repo_relative_path,
     resolve_scan_exclude_paths,
     scan_exclude_path_metadata,
     scan_objective_gaps,
+    source_protected_scan_policy,
     submit_bundle_tasks,
 )
 from .objective_tracker import (
@@ -2674,6 +2676,7 @@ def objective_generation_proposals(
     estimated_router_tokens: int = 0,
     router_retry_count: int = 0,
     objective_terms: Sequence[str] = (),
+    trust_recorded_external_completion: bool = True,
 ) -> tuple[Any, ...]:
     """Collect deterministic coverage and routed-analysis work candidates."""
 
@@ -2692,14 +2695,27 @@ def objective_generation_proposals(
         else []
     )
     goals_by_id = {str(goal.goal_id): goal for goal in goals}
+    _external_goal_ids, external_blocked_goal_ids = (
+        external_authority_goal_fence(
+            goals,
+            trust_recorded_completion=trust_recorded_external_completion,
+        )
+    )
     default_parent = next(
-        (str(goal.goal_id) for goal in goals if getattr(goal, "is_schedulable", False)),
-        next((str(goal.goal_id) for goal in goals), "objective-analysis"),
+        (
+            str(goal.goal_id)
+            for goal in goals
+            if getattr(goal, "is_schedulable", False)
+            and str(goal.goal_id) not in external_blocked_goal_ids
+        ),
+        "objective-analysis",
     )
     proposals: list[Any] = []
     typed_gap_goal_ids: set[str] = set()
     gates = completion_gate_records or {}
     for goal_id in sorted(str(item) for item in gates):
+        if goal_id in external_blocked_goal_ids:
+            continue
         record = gates.get(goal_id) or {}
         coverage = record.get("coverage")
         if not isinstance(coverage, Mapping):
@@ -2771,7 +2787,7 @@ def objective_generation_proposals(
         if decision.get("verified") is True:
             continue
         goal = goals_by_id.get(goal_id)
-        if goal is None:
+        if goal is None or goal_id in external_blocked_goal_ids:
             continue
         reasons = tuple(
             dict.fromkeys(
@@ -2837,6 +2853,14 @@ def objective_generation_proposals(
         if not title or not path or not validation:
             continue
         parent_goal_id = str(raw.get("goal_id") or default_parent).strip()
+        dependencies = tuple(
+            str(item) for item in raw.get("dependencies", ()) if str(item).strip()
+        )
+        if (
+            parent_goal_id in external_blocked_goal_ids
+            or external_blocked_goal_ids.intersection(dependencies)
+        ):
+            continue
         proposals.append(
             ObjectiveWorkProposal(
                 kind="task",
@@ -2850,7 +2874,7 @@ def objective_generation_proposals(
                     if str(item).strip()
                 ) or (title,),
                 expected_evidence_delta=(title,),
-                dependencies=tuple(str(item) for item in raw.get("dependencies", ()) if str(item).strip()),
+                dependencies=dependencies,
                 predicted_files=(path,),
                 predicted_symbols=(str(raw.get("kind") or "codebase_finding"),),
                 validation_commands=(validation,),
@@ -2863,7 +2887,17 @@ def objective_generation_proposals(
                 rationale=str(raw.get("snippet") or "static analysis finding"),
             )
         )
-    return tuple(proposals)
+    return tuple(
+        proposal
+        for proposal in proposals
+        if str(getattr(proposal, "parent_goal_id", "") or "")
+        not in external_blocked_goal_ids
+        and not external_blocked_goal_ids.intersection(
+            str(item)
+            for item in (getattr(proposal, "dependencies", ()) or ())
+            if str(item).strip()
+        )
+    )
 
 
 def objective_generation_task_findings(
@@ -2875,6 +2909,7 @@ def objective_generation_task_findings(
     seen_fingerprints: Iterable[str] = (),
     open_goal_ids: Iterable[str] = (),
     gap_family_states: Mapping[str, Mapping[str, Any]] | None = None,
+    trust_recorded_external_completion: bool = True,
 ) -> tuple[ObjectiveFinding, ...]:
     """Convert independent bounded task proposals into taskboard findings.
 
@@ -2890,6 +2925,12 @@ def objective_generation_task_findings(
         else []
     )
     goals_by_id = {goal.goal_id: goal for goal in goals}
+    _external_goal_ids, external_blocked_goal_ids = (
+        external_authority_goal_fence(
+            goals,
+            trust_recorded_completion=trust_recorded_external_completion,
+        )
+    )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
     open_goals = {str(item) for item in open_goal_ids if str(item).strip()}
     objective_relative = repo_relative_path(repo_root, objective_path)
@@ -2906,7 +2947,13 @@ def objective_generation_task_findings(
         if proposal.kind is not ObjectiveWorkKind.TASK:
             continue
         goal = goals_by_id.get(proposal.parent_goal_id)
-        if goal is None or not goal.is_schedulable or goal.goal_id in open_goals:
+        if (
+            goal is None
+            or not goal.is_schedulable
+            or goal.goal_id in open_goals
+            or goal.goal_id in external_blocked_goal_ids
+            or external_blocked_goal_ids.intersection(proposal.dependencies)
+        ):
             continue
         if proposal.family_key:
             state = family_states.get(proposal.family_key, {})
@@ -3952,6 +3999,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         external_completion_authority = load_external_completion_authority(
             external_completion_path
         )
+    completion_reconciliation_enabled = not bool(
+        getattr(args, "no_reconcile_goal_completion", False)
+    )
 
     seen_fingerprints = set(split_csv(args.seen_fingerprint))
     if not args.repeat_existing:
@@ -4047,7 +4097,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         repo_root=repo_root,
         default_task_prefix=args.task_prefix,
     )
-    if not getattr(args, "no_reconcile_goal_completion", False) and objective_path.exists():
+    if completion_reconciliation_enabled and objective_path.exists():
         completion = reconcile_objective_goal_completion(
             repo_root=repo_root,
             objective_path=objective_path,
@@ -4081,6 +4131,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             seen_fingerprints=seen_fingerprints,
             evidence_repository_tree=evidence_repository_tree,
             scan_exclude_paths=scan_exclude_paths,
+            trust_recorded_external_completion=(
+                completion_reconciliation_enabled
+            ),
         )
         refinement = append_refinement_goals(
             objective_path,
@@ -4120,6 +4173,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
         evidence_repository_tree=evidence_repository_tree,
         scan_exclude_paths=scan_exclude_paths,
+        trust_recorded_external_completion=completion_reconciliation_enabled,
     )
     plan_evaluation_path = (
         getattr(args, "plan_evaluation_path", None) or state_root / "plan_evaluations.json"
@@ -4227,7 +4281,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     objective_generation_error = ""
     objective_generation_materialized_records: list[Any] = []
     if not bool(getattr(args, "no_generate_bounded_work", False)):
-        from .objective_graph import ObjectiveGenerationLimits, parse_goal_heap
+        from .objective_graph import ObjectiveGenerationLimits
         from .plan_evaluator import ObjectiveWorkEvaluationPolicy
 
         generation_terms = objective_terms_for_analysis(objective_path, records)
@@ -4253,6 +4307,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             estimated_router_tokens=reserved_router_tokens,
             router_retry_count=router_retry_count,
             objective_terms=generation_terms,
+            trust_recorded_external_completion=(
+                completion_reconciliation_enabled
+            ),
         )
         generation_limits = ObjectiveGenerationLimits(
             max_depth=int(getattr(args, "objective_generation_max_depth", 3)),
@@ -4286,12 +4343,24 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         if configured_open_work < 0:
             active_goal_count = 0
             if objective_path.exists():
+                open_work_goals = parse_goal_heap(
+                    objective_path.read_text(encoding="utf-8", errors="replace")
+                )
+                _external_goal_ids, externally_blocked_goal_ids = (
+                    external_authority_goal_fence(
+                        open_work_goals,
+                        trust_recorded_completion=(
+                            completion_reconciliation_enabled
+                        ),
+                    )
+                )
                 active_goal_count = sum(
                     1
-                    for goal in parse_goal_heap(
-                        objective_path.read_text(encoding="utf-8", errors="replace")
+                    for goal in open_work_goals
+                    if (
+                        goal.is_schedulable
+                        and goal.goal_id not in externally_blocked_goal_ids
                     )
-                    if goal.is_schedulable
                 )
             try:
                 persisted_generation_payload = _load_generation_payload(
@@ -4385,6 +4454,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                         "gap_family_states",
                         {},
                     ),
+                    trust_recorded_external_completion=(
+                        completion_reconciliation_enabled
+                    ),
                 )
                 remaining_findings = max(0, int(args.max_findings) - len(records))
                 generated_findings = generated_findings[:remaining_findings]
@@ -4407,6 +4479,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                             DEFAULT_DISCOVERY_OUTPUT_PATH,
                         ),
                         precomputed_findings=generated_findings,
+                        trust_recorded_external_completion=(
+                            completion_reconciliation_enabled
+                        ),
                     )
                     records.extend(objective_generation_materialized_records)
                     generated_plan_decisions = plan_objective_records(
@@ -4453,6 +4528,22 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "graph_path": repo_relative_path(repo_root, graph_path),
         "scan_exclude_paths": scan_exclude_metadata,
         "scan_exclude_path_count": len(scan_exclude_metadata),
+        "source_protected_scan_policy": source_protected_scan_policy(),
+        "objective_completion_reconciliation_enabled": (
+            completion_reconciliation_enabled
+        ),
+        "recorded_external_completion_trusted_for_generation": (
+            completion_reconciliation_enabled
+        ),
+        "objective_external_authority_declared_goal_ids": sorted(
+            goal.goal_id
+            for goal in parse_goal_heap(
+                objective_path.read_text(encoding="utf-8")
+            )
+            if goal.requires_external_completion
+        )
+        if objective_path.exists()
+        else [],
         "plan_evaluation_path": repo_relative_path(repo_root, plan_evaluation_path),
         "plan_evaluation_count": len(plan_decisions),
         "plan_router_branch_count": max(1, int(getattr(args, "plan_branch_count", 3))),

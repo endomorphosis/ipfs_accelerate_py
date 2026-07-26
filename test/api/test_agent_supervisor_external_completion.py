@@ -24,7 +24,13 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     build_arg_parser,
     run_objective_daemon,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
+from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    build_bundle_task_payloads,
+    generate_objective_todos,
+    materialize_task_dependency_dag,
+    parse_goal_heap,
+    scan_objective_gaps,
+)
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     completion_tree_identity,
     reconcile_objective_goal_completion,
@@ -278,6 +284,47 @@ def test_declared_external_goal_is_governed_before_first_authority(
     ]
 
 
+@pytest.mark.parametrize(
+    "authority_field",
+    (
+        "Completion authority kind: external",
+        "External completion required: true",
+    ),
+)
+def test_external_authority_aliases_are_governed_during_reconciliation(
+    tmp_path,
+    authority_field,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    objective_text = objective_path.read_text(encoding="utf-8")
+    objective_path.write_text(
+        objective_text.replace(
+            "Completion authority: external",
+            authority_field,
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective.md")
+    _git(repo, "commit", "-m", "use external authority declaration alias")
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_gate_records={
+            "EXT-G001": _completion_gate(repo, objective_path)
+        },
+        now=OBSERVED_AT,
+    )
+
+    assert result.verified_goal_ids == []
+    assert result.external_completion["governed_goal_ids"] == ["EXT-G001"]
+    decision = result.decisions["EXT-G001"]["external_completion"]
+    assert decision["results"][0]["reason_codes"] == [
+        "external_authority_not_supplied"
+    ]
+
+
 def test_external_completion_is_two_phase_and_marker_text_is_not_authority(
     tmp_path,
 ):
@@ -365,6 +412,254 @@ def test_external_completion_is_two_phase_and_marker_text_is_not_authority(
         now=OBSERVED_AT,
     )
     assert reopened.reopened_goal_ids == ["EXT-G001"]
+
+
+def test_verified_external_gate_stays_nonlocal_while_downstream_work_reopens(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8")
+        + f"""
+
+## EXT-G002 Downstream local implementation
+
+- Status: active
+- Parent: EXT-G001
+- Priority: P1
+- Track: benchmark
+- Evidence: HSSL_DOWNSTREAM_STAGE_MISSING_EVIDENCE
+- Outputs: src/downstream.py
+- Validation: true
+- Gap task: Implement the authorized downstream stage.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective.md")
+    _git(repo, "commit", "-m", "add externally gated downstream goal")
+
+    first = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_gate_records={
+            "EXT-G001": _completion_gate(repo, objective_path)
+        },
+        external_completion_authority=_authority(repo, objective_path),
+        now=OBSERVED_AT,
+    )
+    assert first.provisional_goal_ids == ["EXT-G001"]
+
+    _git(repo, "add", "objective.md")
+    _git(repo, "commit", "-m", "record external gate provisional state")
+    completed = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_gate_records={
+            "EXT-G001": _completion_gate(repo, objective_path)
+        },
+        external_completion_authority=_authority(repo, objective_path),
+        now=OBSERVED_AT,
+    )
+    assert completed.verified_goal_ids == ["EXT-G001"]
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=10,
+        embedding_min_score=2.0,
+    )
+    assert [finding.goal_id for finding in findings] == ["EXT-G002"]
+    assert findings[0].parent_goal_ids == []
+    assert findings[0].external_authority_blockers == []
+
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    generated = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=repo / "data" / "agent_supervisor" / "discovery",
+        bundle_dir=bundle_dir,
+        task_prefix="DOWNSTREAM-",
+        max_findings=10,
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert [record.finding.goal_id for record in generated] == ["EXT-G002"]
+    downstream_payload = build_bundle_task_payloads(
+        bundle_dir / "index.json"
+    )[0]
+    assert downstream_payload["claimable"] is True
+    assert downstream_payload["ready_member_task_ids"] == ["DOWNSTREAM-001"]
+
+    legacy_external_task = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "LEGACY-EXTERNAL-GATE",
+                "task_cid": "cid-legacy-external-gate",
+                "goal_id": "EXT-G001",
+                "completion_authority": "external",
+                "status": "completed",
+            }
+        ],
+        merge_receipts={
+            "cid-legacy-external-gate": {
+                "status": "succeeded",
+                "receipt_cid": "local-merge-receipt",
+            }
+        },
+    )
+    legacy_schedule = legacy_external_task.schedule[0]
+    assert legacy_schedule.claimable is False
+    assert "cid-legacy-external-gate" in (
+        legacy_external_task.invalid_task_cids
+    )
+    assert any(
+        repair.kind == "external_authority_required"
+        for repair in legacy_external_task.repair_evidence
+    )
+
+
+def test_reopened_external_gate_cannot_advance_descendant_in_same_reconciliation(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    child_marker = "HSSL_DESCENDANT_MUST_REMAIN_GATED"
+    child_source = repo / "src" / "downstream.py"
+    child_source.write_text(
+        f"DOWNSTREAM_MARKER = {child_marker!r}\n",
+        encoding="utf-8",
+    )
+    objective_path.write_text(
+        f"""# Objective Heap
+
+## EXT-G001 Previously verified external gate
+
+- Status: verified_complete
+- Priority: P0
+- Track: benchmark
+- Evidence: {EVIDENCE_TERM}
+- Completion authority: external
+- External completion authority CID: forged-authority-routing-hint
+- External completion receipt CIDs: ["forged-receipt-routing-hint"]
+- External completion validation: [{{"goal_id":"EXT-G001","evidence_term":"{EVIDENCE_TERM}","valid":true,"receipt_cid":"forged-receipt-routing-hint"}}]
+- Completion evidence records: [{{"acceptance_criterion":"{EVIDENCE_TERM}","provenance_cid":"forged-receipt-routing-hint","metadata":{{"external_operational_completion":true}}}}]
+- Validation: test -f src/implementation.py
+
+## EXT-G002 Locally visible downstream evidence
+
+- Status: active
+- Parent: EXT-G001
+- Priority: P1
+- Track: benchmark
+- Evidence: {child_marker}
+- Validation: test -f src/downstream.py
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed stale external routing hint")
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        now=OBSERVED_AT,
+    )
+
+    assert result.reopened_goal_ids == ["EXT-G001"]
+    assert "EXT-G002" not in result.decisions
+    goals = {goal.goal_id: goal for goal in parse_goal_heap(
+        objective_path.read_text(encoding="utf-8")
+    )}
+    assert goals["EXT-G001"].status == "reopened"
+    assert goals["EXT-G002"].status == "active"
+
+
+def test_daemon_without_reconciliation_fences_recorded_gate_but_keeps_local_work(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        """# Objective Heap
+
+## EXT-G001 Recorded external operational gate with declaration removed
+
+- Status: verified_complete
+- Priority: P0
+- Track: benchmark
+- Evidence: HSSL_RECORDED_EXTERNAL_GATE
+- External completion authority CID: recorded-authority-routing-hint
+- External completion receipt CIDs: ["recorded-receipt-routing-hint"]
+- External completion validation: [{"goal_id":"EXT-G001","evidence_term":"HSSL_RECORDED_EXTERNAL_GATE","valid":true,"receipt_cid":"recorded-receipt-routing-hint"}]
+- Completion evidence records: [{"acceptance_criterion":"HSSL_RECORDED_EXTERNAL_GATE","provenance_cid":"recorded-receipt-routing-hint","metadata":{"external_operational_completion":true}}]
+- Validation: true
+
+## EXT-G002 Externally gated downstream work
+
+- Status: active
+- Parent: EXT-G001
+- Priority: P0
+- Track: benchmark
+- Evidence: HSSL_GATED_DOWNSTREAM_MISSING
+- Outputs: src/gated_downstream.py
+- Validation: true
+
+## HSSL-G231 Local implementation readiness
+
+- Status: active
+- Priority: P1
+- Track: benchmark
+- Evidence: HSSL_LOCAL_READINESS_MISSING
+- Outputs: src/local_readiness.py
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective.md")
+    _git(repo, "commit", "-m", "seed recorded gate and local readiness")
+    bundle_dir = repo / "bundles"
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--discovery-dir",
+            str(repo / "discovery"),
+            "--bundle-dir",
+            str(bundle_dir),
+            "--dataset-dir",
+            str(repo / "datasets"),
+            "--task-prefix",
+            "SAFE-",
+            "--max-findings",
+            "10",
+            "--no-reconcile-goal-completion",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["objective_completion_reconciliation_enabled"] is False
+    assert (
+        payload["recorded_external_completion_trusted_for_generation"]
+        is False
+    )
+    index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
+    generated_goal_ids = {
+        str(task.get("goal_id") or "")
+        for bundle in index["bundles"].values()
+        for task in bundle["tasks"]
+    }
+    assert generated_goal_ids == {"HSSL-G231"}
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "HSSL_GATED_DOWNSTREAM_MISSING" not in todo_text
+    assert "HSSL_LOCAL_READINESS_MISSING" in todo_text
 
 
 def test_external_completion_rejects_dirty_stale_and_incomplete_artifacts(
