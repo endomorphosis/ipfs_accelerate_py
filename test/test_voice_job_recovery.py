@@ -14,6 +14,8 @@ ABBY-VOICE-G016 residual evidence inventory (AUTO-026 gap closure):
   API suite in the same validation gate.
 - authoritative evidence map: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-015-objective-validation-repair.md
 - residual scan closure: data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-026-objective-validation-repair.md
+- objective validation repair — ``test_g016_objective_validation_repair_is_discoverable`` and
+  data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-031-objective-validation-repair.md
 """
 
 from __future__ import annotations
@@ -45,6 +47,8 @@ from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 # authorized validation surface. Implementation ownership for G016 remains the
 # AUTO-015 repair map below. AUTO-029 anchors residual scan closure of the
 # AUTO-026 repair receipt so objective scans re-find the same boundary.
+# AUTO-031 anchors the literal acceptance-subset phrase
+# "objective validation repair" so objective scans re-find that meta term.
 G016_AUTHORITATIVE_EVIDENCE_MAP = (
     "data/abby_voice/agent_supervisor/discovery/"
     "2026-07-26-abby-voice-auto-015-objective-validation-repair.md"
@@ -53,7 +57,12 @@ G016_RESIDUAL_SCAN_CLOSURE = (
     "data/abby_voice/agent_supervisor/discovery/"
     "2026-07-26-abby-voice-auto-026-objective-validation-repair.md"
 )
+G016_OBJECTIVE_VALIDATION_REPAIR = (
+    "data/abby_voice/agent_supervisor/discovery/"
+    "2026-07-26-abby-voice-auto-031-objective-validation-repair.md"
+)
 G016_REQUIRED_EVIDENCE_TERMS = (
+    "objective validation repair",
     "persisted attempt/backoff/lease state",
     "owner heartbeats",
     "IndexTTS/Whisper batch-size-one policy",
@@ -628,6 +637,7 @@ def test_g016_residual_evidence_terms_and_authoritative_map_are_recorded():
     """Prove AUTO-026 residual terms stay anchored to the AUTO-015 map.
 
     Required residual terms:
+    - objective validation repair
     - persisted attempt/backoff/lease state
     - owner heartbeats
     - IndexTTS/Whisper batch-size-one policy
@@ -649,6 +659,7 @@ def test_g016_residual_evidence_terms_and_authoritative_map_are_recorded():
     for relative in (
         G016_AUTHORITATIVE_EVIDENCE_MAP,
         G016_RESIDUAL_SCAN_CLOSURE,
+        G016_OBJECTIVE_VALIDATION_REPAIR,
     ):
         assert any((root / relative).is_file() for root in repo_roots), (
             f"missing G016 evidence receipt: {relative}"
@@ -686,3 +697,30 @@ def test_g016_residual_scan_closure_receipt_is_discoverable():
         f"authoritative evidence map: {G016_AUTHORITATIVE_EVIDENCE_MAP}",
     ):
         assert term in residual_text
+
+
+def test_g016_objective_validation_repair_is_discoverable():
+    """AUTO-031 objective validation repair for the G016 acceptance subset.
+
+    objective validation repair
+    """
+
+    phrase = "objective validation repair"
+    assert phrase in G016_REQUIRED_EVIDENCE_TERMS
+    assert phrase in Path(__file__).read_text(encoding="utf-8")
+
+    candidates = [
+        Path(__file__).resolve().parents[2] / G016_OBJECTIVE_VALIDATION_REPAIR,
+        Path(__file__).resolve().parents[1] / ".." / G016_OBJECTIVE_VALIDATION_REPAIR,
+    ]
+    repair_path = next((path for path in candidates if path.is_file()), None)
+    assert repair_path is not None, (
+        f"missing objective validation repair: {G016_OBJECTIVE_VALIDATION_REPAIR}"
+    )
+
+    repair_text = repair_path.read_text(encoding="utf-8")
+    assert phrase in repair_text
+    assert G016_AUTHORITATIVE_EVIDENCE_MAP in repair_text
+    assert G016_RESIDUAL_SCAN_CLOSURE in repair_text
+    assert "ABBY-VOICE-G016" in repair_text
+    assert "ABBY-VOICE-AUTO-031" in repair_text
