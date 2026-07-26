@@ -65,6 +65,7 @@ from .supervisor import (
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
+from .worktrees import WORKTREE_POOL_SCHEMA, pid_is_alive
 
 REPO_ROOT = Path.cwd()
 
@@ -2976,6 +2977,42 @@ class PortalImplementationSupervisor:
                 task_id=payload.get("task_id"),
             )
 
+        pool_state_root = root_resolved / ".pool-state"
+        try:
+            pool_state_paths = sorted(pool_state_root.glob("*.json"))
+        except OSError:
+            pool_state_paths = []
+        for pool_state_path in pool_state_paths:
+            payload = load_json_dict(pool_state_path)
+            if not payload or payload.get("schema") != WORKTREE_POOL_SCHEMA:
+                continue
+            lease_state = str(payload.get("state") or "")
+            try:
+                lease_pid = int(payload.get("lease_pid") or 0)
+            except (TypeError, ValueError):
+                lease_pid = 0
+            lock_path = pool_state_path.with_suffix(".lock")
+            lock_payload = load_json_dict(lock_path)
+            try:
+                lock_pid = int((lock_payload or {}).get("pid") or 0)
+            except (TypeError, ValueError):
+                lock_pid = 0
+            live_owner_pid = 0
+            if lease_state in {"initializing", "leased"} and pid_is_alive(lease_pid):
+                live_owner_pid = lease_pid
+            elif pid_is_alive(lock_pid):
+                live_owner_pid = lock_pid
+            if not live_owner_pid:
+                continue
+            register(
+                payload.get("path"),
+                source="worktree_pool_lease",
+                pool_state_path=pool_state_path,
+                lease_state=lease_state,
+                lease_pid=live_owner_pid,
+                branch=payload.get("branch"),
+            )
+
         return owners
 
     def _active_worktree_skip_detail(
@@ -3003,17 +3040,25 @@ class PortalImplementationSupervisor:
             owner_state_path == own_state_path
             or owner_snapshot_path == own_snapshot_path
         )
+        owner_source = str(owner.get("source") or "")
         return {
             "reason": (
-                "active_state_worktree"
-                if own_lane
-                else "active_peer_state_worktree"
+                "active_worktree_pool_lease"
+                if owner_source == "worktree_pool_lease"
+                else (
+                    "active_state_worktree"
+                    if own_lane
+                    else "active_peer_state_worktree"
+                )
             ),
-            "owner_source": str(owner.get("source") or ""),
+            "owner_source": owner_source,
             "owner_state_path": owner_state_path,
             "owner_snapshot_path": owner_snapshot_path,
+            "owner_pool_state_path": str(owner.get("pool_state_path") or ""),
             "owner_task_id": str(owner.get("task_id") or ""),
             "owner_branch": str(owner.get("branch") or ""),
+            "owner_lease_state": str(owner.get("lease_state") or ""),
+            "owner_lease_pid": str(owner.get("lease_pid") or ""),
         }
 
     @staticmethod
