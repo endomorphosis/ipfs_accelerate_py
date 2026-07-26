@@ -492,6 +492,7 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
         completion="manual",
         priority="P1",
         track="runtime",
+        outputs=["feature.py"],
         validation=["python -m py_compile feature.py"],
     )
 
