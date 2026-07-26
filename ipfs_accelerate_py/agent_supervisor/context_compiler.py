@@ -20,6 +20,7 @@ warm receipts distinguish provider-native reuse from conservative estimates.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
@@ -5235,6 +5236,176 @@ def reconstruct_context(
     )
 
 
+def _decision_retry_wire(capsule: Any) -> dict[str, Any]:
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/decision-context-retry-delta@1",
+        "contract_version": CONTEXT_COMPILER_VERSION,
+        "parent_decision_request_id": capsule.parent_decision_request_id,
+        "parent_context_id": capsule.parent_context_id,
+        "parent_completeness_witness_id": capsule.parent_completeness_witness_id,
+        "parent_stable_core_id": capsule.parent_stable_core_id,
+        "parent_closure_id": capsule.parent_closure_id,
+        "changed_dependencies": tuple(
+            item.to_record() for item in capsule.changed_dependencies
+        ),
+        "expanded_evidence": tuple(
+            item.to_record() for item in capsule.expanded_evidence
+        ),
+        "omission_reasons": dict(capsule.omission_reasons),
+    }
+
+
+def _unsafe_decision_delta(value: Any) -> bool:
+    forbidden = {
+        "authority", "authority_id", "authorization",
+        "authorization_state", "requested_authority", "principal_id",
+        "capabilities", "capability_ids", "lease_id", "fencing_epoch",
+        "repository_id", "dirty_worktree_root", "dirty_worktree_root_id",
+        "semantic_root", "semantic_roots", "semantic_roots_digest",
+        "semantic_graph_root_id", "root_id", "corpus_query",
+        "corpus_browse", "retrieval_query",
+    }
+    if isinstance(value, Mapping):
+        return any(
+            str(key) in forbidden or _unsafe_decision_delta(member)
+            for key, member in value.items()
+        )
+    if isinstance(value, (tuple, list)):
+        return any(_unsafe_decision_delta(item) for item in value)
+    return False
+
+
+def _decision_references(compilation: Any) -> dict[str, Any]:
+    return {
+        reference.node_id: reference
+        for context in compilation.contexts
+        for reference in context.references
+    }
+
+
+@dataclass(frozen=True)
+class DecisionContextRetryResult:
+    parent_compilation: Any
+    retry_capsule: Any
+    reconstructed_compilation: Any
+    verifier: Any = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        self.retry_capsule.validate_parent(self.parent_compilation)
+        parent, rebuilt = self.parent_compilation, self.reconstructed_compilation
+        if (
+            rebuilt.stable_core_id != parent.stable_core_id
+            or rebuilt.required_core != parent.required_core
+            or rebuilt.witness.mandatory_node_ids != parent.witness.mandatory_node_ids
+            or rebuilt.witness.mandatory_edge_ids != parent.witness.mandatory_edge_ids
+            or rebuilt.witness.dependency_paths != parent.witness.dependency_paths
+        ):
+            from .decision_context import DecisionContextRetryError
+
+            raise DecisionContextRetryError(
+                "retry reconstruction changed stable core or mandatory closure"
+            )
+
+    @property
+    def capsule(self) -> Any:
+        return self.retry_capsule
+
+    @property
+    def reconstructed(self) -> Any:
+        return self.reconstructed_compilation
+
+    @property
+    def transmitted_payload(self) -> Mapping[str, Any]:
+        return _decision_retry_wire(self.retry_capsule)
+
+    @property
+    def delta_input_tokens(self) -> int:
+        return self.retry_capsule.delta_input_tokens
+
+    @property
+    def full_replay_input_tokens(self) -> int:
+        return self.retry_capsule.full_replay_input_tokens
+
+
+def reconstruct_decision_context(
+    parent: Any, capsule: Any, target: Any | None = None
+) -> Any:
+    from .decision_context import (
+        DecisionContextChangeKind,
+        DecisionContextCompilation,
+        DecisionContextRetryCapsule,
+        DecisionContextRetryError,
+    )
+
+    if not isinstance(parent, DecisionContextCompilation) or not isinstance(
+        capsule, DecisionContextRetryCapsule
+    ):
+        raise DecisionContextRetryError("retry reconstruction has invalid types")
+    capsule.validate_parent(parent)
+    structural = any(
+        item.kind
+        not in {
+            DecisionContextChangeKind.DIAGNOSTICS,
+            DecisionContextChangeKind.EXPANDED_EVIDENCE,
+        }
+        for item in capsule.changed_dependencies
+    )
+    if structural and target is None:
+        raise DecisionContextRetryError(
+            "structural reconstruction requires the current verified closure"
+        )
+    if target is not None:
+        rebuilt = DecisionContextCompilation.from_dict(target.to_record())
+    else:
+        rebuilt = DecisionContextCompilation.from_dict(parent.to_record())
+    if (
+        rebuilt.stable_core_id != parent.stable_core_id
+        or rebuilt.witness.semantic_graph_root_id
+        != parent.witness.semantic_graph_root_id
+        or rebuilt.witness.roots_digest != parent.witness.roots_digest
+        or rebuilt.witness.mandatory_node_ids != parent.witness.mandatory_node_ids
+        or rebuilt.witness.mandatory_edge_ids != parent.witness.mandatory_edge_ids
+        or rebuilt.witness.dependency_paths != parent.witness.dependency_paths
+        or rebuilt.complete_input_tokens != capsule.full_replay_input_tokens
+    ):
+        raise DecisionContextRetryError(
+            "retry target does not preserve its parent closure and accounting"
+        )
+    previous, current = _decision_references(parent), _decision_references(rebuilt)
+    actual_changes = {
+        node_id
+        for node_id in previous
+        if previous[node_id].to_record() != current[node_id].to_record()
+    }
+    declared_changes: set[str] = set()
+    for change in capsule.changed_dependencies:
+        if change.kind in {
+            DecisionContextChangeKind.DIAGNOSTICS,
+            DecisionContextChangeKind.EXPANDED_EVIDENCE,
+        }:
+            continue
+        node = change.dependency_id
+        if node not in previous:
+            node = next(
+                (key for key, item in previous.items() if item.reference_id == node),
+                "",
+            )
+        declared_changes.add(node)
+        if (
+            node not in current
+            or previous[node].node_content_id != change.previous_content_id
+            or current[node].node_content_id != change.current_content_id
+        ):
+            raise DecisionContextRetryError(
+                "structural dependency identities do not match retry delta"
+            )
+    if actual_changes != declared_changes:
+        raise DecisionContextRetryError(
+            "retry target contains undeclared structural changes"
+        )
+    return rebuilt
+
+
 class DecisionContextCompiler:
     """Compile the complete authoritative closure for one decision.
 
@@ -5287,6 +5458,7 @@ class DecisionContextCompiler:
             raise ContextCompilationError(
                 "max_inline_node_bytes exceeds the context item byte limit"
             )
+        self._decision_expansion_usage: dict[str, dict[str, Any]] = {}
 
     @classmethod
     def from_context_compiler(
@@ -5305,6 +5477,7 @@ class DecisionContextCompiler:
         result.max_inline_node_bytes = min(
             4_096, compiler.effective_budget.max_item_bytes
         )
+        result._decision_expansion_usage = {}
         return result
 
     @staticmethod
@@ -5812,6 +5985,469 @@ class DecisionContextCompiler:
 
     verify_compilation = verify
 
+    def _retry_bindings(self, parent: Any, **current: Any) -> dict[str, str]:
+        from .decision_context import (
+            DecisionContextInvalidatedError,
+            decision_context_bindings,
+        )
+
+        self.verify(parent)
+        bindings = decision_context_bindings(parent)
+        for name, value in current.items():
+            if value is not None and str(value) != bindings[name]:
+                raise DecisionContextInvalidatedError(
+                    f"retry parent invalidated by changed {name.replace('_', ' ')}"
+                )
+        return bindings
+
+    def verify_retry(self, result: DecisionContextRetryResult) -> DecisionContextRetryResult:
+        from .decision_context import DecisionContextRetryError
+
+        self.verify(result.parent_compilation)
+        self.verify(result.reconstructed_compilation)
+        measured = self.estimator.estimate(
+            canonical_context_json_bytes(result.transmitted_payload).decode()
+        )
+        if (
+            measured != result.delta_input_tokens
+            or result.full_replay_input_tokens
+            != result.reconstructed_compilation.complete_input_tokens
+        ):
+            raise DecisionContextRetryError("retry token accounting is forged")
+        return result
+
+    def compile_retry(
+        self,
+        parent: Any,
+        *,
+        changed_dependencies: Iterable[Any],
+        expanded_evidence: Iterable[Any] = (),
+        omission_reasons: Mapping[str, str] | None = None,
+        target_compilation: Any | None = None,
+        current_request: Any | None = None,
+        current_graph: Any | None = None,
+        current_retrieval_receipt: Any | None = None,
+        artifact_store: ContentAddressedContextStore | None = None,
+        parent_context_id: str | None = None,
+        current_repository_id: str | None = None,
+        current_dirty_worktree_root_id: str | None = None,
+        current_semantic_roots_digest: str | None = None,
+        current_semantic_graph_root_id: str | None = None,
+        current_authority_id: str | None = None,
+    ) -> DecisionContextRetryResult:
+        from .decision_context import (
+            DecisionContextChangeKind,
+            DecisionContextChangedDependency,
+            DecisionContextInvalidatedError,
+            DecisionContextReference,
+            DecisionContextRetryCapsule,
+            DecisionContextRetryError,
+        )
+
+        bindings = self._retry_bindings(
+            parent,
+            repository_id=current_repository_id,
+            dirty_worktree_root_id=current_dirty_worktree_root_id,
+            semantic_roots_digest=current_semantic_roots_digest,
+            authority_id=current_authority_id,
+        )
+        supplied = (
+            current_request is not None,
+            current_graph is not None,
+            current_retrieval_receipt is not None,
+        )
+        if any(supplied) and not all(supplied):
+            raise DecisionContextRetryError(
+                "current request, graph, and receipt must be supplied together"
+            )
+        if all(supplied):
+            target_compilation = self.compile(
+                current_request,
+                current_graph,
+                current_retrieval_receipt,
+                artifact_store=artifact_store,
+                acceptance=parent.required_core["acceptance"],
+                validation=parent.required_core["validation"].get("contract"),
+                failure_behavior=parent.required_core["failure_behavior"].get("contract"),
+            )
+        if (
+            current_semantic_graph_root_id is not None
+            and str(current_semantic_graph_root_id)
+            != (target_compilation or parent).witness.semantic_graph_root_id
+        ):
+            raise DecisionContextInvalidatedError(
+                "retry parent invalidated by changed semantic graph root"
+            )
+        changes = tuple(
+            sorted(
+                (
+                    item
+                    if isinstance(item, DecisionContextChangedDependency)
+                    else DecisionContextChangedDependency.from_dict(item)
+                    for item in changed_dependencies
+                ),
+                key=lambda item: (item.kind.value, item.dependency_id),
+            )
+        )
+        if not changes:
+            raise DecisionContextRetryError("retry requires a changed dependency")
+        if any(_unsafe_decision_delta(item.payload) for item in changes):
+            raise DecisionContextInvalidatedError(
+                "retry delta attempts corpus browsing or authority/root escalation"
+            )
+        expanded = tuple(
+            item
+            if isinstance(item, DecisionContextReference)
+            else DecisionContextReference.from_dict(item)
+            for item in expanded_evidence
+        )
+        structural = tuple(
+            item
+            for item in changes
+            if item.kind
+            not in {
+                DecisionContextChangeKind.DIAGNOSTICS,
+                DecisionContextChangeKind.EXPANDED_EVIDENCE,
+            }
+        )
+        if structural and target_compilation is None:
+            raise DecisionContextRetryError(
+                "structural retry requires a current verified closure"
+            )
+        target = target_compilation or parent
+        if expanded:
+            if target_compilation not in (None, parent):
+                raise DecisionContextRetryError(
+                    "expansion and structural replacement cannot share one delta"
+                )
+        self.verify(target)
+        if (
+            target.stable_core_id != parent.stable_core_id
+            or target.required_core != parent.required_core
+            or target.witness.semantic_graph_root_id
+            != parent.witness.semantic_graph_root_id
+            or target.witness.roots_digest != parent.witness.roots_digest
+            or target.witness.mandatory_node_ids != parent.witness.mandatory_node_ids
+            or target.witness.mandatory_edge_ids != parent.witness.mandatory_edge_ids
+            or target.witness.dependency_paths != parent.witness.dependency_paths
+        ):
+            raise DecisionContextRetryError(
+                "retry target changed stable core or closure topology"
+            )
+        previous, current = _decision_references(parent), _decision_references(target)
+        admitted = set(previous) | {item.reference_id for item in previous.values()}
+        declared_nodes: set[str] = set()
+        for change in structural:
+            if change.dependency_id not in admitted:
+                raise DecisionContextRetryError(
+                    "changed dependency is outside the mandatory closure"
+                )
+            node = change.dependency_id
+            if node not in previous:
+                node = next(
+                    key
+                    for key, item in previous.items()
+                    if item.reference_id == change.dependency_id
+                )
+            declared_nodes.add(node)
+            if (
+                previous[node].node_content_id != change.previous_content_id
+                or current[node].node_content_id != change.current_content_id
+            ):
+                raise DecisionContextRetryError(
+                    "changed dependency does not match current closure"
+                )
+        actual_nodes = {
+            node_id
+            for node_id in previous
+            if previous[node_id].to_record() != current[node_id].to_record()
+        }
+        if actual_nodes != declared_nodes:
+            raise DecisionContextRetryError(
+                "retry target contains undeclared structural changes"
+            )
+        expansion_changes = {
+            item.dependency_id: item
+            for item in changes
+            if item.kind is DecisionContextChangeKind.EXPANDED_EVIDENCE
+        }
+        for item in expanded:
+            prior = next(
+                (
+                    reference
+                    for reference in previous.values()
+                    if reference.reference_id == item.reference_id
+                ),
+                None,
+            )
+            change = expansion_changes.get(item.reference_id)
+            if (
+                prior is None
+                or prior.expansion_handle is None
+                or item.node_id != prior.node_id
+                or item.node_content_id != prior.node_content_id
+                or change is None
+                or change.previous_content_id
+                != prior.expansion_handle.referenced_content_id
+                or change.current_content_id != item.node_content_id
+            ):
+                raise DecisionContextRetryError(
+                    "expanded evidence is outside the admitted parent closure"
+                )
+        if set(expansion_changes) != {item.reference_id for item in expanded}:
+            raise DecisionContextRetryError(
+                "expanded evidence and dependency changes differ"
+            )
+        omissions = dict(omission_reasons or {})
+        for change in changes:
+            if change.omission_reason:
+                existing = omissions.get(change.dependency_id)
+                if existing not in (None, change.omission_reason):
+                    raise DecisionContextRetryError(
+                        "retry changes a dependency omission reason"
+                    )
+                omissions[change.dependency_id] = change.omission_reason
+        for context in parent.contexts:
+            for reference in context.references:
+                if reference.expansion_handle is not None:
+                    reason = reference.expansion_handle.metadata.get("omission_reason")
+                    if not reason:
+                        continue
+                    if reference.reference_id in omissions and (
+                        omissions[reference.reference_id] != reason
+                    ):
+                        raise DecisionContextRetryError(
+                            "retry changes an inherited omission reason"
+                        )
+                    omissions[reference.reference_id] = str(reason)
+        selected = parent_context_id or parent.context.content_id
+        if selected not in parent.context_ids:
+            raise DecisionContextRetryError("retry does not bind a parent segment")
+        capsule_args = {
+            "parent_decision_request_id": bindings["decision_request_id"],
+            "parent_context_id": selected,
+            "parent_completeness_witness_id": bindings["witness_id"],
+            "parent_stable_core_id": bindings["stable_core_id"],
+            "parent_closure_id": bindings["closure_id"],
+            "repository_id": bindings["repository_id"],
+            "dirty_worktree_root_id": bindings["dirty_worktree_root_id"],
+            "semantic_graph_root_id": bindings["semantic_graph_root_id"],
+            "semantic_roots_digest": bindings["semantic_roots_digest"],
+            "authority_id": bindings["authority_id"],
+            "changed_dependencies": changes,
+            "expanded_evidence": expanded,
+            "omission_reasons": omissions,
+            "reconstructed_context_tokens": tuple(
+                item.provider_input_tokens for item in target.contexts
+            ),
+            "full_replay_input_tokens": target.complete_input_tokens,
+        }
+        provisional = type("_RetryWire", (), capsule_args)()
+        delta_tokens = self.estimator.estimate(
+            canonical_context_json_bytes(_decision_retry_wire(provisional)).decode()
+        )
+        if delta_tokens >= target.complete_input_tokens:
+            raise DecisionContextRetryError(
+                "retry delta does not use fewer tokens than full replay"
+            )
+        capsule = DecisionContextRetryCapsule(
+            **capsule_args, delta_input_tokens=delta_tokens
+        )
+        result = DecisionContextRetryResult(parent, capsule, target, self)
+        return self.verify_retry(result)
+
+    compile_decision_context_retry = compile_retry
+
+    def expand_decision_context(
+        self,
+        parent: Any,
+        request: Any,
+        resolver: ContentAddressedContextStore,
+        *,
+        elapsed_latency_ms: int | None = None,
+        cancelled: Any = None,
+        **current: Any,
+    ) -> DecisionContextRetryResult:
+        from .decision_context import (
+            DecisionContextBindingError,
+            DecisionContextChangeKind,
+            DecisionContextChangedDependency,
+            DecisionContextExpansionError,
+            DecisionContextExpansionRequest,
+            DecisionContextReference,
+            DecisionContextRepresentation,
+            decision_context_bindings,
+        )
+        from .semantic_dependency_graph import SemanticNode
+
+        if not isinstance(request, DecisionContextExpansionRequest):
+            raise DecisionContextExpansionError("invalid expansion request")
+        if not isinstance(resolver, ContentAddressedContextStore):
+            raise DecisionContextExpansionError("invalid expansion resolver")
+        if _cancelled(cancelled):
+            raise ContextExpansionCancelled("decision expansion cancelled")
+        bindings = decision_context_bindings(parent)
+        if (
+            request.parent_decision_request_id != bindings["decision_request_id"]
+            or request.parent_context_id not in parent.context_ids
+            or request.parent_completeness_witness_id != bindings["witness_id"]
+            or request.authority_id != bindings["authority_id"]
+            or request.semantic_graph_root_id != bindings["semantic_graph_root_id"]
+        ):
+            raise DecisionContextBindingError(
+                "expansion request does not bind its exact parent"
+            )
+        self._retry_bindings(
+            parent,
+            repository_id=current.get("current_repository_id"),
+            dirty_worktree_root_id=current.get("current_dirty_worktree_root_id"),
+            semantic_roots_digest=current.get("current_semantic_roots_digest"),
+            authority_id=current.get("current_authority_id"),
+        )
+        admitted = next(
+            (
+                item
+                for item in _decision_references(parent).values()
+                if item.reference_id == request.expansion_handle.reference_id
+            ),
+            None,
+        )
+        if (
+            admitted is None
+            or admitted.expansion_handle != request.expansion_handle
+            or admitted.reference_id not in parent.witness.expansion_reference_ids
+            or request.expansion_handle.repository_id != bindings["repository_id"]
+            or request.expansion_handle.tree_id != bindings["dirty_worktree_root_id"]
+            or request.expansion_handle.metadata.get("semantic_graph_root_id")
+            != bindings["semantic_graph_root_id"]
+            or request.unresolved_question
+            not in tuple(request.expansion_handle.metadata.get("unresolved_questions", ()))
+        ):
+            raise DecisionContextExpansionError(
+                "question or handle is not admitted by the original closure"
+            )
+        parent_budget = parent.required_core["decision"]["budget"]
+        count_limit = min(
+            request.budget.max_expansions,
+            parent_budget["max_expansions"],
+            parent_budget["max_items"],
+            self.effective_budget.max_items,
+        )
+        token_limit = min(
+            request.budget.max_tokens,
+            parent_budget["max_input_tokens"],
+            self.effective_input_limit,
+        )
+        artifact_byte_limit = min(
+            request.budget.max_bytes,
+            parent_budget["max_artifact_bytes"],
+            self.effective_budget.max_item_bytes,
+        )
+        wire_byte_limit = min(
+            request.budget.max_bytes,
+            parent_budget["max_serialized_bytes"],
+            self.effective_budget.max_serialized_bytes,
+        )
+        usage = self._decision_expansion_usage.get(bindings["witness_id"])
+        if usage is None:
+            usage = {
+                "budget_id": request.budget.content_id,
+                "ids": set(),
+                "count": 0,
+                "tokens": 0,
+                "bytes": 0,
+                "latency": 0,
+            }
+        if usage["budget_id"] != request.budget.content_id:
+            raise DecisionContextExpansionError(
+                "expansion lineage cannot replace its cumulative budget"
+            )
+        elapsed = (
+            request.elapsed_latency_ms
+            if elapsed_latency_ms is None
+            else _integer(elapsed_latency_ms, "elapsed_latency_ms", minimum=0)
+        )
+        if (
+            request.equivalent_request_id in usage["ids"]
+            or request.equivalent_request_id in request.prior_request_ids
+            or request.request_id in request.prior_request_ids
+            or request.expansion_index != usage["count"] + 1
+            or usage["count"] + 1 > count_limit
+        ):
+            raise DecisionContextExpansionError(
+                "repeated equivalent expansion or expansion count budget exceeded"
+            )
+        if not usage["ids"].issubset(set(request.prior_request_ids)):
+            raise DecisionContextExpansionError(
+                "expansion request omits prior lineage identities"
+            )
+        if elapsed < usage["latency"] or elapsed > min(
+            request.budget.max_latency_ms, parent_budget["max_latency_ms"]
+        ):
+            raise DecisionContextExpansionError("expansion latency budget exceeded")
+        resolver.resolve(
+            request.expansion_handle,
+            unresolved_question=request.unresolved_question,
+            cancelled=cancelled,
+        )
+        raw = resolver.get(request.expansion_handle.referenced_content_id)
+        if len(raw) > artifact_byte_limit:
+            raise DecisionContextExpansionError("expansion byte budget exceeded")
+        body_tokens = self.estimator.estimate(raw.decode())
+        if body_tokens > token_limit:
+            raise DecisionContextExpansionError("expansion token budget exceeded")
+        try:
+            node = SemanticNode.from_dict(json.loads(raw))
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            raise DecisionContextExpansionError(
+                "expanded artifact is not a canonical semantic node"
+            ) from exc
+        if node.node_id != admitted.node_id or node.content_id != admitted.node_content_id:
+            raise DecisionContextExpansionError(
+                "expanded artifact does not match mandatory dependency"
+            )
+        expanded = DecisionContextReference(
+            reference_id=admitted.reference_id,
+            node_id=admitted.node_id,
+            node_kind=admitted.node_kind,
+            node_content_id=admitted.node_content_id,
+            representation=DecisionContextRepresentation.INLINE,
+            summary=admitted.summary,
+            body=node.to_dict(),
+        )
+        change = DecisionContextChangedDependency(
+            kind=DecisionContextChangeKind.EXPANDED_EVIDENCE,
+            dependency_id=admitted.reference_id,
+            previous_content_id=request.expansion_handle.referenced_content_id,
+            current_content_id=admitted.node_content_id,
+            payload={
+                "request_id": request.request_id,
+                "unresolved_question": request.unresolved_question,
+            },
+            omission_reason="body_exceeds_inline_bound",
+        )
+        result = self.compile_retry(
+            parent,
+            changed_dependencies=(change,),
+            expanded_evidence=(expanded,),
+            parent_context_id=request.parent_context_id,
+            **current,
+        )
+        delta_bytes = len(canonical_context_json_bytes(result.transmitted_payload))
+        new_tokens = usage["tokens"] + result.delta_input_tokens
+        new_bytes = usage["bytes"] + delta_bytes
+        if new_tokens > token_limit or new_bytes > wire_byte_limit:
+            raise DecisionContextExpansionError("expansion aggregate budget exceeded")
+        usage["ids"].add(request.equivalent_request_id)
+        usage["count"] += 1
+        usage["tokens"] = new_tokens
+        usage["bytes"] = new_bytes
+        usage["latency"] = elapsed
+        self._decision_expansion_usage[bindings["witness_id"]] = usage
+        return result
+
+    expand = expand_decision_context
+
     def compile(
         self,
         request: Any,
@@ -6207,6 +6843,30 @@ def compile_decision_context(
     ).compile(request, graph, retrieval_receipt, **kwargs)
 
 
+def compile_decision_context_retry(
+    compiler: DecisionContextCompiler, parent: Any, **kwargs: Any
+) -> DecisionContextRetryResult:
+    """Compile a compact retry against an exact generation-3 parent."""
+
+    if not isinstance(compiler, DecisionContextCompiler):
+        raise ContextDeltaError("compiler must be a DecisionContextCompiler")
+    return compiler.compile_retry(parent, **kwargs)
+
+
+def expand_decision_context(
+    compiler: DecisionContextCompiler,
+    parent: Any,
+    request: Any,
+    resolver: ContentAddressedContextStore,
+    **kwargs: Any,
+) -> DecisionContextRetryResult:
+    """Resolve one question-bound handle admitted by the parent witness."""
+
+    if not isinstance(compiler, DecisionContextCompiler):
+        raise ContextExpansionError("compiler must be a DecisionContextCompiler")
+    return compiler.expand_decision_context(parent, request, resolver, **kwargs)
+
+
 def compile_context_capsule(
     budget: ContextBudget,
     **kwargs: Any,
@@ -6497,6 +7157,7 @@ __all__ = [
     "ContextCompileResult",
     "ContextCompiler",
     "DecisionContextCompiler",
+    "DecisionContextRetryResult",
     "ContextDeltaError",
     "ContextDeltaReceipt",
     "ContextDeltaResult",
@@ -6537,12 +7198,14 @@ __all__ = [
     "build_prefix_context",
     "compile_context_capsule",
     "compile_decision_context",
+    "compile_decision_context_retry",
     "compile_context_delta",
     "compile_prefix_context",
     "compile_prefix_context_capsule",
     "compile_retry_context",
     "context_provider_input_payload",
     "expand_context",
+    "expand_decision_context",
     "expand_context_for_question",
     "expand_context_references",
     "evaluate_evidence_value_fixtures",
@@ -6552,4 +7215,5 @@ __all__ = [
     "render_retry_context",
     "reconstruct_context",
     "reconstruct_context_capsule",
+    "reconstruct_decision_context",
 ]
