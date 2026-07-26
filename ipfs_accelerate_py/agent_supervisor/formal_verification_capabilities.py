@@ -954,7 +954,13 @@ DistributionVersionFinder = Callable[[str], str]
 
 
 def _find_spec_without_import(module: str) -> Any:
-    """Resolve a dotted module with ``PathFinder`` without importing parents."""
+    """Resolve a dotted module with ``PathFinder`` without importing parents.
+
+    A repository embedded as a submodule may expose a small outer package
+    whose ``__init__.py`` prepends a same-named inner package to ``__path__``.
+    Executing that bootstrap file would violate this probe's import-safety
+    contract, so mirror that narrowly defined source-tree layout statically.
+    """
 
     path: Sequence[str] | None = None
     parts = str(module).split(".")
@@ -970,7 +976,18 @@ def _find_spec_without_import(module: str) -> Any:
             locations = spec.submodule_search_locations
             if locations is None:
                 return None
-            path = tuple(str(location) for location in locations)
+            resolved_locations = tuple(str(location) for location in locations)
+            package_name = parts[index]
+            nested_locations = tuple(
+                str(candidate)
+                for location in resolved_locations
+                if Path(location).name == package_name
+                for candidate in (Path(location) / package_name,)
+                if candidate.is_dir() and (candidate / "__init__.py").is_file()
+            )
+            # Source-tree bootstrap packages prepend the inner package, so use
+            # the same precedence without executing either initializer.
+            path = tuple(dict.fromkeys((*nested_locations, *resolved_locations)))
     return spec
 
 

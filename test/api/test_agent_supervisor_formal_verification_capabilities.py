@@ -291,6 +291,80 @@ def test_default_dotted_package_discovery_does_not_execute_parent_packages(
     assert "side_effect_provider" not in sys.modules
 
 
+def test_default_discovery_resolves_nested_source_package_without_importing_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    outer = tmp_path / "source_provider"
+    inner = outer / "source_provider"
+    backend_package = inner / "agent"
+    backend_package.mkdir(parents=True)
+    (outer / "__init__.py").write_text(
+        "raise RuntimeError('outer bootstrap executed')\n",
+        encoding="utf-8",
+    )
+    (inner / "__init__.py").write_text(
+        "raise RuntimeError('inner initializer executed')\n",
+        encoding="utf-8",
+    )
+    (backend_package / "__init__.py").write_text(
+        "raise RuntimeError('agent initializer executed')\n",
+        encoding="utf-8",
+    )
+    (backend_package / "proof_provider.py").write_text(
+        "CAPABLE = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for module in ("source_provider", "source_provider.agent"):
+        sys.modules.pop(module, None)
+
+    spec = _find_spec_without_import("source_provider.agent.proof_provider")
+
+    assert spec is not None
+    assert spec.origin and spec.origin.endswith("agent/proof_provider.py")
+    assert "source_provider" not in sys.modules
+    assert "source_provider.agent" not in sys.modules
+
+
+def test_leanstral_route_is_discoverable_through_accelerator_source_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    outer = tmp_path / "ipfs_accelerate_py"
+    inner = outer / "ipfs_accelerate_py"
+    supervisor = inner / "agent_supervisor"
+    supervisor.mkdir(parents=True)
+    for initializer in (
+        outer / "__init__.py",
+        inner / "__init__.py",
+        supervisor / "__init__.py",
+    ):
+        initializer.write_text(
+            "raise RuntimeError('source package initializer executed')\n",
+            encoding="utf-8",
+        )
+    (inner / "llm_router.py").write_text("ROUTER = True\n", encoding="utf-8")
+    (supervisor / "leanstral_proof_provider.py").write_text(
+        "PROVIDER = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    loaded_accelerator = sys.modules["ipfs_accelerate_py"]
+
+    leanstral = FormalVerificationCapabilityProbe(
+        which=lambda _name: None,
+        environ={},
+    ).probe().provider("leanstral")
+    route = leanstral.leanstral_capability(LeanstralCapability.ROUTE_READINESS)
+    provider_checks = {check.name: check for check in leanstral.provider_health}
+
+    assert route.status is CapabilityHealth.AVAILABLE
+    assert provider_checks["Leanstral proof-provider adapter"].available
+    assert provider_checks["llm_router model service"].available
+    assert sys.modules["ipfs_accelerate_py"] is loaded_accelerator
+
+
 def test_probe_is_cached_until_forced_or_ttl_expires() -> None:
     discovery = FakeDiscovery()
     clock = MutableClock()
