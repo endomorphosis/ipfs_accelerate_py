@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import shlex
+import sys
 import threading
 
 import pytest
@@ -199,6 +201,66 @@ def test_rejected_proposal_closes_dispatch_and_proves_exact_g100_requirement(
         NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID
         == G100_FAIL_FAST_REQUIREMENT
     )
+
+
+def test_strict_validation_builds_hardened_python_environment(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    profile_marker = tmp_path / "bash-environment-ran"
+    bash_environment = tmp_path / "bash-environment"
+    bash_environment.write_text(
+        f"touch {shlex.quote(str(profile_marker))}\n",
+        encoding="utf-8",
+    )
+    validation = validate_implementation_proposal(
+        _proposal((_source_change(),)),
+        policy=_policy(),
+    )
+    graph = ImpactDependencyGraph(
+        repository_tree_id=TREE_ID,
+        dependencies={"pkg/source.py": ()},
+        validation_targets={VALIDATION_ID: ("pkg/source.py",)},
+    )
+    command = ValidationCommand(
+        command=(
+            "python -c 'import os, sys; "
+            "assert os.environ.get("
+            '"IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"); '
+            'assert "VALIDATION_SECRET" not in os.environ; '
+            "print(sys.executable)'"
+        ),
+        stage=ValidationStage.TARGETED,
+        impact_paths=("pkg/source.py",),
+        validation_id=VALIDATION_ID,
+        cacheable=False,
+    )
+
+    report = ValidationScheduler(max_workers=1).run_validated(
+        validation,
+        (command,),
+        workspace_path=workspace,
+        impact_graph=graph,
+        dependency_state="fixture",
+        environment={
+            "BASH_ENV": str(bash_environment),
+            "VALIDATION_SECRET": "must-not-leak",
+        },
+    )
+
+    assert report["passed"] is True, [
+        (
+            result.get("returncode"),
+            result.get("output"),
+            result.get("error"),
+        )
+        for result in report["results"]
+    ]
+    assert str(Path(sys.executable).resolve()) in str(
+        report["results"][0]["output"]
+    )
+    assert not profile_marker.exists()
 
 
 def _failing_transitive_report(
