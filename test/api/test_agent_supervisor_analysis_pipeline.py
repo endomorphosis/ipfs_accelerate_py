@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -809,6 +810,7 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
     health = {
         "status": "healthy",
         "healthy": True,
+        "exhaustive": True,
         "safe_for_completion_reasoning": True,
         "analyzer_version": result.request.analyzer_version,
     }
@@ -832,8 +834,17 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
                 "receipt_cid": "scan:asi-069:runtime",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
                 "safe_for_completion_reasoning": True,
+                "producer_id": "g096-runtime-producer",
+                "implementation": "ipfs_accelerate_py/agent_supervisor/cache_coordinator.py",
+                "child_receipt_binding": result.request.tree_id,
+                "child_receipt_sha256": "sha256:" + ("1" * 64),
+                "aggregate_tree_binding": result.request.tree_id,
                 "finished_at": now.isoformat(),
             },
             {
@@ -842,8 +853,17 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
                 "receipt_cid": "scan:asi-069:validation",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
                 "safe_for_completion_reasoning": True,
+                "producer_id": "g096-validation-producer",
+                "implementation": "ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py",
+                "child_receipt_binding": result.request.tree_id,
+                "child_receipt_sha256": "sha256:" + ("2" * 64),
+                "aggregate_tree_binding": result.request.tree_id,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -1632,6 +1652,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
     health = {
         "status": "healthy",
         "healthy": True,
+        "exhaustive": True,
         "safe_for_completion_reasoning": True,
         "analyzer_version": result.request.analyzer_version,
     }
@@ -1655,8 +1676,17 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
                 "receipt_cid": "scan:asi-065:exhaustive-a",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
                 "safe_for_completion_reasoning": True,
+                "producer_id": "g094-ast-runtime-producer",
+                "implementation": "ipfs_accelerate_py/agent_supervisor/cache_coordinator.py",
+                "child_receipt_binding": result.request.tree_id,
+                "child_receipt_sha256": "sha256:" + ("3" * 64),
+                "aggregate_tree_binding": result.request.tree_id,
                 "finished_at": now.isoformat(),
             },
             {
@@ -1665,8 +1695,17 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
                 "receipt_cid": "scan:asi-065:exhaustive-b",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
                 "safe_for_completion_reasoning": True,
+                "producer_id": "g094-cache-validation-producer",
+                "implementation": "ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py",
+                "child_receipt_binding": result.request.tree_id,
+                "child_receipt_sha256": "sha256:" + ("4" * 64),
+                "aggregate_tree_binding": result.request.tree_id,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -1762,7 +1801,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "evidence_channel": "ast-and-runtime",
+                    "producer_id": quorum["members"][0]["producer_id"],
                 },
             ],
         },
@@ -1780,7 +1819,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
             **quorum,
             "members": [
                 quorum["members"][0],
-                {**quorum["members"][1], "scan_mode": "audit"},
+                {**quorum["members"][1], "scan_mode": "partial"},
             ],
         },
         {
@@ -1913,6 +1952,7 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
     health = {
         "status": "healthy",
         "healthy": True,
+        "exhaustive": True,
         "safe_for_completion_reasoning": True,
         "analyzer_version": result.request.analyzer_version,
     }
@@ -1936,6 +1976,12 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
                 "receipt_cid": "scan:asi-066:exhaustive",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
+                "healthy": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "safe_for_completion_reasoning": True,
                 "finished_at": now.isoformat(),
             },
             {
@@ -1944,6 +1990,12 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
                 "receipt_cid": "scan:asi-066:audit",
                 "binding": binding,
                 "scan_mode": "audit",
+                "passed": True,
+                "healthy": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "safe_for_completion_reasoning": True,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -2031,7 +2083,7 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
             quorum["members"][0],
             {
                 **quorum["members"][1],
-                "evidence_channel": "exhaustive",
+                "scan_mode": "exhaustive",
             },
         ],
     }
@@ -2179,9 +2231,16 @@ def test_live_objective_planner_receives_ast_index_and_retrieval_cache_context(
         cold.pipeline_result["retrieval_response_id"] in prompt
         for prompt in prompts
     )
-    assert all(
-        '"nomination_only"' in prompt and "true" in prompt
+    prompt_evidence = [
+        json.loads(item["summary"])
         for prompt in prompts
+        for item in json.loads(prompt)["evidence"]
+        if item.get("kind") == "ast-coverage-summary"
+    ]
+    assert len(prompt_evidence) == 2
+    assert all(
+        item["analysis_pipeline"]["nomination_only"] is True
+        for item in prompt_evidence
     )
     assert not cold.safe_for_completion_reasoning
     assert not warm.safe_for_completion_reasoning
@@ -2366,6 +2425,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
     health = {
         "status": "healthy",
         "healthy": True,
+        "exhaustive": True,
         "safe_for_completion_reasoning": True,
         "analyzer_version": live.request.analyzer_version,
         "binding": binding,
@@ -2383,8 +2443,17 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
                 "receipt_cid": "scan:asi-079:ast-runtime",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
                 "safe_for_completion_reasoning": True,
+                "producer_id": "g020-ast-runtime-producer",
+                "implementation": "ipfs_accelerate_py/agent_supervisor/cache_coordinator.py",
+                "child_receipt_binding": live.request.tree_id,
+                "child_receipt_sha256": "sha256:" + ("5" * 64),
+                "aggregate_tree_binding": live.request.tree_id,
                 "finished_at": now.isoformat(),
             },
             {
@@ -2393,8 +2462,17 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
                 "receipt_cid": "scan:asi-079:cache-validation",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
                 "safe_for_completion_reasoning": True,
+                "producer_id": "g020-cache-validation-producer",
+                "implementation": "ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py",
+                "child_receipt_binding": live.request.tree_id,
+                "child_receipt_sha256": "sha256:" + ("6" * 64),
+                "aggregate_tree_binding": live.request.tree_id,
                 "finished_at": now.isoformat(),
             },
         ],
