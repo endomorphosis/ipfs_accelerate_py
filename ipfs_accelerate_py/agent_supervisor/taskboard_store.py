@@ -21,7 +21,7 @@ import tempfile
 import threading
 import time
 from collections import deque
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -57,6 +57,31 @@ _MAX_TASKBOARD_IDENTIFIER_BYTES: Final = 512
 _MAX_TASKBOARD_ENTRY_BYTES: Final = 128 * 1024
 _MAX_CHECKPOINT_BYTES: Final = 1024 * 1024
 _MAX_TASKBOARD_JOURNAL_BYTES: Final = 4 * 1024 * 1024
+TASKBOARD_STORE_SNAPSHOT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/taskboard-store-snapshot@1"
+)
+TASKBOARD_STORE_EVENT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/taskboard-store-event@1"
+)
+DEFAULT_TASKBOARD_QUERY_LIMIT: Final = 256
+MAX_TASKBOARD_QUERY_LIMIT: Final = 1024
+DEFAULT_TASKBOARD_BYTES_LIMIT: Final = 4 * 1024 * 1024
+TASKBOARD_STATUSES: Final = frozenset(
+    {
+        "todo",
+        "queued",
+        "proposed",
+        "admitted",
+        "ready",
+        "in_progress",
+        "running",
+        "blocked",
+        "completed",
+        "failed",
+        "rejected",
+        "quarantined",
+    }
+)
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -791,6 +816,662 @@ def commit_taskboard_materialization(
             )
         finally:
             fcntl.flock(lock_stream.fileno(), fcntl.LOCK_UN)
+
+
+@dataclass(frozen=True)
+class TaskboardTaskRecord:
+    """One lossless canonical task-source record recovered from Markdown."""
+
+    task_id: str
+    task_cid: str
+    goal_id: str
+    goal_cid: str
+    plan_root: str
+    title: str
+    status: str
+    dependency_task_ids: tuple[str, ...] = ()
+    dependency_task_cids: tuple[str, ...] = ()
+    schema: str = ""
+    projection_revision: int = 1
+    board_namespace: str = ""
+    source_line: int = 0
+    rendered_block: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "task_id",
+            "task_cid",
+            "goal_id",
+            "goal_cid",
+            "plan_root",
+            "schema",
+        ):
+            value = _taskboard_identifier(getattr(self, name), name=name)
+            object.__setattr__(self, name, value)
+        for name in ("title", "status", "board_namespace"):
+            value = str(getattr(self, name) or "").strip()
+            if "\x00" in value or "\n" in value or "\r" in value:
+                raise ValueError(f"{name} must be single-line text")
+            if name == "status" and not value:
+                raise ValueError("status must not be empty")
+            object.__setattr__(self, name, value)
+        if self.status.lower() not in TASKBOARD_STATUSES:
+            raise ValueError(f"unsupported taskboard status {self.status!r}")
+        if (
+            isinstance(self.projection_revision, bool)
+            or not isinstance(self.projection_revision, int)
+            or self.projection_revision < 1
+        ):
+            raise ValueError("projection_revision must be a positive integer")
+        for name in ("dependency_task_ids", "dependency_task_cids"):
+            values = tuple(
+                _taskboard_identifier(item, name=name)
+                for item in getattr(self, name)
+            )
+            if len(values) != len(set(values)):
+                raise ValueError(f"{name} contains duplicates")
+            object.__setattr__(self, name, values)
+        if len(self.dependency_task_ids) != len(self.dependency_task_cids):
+            raise ValueError("dependency aliases and CIDs must have equal population")
+        if self.task_id in self.dependency_task_ids:
+            raise ValueError("task cannot depend on itself")
+        if self.task_cid in self.dependency_task_cids:
+            raise ValueError("task CID cannot depend on itself")
+        if (
+            isinstance(self.source_line, bool)
+            or not isinstance(self.source_line, int)
+            or self.source_line < 0
+        ):
+            raise ValueError("source_line must be a non-negative integer")
+        if not isinstance(self.rendered_block, str):
+            raise TypeError("rendered_block must be text")
+        if not isinstance(self.metadata, Mapping):
+            raise TypeError("metadata must be a mapping")
+        canonical_metadata = json.loads(_canonical_json_bytes(dict(self.metadata)))
+        object.__setattr__(self, "metadata", canonical_metadata)
+
+    @property
+    def alias(self) -> str:
+        return self.task_id
+
+    @property
+    def depends_on(self) -> tuple[str, ...]:
+        return self.dependency_task_ids
+
+    def to_dict(self, *, include_block: bool = False) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "task_id": self.task_id,
+            "task_alias": self.task_id,
+            "task_cid": self.task_cid,
+            "goal_id": self.goal_id,
+            "goal_cid": self.goal_cid,
+            "plan_root": self.plan_root,
+            "title": self.title,
+            "status": self.status,
+            "dependency_task_ids": list(self.dependency_task_ids),
+            "dependency_task_cids": list(self.dependency_task_cids),
+            "schema": self.schema,
+            "projection_revision": self.projection_revision,
+            "board_namespace": self.board_namespace,
+            "source_line": self.source_line,
+            "metadata": dict(self.metadata),
+        }
+        if include_block:
+            value["rendered_block"] = self.rendered_block
+        return value
+
+
+def _assert_taskboard_acyclic(tasks: Sequence[TaskboardTaskRecord]) -> None:
+    dependencies = {
+        item.task_cid: tuple(item.dependency_task_cids) for item in tasks
+    }
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(task_cid: str) -> None:
+        if task_cid in visiting:
+            raise ValueError("taskboard task dependency graph contains a cycle")
+        if task_cid in visited:
+            return
+        visiting.add(task_cid)
+        for dependency in dependencies[task_cid]:
+            if dependency not in dependencies:
+                raise ValueError(
+                    f"taskboard task references unknown dependency CID {dependency}"
+                )
+            visit(dependency)
+        visiting.remove(task_cid)
+        visited.add(task_cid)
+
+    for task_cid in sorted(dependencies):
+        visit(task_cid)
+
+
+@dataclass(frozen=True)
+class TaskboardSnapshot:
+    """Bounded immutable view of one exact taskboard revision."""
+
+    path: Path
+    board_revision: str
+    tasks: tuple[TaskboardTaskRecord, ...]
+    byte_count: int
+    plan_root: str = ""
+    projection_schema: str = ""
+    projection_revision: int = 0
+    projection_id: str = ""
+    schema: str = TASKBOARD_STORE_SNAPSHOT_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != TASKBOARD_STORE_SNAPSHOT_SCHEMA:
+            raise ValueError("unsupported taskboard snapshot schema")
+        tasks = tuple(self.tasks)
+        if any(not isinstance(item, TaskboardTaskRecord) for item in tasks):
+            raise TypeError("snapshot tasks must be TaskboardTaskRecord values")
+        aliases = [item.task_id for item in tasks]
+        cids = [item.task_cid for item in tasks]
+        if len(aliases) != len(set(aliases)):
+            raise ValueError("taskboard contains duplicate task aliases")
+        if len(cids) != len(set(cids)):
+            raise ValueError("taskboard contains duplicate task CIDs")
+        _assert_taskboard_acyclic(tasks)
+        if isinstance(self.byte_count, bool) or self.byte_count < 0:
+            raise ValueError("byte_count must be non-negative")
+        expected_plan_roots = {item.plan_root for item in tasks}
+        if tasks and expected_plan_roots != {self.plan_root}:
+            raise ValueError("taskboard contains foreign or mixed plan roots")
+        expected_schemas = {item.schema for item in tasks}
+        if tasks and expected_schemas != {self.projection_schema}:
+            raise ValueError("taskboard contains mixed projection schemas")
+        expected_revisions = {item.projection_revision for item in tasks}
+        if tasks and expected_revisions != {self.projection_revision}:
+            raise ValueError("taskboard contains mixed projection revisions")
+        object.__setattr__(self, "tasks", tasks)
+
+    @property
+    def revision(self) -> str:
+        return self.board_revision
+
+    @property
+    def root_id(self) -> str:
+        return self.plan_root
+
+    @property
+    def source_id(self) -> str:
+        return self.projection_id or self.board_revision
+
+    @property
+    def task_count(self) -> int:
+        return len(self.tasks)
+
+    @property
+    def task_cids(self) -> tuple[str, ...]:
+        return tuple(item.task_cid for item in self.tasks)
+
+    @property
+    def task_ids(self) -> tuple[str, ...]:
+        return tuple(item.task_id for item in self.tasks)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "path": str(self.path),
+            "board_revision": self.board_revision,
+            "revision": self.board_revision,
+            "byte_count": self.byte_count,
+            "plan_root": self.plan_root,
+            "projection_schema": self.projection_schema,
+            "projection_revision": self.projection_revision,
+            "projection_id": self.projection_id,
+            "task_count": self.task_count,
+            "task_cids": list(self.task_cids),
+            "tasks": [item.to_dict() for item in self.tasks],
+        }
+
+
+@dataclass(frozen=True)
+class TaskboardCASResult:
+    """Result of one status compare-and-swap."""
+
+    changed: bool
+    task: TaskboardTaskRecord
+    previous_revision: str
+    board_revision: str
+    event: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def revision(self) -> str:
+        return self.board_revision
+
+    @property
+    def stale(self) -> bool:
+        return False
+
+
+@dataclass(frozen=True)
+class TaskboardIntegrityReport:
+    valid: bool
+    board_revision: str = ""
+    task_count: int = 0
+    plan_root: str = ""
+    reason_codes: tuple[str, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        return self.valid
+
+    def require_valid(self) -> "TaskboardIntegrityReport":
+        if not self.valid:
+            raise ValueError(
+                "taskboard integrity failed: " + ", ".join(self.reason_codes)
+            )
+        return self
+
+
+@dataclass(frozen=True)
+class TaskboardWatchResult:
+    changed: bool
+    snapshot: TaskboardSnapshot
+    events: tuple[Mapping[str, Any], ...] = ()
+    cursor: Any = None
+    timed_out: bool = False
+
+
+class TaskboardStore:
+    """Bounded canonical task-source operations over one Markdown taskboard.
+
+    Parsing is imported lazily from :mod:`markdown_task_source`, keeping the
+    long-standing low-level journal and watcher helpers in this module usable
+    without importing prompt planning contracts.
+    """
+
+    def __init__(
+        self,
+        path: Path | str,
+        *,
+        root: Path | str | None = None,
+        journal_path: Path | str | None = None,
+        events_path: Path | str | None = None,
+        max_bytes: int = DEFAULT_TASKBOARD_BYTES_LIMIT,
+        max_tasks: int = MAX_TASKBOARD_MATERIALIZATION_ENTRIES,
+    ) -> None:
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
+            raise ValueError("max_bytes must be a positive integer")
+        if isinstance(max_tasks, bool) or not isinstance(max_tasks, int) or max_tasks < 1:
+            raise ValueError("max_tasks must be a positive integer")
+        selected_path = Path(path).absolute()
+        selected_root = (
+            Path(root).resolve(strict=False)
+            if root is not None
+            else selected_path.parent.resolve(strict=False)
+        )
+        resolved_path = selected_path.resolve(strict=False)
+        try:
+            resolved_path.relative_to(selected_root)
+        except ValueError as exc:
+            raise ValueError("taskboard path escapes its configured root") from exc
+        self.path = resolved_path
+        self.root = selected_root
+        self.journal_path = self._resolve_sidecar(
+            journal_path,
+            self.path.with_name(f".{self.path.name}.materialization.json"),
+            "journal_path",
+        )
+        self.events_path = self._resolve_sidecar(
+            events_path,
+            self.path.with_name(f".{self.path.name}.events.jsonl"),
+            "events_path",
+        )
+        if self.path in {self.journal_path, self.events_path}:
+            raise ValueError("taskboard sidecar paths must be separate")
+        if self.journal_path == self.events_path:
+            raise ValueError("journal and event paths must be separate")
+        self.max_bytes = max_bytes
+        self.max_tasks = max_tasks
+        self._thread_lock = threading.RLock()
+        self._lock_path = self.path.with_name(f".{self.path.name}.store.lock")
+
+    def _resolve_sidecar(
+        self,
+        supplied: Path | str | None,
+        default: Path,
+        name: str,
+    ) -> Path:
+        candidate = Path(supplied).absolute() if supplied is not None else default
+        resolved = candidate.resolve(strict=False)
+        try:
+            resolved.relative_to(self.root)
+        except ValueError as exc:
+            raise ValueError(f"{name} escapes the configured root") from exc
+        return resolved
+
+    @contextmanager
+    def _guard(self) -> Iterator[None]:
+        with self._thread_lock:
+            self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._lock_path.open("a+b") as stream:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+    def _read_bytes(self) -> bytes:
+        try:
+            payload = self.path.read_bytes()
+        except FileNotFoundError:
+            payload = b""
+        if len(payload) > self.max_bytes:
+            raise ValueError("taskboard exceeds its configured byte bound")
+        return payload
+
+    def snapshot(self) -> TaskboardSnapshot:
+        payload = self._read_bytes()
+        try:
+            text = payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("taskboard is not UTF-8") from exc
+        from .markdown_task_source import parse_markdown_task_source
+
+        result = parse_markdown_task_source(
+            text,
+            path=self.path,
+            max_tasks=self.max_tasks,
+            board_revision=taskboard_revision(payload),
+        )
+        if result.byte_count != len(payload):
+            raise ValueError("taskboard snapshot byte population drift")
+        return result
+
+    load = snapshot
+
+    @staticmethod
+    def _bounded_limit(limit: int) -> int:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit < 1
+            or limit > MAX_TASKBOARD_QUERY_LIMIT
+        ):
+            raise ValueError(
+                f"limit must be in [1, {MAX_TASKBOARD_QUERY_LIMIT}]"
+            )
+        return limit
+
+    def query(
+        self,
+        *,
+        status: str | Sequence[str] | None = None,
+        goal_id: str = "",
+        task_cids: Iterable[str] = (),
+        offset: int = 0,
+        limit: int = DEFAULT_TASKBOARD_QUERY_LIMIT,
+    ) -> tuple[TaskboardTaskRecord, ...]:
+        selected_limit = self._bounded_limit(limit)
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError("offset must be a non-negative integer")
+        if status is None:
+            statuses: set[str] | None = None
+        elif isinstance(status, str):
+            statuses = {status.strip().lower()}
+        else:
+            statuses = {str(item).strip().lower() for item in status}
+        selected_cids = {str(item).strip() for item in task_cids}
+        records = (
+            item
+            for item in self.snapshot().tasks
+            if (statuses is None or item.status.lower() in statuses)
+            and (not goal_id or item.goal_id == goal_id or item.goal_cid == goal_id)
+            and (not selected_cids or item.task_cid in selected_cids)
+        )
+        result: list[TaskboardTaskRecord] = []
+        skipped = 0
+        for item in records:
+            if skipped < offset:
+                skipped += 1
+                continue
+            result.append(item)
+            if len(result) >= selected_limit:
+                break
+        return tuple(result)
+
+    def get(self, task_id: str) -> TaskboardTaskRecord | None:
+        selected = str(task_id).strip()
+        matches = [
+            item
+            for item in self.snapshot().tasks
+            if item.task_id == selected or item.task_cid == selected
+        ]
+        if len(matches) > 1:
+            raise ValueError("task identifier is ambiguous")
+        return matches[0] if matches else None
+
+    get_task = get
+    find = get
+
+    def ready_set(
+        self,
+        *,
+        limit: int = DEFAULT_TASKBOARD_QUERY_LIMIT,
+    ) -> tuple[TaskboardTaskRecord, ...]:
+        selected_limit = self._bounded_limit(limit)
+        snapshot = self.snapshot()
+        by_cid = {item.task_cid: item for item in snapshot.tasks}
+        completed = {
+            item.task_cid
+            for item in snapshot.tasks
+            if item.status.lower() in {"completed", "complete", "done"}
+        }
+        ready = tuple(
+            item
+            for item in snapshot.tasks
+            if item.status.lower()
+            in {"todo", "ready", "queued", "proposed", "admitted"}
+            and all(dependency in completed for dependency in item.dependency_task_cids)
+            and all(dependency in by_cid for dependency in item.dependency_task_cids)
+        )
+        return ready[:selected_limit]
+
+    ready = ready_set
+    get_ready = ready_set
+    ready_tasks = ready_set
+
+    def compare_and_swap_status(
+        self,
+        task_id: str,
+        *,
+        expected_status: str | Sequence[str],
+        new_status: str,
+        expected_revision: str,
+        event_payload: Mapping[str, Any] | None = None,
+    ) -> TaskboardCASResult:
+        expected = (
+            {expected_status.strip().lower()}
+            if isinstance(expected_status, str)
+            else {str(item).strip().lower() for item in expected_status}
+        )
+        replacement = str(new_status).strip().lower()
+        if not expected or not replacement:
+            raise ValueError("status CAS requires expected and replacement status")
+        if any(
+            not value
+            or "\n" in value
+            or "\r" in value
+            or "\x00" in value
+            for value in (*expected, replacement)
+        ):
+            raise ValueError("status values must be safe single-line tokens")
+        if not expected.issubset(TASKBOARD_STATUSES) or replacement not in (
+            TASKBOARD_STATUSES
+        ):
+            raise ValueError("status CAS contains an unsupported status")
+        if not expected_revision:
+            raise ValueError("expected_revision is required")
+        with self._guard():
+            snapshot = self.snapshot()
+            if snapshot.board_revision != expected_revision:
+                raise ValueError("stale taskboard revision")
+            matches = [
+                item
+                for item in snapshot.tasks
+                if item.task_id == task_id or item.task_cid == task_id
+            ]
+            if len(matches) != 1:
+                raise KeyError(f"unknown or ambiguous task {task_id!r}")
+            task = matches[0]
+            if task.status.lower() not in expected:
+                raise ValueError("task status compare-and-swap conflict")
+            if task.status.lower() == replacement:
+                return TaskboardCASResult(
+                    changed=False,
+                    task=task,
+                    previous_revision=snapshot.board_revision,
+                    board_revision=snapshot.board_revision,
+                )
+            payload = self._read_bytes()
+            text = payload.decode("utf-8")
+            from .markdown_task_source import replace_markdown_task_status
+
+            changed_text = replace_markdown_task_status(
+                text,
+                task_id=task.task_id,
+                expected_status=task.status,
+                new_status=replacement,
+            )
+            encoded = changed_text.encode("utf-8")
+            if len(encoded) > self.max_bytes:
+                raise ValueError("taskboard exceeds its configured byte bound")
+            _atomic_write(self.path, encoded)
+            next_snapshot = self.snapshot()
+            changed_task = next(
+                item for item in next_snapshot.tasks if item.task_cid == task.task_cid
+            )
+            event = self.append_event(
+                "task_status_changed",
+                {
+                    **dict(event_payload or {}),
+                    "schema": TASKBOARD_STORE_EVENT_SCHEMA,
+                    "task_id": task.task_id,
+                    "task_cid": task.task_cid,
+                    "plan_root": task.plan_root,
+                    "previous_status": task.status,
+                    "status": replacement,
+                    "previous_board_revision": snapshot.board_revision,
+                    "board_revision": next_snapshot.board_revision,
+                },
+            )
+            return TaskboardCASResult(
+                changed=True,
+                task=changed_task,
+                previous_revision=snapshot.board_revision,
+                board_revision=next_snapshot.board_revision,
+                event=event,
+            )
+
+    cas_status = compare_and_swap_status
+    update_status = compare_and_swap_status
+    compare_and_set_status = compare_and_swap_status
+
+    def append_event(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        selected_type = _taskboard_identifier(event_type, name="event_type")
+        if not isinstance(payload, Mapping):
+            raise TypeError("event payload must be a mapping")
+        from .event_log import append_jsonl_event
+
+        return append_jsonl_event(
+            self.events_path,
+            selected_type,
+            dict(payload),
+            max_bytes=min(self.max_bytes, _MAX_CHECKPOINT_BYTES),
+        )
+
+    def event_cursor(self) -> Any:
+        from .event_log import latest_event_cursor
+
+        return latest_event_cursor(self.events_path)
+
+    def events(
+        self,
+        cursor: Any,
+        *,
+        limit: int = DEFAULT_TASKBOARD_QUERY_LIMIT,
+    ) -> Any:
+        selected_limit = self._bounded_limit(limit)
+        from .event_log import read_jsonl_event_page
+
+        return read_jsonl_event_page(
+            self.events_path, cursor, limit=selected_limit
+        )
+
+    read_events = events
+
+    def watch(
+        self,
+        *,
+        revision: str = "",
+        cursor: Any = None,
+        timeout: float = 0.0,
+        event_limit: int = DEFAULT_TASKBOARD_QUERY_LIMIT,
+    ) -> TaskboardWatchResult:
+        if timeout < 0 or timeout > DEFAULT_SAFETY_INTERVAL_SECONDS:
+            raise ValueError(
+                "timeout must be between zero and the safety interval"
+            )
+        watcher = create_directory_watcher((self.path, self.events_path))
+        try:
+            first = self.snapshot()
+            if revision and first.board_revision != revision:
+                changed = True
+            else:
+                changed = False
+                if timeout:
+                    watcher.wait(timeout)
+                first = self.snapshot()
+                changed = bool(revision and first.board_revision != revision)
+            selected_cursor = cursor
+            events: tuple[Mapping[str, Any], ...] = ()
+            next_cursor = cursor
+            if selected_cursor is not None:
+                page = self.events(selected_cursor, limit=event_limit)
+                events = tuple(page.events)
+                next_cursor = page.next_cursor
+            return TaskboardWatchResult(
+                changed=changed or bool(events),
+                snapshot=first,
+                events=events,
+                cursor=next_cursor,
+                timed_out=bool(timeout and not changed and not events),
+            )
+        finally:
+            watcher.close()
+
+    def check_integrity(self) -> TaskboardIntegrityReport:
+        try:
+            snapshot = self.snapshot()
+        except (OSError, TypeError, ValueError) as exc:
+            reason = re.sub(
+                r"[^a-z0-9]+",
+                "_",
+                str(exc).strip().lower(),
+            ).strip("_")
+            return TaskboardIntegrityReport(
+                valid=False,
+                reason_codes=(reason or type(exc).__name__.lower(),),
+            )
+        return TaskboardIntegrityReport(
+            valid=True,
+            board_revision=snapshot.board_revision,
+            task_count=snapshot.task_count,
+            plan_root=snapshot.plan_root,
+        )
+
+    integrity = check_integrity
+    verify_integrity = check_integrity
+    integrity_check = check_integrity
 
 
 @dataclass(frozen=True)
