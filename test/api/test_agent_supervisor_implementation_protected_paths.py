@@ -1242,7 +1242,7 @@ def test_auto_clears_workspace_only_protected_deletions_when_shared_intact(
     )
 
 
-def test_auto_clear_refuses_shared_checkout_mutations(tmp_path: Path) -> None:
+def test_auto_clear_refuses_shared_checkout_deletions(tmp_path: Path) -> None:
     protected = tmp_path / POLICY_PATH
     protected.parent.mkdir(parents=True)
     protected.write_text("before\n", encoding="utf-8")
@@ -1268,6 +1268,256 @@ def test_auto_clear_refuses_shared_checkout_mutations(tmp_path: Path) -> None:
     assert result.get("blocked") is True
     assert result.get("reason") == "implementation_protected_path_incident_latched"
     assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:
+    """Shared plan/objectives content edits still require operator clearance."""
+
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("before\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(tmp_path / "worktrees" / "ws"),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "content_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "aa",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "bb",
+                    },
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("blocked") is True
+    assert result.get("reason") == "implementation_protected_path_incident_latched"
+
+
+def test_auto_clears_shared_todo_board_content_change(tmp_path: Path) -> None:
+    """Supervisor-owned board rewrites must not permanently stall lanes."""
+
+    todo_rel = "docs/architecture/example.todo.md"
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    worktrees.mkdir()
+    workspace.mkdir()
+    todo = tmp_path / todo_rel
+    todo.parent.mkdir(parents=True)
+    todo.write_text("# board\n", encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(todo_rel,),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 2,
+            "workspace_path": str(workspace),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": todo_rel,
+                    "change": "content_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "old",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "new",
+                    },
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("reason") == "shared_todo_board_content_change_accepted"
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
+    """Hardlink/nlink thrash with identical content must not stall lanes."""
+
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    worktrees.mkdir()
+    workspace.mkdir()
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("authoritative\n", encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(POLICY_PATH,),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-002",
+            "attempt": 1,
+            "workspace_path": str(workspace),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "identity_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                        "links": 1,
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                        "links": 2,
+                    },
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("reason") == "content_preserving_identity_thrash_accepted"
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_auto_clears_mixed_identity_and_todo_board_thrash(tmp_path: Path) -> None:
+    """Live multi-lane pattern: identity thrash on plan + board content rewrite."""
+
+    plan_rel = "docs/architecture/PLAN.md"
+    todo_rel = "docs/architecture/board.todo.md"
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    worktrees.mkdir()
+    workspace.mkdir()
+    for relative, body in ((plan_rel, "# plan\n"), (todo_rel, "# board\n")):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(plan_rel, todo_rel),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-003",
+            "attempt": 3,
+            "workspace_path": str(workspace),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": plan_rel,
+                    "change": "identity_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "plan-digest",
+                        "links": 1,
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "plan-digest",
+                        "links": 2,
+                    },
+                },
+                {
+                    "scope": "shared_checkout",
+                    "path": todo_rel,
+                    "change": "content_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "old-board",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "new-board",
+                    },
+                },
+                {
+                    "scope": "workspace",
+                    "path": todo_rel,
+                    "change": "content_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "ws-old",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "ws-new",
+                    },
+                },
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("reason") == "protected_path_stall_auto_cleared"
+    assert set(result.get("class_codes") or []) == {
+        "content_preserving_identity_thrash",
+        "shared_todo_board_content_change",
+        "workspace_todo_board_content_change",
+    }
+    assert not daemon._implementation_protected_incident_path().exists()
 
 
 def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(

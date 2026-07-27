@@ -3842,6 +3842,74 @@ class PortalImplementationDaemon:
                 )
         return violation
 
+    @staticmethod
+    def _protected_mutation_content_preserved(
+        before: Mapping[str, Any] | None,
+        after: Mapping[str, Any] | None,
+    ) -> bool:
+        """Return True when content identity is unchanged (metadata thrash only)."""
+
+        if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+            return False
+        if str(before.get("state") or "") != "present":
+            return False
+        if str(after.get("state") or "") != "present":
+            return False
+        if before.get("kind") != after.get("kind"):
+            return False
+        kind = str(before.get("kind") or "")
+        if kind == "regular_file":
+            return bool(before.get("sha256")) and before.get("sha256") == after.get(
+                "sha256"
+            )
+        if kind == "symlink":
+            return before.get("symlink_target") == after.get("symlink_target")
+        return False
+
+    def _protected_mutation_is_auto_clearable_stall(
+        self,
+        item: Mapping[str, Any],
+        *,
+        protected: set[str],
+    ) -> str | None:
+        """Classify one mutation for safe stall auto-clearance.
+
+        Returns a short reason code when the mutation is auto-clearable, else
+        ``None`` (fail closed).
+        """
+
+        scope = str(item.get("scope") or "")
+        change = str(item.get("change") or "")
+        path = str(item.get("path") or "").strip()
+        if scope not in {"workspace", "shared_checkout"}:
+            return None
+        if not path or path not in protected:
+            return None
+        before = item.get("before") if isinstance(item.get("before"), Mapping) else None
+        after = item.get("after") if isinstance(item.get("after"), Mapping) else None
+
+        # Hardlink/ctime/inode thrash while content is identical. Multi-lane
+        # worktrees and concurrent supervisor rewrites routinely flip nlink.
+        if change == "identity_changed":
+            if self._protected_mutation_content_preserved(before, after):
+                return "content_preserving_identity_thrash"
+            return None
+
+        # Ephemeral workspace deleted a protected doc copy; shared still authoritative.
+        if scope == "workspace" and change == "deleted":
+            return "workspace_protected_deletion"
+
+        # Executable todo board is supervisor-owned. Content edits of plan /
+        # objectives on the shared checkout still require operator review.
+        if change == "content_changed" and path.endswith(".todo.md"):
+            if scope == "shared_checkout":
+                return "shared_todo_board_content_change"
+            if scope == "workspace":
+                return "workspace_todo_board_content_change"
+            return None
+
+        return None
+
     def _auto_clear_ephemeral_protected_path_deletions(
         self,
         incident: Mapping[str, Any],
@@ -3849,19 +3917,21 @@ class PortalImplementationDaemon:
         incident_path: Path,
         active_path: Path,
     ) -> dict[str, Any] | None:
-        """Auto-clear workspace-only protected deletions when shared checkout is intact.
+        """Auto-clear latched protected-path stalls that are known-benign thrash.
 
         Safe conditions (all required):
         - incident is the standard clearable schema and operator-gated
-        - every mutation is ``scope=workspace`` and ``change=deleted``
-        - every path is in the configured protected-path allowlist
-        - shared repo checkout still has each path present as a regular file
+        - every mutation is independently classified as auto-clearable
+        - shared repo checkout still has each touched path as a regular file
         - no implementation runner process still owns the workspace path
-        - workspace is either gone or still under the managed worktree root
+        - workspace-scoped deletions/edits are not against the shared repo root
+          as a pseudo-workspace (must be under the managed worktree root, or the
+          workspace may already be gone)
 
-        This unblocks lanes after failed agents delete protected docs *only*
-        inside ephemeral worktrees without requiring human clearance for a
-        non-shared-checkout mutation.
+        Auto-clearable mutation classes:
+        - workspace deletions of configured protected paths
+        - content-preserving ``identity_changed`` (nlink/ctime/inode only)
+        - ``content_changed`` on ``*.todo.md`` only (supervisor-owned board)
         """
 
         if (
@@ -3876,27 +3946,36 @@ class PortalImplementationDaemon:
         if not protected:
             return None
 
-        deleted_paths: list[str] = []
+        mutated_paths: list[str] = []
+        scopes: set[str] = set()
+        changes: set[str] = set()
+        class_codes: set[str] = set()
+        requires_ephemeral_workspace = False
         for item in mutations:
             if not isinstance(item, Mapping):
                 return None
-            if str(item.get("scope") or "") != "workspace":
+            class_code = self._protected_mutation_is_auto_clearable_stall(
+                item,
+                protected=protected,
+            )
+            if class_code is None:
                 return None
-            if str(item.get("change") or "") != "deleted":
-                return None
+            scope = str(item.get("scope") or "")
+            change = str(item.get("change") or "")
             path = str(item.get("path") or "").strip()
-            if not path or path not in protected:
-                return None
-            deleted_paths.append(path)
+            if scope == "workspace" and change in {"deleted", "content_changed"}:
+                requires_ephemeral_workspace = True
+            scopes.add(scope)
+            changes.add(change)
+            class_codes.add(class_code)
+            mutated_paths.append(path)
 
-        # Shared checkout must still hold every protected path that was deleted
-        # only inside the ephemeral workspace.
-        for relative in deleted_paths:
+        # Shared checkout must still hold every protected path that was touched.
+        for relative in mutated_paths:
             shared = (self.repo_root / relative).resolve()
             try:
                 if not shared.is_file():
                     return None
-                # Must remain under the shared repo root.
                 shared.relative_to(self.repo_root.resolve())
             except (OSError, ValueError):
                 return None
@@ -3910,11 +3989,31 @@ class PortalImplementationDaemon:
                 workspace, self.worktree_root.resolve()
             )
             is_repo = workspace == self.repo_root.resolve()
+            workspace_exists = workspace.exists()
         except (OSError, RuntimeError, ValueError):
             return None
-        if is_repo or not under_worktree:
-            # Never auto-clear incidents that touch the shared checkout path.
-            return None
+
+        # Workspace-scoped content/deletion thrash must not target the shared
+        # repo as if it were an ephemeral worktree. Pure shared-checkout stalls
+        # (todo board rewrites, identity thrash) may use repo root as workspace.
+        if requires_ephemeral_workspace:
+            if is_repo:
+                return None
+            # Workspace may already be disposed; if present it must stay under
+            # the managed worktree root.
+            if workspace_exists and not under_worktree:
+                return None
+        elif "workspace" in scopes and is_repo and not under_worktree:
+            # Mixed scope where workspace mutations were only identity thrash
+            # can still clear; refuse if the workspace path is the shared repo
+            # while claiming workspace mutations that we did not gate above.
+            if any(
+                str(item.get("scope") or "") == "workspace"
+                and str(item.get("change") or "") not in {"identity_changed"}
+                for item in mutations
+                if isinstance(item, Mapping)
+            ):
+                return None
 
         # Fail closed while an implementation runner still owns the workspace.
         for line in self._list_process_commands():
@@ -3924,11 +4023,14 @@ class PortalImplementationDaemon:
                 return None
 
         clearance_payload = {
-            "kind": "auto-clear-ephemeral-protected-deletions",
+            "kind": "auto-clear-protected-path-stall",
             "task_id": str(incident.get("task_id") or ""),
             "attempt": incident.get("attempt"),
             "workspace_path": str(workspace),
-            "deleted_paths": sorted(deleted_paths),
+            "mutated_paths": sorted(set(mutated_paths)),
+            "scopes": sorted(scopes),
+            "changes": sorted(changes),
+            "class_codes": sorted(class_codes),
             "latched_at": str(incident.get("latched_at") or ""),
         }
         clearance_id = "sha256:" + hashlib.sha256(
@@ -3937,16 +4039,35 @@ class PortalImplementationDaemon:
             )
         ).hexdigest()
 
+        if class_codes == {"workspace_protected_deletion"}:
+            reason = "ephemeral_workspace_protected_deletions_shared_intact"
+        elif class_codes == {"shared_todo_board_content_change"}:
+            reason = "shared_todo_board_content_change_accepted"
+        elif class_codes == {"content_preserving_identity_thrash"}:
+            reason = "content_preserving_identity_thrash_accepted"
+        elif class_codes <= {
+            "content_preserving_identity_thrash",
+            "shared_todo_board_content_change",
+            "workspace_todo_board_content_change",
+            "workspace_protected_deletion",
+        }:
+            reason = "protected_path_stall_auto_cleared"
+        else:
+            reason = "protected_path_stall_auto_cleared"
+
         receipt = {
             "schema": "implementation-protected-path-auto-clearance-v1",
             "clearance_id": clearance_id,
             "cleared_at": utc_now(),
-            "reason": "ephemeral_workspace_protected_deletions_shared_intact",
+            "reason": reason,
             "task_id": str(incident.get("task_id") or ""),
             "attempt": incident.get("attempt"),
             "workspace_path": str(workspace),
-            "deleted_paths": sorted(deleted_paths),
-            "shared_protected_paths_present": sorted(deleted_paths),
+            "mutated_paths": sorted(set(mutated_paths)),
+            "scopes": sorted(scopes),
+            "changes": sorted(changes),
+            "class_codes": sorted(class_codes),
+            "shared_protected_paths_present": sorted(set(mutated_paths)),
             "incident_latched_at": str(incident.get("latched_at") or ""),
         }
         receipt_path = (
@@ -3973,7 +4094,8 @@ class PortalImplementationDaemon:
             "receipt_path": str(receipt_path),
             "task_id": receipt["task_id"],
             "attempt": receipt["attempt"],
-            "deleted_paths": receipt["deleted_paths"],
+            "mutated_paths": receipt["mutated_paths"],
+            "class_codes": receipt["class_codes"],
             "blocked": False,
         }
         self._record_event(
