@@ -569,3 +569,19 @@ Program invariants:
 - Outputs: ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py, test/test_mcplusplus_ai_catalog_idl.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery
 - Validation: python -m pytest test/test_mcplusplus_ai_catalog_idl.py ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py -q
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in AICAT-016. Evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-023-aicat-016-retry-budget.md showed inherited validation debt: the board named a test file that does not exist. The source task now validates its focused test together with the existing MCP++ IDL regression suite, without weakening assertions or policy.
+
+## AICAT-024 Resolve 1 dirty backlogged worktrees blocked by unsupported_status
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: c60e096391331c0eb52807261fa4150d9219aff4
+- Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:unsupported_status
+- Depends on:
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery, docs/architecture/ai_service_catalog.todo.md
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-024-reconciliation-c60e09639133.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by unsupported_status. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-024-reconciliation-c60e09639133.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
