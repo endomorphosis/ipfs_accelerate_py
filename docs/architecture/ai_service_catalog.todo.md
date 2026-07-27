@@ -108,7 +108,7 @@ Program invariants:
 
 ## AICAT-004 Publish embeddings router provider and model descriptors
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
