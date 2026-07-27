@@ -92,8 +92,31 @@ import hashlib
 import importlib
 import importlib.util
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Protocol, Sequence, TypedDict, runtime_checkable
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    TypedDict,
+    runtime_checkable,
+)
 
+from .model_catalog import (
+    CapabilityDescriptor,
+    CatalogSnapshot,
+    LifecycleState,
+    Modality,
+    ModelDescriptor,
+    Operation,
+    OperationalState,
+    ProviderDescriptor,
+    Provenance,
+    RouterBinding,
+)
 from .router_deps import RouterDeps, get_default_router_deps
 from .utils.mistral_vibe import (
     MistralVibeInstallResult,
@@ -1644,15 +1667,113 @@ ProviderFactory = Callable[[], LLMProvider]
 class ProviderInfo:
     name: str
     factory: ProviderFactory
+    descriptor: Optional[ProviderDescriptor] = None
+    models: Tuple[ModelDescriptor, ...] = ()
 
 
 _PROVIDER_REGISTRY: Dict[str, ProviderInfo] = {}
+_PROVIDER_REGISTRY_LOCK = threading.RLock()
 
 
-def register_llm_provider(name: str, factory: ProviderFactory) -> None:
+def _registered_llm_provider_descriptor(
+    name: str,
+    descriptor: ProviderDescriptor | Mapping[str, object] | None,
+) -> ProviderDescriptor:
+    if descriptor is None:
+        return ProviderDescriptor(
+            name=name,
+            description="Dynamically registered LLM provider.",
+            capabilities=(_llm_capability(),),
+            lifecycle=LifecycleState.DECLARED,
+            state=OperationalState(
+                known=True,
+                configured=True,
+                authorized=None,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+            provenance=(Provenance(source="llm_router.registry"),),
+            labels={
+                "access_requirement": "unknown",
+                "batching": "supported",
+                "device": "unknown",
+                "locality": "unknown",
+                "streaming": "unknown",
+                "tools": "unknown",
+            },
+        )
+    if isinstance(descriptor, ProviderDescriptor):
+        resolved = descriptor
+    elif isinstance(descriptor, Mapping):
+        values = dict(descriptor)
+        values.setdefault("name", name)
+        resolved = ProviderDescriptor(**values)
+    else:
+        raise TypeError("descriptor must be a ProviderDescriptor, mapping, or None")
+    if resolved.name != name:
+        raise ValueError("Provider descriptor name must match the registered name")
+    return resolved
+
+
+def _registered_llm_model_descriptors(
+    provider: ProviderDescriptor,
+    models: Sequence[ModelDescriptor | Mapping[str, object]],
+) -> Tuple[ModelDescriptor, ...]:
+    if isinstance(models, (str, bytes, Mapping)):
+        raise TypeError("models must be a sequence of model descriptors")
+    output: list[ModelDescriptor] = []
+    for model in models:
+        if isinstance(model, ModelDescriptor):
+            resolved = model
+        elif isinstance(model, Mapping):
+            values = dict(model)
+            values.setdefault("provider_id", provider.provider_id)
+            resolved = ModelDescriptor(**values)
+        else:
+            raise TypeError("models must contain ModelDescriptor records or mappings")
+        if resolved.provider_id != provider.provider_id:
+            raise ValueError("Model descriptor provider_id does not match provider")
+        output.append(resolved)
+    identities = [model.model_id for model in output]
+    if len(identities) != len(set(identities)):
+        raise ValueError("models contain duplicate identities")
+    return tuple(sorted(output, key=lambda model: (model.name, model.model_id or "")))
+
+
+def register_llm_provider(
+    name: str,
+    factory: ProviderFactory,
+    *,
+    descriptor: ProviderDescriptor | Mapping[str, object] | None = None,
+    models: Sequence[ModelDescriptor | Mapping[str, object]] = (),
+) -> None:
+    """Register a provider and optional side-effect-free catalog metadata.
+
+    Discovery retains ``factory`` without calling it.  When metadata is
+    omitted, provider-specific facts stay explicitly unknown.
+    """
+
     if not name or not name.strip():
         raise ValueError("Provider name must be non-empty")
-    _PROVIDER_REGISTRY[name] = ProviderInfo(name=name, factory=factory)
+    if not callable(factory):
+        raise TypeError("Provider factory must be callable")
+    normalized = name.strip().lower()
+    provider_descriptor = _registered_llm_provider_descriptor(
+        normalized,
+        descriptor,
+    )
+    model_descriptors = _registered_llm_model_descriptors(
+        provider_descriptor,
+        models,
+    )
+    with _PROVIDER_REGISTRY_LOCK:
+        _PROVIDER_REGISTRY[normalized] = ProviderInfo(
+            name=normalized,
+            factory=factory,
+            descriptor=provider_descriptor,
+            models=model_descriptors,
+        )
 
 
 def _coalesce_env(*names: str) -> str:
@@ -1665,7 +1786,18 @@ def _coalesce_env(*names: str) -> str:
 
 def _canonicalize_provider(name: Optional[str]) -> str:
     key = str(name or "").strip().lower()
-    return _PROVIDER_ALIASES.get(key, key)
+    canonical = _PROVIDER_ALIASES.get(key, key)
+    if canonical != key:
+        return canonical
+    # Registered descriptor aliases participate in invocation as well as
+    # discovery. This lookup is metadata-only and never calls the factory.
+    with _PROVIDER_REGISTRY_LOCK:
+        matches = sorted(
+            info.name
+            for info in _PROVIDER_REGISTRY.values()
+            if info.descriptor is not None and key in info.descriptor.aliases
+        )
+    return matches[0] if len(matches) == 1 else key
 
 
 def _generic_llm_model_env() -> str:
@@ -5182,6 +5314,859 @@ def _get_mock_provider() -> LLMProvider:
             return "OK"
 
     return _MockProvider()
+
+
+@dataclass(frozen=True)
+class _LLMProviderSpec:
+    name: str
+    aliases: Tuple[str, ...]
+    description: str
+    locality: str
+    device: str
+    authorization: str
+    model_env: Tuple[str, ...] = ()
+    default_model: Optional[str] = None
+    chat: bool = False
+    streaming: str = "unknown"
+    tools: str = "unknown"
+
+
+_BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
+    _LLMProviderSpec(
+        name="accelerate",
+        aliases=("ipfs_accelerate_py",),
+        description="Distributed ipfs_accelerate_py text generation provider.",
+        locality="distributed",
+        device="runtime-selected",
+        authorization="unknown",
+        model_env=(
+            "ipfs_accelerate_py_LLM_MODEL",
+            "IPFS_ACCELERATE_PY_LLM_MODEL",
+            "IPFS_DATASETS_PY_LLM_MODEL",
+        ),
+    ),
+    _LLMProviderSpec(
+        name="mock",
+        aliases=("dry-run", "dry_run"),
+        description="Deterministic in-process provider for tests and offline use.",
+        locality="local",
+        device="cpu",
+        authorization="none",
+        default_model="mock",
+        streaming="not-supported",
+        tools="not-supported",
+    ),
+    _LLMProviderSpec(
+        name="openrouter",
+        aliases=(),
+        description="OpenRouter OpenAI-compatible chat completions API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_OPENROUTER_MODEL",
+            "IPFS_ACCELERATE_PY_OPENROUTER_MODEL",
+            "IPFS_DATASETS_PY_OPENROUTER_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+            "IPFS_ACCELERATE_PY_LLM_MODEL",
+            "IPFS_DATASETS_PY_LLM_MODEL",
+        ),
+        default_model="openai/gpt-4o-mini",
+        chat=True,
+    ),
+    _LLMProviderSpec(
+        name="openai",
+        aliases=("gpt-4", "gpt4"),
+        description="OpenAI chat completions API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "IPFS_ACCELERATE_PY_OPENAI_MODEL",
+            "ipfs_accelerate_py_OPENAI_MODEL",
+            "IPFS_DATASETS_PY_OPENAI_MODEL",
+            "OPENAI_MODEL",
+            "IPFS_ACCELERATE_PY_LLM_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+            "IPFS_DATASETS_PY_LLM_MODEL",
+        ),
+        default_model="gpt-4.1-mini",
+        chat=True,
+    ),
+    _LLMProviderSpec(
+        name="hf_inference_api",
+        aliases=("hf_api", "hf_inference", "huggingface_inference"),
+        description="Hugging Face hosted inference and chat providers.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL",
+            "IPFS_DATASETS_PY_HF_INFERENCE_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+            "IPFS_ACCELERATE_PY_LLM_MODEL",
+            "IPFS_DATASETS_PY_LLM_MODEL",
+        ),
+        default_model="gpt2",
+        chat=True,
+        tools="supported",
+    ),
+    _LLMProviderSpec(
+        name="p2p_task_queue",
+        aliases=("p2p", "p2p_task", "remote_queue", "task_queue"),
+        description="Distributed task-queue text generation provider.",
+        locality="distributed",
+        device="worker-selected",
+        authorization="unknown",
+        model_env=(
+            "ipfs_accelerate_py_LLM_MODEL",
+            "IPFS_ACCELERATE_PY_LLM_MODEL",
+            "IPFS_DATASETS_PY_LLM_MODEL",
+        ),
+        default_model="gpt2",
+    ),
+    _LLMProviderSpec(
+        name="llama_cpp",
+        aliases=tuple(sorted(_LLAMA_CPP_SERVER_PROVIDER_ALIASES - {"llama_cpp"})),
+        description="Local llama.cpp OpenAI-compatible server.",
+        locality="local",
+        device="cpu,cuda,metal",
+        authorization="optional",
+        model_env=(
+            "IPFS_ACCELERATE_LLAMA_CPP_MODEL",
+            "IPFS_ACCELERATE_PY_LLAMA_CPP_MODEL",
+            "ipfs_accelerate_py_LLAMA_CPP_MODEL",
+            "IPFS_ACCELERATE_LLAMA_CPP_MODEL_REF",
+        ),
+        default_model="Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4",
+        chat=True,
+    ),
+    _LLMProviderSpec(
+        name="llama_cpp_native",
+        aliases=tuple(sorted(_LLAMA_CPP_NATIVE_PROVIDER_ALIASES - {"llama_cpp_native"})),
+        description="Local in-process llama-cpp-python provider.",
+        locality="local",
+        device="cpu,cuda,metal",
+        authorization="none",
+        model_env=(
+            "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_PATH",
+            "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_REF",
+            "IPFS_ACCELERATE_LLAMA_CPP_MODEL_REF",
+        ),
+        default_model="Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4",
+        chat=True,
+    ),
+    _LLMProviderSpec(
+        name="codex_cli",
+        aliases=("codex", "codex-cli"),
+        description="OpenAI Codex CLI text generation provider.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_CODEX_CLI_MODEL",
+            "IPFS_ACCELERATE_PY_CODEX_CLI_MODEL",
+            "IPFS_DATASETS_PY_CODEX_CLI_MODEL",
+            "ipfs_accelerate_py_CODEX_MODEL",
+            "IPFS_ACCELERATE_PY_CODEX_MODEL",
+            "IPFS_DATASETS_PY_CODEX_MODEL",
+        ),
+        default_model="chatgpt-5.6-terra",
+        tools="supported",
+    ),
+    _LLMProviderSpec(
+        name="copilot_cli",
+        aliases=("copilot",),
+        description="GitHub Copilot CLI text generation provider.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_COPILOT_CLI_MODEL",
+            "IPFS_ACCELERATE_PY_COPILOT_CLI_MODEL",
+            "IPFS_DATASETS_PY_COPILOT_CLI_MODEL",
+        ),
+        streaming="supported",
+        tools="supported",
+    ),
+    _LLMProviderSpec(
+        name="copilot_sdk",
+        aliases=(),
+        description="GitHub Copilot Python SDK provider.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_COPILOT_SDK_MODEL",
+            "IPFS_ACCELERATE_PY_COPILOT_SDK_MODEL",
+            "IPFS_DATASETS_PY_COPILOT_SDK_MODEL",
+        ),
+        streaming="supported",
+        tools="supported",
+    ),
+    _LLMProviderSpec(
+        name="gemini_cli",
+        aliases=("gemini",),
+        description="Google Gemini CLI text generation provider.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        tools="supported",
+    ),
+    _LLMProviderSpec(
+        name="gemini_py",
+        aliases=(),
+        description="Python wrapper around the Google Gemini CLI.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+    ),
+    _LLMProviderSpec(
+        name="claude_code",
+        aliases=(),
+        description="Anthropic Claude Code CLI provider.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        tools="supported",
+    ),
+    _LLMProviderSpec(
+        name="claude_py",
+        aliases=("claude",),
+        description="Python wrapper around the Anthropic Claude CLI.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+    ),
+    _LLMProviderSpec(
+        name="mistral_vibe",
+        aliases=("mistral-vibe", "vibe"),
+        description="Mistral Vibe CLI provider.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "IPFS_ACCELERATE_MISTRAL_VIBE_MODEL",
+            "IPFS_ACCELERATE_PY_MISTRAL_VIBE_MODEL",
+            "ipfs_accelerate_py_MISTRAL_VIBE_MODEL",
+            "IPFS_DATASETS_PY_MISTRAL_VIBE_MODEL",
+        ),
+        tools="supported",
+    ),
+    _LLMProviderSpec(
+        name="grok_cli",
+        aliases=tuple(sorted(_GROK_CLI_PROVIDER_ALIASES - {"grok_cli"})),
+        description="Official xAI Grok CLI provider.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_GROK_CLI_MODEL",
+            "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
+            "IPFS_DATASETS_PY_GROK_CLI_MODEL",
+            "GROK_CLI_MODEL",
+        ),
+        tools="supported",
+    ),
+    _LLMProviderSpec(
+        name="xai",
+        aliases=tuple(sorted(_XAI_API_PROVIDER_ALIASES - {"xai"})),
+        description="xAI Grok OpenAI-compatible chat API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_XAI_MODEL",
+            "IPFS_ACCELERATE_PY_XAI_MODEL",
+            "IPFS_DATASETS_PY_XAI_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+        ),
+        default_model="grok-3",
+        chat=True,
+    ),
+    _LLMProviderSpec(
+        name="meta_ai",
+        aliases=("meta", "meta-ai", "meta_llama", "meta_spark", "spark"),
+        description="Meta AI OpenAI-compatible chat API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_META_AI_MODEL",
+            "IPFS_ACCELERATE_PY_META_AI_MODEL",
+            "IPFS_DATASETS_PY_META_AI_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+        ),
+        default_model="meta-llama/Llama-3.3-70B-Instruct",
+        chat=True,
+    ),
+    _LLMProviderSpec(
+        name="local_hf",
+        aliases=("hf", "huggingface"),
+        description="Local Hugging Face transformers text-generation pipeline.",
+        locality="local",
+        device="cpu,cuda,mps",
+        authorization="none",
+        model_env=(
+            "ipfs_accelerate_py_LLM_MODEL",
+            "IPFS_ACCELERATE_PY_LLM_MODEL",
+            "IPFS_DATASETS_PY_LLM_MODEL",
+        ),
+        default_model="gpt2",
+    ),
+)
+_BUILTIN_LLM_PROVIDER_SPEC_BY_NAME = {
+    spec.name: spec for spec in _BUILTIN_LLM_PROVIDER_SPECS
+}
+
+
+def _llm_capability(
+    *,
+    chat: bool = False,
+    streaming: bool = False,
+    tools: bool = False,
+    max_context_tokens: Optional[int] = None,
+) -> CapabilityDescriptor:
+    operations = [Operation.TEXT_GENERATE, Operation.BATCH]
+    if chat:
+        operations.append(Operation.TEXT_CHAT)
+    if streaming:
+        operations.append(Operation.STREAM)
+    if tools:
+        operations.append(Operation.TOOL_CALL)
+    return CapabilityDescriptor(
+        operations=tuple(operations),
+        input_modalities=(Modality.TEXT,),
+        output_modalities=(Modality.TEXT,),
+        max_context_tokens=max_context_tokens,
+    )
+
+
+def _catalog_llm_model_name(value: object) -> str:
+    """Normalize invocation identifiers into the shared catalog name grammar."""
+
+    normalized = str(value or "").strip().casefold()
+    normalized = re.sub(r"[^a-z0-9._/-]+", "-", normalized)
+    normalized = re.sub(r"/{2,}", "/", normalized)
+    normalized = re.sub(r"\.{2,}", ".", normalized)
+    normalized = normalized.strip("._/-")
+    if not normalized:
+        normalized = "default"
+    return normalized[:128].rstrip("._/-") or "default"
+
+
+def _llm_model_facts(model_name: str) -> Tuple[Optional[int], Optional[str]]:
+    """Return conservative facts for stable built-in model hints."""
+
+    normalized = str(model_name or "").strip().casefold()
+    if normalized == "openai/gpt-4o-mini":
+        return 128_000, "transformer"
+    if normalized == "gpt-4.1-mini":
+        return 1_047_576, "transformer"
+    if normalized == "gpt2":
+        return 1_024, "transformer"
+    if normalized == "grok-3":
+        return 131_072, "transformer"
+    if normalized == "meta-llama/llama-3.3-70b-instruct":
+        return 131_072, "transformer"
+    if "llama" in normalized or "leanstral" in normalized:
+        return None, "transformer"
+    return None, None
+
+
+def _effective_llm_spec_model(spec: _LLMProviderSpec) -> Optional[str]:
+    return _coalesce_env(*spec.model_env) or spec.default_model
+
+
+def _llm_env_has_value(*names: str) -> bool:
+    return bool(_coalesce_env(*names))
+
+
+def _llm_provider_authorized(name: str) -> Optional[bool]:
+    if name == "openrouter":
+        return _llm_env_has_value(
+            "ipfs_accelerate_py_OPENROUTER_API_KEY",
+            "IPFS_ACCELERATE_PY_OPENROUTER_API_KEY",
+            "IPFS_DATASETS_PY_OPENROUTER_API_KEY",
+            "OPENROUTER_API_KEY",
+        )
+    if name == "openai":
+        return _llm_env_has_value(
+            "OPENAI_API_KEY",
+            "OPENAI_KEY",
+            "OPENAI_TOKEN",
+            "IPFS_ACCELERATE_PY_OPENAI_API_KEY",
+            "ipfs_accelerate_py_OPENAI_API_KEY",
+        )
+    if name == "hf_inference_api":
+        # Do not call _resolve_hf_api_token: it imports huggingface_hub and
+        # reads its credential store. With no environment token, auth is
+        # unknown rather than false.
+        if _llm_env_has_value(
+            "IPFS_ACCELERATE_PY_HF_API_TOKEN",
+            "ipfs_accelerate_py_HF_API_TOKEN",
+            "IPFS_DATASETS_PY_HF_API_TOKEN",
+            "HUGGINGFACEHUB_API_TOKEN",
+            "HUGGINGFACE_API_TOKEN",
+            "HF_TOKEN",
+        ):
+            return True
+        return None
+    if name == "xai":
+        return _llm_env_has_value(
+            "XAI_API_KEY",
+            "ipfs_accelerate_py_XAI_API_KEY",
+            "IPFS_ACCELERATE_PY_XAI_API_KEY",
+            "IPFS_DATASETS_PY_XAI_API_KEY",
+        )
+    if name == "meta_ai":
+        return _llm_env_has_value(
+            "META_AI_API_KEY",
+            "ipfs_accelerate_py_META_AI_API_KEY",
+        )
+    if name == "mistral_vibe" and _llm_env_has_value(
+        "MISTRAL_API_KEY",
+        "IPFS_ACCELERATE_MISTRAL_API_KEY",
+        "ipfs_accelerate_py_MISTRAL_API_KEY",
+    ):
+        return True
+    if name == "grok_cli" and _llm_env_has_value("XAI_API_KEY"):
+        return True
+    if name in {
+        "codex_cli",
+        "copilot_cli",
+        "copilot_sdk",
+        "gemini_cli",
+        "gemini_py",
+        "claude_code",
+        "claude_py",
+        "mistral_vibe",
+        "grok_cli",
+    }:
+        # These integrations can use login/key stores. Discovery deliberately
+        # does not inspect those stores.
+        return None
+    if name in {"mock", "local_hf", "llama_cpp_native"}:
+        return True
+    return None
+
+
+def _builtin_llm_provider_state(
+    spec: _LLMProviderSpec,
+) -> Tuple[LifecycleState, OperationalState]:
+    if spec.name == "mock":
+        return (
+            LifecycleState.READY,
+            OperationalState(
+                known=True,
+                configured=True,
+                authorized=True,
+                reachable=True,
+                healthy=True,
+                routable=True,
+            ),
+        )
+    if spec.name == "accelerate":
+        raw = _coalesce_env(
+            "ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE",
+            "IPFS_ACCELERATE_PY_ENABLE_IPFS_ACCELERATE",
+            "IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE",
+        )
+        configured = (
+            None if not raw else str(raw).strip().lower() in {"1", "true", "yes", "on"}
+        )
+        return (
+            LifecycleState.CONFIGURED if configured else LifecycleState.DECLARED,
+            OperationalState(
+                known=True,
+                configured=configured,
+                authorized=None,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+        )
+    authorized = _llm_provider_authorized(spec.name)
+    if spec.name in {"openrouter", "openai", "hf_inference_api", "xai", "meta_ai"}:
+        configured = authorized
+        return (
+            LifecycleState.CONFIGURED if configured is True else LifecycleState.DECLARED,
+            OperationalState(
+                known=True,
+                configured=configured,
+                authorized=authorized,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+        )
+    return (
+        LifecycleState.DECLARED,
+        OperationalState(
+            known=True,
+            configured=None,
+            authorized=authorized,
+            reachable=None,
+            healthy=None,
+            routable=None,
+        ),
+    )
+
+
+def _builtin_llm_provider_descriptor(
+    spec: _LLMProviderSpec,
+) -> ProviderDescriptor:
+    model_name = _effective_llm_spec_model(spec)
+    context_tokens, _ = _llm_model_facts(model_name or "")
+    lifecycle, state = _builtin_llm_provider_state(spec)
+    return ProviderDescriptor(
+        name=spec.name,
+        aliases=spec.aliases,
+        description=spec.description,
+        capabilities=(
+            _llm_capability(
+                chat=spec.chat,
+                streaming=spec.streaming == "supported",
+                tools=spec.tools == "supported",
+                max_context_tokens=context_tokens,
+            ),
+        ),
+        lifecycle=lifecycle,
+        state=state,
+        provenance=(Provenance(source="llm_router.static"),),
+        labels={
+            "access_requirement": spec.authorization,
+            "batching": "supported",
+            "device": spec.device,
+            "locality": spec.locality,
+            "model_hint": model_name or "provider-default",
+            "streaming": spec.streaming,
+            "tools": spec.tools,
+        },
+    )
+
+
+def _llm_provider_descriptors_by_name() -> Dict[str, ProviderDescriptor]:
+    descriptors = {
+        spec.name: _builtin_llm_provider_descriptor(spec)
+        for spec in _BUILTIN_LLM_PROVIDER_SPECS
+    }
+    with _PROVIDER_REGISTRY_LOCK:
+        registered = tuple(_PROVIDER_REGISTRY.values())
+    for info in registered:
+        # Dynamic registration has the same precedence as invocation.
+        descriptors[info.name] = (
+            info.descriptor
+            or _registered_llm_provider_descriptor(info.name, None)
+        )
+    return descriptors
+
+
+def list_providers() -> List[ProviderDescriptor]:
+    """List LLM providers without resolving or constructing any provider."""
+
+    return [
+        descriptor
+        for _, descriptor in sorted(_llm_provider_descriptors_by_name().items())
+    ]
+
+
+def _canonical_llm_catalog_provider_name(name: str) -> str:
+    requested = str(name or "").strip().lower()
+    if not requested:
+        raise ValueError("LLM provider name must be non-empty")
+    descriptors = _llm_provider_descriptors_by_name()
+    if requested in descriptors:
+        return requested
+    # The historical "grok" selector prefers the CLI when installed and then
+    # the xAI API. Checking PATH does not execute or install the CLI.
+    if requested == "grok":
+        return (
+            "grok_cli"
+            if _cli_available(_grok_cli_command())
+            else "xai"
+        )
+    canonical = _PROVIDER_ALIASES.get(requested)
+    if canonical in descriptors:
+        return canonical
+    matches = sorted(
+        descriptor.name
+        for descriptor in descriptors.values()
+        if requested in descriptor.aliases
+    )
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Ambiguous LLM provider alias {name!r}: {', '.join(matches)}"
+        )
+    raise ValueError(f"Unknown LLM provider: {name}")
+
+
+def get_provider_descriptor(name: str) -> ProviderDescriptor:
+    """Return the descriptor for a provider canonical name or alias."""
+
+    canonical = _canonical_llm_catalog_provider_name(name)
+    return _llm_provider_descriptors_by_name()[canonical]
+
+
+def _llm_model_descriptor(
+    provider: ProviderDescriptor,
+    model_name: str,
+) -> ModelDescriptor:
+    context_tokens, architecture = _llm_model_facts(model_name)
+    provider_labels = dict(provider.labels)
+    with _PROVIDER_REGISTRY_LOCK:
+        dynamically_registered = provider.name in _PROVIDER_REGISTRY
+    if dynamically_registered:
+        # Provider-authored capability sets may describe distinct chat, tool,
+        # or streaming surfaces. Preserve them instead of flattening them into
+        # the single built-in LLM capability shape.
+        capabilities = provider.capabilities or (_llm_capability(),)
+    else:
+        capability = (
+            provider.capabilities[0]
+            if provider.capabilities
+            else _llm_capability()
+        )
+        capabilities = (
+            _llm_capability(
+                chat=Operation.TEXT_CHAT in capability.operations,
+                streaming=Operation.STREAM in capability.operations,
+                tools=Operation.TOOL_CALL in capability.operations,
+                max_context_tokens=context_tokens,
+            ),
+        )
+    return ModelDescriptor(
+        provider_id=provider.provider_id,
+        name=_catalog_llm_model_name(model_name),
+        architecture=architecture,
+        capabilities=capabilities,
+        lifecycle=provider.lifecycle,
+        state=provider.state,
+        provenance=(Provenance(source="llm_router.static"),),
+        labels={
+            "access_requirement": provider_labels.get(
+                "access_requirement", "unknown"
+            ),
+            "batching": provider_labels.get("batching", "supported"),
+            "device": provider_labels.get("device", "unknown"),
+            "invocation_model": model_name,
+            "locality": provider_labels.get("locality", "unknown"),
+            "streaming": provider_labels.get("streaming", "unknown"),
+            "tools": provider_labels.get("tools", "unknown"),
+        },
+    )
+
+
+def _llm_models_for_provider(provider_name: str) -> Tuple[ModelDescriptor, ...]:
+    descriptors = _llm_provider_descriptors_by_name()
+    provider = descriptors[provider_name]
+    with _PROVIDER_REGISTRY_LOCK:
+        registered = _PROVIDER_REGISTRY.get(provider_name)
+    if registered is not None:
+        return registered.models
+    spec = _BUILTIN_LLM_PROVIDER_SPEC_BY_NAME[provider_name]
+    model_name = _effective_llm_spec_model(spec)
+    if not model_name:
+        return ()
+    return (_llm_model_descriptor(provider, model_name),)
+
+
+def list_models(provider: Optional[str] = None) -> List[ModelDescriptor]:
+    """List statically known and dynamically registered LLM model hints."""
+
+    if provider is not None:
+        provider_names = (_canonical_llm_catalog_provider_name(provider),)
+    else:
+        provider_names = tuple(sorted(_llm_provider_descriptors_by_name()))
+    models = [
+        model
+        for provider_name in provider_names
+        for model in _llm_models_for_provider(provider_name)
+    ]
+    return sorted(
+        models,
+        key=lambda model: (model.provider_id, model.name, model.model_id or ""),
+    )
+
+
+def _select_llm_discovery_provider(
+    provider: Optional[str],
+    *,
+    deps: Optional[RouterDeps],
+) -> str:
+    if provider:
+        return _canonical_llm_catalog_provider_name(provider)
+
+    forced = _coalesce_env(
+        "ipfs_accelerate_py_LLM_PROVIDER",
+        "IPFS_ACCELERATE_PY_LLM_PROVIDER",
+        "IPFS_DATASETS_PY_LLM_PROVIDER",
+    )
+    if forced:
+        return _canonical_llm_catalog_provider_name(forced)
+
+    accelerate_enabled = _coalesce_env(
+        "ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE",
+        "IPFS_ACCELERATE_PY_ENABLE_IPFS_ACCELERATE",
+        "IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE",
+    )
+    if accelerate_enabled and str(accelerate_enabled).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return "accelerate"
+
+    for name in ("openrouter", "openai", "hf_inference_api", "xai", "meta_ai"):
+        if _llm_provider_authorized(name):
+            return name
+
+    # Injected managers are already-live caller state and can be observed
+    # without initializing a manager.
+    resolved_deps = deps or get_default_router_deps()
+    managers = getattr(resolved_deps, "accelerate_managers", {})
+    if isinstance(managers, Mapping) and any(value is not None for value in managers.values()):
+        return "accelerate"
+
+    try:
+        transformers_available = importlib.util.find_spec("transformers") is not None
+    except Exception:
+        transformers_available = False
+    if transformers_available:
+        return "local_hf"
+    raise RuntimeError(
+        "No LLM provider is statically resolvable for the requested constraints"
+    )
+
+
+def resolve_model(
+    model_name: Optional[str] = None,
+    *,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    device: Optional[str] = None,
+    deps: Optional[RouterDeps] = None,
+    **constraints: object,
+) -> ModelDescriptor:
+    """Resolve an LLM model using side-effect-free router selection metadata.
+
+    Explicit model overrides remain open-ended just like ``generate_text``:
+    an unlisted identifier is returned with unknown model-specific facts and
+    is not rejected merely because it is absent from static hints.
+    """
+
+    if model is not None:
+        if model_name is not None and str(model_name) != str(model):
+            raise ValueError("model and model_name specify different values")
+        model_name = str(model)
+    operation = constraints.pop("operation", Operation.TEXT_GENERATE)
+    if constraints:
+        unknown = ", ".join(sorted(str(key) for key in constraints))
+        raise TypeError(f"Unknown LLM resolution constraints: {unknown}")
+    operation_value = (
+        operation.value if isinstance(operation, Operation) else str(operation)
+    )
+    supported_operations = {
+        Operation.TEXT_GENERATE.value,
+        Operation.TEXT_CHAT.value,
+        Operation.BATCH.value,
+        Operation.STREAM.value,
+        Operation.TOOL_CALL.value,
+    }
+    if operation_value not in supported_operations:
+        raise ValueError(f"LLM router does not support operation {operation_value!r}")
+
+    provider_name = _select_llm_discovery_provider(provider, deps=deps)
+    provider_descriptor = get_provider_descriptor(provider_name)
+    capability_operations = {
+        item.value
+        for capability in provider_descriptor.capabilities
+        for item in capability.operations
+    }
+    if operation_value not in capability_operations:
+        raise ValueError(
+            f"LLM provider {provider_name!r} does not declare operation "
+            f"{operation_value!r}"
+        )
+    if device:
+        known_device = dict(provider_descriptor.labels).get("device", "unknown")
+        requested_device = str(device).strip().casefold()
+        known_devices = {
+            item.strip().casefold() for item in known_device.split(",") if item.strip()
+        }
+        if (
+            known_device not in {"unknown", "runtime-selected", "worker-selected", "provider-managed"}
+            and requested_device not in known_devices
+        ):
+            raise ValueError(
+                f"LLM provider {provider_name!r} does not declare device "
+                f"{requested_device!r}"
+            )
+
+    known_models = _llm_models_for_provider(provider_name)
+    requested_model = str(model_name or "").strip()
+    if not requested_model:
+        if not known_models:
+            raise ValueError(
+                f"LLM provider {provider_name!r} has no known default model; "
+                "specify model_name explicitly"
+            )
+        return known_models[0]
+
+    requested_key = requested_model.casefold()
+    for descriptor in known_models:
+        labels = dict(descriptor.labels)
+        invocation_name = labels.get(
+            "invocation_model",
+            labels.get("router_model_name", descriptor.name),
+        )
+        if requested_key in {
+            descriptor.name.casefold(),
+            str(invocation_name).casefold(),
+            *(alias.casefold() for alias in descriptor.aliases),
+        }:
+            return descriptor
+    return _llm_model_descriptor(provider_descriptor, requested_model)
+
+
+def get_catalog_snapshot() -> CatalogSnapshot:
+    """Project LLM router discovery into a deterministic catalog snapshot."""
+
+    providers = tuple(list_providers())
+    models = tuple(list_models())
+    provider_by_id = {provider.provider_id: provider for provider in providers}
+    bindings = tuple(
+        RouterBinding(
+            router="llm_router",
+            provider_id=model.provider_id,
+            model_id=model.model_id,
+            operations=model.capabilities[0].operations,
+            priority=index,
+            state=provider_by_id[model.provider_id].state,
+            provenance=(Provenance(source="llm_router.static"),),
+            labels={
+                "invocation_model": dict(model.labels).get(
+                    "invocation_model",
+                    dict(model.labels).get("router_model_name", model.name),
+                )
+            },
+        )
+        for index, model in enumerate(models)
+    )
+    return CatalogSnapshot(
+        providers=providers,
+        models=models,
+        bindings=bindings,
+    )
+
+
+def catalog_snapshot() -> CatalogSnapshot:
+    """Compatibility alias for catalog source adapters."""
+
+    return get_catalog_snapshot()
 
 
 def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) -> LLMProvider:
