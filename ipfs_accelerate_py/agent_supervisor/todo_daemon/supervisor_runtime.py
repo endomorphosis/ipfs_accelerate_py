@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import importlib
+import math
 import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -913,14 +915,62 @@ def run_process_group_stream(
     input_text: Optional[str] = None,
     env: Optional[Mapping[str, object]] = None,
     timeout_seconds: float,
+    progress_timeout_seconds: float | None = None,
+    max_timeout_seconds: float | None = None,
+    progress_paths: Sequence[Path | str] = (),
+    on_progress: Callable[[Mapping[str, Any]], None] | None = None,
+    progress_poll_seconds: float = 1.0,
     termination_grace_seconds: float = 5.0,
     text: bool = True,
 ) -> subprocess.CompletedProcess[Any]:
-    """Run a streamed child in an owned process group and fence it on timeout."""
+    """Run a streamed child in an owned process group and fence it on timeout.
+
+    ``timeout_seconds`` retains the historical absolute-deadline behaviour.
+    Supplying ``progress_timeout_seconds`` enables an idle-progress deadline:
+    output-file or ``progress_paths`` mutations renew that deadline until the
+    independent ``max_timeout_seconds`` hard cap.  The hard cap prevents a
+    noisy or malicious child from extending its lease forever.
+    """
 
     input_value: Any = input_text
     if input_text is not None and not text:
         input_value = input_text.encode("utf-8")
+    idle_timeout: float | None = None
+    hard_timeout: float | None = None
+    poll_seconds: float | None = None
+    if progress_timeout_seconds is not None:
+        idle_timeout = float(progress_timeout_seconds)
+        hard_timeout = float(
+            timeout_seconds
+            if max_timeout_seconds is None
+            else max_timeout_seconds
+        )
+        if (
+            not math.isfinite(idle_timeout)
+            or not math.isfinite(hard_timeout)
+            or idle_timeout <= 0
+            or hard_timeout <= 0
+        ):
+            raise ValueError(
+                "progress and maximum timeouts must be finite and positive"
+            )
+        if hard_timeout < idle_timeout:
+            raise ValueError(
+                "max_timeout_seconds cannot be shorter than "
+                "progress_timeout_seconds"
+            )
+        requested_poll_seconds = float(progress_poll_seconds)
+        if (
+            not math.isfinite(requested_poll_seconds)
+            or requested_poll_seconds <= 0
+        ):
+            raise ValueError(
+                "progress_poll_seconds must be finite and positive"
+            )
+        poll_seconds = max(
+            0.01,
+            min(requested_poll_seconds, idle_timeout),
+        )
     process = launch_process_child(
         command,
         cwd=cwd,
@@ -932,10 +982,110 @@ def run_process_group_stream(
         text=text,
     )
     try:
-        process.communicate(
-            input=input_value,
-            timeout=max(0.0, float(timeout_seconds)),
-        )
+        if progress_timeout_seconds is None:
+            process.communicate(
+                input=input_value,
+                timeout=max(0.0, float(timeout_seconds)),
+            )
+        else:
+            assert idle_timeout is not None
+            assert hard_timeout is not None
+            assert poll_seconds is not None
+            started = time.monotonic()
+            hard_deadline = started + hard_timeout
+            idle_deadline = started + idle_timeout
+            progress_marker = _stream_progress_marker(
+                stdout,
+                progress_paths=progress_paths,
+            )
+            progress_events = 0
+
+            input_thread: threading.Thread | None = None
+            if process.stdin is not None:
+                stdin_stream = process.stdin
+                # ``communicate`` must not race the bounded writer during
+                # timeout cleanup.
+                process.stdin = None
+
+                def write_input() -> None:
+                    try:
+                        if input_value is not None:
+                            stdin_stream.write(input_value)
+                            stdin_stream.flush()
+                    except (BrokenPipeError, OSError, ValueError):
+                        pass
+                    finally:
+                        try:
+                            stdin_stream.close()
+                        except OSError:
+                            pass
+
+                input_thread = threading.Thread(
+                    target=write_input,
+                    name="supervisor-stream-input",
+                    daemon=True,
+                )
+                input_thread.start()
+
+            while process.poll() is None:
+                now = time.monotonic()
+                timeout_reason = ""
+                if now >= hard_deadline:
+                    timeout_reason = "hard_timeout"
+                elif now >= idle_deadline:
+                    timeout_reason = "progress_idle_timeout"
+                if timeout_reason:
+                    exc = subprocess.TimeoutExpired(
+                        cmd=list(command),
+                        timeout=(
+                            hard_timeout
+                            if timeout_reason == "hard_timeout"
+                            else idle_timeout
+                        ),
+                    )
+                    setattr(exc, "timeout_reason", timeout_reason)
+                    setattr(exc, "elapsed_seconds", max(0.0, now - started))
+                    setattr(exc, "progress_events", progress_events)
+                    setattr(exc, "progress_timeout_seconds", idle_timeout)
+                    setattr(exc, "max_timeout_seconds", hard_timeout)
+                    raise exc
+
+                wait_seconds = min(
+                    poll_seconds,
+                    max(0.001, hard_deadline - now),
+                    max(0.001, idle_deadline - now),
+                )
+                try:
+                    process.wait(timeout=wait_seconds)
+                except subprocess.TimeoutExpired:
+                    pass
+                next_marker = _stream_progress_marker(
+                    stdout,
+                    progress_paths=progress_paths,
+                )
+                if next_marker != progress_marker:
+                    progress_marker = next_marker
+                    progress_events += 1
+                    observed_at = time.monotonic()
+                    idle_deadline = observed_at + idle_timeout
+                    if on_progress is not None:
+                        try:
+                            on_progress(
+                                {
+                                    "elapsed_seconds": max(
+                                        0.0, observed_at - started
+                                    ),
+                                    "progress_events": progress_events,
+                                    "progress_timeout_seconds": idle_timeout,
+                                    "max_timeout_seconds": hard_timeout,
+                                }
+                            )
+                        except Exception:
+                            # Progress telemetry must never change child
+                            # execution semantics.
+                            pass
+            if input_thread is not None:
+                input_thread.join(timeout=0.1)
     except subprocess.TimeoutExpired as exc:
         terminate_pid_tree(
             process.pid,
@@ -946,12 +1096,22 @@ def run_process_group_stream(
         except subprocess.TimeoutExpired:
             terminate_process_group(process, signal.SIGKILL)
             process.communicate()
-        raise subprocess.TimeoutExpired(
+        timeout_exc = subprocess.TimeoutExpired(
             cmd=list(command),
-            timeout=float(timeout_seconds),
+            timeout=float(getattr(exc, "timeout", timeout_seconds)),
             output=exc.output,
             stderr=exc.stderr,
-        ) from exc
+        )
+        for attribute in (
+            "timeout_reason",
+            "elapsed_seconds",
+            "progress_events",
+            "progress_timeout_seconds",
+            "max_timeout_seconds",
+        ):
+            if hasattr(exc, attribute):
+                setattr(timeout_exc, attribute, getattr(exc, attribute))
+        raise timeout_exc from exc
     # A successful CLI process may have daemonized descendants that closed
     # their inherited output descriptors.  They remain in the owned session
     # and could mutate the checkout after the implementation fence's final
@@ -982,6 +1142,60 @@ def run_process_group_stream(
         args=list(command),
         returncode=int(process.returncode or 0),
     )
+
+
+def _stream_progress_marker(
+    stdout: Any,
+    *,
+    progress_paths: Sequence[Path | str],
+    max_entries: int = 512,
+) -> tuple[tuple[str, int, int], ...]:
+    """Return a bounded metadata marker for streamed output and checkpoints."""
+
+    marker: list[tuple[str, int, int]] = []
+    try:
+        stat = os.fstat(stdout.fileno())
+        marker.append(("<stdout>", int(stat.st_size), int(stat.st_mtime_ns)))
+    except (AttributeError, OSError, ValueError):
+        pass
+
+    remaining = max(0, int(max_entries))
+    for raw_path in progress_paths:
+        if remaining <= 0:
+            break
+        root = Path(raw_path)
+        try:
+            root_stat = root.lstat()
+        except OSError:
+            marker.append((str(root), -1, -1))
+            remaining -= 1
+            continue
+        marker.append(
+            (str(root), int(root_stat.st_size), int(root_stat.st_mtime_ns))
+        )
+        remaining -= 1
+        if not root.is_dir() or root.is_symlink():
+            continue
+        try:
+            descendants = sorted(root.rglob("*"), key=lambda item: str(item))
+        except OSError:
+            continue
+        for descendant in descendants:
+            if remaining <= 0:
+                break
+            try:
+                stat = descendant.lstat()
+            except OSError:
+                continue
+            marker.append(
+                (
+                    str(descendant),
+                    int(stat.st_size),
+                    int(stat.st_mtime_ns),
+                )
+            )
+            remaining -= 1
+    return tuple(marker)
 
 
 def terminate_process_with_grace(

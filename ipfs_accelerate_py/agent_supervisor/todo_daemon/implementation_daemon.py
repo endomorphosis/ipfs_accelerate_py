@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import posixpath
 import re
@@ -116,6 +118,21 @@ DEFAULT_TRACKS = [
 ]
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
+DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER = 4.0
+IMPLEMENTATION_CHECKPOINT_DIR_ENV = (
+    "IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR"
+)
+IMPLEMENTATION_TASK_ID_ENV = "IPFS_ACCELERATE_AGENT_TASK_ID"
+IMPLEMENTATION_TASK_CID_ENV = "IPFS_ACCELERATE_AGENT_TASK_CID"
+IMPLEMENTATION_ATTEMPT_ENV = "IPFS_ACCELERATE_AGENT_TASK_ATTEMPT"
+IMPLEMENTATION_CHECKPOINT_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "implementation-checkpoint-manifest@1"
+)
+MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
+MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
+MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
+IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
@@ -1360,6 +1377,33 @@ class PortalTask:
     board_namespace: str = "default"
 
 
+@dataclass(frozen=True)
+class ImplementationTimeoutPolicy:
+    """One task's bounded implementation lease and progress-idle deadline."""
+
+    configured_timeout_seconds: float
+    progress_timeout_seconds: float
+    max_timeout_seconds: float
+    progress_aware: bool
+    source: str
+
+    def to_dict(self) -> dict[str, Any]:
+        def duration(value: float) -> str:
+            return format(float(value), ".15g")
+
+        return {
+            "configured_timeout_seconds": duration(
+                self.configured_timeout_seconds
+            ),
+            "progress_timeout_seconds": duration(
+                self.progress_timeout_seconds
+            ),
+            "max_timeout_seconds": duration(self.max_timeout_seconds),
+            "progress_aware": self.progress_aware,
+            "source": self.source,
+        }
+
+
 COMPLETION_GAP_EDIT_SCOPE_ROLES = frozenset(
     {
         "completion_gate_gap",
@@ -2040,7 +2084,14 @@ class PortalImplementationDaemon:
         self.task_header_prefix = normalize_task_header_prefix(task_header_prefix)
         self.implement = implement
         self.implementation_command = implementation_command
-        self.implementation_timeout = implementation_timeout
+        if (
+            isinstance(implementation_timeout, bool)
+            or not isinstance(implementation_timeout, (int, float))
+            or not math.isfinite(float(implementation_timeout))
+            or float(implementation_timeout) <= 0
+        ):
+            raise ValueError("implementation_timeout must be finite and positive")
+        self.implementation_timeout = float(implementation_timeout)
         self.max_task_attempts = max(0, int(max_task_attempts))
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.implementation_context_budget = implementation_context_budget
@@ -5644,6 +5695,7 @@ class PortalImplementationDaemon:
 
         started_at = utc_now()
         attempt = self._task_attempt(state, task)
+        self._ensure_implementation_checkpoint_dir(task)
         task_claim_path = self._implementation_task_claim_path(
             task.task_id,
             canonical_task_cid=self._canonical_ref(task),
@@ -5786,6 +5838,8 @@ class PortalImplementationDaemon:
         context_receipt_path: Path | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
+        timeout_policy = self._implementation_timeout_policy(task)
 
         try:
             acquired_lock, lock_reason, existing_lock = (
@@ -5856,12 +5910,20 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "command": command,
                     "log_path": str(log_path),
+                    "checkpoint_directory": str(checkpoint_dir),
+                    "timeout_policy": timeout_policy.to_dict(),
                 },
             )
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
+                log_fh.write(f"Checkpoint directory: {checkpoint_dir}\n")
+                log_fh.write(
+                    "Timeout policy: "
+                    + canonical_json(timeout_policy.to_dict())
+                    + "\n\n"
+                )
                 log_fh.flush()
                 completed = self._decision_runtime_mutation(
                     "command_invocation",
@@ -5878,7 +5940,24 @@ class PortalImplementationDaemon:
                         cwd=workspace_path,
                         stdout=log_fh,
                         input_text=prompt,
-                        timeout_seconds=self.implementation_timeout,
+                        env=self._implementation_process_environment(
+                            task,
+                            attempt=attempt,
+                            checkpoint_dir=checkpoint_dir,
+                        ),
+                        timeout_seconds=timeout_policy.max_timeout_seconds,
+                        progress_timeout_seconds=(
+                            timeout_policy.progress_timeout_seconds
+                            if timeout_policy.progress_aware
+                            else None
+                        ),
+                        max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                        progress_paths=(checkpoint_dir,),
+                        on_progress=self._implementation_progress_observer(
+                            state,
+                            task,
+                            attempt=attempt,
+                        ),
                     ),
                 )
             effective_returncode = completed.returncode
@@ -6052,7 +6131,7 @@ class PortalImplementationDaemon:
                 result["todo_update_result"] = todo_update_result
             self._record_event("implementation_finished", result)
             return result
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as timeout_exc:
             if protected_path_snapshot is not None:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -6090,6 +6169,22 @@ class PortalImplementationDaemon:
                     str(context_receipt_path) if context_receipt_path else ""
                 ),
             }
+            timeout_result = {
+                "timeout_reason": str(
+                    getattr(timeout_exc, "timeout_reason", "absolute_timeout")
+                ),
+                "elapsed_seconds": float(
+                    getattr(timeout_exc, "elapsed_seconds", 0.0) or 0.0
+                ),
+                "progress_events": int(
+                    getattr(timeout_exc, "progress_events", 0) or 0
+                ),
+                "timeout_policy": timeout_policy.to_dict(),
+                "checkpoint_manifest": (
+                    self._implementation_checkpoint_manifest(task)
+                ),
+            }
+            result["timeout_result"] = timeout_result
             if protected_path_violation:
                 result["reason"] = "implementation_protected_path_mutated"
                 result["protected_path_violation"] = protected_path_violation
@@ -6107,6 +6202,7 @@ class PortalImplementationDaemon:
                 task,
                 returncode=terminal_returncode,
                 validation_result=validation_result,
+                timeout_result=timeout_result,
             )
             if diagnostic is not None:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
@@ -8019,6 +8115,8 @@ class PortalImplementationDaemon:
         timeout_result: dict[str, Any] = {}
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
+        timeout_policy = self._implementation_timeout_policy(task)
 
         try:
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
@@ -8057,6 +8155,8 @@ class PortalImplementationDaemon:
                     "cache_hit": workspace_setup["cache_hit"],
                     "setup_duration_seconds": workspace_setup["setup_duration_seconds"],
                     "saved_duration_seconds": workspace_setup["saved_duration_seconds"],
+                    "checkpoint_directory": str(checkpoint_dir),
+                    "timeout_policy": timeout_policy.to_dict(),
                 },
             )
             with log_path.open("w", encoding="utf-8") as log_fh:
@@ -8066,6 +8166,12 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Branch: {branch_name}\n")
                 log_fh.write(f"Baseline: {baseline_ref}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
+                log_fh.write(f"Checkpoint directory: {checkpoint_dir}\n")
+                log_fh.write(
+                    "Timeout policy: "
+                    + canonical_json(timeout_policy.to_dict())
+                    + "\n\n"
+                )
                 log_fh.flush()
                 completed = self._decision_runtime_mutation(
                     "command_invocation",
@@ -8082,7 +8188,24 @@ class PortalImplementationDaemon:
                         cwd=worktree_path,
                         stdout=log_fh,
                         input_text=prompt,
-                        timeout_seconds=self.implementation_timeout,
+                        env=self._implementation_process_environment(
+                            task,
+                            attempt=attempt,
+                            checkpoint_dir=checkpoint_dir,
+                        ),
+                        timeout_seconds=timeout_policy.max_timeout_seconds,
+                        progress_timeout_seconds=(
+                            timeout_policy.progress_timeout_seconds
+                            if timeout_policy.progress_aware
+                            else None
+                        ),
+                        max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                        progress_paths=(checkpoint_dir,),
+                        on_progress=self._implementation_progress_observer(
+                            state,
+                            task,
+                            attempt=attempt,
+                        ),
                     ),
                 )
             returncode = completed.returncode
@@ -8351,7 +8474,7 @@ class PortalImplementationDaemon:
                         "pooled": bool(pool_failure_release.get("pooled", False)),
                         "pool_release": pool_failure_release,
                     }
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as timeout_exc:
             returncode = 124
             if protected_path_snapshot is not None:
                 protected_path_violation = (
@@ -8395,7 +8518,23 @@ class PortalImplementationDaemon:
                 "attempt": attempt,
                 "worktree_path": str(worktree_path),
                 "branch": branch_name,
-                "timeout_seconds": float(self.implementation_timeout),
+                "timeout_seconds": float(
+                    getattr(timeout_exc, "timeout", 0.0)
+                    or timeout_policy.progress_timeout_seconds
+                ),
+                "timeout_reason": str(
+                    getattr(timeout_exc, "timeout_reason", "absolute_timeout")
+                ),
+                "elapsed_seconds": float(
+                    getattr(timeout_exc, "elapsed_seconds", 0.0) or 0.0
+                ),
+                "progress_events": int(
+                    getattr(timeout_exc, "progress_events", 0) or 0
+                ),
+                "timeout_policy": timeout_policy.to_dict(),
+                "checkpoint_manifest": (
+                    self._implementation_checkpoint_manifest(task)
+                ),
                 "salvaged": False,
             }
             if protected_path_violation:
@@ -8843,6 +8982,7 @@ class PortalImplementationDaemon:
                 returncode=returncode,
                 validation_result=validation_result,
                 exception_result=exception_result,
+                timeout_result=timeout_result,
             )
             if attempt_consumed
             else None
@@ -18405,6 +18545,298 @@ class PortalImplementationDaemon:
         )
 
     @staticmethod
+    def _task_timeout_metadata(
+        task: PortalTask,
+        *keys: str,
+    ) -> float | None:
+        metadata = {
+            str(key).strip().lower().replace("_", " "): value
+            for key, value in task.metadata.items()
+        }
+        for key in keys:
+            normalized_key = key.strip().lower().replace("_", " ")
+            raw_value = metadata.get(normalized_key)
+            if raw_value in (None, ""):
+                continue
+            try:
+                value = float(str(raw_value).strip())
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"{normalized_key} must be a finite positive number"
+                ) from exc
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(
+                    f"{normalized_key} must be a finite positive number"
+                )
+            return value
+        return None
+
+    def _implementation_timeout_policy(
+        self,
+        task: PortalTask,
+    ) -> ImplementationTimeoutPolicy:
+        """Resolve a bounded, task-aware implementation timeout policy.
+
+        Provider-backed tasks receive a four-times hard cap while retaining
+        the configured timeout as their no-progress deadline.  Explicit task
+        metadata can tighten or expand either bound:
+
+        * ``Implementation timeout seconds`` sets the task hard cap.
+        * ``Implementation progress timeout seconds`` sets the idle deadline.
+        * ``Implementation max timeout seconds`` explicitly sets the hard cap.
+        """
+
+        configured = float(self.implementation_timeout)
+        task_timeout = self._task_timeout_metadata(
+            task,
+            "implementation timeout seconds",
+            "implementation timeout",
+        )
+        progress_timeout = self._task_timeout_metadata(
+            task,
+            "implementation progress timeout seconds",
+            "implementation idle timeout seconds",
+        )
+        explicit_max = self._task_timeout_metadata(
+            task,
+            "implementation max timeout seconds",
+            "implementation maximum timeout seconds",
+        )
+        normalized_metadata = {
+            str(key).strip().lower().replace("_", " "): value
+            for key, value in task.metadata.items()
+        }
+        requires_provider = (
+            str(normalized_metadata.get("requires provider", ""))
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "required"}
+        )
+
+        if explicit_max is not None:
+            hard_timeout = explicit_max
+            source = "task_metadata"
+        elif task_timeout is not None:
+            hard_timeout = task_timeout
+            source = "task_metadata"
+        elif requires_provider:
+            hard_timeout = (
+                configured
+                * DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER
+            )
+            source = "provider_task_progress"
+        else:
+            hard_timeout = configured
+            source = "configured_absolute"
+
+        idle_timeout = (
+            progress_timeout
+            if progress_timeout is not None
+            else min(configured, hard_timeout)
+        )
+        if idle_timeout > hard_timeout:
+            raise ValueError(
+                "implementation progress timeout seconds cannot exceed "
+                "the implementation hard timeout"
+            )
+        progress_aware = bool(
+            progress_timeout is not None or hard_timeout > idle_timeout
+        )
+        return ImplementationTimeoutPolicy(
+            configured_timeout_seconds=configured,
+            progress_timeout_seconds=float(idle_timeout),
+            max_timeout_seconds=float(hard_timeout),
+            progress_aware=progress_aware,
+            source=source,
+        )
+
+    def _implementation_checkpoint_dir(self, task: PortalTask) -> Path:
+        stem = self._implementation_context_file_stem(task)
+        identity_suffix = self._identity_for_task(task).short_id
+        return (
+            self.state_path.parent
+            / "implementation_checkpoints"
+            / f"{stem}-{identity_suffix}"
+        ).resolve()
+
+    def _ensure_implementation_checkpoint_dir(
+        self,
+        task: PortalTask,
+    ) -> Path:
+        checkpoint_dir = self._implementation_checkpoint_dir(task)
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            checkpoint_dir.chmod(0o700)
+        except OSError:
+            pass
+        return checkpoint_dir
+
+    @staticmethod
+    def _checkpoint_file_cid(path: Path) -> tuple[str, int, int]:
+        """Return a raw CIDv1 plus stable size/mtime for one regular file."""
+
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        try:
+            before = os.fstat(descriptor)
+            if not stat_module.S_ISREG(before.st_mode):
+                raise ValueError("checkpoint path is not a regular file")
+            digest = hashlib.sha256()
+            while True:
+                chunk = os.read(descriptor, 1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+            after = os.fstat(descriptor)
+            stable_fields = (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+            )
+            if stable_fields != (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+            ):
+                raise RuntimeError("checkpoint changed while it was hashed")
+            raw = b"\x01\x55\x12\x20" + digest.digest()
+            cid = (
+                "b"
+                + base64.b32encode(raw)
+                .decode("ascii")
+                .lower()
+                .rstrip("=")
+            )
+            return cid, int(after.st_size), int(after.st_mtime_ns)
+        finally:
+            os.close(descriptor)
+
+    def _implementation_checkpoint_manifest(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Build a bounded, CID-bound manifest of resumable task checkpoints."""
+
+        checkpoint_dir = self._implementation_checkpoint_dir(task)
+        records: list[dict[str, Any]] = []
+        total_bytes = 0
+        truncated = False
+        unstable_files: list[str] = []
+        if checkpoint_dir.is_dir():
+            try:
+                candidates = sorted(
+                    checkpoint_dir.rglob("*"),
+                    key=lambda item: item.relative_to(
+                        checkpoint_dir
+                    ).as_posix(),
+                )
+            except OSError:
+                candidates = []
+            for candidate in candidates:
+                if len(records) >= MAX_IMPLEMENTATION_CHECKPOINT_FILES:
+                    truncated = True
+                    break
+                try:
+                    relative = candidate.relative_to(
+                        checkpoint_dir
+                    ).as_posix()
+                    if (
+                        len(relative.encode("utf-8"))
+                        > MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES
+                    ):
+                        truncated = True
+                        continue
+                    if candidate.is_symlink() or not candidate.is_file():
+                        continue
+                    stat = candidate.stat()
+                    if (
+                        total_bytes + int(stat.st_size)
+                        > MAX_IMPLEMENTATION_CHECKPOINT_BYTES
+                    ):
+                        truncated = True
+                        break
+                    cid, size_bytes, mtime_ns = self._checkpoint_file_cid(
+                        candidate
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    if len(unstable_files) < 8:
+                        unstable_files.append(
+                            candidate.name[:128]
+                        )
+                    continue
+                total_bytes += size_bytes
+                records.append(
+                    {
+                        "path": relative,
+                        "cid": cid,
+                        "size_bytes": size_bytes,
+                        "mtime_ns": mtime_ns,
+                    }
+                )
+        payload: dict[str, Any] = {
+            "schema": IMPLEMENTATION_CHECKPOINT_MANIFEST_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "directory": str(checkpoint_dir),
+            "files": records,
+            "file_count": len(records),
+            "total_size_bytes": total_bytes,
+            "truncated": truncated,
+        }
+        if unstable_files:
+            payload["unstable_files"] = unstable_files
+        payload["manifest_cid"] = content_identity(payload)
+        return payload
+
+    def _implementation_process_environment(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        checkpoint_dir: Path,
+    ) -> dict[str, str]:
+        return {
+            IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
+            IMPLEMENTATION_TASK_ID_ENV: task.task_id,
+            IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
+            IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
+        }
+
+    def _implementation_progress_observer(
+        self,
+        state: PortalTaskState,
+        task: PortalTask,
+        *,
+        attempt: int,
+    ) -> Callable[[Mapping[str, Any]], None]:
+        last_saved_monotonic = 0.0
+
+        def observe(_progress: Mapping[str, Any]) -> None:
+            nonlocal last_saved_monotonic
+            now_monotonic = time.monotonic()
+            if (
+                last_saved_monotonic
+                and now_monotonic - last_saved_monotonic
+                < IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS
+            ):
+                return
+            if (
+                state.active_task_id != task.task_id
+                or int(state.active_attempt or 0) != int(attempt)
+                or not state.implementation_in_progress
+            ):
+                return
+            timestamp = utc_now()
+            state.heartbeat_at = timestamp
+            state.last_progress_at = timestamp
+            state.save(self.state_path)
+            last_saved_monotonic = now_monotonic
+
+        return observe
+
+    @staticmethod
     def _normalize_implementation_failure(
         failure: Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -18425,6 +18857,9 @@ class PortalImplementationDaemon:
             "failed_commands",
             "failing_checks",
             "missing_outputs",
+            "timeout_reason",
+            "timeout_policy",
+            "checkpoint_manifest",
         ):
             value = failure.get(key)
             if value not in (None, "", (), [], {}):
@@ -18646,6 +19081,7 @@ class PortalImplementationDaemon:
         returncode: int,
         validation_result: Mapping[str, Any] | None = None,
         exception_result: Mapping[str, Any] | None = None,
+        timeout_result: Mapping[str, Any] | None = None,
     ) -> ImplementationDiagnosticReceipt | None:
         if returncode == 0:
             return None
@@ -18689,6 +19125,9 @@ class PortalImplementationDaemon:
             "returncode": int(returncode),
             "validation_result": validation,
         }
+        checkpoint_manifest = self._implementation_checkpoint_manifest(task)
+        if checkpoint_manifest["file_count"]:
+            failure["checkpoint_manifest"] = checkpoint_manifest
         if isinstance(exception_result, Mapping):
             failure.update(
                 {
@@ -18697,6 +19136,15 @@ class PortalImplementationDaemon:
                     if exception_result.get(key)
                 }
             )
+        if isinstance(timeout_result, Mapping):
+            timeout_reason = str(
+                timeout_result.get("timeout_reason") or ""
+            ).strip()
+            if timeout_reason:
+                failure["timeout_reason"] = timeout_reason
+            timeout_policy = timeout_result.get("timeout_policy")
+            if isinstance(timeout_policy, Mapping):
+                failure["timeout_policy"] = dict(timeout_policy)
         return self.record_implementation_failure_context(
             task,
             failure,
@@ -18814,6 +19262,9 @@ class PortalImplementationDaemon:
             task,
             repo_root=self.repo_root,
         )
+        checkpoint_dir = self._implementation_checkpoint_dir(task)
+        checkpoint_manifest = self._implementation_checkpoint_manifest(task)
+        timeout_policy = self._implementation_timeout_policy(task)
         rules = (
             "Read the relevant plan and nearby code before editing.",
             "Do not revert unrelated local changes.",
@@ -18824,6 +19275,12 @@ class PortalImplementationDaemon:
             "Leave generated artifacts and shared dependency paths alone.",
             "Do not mark backlog metadata complete unless the task explicitly requires it.",
             "The final response must list changed files and validation results.",
+            (
+                "For resumable or long-running work, inspect and reuse valid "
+                f"coordinate checkpoints in {checkpoint_dir} before rerunning "
+                "completed work; write new checkpoints there atomically. The "
+                f"same path is available as ${IMPLEMENTATION_CHECKPOINT_DIR_ENV}."
+            ),
         )
         if completion_scope is None:
             rules = (
@@ -18914,6 +19371,9 @@ class PortalImplementationDaemon:
                 {
                     "generic_prompt_policy": rules,
                     "edit_policy": edit_policy,
+                    "implementation_timeout_policy": (
+                        timeout_policy.to_dict()
+                    ),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -18921,7 +19381,7 @@ class PortalImplementationDaemon:
             ).encode("utf-8")
         ).hexdigest()
         vector_text = self._render_todo_vector_context(task)
-        evidence = ()
+        evidence: tuple[Any, ...] = ()
         if vector_text:
             context = self._load_todo_vector_context(task)
             index_path = (
@@ -18934,19 +19394,36 @@ class PortalImplementationDaemon:
                 if isinstance(index_path, Path)
                 else ""
             )
-            evidence = build_text_context_references(
-                "Compact todo vector context:\n" + vector_text,
-                reference_prefix="todo-vector",
-                kind="todo-vector-context",
-                path=artifact_path,
-                repository_id=repository_id,
-                tree_id=tree_id,
-                priority=100,
-                chunk_bytes=6_144,
-                coverage_ids=tuple(
-                    self._compact_value_list(
-                        task.metadata.get("missing evidence", "")
-                    )
+            evidence = (
+                *evidence,
+                *build_text_context_references(
+                    "Compact todo vector context:\n" + vector_text,
+                    reference_prefix="todo-vector",
+                    kind="todo-vector-context",
+                    path=artifact_path,
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=100,
+                    chunk_bytes=6_144,
+                    coverage_ids=tuple(
+                        self._compact_value_list(
+                            task.metadata.get("missing evidence", "")
+                        )
+                    ),
+                ),
+            )
+        if checkpoint_manifest["file_count"]:
+            evidence = (
+                *evidence,
+                *build_text_context_references(
+                    "Durable implementation checkpoint manifest:\n"
+                    + canonical_json(checkpoint_manifest),
+                    reference_prefix="implementation-checkpoint",
+                    kind="implementation-checkpoint-manifest",
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=1_100,
+                    chunk_bytes=8_192,
                 ),
             )
         configured_budget = self.implementation_context_budget
@@ -19018,6 +19495,15 @@ class PortalImplementationDaemon:
                 "source_line": int(task.source_line),
                 "generic_prompt_policy": rules,
                 "edit_policy": edit_policy,
+                "implementation_timeout_policy": canonical_json(
+                    timeout_policy.to_dict()
+                ),
+                "durable_checkpoint": {
+                    "directory": str(checkpoint_dir),
+                    "environment_variable": IMPLEMENTATION_CHECKPOINT_DIR_ENV,
+                    "manifest_cid": checkpoint_manifest["manifest_cid"],
+                    "file_count": checkpoint_manifest["file_count"],
+                },
                 "primary_plan_documents": {
                     "AGENT-": "docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md",
                     "PORTAL-": "docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md",
@@ -19033,6 +19519,7 @@ class PortalImplementationDaemon:
                 "retry_repair_failure_kind": retry_repair_failure_kind,
                 "validation_target_paths": retry_validation_paths,
                 "implied_validation_output_paths": implied_validation_paths,
+                "checkpoint_directory": str(checkpoint_dir),
             },
             acceptance={
                 "criteria": task.acceptance or "none listed",
