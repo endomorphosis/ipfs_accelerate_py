@@ -257,6 +257,8 @@ def test_prompt_source_is_unambiguous_and_receipts_reject_secrets() -> None:
             "verbatim prompt",
             redacted_metadata={"summary": "verbatim prompt"},
         )
+    with pytest.raises(PromptWorkflowContractError, match="at least 1"):
+        replace(inline, byte_count=0, _transient_body=None)
 
 
 def test_standalone_module_load_is_provider_free_and_has_no_process_effect() -> None:
@@ -405,6 +407,20 @@ def test_graph_rejects_unknown_edges_cycles_missing_coverage_and_duplicates() ->
             graph,
             evidence=(),
         )
+    unknown_acceptance = PromptAcceptanceRecord(
+        criterion_key="criterion:unknown-evidence",
+        criterion="An unknown artifact proves this criterion.",
+        evidence_cids=(_cid("not-in-graph"),),
+        validation_keys=("validation:pytest",),
+    )
+    with pytest.raises(
+        PromptWorkflowContractError,
+        match="acceptance references unknown evidence",
+    ):
+        replace(
+            graph,
+            tasks=(replace(task, acceptance=(unknown_acceptance,)),),
+        )
 
 
 def test_unknown_fields_forged_ids_noncanonical_json_and_bounds_are_rejected() -> None:
@@ -434,6 +450,9 @@ def test_unknown_fields_forged_ids_noncanonical_json_and_bounds_are_rejected() -
         _budget(max_graph_depth=33)
     with pytest.raises(PromptWorkflowContractError, match="finite integer"):
         _budget(max_files=1.5)  # type: ignore[arg-type]
+    oversized = '{"value":"' + ("x" * (1024 * 1024)) + '"}'
+    with pytest.raises(PromptWorkflowBoundsError, match="serialized byte"):
+        PromptWorkflowRequest.from_json(oversized)
 
 
 def test_materialization_run_preview_and_result_are_exactly_linked() -> None:
@@ -487,6 +506,70 @@ def test_materialization_run_preview_and_result_are_exactly_linked() -> None:
     assert replace(run, process_identity_cid=_cid("process-tree")).run_cid == run.run_cid
     with pytest.raises(PromptWorkflowIdentityError, match="another materialization"):
         replace(result, run=replace(run, materialization_cid=_cid("other")))
+    with pytest.raises(PromptWorkflowIdentityError, match="another workflow request"):
+        replace(
+            result,
+            materialization=replace(
+                materialization,
+                request_cid=_cid("other-request"),
+            ),
+        )
+    with pytest.raises(PromptWorkflowIdentityError, match="another preview receipt"):
+        replace(
+            result,
+            materialization=replace(
+                materialization,
+                preview_receipt_cid=_cid("other-preview"),
+            ),
+        )
+    with pytest.raises(PromptWorkflowIdentityError, match="another plan root"):
+        replace(result, run=replace(run, plan_root_cid=_cid("other-plan")))
+    with pytest.raises(PromptWorkflowIdentityError, match="another repository root"):
+        replace(result, run=replace(run, repository_root="/workspace/other"))
+    with pytest.raises(PromptWorkflowContractError, match="started outcome requires"):
+        replace(result, run=None)
+    with pytest.raises(PromptWorkflowContractError, match="previewed outcome cannot"):
+        replace(
+            result,
+            outcome=WorkflowOutcome.PREVIEWED,
+            run=None,
+        )
+
+
+def test_preview_receipt_enforces_declared_count_and_byte_budgets() -> None:
+    request = _request()
+    graph = _graph(request_cid=request.request_cid)
+    values = {
+        "request_cid": request.request_cid,
+        "scan_cid": graph.scan_cid,
+        "plan_root_cid": graph.plan_root_cid,
+        "repository_root_cid": request.repository_root_cid,
+        "program_root": request.program_root,
+        "policy_roots": graph.policy_roots,
+        "admitted_goal_cids": tuple(goal.goal_cid for goal in graph.goals),
+        "admitted_task_cids": tuple(task.task_cid for task in graph.tasks),
+    }
+    with pytest.raises(PromptWorkflowBoundsError, match="admitted goals"):
+        PromptWorkflowPreviewReceipt(
+            **{
+                **values,
+                "admitted_goal_cids": (_cid("goal-a"), _cid("goal-b")),
+            },
+            budget=_budget(max_goals=1),
+        )
+    with pytest.raises(PromptWorkflowBoundsError, match="admitted tasks"):
+        PromptWorkflowPreviewReceipt(
+            **{
+                **values,
+                "admitted_task_cids": (_cid("task-a"), _cid("task-b")),
+            },
+            budget=_budget(max_tasks=1),
+        )
+    with pytest.raises(PromptWorkflowBoundsError, match="serialized"):
+        PromptWorkflowPreviewReceipt(
+            **values,
+            budget=_budget(max_serialized_bytes=1),
+        )
 
 
 def _incident() -> SupervisorIncident:
@@ -556,6 +639,8 @@ def test_incident_exhaustion_and_rescue_are_bound_and_closed() -> None:
         replace(action, operation="run_shell")
     with pytest.raises(RescuePlanError, match="forbidden"):
         replace(action, parameters={"shell_command": "rm -rf /tmp/example"})
+    with pytest.raises(RescuePlanError, match="forbidden"):
+        replace(action, parameters={"output_path": "/tmp/new-location"})
     with pytest.raises(PromptSecretError):
         replace(action, parameters={"password": "not-allowed"})
     with pytest.raises(RescuePlanError, match="over budget"):
