@@ -4211,6 +4211,65 @@ def test_post_validation_candidate_binding_rejects_late_source_change(
     assert changed["candidate_binding"]["verified"] is False
 
 
+def test_implementation_proposal_accepts_exact_task_declared_and_chain(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "README.md").write_text("candidate\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    validation = (
+        "python -m pytest -q tests/unit && "
+        "python benchmarks/check.py --offline"
+    )
+    task = PortalTask(
+        task_id="AUTO-124",
+        title="Validate an exact reviewed command chain",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=[validation],
+        acceptance="The frozen task validation plan remains authoritative.",
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.validation_plan[0].command == (
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/unit",
+        "&&",
+        "python",
+        "benchmarks/check.py",
+        "--offline",
+    )
+
+
 def test_stale_submodule_rebase_skips_branch_already_merged_without_switching_checkout(
     tmp_path: Path,
 ):

@@ -1063,6 +1063,62 @@ def test_arbitrary_shell_command_injection_is_not_a_validation_plan() -> None:
     assert ProposalFindingCode.COMMAND_FORBIDDEN in _finding_codes(result)
 
 
+def test_exact_reviewed_and_chain_is_an_allowed_validation_plan() -> None:
+    command = (
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/unit",
+        "&&",
+        "python",
+        "benchmarks/check.py",
+        "--offline",
+    )
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            validation_plan=(
+                ProposalValidationStep(
+                    command=command,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+        ),
+        policy=_v2_policy(allowed_validation_commands=(command,)),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ("python", "-c", "print('unreviewed eval')"),
+        ("python", "-m", "pytest", "&&", "sh", "-c", "echo unsafe"),
+        ("python", "-m", "pytest", ";", "python", "benchmarks/check.py"),
+        ("python", "-m", "pytest", "&&", "&&", "python", "benchmarks/check.py"),
+    ],
+)
+def test_exact_allowlist_does_not_bypass_command_safety_guards(
+    command: tuple[str, ...],
+) -> None:
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            validation_plan=(
+                ProposalValidationStep(
+                    command=command,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+        ),
+        policy=_v2_policy(allowed_validation_commands=(command,)),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.COMMAND_FORBIDDEN in _finding_codes(result)
+
+
 def test_test_weakening_is_rejected_independently_of_python_syntax() -> None:
     path = "test/api/test_agent_supervisor_proposal_validation.py"
     before = "def test_contract() -> None:\n    assert contract_is_strict()\n"
