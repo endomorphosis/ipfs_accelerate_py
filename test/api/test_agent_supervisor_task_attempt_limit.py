@@ -120,6 +120,97 @@ def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
     ]
 
 
+def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        merge_queue_dir=tmp_path / "merge-queue",
+        validation_cache_dir=tmp_path / "validation-cache",
+        worktree_pool_enabled=False,
+    )
+    source_task = parse_task_file(todo_path, "## TASK-")[0]
+    daemon._register_task_identities([source_task])
+    source_identity = daemon._identity_for_task(source_task)
+    exhausted_state = PortalTaskState(
+        task_identities={source_task.task_id: source_identity.to_dict()},
+        implementation_attempts={source_task.task_id: 1},
+        implementation_attempts_by_cid={
+            source_identity.canonical_task_cid: 1
+        },
+        last_implementation_task_id=source_task.task_id,
+        last_implementation_task_key=source_identity.canonical_task_key,
+        last_implementation_task_cid=source_identity.canonical_task_cid,
+    )
+    exhausted_state.save(state_path)
+    daemon.task_queue.register_task(source_identity).record_failure("validation")
+    daemon.task_queue.save()
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8")
+        + """
+
+## TASK-002 Resolve validation retry-budget failure for TASK-001
+
+- Status: completed
+- Priority: P0
+- Track: agent
+- Outputs: test/retry_repair.py
+- Acceptance: Repair the validation contract, then release TASK-001 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    launched_attempts: list[int] = []
+
+    def record_launch(task, current_state):
+        attempt = daemon._task_attempt(current_state, task)
+        launched_attempts.append(attempt)
+        daemon._record_task_attempt(current_state, task, attempt)
+        current_state.save(state_path)
+        return {
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "returncode": 0,
+        }
+
+    monkeypatch.setattr(daemon, "_run_implementation", record_launch)
+
+    first = daemon.run_once()
+    reset_state = PortalTaskState.load(state_path)
+    second = daemon.run_once()
+
+    assert launched_attempts == [1]
+    assert first["retry_budget_resets"][0]["source_task_id"] == "TASK-001"
+    assert first["retry_budget_resets"][0][
+        "previous_display_attempt_count"
+    ] == 1
+    assert first["attempt_limited_task_ids"] == []
+    assert reset_state.retry_budget_repair_receipts == {
+        "TASK-001": "TASK-002"
+    }
+    assert reset_state.implementation_attempts["TASK-001"] == 1
+    assert reset_state.implementation_attempts_by_cid[
+        source_identity.canonical_task_cid
+    ] == 1
+    assert daemon.task_queue.is_cooled_down(
+        source_identity.canonical_task_cid
+    ) is False
+    assert second["retry_budget_resets"] == []
+    assert second["attempt_limited_task_ids"] == ["TASK-001"]
+
+
 def test_max_task_attempts_threads_from_bundle_to_daemon_command(tmp_path) -> None:
     bundle_args = build_bundle_arg_parser().parse_args(
         [

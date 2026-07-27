@@ -1225,6 +1225,7 @@ class PortalTaskState:
     task_identities: dict[str, dict[str, Any]] = field(default_factory=dict)
     implementation_attempts: dict[str, int] = field(default_factory=dict)
     implementation_attempts_by_cid: dict[str, int] = field(default_factory=dict)
+    retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
     last_implementation_task_cid: str = ""
@@ -1338,6 +1339,11 @@ class PortalTaskState:
                     str(key): int(value)
                     for key, value in (payload.get("implementation_attempts_by_cid") or {}).items()
                     if str(value).isdigit()
+                },
+                retry_budget_repair_receipts={
+                    str(key): str(value)
+                    for key, value in (payload.get("retry_budget_repair_receipts") or {}).items()
+                    if str(key).strip() and str(value).strip()
                 },
                 last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
                 last_implementation_task_key=str(payload.get("last_implementation_task_key") or ""),
@@ -2802,6 +2808,109 @@ class PortalImplementationDaemon:
     def _task_attempt(self, state: PortalTaskState, task: PortalTask) -> int:
         return self._task_attempt_count(state, task) + 1
 
+    def _reset_attempt_budgets_for_completed_retry_repairs(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Consume completed repair receipts once in each durable lane."""
+
+        latest_repairs: dict[str, tuple[PortalTask, str]] = {}
+        tasks_by_id = {task.task_id: task for task in tasks}
+        for repair_task in tasks:
+            if normalize_status(repair_task.status) != "completed":
+                continue
+            source_task_id, failure_kind = retry_budget_repair_source(repair_task)
+            if source_task_id:
+                latest_repairs[source_task_id] = (repair_task, failure_kind)
+
+        resets: list[dict[str, Any]] = []
+        deferred: list[dict[str, Any]] = []
+        queue_changed = False
+        for source_task_id in sorted(latest_repairs):
+            repair_task, failure_kind = latest_repairs[source_task_id]
+            repair_task_id = repair_task.task_id
+            if (
+                state.retry_budget_repair_receipts.get(source_task_id)
+                == repair_task_id
+            ):
+                continue
+            if (
+                state.implementation_in_progress
+                and state.active_task_id == source_task_id
+            ):
+                deferred.append(
+                    {
+                        "source_task_id": source_task_id,
+                        "repair_task_id": repair_task_id,
+                        "failure_kind": failure_kind,
+                        "reason": "source_task_active",
+                    }
+                )
+                continue
+
+            canonical_task_cids: set[str] = set()
+            source_task = tasks_by_id.get(source_task_id)
+            if source_task is not None:
+                canonical_task_cids.add(self._canonical_ref(source_task))
+            stored_identity = state.task_identities.get(source_task_id, {})
+            stored_cid = str(stored_identity.get("canonical_task_cid") or "")
+            if stored_cid:
+                canonical_task_cids.add(stored_cid)
+            if state.last_implementation_task_id == source_task_id:
+                if state.last_implementation_task_cid:
+                    canonical_task_cids.add(state.last_implementation_task_cid)
+
+            previous_display_count = int(
+                state.implementation_attempts.pop(source_task_id, 0) or 0
+            )
+            previous_cid_counts = {
+                canonical_task_cid: int(
+                    state.implementation_attempts_by_cid.pop(
+                        canonical_task_cid,
+                        0,
+                    )
+                    or 0
+                )
+                for canonical_task_cid in sorted(canonical_task_cids)
+            }
+            for canonical_task_cid in canonical_task_cids:
+                queue_changed = (
+                    self.task_queue.reset_retry_state(canonical_task_cid)
+                    or queue_changed
+                )
+            state.retry_budget_repair_receipts[source_task_id] = repair_task_id
+            resets.append(
+                {
+                    "source_task_id": source_task_id,
+                    "repair_task_id": repair_task_id,
+                    "failure_kind": failure_kind,
+                    "previous_display_attempt_count": previous_display_count,
+                    "previous_canonical_attempt_counts": previous_cid_counts,
+                }
+            )
+
+        if resets:
+            state.save(self.state_path)
+            if queue_changed:
+                self.task_queue.save()
+            self._record_event(
+                "task_retry_budget_reset",
+                {
+                    "reset_count": len(resets),
+                    "resets": resets,
+                },
+            )
+        if deferred:
+            self._record_event(
+                "task_retry_budget_reset_deferred",
+                {
+                    "deferred_count": len(deferred),
+                    "deferred": deferred,
+                },
+            )
+        return resets, deferred
+
     def _partition_tasks_at_attempt_limit(
         self,
         tasks: Sequence[PortalTask],
@@ -3480,6 +3589,12 @@ class PortalImplementationDaemon:
                 },
             )
             previous = recovered_state
+        retry_budget_resets, retry_budget_reset_deferred = (
+            self._reset_attempt_budgets_for_completed_retry_repairs(
+                previous,
+                tasks,
+            )
+        )
         merge_reconciliation = self._reconcile_failed_merges(
             skip_task_ids=merge_skip_task_ids,
             deprioritized_task_ids=strategy_deprioritized_task_ids,
@@ -3749,6 +3864,9 @@ class PortalImplementationDaemon:
         state.implementation_attempts_by_cid = dict(
             previous.implementation_attempts_by_cid
         )
+        state.retry_budget_repair_receipts = dict(
+            previous.retry_budget_repair_receipts
+        )
         revision_reset_task_ids: list[str] = []
         for task in tasks:
             previous_identity = previous.task_identities.get(task.task_id, {})
@@ -3872,6 +3990,13 @@ class PortalImplementationDaemon:
                     "attempt_limited_task_ids": [
                         item["task_id"] for item in attempt_limited_tasks
                     ],
+                    "retry_budget_reset_task_ids": [
+                        item["source_task_id"] for item in retry_budget_resets
+                    ],
+                    "retry_budget_reset_deferred_task_ids": [
+                        item["source_task_id"]
+                        for item in retry_budget_reset_deferred
+                    ],
                     "protected_path_conflicts": {
                         task_id: list(conflicts)
                         for task_id, conflicts in sorted(
@@ -3898,6 +4023,8 @@ class PortalImplementationDaemon:
             "attempt_limited_task_ids": [
                 item["task_id"] for item in attempt_limited_tasks
             ],
+            "retry_budget_resets": retry_budget_resets,
+            "retry_budget_reset_deferred": retry_budget_reset_deferred,
             "protected_path_conflicts": {
                 task_id: list(conflicts)
                 for task_id, conflicts in sorted(

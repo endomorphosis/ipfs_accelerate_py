@@ -71,6 +71,16 @@ class TaskQueueEntry:
         self.merge_failure_count += 1
         self.selection_penalty += 500
 
+    def reset_retry_state(self) -> None:
+        """Clear scheduling backpressure after an accepted repair."""
+
+        self.consecutive_failures = 0
+        self.consecutive_no_change = 0
+        self.merge_failure_count = 0
+        self.selection_penalty = 0
+        self.cooldown_until = 0.0
+        self.notes = ""
+
     def is_cooled_down(self) -> bool:
         """Return True if the task is still in cooldown."""
         return self.cooldown_until > time.time()
@@ -281,6 +291,19 @@ class PersistentTaskQueue:
         entry.record_merge_failure()
         self._dirty = True
         self._maybe_save()
+
+    def reset_retry_state(self, task_id: str) -> bool:
+        """Clear retry penalties while preserving lifetime selection history."""
+
+        key = self.resolve_key(task_id)
+        entry = self.entries.get(key)
+        if entry is None:
+            return False
+        before = entry.to_dict()
+        entry.reset_retry_state()
+        changed = entry.to_dict() != before
+        self._dirty = self._dirty or changed
+        return changed
 
     def get_penalty(self, task_id: str) -> int:
         """Get the effective penalty for a task (used in sort key)."""

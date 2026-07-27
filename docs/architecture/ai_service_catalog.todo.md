@@ -562,7 +562,7 @@ Program invariants:
 
 - Status: completed
 - Completion: manual
-- Resolution: Replaced the nonexistent test/test_mcplusplus_idl_registry.py validation target with the existing ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py regression suite. Changing the source task contract gives AICAT-016 a new canonical task identity and a fresh attempt budget.
+- Resolution: Replaced the nonexistent test/test_mcplusplus_idl_registry.py validation target with the existing ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py regression suite. The completed repair receipt releases the strategy block, and each daemon lane consumes that receipt once to reset AICAT-016's durable attempt budget and queue backpressure.
 - Priority: P1
 - Track: ops
 - Depends on: AICAT-013, AICAT-014, AICAT-015
