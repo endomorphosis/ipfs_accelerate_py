@@ -483,7 +483,7 @@ Program invariants:
 
 ## AICAT-019 Add cache invalidation, selection receipts, and observability
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
