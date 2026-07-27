@@ -35,6 +35,7 @@ from .taskboard_store import (
     TaskboardSnapshot,
     TaskboardStore,
     TaskboardTaskRecord,
+    _has_taskboard_materialization_transaction,
     commit_taskboard_materialization,
     preview_taskboard_materialization,
     taskboard_revision,
@@ -186,23 +187,41 @@ def _validate_goal_alias(value: str) -> str:
 
 def _topological_tasks(graph: PromptGoalGraph) -> tuple[PromptTaskRecord, ...]:
     by_cid = {item.task_cid: item for item in graph.tasks}
-    remaining = {
+    dependencies = {
         item.task_cid: set(item.dependency_task_cids) for item in graph.tasks
     }
+    dependents: dict[str, set[str]] = {
+        task_cid: set() for task_cid in dependencies
+    }
+    for task_cid, required in dependencies.items():
+        for dependency in required:
+            if dependency not in dependents:
+                raise MarkdownTaskSourceError(
+                    "task dependency graph references an unknown task"
+                )
+            dependents[dependency].add(task_cid)
+    ready = sorted(
+        task_cid
+        for task_cid, required in dependencies.items()
+        if not required
+    )
     ordered: list[PromptTaskRecord] = []
-    while remaining:
-        ready = sorted(
-            task_cid
-            for task_cid, dependencies in remaining.items()
-            if not dependencies
-        )
-        if not ready:
-            raise MarkdownTaskSourceError("task dependency graph contains a cycle")
-        for task_cid in ready:
-            ordered.append(by_cid[task_cid])
-            remaining.pop(task_cid)
-        for dependencies in remaining.values():
-            dependencies.difference_update(ready)
+    ordered_cids: set[str] = set()
+    while ready:
+        task_cid = ready.pop(0)
+        ordered.append(by_cid[task_cid])
+        ordered_cids.add(task_cid)
+        for dependent in sorted(dependents[task_cid]):
+            dependencies[dependent].discard(task_cid)
+            if (
+                not dependencies[dependent]
+                and dependent not in ready
+                and dependent not in ordered_cids
+            ):
+                ready.append(dependent)
+                ready.sort()
+    if len(ordered) != len(by_cid):
+        raise MarkdownTaskSourceError("task dependency graph contains a cycle")
     return tuple(ordered)
 
 
@@ -272,6 +291,13 @@ class MarkdownTaskProjection:
             raise MarkdownTaskSourceError(
                 "Markdown projection contains duplicate task aliases or CIDs"
             )
+        if any(
+            alias != task_cid and alias in set(task_cids)
+            for task_cid, alias in task_aliases.items()
+        ):
+            raise MarkdownTaskSourceError(
+                "Markdown projection task alias collides with another task CID"
+            )
         if (
             len(goal_cids) != len(set(goal_cids))
             or set(goal_aliases) != set(goal_cids)
@@ -279,6 +305,13 @@ class MarkdownTaskProjection:
         ):
             raise MarkdownTaskSourceError(
                 "Markdown projection contains duplicate goal aliases or CIDs"
+            )
+        if any(
+            alias != goal_cid and alias in set(goal_cids)
+            for goal_cid, alias in goal_aliases.items()
+        ):
+            raise MarkdownTaskSourceError(
+                "Markdown projection goal alias collides with another goal CID"
             )
         if tuple(item.task_id for item in entries) != tuple(
             task_aliases[item] for item in task_cids
@@ -382,6 +415,36 @@ def _admitted_graph(value: Any) -> tuple[PromptGoalGraph, str]:
     if graph.plan_root_cid != candidate_plan_root:
         raise MarkdownTaskSourceError(
             "admission candidate root does not match the admitted graph"
+        )
+    topology = tuple(task.task_cid for task in _topological_tasks(graph))
+    if tuple(getattr(receipt, "topological_task_cids", ()) or ()) != topology:
+        raise MarkdownTaskSourceError(
+            "admission topology does not match the admitted graph"
+        )
+    expected_plan_root = prompt_workflow_cid(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "admitted-prompt-plan@1"
+            ),
+            "candidate_plan_cid": candidate_plan_root,
+            "formal_plan_id": str(
+                getattr(receipt, "formal_plan_id", "") or ""
+            ),
+            "ir_receipt_id": str(
+                getattr(receipt, "ir_receipt_id", "") or ""
+            ),
+            "policy_id": str(getattr(receipt, "policy_id", "") or ""),
+            "repository_tree_id": str(
+                getattr(receipt, "repository_tree_id", "") or ""
+            ),
+            "task_cids": list(expected_task_cids),
+            "topology_id": str(getattr(receipt, "topology_id", "") or ""),
+        }
+    )
+    if plan_root != expected_plan_root:
+        raise MarkdownTaskSourceError(
+            "admission plan root does not match its admitted evidence"
         )
     return graph, plan_root
 
@@ -493,8 +556,15 @@ def project_admitted_plan(
     namespace = _one_line(board_namespace)
     if not namespace:
         raise MarkdownTaskSourceError("board_namespace must not be empty")
-    if revision < 1:
-        raise MarkdownTaskSourceError("revision must be positive")
+    if (
+        isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or revision < 1
+        or revision > (2**63 - 1)
+    ):
+        raise MarkdownTaskSourceError(
+            "revision must be a bounded positive integer"
+        )
 
     ordered_tasks = _topological_tasks(graph)
     if aliases is None:
@@ -639,6 +709,15 @@ def parse_markdown_task_source(
 
     if not isinstance(text, str):
         raise TypeError("Markdown task source must be text")
+    if (
+        isinstance(max_tasks, bool)
+        or not isinstance(max_tasks, int)
+        or max_tasks < 1
+        or max_tasks > MAX_TASKBOARD_MATERIALIZATION_ENTRIES
+    ):
+        raise ValueError(
+            "max_tasks must be within the Markdown task population bound"
+        )
     encoded = text.encode("utf-8")
     if _MARKER_PREFIX in text and not _MARKER_RE.search(text):
         raise MarkdownTaskSourceIntegrityError(
@@ -966,7 +1045,48 @@ def parse_markdown_task_source(
     }
     plan_root = str(first["plan_root"])
     candidate_plan_root = str(first["candidate_plan_root"])
-    if prompt_workflow_cid(reconstructed) != candidate_plan_root:
+
+    def with_lifecycle(
+        record: Mapping[str, Any],
+        *,
+        status: str,
+    ) -> dict[str, Any]:
+        return {
+            **dict(record),
+            "status": status,
+            "created_at_ms": 0,
+            "updated_at_ms": 0,
+        }
+
+    try:
+        validated_graph = PromptGoalGraph.from_dict(
+            {
+                **dict(graph_core),
+                "goals": [
+                    with_lifecycle(goal_records[cid], status="proposed")
+                    for cid in sorted(goal_records)
+                ],
+                "tasks": [
+                    with_lifecycle(task_records[cid], status="proposed")
+                    for cid in sorted(task_records)
+                ],
+                "evidence": [
+                    with_lifecycle(item, status="admitted")
+                    for item in graph_core.get("evidence", ())
+                ],
+                "status": "proposed",
+                "created_at_ms": 0,
+                "updated_at_ms": 0,
+            }
+        )
+    except (TypeError, ValueError) as exc:
+        raise MarkdownTaskSourceIntegrityError(
+            "Markdown records do not form a valid admitted graph"
+        ) from exc
+    if (
+        prompt_workflow_cid(reconstructed) != candidate_plan_root
+        or validated_graph.plan_root_cid != candidate_plan_root
+    ):
         raise MarkdownTaskSourceIntegrityError(
             "Markdown records do not reconstruct the admitted candidate root"
         )
@@ -1235,7 +1355,19 @@ class MarkdownTaskSource:
 
         preview = self._pending.get(projection.projection_id)
         if preview is None:
-            preview = self._recover_preview(text, projection)
+            recovered_preview = self._recover_preview(text, projection)
+            if recovered_preview is not None:
+                epoch = epoch_id or projection.projection_id
+                try:
+                    recoverable = _has_taskboard_materialization_transaction(
+                        self.journal_path,
+                        recovered_preview,
+                        epoch,
+                    )
+                except ValueError as exc:
+                    raise MarkdownTaskSourceConflict(str(exc)) from exc
+                if recoverable:
+                    preview = recovered_preview
         if preview is None:
             try:
                 snapshot = parse_markdown_task_source(
@@ -1264,6 +1396,13 @@ class MarkdownTaskSource:
             preview = projection.preview(
                 text,
                 expected_board_revision=expected_board_revision,
+            )
+        if (
+            len(preview.candidate_text.encode("utf-8"))
+            > self.store.max_bytes
+        ):
+            raise MarkdownTaskSourceConflict(
+                "candidate taskboard exceeds its configured byte bound"
             )
         self._pending[projection.projection_id] = preview
         transaction = commit_taskboard_materialization(

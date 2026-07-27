@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -10,12 +12,16 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor import taskboard_store
 from ipfs_accelerate_py.agent_supervisor.markdown_task_source import (
     MARKDOWN_TASK_SOURCE_SCHEMA,
+    MARKDOWN_TASK_SOURCE_VERSION,
     MarkdownTaskSource,
     MarkdownTaskSourceConflict,
     MarkdownTaskSourceError,
     MarkdownTaskSourceIntegrityError,
     parse_markdown_task_source,
     project_admitted_plan,
+)
+from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+    prompt_workflow_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.taskboard_store import TaskboardStore
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -45,6 +51,79 @@ def _rewrite_first_marker(text: str, mutate) -> str:
     ).encode("utf-8")
     replacement = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
     return text[:start] + replacement + text[end:]
+
+
+def _rewrite_coherent_output_path(text: str, path: str) -> str:
+    old_payload: dict[str, object] = {}
+    new_payload: dict[str, object] = {}
+
+    def mutate(payload) -> None:
+        old_payload.update(payload)
+        task_record = payload["task_record"]
+        task_record["outputs"][0]["path"] = path
+        task_record["content_id"] = prompt_workflow_cid(
+            {
+                key: value
+                for key, value in task_record.items()
+                if key != "content_id"
+            }
+        )
+        payload["task_cid"] = task_record["content_id"]
+        payload["task_population_cids"] = [task_record["content_id"]]
+        reconstructed = {
+            **payload["graph_core"],
+            "goals": sorted(
+                payload["goal_records"],
+                key=lambda item: item["content_id"],
+            ),
+            "tasks": [task_record],
+        }
+        payload["candidate_plan_root"] = prompt_workflow_cid(reconstructed)
+        identity = {
+            "schema": MARKDOWN_TASK_SOURCE_SCHEMA,
+            "version": MARKDOWN_TASK_SOURCE_VERSION,
+            "revision": payload["projection_revision"],
+            "plan_root": payload["plan_root"],
+            "task_aliases": {
+                task_record["content_id"]: payload["task_alias"],
+            },
+            "goal_aliases": {
+                payload["goal_cid"]: payload["goal_alias"],
+            },
+        }
+        raw = json.dumps(
+            identity,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        payload["projection_id"] = (
+            "markdown-task-source:sha256:" + hashlib.sha256(raw).hexdigest()
+        )
+        new_payload.update(payload)
+
+    rewritten = _rewrite_first_marker(text, mutate)
+    rewritten = rewritten.replace(
+        f"- Task CID: {old_payload['task_cid']}",
+        f"- Task CID: {new_payload['task_cid']}",
+        1,
+    )
+    rewritten = rewritten.replace(
+        f"- Projection ID: {old_payload['projection_id']}",
+        f"- Projection ID: {new_payload['projection_id']}",
+        1,
+    )
+    outputs = ", ".join(
+        item["path"] for item in new_payload["task_record"]["outputs"]
+    )
+    return re.sub(
+        r"^- Outputs:.*$",
+        f"- Outputs: {outputs}",
+        rewritten,
+        count=1,
+        flags=re.MULTILINE,
+    )
 
 
 def test_projection_is_byte_stable_lossless_and_supervisor_compatible(
@@ -303,3 +382,56 @@ def test_events_watch_and_integrity_are_bounded(tmp_path: Path) -> None:
     assert len(watched.events) == 1
     assert watched.events[0]["event_id"] == event["event_id"]
     assert watched.snapshot.task_count == 1
+
+
+def test_coherent_metadata_cannot_smuggle_an_escaping_output_path() -> None:
+    projection = project_admitted_plan(_admission())
+    escaped = _rewrite_coherent_output_path(
+        projection.rendered_text,
+        "../outside.py",
+    )
+
+    with pytest.raises(
+        MarkdownTaskSourceIntegrityError,
+        match="valid admitted graph",
+    ):
+        parse_markdown_task_source(escaped)
+
+
+def test_replay_without_journal_and_candidate_byte_bound_are_true_noops(
+    tmp_path: Path,
+) -> None:
+    source = MarkdownTaskSource(tmp_path / "tasks.md", root=tmp_path)
+    projection = source.project(_admission())
+    source.materialize(projection)
+    source.journal_path.unlink()
+    before = source.path.read_bytes()
+
+    replay = source.materialize(projection)
+
+    assert replay.no_op
+    assert replay.write_count == 0
+    assert source.path.read_bytes() == before
+    assert not source.journal_path.exists()
+
+    bounded = MarkdownTaskSource(
+        tmp_path / "bounded.md",
+        root=tmp_path,
+        max_bytes=8,
+    )
+    with pytest.raises(MarkdownTaskSourceConflict, match="byte bound"):
+        bounded.materialize(_admission())
+    assert not bounded.path.exists()
+    assert not bounded.journal_path.exists()
+
+
+def test_query_and_watch_reject_over_bound_inputs(tmp_path: Path) -> None:
+    source = MarkdownTaskSource(tmp_path / "tasks.md", root=tmp_path)
+    source.materialize(_admission())
+
+    with pytest.raises(ValueError, match="task_cids filter"):
+        source.query(task_cids=(f"task-{index}" for index in range(1025)))
+    with pytest.raises(ValueError, match="limit"):
+        source.watch(event_limit=1025)
+    with pytest.raises(ValueError, match="timeout"):
+        source.watch(timeout=float("nan"))
