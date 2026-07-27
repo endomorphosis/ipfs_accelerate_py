@@ -69,7 +69,11 @@ from ..merge_conflict_repair import (
 )
 from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
-from ..task_identity import TaskIdentity, canonical_task_identity
+from ..task_identity import (
+    TaskIdentity,
+    canonical_content_cid,
+    canonical_task_identity,
+)
 from ..task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
     CanonicalTaskSource,
@@ -87,14 +91,12 @@ from ..taskboard_store import (
 from ..git_gc import GitGarbageCollector
 from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
-from ..merge_queue import MergeQueue
+from ..merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
 from ..validation_commands import (
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
 )
-from ..merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
-from ..validation_commands import normalize_validation_command_text, split_validation_commands
 from ..validation_runtime import validation_shell_command
 from ..validation_scheduler import (
     ValidationScheduler,
@@ -275,6 +277,9 @@ MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
 PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
 PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"
+)
+PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-artifact-authority@1"
 )
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "600")
@@ -11206,6 +11211,33 @@ class PortalImplementationDaemon:
             task.canonical_task_key or identity.canonical_task_key
         ).strip()
         tree_id = str(baseline_ref or "").strip()
+        context_id = canonical_cid or canonical_key
+        raw_artifact_envelope = str(
+            task.metadata.get(PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY, "")
+            or ""
+        ).strip()
+        if raw_artifact_envelope:
+            try:
+                artifact_envelope: Any = json.loads(raw_artifact_envelope)
+                context_id = canonical_content_cid(
+                    {
+                        "schema": PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA,
+                        "task_context_id": context_id,
+                        "artifact_envelope": artifact_envelope,
+                    }
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                # Malformed envelopes are rejected by the local policy helper.
+                # Bind their exact inert text here so authority construction
+                # remains deterministic and never turns rejection into a
+                # daemon crash.
+                context_id = canonical_content_cid(
+                    {
+                        "schema": PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA,
+                        "task_context_id": context_id,
+                        "invalid_artifact_envelope": raw_artifact_envelope,
+                    }
+                )
         return {
             "task_id": task.task_id,
             "accepted_plan_id": str(
@@ -11223,7 +11255,7 @@ class PortalImplementationDaemon:
                 or task.task_id
             ).strip(),
             "baseline_id": tree_id,
-            "context_id": canonical_cid or canonical_key,
+            "context_id": context_id,
         }
 
     def _proposal_boundary_paths(

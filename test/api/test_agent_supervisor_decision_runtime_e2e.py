@@ -31,10 +31,15 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
     MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES,
     MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES,
+    PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA,
     PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
     PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
     PortalImplementationDaemon,
     PortalTask,
+)
+from ipfs_accelerate_py.agent_supervisor.task_identity import (
+    canonical_content_cid,
+    canonical_task_identity,
 )
 from test.api.test_agent_supervisor_execution_permit import (
     NOW,
@@ -456,6 +461,17 @@ def test_daemon_accepts_exact_declared_large_artifact_envelope(
     assert result.policy.policy_version.endswith(
         "+declared-artifact-envelope-v1"
     )
+    task_context_id = canonical_task_identity(task).canonical_task_cid
+    assert result.proposal.context_id == canonical_content_cid(
+        {
+            "schema": PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA,
+            "task_context_id": task_context_id,
+            "artifact_envelope": json.loads(
+                task.metadata[PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY]
+            ),
+        }
+    )
+    assert result.proposal.context_id != task_context_id
 
 
 def test_declared_large_artifact_envelope_rejects_scope_or_global_cap_drift() -> None:
