@@ -283,7 +283,7 @@ Program invariants:
 
 ## AICAT-011 Converge InferenceBackendManager on typed catalog records
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
