@@ -554,3 +554,14 @@ Program invariants:
 - Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery, docs/architecture/ai_service_catalog.todo.md
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-022-reconciliation-600623676fda.md
 - Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-022-reconciliation-600623676fda.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## AICAT-023 Resolve validation retry-budget failure for AICAT-016
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AICAT-013, AICAT-014, AICAT-015
+- Outputs: ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py, test/test_mcplusplus_ai_catalog_idl.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery
+- Validation: python -m pytest test/test_mcplusplus_ai_catalog_idl.py test/test_mcplusplus_idl_registry.py -q
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in AICAT-016. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-023-aicat-016-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release AICAT-016 from strategy blocked_tasks. The declared validation target paths (test/test_mcplusplus_ai_catalog_idl.py, test/test_mcplusplus_idl_registry.py) are bounded diagnostic and repair scope: change them only when evidence proves inherited validation debt, and do not weaken correct assertions or policy.
