@@ -233,6 +233,42 @@ def test_build_portal_implementation_supervisor_from_args_applies_defaults(tmp_p
     assert context.daemon_events_path == tmp_path / "state" / "example_events.jsonl"
 
 
+def test_task_specific_max_timeout_extends_only_the_parent_watchdog(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed = parse_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-timeout",
+            "1800",
+            "--implementation-max-timeout",
+            "7200",
+            "--implement",
+            "--once",
+        ]
+    )
+    supervisor, _context = build_portal_implementation_supervisor_from_args(
+        parsed,
+        repo_root=tmp_path,
+    )
+
+    assert supervisor.config.implementation_timeout == 1800
+    assert supervisor.config.implementation_max_timeout == 7200
+    assert supervisor._implementation_watchdog_timeout_seconds() == 7200
+    command = supervisor._build_daemon_command()
+    assert command[command.index("--implementation-timeout") + 1] == "1800.0"
+    assert "--implementation-max-timeout" not in command
+    assert (
+        supervisor.build_supervisor_loop_config().watchdog_stale_after_seconds
+        == 7320
+    )
+
+
 def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(caplog):
     class FakeSupervisor:
         def run_once(self) -> dict[str, int]:

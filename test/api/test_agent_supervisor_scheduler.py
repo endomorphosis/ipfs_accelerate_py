@@ -976,6 +976,49 @@ def test_settled_boards_release_capacity_without_starting_workers(tmp_path: Path
     assert launcher.starts[-1][1].attempt == 1
 
 
+def test_receipt_drained_slice_is_not_registered_or_relaunched(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    shard = repo / "bundles" / "t-1.todo.md"
+    shard.parent.mkdir(parents=True)
+    shard.write_text(
+        "## T-1 Immutable source task\n\n"
+        "- Status: todo\n",
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    discovered = scheduler._plan()[0]
+    member = discovered.queue_payload["tasks"][0]
+    member_cid = str(member["canonical_task_cid"])
+    drained = replace(
+        discovered,
+        task_ids=[],
+        claimable=False,
+        queue_payload={
+            **discovered.queue_payload,
+            "completed_member_task_cids": [member_cid],
+            "completed_member_task_ids": ["T-1"],
+            "ready_member_task_cids": [],
+            "ready_member_task_ids": [],
+            "execution_slice_task_cids": [],
+            "execution_slice_task_ids": [],
+            "claimable": False,
+        },
+    )
+    scheduler._plan = lambda: [drained]  # type: ignore[method-assign]
+
+    manifest = scheduler.reconcile_once()
+
+    assert launcher.starts == []
+    assert manifest["counts"]["active"] == 0
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.list_tasks() == []
+
+
 def test_completed_bundle_reopens_when_authoritative_board_has_work(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"

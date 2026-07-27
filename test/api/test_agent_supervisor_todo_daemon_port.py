@@ -15273,6 +15273,7 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
                             {
                                 "task_id": task_id,
                                 "canonical_task_cid": identity.canonical_task_cid,
+                                "canonical_task_key": identity.canonical_task_key,
                             }
                             for task_id, identity in expected_identities.items()
                         ],

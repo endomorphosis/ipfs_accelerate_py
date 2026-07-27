@@ -73,6 +73,9 @@ def test_provider_task_gets_bounded_progress_aware_timeout(tmp_path: Path) -> No
     provider = daemon._implementation_timeout_policy(
         _task(metadata={"requires provider": "true"})
     )
+    extended = daemon._implementation_timeout_policy(
+        _task(metadata={"implementation timeout seconds": "7200"})
+    )
     explicit = daemon._implementation_timeout_policy(
         _task(
             metadata={
@@ -89,6 +92,9 @@ def test_provider_task_gets_bounded_progress_aware_timeout(tmp_path: Path) -> No
     assert provider.progress_timeout_seconds == 1800.0
     assert provider.max_timeout_seconds == 7200.0
     assert provider.source == "provider_task_progress"
+    assert extended.progress_timeout_seconds == 1800.0
+    assert extended.max_timeout_seconds == 7200.0
+    assert extended.source == "task_metadata"
     assert explicit.progress_timeout_seconds == 300.0
     assert explicit.max_timeout_seconds == 5400.0
     assert explicit.source == "task_metadata"

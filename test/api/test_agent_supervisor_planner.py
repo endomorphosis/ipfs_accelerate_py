@@ -332,6 +332,126 @@ def test_bundle_lane_planner_skips_explicitly_excluded_execution_units(
     assert [lane.bundle_key for lane in lanes] == ["bundle/included"]
 
 
+def test_bundle_lane_planner_preserves_task_specific_implementation_timeout(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    extended_board = tmp_path / "srt-015.todo.md"
+    ordinary_board = tmp_path / "ordinary.todo.md"
+    extended_board.write_text(
+        "## SRT-015 Canonical design\n\n"
+        "- Status: todo\n"
+        "- Implementation timeout seconds: 7200\n",
+        encoding="utf-8",
+    )
+    ordinary_board.write_text(
+        "## SRT-016 Ordinary task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "semantic-roundtrip/canonical-design": {
+                        "shard_path": extended_board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-015",
+                                "canonical_task_cid": "cid-srt-015",
+                                "canonical_task_key": "task/v1/srt-015",
+                                "implementation_timeout_seconds": "7200",
+                            }
+                        ],
+                    },
+                    "semantic-roundtrip/ordinary": {
+                        "shard_path": ordinary_board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-016",
+                                "canonical_task_cid": "cid-srt-016",
+                                "canonical_task_key": "task/v1/srt-016",
+                            }
+                        ],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        implementation_timeout=1800,
+        optimize_bundles=False,
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+    extended = by_key["semantic-roundtrip/canonical-design"]
+    ordinary = by_key["semantic-roundtrip/ordinary"]
+
+    assert (
+        extended.queue_payload["tasks"][0]["implementation_timeout_seconds"]
+        == "7200"
+    )
+    assert extended.implementation_max_timeout == 7200
+    assert ordinary.implementation_max_timeout == 1800
+    assert (
+        extended.command[extended.command.index("--implementation-timeout") + 1]
+        == "1800"
+    )
+    assert (
+        extended.command[
+            extended.command.index("--implementation-max-timeout") + 1
+        ]
+        == "7200.0"
+    )
+    assert "--implementation-max-timeout" not in ordinary.command
+
+
+def test_bundle_lane_planner_rejects_invalid_task_specific_timeout(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "invalid.todo.md"
+    board.write_text("## SRT-015 Invalid timeout\n\n- Status: todo\n", encoding="utf-8")
+    index_path = tmp_path / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "semantic-roundtrip/invalid": {
+                        "shard_path": board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-015",
+                                "canonical_task_cid": "cid-srt-015",
+                                "canonical_task_key": "task/v1/srt-015",
+                                "implementation_timeout_seconds": "not-a-number",
+                            }
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="SRT-015: implementation_timeout_seconds must be",
+    ):
+        plan_bundle_lanes(
+            bundle_index_path=index_path,
+            repo_root=tmp_path,
+            state_root=tmp_path / "state",
+            worktree_root=tmp_path / "worktrees",
+            log_dir=tmp_path / "logs",
+            optimize_bundles=False,
+        )
+
+
 def test_bundle_index_enrichment_preserves_member_receipt_dependencies(
     tmp_path: Path,
 ) -> None:

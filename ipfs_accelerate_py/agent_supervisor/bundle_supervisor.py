@@ -8,6 +8,7 @@ import gc
 import hashlib
 import json
 import logging
+import math
 import os
 import shlex
 import signal
@@ -387,6 +388,7 @@ class BundleLaneSpec:
     gpu_memory_bytes: int = 0
     disk_bytes: int = 0
     process_slots: int = 1
+    implementation_max_timeout: float = 1800.0
     optimizer_bundle_cid: str = ""
     optimizer_policy_id: str = ""
     optimizer_execution_wave: int = 0
@@ -1849,6 +1851,70 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _execution_slice_implementation_max_timeout(
+    payload: Mapping[str, Any],
+    *,
+    default_timeout: float,
+) -> float:
+    """Return the largest hard timeout authorized by the execution slice.
+
+    The implementation daemon still receives ``default_timeout`` as its idle
+    and ordinary-task policy. This separate maximum sizes the parent
+    supervisor watchdog so a task-specific hard timeout cannot be interrupted
+    early. Exact per-task limits remain in the digest-bound taskboard and are
+    enforced by ``PortalImplementationDaemon``.
+    """
+
+    if (
+        isinstance(default_timeout, bool)
+        or not isinstance(default_timeout, (int, float))
+        or not math.isfinite(float(default_timeout))
+        or float(default_timeout) <= 0
+    ):
+        raise ValueError("implementation_timeout must be finite and positive")
+
+    effective: list[float] = []
+    tasks = _execution_slice_members(
+        payload,
+        _mapping_list(payload.get("tasks")),
+    )
+    for task in tasks:
+        value: Any = None
+        field_name = ""
+        for key in (
+            "implementation_max_timeout_seconds",
+            "implementation_maximum_timeout_seconds",
+            "implementation_timeout_seconds",
+            "implementation_timeout",
+        ):
+            candidate = task.get(key)
+            if candidate not in (None, ""):
+                value = candidate
+                field_name = key
+                break
+        if value in (None, ""):
+            effective.append(float(default_timeout))
+            continue
+        try:
+            timeout = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{task.get('task_id') or '<unknown task>'}: {field_name} "
+                "must be a finite positive number"
+            ) from exc
+        if (
+            isinstance(value, bool)
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError(
+                f"{task.get('task_id') or '<unknown task>'}: {field_name} "
+                "must be a finite positive number"
+            )
+        effective.append(timeout)
+    return max(effective, default=float(default_timeout))
+
+
 _TERMINAL_CONFLICT_TASK_STATUSES = frozenset(
     {"complete", "completed", "done", "merged", "success", "succeeded"}
 )
@@ -2302,6 +2368,7 @@ def implementation_supervisor_command(
     watchdog_startup_grace_seconds: float | None,
     max_restarts: int,
     implementation_timeout: float,
+    implementation_max_timeout: float | None = None,
     max_task_attempts: int = 0,
     implementation_command: str = "",
     merge_target_branch: str = "",
@@ -2357,6 +2424,13 @@ def implementation_supervisor_command(
         "--no-objective-task-janitor",
         "--no-objective-goal-migration",
     ]
+    if implementation_max_timeout is not None:
+        command.extend(
+            [
+                "--implementation-max-timeout",
+                str(implementation_max_timeout),
+            ]
+        )
     if watchdog_startup_grace_seconds is not None:
         command.extend(
             [
@@ -2420,13 +2494,55 @@ def optimize_bundle_payloads(
     for original in payloads:
         payload = dict(original)
         tasks = _mapping_list(payload.get("tasks"))
+        has_execution_slice = (
+            "execution_slice_task_cids" in payload
+            or "execution_slice_task_ids" in payload
+        )
+        completed_cids = set(
+            _string_list(payload.get("completed_member_task_cids"))
+        )
+        completed_ids = set(
+            _string_list(payload.get("completed_member_task_ids"))
+        )
+        candidate_tasks = _execution_slice_members(payload, tasks)
         live_tasks = [
             task
-            for task in tasks
+            for task in candidate_tasks
             if str(task.get("status") or "").strip().casefold()
             not in _TERMINAL_CONFLICT_TASK_STATUSES
+            and str(
+                task.get("canonical_task_cid") or task.get("task_cid") or ""
+            )
+            not in completed_cids
+            and str(task.get("task_id") or "") not in completed_ids
         ]
+        # The dependency planner's execution slice and durable completion
+        # overlay are authoritative inputs to optimization.  Source taskboards
+        # are immutable and may still label receipt-completed members ``todo``;
+        # optimizing every raw task would otherwise resurrect completed work
+        # and admit deferred dependencies.  Normalize the slice even when
+        # optimization later passes through due to missing legacy identities.
+        if has_execution_slice or completed_cids or completed_ids:
+            payload["execution_slice_task_cids"] = [
+                str(
+                    task.get("canonical_task_cid")
+                    or task.get("task_cid")
+                    or ""
+                )
+                for task in live_tasks
+                if str(
+                    task.get("canonical_task_cid")
+                    or task.get("task_cid")
+                    or ""
+                )
+            ]
+            payload["execution_slice_task_ids"] = [
+                str(task.get("task_id") or "")
+                for task in live_tasks
+                if str(task.get("task_id") or "")
+            ]
         if not live_tasks:
+            payload["claimable"] = False
             optimized_payloads.append(payload)
             continue
         if any(
@@ -2719,6 +2835,12 @@ def plan_bundle_lanes(
         )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
+        implementation_max_timeout = (
+            _execution_slice_implementation_max_timeout(
+                payload,
+                default_timeout=implementation_timeout,
+            )
+        )
         command = implementation_supervisor_command(
             todo_path=runtime_todo_path,
             state_dir=state_dir,
@@ -2732,6 +2854,11 @@ def plan_bundle_lanes(
             watchdog_startup_grace_seconds=watchdog_startup_grace_seconds,
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
+            implementation_max_timeout=(
+                implementation_max_timeout
+                if implementation_max_timeout > float(implementation_timeout)
+                else None
+            ),
             max_task_attempts=max_task_attempts,
             implementation_command=implementation_command,
             merge_target_branch=merge_target_branch,
@@ -2817,6 +2944,7 @@ def plan_bundle_lanes(
                 ]
                 if isinstance(payload.get("bundle_optimization"), Mapping)
                 else [],
+                implementation_max_timeout=implementation_max_timeout,
                 **resource_fields,
             )
         )
@@ -4545,6 +4673,39 @@ class DynamicBundleScheduler:
                 }
                 registered: list[BundleLaneSpec] = []
                 for lane in (item for item in discovered if item.queue_payload):
+                    policy_error = _lane_launch_policy_error(lane)
+                    completed_member_cids = _string_list(
+                        lane.queue_payload.get("completed_member_task_cids")
+                    )
+                    completed_member_ids = _string_list(
+                        lane.queue_payload.get("completed_member_task_ids")
+                    )
+                    receipt_drained = (
+                        not lane.task_ids
+                        and bool(completed_member_cids or completed_member_ids)
+                        and not _string_list(
+                            lane.queue_payload.get("execution_slice_task_cids")
+                        )
+                        and not _string_list(
+                            lane.queue_payload.get("execution_slice_task_ids")
+                        )
+                    )
+                    if (
+                        policy_error
+                        and receipt_drained
+                        and not self._disposition(lane)
+                    ):
+                        # Static launches reject these lanes before touching
+                        # coordination.  Apply the same fail-closed boundary to
+                        # persistent discovery: a receipt-drained empty slice
+                        # must not acquire a fresh bundle identity merely
+                        # because its immutable source board still says todo.
+                        logger.debug(
+                            "Skipping non-executable bundle lane %s: %s",
+                            lane.bundle_key,
+                            policy_error,
+                        )
+                        continue
                     accepted = accepted_by_task_cid.get(lane.task_cid)
                     if accepted is not None:
                         # Preserve the immutable payload of work that is still
