@@ -219,6 +219,54 @@ def _build_p2p_service_metadata(
     }
 
 
+def _build_catalog_service_record(
+    *,
+    config: ServerConfig,
+    node: Any,
+    snapshot: Any,
+    now: Optional[float] = None,
+) -> Any:
+    """Build the compact signed MCP++ AI catalog advertisement."""
+
+    from ..service_registry import CATALOG_ENDPOINT_PROTOCOL, ServiceRecord
+    from ...mcp_server.mcplusplus.idl_registry import (
+        build_ai_catalog_v1_descriptor,
+        compute_interface_cid,
+    )
+
+    descriptor = build_ai_catalog_v1_descriptor()
+    interface_cid = compute_interface_cid(descriptor)
+    operations = sorted(
+        str(method["operation"]) for method in descriptor["methods"]
+    )
+    issued_at = time.time() if now is None else float(now)
+    node_status = node.to_dict() if callable(getattr(node, "to_dict", None)) else {}
+    endpoint_protocol = node_status.get("protocol") or CATALOG_ENDPOINT_PROTOCOL
+    record = ServiceRecord(
+        service_name="ipfs-accelerate-mcp",
+        peer_id=node.peer_id or "",
+        issuer=node.peer_id or "",
+        multiaddrs=node.multiaddrs or [],
+        # Legacy discovery readers see the same bounded service operations.
+        tools=operations,
+        operation_summary=operations,
+        interface_cids=[interface_cid],
+        endpoint_protocol=endpoint_protocol,
+        issued_at=issued_at,
+        expires_at=issued_at + 300.0,
+        catalog_cid=snapshot.revision,
+        catalog_revision=snapshot.revision,
+        metadata={
+            "http_port": config.port,
+            "p2p_port": getattr(node, "listen_port", None),
+            "server": config.name,
+            "node_ownership": "process_singleton",
+        },
+    )
+    record.sign()
+    return record
+
+
 class TrioMCPServer:
     """Trio-native MCP server for P2P operations.
 
@@ -282,6 +330,8 @@ class TrioMCPServer:
         self._nursery: Optional[trio.Nursery] = None
         self._cancel_scope: Optional[trio.CancelScope] = None
         self._started = False
+        self._catalog_service_name: Optional[str] = None
+        self._catalog_peer_id: Optional[str] = None
 
         logger.info(f"Initialized TrioMCPServer: {self.config.name}")
 
@@ -1247,8 +1297,6 @@ class TrioMCPServer:
 
                 # Register our MCP tools as the P2P tool handler
                 if hasattr(self.mcp, 'tools'):
-                    tools_list = list(self.mcp.tools.keys())
-
                     async def _handle_p2p_tool(method, params):
                         call_params = dict(params or {})
                         sender = call_params.pop("_sender_peer_id", "")
@@ -1259,6 +1307,10 @@ class TrioMCPServer:
                             return registry.handle_announce(
                                 call_params, sender_peer_id=sender
                             )
+                        if method == "_mcppp_catalog_page":
+                            from ..service_registry import get_service_registry
+                            registry = get_service_registry()
+                            return registry.handle_catalog_page(call_params)
                         if method in self.mcp.tools:
                             entry = self.mcp.tools[method]
                             tool = entry.get("function") if isinstance(entry, dict) else entry
@@ -1275,29 +1327,40 @@ class TrioMCPServer:
 
                     # Register in service registry for cross-server discovery
                     try:
-                        from ..service_registry import get_service_registry, ServiceRecord
+                        from ..service_registry import get_service_registry
                         registry = get_service_registry()
-                        served_models = []
-                        try:
-                            from ...model_manager import get_default_model_manager
-                            served_models = await _to_thread(
-                                lambda: get_default_model_manager().list_served_models()
-                            )
-                        except Exception as model_exc:
-                            logger.debug("Served-model discovery during announce: %s", model_exc)
-                        registry.register_local(ServiceRecord(
-                            service_name="ipfs-accelerate-mcp",
-                            peer_id=node.peer_id or "",
-                            multiaddrs=node.multiaddrs or [],
-                            tools=tools_list,
-                            metadata=_build_p2p_service_metadata(
-                                config=self.config,
-                                node=node,
-                                served_models=served_models,
-                            ),
-                        ))
+                        from ...model_manager import get_default_model_manager
+
+                        manager = get_default_model_manager()
+                        snapshot = await _to_thread(manager.snapshot)
+                        record = _build_catalog_service_record(
+                            config=self.config,
+                            node=node,
+                            snapshot=snapshot,
+                        )
+                        registry.register_local(
+                            record,
+                            catalog_provider=manager.snapshot,
+                        )
+                        self._catalog_service_name = record.service_name
+                        self._catalog_peer_id = record.peer_id
                         # Start service advertise loop
                         self._nursery.start_soon(registry.advertise_loop, node, self._nursery)
+                        poll_interval = max(
+                            0.05,
+                            float(
+                                os.environ.get(
+                                    "MCPPP_CATALOG_POLL_INTERVAL_S", "1"
+                                )
+                            ),
+                        )
+                        self._nursery.start_soon(
+                            partial(
+                                registry.catalog_watch_loop,
+                                node,
+                                poll_interval=poll_interval,
+                            )
+                        )
                     except Exception as e:
                         logger.debug(f"Service registry setup: {e}")
 
@@ -1357,6 +1420,12 @@ class TrioMCPServer:
                         stale_peers.append(peer_id)
                 for peer_id in stale_peers:
                     node._peers.pop(peer_id, None)
+                    try:
+                        from ..service_registry import get_service_registry
+
+                        get_service_registry().remove_remote(peer_id)
+                    except Exception:
+                        pass
                     logger.debug(f"Removed stale peer: {peer_id}")
 
                 # Reconnect to bootstrap peers if we have no active peers
@@ -1414,6 +1483,21 @@ class TrioMCPServer:
         (e.g., closing resources, stopping background tasks).
         """
         logger.info("Shutting down TrioMCPServer")
+
+        # The process-global registry must not retain this server across an
+        # in-process restart.
+        if self._catalog_service_name is not None:
+            try:
+                from ..service_registry import get_service_registry
+
+                get_service_registry().unregister_local(
+                    self._catalog_service_name,
+                    peer_id=self._catalog_peer_id,
+                )
+            except Exception as e:
+                logger.debug(f"Catalog service unregister: {e}")
+            self._catalog_service_name = None
+            self._catalog_peer_id = None
 
         # Stop P2P node
         try:

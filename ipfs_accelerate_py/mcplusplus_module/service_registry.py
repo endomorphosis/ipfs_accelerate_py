@@ -1,20 +1,9 @@
-"""P2P Service Registry for MCP++ cross-server discovery.
+"""P2P service discovery and compact AI catalog advertisements.
 
-Allows MCP++ servers to advertise their capabilities and discover peer
-servers over the libp2p network. Each server registers a ServiceRecord
-containing its peer_id, multiaddrs, service name, and tool list.
-
-Discovery mechanisms:
-1. mDNS (local network) — automatic via libp2p
-2. DHT (wide-area) — publish/lookup service records in the DHT
-3. Bootstrap registry — static list + gossip
-
-Usage:
-    registry = ServiceRegistry(p2p_node)
-    await registry.advertise("ipfs-accelerate-mcp", tools=["run_model", "infer"])
-    peers = await registry.discover("ipfs-datasets-mcp")
-
-Module: ipfs_accelerate_py.mcplusplus_module.service_registry
+Advertisements contain bounded discovery facts. Catalog records are fetched
+separately, page by page, and pinned to the advertised content revision. The
+legacy ``tools`` and ``metadata`` fields remain for wire compatibility, but new
+catalog publishers never put model inventories in them.
 """
 
 from __future__ import annotations
@@ -27,23 +16,54 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.service_registry")
 
-# DHT namespace for MCP++ service records
 SERVICE_NAMESPACE = "/mcppp/services/1.0.0"
-
-# How often to re-advertise (seconds)
+CATALOG_PAGE_METHOD = "_mcppp_catalog_page"
+CATALOG_ENDPOINT_PROTOCOL = "/mcp+p2p/catalog/1.0.0"
 READVERTISE_INTERVAL = 60.0
-
-# How long a service record is valid (seconds)
 SERVICE_TTL = 300.0
+MAX_OPERATION_SUMMARY = 64
+MAX_INTERFACE_CIDS = 32
+MAX_PAGE_SIZE = 1_000
+
+
+def _service_identity(service_name: str, issuer: str) -> str:
+    payload = json.dumps(
+        {
+            "namespace": SERVICE_NAMESPACE,
+            "service_name": service_name,
+            "issuer": issuer,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "service_" + hashlib.sha256(payload).hexdigest()
+
+
+def _catalog_operations(snapshot: Any) -> List[str]:
+    operations = set()
+    for collection_name in ("providers", "models", "deployments"):
+        for record in tuple(getattr(snapshot, collection_name, ())):
+            for capability in tuple(getattr(record, "capabilities", ())):
+                operations.update(
+                    getattr(item, "value", str(item))
+                    for item in tuple(getattr(capability, "operations", ()))
+                )
+    for binding in tuple(getattr(snapshot, "bindings", ())):
+        operations.update(
+            getattr(item, "value", str(item))
+            for item in tuple(getattr(binding, "operations", ()))
+        )
+    return sorted(operations)[:MAX_OPERATION_SUMMARY]
 
 
 @dataclass
 class ServiceRecord:
-    """A service advertisement published to the P2P network."""
+    """A signed service advertisement published to the P2P network."""
+
     service_name: str
     peer_id: str
     multiaddrs: List[str] = field(default_factory=list)
@@ -52,36 +72,98 @@ class ServiceRecord:
     timestamp: float = field(default_factory=time.time)
     ttl: float = SERVICE_TTL
     metadata: Dict[str, Any] = field(default_factory=dict)
-    signature: Optional[str] = None  # HMAC or Ed25519 signature over record
+    signature: Optional[str] = None
+    issuer: Optional[str] = None
+    service_id: Optional[str] = None
+    catalog_cid: Optional[str] = None
+    catalog_revision: Optional[str] = None
+    operation_summary: List[str] = field(default_factory=list)
+    interface_cids: List[str] = field(default_factory=list)
+    endpoint_protocol: Optional[str] = None
+    issued_at: Optional[float] = None
+    expires_at: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        self.issuer = self.issuer or self.peer_id
+        self.service_id = self.service_id or _service_identity(
+            self.service_name, self.issuer
+        )
+        self.issued_at = self.timestamp if self.issued_at is None else self.issued_at
+        self.expires_at = (
+            self.issued_at + self.ttl
+            if self.expires_at is None
+            else self.expires_at
+        )
+        self.timestamp = float(self.issued_at)
+        self.ttl = max(0.0, float(self.expires_at) - self.timestamp)
+        self.operation_summary = sorted(set(self.operation_summary))[
+            :MAX_OPERATION_SUMMARY
+        ]
+        self.interface_cids = sorted(set(self.interface_cids))[:MAX_INTERFACE_CIDS]
 
     @property
     def key(self) -> str:
-        """DHT key for this record."""
         return f"{SERVICE_NAMESPACE}/{self.service_name}/{self.peer_id}"
 
     @property
-    def is_expired(self) -> bool:
-        return time.time() - self.timestamp > self.ttl
+    def is_catalog_advertisement(self) -> bool:
+        values = (
+            self.issuer,
+            self.service_id,
+            self.catalog_cid,
+            self.catalog_revision,
+            self.endpoint_protocol,
+        )
+        return all(isinstance(value, str) and bool(value) for value in values)
 
-    def signing_payload(self) -> bytes:
-        """Canonical payload for signing/verification."""
-        return json.dumps({
+    def is_expired_at(self, now: Optional[float] = None) -> bool:
+        selected = time.time() if now is None else float(now)
+        return selected >= float(self.expires_at or 0.0)
+
+    @property
+    def is_expired(self) -> bool:
+        return self.is_expired_at()
+
+    def _unsigned_dict(self) -> Dict[str, Any]:
+        """Return every advertisement field covered by the signature."""
+
+        return {
             "service_name": self.service_name,
             "peer_id": self.peer_id,
+            "multiaddrs": list(self.multiaddrs),
             "tools": sorted(self.tools),
             "version": self.version,
             "timestamp": self.timestamp,
-        }, sort_keys=True).encode()
+            "ttl": self.ttl,
+            "metadata": self.metadata,
+            "issuer": self.issuer,
+            "service_id": self.service_id,
+            "catalog_cid": self.catalog_cid,
+            "catalog_revision": self.catalog_revision,
+            "operation_summary": list(self.operation_summary),
+            "interface_cids": list(self.interface_cids),
+            "endpoint_protocol": self.endpoint_protocol,
+            "issued_at": self.issued_at,
+            "expires_at": self.expires_at,
+        }
+
+    def signing_payload(self) -> bytes:
+        return json.dumps(
+            self._unsigned_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
 
     def sign(self, key: Optional[bytes] = None) -> None:
-        """Sign this record. Uses HMAC-SHA256 with peer_id as default key."""
+        """Sign using the existing HMAC compatibility mechanism."""
+
         signing_key = key or self.peer_id.encode()
         self.signature = hmac.new(
             signing_key, self.signing_payload(), hashlib.sha256
         ).hexdigest()
 
     def verify_signature(self, key: Optional[bytes] = None) -> bool:
-        """Verify signature. Returns True if valid or no signature required."""
         if not self.signature:
             return False
         signing_key = key or self.peer_id.encode()
@@ -91,222 +173,399 @@ class ServiceRecord:
         return hmac.compare_digest(self.signature, expected)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "service_name": self.service_name,
-            "peer_id": self.peer_id,
-            "multiaddrs": self.multiaddrs,
-            "tools": self.tools,
-            "version": self.version,
-            "timestamp": self.timestamp,
-            "ttl": self.ttl,
-            "metadata": self.metadata,
-            "signature": self.signature,
-        }
+        result = self._unsigned_dict()
+        result["signature"] = self.signature
+        return result
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ServiceRecord":
+    def from_dict(cls, data: Mapping[str, Any]) -> "ServiceRecord":
         return cls(
             service_name=data.get("service_name", ""),
             peer_id=data.get("peer_id", ""),
-            multiaddrs=data.get("multiaddrs", []),
-            tools=data.get("tools", []),
+            multiaddrs=list(data.get("multiaddrs", [])),
+            tools=list(data.get("tools", [])),
             version=data.get("version", "1.0.0"),
             timestamp=data.get("timestamp", time.time()),
             ttl=data.get("ttl", SERVICE_TTL),
-            metadata=data.get("metadata", {}),
+            metadata=dict(data.get("metadata", {})),
             signature=data.get("signature"),
+            issuer=data.get("issuer"),
+            service_id=data.get("service_id"),
+            catalog_cid=data.get("catalog_cid"),
+            catalog_revision=data.get("catalog_revision"),
+            operation_summary=list(data.get("operation_summary", [])),
+            interface_cids=list(data.get("interface_cids", [])),
+            endpoint_protocol=data.get("endpoint_protocol"),
+            issued_at=data.get("issued_at"),
+            expires_at=data.get("expires_at"),
         )
 
 
 class ServiceRegistry:
-    """P2P service registry for MCP++ cross-server discovery.
+    """Thread-safe local and discovered service registry."""
 
-    Maintains a local cache of discovered services and periodically
-    re-advertises our own service record.
-    """
-
-    MAX_REMOTE_RECORDS_PER_SERVICE = 200  # Prevent unbounded memory growth
+    MAX_REMOTE_RECORDS_PER_SERVICE = 200
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._local_records: Dict[str, ServiceRecord] = {}  # Our advertised services
-        self._remote_records: Dict[str, Dict[str, ServiceRecord]] = {}  # service_name -> {peer_id -> record}
-        self._change_callbacks: Dict[str, Callable] = {}  # id -> callback for service changes
+        self._local_records: Dict[str, ServiceRecord] = {}
+        self._remote_records: Dict[str, Dict[str, ServiceRecord]] = {}
+        self._change_callbacks: Dict[str, Callable] = {}
+        self._catalog_providers: Dict[str, Callable[[], Any]] = {}
+        self._catalog_snapshots: Dict[str, Any] = {}
 
-    def register_local(self, record: ServiceRecord) -> None:
-        """Register a local service for advertisement."""
+    def register_local(
+        self,
+        record: ServiceRecord,
+        *,
+        catalog_provider: Optional[Callable[[], Any]] = None,
+    ) -> None:
         with self._lock:
             self._local_records[record.service_name] = record
-        logger.info(f"Registered local service: {record.service_name} ({len(record.tools)} tools)")
+            if catalog_provider is not None:
+                self._catalog_providers[record.service_name] = catalog_provider
+        if catalog_provider is not None:
+            self.refresh_local_catalogs((record.service_name,))
+        logger.info(
+            "Registered local service: %s (%d operations)",
+            record.service_name,
+            len(record.operation_summary or record.tools),
+        )
 
-    def add_remote(self, record: ServiceRecord) -> None:
-        """Add a discovered remote service record."""
+    def unregister_local(
+        self, service_name: str, *, peer_id: Optional[str] = None
+    ) -> bool:
+        with self._lock:
+            record = self._local_records.get(service_name)
+            if record is None or (peer_id is not None and record.peer_id != peer_id):
+                return False
+            del self._local_records[service_name]
+            self._catalog_providers.pop(service_name, None)
+            self._catalog_snapshots.pop(service_name, None)
+        self._notify_change("remove", record)
+        return True
+
+    def update_local_catalog(
+        self,
+        service_name: str,
+        snapshot: Any,
+        *,
+        now: Optional[float] = None,
+    ) -> bool:
+        """Atomically pin a local record to a snapshot revision."""
+
+        revision = getattr(snapshot, "revision", None)
+        if not isinstance(revision, str) or not revision:
+            raise ValueError("catalog snapshot must expose a content revision")
+        selected_now = time.time() if now is None else float(now)
+        with self._lock:
+            record = self._local_records.get(service_name)
+            if record is None:
+                raise KeyError("unknown local service: %s" % service_name)
+            changed = record.catalog_revision != revision
+            record.catalog_cid = revision
+            record.catalog_revision = revision
+            if not record.operation_summary:
+                record.operation_summary = _catalog_operations(snapshot)
+            record.endpoint_protocol = (
+                record.endpoint_protocol or CATALOG_ENDPOINT_PROTOCOL
+            )
+            lifetime = max(record.ttl, SERVICE_TTL)
+            record.issued_at = selected_now
+            record.expires_at = selected_now + lifetime
+            record.timestamp = selected_now
+            record.ttl = lifetime
+            record.sign()
+            self._catalog_snapshots[service_name] = snapshot
+        if changed:
+            self._notify_change("catalog_update", record)
+        return changed
+
+    def refresh_local_catalogs(
+        self,
+        service_names: Optional[Tuple[str, ...]] = None,
+        *,
+        now: Optional[float] = None,
+    ) -> Tuple[str, ...]:
+        with self._lock:
+            names = (
+                tuple(sorted(self._catalog_providers))
+                if service_names is None
+                else tuple(service_names)
+            )
+            providers = {
+                name: self._catalog_providers[name]
+                for name in names
+                if name in self._catalog_providers
+            }
+        changed = []
+        for name in sorted(providers):
+            try:
+                snapshot = providers[name]()
+                if self.update_local_catalog(name, snapshot, now=now):
+                    changed.append(name)
+            except Exception as exc:
+                logger.debug("Catalog refresh failed for %s: %s", name, exc)
+        return tuple(changed)
+
+    def add_remote(self, record: ServiceRecord) -> bool:
         if record.is_expired:
-            return
+            return False
         with self._lock:
             bucket = self._remote_records.setdefault(record.service_name, {})
-            # Cap per-service entries to prevent memory DoS from malicious peers
-            if record.peer_id not in bucket and len(bucket) >= self.MAX_REMOTE_RECORDS_PER_SERVICE:
-                # Evict oldest entry
-                oldest_pid = min(bucket, key=lambda pid: bucket[pid].timestamp)
+            previous = bucket.get(record.peer_id)
+            if previous is not None and float(previous.issued_at or 0) > float(
+                record.issued_at or 0
+            ):
+                return False
+            if previous is not None and previous.to_dict() == record.to_dict():
+                return False
+            if previous is None and len(bucket) >= self.MAX_REMOTE_RECORDS_PER_SERVICE:
+                oldest_pid = min(
+                    bucket, key=lambda pid: float(bucket[pid].issued_at or 0)
+                )
                 del bucket[oldest_pid]
             bucket[record.peer_id] = record
-        logger.debug(f"Added remote service: {record.service_name} from {record.peer_id}")
-        self._notify_change("add", record)
+        self._notify_change("add" if previous is None else "update", record)
+        return True
+
+    def remove_remote(
+        self, peer_id: str, *, service_name: Optional[str] = None
+    ) -> int:
+        removed: List[ServiceRecord] = []
+        with self._lock:
+            names = (
+                (service_name,)
+                if service_name is not None
+                else tuple(self._remote_records)
+            )
+            for name in names:
+                bucket = self._remote_records.get(name)
+                if not bucket:
+                    continue
+                record = bucket.pop(peer_id, None)
+                if record is not None:
+                    removed.append(record)
+                if not bucket:
+                    self._remote_records.pop(name, None)
+        for record in removed:
+            self._notify_change("remove", record)
+        return len(removed)
 
     def on_change(self, callback_id: str, callback: Callable) -> None:
-        """Register a callback for service changes (add/remove/expire)."""
         with self._lock:
             self._change_callbacks[callback_id] = callback
 
     def remove_callback(self, callback_id: str) -> None:
-        """Unregister a change callback."""
         with self._lock:
             self._change_callbacks.pop(callback_id, None)
 
     def _notify_change(self, event_type: str, record: ServiceRecord) -> None:
-        """Notify all registered callbacks of a service change."""
         with self._lock:
             callbacks = list(self._change_callbacks.values())
-        for cb in callbacks:
+        for callback in callbacks:
             try:
-                cb(event_type, record)
-            except Exception as e:
-                logger.debug(f"Service change callback error: {e}")
+                callback(event_type, record)
+            except Exception as exc:
+                logger.debug("Service change callback error: %s", exc)
 
-    def get_services(self, service_name: Optional[str] = None) -> List[ServiceRecord]:
-        """Get all known service records (local + remote), optionally filtered by name."""
+    def get_services(
+        self, service_name: Optional[str] = None
+    ) -> List[ServiceRecord]:
         with self._lock:
-            results = []
-            if service_name:
-                for record in self._remote_records.get(service_name, {}).values():
-                    if not record.is_expired:
-                        results.append(record)
-            else:
-                for svc_records in self._remote_records.values():
-                    for record in svc_records.values():
-                        if not record.is_expired:
-                            results.append(record)
-            return results
+            buckets = (
+                (self._remote_records.get(service_name, {}),)
+                if service_name
+                else tuple(self._remote_records.values())
+            )
+            return [
+                record
+                for bucket in buckets
+                for record in bucket.values()
+                if not record.is_expired
+            ]
+
+    def get_local(self, service_name: str) -> Optional[ServiceRecord]:
+        with self._lock:
+            return self._local_records.get(service_name)
 
     def get_peers_for_tool(self, tool_name: str) -> List[ServiceRecord]:
-        """Find all peers that advertise a specific tool."""
-        results = []
+        return [
+            record
+            for record in self.get_services()
+            if tool_name in record.tools or tool_name in record.operation_summary
+        ]
+
+    def cleanup_stale(self, *, now: Optional[float] = None) -> int:
+        removed: List[ServiceRecord] = []
         with self._lock:
-            for svc_records in self._remote_records.values():
-                for record in svc_records.values():
-                    if not record.is_expired and tool_name in record.tools:
-                        results.append(record)
-        return results
+            for service_name in list(self._remote_records):
+                bucket = self._remote_records[service_name]
+                for peer_id, record in list(bucket.items()):
+                    if record.is_expired_at(now):
+                        removed.append(bucket.pop(peer_id))
+                if not bucket:
+                    del self._remote_records[service_name]
+        for record in removed:
+            self._notify_change("expire", record)
+        return len(removed)
 
-    def cleanup_stale(self) -> int:
-        """Remove expired service records. Returns count removed."""
-        removed = 0
+    async def advertise_once(
+        self, p2p_node: Any, *, now: Optional[float] = None
+    ) -> Tuple[ServiceRecord, ...]:
+        selected_now = time.time() if now is None else float(now)
+        self.refresh_local_catalogs(now=selected_now)
         with self._lock:
-            for svc_name in list(self._remote_records.keys()):
-                stale = [pid for pid, r in self._remote_records[svc_name].items() if r.is_expired]
-                for pid in stale:
-                    del self._remote_records[svc_name][pid]
-                    removed += 1
-                if not self._remote_records[svc_name]:
-                    del self._remote_records[svc_name]
-        return removed
+            records = tuple(self._local_records.values())
+        for record in records:
+            if record.catalog_revision is None:
+                record.issued_at = selected_now
+                record.expires_at = selected_now + SERVICE_TTL
+                record.timestamp = selected_now
+                record.ttl = SERVICE_TTL
+                record.sign()
+            for peer_id in list(p2p_node._peers.keys()):
+                try:
+                    await p2p_node.call_tool(
+                        peer_id,
+                        "_mcppp_service_announce",
+                        {"record": record.to_dict()},
+                        timeout=5.0,
+                    )
+                except Exception:
+                    pass
+        self.cleanup_stale(now=selected_now)
+        return records
 
-    async def advertise_loop(self, p2p_node, nursery) -> None:
-        """Background loop that periodically advertises our services via P2P.
-
-        Sends service records to connected peers via the /mcp+p2p/1.0.0 protocol.
-        """
+    async def advertise_loop(self, p2p_node: Any, nursery: Any = None) -> None:
         import trio
 
         while True:
             try:
+                await self.advertise_once(p2p_node)
                 await trio.sleep(READVERTISE_INTERVAL)
-
-                with self._lock:
-                    records = list(self._local_records.values())
-
-                for record in records:
-                    record.timestamp = time.time()  # Refresh timestamp
-                    record.sign()  # Sign before broadcasting
-                    # Broadcast to all connected peers
-                    for peer_id in list(p2p_node._peers.keys()):
-                        try:
-                            await p2p_node.call_tool(
-                                peer_id,
-                                "_mcppp_service_announce",
-                                {"record": record.to_dict()},
-                                timeout=5.0,
-                            )
-                        except Exception:
-                            pass  # Non-critical
-
-                # Cleanup stale entries
-                removed = self.cleanup_stale()
-                if removed:
-                    logger.debug(f"Cleaned up {removed} stale service records")
-
             except trio.Cancelled:
                 break
-            except Exception as e:
-                logger.debug(f"Service advertise error: {e}")
+            except Exception as exc:
+                logger.debug("Service advertise error: %s", exc)
+                await trio.sleep(READVERTISE_INTERVAL)
 
-    def handle_announce(self, params: Dict[str, Any], sender_peer_id: str = "") -> Dict[str, Any]:
-        """Handle an incoming service announcement from a peer.
+    async def catalog_watch_loop(
+        self, p2p_node: Any, *, poll_interval: float = 1.0
+    ) -> None:
+        import trio
 
-        Verifies that the record's peer_id matches the sender and validates
-        the signature before accepting.
-        """
-        import os
+        interval = max(0.05, min(float(poll_interval), READVERTISE_INTERVAL))
+        while True:
+            try:
+                await trio.sleep(interval)
+                if self.refresh_local_catalogs():
+                    await self.advertise_once(p2p_node)
+            except trio.Cancelled:
+                break
+            except Exception as exc:
+                logger.debug("Catalog watch error: %s", exc)
+
+    def handle_catalog_page(self, params: Mapping[str, Any]) -> Dict[str, Any]:
+        from ipfs_accelerate_py.model_catalog.snapshot import paginate_snapshot
+
+        service_name = params.get("service_name", "")
+        revision = params.get("catalog_revision", "")
+        record_type = params.get("record_type", "")
+        cursor = params.get("cursor")
+        limit = params.get("limit", 100)
+        if (
+            not isinstance(service_name, str)
+            or not isinstance(revision, str)
+            or record_type
+            not in {"providers", "models", "deployments", "bindings"}
+            or isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= MAX_PAGE_SIZE
+        ):
+            raise ValueError("invalid catalog page request")
+        with self._lock:
+            record = self._local_records.get(service_name)
+            snapshot = self._catalog_snapshots.get(service_name)
+        if record is None or snapshot is None:
+            raise KeyError("catalog service is unavailable")
+        if revision != record.catalog_revision or revision != snapshot.revision:
+            raise ValueError("catalog revision is stale or unavailable")
+        return paginate_snapshot(
+            snapshot, record_type, limit=limit, cursor=cursor
+        ).to_dict()
+
+    def handle_announce(
+        self, params: Mapping[str, Any], sender_peer_id: str = ""
+    ) -> Dict[str, Any]:
         record_data = params.get("record", {})
-        if not record_data:
-            return {"status": "rejected", "reason": "empty record"}
-
-        record = ServiceRecord.from_dict(record_data)
-
-        # Verify peer_id matches sender (prevent impersonation)
+        if not isinstance(record_data, Mapping) or not record_data:
+            return {"status": "rejected", "reason": "empty_record"}
+        try:
+            record = ServiceRecord.from_dict(record_data)
+        except (TypeError, ValueError):
+            return {"status": "rejected", "reason": "malformed_record"}
         if sender_peer_id and record.peer_id != sender_peer_id:
-            logger.warning(
-                "Service announce rejected: peer_id mismatch (record=%s, sender=%s)",
-                record.peer_id, sender_peer_id
-            )
             return {"status": "rejected", "reason": "peer_id_mismatch"}
-
-        # Verify signature if enforcement is enabled
-        require_sig = os.environ.get("MCPPP_REQUIRE_SERVICE_SIGNATURES", "0") == "1"
-        if require_sig and not record.verify_signature():
-            logger.warning("Service announce rejected: invalid signature from %s", record.peer_id)
+        if record.is_expired:
+            return {"status": "rejected", "reason": "expired"}
+        require_signature = (
+            record.catalog_cid is not None
+            or os.environ.get("MCPPP_REQUIRE_SERVICE_SIGNATURES", "0") == "1"
+        )
+        if record.catalog_cid is not None and not record.is_catalog_advertisement:
+            return {"status": "rejected", "reason": "invalid_catalog_advertisement"}
+        if require_signature and not record.verify_signature():
             return {"status": "rejected", "reason": "invalid_signature"}
-
         self.add_remote(record)
-        return {"status": "accepted", "service": record.service_name}
+        return {
+            "status": "accepted",
+            "service": record.service_name,
+            "catalog_revision": record.catalog_revision,
+        }
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize registry state for API responses."""
         with self._lock:
             return {
-                "local_services": {k: v.to_dict() for k, v in self._local_records.items()},
+                "local_services": {
+                    key: value.to_dict()
+                    for key, value in self._local_records.items()
+                },
                 "remote_services": {
-                    svc: [r.to_dict() for r in records.values() if not r.is_expired]
-                    for svc, records in self._remote_records.items()
+                    service: [
+                        record.to_dict()
+                        for record in records.values()
+                        if not record.is_expired
+                    ]
+                    for service, records in self._remote_records.items()
                 },
                 "total_remote_peers": sum(
-                    len([r for r in records.values() if not r.is_expired])
+                    sum(not record.is_expired for record in records.values())
                     for records in self._remote_records.values()
                 ),
             }
 
 
-# Singleton
 _REGISTRY: Optional[ServiceRegistry] = None
 _REGISTRY_LOCK = threading.Lock()
 
 
 def get_service_registry() -> ServiceRegistry:
-    """Get the global service registry (thread-safe singleton)."""
     global _REGISTRY
     if _REGISTRY is None:
         with _REGISTRY_LOCK:
             if _REGISTRY is None:
                 _REGISTRY = ServiceRegistry()
     return _REGISTRY
+
+
+__all__ = [
+    "CATALOG_ENDPOINT_PROTOCOL",
+    "CATALOG_PAGE_METHOD",
+    "READVERTISE_INTERVAL",
+    "SERVICE_NAMESPACE",
+    "SERVICE_TTL",
+    "ServiceRecord",
+    "ServiceRegistry",
+    "get_service_registry",
+]
