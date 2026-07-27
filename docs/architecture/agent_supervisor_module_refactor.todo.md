@@ -126,7 +126,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-005 Create task_sources package
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
