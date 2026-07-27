@@ -151,6 +151,7 @@ def inspect_board(
         task.task_id: list(conflicts)
         for task in tasks
         if task.task_id not in completed_task_ids
+        and task.task_id not in blocked_task_ids
         for conflicts in [
             task_implementation_protected_path_conflicts(
                 task,
@@ -175,7 +176,7 @@ def inspect_board(
     if cyclic_task_ids:
         errors.append("task dependency graph contains a cycle")
     if protected_conflicts:
-        errors.append("active tasks declare operator-protected outputs")
+        errors.append("schedulable tasks declare operator-protected outputs")
     if any(not state["tracked"] for state in path_states):
         errors.append("control-plane documents must be tracked")
     if any(not state["clean"] for state in path_states):

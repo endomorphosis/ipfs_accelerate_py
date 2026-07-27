@@ -292,7 +292,7 @@ Program invariants:
 - Depends on: AICAT-008, AICAT-010
 - Goal id: AICAT-G040
 - Outputs: ipfs_accelerate_py/inference_backend_manager.py, test/test_inference_backend_catalog.py
-- Validation: python -m pytest test/test_inference_backend_catalog.py test/test_inference_backend_manager.py -q
+- Validation: python -m pytest test/test_inference_backend_catalog.py test/test_inference_backend_manager_provider.py -q
 - Board namespace: ai-service-catalog-v1
 - Bundle: ai-catalog/backends/manager
 - Parallel lane: backend-manager-catalog
@@ -417,7 +417,7 @@ Program invariants:
 - Depends on: AICAT-013, AICAT-014, AICAT-015
 - Goal id: AICAT-G060
 - Outputs: ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py, test/test_mcplusplus_ai_catalog_idl.py
-- Validation: python -m pytest test/test_mcplusplus_ai_catalog_idl.py test/test_mcplusplus_idl_registry.py -q
+- Validation: python -m pytest test/test_mcplusplus_ai_catalog_idl.py ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py -q
 - Board namespace: ai-service-catalog-v1
 - Bundle: ai-catalog/mcplusplus/idl
 - Parallel lane: mcplusplus-catalog-idl
@@ -544,8 +544,11 @@ Program invariants:
 
 ## AICAT-022 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: todo
+- Status: blocked
 - Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
 - Priority: P1
 - Track: ops
 - Fingerprint: 600623676fda3e318db6513371b2fa6a2566149d
@@ -557,11 +560,12 @@ Program invariants:
 
 ## AICAT-023 Resolve validation retry-budget failure for AICAT-016
 
-- Status: todo
+- Status: completed
 - Completion: manual
+- Resolution: Replaced the nonexistent test/test_mcplusplus_idl_registry.py validation target with the existing ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py regression suite. Changing the source task contract gives AICAT-016 a new canonical task identity and a fresh attempt budget.
 - Priority: P1
 - Track: ops
 - Depends on: AICAT-013, AICAT-014, AICAT-015
 - Outputs: ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py, test/test_mcplusplus_ai_catalog_idl.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery
-- Validation: python -m pytest test/test_mcplusplus_ai_catalog_idl.py test/test_mcplusplus_idl_registry.py -q
-- Acceptance: Retry-budget guardrail filed this from repeated validation failures in AICAT-016. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-023-aicat-016-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release AICAT-016 from strategy blocked_tasks. The declared validation target paths (test/test_mcplusplus_ai_catalog_idl.py, test/test_mcplusplus_idl_registry.py) are bounded diagnostic and repair scope: change them only when evidence proves inherited validation debt, and do not weaken correct assertions or policy.
+- Validation: python -m pytest test/test_mcplusplus_ai_catalog_idl.py ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py -q
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in AICAT-016. Evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-023-aicat-016-retry-budget.md showed inherited validation debt: the board named a test file that does not exist. The source task now validates its focused test together with the existing MCP++ IDL regression suite, without weakening assertions or policy.

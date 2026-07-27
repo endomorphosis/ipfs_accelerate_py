@@ -16036,6 +16036,11 @@ def test_implementation_supervisor_records_reconciliation_guardrail_for_dirty_ma
     assert findings[0]["kind"] == "main_checkout_dirty"
     todo_text = (repo / "todo.md").read_text(encoding="utf-8")
     assert "Resolve dirty main checkout blocking 1 worktree merges" in todo_text
+    assert "- Status: blocked" in todo_text
+    assert "- Is schedulable: false" in todo_text
+    assert "- Review only: true" in todo_text
+    assert "- Blocked reason: operator_reconciliation_required" in todo_text
+    assert "unknown dirty checkout content must not be committed" in todo_text
     discovery_path = Path(findings[0]["discovery_path"])
     assert discovery_path.exists()
     discovery_text = discovery_path.read_text(encoding="utf-8")

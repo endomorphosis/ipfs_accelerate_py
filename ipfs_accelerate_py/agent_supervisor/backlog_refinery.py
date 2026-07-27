@@ -4608,8 +4608,11 @@ def reconciliation_guardrail_task_block(
     outputs = [discovery_output_path, todo_output_path]
     return f"""## {task_id} {record.get("summary")}
 
-- Status: todo
+- Status: blocked
 - Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
 - Priority: {record.get("priority") or "P1"}
 - Track: {record.get("track") or "ops"}
 - Fingerprint: {record.get("fingerprint") or ""}
@@ -4617,7 +4620,7 @@ def reconciliation_guardrail_task_block(
 - Depends on:
 - Outputs: {", ".join(outputs)}
 - Validation: test -f {shlex.quote(str(discovery_path))}
-- Acceptance: Reconciliation guardrail filed this because {record.get("candidate_count")} branch or worktree cleanup candidates are blocked by {record.get("reason")}. Use evidence and the machine-readable reconciliation plan in {discovery_path}, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+- Acceptance: Reconciliation guardrail filed this because {record.get("candidate_count")} branch or worktree cleanup candidates are blocked by {record.get("reason")}. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in {discovery_path}, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
 """
 
 
