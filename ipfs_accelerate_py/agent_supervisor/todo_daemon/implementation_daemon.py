@@ -759,7 +759,9 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
         or "grok-4.6"
     )
-    max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "40").strip() or "40"
+    # Prefer an effectively uncapped turn budget; the implementation daemon
+    # still enforces implementation_timeout as the hard wall-clock limit.
+    max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
     runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
     if not runner_path.is_file():

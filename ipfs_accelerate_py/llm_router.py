@@ -3881,9 +3881,11 @@ def build_grok_cli_command(
                 _coalesce_env(
                     "ipfs_accelerate_py_GROK_AGENT_MAX_TURNS",
                     "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS",
-                    "40",
+                    # Effectively uncapped until implementation_timeout; CLI accepts
+                    # large values (no documented hard max on this build).
+                    "100000",
                 )
-                or "40"
+                or "100000"
             )
     max_turns = max(1, int(max_turns))
 
