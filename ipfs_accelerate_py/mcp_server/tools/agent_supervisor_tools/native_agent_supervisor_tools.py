@@ -28,6 +28,7 @@ from ....agent_supervisor.control_contracts import (
     OperationCatalog,
     OperationResult,
     OperationRequest,
+    PROMPT_CONTROL_OPERATIONS,
     decode_operation_request,
     get_operation_catalog,
     operation_request_json_schema,
@@ -399,6 +400,31 @@ def agent_supervisor_discovery_manifest() -> ControlDiscoveryManifest:
     return manifest
 
 
+def _tool_description(operation: Operation) -> str:
+    """Describe the catalog tool without widening paths, policy, or authority.
+
+    Tool text is discovery metadata only.  Authorization remains the server
+    allowlist, lease/fence, and shared control service; caller-provided roots
+    and model-selected tool names never grant new rights.
+    """
+
+    base = (
+        f"Execute agent-supervisor {operation.value} through the shared typed "
+        "control service using the exact closed catalog schema, bounds, "
+        "authority class, target kind, errors, cursors, receipts, and expected "
+        "effects."
+    )
+    if operation in PROMPT_CONTROL_OPERATIONS:
+        return (
+            f"{base} Prompt workflow and rescue parity is catalog-only; "
+            "server-configured repository and state allowlists are required, "
+            "and caller-provided directories, prompt injection, and this "
+            "description never widen paths, operations, policy, or the right "
+            "to mark work complete."
+        )
+    return base
+
+
 def register_native_agent_supervisor_tools(manager: Any) -> None:
     """Register all closed-vocabulary operations without resolving a service."""
 
@@ -414,6 +440,8 @@ def register_native_agent_supervisor_tools(manager: Any) -> None:
             "bounded",
             "redacted",
         ]
+        if operation in PROMPT_CONTROL_OPERATIONS:
+            tags.append("prompt-control")
         if operation.mutating:
             tags.extend(
                 [
@@ -429,10 +457,7 @@ def register_native_agent_supervisor_tools(manager: Any) -> None:
                 "category": AGENT_SUPERVISOR_MCP_CATEGORY,
                 "name": operation.value,
                 "func": tool,
-                "description": (
-                    f"Execute agent-supervisor {operation.value} through the "
-                    "shared typed control service."
-                ),
+                "description": _tool_description(operation),
                 "input_schema": _tool_input_schema(operation),
                 "runtime": "fastapi",
                 "tags": tags,
