@@ -1,9 +1,16 @@
 # MCP Server Unification Master Plan
 
 > **Canonical home:** `docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md`  
-> Relocated from the monorepo root (`MCP_SERVER_UNIFICATION_PLAN.md`) as part of
-> ASREF-006 root hygiene. Prefer this path for new links and references. A
-> legacy root copy may remain until a later cutover removes it.
+> **ASREF-006 root hygiene:** This is the authoritative location for the MCP
+> Server Unification Master Plan. Content was relocated from the monorepo root
+> path `MCP_SERVER_UNIFICATION_PLAN.md` so architecture plans live under
+> `docs/architecture/` with other long-lived design docs. Prefer this path for
+> all new links, issues, and operator references.
+>
+> A legacy root copy may remain until a later cutover/hygiene step removes it.
+> Nested product trees and ownership rules are inventoried in
+> [`docs/NESTED_PACKAGES.md`](../NESTED_PACKAGES.md). Process junk at the repo
+> root is covered by the ASREF-006 section of `.gitignore`.
 
 ## 1. Purpose
 
