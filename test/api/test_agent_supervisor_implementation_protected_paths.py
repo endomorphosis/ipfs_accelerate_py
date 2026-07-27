@@ -391,6 +391,14 @@ def test_external_protected_update_preserves_candidate_without_consuming_attempt
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     daemon, repo, _workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    seeded_context_path = (
+        repo / "docs" / "architecture" / "untracked-operator-context.md"
+    )
+    seeded_context_path.parent.mkdir(parents=True)
+    seeded_context_path.write_text(
+        "operator context that the implementation did not change\n",
+        encoding="utf-8",
+    )
     state = PortalTaskState()
     queue_outcomes: list[int] = []
 
@@ -426,6 +434,25 @@ def test_external_protected_update_preserves_candidate_without_consuming_attempt
     assert preservation["preserved"] is True
     assert rescue_branch.endswith("-protected-path-interrupted")
     assert _git(repo, "show", f"{rescue_branch}:src/candidate.py") == "VALUE = 1"
+    assert preservation["pruned_seeded_context"] == [
+        "docs/architecture/untracked-operator-context.md"
+    ]
+    seeded_in_rescue = subprocess.run(
+        [
+            "git",
+            "cat-file",
+            "-e",
+            (
+                f"{rescue_branch}:"
+                "docs/architecture/untracked-operator-context.md"
+            ),
+        ],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert seeded_in_rescue.returncode != 0
     assert state.implementation_attempts == {}
     assert state.implementation_attempts_by_cid == {}
     assert queue_outcomes == []

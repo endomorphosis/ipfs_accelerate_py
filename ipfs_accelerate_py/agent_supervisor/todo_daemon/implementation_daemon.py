@@ -8944,6 +8944,10 @@ class PortalImplementationDaemon:
         evidence_field: str,
     ) -> dict[str, Any]:
         started_at = utc_now()
+        pruned_seeded_context = self._drop_unchanged_seeded_worktree_context(
+            worktree_path,
+            task=task,
+        )
         commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
         rescue_branch = ""
         implementation_commit = str(commit_result.get("commit", ""))
@@ -8966,6 +8970,7 @@ class PortalImplementationDaemon:
             "implementation_commit": implementation_commit,
             "commit_result": commit_result,
             "cleanup_result": cleanup_result,
+            "pruned_seeded_context": pruned_seeded_context,
             evidence_field: dict(evidence),
         }
         self._record_event(event_type, result)
