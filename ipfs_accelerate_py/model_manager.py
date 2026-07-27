@@ -15,6 +15,8 @@ import os
 import sys
 import json
 import logging
+import tempfile
+import threading
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -23,6 +25,23 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
 from dataclasses import dataclass, asdict
 from enum import Enum
+
+from .model_catalog.catalog import (
+    AIServiceCatalog,
+    CatalogDiagnostic,
+    RefreshPolicy,
+)
+from .model_catalog.registry import AmbiguousAliasError
+from .model_catalog.schema import (
+    DeploymentDescriptor,
+    ModelDescriptor,
+    ProviderDescriptor,
+    RouterBinding,
+)
+from .model_catalog.sources.persistent import (
+    DEFAULT_PERSISTENT_PRECEDENCE,
+    PersistentCatalogSource,
+)
 
 # Try to import IPFS multiformats for content addressing
 try:
@@ -424,6 +443,130 @@ class ModelMetadata:
             self.revision_created_at = self.created_at
 
 
+@dataclass(frozen=True)
+class CatalogLookupResult:
+    """Typed result for a canonical provider or model lookup.
+
+    A lookup never silently chooses between aliases.  ``record`` is populated
+    only for one unambiguous match; otherwise ``diagnostics`` contains a
+    bounded ``no_match`` or ``ambiguous_identifier`` diagnostic.
+    """
+
+    record_type: str
+    query: str
+    snapshot_revision: str
+    record: Optional[
+        Union[
+            ProviderDescriptor,
+            ModelDescriptor,
+            DeploymentDescriptor,
+            RouterBinding,
+        ]
+    ] = None
+    diagnostics: Tuple[CatalogDiagnostic, ...] = ()
+    schema_version: str = "ai.catalog.lookup.v1"
+
+    def __post_init__(self) -> None:
+        record_types = {
+            "records": (
+                ProviderDescriptor,
+                ModelDescriptor,
+                DeploymentDescriptor,
+                RouterBinding,
+            ),
+            "providers": ProviderDescriptor,
+            "models": ModelDescriptor,
+            "deployments": DeploymentDescriptor,
+            "bindings": RouterBinding,
+        }
+        if self.record_type not in record_types:
+            raise ValueError("lookup record_type is invalid")
+        if (
+            not isinstance(self.query, str)
+            or not self.query
+            or len(self.query.encode("utf-8")) > 256
+        ):
+            raise ValueError("lookup query must be bounded non-empty text")
+        if (
+            not isinstance(self.snapshot_revision, str)
+            or not self.snapshot_revision
+            or len(self.snapshot_revision.encode("utf-8")) > 512
+        ):
+            raise ValueError("lookup snapshot revision is invalid")
+        expected = record_types[self.record_type]
+        if self.record is not None and not isinstance(self.record, expected):
+            raise TypeError("lookup record has the wrong canonical type")
+        diagnostics = tuple(self.diagnostics)
+        if len(diagnostics) > 8 or any(
+            not isinstance(item, CatalogDiagnostic) for item in diagnostics
+        ):
+            raise ValueError("lookup diagnostics are invalid or excessive")
+        object.__setattr__(self, "diagnostics", diagnostics)
+
+    @property
+    def found(self) -> bool:
+        return self.record is not None
+
+    @property
+    def ambiguous(self) -> bool:
+        return any(item.ambiguous for item in self.diagnostics)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "record_type": self.record_type,
+            "query": self.query,
+            "snapshot_revision": self.snapshot_revision,
+            "record": None if self.record is None else self.record.to_dict(),
+            "diagnostics": [item.to_dict() for item in self.diagnostics],
+        }
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward descriptor fields for successful lookup convenience."""
+
+        record = object.__getattribute__(self, "record")
+        if record is None:
+            raise AttributeError(name)
+        return getattr(record, name)
+
+
+class _ModelManagerCatalogSource:
+    """Pure, repeatable projection of one manager's in-memory legacy records."""
+
+    source = "model-manager.persistent"
+    precedence = DEFAULT_PERSISTENT_PRECEDENCE
+    side_effecting = False
+
+    def __init__(self, manager: "ModelManager") -> None:
+        self._manager = manager
+
+    def _snapshot_records(self) -> Dict[str, Any]:
+        # Copy while holding the manager lock so catalog refresh never iterates
+        # a dictionary being changed by a concurrent CRUD call.
+        with self._manager._model_lock:
+            result = {}
+            for model_id, metadata in self._manager.models.items():
+                record = asdict(metadata)
+                record["model_type"] = metadata.model_type.value
+                for io_field in ("inputs", "outputs"):
+                    for spec in record[io_field]:
+                        data_type = spec.get("data_type")
+                        if isinstance(data_type, DataType):
+                            spec["data_type"] = data_type.value
+                result[model_id] = record
+            return result
+
+    def load(self) -> Any:
+        return PersistentCatalogSource(
+            self._snapshot_records(),
+            source=self.source,
+            precedence=self.precedence,
+        ).load()
+
+    def refresh(self) -> Any:
+        return self.load()
+
+
 class ModelManager:
     """
     Comprehensive model manager for storing and retrieving model metadata.
@@ -448,6 +591,8 @@ class ModelManager:
         cache_memory_mb: int = 100,
         cache_disk_mb: int = 1024,
         cache_eviction_policy: str = "lru",
+        catalog: Optional[Any] = None,
+        project_legacy_models: Optional[bool] = None,
     ):
         """
         Initialize the model manager.
@@ -459,6 +604,11 @@ class ModelManager:
             cache_memory_mb: In-memory cache size in MB for ipfs_kit_py tiered cache (default: 100).
             cache_disk_mb: Disk cache quota in MB for ipfs_kit_py tiered cache (default: 1024).
             cache_eviction_policy: Cache eviction policy – "lru", "lfu", or "arc" (default: "lru").
+            catalog: Optional pre-assembled AIServiceCatalog. Injected catalogs
+                are used directly and are not copied.
+            project_legacy_models: Whether to register this manager's persisted
+                ModelMetadata as a pure catalog source. Defaults to True; pass
+                False only when an injected catalog already owns that source.
         """
         # Determine storage backend
         if use_database is None:
@@ -474,6 +624,7 @@ class ModelManager:
                 storage_path = os.environ.get("MODEL_MANAGER_JSON_PATH", "./model_metadata.json")
         
         self.storage_path = storage_path
+        self._model_lock = threading.RLock()
         self.models: Dict[str, ModelMetadata] = {}
 
         # Derive a per-instance cache directory co-located with storage when not
@@ -556,7 +707,106 @@ class ModelManager:
         
         # Load existing data
         self._load_data()
-    
+
+        # The catalog is initialized only after persistence has loaded.  This
+        # publishes one complete legacy projection and never rewrites storage.
+        self._init_catalog(catalog, project_legacy_models)
+
+    def _init_catalog(
+        self,
+        catalog: Optional[Any],
+        project_legacy_models: Optional[bool],
+    ) -> None:
+        selected = AIServiceCatalog() if catalog is None else catalog
+        required = (
+            "list_services",
+            "list_models",
+            "get",
+            "resolve",
+            "health",
+            "snapshot",
+            "refresh",
+        )
+        missing = tuple(
+            name for name in required if not callable(getattr(selected, name, None))
+        )
+        if missing:
+            raise TypeError(
+                "catalog does not implement the canonical facade: %s"
+                % ", ".join(missing)
+            )
+        self._catalog = selected
+        self._legacy_catalog_source: Optional[_ModelManagerCatalogSource] = None
+        self._legacy_catalog_source_registered = False
+
+        should_project = (
+            True if project_legacy_models is None else project_legacy_models
+        )
+        if not isinstance(should_project, bool):
+            raise TypeError("project_legacy_models must be boolean or None")
+        if not should_project:
+            return
+        register = getattr(selected, "register_source", None)
+        if not callable(register):
+            raise TypeError(
+                "catalog cannot project legacy records without register_source"
+            )
+
+        source = _ModelManagerCatalogSource(self)
+        # Do not replace a caller-supplied source with the canonical persistent
+        # name.  Reusing the existing registration keeps injection predictable.
+        source_states = getattr(selected, "source_states", None)
+        existing_names = (
+            {item.name for item in source_states()}
+            if callable(source_states)
+            else set()
+        )
+        if source.source in existing_names:
+            return
+        register(
+            source.source,
+            source,
+            precedence=source.precedence,
+            side_effecting=False,
+            load=True,
+        )
+        self._legacy_catalog_source = source
+        self._legacy_catalog_source_registered = True
+
+    @property
+    def catalog(self) -> Any:
+        """The canonical catalog owned or injected by this manager."""
+
+        return self._catalog
+
+    @property
+    def catalog_revision(self) -> str:
+        """Content revision of the currently published catalog snapshot."""
+
+        return self._catalog.snapshot().revision
+
+    def _sync_legacy_catalog(self) -> None:
+        """Republish the pure legacy projection after a successful CRUD write."""
+
+        if not self._legacy_catalog_source_registered:
+            return
+        try:
+            result = self._catalog.refresh(
+                (self._legacy_catalog_source.source,),
+                raise_on_error=False,
+            )
+            if result.failed:
+                logger.warning(
+                    "Legacy catalog projection retained its prior revision after refresh failure"
+                )
+        except Exception as exc:
+            # Catalog publication is an atomic compatibility projection.  A
+            # failure must not reverse a successful legacy CRUD operation.
+            logger.warning(
+                "Legacy catalog projection could not be synchronized: %s",
+                type(exc).__name__,
+            )
+
     def _init_ipfs_backend(self):
         """Initialize IPFS backend router for model storage."""
         try:
@@ -667,11 +917,12 @@ class ModelManager:
         """Load model metadata from DuckDB database."""
         if not self.use_database:
             return
-            
+
         try:
             result = self.con.execute("SELECT * FROM model_metadata").fetchall()
             columns = [desc[0] for desc in self.con.description]
-            
+            loaded_models: Dict[str, ModelMetadata] = {}
+
             for row in result:
                 row_dict = dict(zip(columns, row))
                 model_id = row_dict['model_id']
@@ -699,13 +950,99 @@ class ModelManager:
                 # Strip unknown keys that may come from older schema versions
                 known_fields = {f.name for f in ModelMetadata.__dataclass_fields__.values()}  # type: ignore[attr-defined]
                 row_dict = {k: v for k, v in row_dict.items() if k in known_fields}
-                
-                self.models[model_id] = ModelMetadata(**row_dict)
-                
+
+                loaded_models[model_id] = ModelMetadata(**row_dict)
+
+            with self._model_lock:
+                self.models.update(loaded_models)
+
             logger.info(f"Loaded {len(self.models)} models from database")
         except Exception as e:
             logger.error(f"Error loading from database: {e}")
-    
+
+    @staticmethod
+    def _model_metadata_from_json(
+        model_id: str, raw: Any
+    ) -> ModelMetadata:
+        """Coerce one historical JSON row without mutating the decoded input."""
+
+        if not isinstance(model_id, str) or not model_id:
+            raise ValueError("model registry keys must be non-empty strings")
+        if not isinstance(raw, dict):
+            raise ValueError("model registry rows must be objects")
+        model_data = dict(raw)
+        missing_timestamps = {
+            field_name
+            for field_name in (
+                "created_at",
+                "updated_at",
+                "revision_created_at",
+            )
+            if not model_data.get(field_name)
+        }
+        model_data.setdefault("model_id", model_id)
+        model_data.setdefault("model_name", model_id.rsplit("/", 1)[-1])
+        model_data.setdefault("model_type", ModelType.LANGUAGE_MODEL.value)
+        model_data.setdefault("architecture", "")
+        model_data.setdefault("inputs", [])
+        model_data.setdefault("outputs", [])
+
+        for datetime_field in (
+            "created_at",
+            "updated_at",
+            "last_used_at",
+            "revision_created_at",
+        ):
+            value = model_data.get(datetime_field)
+            if value and isinstance(value, str):
+                model_data[datetime_field] = datetime.fromisoformat(
+                    value[:-1] + "+00:00" if value.endswith("Z") else value
+                )
+
+        for io_field in ("inputs", "outputs"):
+            values = model_data.get(io_field) or []
+            converted = []
+            for value in values:
+                if isinstance(value, IOSpec):
+                    converted.append(value)
+                    continue
+                if not isinstance(value, dict):
+                    raise ValueError("%s entries must be objects" % io_field)
+                spec = dict(value)
+                if "data_type" in spec and not isinstance(
+                    spec["data_type"], DataType
+                ):
+                    data_type = spec["data_type"]
+                    if isinstance(data_type, str) and data_type.startswith(
+                        "DataType."
+                    ):
+                        spec["data_type"] = DataType[
+                            data_type.split(".", 1)[1]
+                        ]
+                    else:
+                        spec["data_type"] = DataType(data_type)
+                if isinstance(spec.get("shape"), list):
+                    spec["shape"] = tuple(spec["shape"])
+                converted.append(IOSpec(**spec))
+            model_data[io_field] = converted
+
+        value = model_data.get("model_type")
+        if not isinstance(value, ModelType):
+            model_data["model_type"] = ModelType(value)
+        known_fields = set(ModelMetadata.__dataclass_fields__)  # type: ignore[attr-defined]
+        model_data = {
+            key: value
+            for key, value in model_data.items()
+            if key in known_fields
+        }
+        metadata = ModelMetadata(**model_data)
+        # Older rows often omitted timestamps.  Preserve that unknown state
+        # instead of allowing __post_init__'s new-record defaults to inject the
+        # current clock into a read-only migration and catalog revision.
+        for field_name in missing_timestamps:
+            setattr(metadata, field_name, None)
+        return metadata
+
     def _load_from_json(self):
         """Load model metadata from JSON file."""
         if not os.path.exists(self.json_path):
@@ -715,30 +1052,47 @@ class ModelManager:
         try:
             with open(self.json_path, 'r') as f:
                 data = json.load(f)
-            
-            for model_id, model_data in data.items():
-                # Convert ISO datetime strings back to datetime objects
-                if 'created_at' in model_data and model_data['created_at']:
-                    model_data['created_at'] = datetime.fromisoformat(model_data['created_at'])
-                if 'updated_at' in model_data and model_data['updated_at']:
-                    model_data['updated_at'] = datetime.fromisoformat(model_data['updated_at'])
-                if 'last_used_at' in model_data and model_data['last_used_at']:
-                    model_data['last_used_at'] = datetime.fromisoformat(model_data['last_used_at'])
-                if 'revision_created_at' in model_data and model_data['revision_created_at']:
-                    model_data['revision_created_at'] = datetime.fromisoformat(model_data['revision_created_at'])
-                
-                # Convert to IOSpec objects
-                if 'inputs' in model_data and model_data['inputs']:
-                    model_data['inputs'] = [IOSpec(**spec) for spec in model_data['inputs']]
-                if 'outputs' in model_data and model_data['outputs']:
-                    model_data['outputs'] = [IOSpec(**spec) for spec in model_data['outputs']]
-                
-                # Convert enum fields
-                if 'model_type' in model_data:
-                    model_data['model_type'] = ModelType(model_data['model_type'])
-                
-                self.models[model_id] = ModelMetadata(**model_data)
-            
+
+            if not isinstance(data, dict):
+                raise ValueError("model registry must be a JSON object")
+            envelope_keys = {
+                "schema_version",
+                "source_revision",
+                "revision",
+                "created_at",
+                "updated_at",
+                "models",
+            }
+            if (
+                "models" in data
+                and isinstance(data["models"], (dict, list))
+                and (set(data) <= envelope_keys or "schema_version" in data)
+            ):
+                records = data["models"]
+            else:
+                records = data
+
+            if isinstance(records, list):
+                normalized = {}
+                for item in records:
+                    if not isinstance(item, dict) or not item.get("model_id"):
+                        raise ValueError(
+                            "model registry list rows require model_id"
+                        )
+                    normalized[item["model_id"]] = item
+                records = normalized
+            if not isinstance(records, dict):
+                raise ValueError("model registry models must be an object or array")
+
+            # Stage the complete migration first.  A malformed row leaves the
+            # current in-memory registry untouched.
+            loaded_models = {
+                model_id: self._model_metadata_from_json(model_id, model_data)
+                for model_id, model_data in records.items()
+            }
+            with self._model_lock:
+                self.models.update(loaded_models)
+
             logger.info(f"Loaded {len(self.models)} models from JSON file")
         except Exception as e:
             logger.error(f"Error loading from JSON: {e}")
@@ -757,8 +1111,11 @@ class ModelManager:
         """Save model metadata to DuckDB database."""
         if not self.use_database:
             return
-            
+
+        transaction_started = False
         try:
+            self.con.execute("BEGIN TRANSACTION")
+            transaction_started = True
             columns = [
                 "model_id",
                 "model_name",
@@ -830,11 +1187,47 @@ class ModelManager:
                     f"INSERT OR REPLACE INTO model_metadata ({col_list}) VALUES ({placeholders})",
                     tuple(data.get(column) for column in columns),
                 )
-            
+
+            self.con.execute("COMMIT")
+            transaction_started = False
             logger.info(f"Saved {len(self.models)} models to database")
         except Exception as e:
+            if transaction_started:
+                try:
+                    self.con.execute("ROLLBACK")
+                except Exception:
+                    pass
             logger.error(f"Error saving to database: {e}")
     
+    @staticmethod
+    def _atomic_write_text(path: str, content: str) -> None:
+        """Atomically replace one local text file, retaining it on failure."""
+
+        directory = os.path.dirname(os.path.abspath(path))
+        os.makedirs(directory, exist_ok=True)
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=directory,
+                prefix=".%s." % os.path.basename(path),
+                suffix=".tmp",
+                delete=False,
+            ) as stream:
+                temporary_path = stream.name
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, path)
+            temporary_path = None
+        finally:
+            if temporary_path is not None:
+                try:
+                    os.unlink(temporary_path)
+                except FileNotFoundError:
+                    pass
+
     def _save_to_json(self):
         """Save model metadata to JSON file (with distributed storage when available)."""
         try:
@@ -842,7 +1235,13 @@ class ModelManager:
             data = {}
             for model_id, metadata in self.models.items():
                 model_dict = asdict(metadata)
-                
+
+                for io_field in ("inputs", "outputs"):
+                    for spec in model_dict[io_field]:
+                        data_type = spec.get("data_type")
+                        if isinstance(data_type, DataType):
+                            spec["data_type"] = data_type.value
+
                 # Convert datetime objects to ISO strings
                 if model_dict['created_at']:
                     model_dict['created_at'] = model_dict['created_at'].isoformat()
@@ -868,23 +1267,16 @@ class ModelManager:
                         pin=True  # Pin model metadata
                     )
                     logger.info(f"Saved {len(self.models)} models to distributed storage (CID: {cid[:16]}...)")
-                    
+
                     # Also save locally for backward compatibility
-                    os.makedirs(os.path.dirname(self.json_path) or '.', exist_ok=True)
-                    with open(self.json_path, 'w') as f:
-                        f.write(json_str)
+                    self._atomic_write_text(self.json_path, json_str)
                     return
                 except Exception as e:
                     logger.debug(f"Failed to save to distributed storage, using local: {e}")
-            
+
             # Fallback to local filesystem
-            # Create directory if it doesn't exist
-            os.makedirs(os.path.dirname(self.json_path) or '.', exist_ok=True)
-            
-            # Write to file
-            with open(self.json_path, 'w') as f:
-                f.write(json_str)
-            
+            self._atomic_write_text(self.json_path, json_str)
+
             logger.info(f"Saved {len(self.models)} models to JSON file")
         except Exception as e:
             logger.error(f"Error saving to JSON: {e}")
@@ -900,15 +1292,17 @@ class ModelManager:
             bool: True if successful, False otherwise
         """
         try:
-            metadata.updated_at = datetime.now()
-            if not metadata.model_revision:
-                metadata.model_revision = metadata.updated_at.isoformat()
-            if not metadata.revision_id:
-                metadata.revision_id = metadata.model_revision
-            if metadata.revision_created_at is None:
-                metadata.revision_created_at = metadata.updated_at
-            self.models[metadata.model_id] = metadata
-            self._save_data()
+            with self._model_lock:
+                metadata.updated_at = datetime.now()
+                if not metadata.model_revision:
+                    metadata.model_revision = metadata.updated_at.isoformat()
+                if not metadata.revision_id:
+                    metadata.revision_id = metadata.model_revision
+                if metadata.revision_created_at is None:
+                    metadata.revision_created_at = metadata.updated_at
+                self.models[metadata.model_id] = metadata
+                self._save_data()
+            self._sync_legacy_catalog()
             logger.info(f"Added/updated model: {metadata.model_id}")
 
             self._record_model_registration(metadata)
@@ -940,7 +1334,8 @@ class ModelManager:
         Returns:
             ModelMetadata object or None if not found
         """
-        result = self.models.get(model_id)
+        with self._model_lock:
+            result = self.models.get(model_id)
         
         # Log model access for audit trail
         if result:
@@ -1066,18 +1461,20 @@ class ModelManager:
         run_id: Optional[str] = None,
     ) -> bool:
         """Update usage linkage metadata for a model after inference or evaluation."""
-        metadata = self.models.get(model_id)
-        if not metadata:
-            return False
+        with self._model_lock:
+            metadata = self.models.get(model_id)
+            if not metadata:
+                return False
 
-        metadata.last_used_at = datetime.now()
-        if inference_cid:
-            metadata.last_inference_cid = inference_cid
-        if run_id:
-            metadata.last_run_id = run_id
-        metadata.inference_count = int(metadata.inference_count or 0) + 1
-        metadata.updated_at = datetime.now()
-        self._save_data()
+            metadata.last_used_at = datetime.now()
+            if inference_cid:
+                metadata.last_inference_cid = inference_cid
+            if run_id:
+                metadata.last_run_id = run_id
+            metadata.inference_count = int(metadata.inference_count or 0) + 1
+            metadata.updated_at = datetime.now()
+            self._save_data()
+        self._sync_legacy_catalog()
         self._record_model_usage(metadata)
         return True
     
@@ -1092,26 +1489,28 @@ class ModelManager:
             bool: True if successful, False otherwise
         """
         try:
-            if model_id in self.models:
+            with self._model_lock:
+                if model_id not in self.models:
+                    logger.warning(f"Model not found: {model_id}")
+                    return False
                 del self.models[model_id]
                 self._save_data()
-                
+
                 # Also remove from database if using database backend
                 if self.use_database:
                     self.con.execute("DELETE FROM model_metadata WHERE model_id = ?", (model_id,))
 
-                # Remove from knowledge graph (Gap 2)
-                if self._knowledge_graph:
-                    try:
-                        self._knowledge_graph.remove_model_node(model_id)
-                    except Exception as e:
-                        logger.debug("Knowledge graph node removal skipped: %s", e)
-                
-                logger.info(f"Removed model: {model_id}")
-                return True
-            else:
-                logger.warning(f"Model not found: {model_id}")
-                return False
+            self._sync_legacy_catalog()
+
+            # Remove from knowledge graph (Gap 2)
+            if self._knowledge_graph:
+                try:
+                    self._knowledge_graph.remove_model_node(model_id)
+                except Exception as e:
+                    logger.debug("Knowledge graph node removal skipped: %s", e)
+
+            logger.info(f"Removed model: {model_id}")
+            return True
         except Exception as e:
             logger.error(f"Error removing model {model_id}: {e}")
             return False
@@ -1318,11 +1717,222 @@ class ModelManager:
 
         return True, metadata.artifact_cid or metadata.model_cid
     
+    def list_services(
+        self,
+        *,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        operation: Optional[Any] = None,
+        modality: Optional[Any] = None,
+        state: Optional[Dict[str, bool]] = None,
+        labels: Optional[Dict[str, str]] = None,
+        snapshot: Optional[Any] = None,
+    ) -> Any:
+        """Return a bounded, deterministic page of canonical providers."""
+
+        return self._catalog.list_services(
+            limit=limit,
+            cursor=cursor,
+            provider=provider,
+            model=model,
+            operation=operation,
+            modality=modality,
+            state=state,
+            labels=labels,
+            snapshot=snapshot,
+        )
+
+    @staticmethod
+    def _catalog_record_type(record: Any) -> str:
+        record_types = {
+            ProviderDescriptor: "providers",
+            ModelDescriptor: "models",
+            DeploymentDescriptor: "deployments",
+            RouterBinding: "bindings",
+        }
+        try:
+            return record_types[type(record)]
+        except KeyError as exc:
+            raise TypeError("catalog returned an unknown record type") from exc
+
+    @staticmethod
+    def _canonical_record_type(record_type: Optional[Any]) -> Optional[str]:
+        if record_type is None:
+            return None
+        aliases = {
+            "record": None,
+            "records": None,
+            "service": "providers",
+            "services": "providers",
+            "provider": "providers",
+            "providers": "providers",
+            "model": "models",
+            "models": "models",
+            "deployment": "deployments",
+            "deployments": "deployments",
+            "binding": "bindings",
+            "bindings": "bindings",
+        }
+        if isinstance(record_type, str):
+            normalized = record_type.strip().casefold()
+            if normalized in aliases:
+                return aliases[normalized]
+        return record_type
+
+    def get(
+        self,
+        identifier: str,
+        *,
+        record_type: Optional[Any] = None,
+        snapshot: Optional[Any] = None,
+    ) -> CatalogLookupResult:
+        """Look up one canonical record with typed closed-failure diagnostics."""
+
+        if (
+            not isinstance(identifier, str)
+            or not identifier
+            or len(identifier.encode("utf-8")) > 256
+        ):
+            raise ValueError("identifier must be bounded non-empty text")
+        selected = self._catalog.snapshot() if snapshot is None else snapshot
+        canonical_type = self._canonical_record_type(record_type)
+        result_type = canonical_type or "records"
+        try:
+            record = self._catalog.get(
+                identifier,
+                record_type=canonical_type,
+                snapshot=selected,
+            )
+        except AmbiguousAliasError:
+            return CatalogLookupResult(
+                record_type=result_type,
+                query=identifier,
+                snapshot_revision=selected.revision,
+                diagnostics=(
+                    CatalogDiagnostic(
+                        code="ambiguous_identifier",
+                        message=(
+                            "identifier maps to multiple canonical records; "
+                            "lookup failed closed"
+                        ),
+                        record_type=canonical_type,
+                        ambiguous=True,
+                    ),
+                ),
+            )
+        if record is None:
+            return CatalogLookupResult(
+                record_type=result_type,
+                query=identifier,
+                snapshot_revision=selected.revision,
+                diagnostics=(
+                    CatalogDiagnostic(
+                        code="no_match",
+                        message="identifier did not match a canonical record",
+                        record_type=canonical_type,
+                    ),
+                ),
+            )
+        return CatalogLookupResult(
+            record_type=self._catalog_record_type(record),
+            query=identifier,
+            snapshot_revision=selected.revision,
+            record=record,
+        )
+
+    def get_service(
+        self, identifier: str, *, snapshot: Optional[Any] = None
+    ) -> CatalogLookupResult:
+        """Look up one canonical provider/service descriptor."""
+
+        return self.get(
+            identifier,
+            record_type="providers",
+            snapshot=snapshot,
+        )
+
+    def get_model_descriptor(
+        self, identifier: str, *, snapshot: Optional[Any] = None
+    ) -> CatalogLookupResult:
+        """Look up one canonical model descriptor without legacy audit writes."""
+
+        return self.get(
+            identifier,
+            record_type="models",
+            snapshot=snapshot,
+        )
+
+    def resolve(
+        self,
+        request: Optional[Any] = None,
+        *,
+        snapshot: Optional[Any] = None,
+        **constraints: Any,
+    ) -> Any:
+        """Resolve catalog constraints without invoking or probing a provider."""
+
+        return self._catalog.resolve(
+            request,
+            snapshot=snapshot,
+            **constraints,
+        )
+
+    def health(self, *, snapshot: Optional[Any] = None) -> Any:
+        """Project already-published catalog health without active probes."""
+
+        return self._catalog.health(snapshot=snapshot)
+
+    def snapshot(self) -> Any:
+        """Return the current immutable canonical catalog snapshot."""
+
+        return self._catalog.snapshot()
+
+    def refresh(
+        self,
+        sources: Any,
+        *,
+        policy: Optional[RefreshPolicy] = None,
+        raise_on_error: bool = False,
+    ) -> Any:
+        """Explicitly refresh named sources under the catalog refresh policy."""
+
+        return self._catalog.refresh(
+            sources,
+            policy=policy,
+            raise_on_error=raise_on_error,
+        )
+
+    refresh_catalog = refresh
+
+    def list_catalog_models(self, **kwargs: Any) -> Any:
+        """Explicit compatibility-free spelling for canonical model pages."""
+
+        return self._catalog.list_models(**kwargs)
+
     def list_models(self, model_type: Optional[ModelType] = None,
                    architecture: Optional[str] = None,
-                   tags: Optional[List[str]] = None) -> List[ModelMetadata]:
+                   tags: Optional[List[str]] = None,
+                   *,
+                   canonical: bool = False,
+                   limit: Optional[int] = None,
+                   cursor: Optional[str] = None,
+                   provider: Optional[str] = None,
+                   model: Optional[str] = None,
+                   operation: Optional[Any] = None,
+                   modality: Optional[Any] = None,
+                   state: Optional[Dict[str, bool]] = None,
+                   labels: Optional[Dict[str, str]] = None,
+                   snapshot: Optional[Any] = None) -> Any:
         """
-        List models with optional filtering.
+        List models using the legacy or canonical compatibility shape.
+
+        Existing calls using no arguments or ``model_type``, ``architecture``
+        and ``tags`` return ``List[ModelMetadata]`` unchanged. Passing
+        ``canonical=True`` or any catalog paging/filter argument returns a
+        bounded canonical ``CatalogPage``. ``list_catalog_models`` is the
+        unambiguous canonical spelling for new callers.
         
         Args:
             model_type: Filter by model type
@@ -1332,9 +1942,42 @@ class ModelManager:
         Returns:
             List of ModelMetadata objects
         """
+        catalog_requested = canonical or any(
+            value is not None
+            for value in (
+                limit,
+                cursor,
+                provider,
+                model,
+                operation,
+                modality,
+                state,
+                labels,
+                snapshot,
+            )
+        )
+        if catalog_requested:
+            if model_type is not None or architecture is not None or tags is not None:
+                raise ValueError(
+                    "legacy model filters cannot be mixed with canonical catalog filters"
+                )
+            return self._catalog.list_models(
+                limit=100 if limit is None else limit,
+                cursor=cursor,
+                provider=provider,
+                model=model,
+                operation=operation,
+                modality=modality,
+                state=state,
+                labels=labels,
+                snapshot=snapshot,
+            )
+
         results = []
-        
-        for metadata in self.models.values():
+
+        with self._model_lock:
+            metadata_values = tuple(self.models.values())
+        for metadata in metadata_values:
             # Apply filters
             if model_type and metadata.model_type != model_type:
                 continue
@@ -1898,15 +2541,17 @@ class ModelManager:
         -------
         True on success, False if the model is not registered.
         """
-        metadata = self.models.get(model_id)
-        if not metadata:
-            logger.warning("update_serving_config: model not found: %s", model_id)
-            return False
+        with self._model_lock:
+            metadata = self.models.get(model_id)
+            if not metadata:
+                logger.warning("update_serving_config: model not found: %s", model_id)
+                return False
 
-        cfg_dict = config.to_dict() if isinstance(config, ServingConfig) else config
-        metadata.serving_config = cfg_dict
-        metadata.updated_at = datetime.now()
-        self._save_data()
+            cfg_dict = config.to_dict() if isinstance(config, ServingConfig) else config
+            metadata.serving_config = cfg_dict
+            metadata.updated_at = datetime.now()
+            self._save_data()
+        self._sync_legacy_catalog()
 
         # Propagate to service registry
         if self._artifact_storage:
@@ -2052,11 +2697,13 @@ class ModelManager:
         
         logger.info(f"Refreshing repository structure for {model_id}")
         new_structure = fetch_huggingface_repo_structure(model_id, branch, include_ipfs_cids)
-        
+
         if new_structure:
-            metadata.repository_structure = new_structure
-            metadata.updated_at = datetime.now()
-            self._save_data()
+            with self._model_lock:
+                metadata.repository_structure = new_structure
+                metadata.updated_at = datetime.now()
+                self._save_data()
+            self._sync_legacy_catalog()
             logger.info(f"Successfully refreshed repository structure for {model_id}")
             if new_structure.get("ipfs_enabled"):
                 cid_count = sum(1 for f in new_structure["files"].values() if "ipfs_cid" in f)
