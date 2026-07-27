@@ -6135,6 +6135,16 @@ class PortalImplementationDaemon:
                     state=state,
                     proposal_validation=proposal_validation,
                 )
+                validation_result = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=validation_result,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
                         task=task,
@@ -8455,6 +8465,16 @@ class PortalImplementationDaemon:
                         state=state,
                         proposal_validation=proposal_validation,
                     )
+                    validation_result = self._apply_implementation_failure_review(
+                        task=task,
+                        attempt=attempt,
+                        workspace_path=worktree_path,
+                        validation_result=validation_result,
+                        log_path=log_path,
+                        proposal_validation=proposal_validation,
+                        baseline_ref=baseline_ref,
+                        state=state,
+                    )
                     validation_result = (
                         self._verify_post_validation_candidate_binding(
                             worktree_path,
@@ -8708,6 +8728,16 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         proposal_validation=proposal_validation,
+                    )
+                    validation_result = self._apply_implementation_failure_review(
+                        task=task,
+                        attempt=attempt,
+                        workspace_path=worktree_path,
+                        validation_result=validation_result,
+                        log_path=log_path,
+                        proposal_validation=proposal_validation,
+                        baseline_ref=baseline_ref,
+                        state=state,
                     )
                     validation_result = (
                         self._verify_post_validation_candidate_binding(
@@ -10769,6 +10799,34 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str = "",
     ) -> dict[str, Any]:
+        # Materialize deterministic rescue guidance into the preserved tree so
+        # operators and the next attempt share the same follow-up contract.
+        review = validation_result.get("failure_review")
+        if isinstance(review, Mapping) and worktree_path.exists():
+            guidance = str(
+                review.get("guidance_markdown")
+                or validation_result.get("rescue_guidance_markdown")
+                or ""
+            ).strip()
+            if guidance:
+                try:
+                    guide_dir = worktree_path / "docs" / "agent-supervisor" / "rescue"
+                    guide_dir.mkdir(parents=True, exist_ok=True)
+                    safe_task = re.sub(
+                        r"[^a-z0-9._-]+", "-", task.task_id.lower()
+                    ).strip("-") or "task"
+                    guide_path = (
+                        guide_dir
+                        / f"{safe_task}-attempt-{int(attempt)}-failure-review.md"
+                    )
+                    guide_path.write_text(guidance + "\n", encoding="utf-8")
+                    receipt_path = (
+                        guide_dir
+                        / f"{safe_task}-attempt-{int(attempt)}-failure-review.json"
+                    )
+                    _shared_atomic_write_json(receipt_path, dict(review))
+                except OSError:
+                    pass
         return self._preserve_interrupted_worktree(
             worktree_path,
             branch_name,
@@ -12630,6 +12688,161 @@ class PortalImplementationDaemon:
             "reason": "candidate_changed_during_validation",
             "error": "proposal_candidate_binding_failed",
         }
+
+    def _apply_implementation_failure_review(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+        validation_result: Mapping[str, Any] | dict[str, Any],
+        log_path: Path | None = None,
+        proposal_validation: Any = None,
+        baseline_ref: str = "",
+        state: PortalTaskState | None = None,
+    ) -> dict[str, Any]:
+        """Review a failed validation and accept or attach rescue guidance.
+
+        Acceptance is fail-closed and only applies when the deterministic
+        failure reviewer authorizes a pure justified scope expansion. All other
+        failures receive structured rescue/next-attempt guidance.
+        """
+
+        result = dict(validation_result or {})
+        if result.get("passed", False) or result.get("failure_review"):
+            return result
+        if int(result.get("returncode") or 1) == 0 and result.get("attempted") is False:
+            # No-command success paths already return passed=True.
+            return result
+
+        from ..implementation_failure_review import (
+            FailureReviewDecision,
+            compact_failure_review,
+            review_implementation_failure,
+        )
+
+        log_excerpt = ""
+        if log_path is not None:
+            try:
+                with Path(log_path).open("rb") as handle:
+                    handle.seek(0, os.SEEK_END)
+                    size = handle.tell()
+                    handle.seek(max(0, size - 8_192))
+                    log_excerpt = handle.read().decode("utf-8", errors="replace")
+            except OSError:
+                log_excerpt = ""
+
+        proposal_accepted: bool | None = None
+        if proposal_validation is not None:
+            proposal_accepted = bool(
+                getattr(proposal_validation, "accepted", False)
+            )
+        elif isinstance(result.get("proposal_validation"), Mapping):
+            proposal_accepted = bool(
+                result["proposal_validation"].get("accepted", False)
+            )
+
+        scope_payload = result.get("scope_adjudication")
+        if not isinstance(scope_payload, Mapping) and proposal_validation is not None:
+            # Prefer the live adjudication map when the validation report did
+            # not project it yet.
+            proposal_id = str(
+                getattr(getattr(proposal_validation, "proposal", None), "proposal_id", "")
+                or ""
+            )
+            adjudication = self._implementation_scope_adjudications.get(proposal_id)
+            if adjudication is not None:
+                try:
+                    from ..scope_adjudication import compact_scope_adjudication
+
+                    scope_payload = compact_scope_adjudication(adjudication)
+                    result["scope_adjudication"] = scope_payload
+                except Exception:
+                    scope_payload = None
+
+        review = review_implementation_failure(
+            task_id=task.task_id,
+            attempt=int(attempt),
+            expected_outputs=tuple(task.outputs),
+            validation_result=result,
+            workspace_path=workspace_path,
+            log_excerpt=log_excerpt,
+            proposal_accepted=proposal_accepted,
+            scope_adjudication=(
+                scope_payload if isinstance(scope_payload, Mapping) else None
+            ),
+        )
+        projection = compact_failure_review(review)
+        result["failure_review"] = review.to_record()
+        result["rescue_guidance_markdown"] = review.guidance_markdown
+        result["next_attempt_prompt_addendum"] = (
+            review.next_attempt_prompt_addendum
+        )
+        self._record_event(
+            "implementation_failure_reviewed",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "worktree_path": str(workspace_path),
+                **projection,
+            },
+        )
+
+        if review.decision is not FailureReviewDecision.ACCEPT:
+            return result
+
+        # Bounded accept path: re-run proposal+commands only when the original
+        # gate was proposal-scope. Hard fails never reach ACCEPT.
+        if (
+            result.get("reason") in {"proposal_gate_failed", "proposal_validation_failed"}
+            or result.get("error") == "proposal_validation_failed"
+        ):
+            revalidated_proposal = self._validate_implementation_patch(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
+            if not bool(getattr(revalidated_proposal, "accepted", False)):
+                result["failure_review_accept_revalidation"] = {
+                    "accepted": False,
+                    "reason": "proposal_still_rejected_after_review",
+                }
+                return result
+            rerun = self._run_validation_commands(
+                workspace_path,
+                task,
+                log_path if log_path is not None else Path(os.devnull),
+                state=state,
+                proposal_validation=revalidated_proposal,
+            )
+            # Prevent recursive review loops.
+            if not rerun.get("passed", False):
+                rerun = dict(rerun)
+                rerun["failure_review"] = review.to_record()
+                rerun["rescue_guidance_markdown"] = review.guidance_markdown
+                rerun["next_attempt_prompt_addendum"] = (
+                    review.next_attempt_prompt_addendum
+                )
+                rerun["failure_review_accept_revalidation"] = {
+                    "accepted": False,
+                    "reason": "commands_still_failing_after_review",
+                }
+                return rerun
+            rerun = dict(rerun)
+            rerun["failure_review"] = review.to_record()
+            rerun["failure_review_accept_revalidation"] = {
+                "accepted": True,
+                "reason": "scope_justified_and_revalidated",
+            }
+            rerun["reason"] = "failure_review_accepted"
+            return rerun
+
+        # Non-proposal failures are never auto-accepted.
+        result["failure_review_accept_revalidation"] = {
+            "accepted": False,
+            "reason": "accept_only_for_proposal_scope_gate",
+        }
+        return result
 
     def _run_validation_commands(
         self,
@@ -19179,6 +19392,8 @@ class PortalImplementationDaemon:
             "timeout_reason",
             "timeout_policy",
             "checkpoint_manifest",
+            "failure_review",
+            "next_attempt_prompt_addendum",
         ):
             value = failure.get(key)
             if value not in (None, "", (), [], {}):
@@ -19193,6 +19408,7 @@ class PortalImplementationDaemon:
                     "reason",
                     "reason_codes",
                     "failed_commands",
+                    "failure_review",
                 )
                 if validation.get(key) not in (None, "", (), [], {})
             }
@@ -19444,6 +19660,36 @@ class PortalImplementationDaemon:
             "returncode": int(returncode),
             "validation_result": validation,
         }
+        review = validation.get("failure_review")
+        if isinstance(review, Mapping):
+            failure["failure_review"] = {
+                key: review[key]
+                for key in (
+                    "receipt_id",
+                    "decision",
+                    "accepted",
+                    "reason_codes",
+                    "finding_codes",
+                    "missing_expected_outputs",
+                    "out_of_scope_paths",
+                    "justified_paths",
+                    "denied_paths",
+                    "failed_commands",
+                    "next_attempt_prompt_addendum",
+                    "policy_version",
+                )
+                if review.get(key) not in (None, "", (), [], {})
+            }
+            addendum = str(
+                validation.get("next_attempt_prompt_addendum")
+                or review.get("next_attempt_prompt_addendum")
+                or ""
+            ).strip()
+            if addendum:
+                failure["next_attempt_prompt_addendum"] = addendum
+            missing = review.get("missing_expected_outputs")
+            if missing:
+                failure["missing_outputs"] = list(missing)
         checkpoint_manifest = self._implementation_checkpoint_manifest(task)
         if checkpoint_manifest["file_count"]:
             failure["checkpoint_manifest"] = checkpoint_manifest
@@ -19982,6 +20228,26 @@ class PortalImplementationDaemon:
         if not rendered:
             result = self._compile_implementation_context(task, attempt)
             rendered = render_context_capsule(result.capsule)
+        if attempt > 1:
+            key = self._canonical_ref(task)
+            diagnostic = self._implementation_diagnostics.get(key)
+            addendum = ""
+            if diagnostic is not None and isinstance(diagnostic.failure, Mapping):
+                addendum = str(
+                    diagnostic.failure.get("next_attempt_prompt_addendum")
+                    or ""
+                ).strip()
+                review = diagnostic.failure.get("failure_review")
+                if not addendum and isinstance(review, Mapping):
+                    addendum = str(
+                        review.get("next_attempt_prompt_addendum") or ""
+                    ).strip()
+            if addendum:
+                rendered = (
+                    f"{rendered.rstrip()}\n\n"
+                    "## Prior failure review (deterministic)\n"
+                    f"{addendum}\n"
+                )
         return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
