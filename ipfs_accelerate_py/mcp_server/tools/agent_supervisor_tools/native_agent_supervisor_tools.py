@@ -4,6 +4,12 @@ Registration is deliberately static and side-effect free.  A control service
 is resolved only when a tool is invoked; listing categories, tools, or schemas
 does not inspect a repository, initialize an optional provider, or start a
 supervisor process.
+
+Prompt workflow and rescue operations (``workflow_preview``,
+``workflow_materialize``, ``restart``, ``rescue_preview``, ``rescue``) are
+published from the shared closed catalog only.  MCP tool names, descriptions,
+and caller-supplied paths never become authorization; server-configured
+repository and state allowlists remain fail-closed at invocation time.
 """
 
 from __future__ import annotations
