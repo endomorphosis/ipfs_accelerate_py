@@ -4437,7 +4437,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-155 Unify incident diagnosis and bounded programmatic recovery
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-lifecycle-recovery
 - Depends on: ASI-154
