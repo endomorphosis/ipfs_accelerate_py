@@ -4233,7 +4233,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-143 Build a bounded content-addressed prompt directory scanner
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-workflow-contracts
 - Depends on: ASI-142
