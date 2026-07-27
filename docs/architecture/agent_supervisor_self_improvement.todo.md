@@ -4301,7 +4301,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-147 Add a transactional DuckDB task-source projection
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-task-storage
 - Depends on: ASI-145
