@@ -4386,7 +4386,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-152 Expose prompt workflow and lifecycle rescue through CLI and Python entry points
 
-- Status: pending
+- Status: completed
 - Priority: P1
 - Track: prompt-control-surfaces
 - Depends on: ASI-151
