@@ -151,7 +151,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-006 Monorepo root hygiene pass
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
