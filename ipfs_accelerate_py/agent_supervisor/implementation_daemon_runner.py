@@ -1202,16 +1202,27 @@ def run_portal_implementation_daemon_loop(
 
     parsed = context.parsed
     pass_index = 0
-    while True:
-        pass_context = context.for_pass(pass_index)
-        _run_hooks(hooks, phase="before", context=pass_context, logger=logger)
-        result = daemon.run_once()
-        _run_hooks(hooks, phase="after", context=pass_context, logger=logger)
-        logger.info(pass_complete_message, result)
-        if parsed.once:
-            break
-        pass_index += 1
-        time.sleep(parsed.interval)
+    try:
+        while True:
+            pass_context = context.for_pass(pass_index)
+            _run_hooks(hooks, phase="before", context=pass_context, logger=logger)
+            result = daemon.run_once()
+            _run_hooks(hooks, phase="after", context=pass_context, logger=logger)
+            logger.info(pass_complete_message, result)
+            if parsed.once:
+                break
+            pass_index += 1
+            wait_for_wake = getattr(daemon, "wait_for_wake", None)
+            if callable(wait_for_wake):
+                wait_for_wake(timeout=parsed.interval)
+            else:
+                # Preserve compatibility with daemon implementations which
+                # have not adopted the event-driven wake contract.
+                time.sleep(parsed.interval)
+    finally:
+        close_event_runtime = getattr(daemon, "close_event_runtime", None)
+        if callable(close_event_runtime):
+            close_event_runtime()
 
 
 def run_configured_portal_implementation_daemon(

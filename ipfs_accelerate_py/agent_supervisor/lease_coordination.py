@@ -11,14 +11,16 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
+import secrets
 import sqlite3
 import threading
 import time
 from contextlib import contextmanager
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from functools import wraps
 from pathlib import Path
 from typing import Any, Iterator
@@ -44,6 +46,40 @@ COORDINATION_LOCK_TIMEOUT_SECONDS = 30.0
 COORDINATION_DUCKDB_MEMORY_LIMIT = "256MB"
 MAX_PERSISTED_HEARTBEATS_PER_LEASE = 8
 SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
+DISTRIBUTED_INPUT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor/immutable-lane-input@1"
+)
+WORKER_CAPABILITY_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor/worker-capability-receipt@1"
+)
+WORKER_ENVIRONMENT_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor/worker-environment-receipt@1"
+)
+DISTRIBUTED_LANE_DISPATCH_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor/distributed-lane-dispatch@1"
+)
+REMOTE_LANE_RESULT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor/remote-lane-result@1"
+)
+DISTRIBUTED_PUBLICATION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor/distributed-publication@1"
+)
+DISTRIBUTED_QUARANTINE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor/distributed-result-quarantine@1"
+)
+SINGLE_FLIGHT_STORE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.distributed-single-flight@1"
+)
+SINGLE_FLIGHT_OUTCOME_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-single-flight-outcome@1"
+)
+SINGLE_FLIGHT_ATTESTATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-single-flight-attestation@1"
+)
+DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS = 30.0
+DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS = 60.0
+DEFAULT_SINGLE_FLIGHT_POLL_SECONDS = 0.02
+DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES = 256 * 1024
 
 
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
@@ -130,6 +166,277 @@ def profile_g_cid(value: Any) -> str:
     # CIDv1 + dag-json (0x0129 varint) + sha2-256 multihash.
     raw = b"\x01\xa9\x02\x12\x20" + digest
     return "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
+
+
+def _content_digest(value: Any) -> str:
+    """Return the explicit sha256 binding used by distributed envelopes."""
+
+    return "sha256:" + hashlib.sha256(canonical_profile_g_bytes(value)).hexdigest()
+
+
+def _required_text(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be a non-empty string")
+    return value.strip()
+
+
+def _timestamp(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return value
+
+
+def _canonical_mapping(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be a mapping")
+    # The round trip detaches caller-owned mutable containers and verifies the
+    # complete value against the integer-only canonical artifact contract.
+    encoded = canonical_profile_g_bytes(dict(value))
+    decoded = json.loads(encoded)
+    assert isinstance(decoded, dict)
+    return decoded
+
+
+def _record_body(payload: Mapping[str, Any], *identity_fields: str) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key not in identity_fields and value not in (None, "")
+    }
+
+
+@dataclass(frozen=True)
+class ImmutableLaneInputArtifact:
+    """Content-addressed, immutable input handed to a remote lane."""
+
+    repository_id: str
+    task_cid: str
+    payload: Mapping[str, Any]
+    created_at_ms: int
+    schema: str = DISTRIBUTED_INPUT_SCHEMA
+    artifact_id: str = ""
+    digest: str = ""
+
+    def __post_init__(self) -> None:
+        repository_id = _required_text(self.repository_id, "repository_id")
+        task_cid = _required_text(self.task_cid, "task_cid")
+        created_at_ms = _timestamp(self.created_at_ms, "created_at_ms")
+        if self.schema != DISTRIBUTED_INPUT_SCHEMA:
+            raise ValueError("unsupported immutable lane input schema")
+        payload = _canonical_mapping(self.payload, "payload")
+        body = {
+            "schema": self.schema,
+            "repository_id": repository_id,
+            "task_cid": task_cid,
+            "payload": payload,
+            "created_at_ms": created_at_ms,
+        }
+        artifact_id = profile_g_cid(body)
+        digest = _content_digest(body)
+        if self.artifact_id and self.artifact_id != artifact_id:
+            raise ValueError("immutable lane input artifact_id does not match content")
+        if self.digest and self.digest != digest:
+            raise ValueError("immutable lane input digest does not match content")
+        object.__setattr__(self, "repository_id", repository_id)
+        object.__setattr__(self, "task_cid", task_cid)
+        object.__setattr__(self, "payload", payload)
+        object.__setattr__(self, "artifact_id", artifact_id)
+        object.__setattr__(self, "digest", digest)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "repository_id": self.repository_id,
+            "task_cid": self.task_cid,
+            "payload": dict(self.payload),
+            "created_at_ms": self.created_at_ms,
+            "artifact_id": self.artifact_id,
+            "digest": self.digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> ImmutableLaneInputArtifact:
+        return cls(
+            repository_id=value.get("repository_id", ""),
+            task_cid=value.get("task_cid", ""),
+            payload=value.get("payload", {}),
+            created_at_ms=value.get("created_at_ms", 0),
+            schema=value.get("schema", DISTRIBUTED_INPUT_SCHEMA),
+            artifact_id=value.get("artifact_id", ""),
+            digest=value.get("digest", ""),
+        )
+
+
+@dataclass(frozen=True)
+class WorkerCapabilityReceipt:
+    """Expiring declaration of the exact capabilities offered by one worker."""
+
+    worker_id: str
+    capabilities: tuple[str, ...]
+    issued_at_ms: int
+    expires_at_ms: int
+    capability_revision: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    schema: str = WORKER_CAPABILITY_RECEIPT_SCHEMA
+    receipt_id: str = ""
+    digest: str = ""
+
+    def __post_init__(self) -> None:
+        worker_id = _required_text(self.worker_id, "worker_id")
+        issued = _timestamp(self.issued_at_ms, "issued_at_ms")
+        expires = _timestamp(self.expires_at_ms, "expires_at_ms")
+        if expires <= issued:
+            raise ValueError("capability receipt must expire after it is issued")
+        if self.schema != WORKER_CAPABILITY_RECEIPT_SCHEMA:
+            raise ValueError("unsupported worker capability receipt schema")
+        if isinstance(self.capabilities, str):
+            raise ValueError("capabilities must be an iterable of strings")
+        capabilities = tuple(
+            sorted({_required_text(item, "capability") for item in self.capabilities})
+        )
+        if not capabilities:
+            raise ValueError("capability receipt must declare at least one capability")
+        revision = str(self.capability_revision or "")
+        metadata = _canonical_mapping(self.metadata, "metadata")
+        body = {
+            "schema": self.schema,
+            "worker_id": worker_id,
+            "capabilities": list(capabilities),
+            "issued_at_ms": issued,
+            "expires_at_ms": expires,
+            "capability_revision": revision,
+            "metadata": metadata,
+        }
+        receipt_id = profile_g_cid(body)
+        digest = _content_digest(body)
+        if self.receipt_id and self.receipt_id != receipt_id:
+            raise ValueError("capability receipt_id does not match content")
+        if self.digest and self.digest != digest:
+            raise ValueError("capability receipt digest does not match content")
+        object.__setattr__(self, "worker_id", worker_id)
+        object.__setattr__(self, "capabilities", capabilities)
+        object.__setattr__(self, "capability_revision", revision)
+        object.__setattr__(self, "metadata", metadata)
+        object.__setattr__(self, "receipt_id", receipt_id)
+        object.__setattr__(self, "digest", digest)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "worker_id": self.worker_id,
+            "capabilities": list(self.capabilities),
+            "issued_at_ms": self.issued_at_ms,
+            "expires_at_ms": self.expires_at_ms,
+            "capability_revision": self.capability_revision,
+            "metadata": dict(self.metadata),
+            "receipt_id": self.receipt_id,
+            "digest": self.digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> WorkerCapabilityReceipt:
+        return cls(
+            worker_id=value.get("worker_id", ""),
+            capabilities=tuple(value.get("capabilities", ())),
+            issued_at_ms=value.get("issued_at_ms", 0),
+            expires_at_ms=value.get("expires_at_ms", 0),
+            capability_revision=value.get("capability_revision", ""),
+            metadata=value.get("metadata", {}),
+            schema=value.get("schema", WORKER_CAPABILITY_RECEIPT_SCHEMA),
+            receipt_id=value.get("receipt_id", ""),
+            digest=value.get("digest", ""),
+        )
+
+    def validate_at(self, now_ms: int) -> None:
+        now = _timestamp(now_ms, "now_ms")
+        if now < self.issued_at_ms:
+            raise ValueError("capability receipt is not yet valid")
+        if now >= self.expires_at_ms:
+            raise ValueError("capability receipt has expired")
+
+
+@dataclass(frozen=True)
+class WorkerEnvironmentReceipt:
+    """Expiring environment identity bound to one worker capability receipt."""
+
+    worker_id: str
+    environment_id: str
+    capability_receipt_id: str
+    issued_at_ms: int
+    expires_at_ms: int
+    attributes: Mapping[str, Any] = field(default_factory=dict)
+    schema: str = WORKER_ENVIRONMENT_RECEIPT_SCHEMA
+    receipt_id: str = ""
+    digest: str = ""
+
+    def __post_init__(self) -> None:
+        worker_id = _required_text(self.worker_id, "worker_id")
+        environment_id = _required_text(self.environment_id, "environment_id")
+        capability_receipt_id = _required_text(
+            self.capability_receipt_id, "capability_receipt_id"
+        )
+        issued = _timestamp(self.issued_at_ms, "issued_at_ms")
+        expires = _timestamp(self.expires_at_ms, "expires_at_ms")
+        if expires <= issued:
+            raise ValueError("environment receipt must expire after it is issued")
+        if self.schema != WORKER_ENVIRONMENT_RECEIPT_SCHEMA:
+            raise ValueError("unsupported worker environment receipt schema")
+        attributes = _canonical_mapping(self.attributes, "attributes")
+        body = {
+            "schema": self.schema,
+            "worker_id": worker_id,
+            "environment_id": environment_id,
+            "capability_receipt_id": capability_receipt_id,
+            "issued_at_ms": issued,
+            "expires_at_ms": expires,
+            "attributes": attributes,
+        }
+        receipt_id = profile_g_cid(body)
+        digest = _content_digest(body)
+        if self.receipt_id and self.receipt_id != receipt_id:
+            raise ValueError("environment receipt_id does not match content")
+        if self.digest and self.digest != digest:
+            raise ValueError("environment receipt digest does not match content")
+        object.__setattr__(self, "worker_id", worker_id)
+        object.__setattr__(self, "environment_id", environment_id)
+        object.__setattr__(self, "capability_receipt_id", capability_receipt_id)
+        object.__setattr__(self, "attributes", attributes)
+        object.__setattr__(self, "receipt_id", receipt_id)
+        object.__setattr__(self, "digest", digest)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "worker_id": self.worker_id,
+            "environment_id": self.environment_id,
+            "capability_receipt_id": self.capability_receipt_id,
+            "issued_at_ms": self.issued_at_ms,
+            "expires_at_ms": self.expires_at_ms,
+            "attributes": dict(self.attributes),
+            "receipt_id": self.receipt_id,
+            "digest": self.digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> WorkerEnvironmentReceipt:
+        return cls(
+            worker_id=value.get("worker_id", ""),
+            environment_id=value.get("environment_id", ""),
+            capability_receipt_id=value.get("capability_receipt_id", ""),
+            issued_at_ms=value.get("issued_at_ms", 0),
+            expires_at_ms=value.get("expires_at_ms", 0),
+            attributes=value.get("attributes", {}),
+            schema=value.get("schema", WORKER_ENVIRONMENT_RECEIPT_SCHEMA),
+            receipt_id=value.get("receipt_id", ""),
+            digest=value.get("digest", ""),
+        )
+
+    def validate_at(self, now_ms: int) -> None:
+        now = _timestamp(now_ms, "now_ms")
+        if now < self.issued_at_ms:
+            raise ValueError("environment receipt is not yet valid")
+        if now >= self.expires_at_ms:
+            raise ValueError("environment receipt has expired")
 
 
 def _link(value: Any) -> str:
@@ -452,6 +759,218 @@ class LeaseGrant:
 
 
 @dataclass(frozen=True)
+class DistributedLaneDispatch:
+    """A remote execution assignment bound to one accepted fencing epoch."""
+
+    grant: LeaseGrant
+    input_artifact_cid: str
+    capability_receipt_cid: str
+    environment_receipt_cid: str
+    dispatch_cid: str
+    worker_id: str
+    repository_id: str
+    required_capabilities: tuple[str, ...] = ()
+    lease_duration_ms: int = 60_000
+    cancellation_cid: str | None = None
+    schema: str = DISTRIBUTED_LANE_DISPATCH_SCHEMA
+
+    @property
+    def task_cid(self) -> str:
+        return self.grant.task_cid
+
+    @property
+    def logical_epoch(self) -> int:
+        return self.grant.logical_epoch
+
+    @property
+    def fencing_epoch(self) -> int:
+        return self.grant.logical_epoch
+
+    @property
+    def fencing_token(self) -> int:
+        return self.grant.fencing_token
+
+    @property
+    def lease_expires_at_ms(self) -> int:
+        return self.grant.lease_expires_at_ms
+
+    @property
+    def cancelled(self) -> bool:
+        return self.cancellation_cid is not None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "dispatch_cid": self.dispatch_cid,
+            "repository_id": self.repository_id,
+            "worker_id": self.worker_id,
+            "task_cid": self.grant.task_cid,
+            "input_artifact_cid": self.input_artifact_cid,
+            "artifact_id": self.input_artifact_cid,
+            "capability_receipt_cid": self.capability_receipt_cid,
+            "capability_receipt_id": self.capability_receipt_cid,
+            "environment_receipt_cid": self.environment_receipt_cid,
+            "environment_receipt_id": self.environment_receipt_cid,
+            "claim_cid": self.grant.claim_cid,
+            "logical_epoch": self.grant.logical_epoch,
+            "fencing_epoch": self.grant.logical_epoch,
+            "fencing_token": self.grant.fencing_token,
+            "lease_expires_at_ms": self.grant.lease_expires_at_ms,
+            "lease_duration_ms": self.lease_duration_ms,
+            "required_capabilities": list(self.required_capabilities),
+            "cancellation_cid": self.cancellation_cid,
+            "cancelled": self.cancelled,
+            "grant": self.grant.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class RemoteLaneResult:
+    """Canonical remote result envelope presented at the lease boundary."""
+
+    repository_id: str
+    worker_id: str
+    task_cid: str
+    artifact_id: str
+    candidate_commit: str
+    capability_receipt_id: str
+    environment_receipt_id: str
+    claim_cid: str
+    logical_epoch: int
+    fencing_token: int
+    output: Mapping[str, Any]
+    created_at_ms: int
+    status: str = "succeeded"
+    failure_class: str = "none"
+    cancelled: bool = False
+    request_id: str = ""
+    publication_id: str = ""
+    schema: str = REMOTE_LANE_RESULT_SCHEMA
+    digest: str = ""
+
+    def __post_init__(self) -> None:
+        if self.schema != REMOTE_LANE_RESULT_SCHEMA:
+            raise ValueError("unsupported remote lane result schema")
+        text = {
+            "repository_id": _required_text(self.repository_id, "repository_id"),
+            "worker_id": _required_text(self.worker_id, "worker_id"),
+            "task_cid": _required_text(self.task_cid, "task_cid"),
+            "artifact_id": _required_text(self.artifact_id, "artifact_id"),
+            "capability_receipt_id": _required_text(
+                self.capability_receipt_id, "capability_receipt_id"
+            ),
+            "environment_receipt_id": _required_text(
+                self.environment_receipt_id, "environment_receipt_id"
+            ),
+            "claim_cid": _required_text(self.claim_cid, "claim_cid"),
+        }
+        candidate_commit = str(self.candidate_commit or "").strip()
+        status = str(self.status or "").strip().lower()
+        if status not in {"succeeded", "failed", "cancelled"}:
+            raise ValueError("remote result status must be succeeded, failed, or cancelled")
+        cancelled = bool(self.cancelled or status == "cancelled")
+        if status == "succeeded" and not cancelled and not candidate_commit:
+            raise ValueError("successful remote result requires candidate_commit")
+        epoch = _timestamp(self.logical_epoch, "logical_epoch")
+        token = _timestamp(self.fencing_token, "fencing_token")
+        if epoch < 1 or token < 1:
+            raise ValueError("remote result fencing values must be positive")
+        created = _timestamp(self.created_at_ms, "created_at_ms")
+        output = _canonical_mapping(self.output, "output")
+        failure_class = str(self.failure_class or "none")[:128]
+        request_id = str(self.request_id or "").strip()
+        body = {
+            "schema": self.schema,
+            **text,
+            "candidate_commit": candidate_commit,
+            "logical_epoch": epoch,
+            "fencing_token": token,
+            "output": output,
+            "created_at_ms": created,
+            "status": "cancelled" if cancelled else status,
+            "failure_class": failure_class,
+            "cancelled": cancelled,
+        }
+        if not request_id:
+            request_id = profile_g_cid({"remote_result_request": body})
+        body["request_id"] = request_id
+        publication_id = profile_g_cid(body)
+        digest = _content_digest(body)
+        if self.publication_id and self.publication_id != publication_id:
+            raise ValueError("remote publication_id does not match content")
+        if self.digest and self.digest != digest:
+            raise ValueError("remote result digest does not match content")
+        for name, value in text.items():
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "candidate_commit", candidate_commit)
+        object.__setattr__(self, "logical_epoch", epoch)
+        object.__setattr__(self, "fencing_token", token)
+        object.__setattr__(self, "output", output)
+        object.__setattr__(self, "status", "cancelled" if cancelled else status)
+        object.__setattr__(self, "failure_class", failure_class)
+        object.__setattr__(self, "cancelled", cancelled)
+        object.__setattr__(self, "request_id", request_id)
+        object.__setattr__(self, "publication_id", publication_id)
+        object.__setattr__(self, "digest", digest)
+
+    @property
+    def fencing_epoch(self) -> int:
+        return self.logical_epoch
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "repository_id": self.repository_id,
+            "request_id": self.request_id,
+            "publication_id": self.publication_id,
+            "worker_id": self.worker_id,
+            "task_cid": self.task_cid,
+            "artifact_id": self.artifact_id,
+            "candidate_commit": self.candidate_commit,
+            "capability_receipt_id": self.capability_receipt_id,
+            "environment_receipt_id": self.environment_receipt_id,
+            "claim_cid": self.claim_cid,
+            "logical_epoch": self.logical_epoch,
+            "fencing_epoch": self.logical_epoch,
+            "fencing_token": self.fencing_token,
+            "output": dict(self.output),
+            "created_at_ms": self.created_at_ms,
+            "status": self.status,
+            "failure_class": self.failure_class,
+            "cancelled": self.cancelled,
+            "digest": self.digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> RemoteLaneResult:
+        return cls(
+            repository_id=value.get("repository_id", ""),
+            worker_id=value.get("worker_id", ""),
+            task_cid=value.get("task_cid", ""),
+            artifact_id=value.get("artifact_id", value.get("input_artifact_cid", "")),
+            candidate_commit=value.get("candidate_commit", ""),
+            capability_receipt_id=value.get(
+                "capability_receipt_id", value.get("capability_receipt_cid", "")
+            ),
+            environment_receipt_id=value.get(
+                "environment_receipt_id", value.get("environment_receipt_cid", "")
+            ),
+            claim_cid=value.get("claim_cid", ""),
+            logical_epoch=value.get("logical_epoch", value.get("fencing_epoch", 0)),
+            fencing_token=value.get("fencing_token", 0),
+            output=value.get("output", {}),
+            created_at_ms=value.get("created_at_ms", 0),
+            status=value.get("status", "succeeded"),
+            failure_class=value.get("failure_class", "none"),
+            cancelled=value.get("cancelled", False),
+            request_id=value.get("request_id", ""),
+            publication_id=value.get("publication_id", ""),
+            schema=value.get("schema", REMOTE_LANE_RESULT_SCHEMA),
+            digest=value.get("digest", ""),
+        )
+
+
+@dataclass(frozen=True)
 class TaskLeaseState:
     """Authoritative scheduler projection for one registered task.
 
@@ -608,6 +1127,31 @@ class LeaseCoordinator:
                   subgoal_cid TEXT NOT NULL, claim_cid TEXT NOT NULL, fencing_token BIGINT NOT NULL,
                   payload_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS distributed_inputs (
+                  artifact_id TEXT PRIMARY KEY, task_cid TEXT NOT NULL,
+                  repository_id TEXT NOT NULL, payload_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS worker_capability_receipts (
+                  receipt_id TEXT PRIMARY KEY, worker_id TEXT NOT NULL,
+                  expires_at_ms BIGINT NOT NULL, payload_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS worker_environment_receipts (
+                  receipt_id TEXT PRIMARY KEY, worker_id TEXT NOT NULL,
+                  capability_receipt_id TEXT NOT NULL, expires_at_ms BIGINT NOT NULL,
+                  payload_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS distributed_dispatches (
+                  dispatch_cid TEXT PRIMARY KEY, task_cid TEXT NOT NULL,
+                  claim_cid TEXT NOT NULL, worker_id TEXT NOT NULL,
+                  fencing_token BIGINT NOT NULL, cancellation_cid TEXT,
+                  payload_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS distributed_publications (
+                  publication_id TEXT PRIMARY KEY, dispatch_cid TEXT NOT NULL,
+                  task_cid TEXT NOT NULL, disposition TEXT NOT NULL,
+                  reason TEXT NOT NULL, created_at_ms BIGINT NOT NULL,
+                  payload_json TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS coordination_metadata (
                   metadata_key TEXT PRIMARY KEY, value_json TEXT NOT NULL
                 );
@@ -615,6 +1159,8 @@ class LeaseCoordinator:
                   ON task_dependencies(dependency_task_cid);
                 CREATE INDEX IF NOT EXISTS receipts_task_order_idx
                   ON receipts(task_cid, receipt_cid);
+                CREATE INDEX IF NOT EXISTS distributed_publications_task_idx
+                  ON distributed_publications(task_cid, created_at_ms);
                 """
             )
             # REF-036 databases remain valid after migration. Keep schema
@@ -1827,6 +2373,340 @@ class LeaseCoordinator:
                 self._connection.rollback()
                 raise
 
+    @staticmethod
+    def _distributed_input(
+        value: ImmutableLaneInputArtifact | Mapping[str, Any],
+    ) -> ImmutableLaneInputArtifact:
+        if isinstance(value, ImmutableLaneInputArtifact):
+            # Reconstructing verifies that even a caller-mutated nested mapping
+            # still matches the content identity originally assigned to it.
+            return ImmutableLaneInputArtifact.from_dict(value.to_dict())
+        if isinstance(value, Mapping):
+            return ImmutableLaneInputArtifact.from_dict(value)
+        raise ValueError("input_artifact must be an ImmutableLaneInputArtifact or mapping")
+
+    @staticmethod
+    def _capability_receipt(
+        value: WorkerCapabilityReceipt | Mapping[str, Any],
+    ) -> WorkerCapabilityReceipt:
+        if isinstance(value, WorkerCapabilityReceipt):
+            return WorkerCapabilityReceipt.from_dict(value.to_dict())
+        if isinstance(value, Mapping):
+            return WorkerCapabilityReceipt.from_dict(value)
+        raise ValueError("capability_receipt must be a WorkerCapabilityReceipt or mapping")
+
+    @staticmethod
+    def _environment_receipt(
+        value: WorkerEnvironmentReceipt | Mapping[str, Any],
+    ) -> WorkerEnvironmentReceipt:
+        if isinstance(value, WorkerEnvironmentReceipt):
+            return WorkerEnvironmentReceipt.from_dict(value.to_dict())
+        if isinstance(value, Mapping):
+            return WorkerEnvironmentReceipt.from_dict(value)
+        raise ValueError("environment_receipt must be a WorkerEnvironmentReceipt or mapping")
+
+    @staticmethod
+    def _store_distributed_records(
+        connection: _DuckConnection,
+        input_artifact: ImmutableLaneInputArtifact,
+        capability_receipt: WorkerCapabilityReceipt,
+        environment_receipt: WorkerEnvironmentReceipt,
+    ) -> None:
+        records = (
+            (
+                "distributed_inputs",
+                "artifact_id",
+                input_artifact.artifact_id,
+                (
+                    input_artifact.artifact_id,
+                    input_artifact.task_cid,
+                    input_artifact.repository_id,
+                    canonical_profile_g_bytes(input_artifact.to_dict()).decode("utf-8"),
+                ),
+                "INSERT INTO distributed_inputs VALUES(?,?,?,?)",
+            ),
+            (
+                "worker_capability_receipts",
+                "receipt_id",
+                capability_receipt.receipt_id,
+                (
+                    capability_receipt.receipt_id,
+                    capability_receipt.worker_id,
+                    capability_receipt.expires_at_ms,
+                    canonical_profile_g_bytes(capability_receipt.to_dict()).decode("utf-8"),
+                ),
+                "INSERT INTO worker_capability_receipts VALUES(?,?,?,?)",
+            ),
+            (
+                "worker_environment_receipts",
+                "receipt_id",
+                environment_receipt.receipt_id,
+                (
+                    environment_receipt.receipt_id,
+                    environment_receipt.worker_id,
+                    environment_receipt.capability_receipt_id,
+                    environment_receipt.expires_at_ms,
+                    canonical_profile_g_bytes(environment_receipt.to_dict()).decode("utf-8"),
+                ),
+                "INSERT INTO worker_environment_receipts VALUES(?,?,?,?,?)",
+            ),
+        )
+        for table, id_column, identity, values, insert in records:
+            existing = connection.execute(
+                f"SELECT payload_json FROM {table} WHERE {id_column}=?",
+                (identity,),
+            ).fetchone()
+            payload_json = str(values[-1])
+            if existing is not None:
+                if str(existing["payload_json"]) != payload_json:
+                    raise ValueError(
+                        f"content identity collision in {table}: {identity}"
+                    )
+                continue
+            connection.execute(insert, values)
+
+    @staticmethod
+    def _validate_distributed_bindings(
+        *,
+        grant: LeaseGrant,
+        input_artifact: ImmutableLaneInputArtifact,
+        capability_receipt: WorkerCapabilityReceipt,
+        environment_receipt: WorkerEnvironmentReceipt,
+        worker_id: str,
+        repository_id: str,
+        required_capabilities: Iterable[str],
+        now: int,
+    ) -> tuple[str, ...]:
+        worker = _required_text(worker_id, "worker_id")
+        repository = _required_text(repository_id, "repository_id")
+        if input_artifact.task_cid != grant.task_cid:
+            raise ValueError("immutable input is bound to a foreign task")
+        if input_artifact.repository_id != repository:
+            raise ValueError("immutable input is bound to a foreign repository")
+        if capability_receipt.worker_id != worker:
+            raise ValueError("capability receipt is bound to a foreign worker")
+        if environment_receipt.worker_id != worker:
+            raise ValueError("environment receipt is bound to a foreign worker")
+        if environment_receipt.capability_receipt_id != capability_receipt.receipt_id:
+            raise ValueError("environment receipt is not bound to the capability receipt")
+        capability_receipt.validate_at(now)
+        environment_receipt.validate_at(now)
+        if capability_receipt.expires_at_ms < grant.lease_expires_at_ms:
+            raise ValueError("capability receipt expires before the accepted lease")
+        if environment_receipt.expires_at_ms < grant.lease_expires_at_ms:
+            raise ValueError("environment receipt expires before the accepted lease")
+        required = tuple(
+            sorted({_required_text(item, "required capability") for item in required_capabilities})
+        )
+        missing = sorted(set(required) - set(capability_receipt.capabilities))
+        if missing:
+            raise ValueError(f"worker is missing required capabilities: {', '.join(missing)}")
+        return required
+
+    @_coordinator_operation
+    def register_distributed_input(
+        self,
+        artifact: ImmutableLaneInputArtifact | Mapping[str, Any],
+    ) -> ImmutableLaneInputArtifact:
+        """Persist one verified immutable remote input idempotently."""
+
+        normalized = self._distributed_input(artifact)
+        with self._lock, self._connection:
+            # The paired receipt arguments are intentionally absent here; this
+            # operation supports pre-staging immutable inputs before selection.
+            existing = self._connection.execute(
+                "SELECT payload_json FROM distributed_inputs WHERE artifact_id=?",
+                (normalized.artifact_id,),
+            ).fetchone()
+            payload_json = canonical_profile_g_bytes(normalized.to_dict()).decode("utf-8")
+            if existing is not None and str(existing["payload_json"]) != payload_json:
+                raise ValueError("immutable lane input identity collision")
+            if existing is None:
+                self._connection.execute(
+                    "INSERT INTO distributed_inputs VALUES(?,?,?,?)",
+                    (
+                        normalized.artifact_id,
+                        normalized.task_cid,
+                        normalized.repository_id,
+                        payload_json,
+                    ),
+                )
+        return normalized
+
+    @_coordinator_operation
+    def register_worker_capability_receipt(
+        self,
+        receipt: WorkerCapabilityReceipt | Mapping[str, Any],
+        *,
+        now_ms: int | None = None,
+    ) -> WorkerCapabilityReceipt:
+        """Persist a current, content-valid worker capability receipt."""
+
+        normalized = self._capability_receipt(receipt)
+        normalized.validate_at(self._clock_ms() if now_ms is None else int(now_ms))
+        payload_json = canonical_profile_g_bytes(normalized.to_dict()).decode("utf-8")
+        with self._lock, self._connection:
+            existing = self._connection.execute(
+                "SELECT payload_json FROM worker_capability_receipts WHERE receipt_id=?",
+                (normalized.receipt_id,),
+            ).fetchone()
+            if existing is not None and str(existing["payload_json"]) != payload_json:
+                raise ValueError("worker capability receipt identity collision")
+            if existing is None:
+                self._connection.execute(
+                    "INSERT INTO worker_capability_receipts VALUES(?,?,?,?)",
+                    (
+                        normalized.receipt_id,
+                        normalized.worker_id,
+                        normalized.expires_at_ms,
+                        payload_json,
+                    ),
+                )
+        return normalized
+
+    @_coordinator_operation
+    def register_worker_environment_receipt(
+        self,
+        receipt: WorkerEnvironmentReceipt | Mapping[str, Any],
+        *,
+        capability_receipt: WorkerCapabilityReceipt | Mapping[str, Any] | None = None,
+        now_ms: int | None = None,
+    ) -> WorkerEnvironmentReceipt:
+        """Persist an environment receipt after checking its worker/capability binding."""
+
+        normalized = self._environment_receipt(receipt)
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        normalized.validate_at(now)
+        with self._lock, self._connection:
+            if capability_receipt is None:
+                row = self._connection.execute(
+                    "SELECT payload_json FROM worker_capability_receipts WHERE receipt_id=?",
+                    (normalized.capability_receipt_id,),
+                ).fetchone()
+                if row is None:
+                    raise ValueError("environment receipt references an unknown capability receipt")
+                capability = WorkerCapabilityReceipt.from_dict(json.loads(row["payload_json"]))
+            else:
+                capability = self._capability_receipt(capability_receipt)
+            capability.validate_at(now)
+            if capability.receipt_id != normalized.capability_receipt_id:
+                raise ValueError("environment receipt capability binding does not match")
+            if capability.worker_id != normalized.worker_id:
+                raise ValueError("environment and capability receipts name different workers")
+            payload_json = canonical_profile_g_bytes(normalized.to_dict()).decode("utf-8")
+            existing = self._connection.execute(
+                "SELECT payload_json FROM worker_environment_receipts WHERE receipt_id=?",
+                (normalized.receipt_id,),
+            ).fetchone()
+            if existing is not None and str(existing["payload_json"]) != payload_json:
+                raise ValueError("worker environment receipt identity collision")
+            if existing is None:
+                self._connection.execute(
+                    "INSERT INTO worker_environment_receipts VALUES(?,?,?,?,?)",
+                    (
+                        normalized.receipt_id,
+                        normalized.worker_id,
+                        normalized.capability_receipt_id,
+                        normalized.expires_at_ms,
+                        payload_json,
+                    ),
+                )
+        return normalized
+
+    @_coordinator_operation
+    def dispatch_remote(
+        self,
+        grant: LeaseGrant,
+        *,
+        input_artifact: ImmutableLaneInputArtifact | Mapping[str, Any],
+        capability_receipt: WorkerCapabilityReceipt | Mapping[str, Any],
+        environment_receipt: WorkerEnvironmentReceipt | Mapping[str, Any],
+        worker_id: str | None = None,
+        repository_id: str = "",
+        required_capabilities: Iterable[str] = (),
+        now_ms: int | None = None,
+    ) -> DistributedLaneDispatch:
+        """Bind immutable work and expiring worker receipts to an accepted lease."""
+
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        artifact = self._distributed_input(input_artifact)
+        capability = self._capability_receipt(capability_receipt)
+        environment = self._environment_receipt(environment_receipt)
+        worker = str(worker_id or capability.worker_id)
+        repository = str(repository_id or artifact.repository_id)
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._current(connection, grant, now)
+                required = self._validate_distributed_bindings(
+                    grant=grant,
+                    input_artifact=artifact,
+                    capability_receipt=capability,
+                    environment_receipt=environment,
+                    worker_id=worker,
+                    repository_id=repository,
+                    required_capabilities=required_capabilities,
+                    now=now,
+                )
+                self._store_distributed_records(
+                    connection, artifact, capability, environment
+                )
+                body = {
+                    "schema": DISTRIBUTED_LANE_DISPATCH_SCHEMA,
+                    "created_at_ms": now,
+                    "repository_id": repository,
+                    "worker_id": worker,
+                    "task_cid": grant.task_cid,
+                    "input_artifact_cid": artifact.artifact_id,
+                    "capability_receipt_cid": capability.receipt_id,
+                    "environment_receipt_cid": environment.receipt_id,
+                    "claim_cid": grant.claim_cid,
+                    "logical_epoch": grant.logical_epoch,
+                    "fencing_token": grant.fencing_token,
+                    "lease_expires_at_ms": grant.lease_expires_at_ms,
+                    "required_capabilities": list(required),
+                }
+                dispatch_cid = self._put_artifact(
+                    connection, "DistributedLaneDispatch", body
+                )
+                dispatch = DistributedLaneDispatch(
+                    grant=grant,
+                    input_artifact_cid=artifact.artifact_id,
+                    capability_receipt_cid=capability.receipt_id,
+                    environment_receipt_cid=environment.receipt_id,
+                    dispatch_cid=dispatch_cid,
+                    worker_id=worker,
+                    repository_id=repository,
+                    required_capabilities=required,
+                    lease_duration_ms=grant.lease_expires_at_ms - now,
+                )
+                payload_json = canonical_profile_g_bytes(dispatch.to_dict()).decode("utf-8")
+                previous = connection.execute(
+                    "SELECT payload_json FROM distributed_dispatches WHERE dispatch_cid=?",
+                    (dispatch_cid,),
+                ).fetchone()
+                if previous is not None and str(previous["payload_json"]) != payload_json:
+                    raise ValueError("distributed dispatch identity collision")
+                if previous is None:
+                    connection.execute(
+                        "INSERT INTO distributed_dispatches VALUES(?,?,?,?,?,?,?)",
+                        (
+                            dispatch_cid,
+                            grant.task_cid,
+                            grant.claim_cid,
+                            worker,
+                            grant.fencing_token,
+                            None,
+                            payload_json,
+                        ),
+                    )
+                connection.commit()
+                return dispatch
+            except Exception:
+                connection.rollback()
+                raise
+
     @_coordinator_operation
     def renew(self, grant: LeaseGrant, *, requested_lease_ms: int = 60_000, now_ms: int | None = None) -> LeaseGrant:
         duration = int(requested_lease_ms)
@@ -2088,6 +2968,95 @@ class LeaseCoordinator:
         )
         return items[0] if items else None
 
+    def _receipt_in_transaction(
+        self,
+        connection: _DuckConnection,
+        row: _DuckRow,
+        grant: LeaseGrant,
+        *,
+        status: str,
+        output: Mapping[str, Any] | None,
+        failure_class: str,
+        started_at_ms: int | None,
+        now: int,
+    ) -> dict[str, Any]:
+        """Write one terminal receipt inside a caller-owned fenced transaction."""
+
+        if status == "succeeded" and output is None:
+            raise ValueError("successful receipt requires output")
+        normalized_output = (
+            _canonical_mapping(output, "output") if output is not None else None
+        )
+        output_cid = _link(normalized_output) if normalized_output is not None else None
+        claim_row = connection.execute(
+            "SELECT payload_json FROM artifacts WHERE cid=?", (grant.claim_cid,)
+        ).fetchone()
+        if claim_row is None:
+            raise ValueError("accepted claim artifact is missing")
+        claim = json.loads(claim_row[0])
+        payload = {
+            "schema": "mcp++/profile-g/task-receipt@1",
+            "created_at_ms": now,
+            "parents": [row["resolution_cid"]],
+            "correlation_id": claim["correlation_id"],
+            "task_cid": grant.task_cid,
+            "claim_cid": grant.claim_cid,
+            "resolution_cid": row["resolution_cid"],
+            "fencing_token": grant.fencing_token,
+            "profile_b_receipt_cid": _link(
+                {
+                    "task": grant.task_cid,
+                    "token": grant.fencing_token,
+                    "finished": now,
+                }
+            ),
+            "output_cid": output_cid,
+            "status": status,
+            "failure_class": failure_class,
+            "attempt": grant.attempt,
+            "started_at_ms": int(
+                started_at_ms
+                if started_at_ms is not None
+                else row["started_at_ms"]
+            ),
+            "finished_at_ms": now,
+            "resource_use_cid": _link(
+                {"heartbeats": self._heartbeat_count(connection, grant)}
+            ),
+            "provider": "ipfs_accelerate_py",
+            "provider_version": PROVIDER_VERSION,
+            "next_state": "complete" if status == "succeeded" else "ready",
+        }
+        cid = self._put_artifact(connection, "TaskReceipt", payload)
+        connection.execute(
+            "INSERT INTO receipts VALUES(?,?,?,?,?,?,?)",
+            (
+                cid,
+                grant.task_cid,
+                grant.goal_cid,
+                grant.subgoal_cid,
+                grant.claim_cid,
+                grant.fencing_token,
+                json.dumps(payload, sort_keys=True),
+            ),
+        )
+        terminal = "completed" if status == "succeeded" else "released"
+        release_reason = (
+            None
+            if status == "succeeded"
+            else f"receipt:{status}:{failure_class}"[:256]
+        )
+        connection.execute(
+            "UPDATE leases SET state=?, release_reason=? WHERE task_cid=?",
+            (terminal, release_reason, grant.task_cid),
+        )
+        return {
+            "receipt_cid": cid,
+            "goal_cid": grant.goal_cid,
+            "subgoal_cid": grant.subgoal_cid,
+            "receipt": payload,
+        }
+
     @_coordinator_operation
     def receipt(
         self, grant: LeaseGrant, *, status: str, output: Mapping[str, Any] | None = None,
@@ -2109,32 +3078,638 @@ class LeaseCoordinator:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 row = self._current(conn, grant, now)
-                output_cid = _link(dict(output or {})) if output is not None else None
-                payload = {
-                    "schema": "mcp++/profile-g/task-receipt@1", "created_at_ms": now, "parents": [row["resolution_cid"]],
-                    "correlation_id": json.loads(conn.execute("SELECT payload_json FROM artifacts WHERE cid=?", (grant.claim_cid,)).fetchone()[0])["correlation_id"],
-                    "task_cid": grant.task_cid, "claim_cid": grant.claim_cid, "resolution_cid": row["resolution_cid"],
-                    "fencing_token": grant.fencing_token, "profile_b_receipt_cid": _link({"task": grant.task_cid, "token": grant.fencing_token, "finished": now}),
-                    "output_cid": output_cid, "status": status, "failure_class": failure_class, "attempt": grant.attempt,
-                    "started_at_ms": int(started_at_ms if started_at_ms is not None else row["started_at_ms"]), "finished_at_ms": now,
-                    "resource_use_cid": _link({"heartbeats": self._heartbeat_count(conn, grant)}), "provider": "ipfs_accelerate_py",
-                    "provider_version": PROVIDER_VERSION, "next_state": "complete" if status == "succeeded" else "ready",
-                }
-                if status == "succeeded" and output is None:
-                    raise ValueError("successful receipt requires output")
-                cid = self._put_artifact(conn, "TaskReceipt", payload)
-                conn.execute("INSERT INTO receipts VALUES(?,?,?,?,?,?,?)", (cid, grant.task_cid, grant.goal_cid, grant.subgoal_cid, grant.claim_cid, grant.fencing_token, json.dumps(payload, sort_keys=True)))
-                terminal = "completed" if status == "succeeded" else "released"
-                release_reason = None if status == "succeeded" else f"receipt:{status}:{failure_class}"[:256]
-                conn.execute(
-                    "UPDATE leases SET state=?, release_reason=? WHERE task_cid=?",
-                    (terminal, release_reason, grant.task_cid),
+                result = self._receipt_in_transaction(
+                    conn,
+                    row,
+                    grant,
+                    status=status,
+                    output=output,
+                    failure_class=failure_class,
+                    started_at_ms=started_at_ms,
+                    now=now,
                 )
                 conn.commit()
-                return {"receipt_cid": cid, "goal_cid": grant.goal_cid, "subgoal_cid": grant.subgoal_cid, "receipt": payload}
+                return result
             except Exception:
                 conn.rollback()
                 raise
+
+    @_coordinator_operation
+    def heartbeat_remote(
+        self,
+        dispatch: DistributedLaneDispatch,
+        *,
+        phase: str = "",
+        progress_millionths: int | None = None,
+        capacity_millionths: int = 0,
+        ttl_ms: int = 15_000,
+        requested_lease_ms: int | None = None,
+        now_ms: int | None = None,
+    ) -> DistributedLaneDispatch:
+        """Heartbeat active remote ownership and return the current grant."""
+
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        if progress_millionths is not None and (
+            isinstance(progress_millionths, bool)
+            or not isinstance(progress_millionths, int)
+            or not 0 <= progress_millionths <= 1_000_000
+        ):
+            raise ValueError("progress_millionths must be in [0, 1000000]")
+        current = self.renew(
+            dispatch.grant,
+            requested_lease_ms=(
+                dispatch.lease_duration_ms
+                if requested_lease_ms is None
+                else int(requested_lease_ms)
+            ),
+            now_ms=now,
+        )
+        detail: dict[str, Any] = {
+            "distributed_dispatch_cid": dispatch.dispatch_cid,
+            "input_artifact_cid": dispatch.input_artifact_cid,
+            "capability_receipt_cid": dispatch.capability_receipt_cid,
+            "environment_receipt_cid": dispatch.environment_receipt_cid,
+        }
+        if progress_millionths is not None:
+            detail["progress_millionths"] = progress_millionths
+        self.heartbeat(
+            current,
+            capacity_millionths=capacity_millionths,
+            ttl_ms=ttl_ms,
+            now_ms=now,
+            active_phase=phase or "remote_execution",
+            provider_id=dispatch.worker_id,
+            detail=detail,
+        )
+        return replace(dispatch, grant=current)
+
+    @_coordinator_operation
+    def cancel_remote(
+        self,
+        dispatch: DistributedLaneDispatch,
+        *,
+        reason: str = "cancelled",
+        now_ms: int | None = None,
+    ) -> DistributedLaneDispatch:
+        """Durably cancel a dispatch without allowing later success publication."""
+
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        cancellation_reason = str(reason or "cancelled")[:256]
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                stored = connection.execute(
+                    "SELECT * FROM distributed_dispatches WHERE dispatch_cid=?",
+                    (dispatch.dispatch_cid,),
+                ).fetchone()
+                if stored is None or str(stored["claim_cid"]) != dispatch.grant.claim_cid:
+                    raise ValueError("unknown or foreign distributed dispatch")
+                if stored["cancellation_cid"]:
+                    connection.commit()
+                    return replace(
+                        dispatch, cancellation_cid=str(stored["cancellation_cid"])
+                    )
+                row = self._current(connection, dispatch.grant, now)
+                payload = {
+                    "schema": "ipfs_accelerate_py.agent_supervisor/distributed-cancellation@1",
+                    "created_at_ms": now,
+                    "dispatch_cid": dispatch.dispatch_cid,
+                    "task_cid": dispatch.task_cid,
+                    "claim_cid": dispatch.grant.claim_cid,
+                    "logical_epoch": dispatch.logical_epoch,
+                    "fencing_token": dispatch.fencing_token,
+                    "reason": cancellation_reason,
+                }
+                cancellation_cid = self._put_artifact(
+                    connection, "DistributedLaneCancellation", payload
+                )
+                resolution_cid = self._put_artifact(
+                    connection,
+                    "ClaimResolution",
+                    self._resolution_payload(row, outcome="cancelled", now=now),
+                )
+                connection.execute(
+                    """UPDATE leases
+                       SET state='released', resolution_cid=?, release_reason=?
+                       WHERE task_cid=? AND claim_cid=? AND fencing_token=?""",
+                    (
+                        resolution_cid,
+                        f"remote_cancelled:{cancellation_reason}"[:256],
+                        dispatch.task_cid,
+                        dispatch.grant.claim_cid,
+                        dispatch.fencing_token,
+                    ),
+                )
+                connection.execute(
+                    "UPDATE distributed_dispatches SET cancellation_cid=? WHERE dispatch_cid=?",
+                    (cancellation_cid, dispatch.dispatch_cid),
+                )
+                connection.commit()
+                return replace(dispatch, cancellation_cid=cancellation_cid)
+            except Exception:
+                connection.rollback()
+                raise
+
+    @staticmethod
+    def _quarantine_safe(value: Any, *, depth: int = 0) -> Any:
+        if depth > 12:
+            return "<depth-limit>"
+        if value is None or isinstance(value, str | bool | int):
+            return value
+        if isinstance(value, float):
+            return {"invalid_float": repr(value)}
+        if isinstance(value, Mapping):
+            return {
+                str(key): LeaseCoordinator._quarantine_safe(child, depth=depth + 1)
+                for key, child in sorted(value.items(), key=lambda item: str(item[0]))
+            }
+        if isinstance(value, (list, tuple, set)):
+            return [
+                LeaseCoordinator._quarantine_safe(child, depth=depth + 1)
+                for child in list(value)[:256]
+            ]
+        return {"unsupported_type": type(value).__name__, "representation": repr(value)[:512]}
+
+    def _quarantine_publication(
+        self,
+        connection: _DuckConnection,
+        dispatch: DistributedLaneDispatch,
+        raw_result: Any,
+        *,
+        reason: str,
+        now: int,
+        publication_id: str = "",
+    ) -> dict[str, Any]:
+        safe_result = self._quarantine_safe(raw_result)
+        raw_digest = _content_digest({"result": safe_result})
+        identity = publication_id or profile_g_cid(
+            {
+                "dispatch_cid": dispatch.dispatch_cid,
+                "reason": reason,
+                "raw_digest": raw_digest,
+            }
+        )
+        payload = {
+            "schema": DISTRIBUTED_QUARANTINE_SCHEMA,
+            "created_at_ms": now,
+            "publication_id": identity,
+            "dispatch_cid": dispatch.dispatch_cid,
+            "repository_id": dispatch.repository_id,
+            "worker_id": dispatch.worker_id,
+            "task_cid": dispatch.task_cid,
+            "artifact_id": dispatch.input_artifact_cid,
+            "claim_cid": dispatch.grant.claim_cid,
+            "logical_epoch": dispatch.logical_epoch,
+            "fencing_epoch": dispatch.logical_epoch,
+            "fencing_token": dispatch.fencing_token,
+            "cancelled": dispatch.cancelled,
+            "reason": str(reason)[:256],
+            "raw_result_digest": raw_digest,
+            "raw_result": safe_result,
+        }
+        quarantine_cid = self._put_artifact(
+            connection, "DistributedResultQuarantine", payload
+        )
+        disposition = {
+            "accepted": False,
+            "quarantined": True,
+            "cancelled": dispatch.cancelled,
+            "duplicate": False,
+            "reason": str(reason)[:256],
+            "publication_id": identity,
+            "quarantine_cid": quarantine_cid,
+            "distributed_publication": {
+                key: value
+                for key, value in payload.items()
+                if key not in {"raw_result"}
+            },
+        }
+        encoded = canonical_profile_g_bytes(disposition).decode("utf-8")
+        previous = connection.execute(
+            "SELECT payload_json FROM distributed_publications WHERE publication_id=?",
+            (identity,),
+        ).fetchone()
+        if previous is None:
+            connection.execute(
+                "INSERT INTO distributed_publications VALUES(?,?,?,?,?,?,?)",
+                (
+                    identity,
+                    dispatch.dispatch_cid,
+                    dispatch.task_cid,
+                    "quarantined",
+                    str(reason)[:256],
+                    now,
+                    encoded,
+                ),
+            )
+        return disposition
+
+    @_coordinator_operation
+    def publish_remote_result(
+        self,
+        dispatch: DistributedLaneDispatch,
+        result: RemoteLaneResult | Mapping[str, Any],
+        *,
+        current_capability_receipt: WorkerCapabilityReceipt | Mapping[str, Any] | None = None,
+        current_environment_receipt: WorkerEnvironmentReceipt | Mapping[str, Any] | None = None,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Accept one current fenced result or durably quarantine it.
+
+        Replaying the same content-addressed publication is idempotent. Any
+        malformed, foreign, expired, stolen, cancelled, or capability-drifted
+        result remains inspectable but can never produce a terminal success
+        receipt.
+        """
+
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        raw_result = result.to_dict() if isinstance(result, RemoteLaneResult) else result
+        try:
+            normalized = (
+                RemoteLaneResult.from_dict(result.to_dict())
+                if isinstance(result, RemoteLaneResult)
+                else RemoteLaneResult.from_dict(result)
+            )
+        except Exception as exc:
+            with self._lock, self._connection:
+                return self._quarantine_publication(
+                    self._connection,
+                    dispatch,
+                    raw_result,
+                    reason=f"malformed_result:{type(exc).__name__}",
+                    now=now,
+                )
+
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                previous = connection.execute(
+                    "SELECT payload_json FROM distributed_publications WHERE publication_id=?",
+                    (normalized.publication_id,),
+                ).fetchone()
+                if previous is not None:
+                    disposition = json.loads(str(previous["payload_json"]))
+                    disposition["duplicate"] = True
+                    connection.commit()
+                    return disposition
+                stored = connection.execute(
+                    "SELECT * FROM distributed_dispatches WHERE dispatch_cid=?",
+                    (dispatch.dispatch_cid,),
+                ).fetchone()
+                reason = ""
+                if stored is None:
+                    reason = "unknown_dispatch"
+                elif (
+                    str(stored["claim_cid"]) != dispatch.grant.claim_cid
+                    or str(stored["worker_id"]) != dispatch.worker_id
+                    or int(stored["fencing_token"]) != dispatch.fencing_token
+                ):
+                    reason = "foreign_dispatch"
+                elif stored["cancellation_cid"] or dispatch.cancelled:
+                    reason = "cancelled_dispatch"
+                bindings = {
+                    "repository_id": dispatch.repository_id,
+                    "worker_id": dispatch.worker_id,
+                    "task_cid": dispatch.task_cid,
+                    "artifact_id": dispatch.input_artifact_cid,
+                    "capability_receipt_id": dispatch.capability_receipt_cid,
+                    "environment_receipt_id": dispatch.environment_receipt_cid,
+                    "claim_cid": dispatch.grant.claim_cid,
+                    "logical_epoch": dispatch.logical_epoch,
+                    "fencing_token": dispatch.fencing_token,
+                }
+                for name, expected in bindings.items():
+                    if getattr(normalized, name) != expected:
+                        reason = reason or f"foreign_{name}"
+                        break
+                if current_capability_receipt is not None:
+                    current_capability = self._capability_receipt(
+                        current_capability_receipt
+                    )
+                    if current_capability.receipt_id != dispatch.capability_receipt_cid:
+                        reason = reason or "capability_drift"
+                if current_environment_receipt is not None:
+                    current_environment = self._environment_receipt(
+                        current_environment_receipt
+                    )
+                    if current_environment.receipt_id != dispatch.environment_receipt_cid:
+                        reason = reason or "environment_drift"
+
+                self._expire(connection, dispatch.task_cid, now)
+                lease = connection.execute(
+                    "SELECT * FROM leases WHERE task_cid=?", (dispatch.task_cid,)
+                ).fetchone()
+                if (
+                    lease is None
+                    or lease["state"] != "accepted"
+                    or int(lease["expires_at_ms"]) <= now
+                ):
+                    reason = reason or "stale_or_expired_lease"
+                elif (
+                    str(lease["claim_cid"]) != dispatch.grant.claim_cid
+                    or int(lease["logical_epoch"]) != dispatch.logical_epoch
+                    or int(lease["fencing_token"]) != dispatch.fencing_token
+                ):
+                    reason = reason or "stale_fencing_epoch"
+
+                capability_row = connection.execute(
+                    "SELECT payload_json FROM worker_capability_receipts WHERE receipt_id=?",
+                    (dispatch.capability_receipt_cid,),
+                ).fetchone()
+                environment_row = connection.execute(
+                    "SELECT payload_json FROM worker_environment_receipts WHERE receipt_id=?",
+                    (dispatch.environment_receipt_cid,),
+                ).fetchone()
+                if capability_row is None or environment_row is None:
+                    reason = reason or "missing_worker_receipt"
+                else:
+                    try:
+                        capability = WorkerCapabilityReceipt.from_dict(
+                            json.loads(capability_row["payload_json"])
+                        )
+                        environment = WorkerEnvironmentReceipt.from_dict(
+                            json.loads(environment_row["payload_json"])
+                        )
+                        capability.validate_at(now)
+                        environment.validate_at(now)
+                    except Exception:
+                        reason = reason or "expired_or_malformed_worker_receipt"
+
+                if reason:
+                    disposition = self._quarantine_publication(
+                        connection,
+                        dispatch,
+                        normalized.to_dict(),
+                        reason=reason,
+                        now=now,
+                        publication_id=normalized.publication_id,
+                    )
+                    connection.commit()
+                    return disposition
+
+                assert lease is not None
+                publication = normalized.to_dict()
+                publication["schema"] = DISTRIBUTED_PUBLICATION_SCHEMA
+                receipt: dict[str, Any] | None = None
+                if normalized.status != "succeeded":
+                    # Failure and cancellation are non-authoritative terminal
+                    # outcomes. Successful publication is only a candidate and
+                    # remains leased until finalize_remote_result observes the
+                    # merge train's post-merge evidence gate.
+                    receipt = self._receipt_in_transaction(
+                        connection,
+                        lease,
+                        dispatch.grant,
+                        status=normalized.status,
+                        output=normalized.output,
+                        failure_class=normalized.failure_class,
+                        started_at_ms=None,
+                        now=now,
+                    )
+                disposition = {
+                    "accepted": normalized.status == "succeeded",
+                    "quarantined": False,
+                    "cancelled": normalized.cancelled,
+                    "duplicate": False,
+                    "finalized": False,
+                    "reason": (
+                        "cancelled"
+                        if normalized.cancelled
+                        else (
+                            "published_pending_merge"
+                            if normalized.status == "succeeded"
+                            else f"accepted_{normalized.status}"
+                        )
+                    ),
+                    "publication_id": normalized.publication_id,
+                    "distributed_publication": publication,
+                }
+                if receipt is not None:
+                    disposition["receipt"] = receipt
+                connection.execute(
+                    "INSERT INTO distributed_publications VALUES(?,?,?,?,?,?,?)",
+                    (
+                        normalized.publication_id,
+                        dispatch.dispatch_cid,
+                        dispatch.task_cid,
+                        normalized.status,
+                        disposition["reason"],
+                        now,
+                        canonical_profile_g_bytes(disposition).decode("utf-8"),
+                    ),
+                )
+                connection.commit()
+                return disposition
+            except Exception:
+                connection.rollback()
+                raise
+
+    @_coordinator_operation
+    def finalize_remote_result(
+        self,
+        dispatch: DistributedLaneDispatch,
+        result_or_publication: RemoteLaneResult | Mapping[str, Any] | str,
+        *,
+        merge_result: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Create success authority only after merge and post-merge evidence pass."""
+
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        if isinstance(result_or_publication, RemoteLaneResult):
+            publication_id = result_or_publication.publication_id
+        elif isinstance(result_or_publication, str):
+            publication_id = _required_text(result_or_publication, "publication_id")
+        elif isinstance(result_or_publication, Mapping):
+            publication_id = _required_text(
+                result_or_publication.get("publication_id")
+                or (
+                    result_or_publication.get("distributed_publication", {}).get(
+                        "publication_id"
+                    )
+                    if isinstance(
+                        result_or_publication.get("distributed_publication"), Mapping
+                    )
+                    else ""
+                ),
+                "publication_id",
+            )
+        else:
+            raise ValueError("result_or_publication must identify a remote publication")
+        merge = _canonical_mapping(merge_result, "merge_result")
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                stored = connection.execute(
+                    "SELECT * FROM distributed_publications WHERE publication_id=?",
+                    (publication_id,),
+                ).fetchone()
+                if stored is None:
+                    raise ValueError("remote publication is not registered")
+                disposition = json.loads(str(stored["payload_json"]))
+                if disposition.get("finalized") is True:
+                    disposition["duplicate"] = True
+                    connection.commit()
+                    return disposition
+                if (
+                    disposition.get("accepted") is not True
+                    or disposition.get("quarantined") is True
+                    or disposition.get("cancelled") is True
+                    or str(stored["disposition"]) != "succeeded"
+                ):
+                    raise ValueError("only an accepted successful publication can finalize")
+                publication = disposition.get("distributed_publication")
+                if not isinstance(publication, Mapping):
+                    raise ValueError("stored distributed publication is malformed")
+                self._current(connection, dispatch.grant, now)
+                if (
+                    str(stored["dispatch_cid"]) != dispatch.dispatch_cid
+                    or str(stored["task_cid"]) != dispatch.task_cid
+                    or publication.get("claim_cid") != dispatch.grant.claim_cid
+                    or publication.get("logical_epoch") != dispatch.logical_epoch
+                    or publication.get("fencing_token") != dispatch.fencing_token
+                ):
+                    raise StaleFencingTokenError(
+                        "publication is not bound to the active dispatch"
+                    )
+                merge_accepted = (
+                    merge.get("merged") is True or merge.get("accepted") is True
+                )
+                expected_commit = str(publication.get("candidate_commit") or "")
+                observed_candidate = str(
+                    merge.get("candidate_commit")
+                    or merge.get("source_commit")
+                    or (
+                        merge.get("distributed_publication", {}).get("candidate_commit")
+                        if isinstance(merge.get("distributed_publication"), Mapping)
+                        else ""
+                    )
+                    or ""
+                )
+                evidence = (
+                    merge.get("post_merge_evidence")
+                    or merge.get("post_merge_evidence_receipt")
+                    or (
+                        merge.get("validation", {}).get("post_merge_evidence_receipt")
+                        if isinstance(merge.get("validation"), Mapping)
+                        else None
+                    )
+                )
+                evidence_passed = (
+                    merge.get("post_merge_evidence_passed") is True
+                    or (
+                        isinstance(evidence, Mapping)
+                        and (
+                            evidence.get("passed") is True
+                            or evidence.get("merge_authoritative") is True
+                            or evidence.get("allowed") is True
+                        )
+                    )
+                )
+                if not merge_accepted:
+                    raise ValueError("merge train did not accept the candidate")
+                if not observed_candidate or observed_candidate != expected_commit:
+                    raise ValueError("merge receipt is not bound to the candidate commit")
+                if not evidence_passed:
+                    raise ValueError("post-merge evidence gate did not pass")
+                evidence_candidate = (
+                    str(
+                        evidence.get("candidate_commit")
+                        or evidence.get("candidate_tree_id")
+                        or ""
+                    )
+                    if isinstance(evidence, Mapping)
+                    else ""
+                )
+                merge_candidate_tree = str(
+                    merge.get("candidate_tree_id")
+                    or merge.get("repository_tree")
+                    or merge.get("merged_tree_id")
+                    or ""
+                )
+                if isinstance(evidence, Mapping) and evidence_candidate:
+                    bound_values = {
+                        expected_commit,
+                        merge_candidate_tree,
+                    }
+                    if evidence_candidate not in bound_values:
+                        raise ValueError(
+                            "post-merge evidence is bound to a foreign candidate"
+                        )
+                receipt_output = dict(publication.get("output") or {})
+                receipt_output.update(
+                    {
+                        "distributed_publication": dict(publication),
+                        "merge_result": merge,
+                    }
+                )
+                lease = connection.execute(
+                    "SELECT * FROM leases WHERE task_cid=?", (dispatch.task_cid,)
+                ).fetchone()
+                assert lease is not None
+                receipt = self._receipt_in_transaction(
+                    connection,
+                    lease,
+                    dispatch.grant,
+                    status="succeeded",
+                    output=receipt_output,
+                    failure_class="none",
+                    started_at_ms=None,
+                    now=now,
+                )
+                disposition.update(
+                    {
+                        "finalized": True,
+                        "duplicate": False,
+                        "reason": "accepted_after_merge_evidence",
+                        "merge_result": merge,
+                        "receipt": receipt,
+                    }
+                )
+                connection.execute(
+                    """UPDATE distributed_publications
+                       SET disposition='finalized', reason=?, payload_json=?
+                       WHERE publication_id=?""",
+                    (
+                        disposition["reason"],
+                        canonical_profile_g_bytes(disposition).decode("utf-8"),
+                        publication_id,
+                    ),
+                )
+                connection.commit()
+                return disposition
+            except Exception:
+                connection.rollback()
+                raise
+
+    @_coordinator_operation
+    def list_distributed_publications(
+        self,
+        task_cid: str | None = None,
+        *,
+        disposition: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return durable accepted/quarantined publication decisions."""
+
+        clauses: list[str] = []
+        parameters: list[Any] = []
+        if task_cid is not None:
+            clauses.append("task_cid=?")
+            parameters.append(str(task_cid))
+        if disposition is not None:
+            clauses.append("disposition=?")
+            parameters.append(str(disposition))
+        query = "SELECT payload_json FROM distributed_publications"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at_ms, publication_id"
+        return [
+            json.loads(str(row["payload_json"]))
+            for row in self._connection.execute(query, parameters).fetchall()
+        ]
 
     @staticmethod
     def _prune_heartbeat_history(
@@ -2682,6 +4257,1096 @@ def migrate_sqlite_coordination_store(
     }
 
 
+class DistributedSingleFlightError(RuntimeError):
+    """Base failure for the durable semantic-key single-flight protocol."""
+
+
+class DistributedSingleFlightTimeout(DistributedSingleFlightError, TimeoutError):
+    """One member's deadline elapsed while another member retained ownership."""
+
+
+class DistributedSingleFlightCancelled(DistributedSingleFlightError):
+    """One member stopped waiting without cancelling the shared computation."""
+
+
+class DistributedSingleFlightExecutionError(DistributedSingleFlightError):
+    """A leader published one bounded, fail-closed execution outcome."""
+
+    def __init__(
+        self,
+        reason_code: str,
+        *,
+        outcome: "SingleFlightOutcome | None" = None,
+    ) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
+        self.outcome = outcome
+
+
+class StaleSingleFlightLeaseError(DistributedSingleFlightError):
+    """A released, expired, superseded, or foreign lease attempted mutation."""
+
+
+def _single_flight_identity(value: Any) -> tuple[str, str]:
+    """Return a stable ``(key_id, namespace)`` without importing cache code."""
+
+    if isinstance(value, str):
+        key_id = value.strip()
+        namespace = ""
+    elif isinstance(value, Mapping):
+        key_id = str(value.get("key_id") or value.get("semantic_key") or "").strip()
+        namespace = str(value.get("namespace") or "").strip()
+    else:
+        key_id = str(getattr(value, "key_id", "") or "").strip()
+        kind = getattr(value, "namespace", "")
+        namespace = str(getattr(kind, "value", kind) or "").strip()
+    if not key_id:
+        raise ValueError("single-flight semantic key identity is required")
+    if len(key_id.encode("utf-8")) > 4_096:
+        raise ValueError("single-flight semantic key identity is too large")
+    if len(namespace.encode("utf-8")) > 256:
+        raise ValueError("single-flight namespace is too large")
+    return key_id, namespace
+
+
+def _single_flight_json_bytes(value: Any) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "single-flight outcomes must contain canonical JSON values"
+        ) from exc
+
+
+def _single_flight_cancelled(cancel_event: Any) -> bool:
+    if cancel_event is None:
+        return False
+    is_set = getattr(cancel_event, "is_set", None)
+    if not callable(is_set):
+        raise ValueError("cancel_event must provide is_set()")
+    return bool(is_set())
+
+
+@dataclass(frozen=True)
+class SingleFlightLeaseGrant:
+    """One fenced generation, projected differently to its owner and followers."""
+
+    key_id: str
+    namespace: str
+    owner_id: str
+    lease_id: str
+    fencing_token: int
+    acquired_at_ms: int
+    heartbeat_at_ms: int
+    expires_at_ms: int
+    acquired: bool
+    completed: bool = False
+
+    @property
+    def is_owner(self) -> bool:
+        return self.acquired
+
+    @property
+    def is_leader(self) -> bool:
+        return self.acquired
+
+    def to_dict(self) -> dict[str, Any]:
+        # A follower never receives the owner's unguessable publication token.
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SingleFlightAttestation:
+    """Coordinator-authenticated binding for one bounded flight outcome."""
+
+    key_id: str
+    namespace: str
+    owner_id: str
+    fencing_token: int
+    outcome_digest: str
+    attestation_id: str
+    schema: str = SINGLE_FLIGHT_ATTESTATION_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SingleFlightOutcome:
+    """The sole bounded outcome followers may consume for one fence."""
+
+    key_id: str
+    namespace: str
+    owner_id: str
+    fencing_token: int
+    status: str
+    value: Any
+    created_at_ms: int
+    expires_at_ms: int
+    outcome_digest: str
+    attestation: SingleFlightAttestation
+    schema: str = SINGLE_FLIGHT_OUTCOME_SCHEMA
+
+    @property
+    def successful(self) -> bool:
+        return self.status == "ok"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "key_id": self.key_id,
+            "namespace": self.namespace,
+            "owner_id": self.owner_id,
+            "fencing_token": self.fencing_token,
+            "status": self.status,
+            "value": self.value,
+            "created_at_ms": self.created_at_ms,
+            "expires_at_ms": self.expires_at_ms,
+            "outcome_digest": self.outcome_digest,
+            "attestation": self.attestation.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class DistributedSingleFlightResult:
+    """Member projection of a verified owner-attested outcome."""
+
+    outcome: SingleFlightOutcome
+    owner: bool
+
+    @property
+    def shared(self) -> bool:
+        return not self.owner
+
+    @property
+    def value(self) -> Any:
+        return self.outcome.value
+
+    @property
+    def fencing_token(self) -> int:
+        return self.outcome.fencing_token
+
+    @property
+    def attestation(self) -> SingleFlightAttestation:
+        return self.outcome.attestation
+
+
+class DistributedSingleFlightCoordinator:
+    """SQLite-backed semantic-key leases for threads, processes, and shared hosts.
+
+    A shared filesystem path is sufficient for optional multi-host operation;
+    callers may instead pass the same ``attestation_secret`` to coordinators
+    backed by a replicated/transport adapter in the future.  SQLite
+    ``BEGIN IMMEDIATE`` selects exactly one owner for each generation.  The
+    unguessable lease ID plus monotonically increasing fence prevents stale or
+    foreign publishers, and an HMAC binds the only follower-visible outcome.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        lease_seconds: float = DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS,
+        outcome_ttl_seconds: float = DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_SINGLE_FLIGHT_POLL_SECONDS,
+        max_outcome_bytes: int = DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES,
+        clock_ms: Callable[[], int] | None = None,
+        attestation_secret: bytes | None = None,
+    ) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        for name, value in (
+            ("lease_seconds", lease_seconds),
+            ("outcome_ttl_seconds", outcome_ttl_seconds),
+            ("poll_interval_seconds", poll_interval_seconds),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be positive")
+        if (
+            isinstance(max_outcome_bytes, bool)
+            or not isinstance(max_outcome_bytes, int)
+            or max_outcome_bytes < 1_024
+        ):
+            raise ValueError("max_outcome_bytes must be at least 1024")
+        self.lease_seconds = float(lease_seconds)
+        self.outcome_ttl_seconds = float(outcome_ttl_seconds)
+        self.poll_interval_seconds = float(poll_interval_seconds)
+        self.max_outcome_bytes = max_outcome_bytes
+        self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
+        self._thread_lock = threading.RLock()
+        self._secret_path = self.path.with_name(f".{self.path.name}.attestation-key")
+        self._secret = self._load_secret(attestation_secret)
+        self._init_store()
+
+    def _load_secret(self, supplied: bytes | None) -> bytes:
+        if supplied is not None:
+            if not isinstance(supplied, bytes) or len(supplied) < 16:
+                raise ValueError("attestation_secret must contain at least 16 bytes")
+            return supplied
+        try:
+            descriptor = os.open(
+                self._secret_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+        except FileExistsError:
+            pass
+        else:
+            try:
+                os.write(descriptor, secrets.token_bytes(32))
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        secret = self._secret_path.read_bytes()
+        if len(secret) < 16 or len(secret) > 4_096:
+            raise ValueError("single-flight attestation key is invalid")
+        return secret
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(
+            self.path,
+            timeout=30.0,
+            isolation_level=None,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
+        return connection
+
+    def _init_store(self) -> None:
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                connection.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS single_flight_fences(
+                      key_id TEXT PRIMARY KEY,
+                      namespace TEXT NOT NULL,
+                      fencing_token INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS single_flight_leases(
+                      key_id TEXT PRIMARY KEY,
+                      namespace TEXT NOT NULL,
+                      owner_id TEXT NOT NULL,
+                      lease_id TEXT NOT NULL,
+                      fencing_token INTEGER NOT NULL,
+                      acquired_at_ms INTEGER NOT NULL,
+                      heartbeat_at_ms INTEGER NOT NULL,
+                      expires_at_ms INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS single_flight_outcomes(
+                      key_id TEXT PRIMARY KEY,
+                      namespace TEXT NOT NULL,
+                      owner_id TEXT NOT NULL,
+                      fencing_token INTEGER NOT NULL,
+                      status TEXT NOT NULL,
+                      outcome_json TEXT NOT NULL,
+                      outcome_digest TEXT NOT NULL,
+                      attestation_id TEXT NOT NULL,
+                      created_at_ms INTEGER NOT NULL,
+                      expires_at_ms INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS single_flight_metadata(
+                      metadata_key TEXT PRIMARY KEY,
+                      value_json TEXT NOT NULL
+                    );
+                    """
+                )
+                connection.execute(
+                    "INSERT OR REPLACE INTO single_flight_metadata VALUES(?,?)",
+                    (
+                        "store",
+                        json.dumps(
+                            {"schema": SINGLE_FLIGHT_STORE_SCHEMA},
+                            sort_keys=True,
+                        ),
+                    ),
+                )
+            finally:
+                connection.close()
+
+    @staticmethod
+    def _owner_id(owner_id: str | None) -> str:
+        owner = (
+            owner_id
+            or f"pid:{os.getpid()}:thread:{threading.get_ident()}"
+        ).strip()
+        if not owner or len(owner.encode("utf-8")) > 1_024:
+            raise ValueError("owner_id must be nonempty and bounded")
+        return owner
+
+    @staticmethod
+    def _lease_ms(lease_seconds: float) -> int:
+        return max(1, int(lease_seconds * 1000))
+
+    def _attestation_id(
+        self,
+        *,
+        key_id: str,
+        namespace: str,
+        owner_id: str,
+        fencing_token: int,
+        outcome_digest: str,
+    ) -> str:
+        content = _single_flight_json_bytes(
+            {
+                "schema": SINGLE_FLIGHT_ATTESTATION_SCHEMA,
+                "key_id": key_id,
+                "namespace": namespace,
+                "owner_id": owner_id,
+                "fencing_token": fencing_token,
+                "outcome_digest": outcome_digest,
+            }
+        )
+        digest = hmac.new(self._secret, content, hashlib.sha256).hexdigest()
+        return f"single-flight-attestation:hmac-sha256:{digest}"
+
+    def acquire(
+        self,
+        key: Any,
+        *,
+        owner_id: str | None = None,
+        lease_seconds: float | None = None,
+    ) -> SingleFlightLeaseGrant:
+        key_id, namespace = _single_flight_identity(key)
+        owner = self._owner_id(owner_id)
+        duration = self.lease_seconds if lease_seconds is None else lease_seconds
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or duration <= 0
+        ):
+            raise ValueError("lease_seconds must be positive")
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            fence_row = connection.execute(
+                "SELECT namespace, fencing_token FROM single_flight_fences WHERE key_id=?",
+                (key_id,),
+            ).fetchone()
+            if (
+                fence_row is not None
+                and namespace
+                and str(fence_row["namespace"])
+                and str(fence_row["namespace"]) != namespace
+            ):
+                raise DistributedSingleFlightError(
+                    "semantic key is already bound to another namespace"
+                )
+            outcome = connection.execute(
+                """
+                SELECT * FROM single_flight_outcomes
+                WHERE key_id=? AND expires_at_ms>?
+                """,
+                (key_id, now),
+            ).fetchone()
+            if outcome is not None:
+                connection.commit()
+                return SingleFlightLeaseGrant(
+                    key_id=key_id,
+                    namespace=str(outcome["namespace"]),
+                    owner_id=str(outcome["owner_id"]),
+                    lease_id="",
+                    fencing_token=int(outcome["fencing_token"]),
+                    acquired_at_ms=int(outcome["created_at_ms"]),
+                    heartbeat_at_ms=int(outcome["created_at_ms"]),
+                    expires_at_ms=int(outcome["expires_at_ms"]),
+                    acquired=False,
+                    completed=True,
+                )
+            lease = connection.execute(
+                "SELECT * FROM single_flight_leases WHERE key_id=?",
+                (key_id,),
+            ).fetchone()
+            if lease is not None and int(lease["expires_at_ms"]) > now:
+                connection.commit()
+                return SingleFlightLeaseGrant(
+                    key_id=key_id,
+                    namespace=str(lease["namespace"]),
+                    owner_id=str(lease["owner_id"]),
+                    lease_id="",
+                    fencing_token=int(lease["fencing_token"]),
+                    acquired_at_ms=int(lease["acquired_at_ms"]),
+                    heartbeat_at_ms=int(lease["heartbeat_at_ms"]),
+                    expires_at_ms=int(lease["expires_at_ms"]),
+                    acquired=False,
+                )
+            prior_fence = int(fence_row["fencing_token"]) if fence_row else 0
+            if lease is not None:
+                prior_fence = max(prior_fence, int(lease["fencing_token"]))
+            token = prior_fence + 1
+            bound_namespace = (
+                namespace
+                or (str(fence_row["namespace"]) if fence_row is not None else "")
+            )
+            lease_id = secrets.token_hex(32)
+            expires = now + self._lease_ms(float(duration))
+            connection.execute(
+                """
+                INSERT INTO single_flight_fences VALUES(?,?,?)
+                ON CONFLICT(key_id) DO UPDATE SET
+                  namespace=excluded.namespace,
+                  fencing_token=excluded.fencing_token
+                """,
+                (key_id, bound_namespace, token),
+            )
+            connection.execute(
+                """
+                INSERT INTO single_flight_leases VALUES(?,?,?,?,?,?,?,?)
+                ON CONFLICT(key_id) DO UPDATE SET
+                  namespace=excluded.namespace,
+                  owner_id=excluded.owner_id,
+                  lease_id=excluded.lease_id,
+                  fencing_token=excluded.fencing_token,
+                  acquired_at_ms=excluded.acquired_at_ms,
+                  heartbeat_at_ms=excluded.heartbeat_at_ms,
+                  expires_at_ms=excluded.expires_at_ms
+                """,
+                (
+                    key_id,
+                    bound_namespace,
+                    owner,
+                    lease_id,
+                    token,
+                    now,
+                    now,
+                    expires,
+                ),
+            )
+            connection.execute(
+                "DELETE FROM single_flight_outcomes WHERE key_id=?",
+                (key_id,),
+            )
+            connection.commit()
+            return SingleFlightLeaseGrant(
+                key_id=key_id,
+                namespace=bound_namespace,
+                owner_id=owner,
+                lease_id=lease_id,
+                fencing_token=token,
+                acquired_at_ms=now,
+                heartbeat_at_ms=now,
+                expires_at_ms=expires,
+                acquired=True,
+            )
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    acquire_lease = acquire
+
+    def heartbeat(
+        self,
+        grant: SingleFlightLeaseGrant,
+        *,
+        lease_seconds: float | None = None,
+    ) -> SingleFlightLeaseGrant:
+        if not grant.acquired or not grant.lease_id:
+            raise StaleSingleFlightLeaseError(
+                "only the current single-flight owner may heartbeat"
+            )
+        duration = self.lease_seconds if lease_seconds is None else lease_seconds
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or duration <= 0
+        ):
+            raise ValueError("lease_seconds must be positive")
+        now = self._clock_ms()
+        expires = now + self._lease_ms(float(duration))
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE single_flight_leases
+                SET heartbeat_at_ms=?, expires_at_ms=?
+                WHERE key_id=? AND namespace=? AND owner_id=? AND lease_id=?
+                  AND fencing_token=? AND expires_at_ms>?
+                """,
+                (
+                    now,
+                    expires,
+                    grant.key_id,
+                    grant.namespace,
+                    grant.owner_id,
+                    grant.lease_id,
+                    grant.fencing_token,
+                    now,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise StaleSingleFlightLeaseError(
+                    "single-flight lease is expired or fenced"
+                )
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return SingleFlightLeaseGrant(
+            **{
+                **grant.to_dict(),
+                "heartbeat_at_ms": now,
+                "expires_at_ms": expires,
+            }
+        )
+
+    renew = heartbeat
+    renew_lease = heartbeat
+
+    def release(self, grant: SingleFlightLeaseGrant) -> bool:
+        if not grant.acquired or not grant.lease_id:
+            return False
+        connection = self._connect()
+        try:
+            cursor = connection.execute(
+                """
+                DELETE FROM single_flight_leases
+                WHERE key_id=? AND namespace=? AND owner_id=? AND lease_id=?
+                  AND fencing_token=?
+                """,
+                (
+                    grant.key_id,
+                    grant.namespace,
+                    grant.owner_id,
+                    grant.lease_id,
+                    grant.fencing_token,
+                ),
+            )
+            return cursor.rowcount == 1
+        finally:
+            connection.close()
+
+    release_lease = release
+
+    def publish(
+        self,
+        grant: SingleFlightLeaseGrant,
+        value: Any,
+        *,
+        status: str = "ok",
+        outcome_ttl_seconds: float | None = None,
+    ) -> SingleFlightOutcome:
+        if not grant.acquired or not grant.lease_id:
+            raise StaleSingleFlightLeaseError(
+                "only the current single-flight owner may publish"
+            )
+        if status not in {"ok", "error"}:
+            raise ValueError("single-flight status must be ok or error")
+        ttl = (
+            self.outcome_ttl_seconds
+            if outcome_ttl_seconds is None
+            else outcome_ttl_seconds
+        )
+        if (
+            isinstance(ttl, bool)
+            or not isinstance(ttl, (int, float))
+            or ttl <= 0
+        ):
+            raise ValueError("outcome_ttl_seconds must be positive")
+        now = self._clock_ms()
+        expires = now + self._lease_ms(float(ttl))
+        envelope = {
+            "schema": SINGLE_FLIGHT_OUTCOME_SCHEMA,
+            "key_id": grant.key_id,
+            "namespace": grant.namespace,
+            "owner_id": grant.owner_id,
+            "fencing_token": grant.fencing_token,
+            "status": status,
+            "value": value,
+            "created_at_ms": now,
+            "expires_at_ms": expires,
+        }
+        encoded = _single_flight_json_bytes(envelope)
+        if len(encoded) > self.max_outcome_bytes:
+            raise DistributedSingleFlightError(
+                "single-flight outcome exceeds max_outcome_bytes"
+            )
+        digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+        attestation_id = self._attestation_id(
+            key_id=grant.key_id,
+            namespace=grant.namespace,
+            owner_id=grant.owner_id,
+            fencing_token=grant.fencing_token,
+            outcome_digest=digest,
+        )
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            active = connection.execute(
+                """
+                SELECT 1 FROM single_flight_leases
+                WHERE key_id=? AND namespace=? AND owner_id=? AND lease_id=?
+                  AND fencing_token=? AND expires_at_ms>?
+                """,
+                (
+                    grant.key_id,
+                    grant.namespace,
+                    grant.owner_id,
+                    grant.lease_id,
+                    grant.fencing_token,
+                    now,
+                ),
+            ).fetchone()
+            if active is None:
+                raise StaleSingleFlightLeaseError(
+                    "cannot publish from an expired, stale, or foreign lease"
+                )
+            connection.execute(
+                """
+                INSERT INTO single_flight_outcomes VALUES(?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(key_id) DO UPDATE SET
+                  namespace=excluded.namespace,
+                  owner_id=excluded.owner_id,
+                  fencing_token=excluded.fencing_token,
+                  status=excluded.status,
+                  outcome_json=excluded.outcome_json,
+                  outcome_digest=excluded.outcome_digest,
+                  attestation_id=excluded.attestation_id,
+                  created_at_ms=excluded.created_at_ms,
+                  expires_at_ms=excluded.expires_at_ms
+                """,
+                (
+                    grant.key_id,
+                    grant.namespace,
+                    grant.owner_id,
+                    grant.fencing_token,
+                    status,
+                    encoded.decode("utf-8"),
+                    digest,
+                    attestation_id,
+                    now,
+                    expires,
+                ),
+            )
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        outcome = self.read_outcome(
+            grant.key_id,
+            fencing_token=grant.fencing_token,
+        )
+        if outcome is None:  # pragma: no cover - transaction guarantees this
+            raise DistributedSingleFlightError(
+                "published single-flight outcome was not readable"
+            )
+        return outcome
+
+    publish_outcome = publish
+
+    def read_outcome(
+        self,
+        key: Any,
+        *,
+        fencing_token: int | None = None,
+    ) -> SingleFlightOutcome | None:
+        key_id, requested_namespace = _single_flight_identity(key)
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT * FROM single_flight_outcomes
+                WHERE key_id=? AND expires_at_ms>?
+                """,
+                (key_id, now),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            return None
+        if (
+            fencing_token is not None
+            and int(row["fencing_token"]) != fencing_token
+        ):
+            return None
+        if requested_namespace and str(row["namespace"]) != requested_namespace:
+            raise DistributedSingleFlightError(
+                "single-flight outcome namespace binding mismatch"
+            )
+        try:
+            raw_outcome = str(row["outcome_json"])
+            if len(raw_outcome.encode("utf-8")) > self.max_outcome_bytes:
+                raise ValueError("outcome exceeds max_outcome_bytes")
+            payload = json.loads(raw_outcome)
+            if not isinstance(payload, Mapping):
+                raise ValueError("outcome is not an object")
+            encoded = _single_flight_json_bytes(payload)
+            digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+            expected_attestation = self._attestation_id(
+                key_id=str(row["key_id"]),
+                namespace=str(row["namespace"]),
+                owner_id=str(row["owner_id"]),
+                fencing_token=int(row["fencing_token"]),
+                outcome_digest=digest,
+            )
+            if (
+                payload.get("schema") != SINGLE_FLIGHT_OUTCOME_SCHEMA
+                or payload.get("key_id") != row["key_id"]
+                or payload.get("namespace") != row["namespace"]
+                or payload.get("owner_id") != row["owner_id"]
+                or payload.get("fencing_token") != row["fencing_token"]
+                or payload.get("status") != row["status"]
+                or payload.get("created_at_ms") != row["created_at_ms"]
+                or payload.get("expires_at_ms") != row["expires_at_ms"]
+                or digest != row["outcome_digest"]
+                or expected_attestation != row["attestation_id"]
+            ):
+                raise ValueError("outcome binding, digest, or attestation mismatch")
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DistributedSingleFlightExecutionError(
+                "single_flight_outcome_rejected"
+            ) from exc
+        attestation = SingleFlightAttestation(
+            key_id=str(row["key_id"]),
+            namespace=str(row["namespace"]),
+            owner_id=str(row["owner_id"]),
+            fencing_token=int(row["fencing_token"]),
+            outcome_digest=str(row["outcome_digest"]),
+            attestation_id=str(row["attestation_id"]),
+        )
+        return SingleFlightOutcome(
+            key_id=str(row["key_id"]),
+            namespace=str(row["namespace"]),
+            owner_id=str(row["owner_id"]),
+            fencing_token=int(row["fencing_token"]),
+            status=str(row["status"]),
+            value=payload.get("value"),
+            created_at_ms=int(row["created_at_ms"]),
+            expires_at_ms=int(row["expires_at_ms"]),
+            outcome_digest=str(row["outcome_digest"]),
+            attestation=attestation,
+        )
+
+    def verify_outcome(self, outcome: SingleFlightOutcome) -> bool:
+        if not isinstance(outcome, SingleFlightOutcome):
+            return False
+        try:
+            stored = self.read_outcome(
+                {
+                    "key_id": outcome.key_id,
+                    "namespace": outcome.namespace,
+                },
+                fencing_token=outcome.fencing_token,
+            )
+        except DistributedSingleFlightError:
+            return False
+        return stored == outcome
+
+    def discard_outcome(
+        self,
+        key: Any,
+        *,
+        fencing_token: int,
+    ) -> bool:
+        """Conditionally remove an unusable rendezvous result.
+
+        This does not alter a live lease or its fence.  It is used by cache
+        followers when the referenced cache record has independently expired
+        or failed exact-key validation.
+        """
+
+        key_id, namespace = _single_flight_identity(key)
+        connection = self._connect()
+        try:
+            cursor = connection.execute(
+                """
+                DELETE FROM single_flight_outcomes
+                WHERE key_id=? AND namespace=? AND fencing_token=?
+                """,
+                (key_id, namespace, fencing_token),
+            )
+            return cursor.rowcount == 1
+        finally:
+            connection.close()
+
+    def _generation_active(self, grant: SingleFlightLeaseGrant) -> bool:
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT fencing_token, expires_at_ms
+                FROM single_flight_leases WHERE key_id=?
+                """,
+                (grant.key_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        return bool(
+            row is not None
+            and int(row["fencing_token"]) == grant.fencing_token
+            and int(row["expires_at_ms"]) > now
+        )
+
+    def active_lease_count(self, *, namespace: str | None = None) -> int:
+        """Return the current durable flight count for bounded observability."""
+
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            if namespace is None:
+                row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS count FROM single_flight_leases
+                    WHERE expires_at_ms>?
+                    """,
+                    (now,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS count FROM single_flight_leases
+                    WHERE namespace=? AND expires_at_ms>?
+                    """,
+                    (str(namespace), now),
+                ).fetchone()
+        finally:
+            connection.close()
+        return int(row["count"]) if row is not None else 0
+
+    def wait_for_outcome(
+        self,
+        grant: SingleFlightLeaseGrant,
+        *,
+        timeout_seconds: float,
+        cancel_event: Any = None,
+        deadline_monotonic: float | None = None,
+    ) -> SingleFlightOutcome | None:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("timeout_seconds must be positive")
+        member_deadline = time.monotonic() + float(timeout_seconds)
+        if deadline_monotonic is not None:
+            member_deadline = min(member_deadline, float(deadline_monotonic))
+        while True:
+            if _single_flight_cancelled(cancel_event):
+                raise DistributedSingleFlightCancelled(
+                    "single_flight_member_cancelled"
+                )
+            remaining = member_deadline - time.monotonic()
+            if remaining <= 0:
+                raise DistributedSingleFlightTimeout(
+                    "single_flight_member_deadline"
+                )
+            outcome = self.read_outcome(
+                {
+                    "key_id": grant.key_id,
+                    "namespace": grant.namespace,
+                },
+                fencing_token=grant.fencing_token,
+            )
+            if outcome is not None:
+                return outcome
+            if not self._generation_active(grant):
+                return None
+            time.sleep(min(self.poll_interval_seconds, remaining))
+
+    def coordinate(
+        self,
+        key: Any,
+        execute: Callable[[], Any],
+        *,
+        owner_id: str | None = None,
+        lease_seconds: float | None = None,
+        timeout_seconds: float = 60.0,
+        deadline_monotonic: float | None = None,
+        cancel_event: Any = None,
+        outcome_ttl_seconds: float | None = None,
+    ) -> DistributedSingleFlightResult:
+        """Execute one owner and give each live member the same attested outcome."""
+
+        if not callable(execute):
+            raise ValueError("execute must be callable")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("timeout_seconds must be positive")
+        member_deadline = time.monotonic() + float(timeout_seconds)
+        if deadline_monotonic is not None:
+            member_deadline = min(member_deadline, float(deadline_monotonic))
+        duration = self.lease_seconds if lease_seconds is None else float(lease_seconds)
+        while True:
+            if _single_flight_cancelled(cancel_event):
+                raise DistributedSingleFlightCancelled(
+                    "single_flight_member_cancelled"
+                )
+            if time.monotonic() >= member_deadline:
+                raise DistributedSingleFlightTimeout(
+                    "single_flight_member_deadline"
+                )
+            grant = self.acquire(
+                key,
+                owner_id=owner_id,
+                lease_seconds=duration,
+            )
+            if not grant.acquired:
+                outcome = self.wait_for_outcome(
+                    grant,
+                    timeout_seconds=max(
+                        self.poll_interval_seconds,
+                        member_deadline - time.monotonic(),
+                    ),
+                    cancel_event=cancel_event,
+                    deadline_monotonic=member_deadline,
+                )
+                if outcome is None:
+                    continue
+                if not outcome.successful:
+                    reason = (
+                        str(outcome.value.get("reason_code"))
+                        if isinstance(outcome.value, Mapping)
+                        else "single_flight_execution_failed"
+                    )
+                    raise DistributedSingleFlightExecutionError(
+                        reason,
+                        outcome=outcome,
+                    )
+                return DistributedSingleFlightResult(outcome, owner=False)
+
+            # Cancellation and deadlines are member-specific: an owner that
+            # has not begun user work simply relinquishes the generation so a
+            # live follower can take over.  It does not publish cancellation.
+            if _single_flight_cancelled(cancel_event):
+                self.release(grant)
+                raise DistributedSingleFlightCancelled(
+                    "single_flight_member_cancelled"
+                )
+            if time.monotonic() >= member_deadline:
+                self.release(grant)
+                raise DistributedSingleFlightTimeout(
+                    "single_flight_member_deadline"
+                )
+
+            heartbeat_stop = threading.Event()
+            heartbeat_failures: list[BaseException] = []
+
+            def maintain_lease() -> None:
+                interval = max(0.01, duration / 3.0)
+                while not heartbeat_stop.wait(interval):
+                    try:
+                        self.heartbeat(grant, lease_seconds=duration)
+                    except BaseException as exc:
+                        heartbeat_failures.append(exc)
+                        return
+
+            heartbeat_thread = threading.Thread(
+                target=maintain_lease,
+                name=f"cache-flight-heartbeat-{grant.fencing_token}",
+                daemon=True,
+            )
+            heartbeat_thread.start()
+            try:
+                value = execute()
+                member_cancelled = _single_flight_cancelled(cancel_event)
+                member_expired = time.monotonic() >= member_deadline
+                heartbeat_stop.set()
+                heartbeat_thread.join()
+                if heartbeat_failures:
+                    raise StaleSingleFlightLeaseError(
+                        "single-flight owner lost its heartbeat fence"
+                    ) from heartbeat_failures[0]
+                outcome = self.publish(
+                    grant,
+                    value,
+                    status="ok",
+                    outcome_ttl_seconds=outcome_ttl_seconds,
+                )
+                # A member-specific cancellation/deadline does not discard
+                # useful completed work or poison other followers.  Publish
+                # under the still-live fence, then honor only this member's
+                # terminal state.
+                if member_cancelled:
+                    raise DistributedSingleFlightCancelled(
+                        "single_flight_member_cancelled"
+                    )
+                if member_expired:
+                    raise DistributedSingleFlightTimeout(
+                        "single_flight_member_deadline"
+                    )
+                return DistributedSingleFlightResult(outcome, owner=True)
+            except (
+                DistributedSingleFlightCancelled,
+                DistributedSingleFlightTimeout,
+            ):
+                raise
+            except BaseException:
+                heartbeat_stop.set()
+                heartbeat_thread.join()
+                if not heartbeat_failures:
+                    try:
+                        self.publish(
+                            grant,
+                            {"reason_code": "single_flight_execution_failed"},
+                            status="error",
+                            outcome_ttl_seconds=outcome_ttl_seconds,
+                        )
+                    except BaseException:
+                        pass
+                raise
+            finally:
+                heartbeat_stop.set()
+                heartbeat_thread.join()
+                self.release(grant)
+
+    single_flight = coordinate
+    execute_single_flight = coordinate
+    run_single_flight = coordinate
+
+    def purge_expired(self) -> dict[str, int]:
+        now = self._clock_ms()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            outcomes = connection.execute(
+                "DELETE FROM single_flight_outcomes WHERE expires_at_ms<=?",
+                (now,),
+            ).rowcount
+            leases = connection.execute(
+                "DELETE FROM single_flight_leases WHERE expires_at_ms<=?",
+                (now,),
+            ).rowcount
+            connection.commit()
+            return {"leases": leases, "outcomes": outcomes}
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+
+# Compatibility spellings for callers focused on the lease primitive rather
+# than its cache-facing use.
+SingleFlightLeaseCoordinator = DistributedSingleFlightCoordinator
+SingleFlightCoordinator = DistributedSingleFlightCoordinator
+SingleFlightResult = DistributedSingleFlightResult
+SingleFlightTimeout = DistributedSingleFlightTimeout
+SingleFlightCancelled = DistributedSingleFlightCancelled
+SingleFlightExecutionError = DistributedSingleFlightExecutionError
+
+
 @dataclass(frozen=True)
 class LeasedQueuedTask:
     """A queue task paired with the only grant that authorizes its execution."""
@@ -2765,8 +5430,46 @@ class LeaseQueueBridge:
 
 
 __all__ = [
-    "DependencyNotReadyError", "LeaseConflictError", "LeaseCoordinator", "LeaseError", "LeaseExpiredError", "LeaseGrant",
+    "DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS",
+    "DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES",
+    "DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS",
+    "DEFAULT_SINGLE_FLIGHT_POLL_SECONDS",
+    "DISTRIBUTED_INPUT_SCHEMA",
+    "DISTRIBUTED_LANE_DISPATCH_SCHEMA",
+    "DISTRIBUTED_PUBLICATION_SCHEMA",
+    "DISTRIBUTED_QUARANTINE_SCHEMA",
+    "DependencyNotReadyError",
+    "DistributedLaneDispatch",
+    "DistributedSingleFlightCancelled",
+    "DistributedSingleFlightCoordinator",
+    "DistributedSingleFlightError",
+    "DistributedSingleFlightExecutionError",
+    "DistributedSingleFlightResult",
+    "DistributedSingleFlightTimeout",
+    "LeaseConflictError", "LeaseCoordinator", "LeaseError", "LeaseExpiredError", "LeaseGrant",
     "LeaseQueueBridge", "LeasedQueuedTask",
-    "MAX_LEASE_MS", "MIN_LEASE_MS", "StaleFencingTokenError", "TaskLeaseState", "adapt_goal_bundle",
+    "ImmutableLaneInputArtifact",
+    "MAX_LEASE_MS", "MIN_LEASE_MS",
+    "REMOTE_LANE_RESULT_SCHEMA",
+    "RemoteLaneResult",
+    "SINGLE_FLIGHT_ATTESTATION_SCHEMA",
+    "SINGLE_FLIGHT_OUTCOME_SCHEMA",
+    "SINGLE_FLIGHT_STORE_SCHEMA",
+    "SingleFlightAttestation",
+    "SingleFlightCancelled",
+    "SingleFlightCoordinator",
+    "SingleFlightExecutionError",
+    "SingleFlightLeaseCoordinator",
+    "SingleFlightLeaseGrant",
+    "SingleFlightOutcome",
+    "SingleFlightResult",
+    "SingleFlightTimeout",
+    "StaleFencingTokenError",
+    "StaleSingleFlightLeaseError",
+    "TaskLeaseState", "adapt_goal_bundle",
+    "WORKER_CAPABILITY_RECEIPT_SCHEMA",
+    "WORKER_ENVIRONMENT_RECEIPT_SCHEMA",
+    "WorkerCapabilityReceipt",
+    "WorkerEnvironmentReceipt",
     "canonical_profile_g_bytes", "profile_g_cid",
 ]

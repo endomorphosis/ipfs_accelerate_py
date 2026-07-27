@@ -52,7 +52,7 @@ The PyTorch version of this model is only available in torch 1.9 and higher.
 
 ## Resources
 
-- [Automatic speech recognition task guide](../tasks/asr)
+- [Automatic speech recognition task guide](../tasks/asr.md)
 
 ## MCTCTConfig
 

@@ -31,11 +31,11 @@ Due to its architecture, FalconMamba is significantly faster at inference and re
 
 Tips:
 
-- FalconMamba is mostly based on Mamba architecture, the same [tips and best practices](./mamba) would be relevant here.
+- FalconMamba is mostly based on Mamba architecture, the same [tips and best practices](./mamba.md) would be relevant here.
 
 The model has been trained on approximtely 6T tokens consisting a mixture of many data sources such as RefineWeb, Cosmopedia and Math data.
 
-For more details about the training procedure and the architecture, have a look at [the technical paper of FalconMamba]() (coming soon).
+For more details about the training procedure and the architecture, have a look at the technical paper of FalconMamba (coming soon).
 
 # Usage
 

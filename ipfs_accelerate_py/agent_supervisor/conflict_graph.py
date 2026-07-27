@@ -1400,9 +1400,9 @@ def _merge_duplicate_surfaces(
         raise ValueError(
             "one canonical task CID cannot project multiple semantic identities"
         )
-    if canonical_json_bytes(left.task_work_contract) != canonical_json_bytes(
-        right.task_work_contract
-    ):
+    if canonical_keys and canonical_json_bytes(
+        left.task_work_contract
+    ) != canonical_json_bytes(right.task_work_contract):
         raise ValueError(
             "one canonical task CID cannot project multiple task work contracts"
         )

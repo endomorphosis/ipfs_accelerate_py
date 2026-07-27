@@ -58,7 +58,7 @@ The original code can be found [here](https://github.com/snap-research/Efficient
 
 ## Documentation resources
 
-- [Image classification task guide](../tasks/image_classification)
+- [Image classification task guide](../tasks/image_classification.md#image-classification)
 
 ## EfficientFormerConfig
 

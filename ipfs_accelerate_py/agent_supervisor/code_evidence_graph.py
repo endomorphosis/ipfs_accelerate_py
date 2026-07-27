@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
@@ -30,6 +30,43 @@ CODE_IMPACT_INDEX_SCHEMA = (
 )
 CODE_IMPACT_RESULT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.code-impact-result@1"
+)
+POST_MERGE_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/post-merge-evidence@1"
+)
+POST_MERGE_EVIDENCE_REQUIREMENT_ID = (
+    "post-merge-semantic-proof-evidence:ASI-109"
+)
+POST_MERGE_EVIDENCE_OBJECTIVE_ID = "ASI-G240"
+POST_MERGE_EVIDENCE_OBJECTIVE_REVISION = "ASI-G240@asi-109"
+POST_MERGE_EVIDENCE_ANALYZER_VERSION = "post-merge-evidence-assembler@1"
+POST_MERGE_EVIDENCE_CONFIGURATION_REVISION = (
+    "post-merge-evidence-policy@asi-109"
+)
+POST_MERGE_EVIDENCE_PRODUCING_TASK_IDS = ("ASI-107", "ASI-108", "ASI-109")
+POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA = (
+    (
+        "Rebuild the evidence graph on the actual merged tree and assemble one "
+        "content-addressed receipt binding proposal admission, complete executed "
+        "validation, semantic and protocol checks, legal/logic and theorem "
+        "obligations, accepted proof receipts, merge identity, freshness, and "
+        "exact covered acceptance criteria. Re-derive every authority claim, "
+        "reject missing or extra gates, stale or foreign evidence, contradictory "
+        "proofs, pre-merge-only results, and changed merge trees, and close "
+        "merge/completion authority on any failure."
+    ),
+)
+POST_MERGE_EVIDENCE_GATE_KINDS = (
+    "proposal_admission",
+    "executed_validation",
+    "semantic",
+    "protocol",
+    "legal_logic",
+    "theorem",
+    "proof",
+    "merge",
+    "freshness",
+    "acceptance_coverage",
 )
 
 
@@ -140,14 +177,17 @@ UNTRUSTED_PROVENANCE = frozenset(
 
 
 def _canonical_value(value: Any) -> Any:
+    # String-backed enums must be projected before the primitive string check;
+    # otherwise their repr leaks into indexed fields and a JSON round trip can
+    # change the rebuilt graph.
+    if isinstance(value, Enum):
+        return _canonical_value(value.value)
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
         if value != value or value in (float("inf"), float("-inf")):
             raise EvidenceGraphValidationError("non-finite numbers are not canonical")
         return value
-    if isinstance(value, Enum):
-        return _canonical_value(value.value)
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, Path):
@@ -520,6 +560,25 @@ class CodeEvidenceGraph:
 
     materialize = from_records
 
+    def to_semantic_dependency_graph(
+        self,
+        *,
+        root_id: str,
+    ) -> Any:
+        """Project this graph into the cross-domain authority graph.
+
+        The import is intentionally lazy so the established evidence graph
+        remains independently importable and the semantic layer can preserve
+        (rather than duplicate) its proof, validation, and merge authority.
+        """
+
+        from .semantic_dependency_graph import build_semantic_dependency_graph
+
+        return build_semantic_dependency_graph(
+            root_id=root_id,
+            code_evidence_graph=self,
+        )
+
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CodeEvidenceGraph":
         schema = str(payload.get("schema") or CODE_EVIDENCE_GRAPH_SCHEMA)
@@ -560,6 +619,1151 @@ class CodeEvidenceGraph:
 CodeEvidenceNode = EvidenceNode
 CodeEvidenceEdge = ProvenanceEdge
 EvidenceGraph = CodeEvidenceGraph
+
+
+def _post_merge_record(value: Any, *, name: str) -> dict[str, Any]:
+    """Return one canonical embedded source record."""
+
+    if value is None:
+        return {}
+    supplied_receipt_id = str(getattr(value, "receipt_id", "") or "").strip()
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        value = to_dict()
+    normalized = _canonical_value(value)
+    if not isinstance(normalized, dict):
+        raise EvidenceGraphValidationError(f"{name} must be a mapping or typed record")
+    if supplied_receipt_id:
+        normalized.setdefault("receipt_id", supplied_receipt_id)
+    return normalized
+
+
+def _post_merge_records(value: Any, *, name: str) -> tuple[dict[str, Any], ...]:
+    if value is None:
+        return ()
+    if isinstance(value, Mapping) or callable(getattr(value, "to_dict", None)):
+        values = (value,)
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        values = value
+    else:
+        raise EvidenceGraphValidationError(f"{name} must be a sequence of records")
+    return tuple(_post_merge_record(item, name=name) for item in values)
+
+
+def _post_merge_find(record: Mapping[str, Any], *names: str) -> Any:
+    """Find a named value in a bounded typed-record envelope."""
+
+    pending: list[Mapping[str, Any]] = [record]
+    visited = 0
+    while pending and visited < 256:
+        current = pending.pop(0)
+        visited += 1
+        for name in names:
+            if name in current and current[name] not in (None, "", (), []):
+                return current[name]
+        for value in current.values():
+            if isinstance(value, Mapping):
+                pending.append(value)
+    return None
+
+
+def _post_merge_text(record: Mapping[str, Any], *names: str) -> str:
+    value = _post_merge_find(record, *names)
+    if isinstance(value, Enum):
+        value = value.value
+    return str(value or "").strip()
+
+
+def _post_merge_bool(record: Mapping[str, Any], *names: str) -> bool | None:
+    value = _post_merge_find(record, *names)
+    return value if isinstance(value, bool) else None
+
+
+def _post_merge_passed(record: Mapping[str, Any]) -> bool:
+    explicit = _post_merge_bool(record, "accepted", "passed", "success", "verified")
+    if explicit is not None:
+        return explicit
+    return _post_merge_text(
+        record, "verdict", "status", "result", "outcome", "disposition"
+    ).lower() in {
+        "accepted",
+        "complete",
+        "completed",
+        "current",
+        "merged",
+        "ok",
+        "pass",
+        "passed",
+        "proved",
+        "satisfied",
+        "succeeded",
+        "success",
+        "verified",
+    }
+
+
+def _post_merge_datetime(value: Any, *, name: str) -> datetime:
+    if isinstance(value, datetime):
+        result = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            raise EvidenceGraphValidationError(f"{name} is required")
+        try:
+            result = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise EvidenceGraphValidationError(f"{name} must be an ISO-8601 timestamp") from exc
+    if result.tzinfo is None:
+        raise EvidenceGraphValidationError(f"{name} must include a timezone")
+    return result.astimezone(timezone.utc)
+
+
+def _post_merge_receipt_id(record: Mapping[str, Any]) -> str:
+    receipt_id = _post_merge_text(
+        record,
+        "receipt_id",
+        "receipt_cid",
+        "merge_receipt_id",
+        "validation_receipt_id",
+        "proof_receipt_id",
+        "provenance_cid",
+        "evidence_id",
+        "content_id",
+        "runtime_id",
+    )
+    if receipt_id:
+        return receipt_id
+    try:
+        from .formal_verification_contracts import (
+            PROOF_RECEIPT_SCHEMA,
+            ProofReceipt,
+        )
+
+        if record.get("schema") == PROOF_RECEIPT_SCHEMA:
+            return ProofReceipt.from_dict(record).receipt_id
+    except (TypeError, ValueError):
+        pass
+    return ""
+
+
+def _post_merge_tree_id(record: Mapping[str, Any]) -> str:
+    return _post_merge_text(
+        record,
+        "repository_tree_id",
+        "target_tree_id",
+        "merged_tree_id",
+        "tree_id",
+        "repository_tree",
+        "tree_sha",
+    )
+
+
+def _post_merge_fresh(record: Mapping[str, Any]) -> bool:
+    value = _post_merge_find(record, "freshness", "freshness_status")
+    if isinstance(value, Mapping):
+        if value.get("fresh") is True:
+            return True
+        value = value.get("status", value.get("freshness"))
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, Enum):
+        value = value.value
+    return str(value or "").strip().lower() in {"current", "fresh"}
+
+
+def _post_merge_observed_at(record: Mapping[str, Any]) -> datetime | None:
+    value = _post_merge_find(
+        record,
+        "observed_at",
+        "finished_at",
+        "completed_at",
+        "merged_at",
+        "issued_at",
+        "created_at",
+    )
+    if value in (None, ""):
+        return None
+    try:
+        return _post_merge_datetime(value, name="evidence timestamp")
+    except EvidenceGraphValidationError:
+        return None
+
+
+def _post_merge_gate(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_").replace("/", "_")
+
+
+def _post_merge_validation_reasons(
+    report: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+    *,
+    merged_tree_id: str,
+) -> set[str]:
+    reasons: set[str] = set()
+    if not report or not receipt:
+        return {"executed_validation_missing"}
+    try:
+        from .validation_scheduler import ImpactValidationDAGReceipt
+
+        restored_receipt = ImpactValidationDAGReceipt.from_dict(receipt)
+        if (
+            restored_receipt.receipt_id != _post_merge_receipt_id(receipt)
+            or restored_receipt.dag.repository_tree_id != merged_tree_id
+        ):
+            reasons.add("validation_receipt_unverified")
+    except (TypeError, ValueError):
+        reasons.add("validation_receipt_unverified")
+    if report.get("passed") is not True or receipt.get("passed") is not True:
+        reasons.add("executed_validation_failed")
+    if report.get("hermetic") is not True or not isinstance(
+        report.get("hermetic_policy"), Mapping
+    ):
+        reasons.add("validation_not_hermetic")
+    if _post_merge_tree_id(report) != merged_tree_id or _post_merge_tree_id(
+        receipt
+    ) != merged_tree_id:
+        reasons.add("validation_tree_mismatch")
+
+    dag = receipt.get("dag")
+    dag = dag if isinstance(dag, Mapping) else {}
+    planned = dag.get("nodes")
+    planned = planned if isinstance(planned, Sequence) and not isinstance(
+        planned, (str, bytes, bytearray)
+    ) else ()
+    receipt_nodes = receipt.get("nodes")
+    receipt_nodes = receipt_nodes if isinstance(
+        receipt_nodes, Sequence
+    ) and not isinstance(receipt_nodes, (str, bytes, bytearray)) else ()
+    results = report.get("results")
+    results = results if isinstance(results, Sequence) and not isinstance(
+        results, (str, bytes, bytearray)
+    ) else ()
+    planned_ids = [
+        str(item.get("check_id") or "").strip()
+        for item in planned
+        if isinstance(item, Mapping)
+    ]
+    selected_ids = {
+        str(item.get("check_id") or "").strip()
+        for item in planned
+        if isinstance(item, Mapping) and item.get("selected") is True
+    }
+    receipt_by_id = {
+        str(item.get("check_id") or "").strip(): item
+        for item in receipt_nodes
+        if isinstance(item, Mapping)
+    }
+    result_by_id = {
+        str(
+            item.get("validation_id", item.get("check_id", ""))
+            or ""
+        ).strip(): item
+        for item in results
+        if isinstance(item, Mapping)
+    }
+    if (
+        not planned_ids
+        or len(planned_ids) != len(set(planned_ids))
+        or set(planned_ids) != set(receipt_by_id)
+        or not selected_ids
+        or selected_ids != set(result_by_id)
+    ):
+        reasons.add("validation_population_incomplete")
+    for check_id in sorted(selected_ids):
+        result = result_by_id.get(check_id, {})
+        node = receipt_by_id.get(check_id, {})
+        runtime = result.get("hermetic_runtime")
+        runtime = runtime if isinstance(runtime, Mapping) else {}
+        result_digest = str(
+            result.get("validation_result_digest") or ""
+        ).strip()
+        node_digest = str(node.get("result_digest") or "").strip()
+        if (
+            result.get("outcome") != "passed"
+            or result.get("authoritative") is not True
+            or result.get("stable") is not True
+            or int(result.get("returncode", 1)) != 0
+            or not result_digest
+            or not node_digest
+            or result_digest != node_digest
+        ):
+            reasons.add("validation_result_not_authoritative")
+        if (
+            not str(result.get("runtime_id") or "").strip()
+            or result.get("runtime_id") != runtime.get("runtime_id")
+            or _post_merge_tree_id(runtime) != merged_tree_id
+            or not result.get("attempts")
+        ):
+            reasons.add("validation_runtime_unbound")
+    escaped = report.get("escaped_seeded_defect_ids")
+    summary = report.get("seeded_defect_summary")
+    summary = summary if isinstance(summary, Mapping) else {}
+    if (
+        not isinstance(escaped, Sequence)
+        or isinstance(escaped, (str, bytes, bytearray))
+        or bool(escaped)
+        or summary.get("escaped_count") != 0
+        or summary.get("zero_escaped") is not True
+    ):
+        reasons.add("seeded_defect_escaped")
+    embedded_receipt = report.get("impact_validation_receipt")
+    if not isinstance(embedded_receipt, Mapping) or canonical_json(
+        embedded_receipt
+    ) != canonical_json(receipt):
+        reasons.add("validation_receipt_mismatch")
+    return reasons
+
+
+def _build_post_merge_graph(
+    *,
+    task_id: str,
+    merged_tree_id: str,
+    merged_tree_records: Mapping[str, Any],
+    validation_report: Mapping[str, Any],
+    validation_receipt: Mapping[str, Any],
+    semantic_checks: Sequence[Mapping[str, Any]],
+    protocol_checks: Sequence[Mapping[str, Any]],
+    legal_logic_obligations: Sequence[Mapping[str, Any]],
+    theorem_obligations: Sequence[Mapping[str, Any]],
+    proof_receipts: Sequence[Mapping[str, Any]],
+    merge_record: Mapping[str, Any],
+) -> CodeEvidenceGraph:
+    allowed = {
+        "ast_records",
+        "tree_records",
+        "repository_trees",
+        "task_records",
+        "tasks",
+        "obligations",
+        "proof_obligations",
+        "attempts",
+        "proof_attempts",
+        "proof_records",
+        "proof_receipts",
+        "validation_records",
+        "validation_receipts",
+        "merge_records",
+        "merge_receipts",
+    }
+    unknown = set(merged_tree_records) - allowed
+    if unknown:
+        raise EvidenceGraphValidationError(
+            "unsupported merged-tree record channels: "
+            + ", ".join(sorted(unknown))
+        )
+    supplied = {
+        key: value for key, value in merged_tree_records.items() if key in allowed
+    }
+    supplied.setdefault(
+        "tree_records",
+        ({"repository_tree_id": merged_tree_id, "content_id": merged_tree_id},),
+    )
+    supplied.setdefault(
+        "task_records",
+        ({"task_id": task_id, "repository_tree_id": merged_tree_id},),
+    )
+    supplied["obligations"] = (
+        *tuple(supplied.get("obligations", ())),
+        *legal_logic_obligations,
+        *theorem_obligations,
+    )
+    supplied["proof_records"] = (
+        *tuple(supplied.get("proof_records", ())),
+        *proof_receipts,
+    )
+    validation_records = [
+        *tuple(supplied.get("validation_records", ())),
+        *semantic_checks,
+        *protocol_checks,
+    ]
+    validation_id = _post_merge_receipt_id(validation_receipt)
+    validation_records.append(
+        {
+            "validation_receipt_id": validation_id
+            or "hermetic-validation-" + _identity(validation_receipt),
+            "task_id": task_id,
+            "repository_tree_id": merged_tree_id,
+            "status": "passed" if validation_report.get("passed") is True else "failed",
+            "freshness": "current",
+            "source_receipt_id": validation_id,
+        }
+    )
+    supplied["validation_records"] = tuple(validation_records)
+    supplied["merge_records"] = (
+        *tuple(supplied.get("merge_records", ())),
+        merge_record,
+    )
+    return materialize_code_evidence_graph(**supplied)
+
+
+@dataclass(frozen=True)
+class PostMergeEvidenceReceipt:
+    """Closed, content-addressed authority packet for one actual merge tree."""
+
+    repository_id: str
+    task_id: str
+    objective_id: str
+    objective_revision: str
+    policy_id: str
+    candidate_tree_id: str
+    merged_tree_id: str
+    merge_commit_id: str
+    verified_tree_id: str
+    assembled_at: str
+    verified_at: str
+    freshness_deadline: str
+    acceptance_criteria: tuple[str, ...]
+    gate_kinds: tuple[str, ...]
+    proposal_admission: Mapping[str, Any]
+    validation_report: Mapping[str, Any]
+    validation_receipt: Mapping[str, Any]
+    semantic_checks: tuple[Mapping[str, Any], ...]
+    protocol_checks: tuple[Mapping[str, Any], ...]
+    legal_logic_obligations: tuple[Mapping[str, Any], ...]
+    theorem_obligations: tuple[Mapping[str, Any], ...]
+    proof_receipts: tuple[Mapping[str, Any], ...]
+    merge_record: Mapping[str, Any]
+    criterion_coverage: tuple[Mapping[str, Any], ...]
+    merged_tree_records: Mapping[str, Any]
+    graph: CodeEvidenceGraph
+    analyzer_version: str = POST_MERGE_EVIDENCE_ANALYZER_VERSION
+    configuration_revision: str = POST_MERGE_EVIDENCE_CONFIGURATION_REVISION
+    reason_codes: tuple[str, ...] = ()
+    receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_id",
+            "task_id",
+            "objective_id",
+            "objective_revision",
+            "policy_id",
+            "candidate_tree_id",
+            "merged_tree_id",
+            "merge_commit_id",
+            "verified_tree_id",
+            "analyzer_version",
+            "configuration_revision",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise EvidenceGraphValidationError(f"{name} is required")
+            object.__setattr__(self, name, value)
+        assembled = _post_merge_datetime(self.assembled_at, name="assembled_at")
+        verified = _post_merge_datetime(self.verified_at, name="verified_at")
+        deadline = _post_merge_datetime(
+            self.freshness_deadline, name="freshness_deadline"
+        )
+        object.__setattr__(self, "assembled_at", assembled.isoformat())
+        object.__setattr__(self, "verified_at", verified.isoformat())
+        object.__setattr__(self, "freshness_deadline", deadline.isoformat())
+        object.__setattr__(
+            self,
+            "acceptance_criteria",
+            tuple(str(item).strip() for item in self.acceptance_criteria if str(item).strip()),
+        )
+        object.__setattr__(
+            self,
+            "gate_kinds",
+            tuple(sorted(_post_merge_gate(item) for item in self.gate_kinds if _post_merge_gate(item))),
+        )
+        for name in (
+            "proposal_admission",
+            "validation_report",
+            "validation_receipt",
+            "merge_record",
+            "merged_tree_records",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _post_merge_record(getattr(self, name), name=name),
+            )
+        for name in (
+            "semantic_checks",
+            "protocol_checks",
+            "legal_logic_obligations",
+            "theorem_obligations",
+            "proof_receipts",
+            "criterion_coverage",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _post_merge_records(getattr(self, name), name=name),
+            )
+        graph = (
+            self.graph
+            if isinstance(self.graph, CodeEvidenceGraph)
+            else CodeEvidenceGraph.from_dict(self.graph)
+        )
+        rebuilt = _build_post_merge_graph(
+            task_id=self.task_id,
+            merged_tree_id=self.merged_tree_id,
+            merged_tree_records=self.merged_tree_records,
+            validation_report=self.validation_report,
+            validation_receipt=self.validation_receipt,
+            semantic_checks=self.semantic_checks,
+            protocol_checks=self.protocol_checks,
+            legal_logic_obligations=self.legal_logic_obligations,
+            theorem_obligations=self.theorem_obligations,
+            proof_receipts=self.proof_receipts,
+            merge_record=self.merge_record,
+        )
+        if graph.to_dict() != rebuilt.to_dict():
+            raise EvidenceGraphValidationError(
+                "post-merge evidence graph does not match rebuilt merged-tree graph"
+            )
+        object.__setattr__(self, "graph", graph)
+        derived = self._derive_reason_codes(now=verified)
+        claimed_reasons = tuple(
+            sorted({str(item).strip() for item in self.reason_codes if str(item).strip()})
+        )
+        if claimed_reasons and claimed_reasons != derived:
+            raise EvidenceGraphValidationError(
+                "post-merge reason codes do not match embedded evidence"
+            )
+        object.__setattr__(self, "reason_codes", derived)
+        claimed = str(self.receipt_id or "").strip()
+        object.__setattr__(self, "receipt_id", "")
+        actual = _identity(self._identity_payload())
+        if claimed and claimed != actual:
+            raise EvidenceGraphValidationError(
+                "post-merge evidence receipt identity mismatch"
+            )
+        object.__setattr__(self, "receipt_id", actual)
+
+    def _derive_reason_codes(self, *, now: datetime) -> tuple[str, ...]:
+        reasons: set[str] = set()
+        deadline = _post_merge_datetime(
+            self.freshness_deadline, name="freshness_deadline"
+        )
+        assembled = _post_merge_datetime(self.assembled_at, name="assembled_at")
+        freshness_horizon = deadline - assembled
+
+        def timestamp_is_current(record: Mapping[str, Any]) -> bool:
+            observed_at = _post_merge_observed_at(record)
+            return bool(
+                observed_at is not None
+                and observed_at <= now
+                and freshness_horizon > timedelta(0)
+                and now - observed_at <= freshness_horizon
+            )
+
+        expected_gates = set(POST_MERGE_EVIDENCE_GATE_KINDS)
+        actual_gates = set(self.gate_kinds)
+        if actual_gates - expected_gates:
+            reasons.add("extra_gate")
+        if expected_gates - actual_gates:
+            reasons.add("missing_gate")
+        if self.objective_id != POST_MERGE_EVIDENCE_OBJECTIVE_ID:
+            reasons.add("objective_mismatch")
+        if self.objective_revision != POST_MERGE_EVIDENCE_OBJECTIVE_REVISION:
+            reasons.add("objective_revision_mismatch")
+        if self.analyzer_version != POST_MERGE_EVIDENCE_ANALYZER_VERSION:
+            reasons.add("analyzer_version_mismatch")
+        if self.configuration_revision != POST_MERGE_EVIDENCE_CONFIGURATION_REVISION:
+            reasons.add("configuration_revision_mismatch")
+        if self.verified_tree_id != self.merged_tree_id:
+            reasons.add("repository_tree_changed")
+
+        proposal_tree = _post_merge_tree_id(self.proposal_admission)
+        proposal_policy = _post_merge_text(self.proposal_admission, "policy_id")
+        proposal_task = _post_merge_text(self.proposal_admission, "task_id")
+        if not self.proposal_admission or not _post_merge_passed(
+            self.proposal_admission
+        ):
+            reasons.add("proposal_not_admitted")
+        if proposal_tree != self.candidate_tree_id:
+            reasons.add("proposal_candidate_tree_mismatch")
+        if proposal_policy and proposal_policy != self.policy_id:
+            reasons.add("proposal_policy_mismatch")
+        if proposal_task and proposal_task != self.task_id:
+            reasons.add("proposal_task_mismatch")
+        if not _post_merge_receipt_id(self.proposal_admission):
+            reasons.add("proposal_receipt_missing")
+
+        reasons.update(
+            _post_merge_validation_reasons(
+                self.validation_report,
+                self.validation_receipt,
+                merged_tree_id=self.merged_tree_id,
+            )
+        )
+        if not timestamp_is_current(self.validation_receipt):
+            reasons.add("stale_validation")
+        checked_groups = (
+            ("semantic", self.semantic_checks),
+            ("protocol", self.protocol_checks),
+            ("proof", self.proof_receipts),
+        )
+        for label, records in checked_groups:
+            if not records:
+                reasons.add(f"{label}_evidence_missing")
+            for record in records:
+                if _post_merge_tree_id(record) != self.merged_tree_id:
+                    reasons.add(f"{label}_tree_mismatch")
+                if not _post_merge_passed(record):
+                    reasons.add(f"{label}_evidence_failed")
+                if not _post_merge_receipt_id(record):
+                    reasons.add(f"{label}_receipt_missing")
+                if not _post_merge_fresh(record):
+                    reasons.add("stale_evidence")
+                if not timestamp_is_current(record):
+                    reasons.add("stale_evidence")
+
+        for label, records in (
+            ("legal_logic", self.legal_logic_obligations),
+            ("theorem", self.theorem_obligations),
+        ):
+            if not records:
+                reasons.add(f"{label}_evidence_missing")
+            for record in records:
+                if _post_merge_tree_id(record) != self.merged_tree_id:
+                    reasons.add(f"{label}_tree_mismatch")
+                if not _post_merge_text(
+                    record, "obligation_id", "requirement_id", "content_id", "id"
+                ):
+                    reasons.add(f"{label}_obligation_identity_missing")
+
+        obligation_ids = {
+            _post_merge_text(record, "obligation_id", "requirement_id", "id")
+            for record in (
+                *self.legal_logic_obligations,
+                *self.theorem_obligations,
+            )
+        }
+        obligation_ids.discard("")
+        proved_ids: list[str] = []
+        conclusions: dict[str, set[str]] = {}
+        for proof in self.proof_receipts:
+            authoritative_verdict = ""
+            authoritative_assurance = ""
+            schema = str(proof.get("schema") or "")
+            try:
+                from .formal_verification_contracts import (
+                    AssuranceLevel,
+                    PROOF_RECEIPT_SCHEMA,
+                    ProofReceipt,
+                    ProofVerdict,
+                )
+
+                if schema != PROOF_RECEIPT_SCHEMA:
+                    raise ValueError("not a canonical proof receipt")
+                restored_proof = ProofReceipt.from_dict(proof)
+                authoritative_verdict = restored_proof.authoritative_verdict.value
+                authoritative_assurance = restored_proof.authoritative_assurance.value
+                if (
+                    restored_proof.authoritative_verdict is not ProofVerdict.PROVED
+                    or restored_proof.authoritative_assurance
+                    not in {
+                        AssuranceLevel.KERNEL_VERIFIED,
+                        AssuranceLevel.ATTESTED,
+                    }
+                ):
+                    reasons.add("proof_not_authoritative")
+            except (TypeError, ValueError):
+                reasons.add("proof_receipt_unverified")
+            obligation_id = _post_merge_text(
+                proof, "obligation_id", "requirement_id", "subject_id"
+            )
+            if obligation_id:
+                proved_ids.append(obligation_id)
+                conclusion = _post_merge_text(
+                    proof, "conclusion", "claim", "statement"
+                ).casefold()
+                if conclusion:
+                    conclusions.setdefault(obligation_id, set()).add(conclusion)
+            verdict = _post_merge_text(
+                proof, "authoritative_verdict", "verdict", "status", "result", "outcome"
+            ).lower()
+            if (
+                authoritative_verdict != "proved"
+                or verdict != "proved"
+                or authoritative_assurance
+                not in {"kernel_verified", "attested"}
+                or _post_merge_bool(proof, "contradicted", "counterexample_found")
+                is True
+            ):
+                reasons.add("contradictory_proof")
+        if (
+            not obligation_ids
+            or len(proved_ids) != len(set(proved_ids))
+            or set(proved_ids) != obligation_ids
+        ):
+            reasons.add("proof_obligation_population_mismatch")
+        if any(len(values) > 1 for values in conclusions.values()):
+            reasons.add("contradictory_proof")
+
+        merge_candidate = _post_merge_text(
+            self.merge_record, "candidate_tree_id", "source_tree_id"
+        )
+        merge_tree = _post_merge_text(
+            self.merge_record,
+            "merged_tree_id",
+            "repository_tree_id",
+            "target_tree_id",
+        )
+        merge_commit = _post_merge_text(
+            self.merge_record, "merge_commit_id", "merge_commit", "commit_sha"
+        )
+        if not self.merge_record or not _post_merge_passed(self.merge_record):
+            reasons.add("merge_not_accepted")
+        if merge_candidate != self.candidate_tree_id:
+            reasons.add("merge_candidate_tree_mismatch")
+        if merge_tree != self.merged_tree_id:
+            reasons.add("merge_tree_mismatch")
+        if merge_commit != self.merge_commit_id:
+            reasons.add("merge_commit_mismatch")
+        if not _post_merge_receipt_id(self.merge_record):
+            reasons.add("merge_receipt_missing")
+        if (
+            not _post_merge_fresh(self.merge_record)
+            or not timestamp_is_current(self.merge_record)
+        ):
+            reasons.add("stale_merge_evidence")
+
+        if self.acceptance_criteria != POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA:
+            reasons.add("acceptance_criteria_mismatch")
+        coverage_criteria = [
+            str(
+                record.get(
+                    "acceptance_criterion",
+                    record.get("criterion", record.get("acceptance", "")),
+                )
+                or ""
+            ).strip()
+            for record in self.criterion_coverage
+        ]
+        if (
+            len(coverage_criteria) != len(set(coverage_criteria))
+            or tuple(coverage_criteria) != self.acceptance_criteria
+        ):
+            reasons.add("acceptance_coverage_mismatch")
+        for row in self.criterion_coverage:
+            implementation = row.get(
+                "implementation",
+                row.get("implementation_binding", row.get("changed_files")),
+            )
+            required_receipts = row.get("receipt_ids")
+            if isinstance(required_receipts, str):
+                required_receipts = (required_receipts,)
+            if (
+                not implementation
+                or not isinstance(required_receipts, Sequence)
+                or isinstance(required_receipts, (str, bytes, bytearray))
+                or not required_receipts
+                or not _post_merge_fresh(row)
+                or _post_merge_tree_id(row) != self.merged_tree_id
+                or not timestamp_is_current(row)
+            ):
+                reasons.add("acceptance_coverage_unbound")
+
+        if not self.merged_tree_records:
+            reasons.add("merged_tree_records_missing")
+        common_sources = (
+            self.validation_report,
+            self.validation_receipt,
+            *self.semantic_checks,
+            *self.protocol_checks,
+            *self.legal_logic_obligations,
+            *self.theorem_obligations,
+            *self.proof_receipts,
+            self.merge_record,
+            *self.criterion_coverage,
+        )
+        proposal_plan_id = _post_merge_text(
+            self.proposal_admission, "accepted_plan_id", "plan_id"
+        )
+        for record in common_sources:
+            source_repository = _post_merge_text(record, "repository_id")
+            source_task = _post_merge_text(record, "task_id")
+            source_objective = _post_merge_text(record, "objective_id")
+            source_plan = _post_merge_text(record, "accepted_plan_id", "plan_id")
+            if source_repository and source_repository != self.repository_id:
+                reasons.add("foreign_repository_evidence")
+            if source_task and source_task != self.task_id:
+                reasons.add("foreign_task_evidence")
+            if source_objective and source_objective != self.objective_id:
+                reasons.add("foreign_objective_evidence")
+            if proposal_plan_id and source_plan and source_plan != proposal_plan_id:
+                reasons.add("foreign_plan_evidence")
+        foreign_trees = {
+            node.tree_id
+            for node in self.graph.nodes
+            if node.tree_id and node.tree_id != self.merged_tree_id
+        }
+        if foreign_trees:
+            reasons.add("foreign_graph_evidence")
+        if not self.graph.find_nodes(
+            kind=EvidenceNodeKind.TREE, tree_id=self.merged_tree_id
+        ):
+            reasons.add("merged_tree_graph_missing")
+        if self.graph.graph_id != self.graph_id:
+            reasons.add("graph_identity_mismatch")
+
+        if deadline <= assembled or now > deadline:
+            reasons.add("stale_evidence")
+        return tuple(sorted(reasons))
+
+    @property
+    def graph_id(self) -> str:
+        return self.graph.graph_id
+
+    @property
+    def accepted(self) -> bool:
+        return not self.reason_codes
+
+    @property
+    def authoritative(self) -> bool:
+        return self.accepted
+
+    @property
+    def merge_eligible(self) -> bool:
+        return self.accepted
+
+    @property
+    def merge_authoritative(self) -> bool:
+        return self.accepted
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return self.accepted
+
+    @property
+    def freshness_authoritative(self) -> bool:
+        return self.accepted
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (POST_MERGE_EVIDENCE_REQUIREMENT_ID,) if self.accepted else ()
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": POST_MERGE_EVIDENCE_SCHEMA,
+            "repository_id": self.repository_id,
+            "task_id": self.task_id,
+            "objective_id": self.objective_id,
+            "objective_revision": self.objective_revision,
+            "policy_id": self.policy_id,
+            "candidate_tree_id": self.candidate_tree_id,
+            "merged_tree_id": self.merged_tree_id,
+            "merge_commit_id": self.merge_commit_id,
+            "verified_tree_id": self.verified_tree_id,
+            "assembled_at": self.assembled_at,
+            "verified_at": self.verified_at,
+            "freshness_deadline": self.freshness_deadline,
+            "acceptance_criteria": self.acceptance_criteria,
+            "gate_kinds": self.gate_kinds,
+            "proposal_admission": self.proposal_admission,
+            "validation_report": self.validation_report,
+            "validation_receipt": self.validation_receipt,
+            "semantic_checks": self.semantic_checks,
+            "protocol_checks": self.protocol_checks,
+            "legal_logic_obligations": self.legal_logic_obligations,
+            "theorem_obligations": self.theorem_obligations,
+            "proof_receipts": self.proof_receipts,
+            "merge_record": self.merge_record,
+            "criterion_coverage": self.criterion_coverage,
+            "merged_tree_records": self.merged_tree_records,
+            "graph": self.graph.to_dict(),
+            "analyzer_version": self.analyzer_version,
+            "configuration_revision": self.configuration_revision,
+            "reason_codes": self.reason_codes,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._identity_payload(),
+            "receipt_id": self.receipt_id,
+            "graph_id": self.graph_id,
+            "accepted": self.accepted,
+            "authoritative": self.authoritative,
+            "merge_eligible": self.merge_eligible,
+            "merge_authoritative": self.merge_authoritative,
+            "completion_authoritative": self.completion_authoritative,
+            "freshness_authoritative": self.freshness_authoritative,
+            "proved_requirement_ids": self.proved_requirement_ids,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PostMergeEvidenceReceipt":
+        allowed = {
+            "schema", "repository_id", "task_id", "objective_id",
+            "objective_revision", "policy_id", "candidate_tree_id",
+            "merged_tree_id", "merge_commit_id", "assembled_at",
+            "verified_tree_id", "verified_at",
+            "freshness_deadline", "acceptance_criteria", "gate_kinds",
+            "proposal_admission", "validation_report", "validation_receipt",
+            "semantic_checks", "protocol_checks", "legal_logic_obligations",
+            "theorem_obligations", "proof_receipts", "merge_record",
+            "criterion_coverage", "merged_tree_records", "graph",
+            "analyzer_version", "configuration_revision", "reason_codes",
+            "receipt_id", "graph_id", "accepted", "authoritative",
+            "merge_eligible", "merge_authoritative",
+            "completion_authoritative", "freshness_authoritative",
+            "proved_requirement_ids",
+        }
+        extras = set(payload) - allowed
+        if extras:
+            raise EvidenceGraphValidationError(
+                "unsupported post-merge evidence fields: " + ", ".join(sorted(extras))
+            )
+        if payload.get("schema") != POST_MERGE_EVIDENCE_SCHEMA:
+            raise EvidenceGraphValidationError("unsupported post-merge evidence schema")
+        graph_value = payload.get("graph")
+        if not isinstance(graph_value, Mapping):
+            raise EvidenceGraphValidationError("post-merge evidence graph is required")
+        receipt = cls(
+            repository_id=str(payload.get("repository_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
+            objective_id=str(payload.get("objective_id") or ""),
+            objective_revision=str(payload.get("objective_revision") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            candidate_tree_id=str(payload.get("candidate_tree_id") or ""),
+            merged_tree_id=str(payload.get("merged_tree_id") or ""),
+            merge_commit_id=str(payload.get("merge_commit_id") or ""),
+            verified_tree_id=str(payload.get("verified_tree_id") or ""),
+            assembled_at=str(payload.get("assembled_at") or ""),
+            verified_at=str(payload.get("verified_at") or ""),
+            freshness_deadline=str(payload.get("freshness_deadline") or ""),
+            acceptance_criteria=tuple(payload.get("acceptance_criteria") or ()),
+            gate_kinds=tuple(payload.get("gate_kinds") or ()),
+            proposal_admission=payload.get("proposal_admission") or {},
+            validation_report=payload.get("validation_report") or {},
+            validation_receipt=payload.get("validation_receipt") or {},
+            semantic_checks=tuple(payload.get("semantic_checks") or ()),
+            protocol_checks=tuple(payload.get("protocol_checks") or ()),
+            legal_logic_obligations=tuple(payload.get("legal_logic_obligations") or ()),
+            theorem_obligations=tuple(payload.get("theorem_obligations") or ()),
+            proof_receipts=tuple(payload.get("proof_receipts") or ()),
+            merge_record=payload.get("merge_record") or {},
+            criterion_coverage=tuple(payload.get("criterion_coverage") or ()),
+            merged_tree_records=payload.get("merged_tree_records") or {},
+            graph=CodeEvidenceGraph.from_dict(graph_value),
+            analyzer_version=str(payload.get("analyzer_version") or ""),
+            configuration_revision=str(payload.get("configuration_revision") or ""),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+            receipt_id=str(payload.get("receipt_id") or ""),
+        )
+        claimed = {
+            "graph_id": receipt.graph_id,
+            "accepted": receipt.accepted,
+            "authoritative": receipt.authoritative,
+            "merge_eligible": receipt.merge_eligible,
+            "merge_authoritative": receipt.merge_authoritative,
+            "completion_authoritative": receipt.completion_authoritative,
+            "freshness_authoritative": receipt.freshness_authoritative,
+            "proved_requirement_ids": receipt.proved_requirement_ids,
+        }
+        for name, derived in claimed.items():
+            if name in payload and _canonical_value(payload[name]) != _canonical_value(derived):
+                raise EvidenceGraphValidationError(
+                    f"post-merge {name} does not match embedded evidence"
+                )
+        return receipt
+
+    @classmethod
+    def from_json(cls, payload: str) -> "PostMergeEvidenceReceipt":
+        try:
+            value = json.loads(payload)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise EvidenceGraphValidationError(
+                "post-merge evidence JSON is malformed"
+            ) from exc
+        if not isinstance(value, Mapping):
+            raise EvidenceGraphValidationError(
+                "post-merge evidence JSON must contain an object"
+            )
+        return cls.from_dict(value)
+
+    def to_json(self, *, indent: int | None = None) -> str:
+        if indent is None:
+            return canonical_json(self.to_dict())
+        return json.dumps(
+            _canonical_value(self.to_dict()),
+            indent=indent,
+            sort_keys=True,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+
+    def revalidate(
+        self,
+        current_repository_tree_id: str,
+        *,
+        now: datetime | str | None = None,
+    ) -> "PostMergeEvidenceReceipt":
+        current_tree = str(current_repository_tree_id or "").strip()
+        instant = (
+            _post_merge_datetime(now, name="now")
+            if now is not None
+            else datetime.now(timezone.utc)
+        )
+        receipt = assemble_post_merge_evidence(
+            repository_id=self.repository_id,
+            task_id=self.task_id,
+            policy_id=self.policy_id,
+            candidate_tree_id=self.candidate_tree_id,
+            merged_tree_id=self.merged_tree_id,
+            merge_commit_id=self.merge_commit_id,
+            current_repository_tree_id=current_tree,
+            proposal_admission=self.proposal_admission,
+            validation_report=self.validation_report,
+            validation_receipt=self.validation_receipt,
+            semantic_checks=self.semantic_checks,
+            protocol_checks=self.protocol_checks,
+            legal_logic_obligations=self.legal_logic_obligations,
+            theorem_obligations=self.theorem_obligations,
+            proof_receipts=self.proof_receipts,
+            merge_record=self.merge_record,
+            criterion_coverage=self.criterion_coverage,
+            merged_tree_records=self.merged_tree_records,
+            acceptance_criteria=self.acceptance_criteria,
+            gate_kinds=self.gate_kinds,
+            assembled_at=self.assembled_at,
+            verified_at=instant,
+            freshness_deadline=self.freshness_deadline,
+        )
+        return receipt
+
+
+def assemble_post_merge_evidence(
+    *,
+    repository_id: str,
+    task_id: str,
+    policy_id: str,
+    candidate_tree_id: str,
+    merged_tree_id: str,
+    merge_commit_id: str,
+    current_repository_tree_id: str | None = None,
+    proposal_admission: Any,
+    validation_report: Any,
+    validation_receipt: Any | None = None,
+    semantic_checks: Iterable[Any] = (),
+    protocol_checks: Iterable[Any] = (),
+    legal_logic_obligations: Iterable[Any] = (),
+    theorem_obligations: Iterable[Any] = (),
+    proof_receipts: Iterable[Any] = (),
+    merge_record: Any = None,
+    criterion_coverage: Iterable[Any] = (),
+    merged_tree_records: Mapping[str, Any] | None = None,
+    graph_records: Mapping[str, Any] | None = None,
+    acceptance_criteria: Iterable[str] = POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA,
+    gate_kinds: Iterable[str] = POST_MERGE_EVIDENCE_GATE_KINDS,
+    assembled_at: datetime | str | None = None,
+    verified_at: datetime | str | None = None,
+    freshness_deadline: datetime | str | None = None,
+    freshness_seconds: float = 3600.0,
+    objective_id: str = POST_MERGE_EVIDENCE_OBJECTIVE_ID,
+    objective_revision: str = POST_MERGE_EVIDENCE_OBJECTIVE_REVISION,
+) -> PostMergeEvidenceReceipt:
+    """Rebuild the actual-tree graph and derive the sole ASI-109 authority."""
+
+    assembled = (
+        _post_merge_datetime(assembled_at, name="assembled_at")
+        if assembled_at is not None
+        else datetime.now(timezone.utc)
+    )
+    if freshness_deadline is None:
+        if isinstance(freshness_seconds, bool) or float(freshness_seconds) <= 0:
+            raise EvidenceGraphValidationError("freshness_seconds must be positive")
+        deadline = assembled + timedelta(seconds=float(freshness_seconds))
+    else:
+        deadline = _post_merge_datetime(
+            freshness_deadline, name="freshness_deadline"
+        )
+    verified = (
+        _post_merge_datetime(verified_at, name="verified_at")
+        if verified_at is not None
+        else assembled
+    )
+    proposal = _post_merge_record(proposal_admission, name="proposal_admission")
+    report = _post_merge_record(validation_report, name="validation_report")
+    embedded_receipt = report.get("impact_validation_receipt")
+    receipt = _post_merge_record(
+        validation_receipt
+        if validation_receipt is not None
+        else embedded_receipt,
+        name="validation_receipt",
+    )
+    semantic = _post_merge_records(tuple(semantic_checks), name="semantic_checks")
+    protocol = _post_merge_records(tuple(protocol_checks), name="protocol_checks")
+    legal = _post_merge_records(
+        tuple(legal_logic_obligations), name="legal_logic_obligations"
+    )
+    theorem = _post_merge_records(
+        tuple(theorem_obligations), name="theorem_obligations"
+    )
+    proofs = _post_merge_records(tuple(proof_receipts), name="proof_receipts")
+    merge = _post_merge_record(merge_record, name="merge_record")
+    coverage = _post_merge_records(
+        tuple(criterion_coverage), name="criterion_coverage"
+    )
+    tree_records = _post_merge_record(
+        merged_tree_records if merged_tree_records is not None else graph_records,
+        name="merged_tree_records",
+    )
+    graph = _build_post_merge_graph(
+        task_id=str(task_id),
+        merged_tree_id=str(merged_tree_id),
+        merged_tree_records=tree_records,
+        validation_report=report,
+        validation_receipt=receipt,
+        semantic_checks=semantic,
+        protocol_checks=protocol,
+        legal_logic_obligations=legal,
+        theorem_obligations=theorem,
+        proof_receipts=proofs,
+        merge_record=merge,
+    )
+    return PostMergeEvidenceReceipt(
+        repository_id=repository_id,
+        task_id=task_id,
+        objective_id=objective_id,
+        objective_revision=objective_revision,
+        policy_id=policy_id,
+        candidate_tree_id=candidate_tree_id,
+        merged_tree_id=merged_tree_id,
+        merge_commit_id=merge_commit_id,
+        verified_tree_id=(
+            str(current_repository_tree_id or "").strip()
+            or str(merged_tree_id or "").strip()
+        ),
+        assembled_at=assembled.isoformat(),
+        verified_at=verified.isoformat(),
+        freshness_deadline=deadline.isoformat(),
+        acceptance_criteria=tuple(acceptance_criteria),
+        gate_kinds=tuple(gate_kinds),
+        proposal_admission=proposal,
+        validation_report=report,
+        validation_receipt=receipt,
+        semantic_checks=semantic,
+        protocol_checks=protocol,
+        legal_logic_obligations=legal,
+        theorem_obligations=theorem,
+        proof_receipts=proofs,
+        merge_record=merge,
+        criterion_coverage=coverage,
+        merged_tree_records=tree_records,
+        graph=graph,
+    )
+
+
+def verify_post_merge_evidence(
+    receipt: PostMergeEvidenceReceipt | Mapping[str, Any],
+    current_repository_tree_id: str,
+    *,
+    now: datetime | str | None = None,
+) -> PostMergeEvidenceReceipt:
+    """Strictly restore and re-derive authority for the current merge tree."""
+
+    restored = (
+        receipt
+        if isinstance(receipt, PostMergeEvidenceReceipt)
+        else PostMergeEvidenceReceipt.from_dict(receipt)
+    )
+    return restored.revalidate(current_repository_tree_id, now=now)
 
 
 class _GraphBuilder:
@@ -1870,6 +3074,15 @@ __all__ = [
     "CODE_IMPACT_INDEX_SCHEMA",
     "CODE_IMPACT_RESULT_SCHEMA",
     "ENRICHMENT_EDGE_KINDS",
+    "POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA",
+    "POST_MERGE_EVIDENCE_ANALYZER_VERSION",
+    "POST_MERGE_EVIDENCE_CONFIGURATION_REVISION",
+    "POST_MERGE_EVIDENCE_GATE_KINDS",
+    "POST_MERGE_EVIDENCE_OBJECTIVE_ID",
+    "POST_MERGE_EVIDENCE_OBJECTIVE_REVISION",
+    "POST_MERGE_EVIDENCE_PRODUCING_TASK_IDS",
+    "POST_MERGE_EVIDENCE_REQUIREMENT_ID",
+    "POST_MERGE_EVIDENCE_SCHEMA",
     "UNTRUSTED_PROVENANCE",
     "CodeEvidenceEdge",
     "CodeEvidenceGraph",
@@ -1884,9 +3097,12 @@ __all__ = [
     "EvidenceNodeKind",
     "EvidenceProvenance",
     "ProvenanceEdge",
+    "PostMergeEvidenceReceipt",
+    "assemble_post_merge_evidence",
     "build_code_evidence_graph",
     "build_code_impact_index",
     "canonical_graph_records",
     "canonical_json",
     "materialize_code_evidence_graph",
+    "verify_post_merge_evidence",
 ]

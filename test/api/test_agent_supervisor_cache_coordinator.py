@@ -28,11 +28,17 @@ from ipfs_accelerate_py.agent_supervisor.cache_coordinator import (
     CachePublication,
     CacheQuotaPolicy,
     CacheRecordOutcome,
+    NamespaceCacheCASAdapter,
     NamespaceCacheCoordinator,
     NamespaceLookupStatus,
     SingleFlightCollapseEvidence,
     build_namespace_semantic_key,
     namespace_metadata,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime_cas import RuntimeCAS
+from ipfs_accelerate_py.agent_supervisor.supervisor_v2_contracts import (
+    ResultBinding,
+    SemanticDependencyIdentity,
 )
 
 
@@ -88,6 +94,32 @@ def _common_analysis_key(**changes: object):
     }
     dimensions.update(changes)
     return build_namespace_semantic_key(CacheNamespace.ANALYSIS, dimensions)
+
+
+def _runtime_binding() -> ResultBinding:
+    dependency = SemanticDependencyIdentity(
+        namespace="legacy-cache",
+        key="analysis-key",
+        revision="legacy@1",
+        digest="sha256:" + "1" * 64,
+    )
+    return ResultBinding(
+        repository_id="repository:test",
+        tree_id="tree:sha256:111",
+        objective_id="objective:test",
+        objective_revision="objective@1",
+        task_id="task:test",
+        task_revision="task@1",
+        policy_id="policy:test",
+        policy_revision="policy@1",
+        producer_id="producer:test",
+        producer_revision="producer@1",
+        capability_id="capability:test",
+        capability_revision="capability@1",
+        environment_id="environment:test",
+        environment_revision="environment@1",
+        semantic_dependencies=(dependency,),
+    )
 
 
 def _cross_process_common_cache_worker(
@@ -689,6 +721,47 @@ def test_common_namespace_metadata_and_every_analysis_dimension_are_bound() -> N
             CacheNamespace.ANALYSIS,
             {"repository_tree_identity": "tree-only"},
         )
+
+
+def test_namespace_cache_adapter_reuses_exact_authoritative_native_entry(
+    tmp_path: Path,
+) -> None:
+    native = NamespaceCacheCoordinator(tmp_path / "native")
+    key = _common_analysis_key()
+    assert native.put(
+        key,
+        {"receipt_id": "legacy-exact"},
+        authority=CacheAuthority.AUTHORITATIVE,
+    )
+    runtime = RuntimeCAS(
+        tmp_path / "runtime", current_tree_id="tree:sha256:111"
+    )
+    adapter = NamespaceCacheCASAdapter(
+        native,
+        runtime,
+        producer_version="producer@1",
+        policy_version="policy@1",
+        capability_version="capability@1",
+    )
+
+    imported = adapter.import_entry(key, binding=_runtime_binding())
+
+    assert imported is not None
+    assert imported.payload["payload"] == {"receipt_id": "legacy-exact"}
+    assert imported.identity.namespace == CacheNamespace.ANALYSIS.value
+    projected = runtime.get_projection(
+        key.key_id,
+        namespace=CacheNamespace.ANALYSIS.value,
+    )
+    assert projected is not None
+    assert projected.artifact_id == imported.artifact_id
+    assert runtime.get(imported.key).artifact_id == imported.artifact_id
+
+    incompatible = replace(
+        _runtime_binding(), producer_revision="producer@2"
+    )
+    with pytest.raises(ValueError, match="producer_revision"):
+        adapter.import_entry(key, binding=incompatible)
 
 
 def test_proof_drafts_have_a_separate_non_authoritative_namespace(

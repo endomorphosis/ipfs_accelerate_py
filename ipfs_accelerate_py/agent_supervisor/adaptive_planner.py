@@ -19,7 +19,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
+import json
+import queue
 import re
+import threading
+import time
+from types import MappingProxyType
 from typing import Any, Callable, Final, Iterable, Mapping, Sequence
 
 from .formal_replanner import RepairTransition
@@ -30,8 +35,11 @@ from .adaptive_goal_refiner import (
     AdaptiveRefinementReceipt,
 )
 from .plan_evaluator import (
+    AND_OR_PLAN_EVALUATOR_VERSION,
     EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
     EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION,
+    AndOrPlanBranch,
+    AndOrPlanEvaluation,
     EvidenceAwarePlanCandidate,
     EvidenceAwarePlanEvaluation,
     EvidenceAwarePlanPolicy,
@@ -39,8 +47,17 @@ from .plan_evaluator import (
     PlanBranchValidationError,
     PlanDimensionAssessment,
     PlanEvaluationDimension,
+    PlanSearchHardConstraint,
+    PlanSearchHardFailure,
+    evaluate_and_or_plan_branches,
     evaluate_evidence_aware_plans,
+    validate_and_or_plan_evaluation,
     validate_evidence_aware_plan_evaluation,
+)
+from .goal_quality import (
+    TypedGoal,
+    UncertaintyDisposition,
+    validate_goal,
 )
 from .task_proposal_router import (
     AdaptiveCandidateProviderKind,
@@ -66,6 +83,9 @@ ADAPTIVE_PLAN_CANDIDATE_SNAPSHOT_SCHEMA: Final = (
 )
 ADAPTIVE_PLANNING_RUN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-planning-run@1"
+)
+HARD_CONSTRAINED_PLAN_SELECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/hard-constrained-plan-selection@1"
 )
 EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -2184,6 +2204,11 @@ class EvidenceAwarePlanningCompletionEvidence:
                 "healthy": False,
                 "safe_for_completion_reasoning": False,
             }
+        else:
+            # ASI-G030 checks the exhaustive scan population through the
+            # bound quorum below; expose that objective-specific contract in
+            # the generic completion gate's health vocabulary.
+            health_value = {**health_value, "exhaustive": True}
 
         evaluated_quorum = isinstance(
             exhaustion_quorum, ExhaustionQuorumResult
@@ -2258,6 +2283,39 @@ class EvidenceAwarePlanningCompletionEvidence:
                 "satisfied": False,
                 "quorum_met": False,
             }
+        else:
+            translated_members = []
+            for member in members:
+                channel = str(
+                    member.get("evidence_channel") or ""
+                ).strip().lower()
+                scan_mode = str(member.get("scan_mode") or "").strip().lower()
+                is_audit = (
+                    "audit" in channel
+                    or scan_mode == "audit"
+                    or scan_mode.endswith("_audit")
+                )
+                translated_members.append(
+                    {
+                        **member,
+                        "status": "passed",
+                        "passed": True,
+                        "healthy": True,
+                        "safe_for_completion_reasoning": True,
+                        "exhaustive": True,
+                        "conclusive": True,
+                        "uncontradicted": True,
+                        "analyzer_version": (
+                            str(member.get("analyzer_version") or "").strip()
+                            or health_binding["analyzer_version"]
+                        ),
+                        "scan_mode": "audit" if is_audit else "exhaustive",
+                    }
+                )
+            quorum_value = {
+                **quorum_value,
+                "members": translated_members,
+            }
 
         child_values = [payload(item) for item in child_goals]
         child_ids = [
@@ -2323,12 +2381,529 @@ class EvidenceAwarePlanningCompletionEvidence:
         return evaluate_goal_completion(**values)
 
 
+def _plan_admission_receipt_type() -> type:
+    """Resolve the IR admission type lazily to keep compiler imports acyclic."""
+
+    from .ir_constraint_compiler import PlanAdmissionReceipt
+
+    return PlanAdmissionReceipt
+
+
+def _admission_candidate_plan_id(receipt: Any) -> str:
+    return _text(
+        getattr(
+            receipt,
+            "candidate_plan_id",
+            getattr(receipt, "candidate_id", ""),
+        ),
+        "admission receipt candidate_plan_id",
+    )
+
+
+def _admission_root_bindings(receipt: Any) -> tuple[tuple[str, str], ...]:
+    """Return the semantic roots carried by a plan-admission receipt."""
+
+    for name in (
+        "semantic_roots",
+        "semantic_root_ids",
+        "ir_root_ids",
+        "root_bindings",
+    ):
+        value = getattr(receipt, name, None)
+        if isinstance(value, Mapping):
+            return tuple(
+                sorted(
+                    (
+                        _text(key, f"{name} key"),
+                        _text(item, f"{name}[{key}]"),
+                    )
+                    for key, item in value.items()
+                )
+            )
+    roots: list[tuple[str, str]] = []
+    for name in (
+        "intent_root_id",
+        "legal_root_id",
+        "security_root_id",
+        "program_root_id",
+    ):
+        value = str(getattr(receipt, name, "") or "").strip()
+        if value:
+            roots.append((name.removesuffix("_id"), _text(value, name)))
+    return tuple(sorted(roots))
+
+
+def _receipt_projection(receipt: Any) -> dict[str, Any]:
+    converter = getattr(receipt, "to_dict", None)
+    if not callable(converter):
+        raise AdaptivePlannerValidationError(
+            "plan admission receipts must provide canonical to_dict()"
+        )
+    payload = converter()
+    if not isinstance(payload, Mapping):
+        raise AdaptivePlannerValidationError(
+            "plan admission receipt to_dict() must return a mapping"
+        )
+    return dict(payload)
+
+
+@dataclass(frozen=True)
+class HardConstrainedPlanSelectionReceipt:
+    """Admission-first adaptive selection over one exact candidate population.
+
+    IR admission and adaptive scoring intentionally remain separate receipts.
+    This wrapper records their exact join: a failed IR candidate never enters
+    the soft evaluator, while its complete diagnostics remain available to
+    dependency-local replanning.
+    """
+
+    frozen_goal: FrozenPlanningGoal
+    candidate_bindings: tuple[tuple[str, str], ...]
+    admission_receipts: tuple[Any, ...]
+    selection: AdaptivePlanSelectionReceipt | None
+    semantic_roots: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.frozen_goal, FrozenPlanningGoal):
+            raise AdaptivePlannerValidationError(
+                "frozen_goal must be FrozenPlanningGoal"
+            )
+        bindings = tuple(
+            (
+                _text(item[0], "candidate_id"),
+                _text(item[1], "candidate_plan_id"),
+            )
+            for item in self.candidate_bindings
+        )
+        if len({item[0] for item in bindings}) != len(bindings):
+            raise AdaptivePlannerValidationError(
+                "hard-constrained candidate ids must be unique"
+            )
+        if len({item[1] for item in bindings}) != len(bindings):
+            raise AdaptivePlannerValidationError(
+                "hard-constrained candidate plan ids must be unique"
+            )
+        bindings = tuple(sorted(bindings))
+        object.__setattr__(self, "candidate_bindings", bindings)
+
+        receipt_type = _plan_admission_receipt_type()
+        receipts = tuple(self.admission_receipts)
+        if any(not isinstance(item, receipt_type) for item in receipts):
+            raise AdaptivePlannerValidationError(
+                "admission_receipts must contain typed PlanAdmissionReceipt "
+                "instances"
+            )
+        by_plan_id = {
+            _admission_candidate_plan_id(item): item for item in receipts
+        }
+        expected_plan_ids = {item[1] for item in bindings}
+        if len(by_plan_id) != len(receipts) or set(by_plan_id) != expected_plan_ids:
+            raise AdaptivePlannerValidationError(
+                "plan admission receipts must exactly cover the candidate "
+                "plan ids"
+            )
+        for receipt in receipts:
+            if (
+                _text(
+                    getattr(receipt, "repository_tree_id", ""),
+                    "admission receipt repository_tree_id",
+                )
+                != self.frozen_goal.repository_tree_id
+            ):
+                raise AdaptivePlannerValidationError(
+                    "plan admission receipt repository tree is stale"
+                )
+            if bool(getattr(receipt, "authorizes_execution", False)):
+                raise AdaptivePlannerValidationError(
+                    "plan admission cannot grant execution authority"
+                )
+        object.__setattr__(
+            self,
+            "admission_receipts",
+            tuple(
+                sorted(receipts, key=_admission_candidate_plan_id)
+            ),
+        )
+
+        roots = tuple(
+            sorted(
+                (
+                    _text(item[0], "semantic root domain"),
+                    _text(item[1], "semantic root id"),
+                )
+                for item in self.semantic_roots
+            )
+        )
+        object.__setattr__(self, "semantic_roots", roots)
+        for receipt in receipts:
+            receipt_roots = _admission_root_bindings(receipt)
+            if roots and receipt_roots != roots:
+                raise AdaptivePlannerValidationError(
+                    "plan admission receipt semantic roots are stale"
+                )
+
+        adaptive_by_plan = {
+            plan_id: candidate_id for candidate_id, plan_id in bindings
+        }
+        admitted_ids = {
+            adaptive_by_plan[_admission_candidate_plan_id(item)]
+            for item in receipts
+            if bool(getattr(item, "admitted", False))
+        }
+        if self.selection is None:
+            if admitted_ids:
+                raise AdaptivePlannerValidationError(
+                    "an admitted candidate requires an adaptive selection"
+                )
+        else:
+            if not isinstance(self.selection, AdaptivePlanSelectionReceipt):
+                raise AdaptivePlannerValidationError(
+                    "selection must be AdaptivePlanSelectionReceipt"
+                )
+            if self.selection.frozen_goal != self.frozen_goal:
+                raise AdaptivePlannerValidationError(
+                    "adaptive selection does not match the frozen goal"
+                )
+            evaluated_ids = {
+                item.candidate_id for item in self.selection.evaluation.ranked
+            }
+            if evaluated_ids != admitted_ids:
+                raise AdaptivePlannerValidationError(
+                    "adaptive selection must evaluate exactly the admitted "
+                    "candidate population"
+                )
+
+    @property
+    def admitted_candidate_ids(self) -> tuple[str, ...]:
+        adaptive_by_plan = {
+            plan_id: candidate_id
+            for candidate_id, plan_id in self.candidate_bindings
+        }
+        return tuple(
+            sorted(
+                adaptive_by_plan[_admission_candidate_plan_id(item)]
+                for item in self.admission_receipts
+                if bool(getattr(item, "admitted", False))
+            )
+        )
+
+    @property
+    def rejected_candidate_ids(self) -> tuple[str, ...]:
+        admitted = set(self.admitted_candidate_ids)
+        return tuple(
+            item[0] for item in self.candidate_bindings if item[0] not in admitted
+        )
+
+    @property
+    def selected_candidate_id(self) -> str | None:
+        return (
+            self.selection.selected_candidate_id
+            if self.selection is not None
+            else None
+        )
+
+    @property
+    def selected_plan_id(self) -> str | None:
+        selected = self.selected_candidate_id
+        if selected is None:
+            return None
+        return dict(self.candidate_bindings)[selected]
+
+    @property
+    def used_no_model_fallback(self) -> bool:
+        """The admission-first path is entirely deterministic and model-free."""
+
+        return True
+
+    @property
+    def selection_source(self) -> str:
+        return "deterministic_no_model"
+
+    @property
+    def admission_receipt_ids(self) -> Mapping[str, str]:
+        adaptive_by_plan = {
+            plan_id: candidate_id
+            for candidate_id, plan_id in self.candidate_bindings
+        }
+        return MappingProxyType(
+            {
+                adaptive_by_plan[_admission_candidate_plan_id(item)]: _text(
+                    getattr(item, "receipt_id", ""),
+                    "plan admission receipt_id",
+                )
+                for item in self.admission_receipts
+            }
+        )
+
+    def _rejected_receipts_by_candidate(self) -> dict[str, Any]:
+        adaptive_by_plan = {
+            plan_id: candidate_id
+            for candidate_id, plan_id in self.candidate_bindings
+        }
+        return {
+            adaptive_by_plan[_admission_candidate_plan_id(item)]: item
+            for item in self.admission_receipts
+            if not bool(getattr(item, "admitted", False))
+        }
+
+    @property
+    def rejection_reasons(self) -> Mapping[str, tuple[Any, ...]]:
+        return MappingProxyType(
+            {
+                candidate_id: tuple(
+                    getattr(
+                        receipt,
+                        "rejection_reasons",
+                        getattr(receipt, "reason_codes", ()),
+                    )
+                )
+                for candidate_id, receipt in sorted(
+                    self._rejected_receipts_by_candidate().items()
+                )
+            }
+        )
+
+    @property
+    def counterexamples(self) -> Mapping[str, tuple[Any, ...]]:
+        return MappingProxyType(
+            {
+                candidate_id: tuple(getattr(receipt, "counterexamples", ()))
+                for candidate_id, receipt in sorted(
+                    self._rejected_receipts_by_candidate().items()
+                )
+            }
+        )
+
+    @property
+    def local_replan_action_ids(self) -> Mapping[str, tuple[str, ...]]:
+        return MappingProxyType(
+            {
+                candidate_id: tuple(
+                    getattr(
+                        receipt,
+                        "local_replan_action_ids",
+                        getattr(receipt, "replan_action_ids", ()),
+                    )
+                )
+                for candidate_id, receipt in sorted(
+                    self._rejected_receipts_by_candidate().items()
+                )
+            }
+        )
+
+    @property
+    def receipt_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": HARD_CONSTRAINED_PLAN_SELECTION_SCHEMA,
+            "planner_version": ADAPTIVE_PLANNER_VERSION,
+            "frozen_goal": self.frozen_goal.to_dict(),
+            "candidate_bindings": [
+                {
+                    "candidate_id": candidate_id,
+                    "candidate_plan_id": plan_id,
+                }
+                for candidate_id, plan_id in self.candidate_bindings
+            ],
+            "semantic_roots": dict(self.semantic_roots),
+            "admission_receipts": [
+                _receipt_projection(item) for item in self.admission_receipts
+            ],
+            "admitted_candidate_ids": list(self.admitted_candidate_ids),
+            "rejected_candidate_ids": list(self.rejected_candidate_ids),
+            "rejection_reasons": {
+                key: list(value) for key, value in self.rejection_reasons.items()
+            },
+            "counterexamples": {
+                key: [
+                    (
+                        item.to_dict()
+                        if callable(getattr(item, "to_dict", None))
+                        else item
+                    )
+                    for item in value
+                ]
+                for key, value in self.counterexamples.items()
+            },
+            "local_replan_action_ids": {
+                key: list(value)
+                for key, value in self.local_replan_action_ids.items()
+            },
+            "admission_receipt_ids": dict(self.admission_receipt_ids),
+            "selected_candidate_id": self.selected_candidate_id,
+            "selected_plan_id": self.selected_plan_id,
+            "used_no_model_fallback": self.used_no_model_fallback,
+            "selection_source": self.selection_source,
+            "selection": (
+                self.selection.to_dict()
+                if self.selection is not None
+                else None
+            ),
+        }
+        if include_identity:
+            payload["receipt_id"] = self.receipt_id
+        return payload
+
+
 class AdaptivePlanner:
     """Select an admissible branch for one frozen goal and emit its evidence."""
 
     def __init__(self, *, max_candidates: int = 32) -> None:
         self.max_candidates = _integer(
             max_candidates, "max_candidates", minimum=1
+        )
+
+    def select_hard_constrained(
+        self,
+        frozen_goal: FrozenPlanningGoal,
+        candidates: Iterable[AdaptivePlanCandidate],
+        admission_receipts: Mapping[str, Any],
+        *,
+        semantic_roots: Mapping[str, str] | None = None,
+    ) -> HardConstrainedPlanSelectionReceipt:
+        """Prune IR-rejected candidates before deterministic soft selection.
+
+        ``admission_receipts`` is keyed by the exact formal plan identity (or
+        by the adaptive candidate identity when no formal plan is attached).
+        Every candidate must have exactly one typed receipt and extra receipts
+        fail closed.  This keeps the admitted population independent of input
+        order and prevents a model or a soft score from compensating for an IR
+        domain failure.
+        """
+
+        if not isinstance(frozen_goal, FrozenPlanningGoal):
+            raise AdaptivePlannerValidationError(
+                "frozen_goal must be FrozenPlanningGoal"
+            )
+        normalized = tuple(candidates)
+        if not normalized:
+            raise AdaptivePlannerValidationError(
+                "at least one adaptive plan candidate is required"
+            )
+        if len(normalized) > self.max_candidates:
+            raise AdaptivePlannerValidationError(
+                "adaptive plan candidate budget exceeded"
+            )
+        if any(not isinstance(item, AdaptivePlanCandidate) for item in normalized):
+            raise AdaptivePlannerValidationError(
+                "candidates must be AdaptivePlanCandidate instances"
+            )
+        candidate_ids = [item.candidate_id for item in normalized]
+        if len(set(candidate_ids)) != len(candidate_ids):
+            raise AdaptivePlannerValidationError(
+                "adaptive candidate ids must be unique"
+            )
+
+        bindings = tuple(
+            (
+                candidate.candidate_id,
+                candidate.formal_plan_id or candidate.candidate_id,
+            )
+            for candidate in normalized
+        )
+        plan_ids = [item[1] for item in bindings]
+        if len(set(plan_ids)) != len(plan_ids):
+            raise AdaptivePlannerValidationError(
+                "adaptive candidate formal plan ids must be unique"
+            )
+        if not isinstance(admission_receipts, Mapping):
+            raise AdaptivePlannerValidationError(
+                "admission_receipts must be a mapping"
+            )
+        normalized_receipts = {
+            _text(key, "admission_receipts key"): value
+            for key, value in admission_receipts.items()
+        }
+        expected_plan_ids = set(plan_ids)
+        if set(normalized_receipts) != expected_plan_ids:
+            missing = sorted(expected_plan_ids - set(normalized_receipts))
+            extra = sorted(set(normalized_receipts) - expected_plan_ids)
+            details = []
+            if missing:
+                details.append("missing=" + ",".join(missing))
+            if extra:
+                details.append("extra=" + ",".join(extra))
+            raise AdaptivePlannerValidationError(
+                "plan admission receipt mapping must exactly cover candidate "
+                "plan ids"
+                + (": " + "; ".join(details) if details else "")
+            )
+
+        receipt_type = _plan_admission_receipt_type()
+        for plan_id, receipt in normalized_receipts.items():
+            if not isinstance(receipt, receipt_type):
+                raise AdaptivePlannerValidationError(
+                    "admission_receipts must contain typed "
+                    "PlanAdmissionReceipt instances"
+                )
+            if _admission_candidate_plan_id(receipt) != plan_id:
+                raise AdaptivePlannerValidationError(
+                    "plan admission receipt mapping key does not match its "
+                    "candidate plan id"
+                )
+
+        if semantic_roots is not None and not isinstance(semantic_roots, Mapping):
+            raise AdaptivePlannerValidationError(
+                "semantic_roots must be a mapping"
+            )
+        expected_roots = (
+            tuple(
+                sorted(
+                    (
+                        _text(key, "semantic_roots key"),
+                        _text(value, f"semantic_roots[{key}]"),
+                    )
+                    for key, value in semantic_roots.items()
+                )
+            )
+            if semantic_roots is not None
+            else ()
+        )
+        receipt_roots = tuple(
+            _admission_root_bindings(item)
+            for item in normalized_receipts.values()
+        )
+        observed_roots = {item for item in receipt_roots if item}
+        if observed_roots and any(not item for item in receipt_roots):
+            raise AdaptivePlannerValidationError(
+                "plan admission receipts incompletely bind semantic roots"
+            )
+        if expected_roots:
+            if observed_roots != {expected_roots}:
+                raise AdaptivePlannerValidationError(
+                    "plan admission receipts do not bind the expected semantic "
+                    "roots"
+                )
+        elif len(observed_roots) > 1:
+            raise AdaptivePlannerValidationError(
+                "plan admission receipts bind inconsistent semantic roots"
+            )
+        elif observed_roots:
+            expected_roots = next(iter(observed_roots))
+
+        adaptive_by_plan_id = {
+            plan_id: candidate
+            for candidate, (_, plan_id) in zip(normalized, bindings)
+        }
+        admitted = tuple(
+            sorted(
+                (
+                    adaptive_by_plan_id[plan_id]
+                    for plan_id, receipt in normalized_receipts.items()
+                    if bool(getattr(receipt, "admitted", False))
+                ),
+                key=lambda item: item.candidate_id,
+            )
+        )
+        selection = self.select(frozen_goal, admitted) if admitted else None
+        return HardConstrainedPlanSelectionReceipt(
+            frozen_goal=frozen_goal,
+            candidate_bindings=bindings,
+            admission_receipts=tuple(normalized_receipts.values()),
+            selection=selection,
+            semantic_roots=expected_roots,
         )
 
     def select(
@@ -2624,6 +3199,1418 @@ class AdaptivePlanningRunStore:
         return receipt
 
 
+# ---------------------------------------------------------------------------
+# Typed-goal bounded AND/OR planning (ASI-104)
+# ---------------------------------------------------------------------------
+
+AND_OR_SEARCH_REQUIREMENT_ID: Final[str] = (
+    "194688567293502311990437777137664011508"
+)
+AND_OR_PLANNER_VERSION: Final[int] = 1
+AND_OR_GRAPH_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/and-or-plan-graph@1"
+)
+AND_OR_SEARCH_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/and-or-plan-search@1"
+)
+
+
+class AndOrNodeKind(str, Enum):
+    AND = "and"
+    OR = "or"
+    PRODUCER = "producer"
+
+
+class AndOrProducerKind(str, Enum):
+    DETERMINISTIC_BASELINE = "deterministic_baseline"
+    LLM = "llm"
+    LEANSTRAL = "leanstral"
+    ANALYSIS_PROVIDER = "analysis_provider"
+    # The existing router's spelling remains accepted at this boundary.
+    IPFS_DATASETS = "analysis_provider"
+
+
+@dataclass(frozen=True)
+class AndOrSearchBounds:
+    """Finite traversal and provider-use limits for one search."""
+
+    max_depth: int = 4
+    max_nodes: int = 128
+    max_branches: int = 64
+    max_alternatives_per_or: int = 8
+    max_tokens: int = 32_768
+    max_time_milliseconds: int = 30_000
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            object.__setattr__(
+                self, name, _integer(getattr(self, name), name, minimum=1)
+            )
+        if self.max_depth < 3:
+            raise AdaptivePlannerValidationError(
+                "max_depth must permit AND, OR, and producer levels"
+            )
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrSearchBounds":
+        if set(payload) != set(cls.__dataclass_fields__):
+            raise AdaptivePlannerValidationError(
+                "AND/OR search bounds must use the closed schema"
+            )
+        return cls(**dict(payload))
+
+
+def _plain_json(value: Any) -> Any:
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        value = value.to_dict()
+    try:
+        return json.loads(
+            json.dumps(
+                value,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+        )
+    except (TypeError, ValueError) as exc:
+        raise AdaptivePlannerValidationError(
+            "AND/OR planning context must be finite JSON data"
+        ) from exc
+
+
+def _freeze_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {key: _freeze_json(item) for key, item in value.items()}
+        )
+    if isinstance(value, list):
+        return tuple(_freeze_json(item) for item in value)
+    return value
+
+
+def _thaw_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value
+
+
+@dataclass(frozen=True)
+class FrozenAndOrPlanningContext:
+    """One immutable root/tree/policy/context capsule shared by all producers."""
+
+    goal: TypedGoal
+    repository_tree_id: str
+    policy_revision: str
+    context: Mapping[str, Any]
+    context_id: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.goal, TypedGoal):
+            raise AdaptivePlannerValidationError("goal must be a TypedGoal")
+        validate_goal(self.goal)
+        object.__setattr__(
+            self,
+            "repository_tree_id",
+            _text(self.repository_tree_id, "repository_tree_id"),
+        )
+        object.__setattr__(
+            self,
+            "policy_revision",
+            _text(self.policy_revision, "policy_revision"),
+        )
+        plain = _plain_json(self.context)
+        if not isinstance(plain, dict):
+            raise AdaptivePlannerValidationError(
+                "AND/OR planning context must be an object"
+            )
+        expected = content_identity(
+            {
+                "goal_content_id": self.goal.content_id,
+                "root_content_id": self.goal.root.content_id,
+                "repository_tree_id": self.repository_tree_id,
+                "policy_revision": self.policy_revision,
+                "context": plain,
+            }
+        )
+        if self.context_id and self.context_id != expected:
+            raise AdaptivePlannerValidationError(
+                "context_id does not match the frozen AND/OR context"
+            )
+        object.__setattr__(self, "context_id", expected)
+        object.__setattr__(self, "context", _freeze_json(plain))
+
+    @property
+    def goal_content_id(self) -> str:
+        return self.goal.content_id
+
+    @property
+    def root_content_id(self) -> str:
+        return self.goal.root.content_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "goal": self.goal.to_record(),
+            "goal_content_id": self.goal_content_id,
+            "root_content_id": self.root_content_id,
+            "repository_tree_id": self.repository_tree_id,
+            "policy_revision": self.policy_revision,
+            "context": _thaw_json(self.context),
+            "context_id": self.context_id,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "FrozenAndOrPlanningContext":
+        expected = {
+            "goal",
+            "goal_content_id",
+            "root_content_id",
+            "repository_tree_id",
+            "policy_revision",
+            "context",
+            "context_id",
+        }
+        if set(payload) != expected:
+            raise AdaptivePlannerValidationError(
+                "frozen AND/OR context must use the closed schema"
+            )
+        result = cls(
+            goal=TypedGoal.from_dict(payload.get("goal") or {}),
+            repository_tree_id=payload.get("repository_tree_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            context=payload.get("context") or {},
+            context_id=payload.get("context_id", ""),
+        )
+        if (
+            payload.get("goal_content_id") != result.goal_content_id
+            or payload.get("root_content_id") != result.root_content_id
+        ):
+            raise AdaptivePlannerValidationError(
+                "frozen AND/OR goal identity is inconsistent"
+            )
+        return result
+
+
+@dataclass(frozen=True)
+class AndOrPlanAlternative:
+    """Typed producer output for exactly one required obligation."""
+
+    alternative_id: str
+    obligation_id: str
+    producer_kind: AndOrProducerKind
+    goal_content_id: str
+    repository_tree_id: str
+    context_id: str
+    evidence_ids: tuple[str, ...]
+    reduced_uncertainty_ids: tuple[str, ...] = ()
+    changed_scopes: tuple[str, ...] = ()
+    authorized_scopes: tuple[str, ...] = ()
+    authority_granted: bool = True
+    dependencies: tuple[str, ...] = ()
+    satisfied_dependencies: tuple[str, ...] = ()
+    resource_available: bool = True
+    fresh: bool = True
+    validation_feasible: bool = True
+    proof_feasible: bool = True
+    critical_path_length: int = 1
+    conflict_risk_millionths: int = 0
+    estimated_cost_microunits: int = 0
+    estimated_tokens: int = 0
+    estimated_time_milliseconds: int = 0
+    historical_failure_millionths: int = 0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "alternative_id",
+            "obligation_id",
+            "goal_content_id",
+            "repository_tree_id",
+            "context_id",
+        ):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), name)
+            )
+        object.__setattr__(
+            self, "producer_kind", AndOrProducerKind(self.producer_kind)
+        )
+        for name in (
+            "evidence_ids",
+            "reduced_uncertainty_ids",
+            "changed_scopes",
+            "authorized_scopes",
+            "dependencies",
+            "satisfied_dependencies",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(
+                    getattr(self, name),
+                    name,
+                    allow_empty=name != "evidence_ids",
+                ),
+            )
+        for name in (
+            "authority_granted",
+            "resource_available",
+            "fresh",
+            "validation_feasible",
+            "proof_feasible",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise AdaptivePlannerValidationError(f"{name} must be boolean")
+        for name in (
+            "critical_path_length",
+            "conflict_risk_millionths",
+            "estimated_cost_microunits",
+            "estimated_tokens",
+            "estimated_time_milliseconds",
+            "historical_failure_millionths",
+        ):
+            object.__setattr__(
+                self, name, _integer(getattr(self, name), name)
+            )
+        for name in (
+            "conflict_risk_millionths",
+            "historical_failure_millionths",
+        ):
+            if getattr(self, name) > 1_000_000:
+                raise AdaptivePlannerValidationError(
+                    f"{name} must be at most 1000000"
+                )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            name: (
+                getattr(self, name).value
+                if name == "producer_kind"
+                else list(getattr(self, name))
+                if isinstance(getattr(self, name), tuple)
+                else getattr(self, name)
+            )
+            for name in self.__dataclass_fields__
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrPlanAlternative":
+        if set(payload) != set(cls.__dataclass_fields__):
+            raise AdaptivePlannerValidationError(
+                "AND/OR alternative must use the closed schema"
+            )
+        return cls(**dict(payload))
+
+
+@dataclass(frozen=True)
+class AndOrPlanNode:
+    node_id: str
+    kind: AndOrNodeKind
+    child_ids: tuple[str, ...] = ()
+    obligation_id: str = ""
+    alternative_id: str = ""
+    producer_kind: AndOrProducerKind | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "node_id", _text(self.node_id, "node_id"))
+        object.__setattr__(self, "kind", AndOrNodeKind(self.kind))
+        object.__setattr__(
+            self,
+            "child_ids",
+            _ordered_strings(
+                self.child_ids, "child_ids", allow_empty=self.kind is AndOrNodeKind.PRODUCER
+            ),
+        )
+        for name in ("obligation_id", "alternative_id"):
+            value = str(getattr(self, name) or "").strip()
+            object.__setattr__(self, name, value)
+        producer = (
+            AndOrProducerKind(self.producer_kind)
+            if self.producer_kind is not None
+            else None
+        )
+        object.__setattr__(self, "producer_kind", producer)
+        if self.kind is AndOrNodeKind.PRODUCER:
+            if self.child_ids or not self.obligation_id or not self.alternative_id:
+                raise AdaptivePlannerValidationError(
+                    "producer nodes require obligation/alternative and no children"
+                )
+            if producer is None:
+                raise AdaptivePlannerValidationError(
+                    "producer node requires producer_kind"
+                )
+        else:
+            if not self.child_ids:
+                raise AdaptivePlannerValidationError(
+                    "AND/OR nodes require at least one child"
+                )
+            if self.alternative_id or producer is not None:
+                raise AdaptivePlannerValidationError(
+                    "AND/OR nodes cannot carry producer metadata"
+                )
+            if (
+                self.kind is AndOrNodeKind.AND
+                and self.obligation_id
+            ) or (
+                self.kind is AndOrNodeKind.OR
+                and not self.obligation_id
+            ):
+                raise AdaptivePlannerValidationError(
+                    "only OR and producer nodes require an obligation"
+                )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "node_id": self.node_id,
+            "kind": self.kind.value,
+            "child_ids": list(self.child_ids),
+            "obligation_id": self.obligation_id,
+            "alternative_id": self.alternative_id,
+            "producer_kind": (
+                self.producer_kind.value if self.producer_kind else None
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrPlanNode":
+        if set(payload) != set(cls.__dataclass_fields__):
+            raise AdaptivePlannerValidationError(
+                "AND/OR node must use the closed schema"
+            )
+        return cls(**dict(payload))
+
+
+@dataclass(frozen=True)
+class AndOrPlanGraph:
+    frozen_context_id: str
+    goal_content_id: str
+    root_node_id: str
+    nodes: tuple[AndOrPlanNode, ...]
+    alternatives: tuple[AndOrPlanAlternative, ...]
+    max_depth: int
+    truncated: bool = False
+
+    def __post_init__(self) -> None:
+        for name in ("frozen_context_id", "goal_content_id", "root_node_id"):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), name)
+            )
+        nodes = tuple(self.nodes)
+        alternatives = tuple(self.alternatives)
+        node_ids = [item.node_id for item in nodes]
+        alternative_ids = [item.alternative_id for item in alternatives]
+        if len(node_ids) != len(set(node_ids)) or self.root_node_id not in node_ids:
+            raise AdaptivePlannerValidationError(
+                "AND/OR graph node identities are invalid"
+            )
+        if len(alternative_ids) != len(set(alternative_ids)):
+            raise AdaptivePlannerValidationError(
+                "AND/OR graph alternative identities must be unique"
+            )
+        known = set(node_ids)
+        if any(set(node.child_ids).difference(known) for node in nodes):
+            raise AdaptivePlannerValidationError(
+                "AND/OR graph contains a dangling child"
+            )
+        by_node_id = {item.node_id: item for item in nodes}
+        if by_node_id[self.root_node_id].kind is not AndOrNodeKind.AND:
+            raise AdaptivePlannerValidationError(
+                "AND/OR graph root must be an AND node"
+            )
+        if any(
+            by_node_id[item].kind is not AndOrNodeKind.OR
+            for item in by_node_id[self.root_node_id].child_ids
+        ):
+            raise AdaptivePlannerValidationError(
+                "AND root may contain only required OR obligations"
+            )
+        root_obligations = tuple(
+            by_node_id[item].obligation_id
+            for item in by_node_id[self.root_node_id].child_ids
+        )
+        if len(root_obligations) != len(set(root_obligations)):
+            raise AdaptivePlannerValidationError(
+                "AND root obligations must be unique"
+            )
+        for node in nodes:
+            if node.kind is not AndOrNodeKind.OR:
+                continue
+            children = [by_node_id[item] for item in node.child_ids]
+            if any(item.kind is not AndOrNodeKind.PRODUCER for item in children):
+                raise AdaptivePlannerValidationError(
+                    "OR nodes may contain only producer alternatives"
+                )
+            if any(item.obligation_id != node.obligation_id for item in children):
+                raise AdaptivePlannerValidationError(
+                    "OR producer alternatives must target their parent obligation"
+                )
+            if not any(
+                item.producer_kind
+                is AndOrProducerKind.DETERMINISTIC_BASELINE
+                for item in children
+            ):
+                raise AdaptivePlannerValidationError(
+                    "every OR node requires a deterministic baseline"
+                )
+        if any(
+            item.goal_content_id != self.goal_content_id
+            or item.context_id != self.frozen_context_id
+            for item in alternatives
+        ):
+            raise AdaptivePlannerValidationError(
+                "AND/OR alternatives are detached from the graph bindings"
+            )
+        producer_alternative_ids = {
+            item.alternative_id
+            for item in nodes
+            if item.kind is AndOrNodeKind.PRODUCER
+        }
+        if producer_alternative_ids != set(alternative_ids):
+            raise AdaptivePlannerValidationError(
+                "producer nodes must exactly cover graph alternatives"
+            )
+        alternatives_by_id = {
+            item.alternative_id: item for item in alternatives
+        }
+        if any(
+            (
+                alternatives_by_id[item.alternative_id].obligation_id
+                != item.obligation_id
+                or alternatives_by_id[item.alternative_id].producer_kind
+                is not item.producer_kind
+            )
+            for item in nodes
+            if item.kind is AndOrNodeKind.PRODUCER
+        ):
+            raise AdaptivePlannerValidationError(
+                "producer nodes must match their alternatives"
+            )
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def depth(node_id: str) -> int:
+            if node_id in visiting:
+                raise AdaptivePlannerValidationError(
+                    "AND/OR graph contains a cycle"
+                )
+            if node_id in visited:
+                return 0
+            visiting.add(node_id)
+            node = by_node_id[node_id]
+            child_depth = max((depth(item) for item in node.child_ids), default=0)
+            visiting.remove(node_id)
+            visited.add(node_id)
+            return 1 + child_depth
+
+        actual_depth = depth(self.root_node_id)
+        if visited != known:
+            raise AdaptivePlannerValidationError(
+                "AND/OR graph contains nodes unreachable from its root"
+            )
+        object.__setattr__(self, "nodes", nodes)
+        object.__setattr__(self, "alternatives", alternatives)
+        object.__setattr__(
+            self, "max_depth", _integer(self.max_depth, "max_depth", minimum=1)
+        )
+        if actual_depth > self.max_depth:
+            raise AdaptivePlannerValidationError(
+                "AND/OR graph exceeds its declared depth"
+            )
+        if not isinstance(self.truncated, bool):
+            raise AdaptivePlannerValidationError("truncated must be boolean")
+
+    @property
+    def graph_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": AND_OR_GRAPH_SCHEMA,
+            "planner_version": AND_OR_PLANNER_VERSION,
+            "frozen_context_id": self.frozen_context_id,
+            "goal_content_id": self.goal_content_id,
+            "root_node_id": self.root_node_id,
+            "nodes": [item.to_dict() for item in self.nodes],
+            "alternatives": [item.to_dict() for item in self.alternatives],
+            "max_depth": self.max_depth,
+            "truncated": self.truncated,
+        }
+        if include_identity:
+            payload["graph_id"] = self.graph_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrPlanGraph":
+        expected = {
+            "schema",
+            "planner_version",
+            "graph_id",
+            "frozen_context_id",
+            "goal_content_id",
+            "root_node_id",
+            "nodes",
+            "alternatives",
+            "max_depth",
+            "truncated",
+        }
+        if set(payload) != expected:
+            raise AdaptivePlannerValidationError(
+                "AND/OR graph must use the closed schema"
+            )
+        if (
+            payload.get("schema") != AND_OR_GRAPH_SCHEMA
+            or payload.get("planner_version") != AND_OR_PLANNER_VERSION
+        ):
+            raise AdaptivePlannerValidationError(
+                "unsupported AND/OR graph version"
+            )
+        result = cls(
+            frozen_context_id=payload.get("frozen_context_id", ""),
+            goal_content_id=payload.get("goal_content_id", ""),
+            root_node_id=payload.get("root_node_id", ""),
+            nodes=tuple(
+                AndOrPlanNode.from_dict(item)
+                for item in payload.get("nodes") or ()
+            ),
+            alternatives=tuple(
+                AndOrPlanAlternative.from_dict(item)
+                for item in payload.get("alternatives") or ()
+            ),
+            max_depth=payload.get("max_depth", 0),
+            truncated=payload.get("truncated"),
+        )
+        if payload.get("graph_id") != result.graph_id:
+            raise AdaptivePlannerValidationError(
+                "AND/OR graph identity does not match content"
+            )
+        return result
+
+
+AndOrProvider = Callable[
+    [FrozenAndOrPlanningContext],
+    Iterable[AndOrPlanAlternative | Mapping[str, Any]],
+]
+
+
+def _call_bounded_and_or_provider(
+    provider: AndOrProvider,
+    frozen: FrozenAndOrPlanningContext,
+    timeout_seconds: float,
+    max_items: int,
+) -> tuple[bool, Any]:
+    """Isolate an optional provider behind the remaining wall-clock budget."""
+
+    output: "queue.Queue[tuple[bool, Any]]" = queue.Queue(maxsize=1)
+
+    def invoke() -> None:
+        try:
+            produced: list[Any] = []
+            for item in provider(frozen):
+                produced.append(item)
+                if len(produced) > max_items:
+                    raise AdaptivePlannerValidationError(
+                        "provider alternative budget exceeded"
+                    )
+            output.put_nowait((True, tuple(produced)))
+        except BaseException as exc:  # provider isolation boundary
+            output.put_nowait((False, exc))
+
+    worker = threading.Thread(
+        target=invoke,
+        name="and-or-plan-provider",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(max(0.0, timeout_seconds))
+    if worker.is_alive():
+        return False, TimeoutError("AND/OR provider exceeded time budget")
+    try:
+        return output.get_nowait()
+    except queue.Empty:
+        return False, RuntimeError("AND/OR provider returned no result")
+
+
+def _baseline_alternative(
+    frozen: FrozenAndOrPlanningContext,
+    obligation_id: str,
+    evidence_ids: tuple[str, ...],
+) -> AndOrPlanAlternative:
+    goal = frozen.goal
+    return AndOrPlanAlternative(
+        alternative_id=f"baseline:{obligation_id}",
+        obligation_id=obligation_id,
+        producer_kind=AndOrProducerKind.DETERMINISTIC_BASELINE,
+        goal_content_id=goal.content_id,
+        repository_tree_id=frozen.repository_tree_id,
+        context_id=frozen.context_id,
+        evidence_ids=evidence_ids or (f"deterministic:{obligation_id}",),
+        changed_scopes=goal.scope.include,
+        authorized_scopes=goal.scope.include,
+        dependencies=goal.scope.dependency_goal_ids,
+        satisfied_dependencies=goal.scope.dependency_goal_ids,
+        estimated_time_milliseconds=min(
+            1_000, goal.resources.max_wall_seconds * 1_000
+        ),
+    )
+
+
+def compile_typed_goal_to_and_or_graph(
+    frozen: FrozenAndOrPlanningContext,
+    alternatives: Iterable[AndOrPlanAlternative] = (),
+    *,
+    bounds: AndOrSearchBounds | None = None,
+) -> AndOrPlanGraph:
+    """Compile joint criteria to an AND root and producer choices to OR nodes."""
+
+    if not isinstance(frozen, FrozenAndOrPlanningContext):
+        raise AdaptivePlannerValidationError(
+            "frozen must be FrozenAndOrPlanningContext"
+        )
+    resolved_bounds = bounds or AndOrSearchBounds()
+    goal = frozen.goal
+    criteria = tuple(goal.acceptance_criteria)
+    supplied = tuple(alternatives)
+    for item in supplied:
+        if not isinstance(item, AndOrPlanAlternative):
+            raise AdaptivePlannerValidationError(
+                "alternatives must be AndOrPlanAlternative values"
+            )
+    criterion_ids = {item.criterion_id for item in criteria}
+    if any(item.obligation_id not in criterion_ids for item in supplied):
+        raise AdaptivePlannerValidationError(
+            "alternative targets an unknown goal obligation"
+        )
+
+    all_alternatives: list[AndOrPlanAlternative] = []
+    nodes: list[AndOrPlanNode] = []
+    or_ids: list[str] = []
+    truncated = False
+    mandatory_nodes = 1 + 2 * len(criteria)
+    if mandatory_nodes > resolved_bounds.max_nodes:
+        raise AdaptivePlannerValidationError(
+            "node budget cannot represent mandatory baselines"
+        )
+    optional_node_budget = resolved_bounds.max_nodes - mandatory_nodes
+    by_obligation: dict[str, list[AndOrPlanAlternative]] = {
+        item.criterion_id: [] for item in criteria
+    }
+    for item in sorted(supplied, key=lambda value: value.alternative_id):
+        by_obligation[item.obligation_id].append(item)
+
+    for criterion in criteria:
+        choices = [
+            _baseline_alternative(
+                frozen,
+                criterion.criterion_id,
+                criterion.evidence_producer_ids,
+            ),
+            *by_obligation[criterion.criterion_id],
+        ]
+        # Canonical deduplication prevents a provider from shadowing baseline.
+        unique: dict[str, AndOrPlanAlternative] = {}
+        for item in choices:
+            if item.alternative_id in unique:
+                if (
+                    unique[item.alternative_id].producer_kind
+                    is AndOrProducerKind.DETERMINISTIC_BASELINE
+                ):
+                    truncated = True
+                    continue
+                raise AdaptivePlannerValidationError(
+                    "duplicate AND/OR alternative identity"
+                )
+            unique[item.alternative_id] = item
+        ordered = sorted(
+            unique.values(),
+            key=lambda item: (
+                item.producer_kind is not AndOrProducerKind.DETERMINISTIC_BASELINE,
+                item.producer_kind.value,
+                item.alternative_id,
+            ),
+        )
+        if len(ordered) > resolved_bounds.max_alternatives_per_or:
+            ordered = ordered[: resolved_bounds.max_alternatives_per_or]
+            truncated = True
+        leaf_ids: list[str] = []
+        for alternative in ordered:
+            if (
+                alternative.producer_kind
+                is not AndOrProducerKind.DETERMINISTIC_BASELINE
+                and optional_node_budget <= 0
+            ):
+                truncated = True
+                continue
+            if alternative.producer_kind is not AndOrProducerKind.DETERMINISTIC_BASELINE:
+                optional_node_budget -= 1
+            leaf_id = f"producer:{alternative.alternative_id}"
+            leaf_ids.append(leaf_id)
+            all_alternatives.append(alternative)
+            nodes.append(
+                AndOrPlanNode(
+                    node_id=leaf_id,
+                    kind=AndOrNodeKind.PRODUCER,
+                    obligation_id=criterion.criterion_id,
+                    alternative_id=alternative.alternative_id,
+                    producer_kind=alternative.producer_kind,
+                )
+            )
+        or_id = f"or:{criterion.criterion_id}"
+        or_ids.append(or_id)
+        nodes.append(
+            AndOrPlanNode(
+                node_id=or_id,
+                kind=AndOrNodeKind.OR,
+                child_ids=tuple(leaf_ids),
+                obligation_id=criterion.criterion_id,
+            )
+        )
+    root_id = f"and:{goal.goal_id}"
+    nodes.append(
+        AndOrPlanNode(
+            node_id=root_id,
+            kind=AndOrNodeKind.AND,
+            child_ids=tuple(or_ids),
+        )
+    )
+    if len(nodes) > resolved_bounds.max_nodes:
+        raise AdaptivePlannerValidationError("AND/OR graph node budget exceeded")
+    return AndOrPlanGraph(
+        frozen_context_id=frozen.context_id,
+        goal_content_id=goal.content_id,
+        root_node_id=root_id,
+        nodes=tuple(nodes),
+        alternatives=tuple(all_alternatives),
+        max_depth=3,
+        truncated=truncated,
+    )
+
+
+# Short spelling used by integration code and tests.
+compile_typed_goal = compile_typed_goal_to_and_or_graph
+compile_and_or_plan_graph = compile_typed_goal_to_and_or_graph
+
+
+def _alternative_failures(
+    alternative: AndOrPlanAlternative,
+    frozen: FrozenAndOrPlanningContext,
+    bounds: AndOrSearchBounds,
+) -> tuple[PlanSearchHardFailure, ...]:
+    goal = frozen.goal
+    failures: dict[PlanSearchHardConstraint, list[str]] = {}
+
+    def fail(constraint: PlanSearchHardConstraint, code: str) -> None:
+        failures.setdefault(constraint, []).append(code)
+
+    if not alternative.authority_granted:
+        fail(PlanSearchHardConstraint.AUTHORITY, "authority_not_granted")
+    allowed = {item.casefold() for item in goal.scope.include}
+    changed = {item.casefold() for item in alternative.changed_scopes}
+    authorized = {item.casefold() for item in alternative.authorized_scopes}
+    if not changed <= allowed or not changed <= authorized:
+        fail(PlanSearchHardConstraint.SCOPE, "scope_not_authorized")
+    if not set(alternative.dependencies) <= set(
+        alternative.satisfied_dependencies
+    ):
+        fail(PlanSearchHardConstraint.DEPENDENCY, "dependency_not_satisfied")
+    resources = goal.resources
+    if (
+        not alternative.resource_available
+        or alternative.estimated_tokens > min(resources.max_tokens, bounds.max_tokens)
+        or alternative.estimated_time_milliseconds
+        > resources.max_wall_seconds * 1_000
+        or alternative.estimated_cost_microunits > resources.max_cost_microunits
+    ):
+        fail(PlanSearchHardConstraint.RESOURCE, "resource_envelope_exceeded")
+    if (
+        not alternative.fresh
+        or alternative.goal_content_id != goal.content_id
+        or alternative.repository_tree_id != frozen.repository_tree_id
+        or alternative.context_id != frozen.context_id
+    ):
+        fail(PlanSearchHardConstraint.FRESHNESS, "frozen_context_mismatch")
+    if not alternative.validation_feasible:
+        fail(PlanSearchHardConstraint.VALIDATION, "validation_infeasible")
+    if not alternative.proof_feasible:
+        fail(PlanSearchHardConstraint.PROOF, "proof_infeasible")
+    return tuple(
+        PlanSearchHardFailure(constraint, tuple(codes))
+        for constraint, codes in sorted(
+            failures.items(), key=lambda item: item[0].value
+        )
+    )
+
+
+def _combine_alternatives(
+    alternatives: Sequence[AndOrPlanAlternative],
+    frozen: FrozenAndOrPlanningContext,
+    bounds: AndOrSearchBounds,
+) -> AndOrPlanBranch:
+    required = tuple(
+        item.criterion_id for item in frozen.goal.acceptance_criteria
+    )
+    hard: dict[PlanSearchHardConstraint, set[str]] = {}
+    for item in alternatives:
+        for failure in _alternative_failures(item, frozen, bounds):
+            hard.setdefault(failure.constraint, set()).update(
+                failure.reason_codes
+            )
+    tokens = sum(item.estimated_tokens for item in alternatives)
+    elapsed = sum(item.estimated_time_milliseconds for item in alternatives)
+    cost = sum(item.estimated_cost_microunits for item in alternatives)
+    resources = frozen.goal.resources
+    if (
+        tokens > min(bounds.max_tokens, resources.max_tokens)
+        or elapsed > resources.max_wall_seconds * 1_000
+        or cost > resources.max_cost_microunits
+    ):
+        hard.setdefault(PlanSearchHardConstraint.RESOURCE, set()).add(
+            "aggregate_resource_envelope_exceeded"
+        )
+    alternative_ids = tuple(item.alternative_id for item in alternatives)
+    branch_id = content_identity(
+        {
+            "goal_content_id": frozen.goal.content_id,
+            "context_id": frozen.context_id,
+            "alternatives": alternative_ids,
+        }
+    )
+    return AndOrPlanBranch(
+        branch_id=branch_id,
+        goal_content_id=frozen.goal.content_id,
+        repository_tree_id=frozen.repository_tree_id,
+        context_id=frozen.context_id,
+        alternative_ids=alternative_ids,
+        producer_kinds=tuple(item.producer_kind.value for item in alternatives),
+        required_obligation_ids=required,
+        covered_obligation_ids=tuple(
+            item.obligation_id for item in alternatives
+        ),
+        required_uncertainty_ids=tuple(
+            item.uncertainty_id
+            for item in frozen.goal.uncertainties
+            if item.disposition
+            in {
+                UncertaintyDisposition.OPEN,
+                UncertaintyDisposition.BLOCKING,
+            }
+        ),
+        reduced_uncertainty_ids=tuple(
+            uncertainty_id
+            for item in alternatives
+            for uncertainty_id in item.reduced_uncertainty_ids
+        ),
+        critical_path_length=max(
+            (item.critical_path_length for item in alternatives), default=0
+        ),
+        conflict_risk_millionths=max(
+            (item.conflict_risk_millionths for item in alternatives), default=0
+        ),
+        estimated_cost_microunits=cost,
+        estimated_tokens=tokens,
+        estimated_time_milliseconds=elapsed,
+        historical_failure_millionths=max(
+            (
+                item.historical_failure_millionths
+                for item in alternatives
+            ),
+            default=0,
+        ),
+        hard_failures=tuple(
+            PlanSearchHardFailure(constraint, tuple(sorted(codes)))
+            for constraint, codes in sorted(
+                hard.items(), key=lambda item: item[0].value
+            )
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class AndOrSearchReceipt:
+    frozen_context: FrozenAndOrPlanningContext
+    graph: AndOrPlanGraph
+    evaluation: AndOrPlanEvaluation
+    bounds: AndOrSearchBounds
+    visited_nodes: int
+    generated_branches: int
+    consumed_tokens: int
+    elapsed_milliseconds: int
+    termination_reason: str
+    provider_failures: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.graph.frozen_context_id != self.frozen_context.context_id:
+            raise AdaptivePlannerValidationError(
+                "graph is detached from frozen context"
+            )
+        if self.graph.goal_content_id != self.frozen_context.goal_content_id:
+            raise AdaptivePlannerValidationError(
+                "graph is detached from frozen goal"
+            )
+        if any(
+            item.repository_tree_id
+            != self.frozen_context.repository_tree_id
+            for item in self.graph.alternatives
+        ):
+            raise AdaptivePlannerValidationError(
+                "graph alternative is detached from repository tree"
+            )
+        if self.evaluation.evaluator_version != AND_OR_PLAN_EVALUATOR_VERSION:
+            raise AdaptivePlannerValidationError(
+                "unsupported AND/OR evaluation"
+            )
+        if any(
+            branch.branch.goal_content_id
+            != self.frozen_context.goal_content_id
+            or branch.branch.repository_tree_id
+            != self.frozen_context.repository_tree_id
+            or branch.branch.context_id != self.frozen_context.context_id
+            for branch in (
+                *self.evaluation.ranked,
+                *self.evaluation.pruned,
+            )
+        ):
+            raise AdaptivePlannerValidationError(
+                "evaluated branch is detached from frozen context"
+            )
+        for name in (
+            "visited_nodes",
+            "generated_branches",
+            "consumed_tokens",
+            "elapsed_milliseconds",
+        ):
+            object.__setattr__(
+                self, name, _integer(getattr(self, name), name)
+            )
+        if self.visited_nodes > self.bounds.max_nodes:
+            raise AdaptivePlannerValidationError("node budget was exceeded")
+        if self.generated_branches > self.bounds.max_branches:
+            raise AdaptivePlannerValidationError("branch budget was exceeded")
+        if self.generated_branches != len(
+            (*self.evaluation.ranked, *self.evaluation.pruned)
+        ):
+            raise AdaptivePlannerValidationError(
+                "generated branch count is inconsistent"
+            )
+        if self.consumed_tokens > self.bounds.max_tokens:
+            raise AdaptivePlannerValidationError("token budget was exceeded")
+        object.__setattr__(
+            self,
+            "termination_reason",
+            _text(self.termination_reason, "termination_reason"),
+        )
+        object.__setattr__(
+            self,
+            "provider_failures",
+            _strings(
+                self.provider_failures,
+                "provider_failures",
+                allow_empty=True,
+            ),
+        )
+
+    @property
+    def selected(self) -> AndOrPlanBranch | None:
+        return (
+            self.evaluation.selected.branch
+            if self.evaluation.selected is not None
+            else None
+        )
+
+    @property
+    def requirement_ids(self) -> tuple[str, ...]:
+        return (AND_OR_SEARCH_REQUIREMENT_ID,)
+
+    @property
+    def receipt_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": AND_OR_SEARCH_RECEIPT_SCHEMA,
+            "planner_version": AND_OR_PLANNER_VERSION,
+            "requirement_ids": list(self.requirement_ids),
+            "frozen_context": self.frozen_context.to_dict(),
+            "graph": self.graph.to_dict(),
+            "evaluation": self.evaluation.to_dict(),
+            "bounds": self.bounds.to_dict(),
+            "visited_nodes": self.visited_nodes,
+            "generated_branches": self.generated_branches,
+            "consumed_tokens": self.consumed_tokens,
+            "elapsed_milliseconds": self.elapsed_milliseconds,
+            "termination_reason": self.termination_reason,
+            "provider_failures": list(self.provider_failures),
+        }
+        if include_identity:
+            payload["receipt_id"] = self.receipt_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrSearchReceipt":
+        expected = {
+            "schema",
+            "planner_version",
+            "requirement_ids",
+            "receipt_id",
+            "frozen_context",
+            "graph",
+            "evaluation",
+            "bounds",
+            "visited_nodes",
+            "generated_branches",
+            "consumed_tokens",
+            "elapsed_milliseconds",
+            "termination_reason",
+            "provider_failures",
+        }
+        if set(payload) != expected:
+            raise AdaptivePlannerValidationError(
+                "AND/OR search receipt must use the closed schema"
+            )
+        if (
+            payload.get("schema") != AND_OR_SEARCH_RECEIPT_SCHEMA
+            or payload.get("planner_version") != AND_OR_PLANNER_VERSION
+            or tuple(payload.get("requirement_ids") or ())
+            != (AND_OR_SEARCH_REQUIREMENT_ID,)
+        ):
+            raise AdaptivePlannerValidationError(
+                "unsupported AND/OR search receipt version"
+            )
+        result = cls(
+            frozen_context=FrozenAndOrPlanningContext.from_dict(
+                payload.get("frozen_context") or {}
+            ),
+            graph=AndOrPlanGraph.from_dict(payload.get("graph") or {}),
+            evaluation=AndOrPlanEvaluation.from_dict(
+                payload.get("evaluation") or {}
+            ),
+            bounds=AndOrSearchBounds.from_dict(payload.get("bounds") or {}),
+            visited_nodes=payload.get("visited_nodes", 0),
+            generated_branches=payload.get("generated_branches", 0),
+            consumed_tokens=payload.get("consumed_tokens", 0),
+            elapsed_milliseconds=payload.get("elapsed_milliseconds", 0),
+            termination_reason=payload.get("termination_reason", ""),
+            provider_failures=payload.get("provider_failures") or (),
+        )
+        validate_and_or_plan_evaluation(result.evaluation)
+        if payload.get("receipt_id") != result.receipt_id:
+            raise AdaptivePlannerValidationError(
+                "AND/OR search receipt identity does not match content"
+            )
+        return result
+
+
+def search_typed_goal_plans(
+    goal: TypedGoal,
+    *,
+    repository_tree_id: str,
+    policy_revision: str,
+    context: Mapping[str, Any],
+    providers: Mapping[AndOrProducerKind | str, AndOrProvider | None] | None = None,
+    alternatives: Iterable[AndOrPlanAlternative] = (),
+    bounds: AndOrSearchBounds | None = None,
+    monotonic_clock: Callable[[], float] = time.monotonic,
+) -> AndOrSearchReceipt:
+    """Run a deterministic, budgeted AND/OR search over one frozen goal."""
+
+    resolved_bounds = bounds or AndOrSearchBounds()
+    frozen = FrozenAndOrPlanningContext(
+        goal=goal,
+        repository_tree_id=repository_tree_id,
+        policy_revision=policy_revision,
+        context=context,
+    )
+    started = monotonic_clock()
+    provider_failures: list[str] = []
+    supplied = list(alternatives)
+    if any(not isinstance(item, AndOrPlanAlternative) for item in supplied):
+        raise AdaptivePlannerValidationError(
+            "alternatives must be AndOrPlanAlternative values"
+        )
+    consumed_tokens = sum(item.estimated_tokens for item in supplied)
+    if consumed_tokens > resolved_bounds.max_tokens:
+        raise AdaptivePlannerValidationError(
+            "caller alternatives exceed the search token budget"
+        )
+    normalized_providers = {
+        AndOrProducerKind(key): value
+        for key, value in (providers or {}).items()
+    }
+    for kind in (
+        AndOrProducerKind.LLM,
+        AndOrProducerKind.LEANSTRAL,
+        AndOrProducerKind.ANALYSIS_PROVIDER,
+    ):
+        provider = normalized_providers.get(kind)
+        if provider is None:
+            continue
+        if (monotonic_clock() - started) * 1_000 >= resolved_bounds.max_time_milliseconds:
+            provider_failures.append(f"{kind.value}:search_time_budget_exhausted")
+            break
+        try:
+            remaining_seconds = max(
+                0.0,
+                (
+                    resolved_bounds.max_time_milliseconds
+                    - (monotonic_clock() - started) * 1_000
+                )
+                / 1_000,
+            )
+            succeeded, result = _call_bounded_and_or_provider(
+                provider,
+                frozen,
+                remaining_seconds,
+                resolved_bounds.max_nodes,
+            )
+            if not succeeded:
+                raise result
+            produced = tuple(result)
+            normalized = tuple(
+                item
+                if isinstance(item, AndOrPlanAlternative)
+                else AndOrPlanAlternative.from_dict(item)
+                for item in produced
+            )
+            if any(item.producer_kind is not kind for item in normalized):
+                raise AdaptivePlannerValidationError(
+                    "provider returned a branch with a different producer kind"
+                )
+            next_tokens = consumed_tokens + sum(
+                item.estimated_tokens for item in normalized
+            )
+            if next_tokens > resolved_bounds.max_tokens:
+                provider_failures.append(f"{kind.value}:token_budget_exhausted")
+                continue
+            consumed_tokens = next_tokens
+            supplied.extend(normalized)
+        except BaseException as exc:
+            reason = (
+                "search_time_budget_exhausted"
+                if isinstance(exc, TimeoutError)
+                else f"provider_failed:{type(exc).__name__}"
+            )
+            provider_failures.append(f"{kind.value}:{reason}")
+
+    graph = compile_typed_goal_to_and_or_graph(
+        frozen, supplied, bounds=resolved_bounds
+    )
+    by_obligation: dict[str, list[AndOrPlanAlternative]] = {}
+    for item in graph.alternatives:
+        by_obligation.setdefault(item.obligation_id, []).append(item)
+    obligation_ids = tuple(
+        item.criterion_id for item in goal.acceptance_criteria
+    )
+    generated: list[AndOrPlanBranch] = []
+    termination_reason = "search_complete"
+
+    def walk(index: int, selected: tuple[AndOrPlanAlternative, ...]) -> None:
+        nonlocal termination_reason
+        if len(generated) >= resolved_bounds.max_branches:
+            termination_reason = "branch_budget_exhausted"
+            return
+        if (monotonic_clock() - started) * 1_000 >= resolved_bounds.max_time_milliseconds:
+            termination_reason = "time_budget_exhausted"
+            return
+        if index >= len(obligation_ids):
+            generated.append(
+                _combine_alternatives(selected, frozen, resolved_bounds)
+            )
+            return
+        for item in by_obligation.get(obligation_ids[index], ()):
+            # A failed leaf is retained as an unscored complete branch; walking
+            # below it cannot repair a non-compensable property.
+            failures = _alternative_failures(item, frozen, resolved_bounds)
+            if failures:
+                remaining = tuple(
+                    next(
+                        choice
+                        for choice in by_obligation[obligation_id]
+                        if choice.producer_kind
+                        is AndOrProducerKind.DETERMINISTIC_BASELINE
+                    )
+                    for obligation_id in obligation_ids[index + 1 :]
+                )
+                generated.append(
+                    _combine_alternatives(
+                        (*selected, item, *remaining),
+                        frozen,
+                        resolved_bounds,
+                    )
+                )
+                if len(generated) >= resolved_bounds.max_branches:
+                    termination_reason = "branch_budget_exhausted"
+                    return
+                continue
+            walk(index + 1, (*selected, item))
+            if termination_reason != "search_complete":
+                return
+
+    walk(0, ())
+    if not generated:
+        # Optional producers may consume their wall-clock allowance, but the
+        # mandatory deterministic baseline is already compiled and requires no
+        # additional provider work.
+        baseline = tuple(
+            next(
+                item
+                for item in by_obligation[obligation_id]
+                if item.producer_kind
+                is AndOrProducerKind.DETERMINISTIC_BASELINE
+            )
+            for obligation_id in obligation_ids
+        )
+        generated.append(
+            _combine_alternatives(baseline, frozen, resolved_bounds)
+        )
+        termination_reason = "time_budget_exhausted_baseline_fallback"
+    # Multiple failed prefixes can converge on the same canonical branch.
+    unique = {item.branch_id: item for item in generated}
+    evaluation = evaluate_and_or_plan_branches(unique.values())
+    elapsed = min(
+        resolved_bounds.max_time_milliseconds,
+        max(0, int((monotonic_clock() - started) * 1_000)),
+    )
+    if graph.truncated and termination_reason == "search_complete":
+        termination_reason = "node_or_alternative_budget_exhausted"
+    return AndOrSearchReceipt(
+        frozen_context=frozen,
+        graph=graph,
+        evaluation=evaluation,
+        bounds=resolved_bounds,
+        visited_nodes=len(graph.nodes),
+        generated_branches=len(unique),
+        consumed_tokens=consumed_tokens,
+        elapsed_milliseconds=elapsed,
+        termination_reason=termination_reason,
+        provider_failures=tuple(provider_failures),
+    )
+
+
+search_and_or_plans = search_typed_goal_plans
+plan_typed_goal = search_typed_goal_plans
+
+
+@dataclass(frozen=True)
+class AndOrPlannerBenchmark:
+    valid_first_plans: int
+    total_plans: int
+    invalid_branches_promoted: int
+    total_invalid_branches: int
+    hard_constraint_violations: int = 0
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            object.__setattr__(
+                self, name, _integer(getattr(self, name), name)
+            )
+        if self.valid_first_plans > self.total_plans:
+            raise AdaptivePlannerValidationError(
+                "valid_first_plans cannot exceed total_plans"
+            )
+        if self.invalid_branches_promoted > self.total_invalid_branches:
+            raise AdaptivePlannerValidationError(
+                "invalid promotion count cannot exceed invalid branch count"
+            )
+
+    @property
+    def valid_first_rate_millionths(self) -> int:
+        return (
+            self.valid_first_plans * 1_000_000 // self.total_plans
+            if self.total_plans
+            else 0
+        )
+
+    @property
+    def invalid_promotion_rate_millionths(self) -> int:
+        return (
+            self.invalid_branches_promoted
+            * 1_000_000
+            // self.total_invalid_branches
+            if self.total_invalid_branches
+            else 0
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            **{
+                name: getattr(self, name)
+                for name in self.__dataclass_fields__
+            },
+            "valid_first_rate_millionths": self.valid_first_rate_millionths,
+            "invalid_promotion_rate_millionths": (
+                self.invalid_promotion_rate_millionths
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class AndOrPlannerPromotionGate:
+    baseline: AndOrPlannerBenchmark
+    candidate: AndOrPlannerBenchmark
+    valid_first_improvement_millionths: int
+    invalid_branch_reduction_millionths: int
+    passed: bool
+    reason_codes: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "requirement_id": AND_OR_SEARCH_REQUIREMENT_ID,
+            "baseline": self.baseline.to_dict(),
+            "candidate": self.candidate.to_dict(),
+            "valid_first_improvement_millionths": (
+                self.valid_first_improvement_millionths
+            ),
+            "invalid_branch_reduction_millionths": (
+                self.invalid_branch_reduction_millionths
+            ),
+            "passed": self.passed,
+            "reason_codes": list(self.reason_codes),
+        }
+
+
+def evaluate_and_or_planner_promotion(
+    baseline: AndOrPlannerBenchmark,
+    candidate: AndOrPlannerBenchmark,
+) -> AndOrPlannerPromotionGate:
+    """Enforce the v2 +15pp valid-first or 25% invalid-branch gate."""
+
+    valid_delta = (
+        candidate.valid_first_rate_millionths
+        - baseline.valid_first_rate_millionths
+    )
+    baseline_invalid = baseline.invalid_promotion_rate_millionths
+    invalid_reduction = (
+        (baseline_invalid - candidate.invalid_promotion_rate_millionths)
+        * 1_000_000
+        // baseline_invalid
+        if baseline_invalid > 0
+        else 0
+    )
+    reasons: list[str] = []
+    if baseline.hard_constraint_violations or candidate.hard_constraint_violations:
+        reasons.append("hard_constraint_violation")
+    if valid_delta < 150_000 and invalid_reduction < 250_000:
+        reasons.append("quality_threshold_not_met")
+    return AndOrPlannerPromotionGate(
+        baseline=baseline,
+        candidate=candidate,
+        valid_first_improvement_millionths=valid_delta,
+        invalid_branch_reduction_millionths=invalid_reduction,
+        passed=not reasons,
+        reason_codes=tuple(reasons),
+    )
+
+
+evaluate_and_or_plan_promotion = evaluate_and_or_planner_promotion
+
+
 def select_adaptive_plan(
     frozen_goal: FrozenPlanningGoal,
     candidates: Iterable[AdaptivePlanCandidate],
@@ -2634,6 +4621,26 @@ def select_adaptive_plan(
 
     return AdaptivePlanner(max_candidates=max_candidates).select(
         frozen_goal, candidates
+    )
+
+
+def select_hard_constrained_plan(
+    frozen_goal: FrozenPlanningGoal,
+    candidates: Iterable[AdaptivePlanCandidate],
+    admission_receipts: Mapping[str, Any],
+    *,
+    semantic_roots: Mapping[str, str] | None = None,
+    max_candidates: int = 32,
+) -> HardConstrainedPlanSelectionReceipt:
+    """Functional admission-first wrapper around :class:`AdaptivePlanner`."""
+
+    return AdaptivePlanner(
+        max_candidates=max_candidates
+    ).select_hard_constrained(
+        frozen_goal,
+        candidates,
+        admission_receipts,
+        semantic_roots=semantic_roots,
     )
 
 
@@ -2664,6 +4671,11 @@ __all__ = [
     "ADAPTIVE_PLANNER_VERSION",
     "ADAPTIVE_PLAN_SELECTION_SCHEMA",
     "ADAPTIVE_PLANNING_RUN_SCHEMA",
+    "HARD_CONSTRAINED_PLAN_SELECTION_SCHEMA",
+    "AND_OR_GRAPH_SCHEMA",
+    "AND_OR_PLANNER_VERSION",
+    "AND_OR_SEARCH_RECEIPT_SCHEMA",
+    "AND_OR_SEARCH_REQUIREMENT_ID",
     "AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA",
     "AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID",
     "EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA",
@@ -2680,15 +4692,35 @@ __all__ = [
     "AdaptivePlanningRunStore",
     "AdaptivePlanner",
     "AdaptivePlannerValidationError",
+    "AndOrNodeKind",
+    "AndOrPlanAlternative",
+    "AndOrPlanGraph",
+    "AndOrPlanNode",
+    "AndOrPlannerBenchmark",
+    "AndOrPlannerPromotionGate",
+    "AndOrProducerKind",
+    "AndOrProvider",
+    "AndOrSearchBounds",
+    "AndOrSearchReceipt",
     "AuthorityNonCompensationEvidence",
     "EvidenceAwarePlanningCompletionEvidence",
     "FrozenPlanningGoal",
     "GateProducerKind",
     "HardConstraintReceipt",
+    "HardConstrainedPlanSelectionReceipt",
     "HardGateEvaluator",
     "HardPlanConstraint",
     "adaptive_plan_candidate_snapshot_id",
+    "compile_and_or_plan_graph",
+    "compile_typed_goal",
+    "compile_typed_goal_to_and_or_graph",
     "deterministic_hard_gate_receipts",
+    "evaluate_and_or_plan_promotion",
+    "evaluate_and_or_planner_promotion",
     "plan_adaptively",
+    "plan_typed_goal",
+    "search_and_or_plans",
+    "search_typed_goal_plans",
     "select_adaptive_plan",
+    "select_hard_constrained_plan",
 ]

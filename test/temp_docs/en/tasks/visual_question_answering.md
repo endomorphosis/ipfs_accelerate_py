@@ -30,7 +30,7 @@ Some noteworthy use case examples for VQA include:
 
 In this guide you'll learn how to:
 
-- Fine-tune a classification VQA model, specifically [ViLT](../model_doc/vilt), on the [`Graphcore/vqa` dataset](https://huggingface.co/datasets/Graphcore/vqa).
+- Fine-tune a classification VQA model, specifically [ViLT](../model_doc/vilt.md), on the [`Graphcore/vqa` dataset](https://huggingface.co/datasets/Graphcore/vqa).
 - Use your fine-tuned ViLT for inference.
 - Run zero-shot VQA inference with a generative model, like BLIP-2.
 
@@ -353,7 +353,7 @@ Predicted answer: down
 ## Zero-shot VQA
 
 The previous model treated VQA as a classification task. Some recent models, such as BLIP, BLIP-2, and InstructBLIP approach
-VQA as a generative task. Let's take [BLIP-2](../model_doc/blip-2) as an example. It introduced a new visual-language pre-training
+VQA as a generative task. Let's take [BLIP-2](../model_doc/blip-2.md) as an example. It introduced a new visual-language pre-training
 paradigm in which any combination of pre-trained vision encoder and LLM can be used (learn more in the [BLIP-2 blog post](https://huggingface.co/blog/blip-2)).
 This enables achieving state-of-the-art results on multiple visual-language tasks including visual question answering.
 

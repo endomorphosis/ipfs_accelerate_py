@@ -180,7 +180,7 @@ Consult the hardware compatibility matrix in `CLAUDE.md` for supported model-har
 
 ## Additional Resources
 
-- For more detailed information, see the [IPFS Acceleration Benchmark Report](IPFS_ACCELERATION_BENCHMARK_REPORT.md)
+- For more detailed information, see the [IPFS Acceleration Testing Guide](IPFS_ACCELERATION_TESTING.md)
 - For hardware compatibility details, see [CLAUDE.md](CLAUDE.md)
 
 ## Contributing
@@ -194,4 +194,4 @@ Contributions to the IPFS Accelerate Python package are welcome. Please follow t
 
 ## License
 
-The IPFS Accelerate Python package is licensed under [MIT License](LICENSE).
+The IPFS Accelerate Python package is licensed under [MIT License](../LICENSE).

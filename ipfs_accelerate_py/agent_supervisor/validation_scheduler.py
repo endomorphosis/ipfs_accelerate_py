@@ -60,7 +60,12 @@ from .validation_commands import (
     select_validation_commands,
 )
 from .validation_runtime import (
+    HermeticValidationRuntime,
+    ValidationCancellationToken,
+    ValidationResourceBounds,
     build_validation_environment,
+    build_hermetic_validation_runtime,
+    run_hermetic_validation_process,
     validation_shell_command,
 )
 
@@ -141,6 +146,12 @@ IMPACT_SELECTED_VALIDATION_DAG_SCHEMA = (
 )
 IMPACT_SELECTED_VALIDATION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/impact-selected-validation-receipt@1"
+)
+HERMETIC_VALIDATION_POLICY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/hermetic-validation-policy@1"
+)
+HERMETIC_VALIDATION_BENCHMARK_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/hermetic-validation-benchmark@1"
 )
 REQUIRED_AUTHORITY_GATES = (
     "semantic",
@@ -313,6 +324,12 @@ def _validation_result_digest(
         "returncode": int(result.get("returncode", 1)),
         "timed_out": bool(result.get("timed_out", False)),
         "error": str(result.get("error") or ""),
+        "outcome": str(result.get("outcome") or ""),
+        "attempt_signatures": [
+            str(item.get("diagnostic_signature") or "")
+            for item in result.get("attempts", ())
+            if isinstance(item, Mapping)
+        ],
         "output_sha256": _sha256_bytes(output.encode("utf-8")),
         "output_bytes": len(output.encode("utf-8")),
         # Seeded-defect observations are validation evidence and must not be
@@ -523,6 +540,103 @@ class ValidationResultCache:
         )
         return entry is not None
 
+    def get_diagnostic(
+        self,
+        key: ValidationCacheKey,
+        *,
+        max_age_seconds: float,
+    ) -> dict[str, Any] | None:
+        """Return an exact non-authoritative deterministic diagnostic."""
+
+        path = (
+            self.cache_dir
+            / "diagnostics"
+            / key.digest[:2]
+            / f"{key.digest}.json"
+        )
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            created_at = float(payload["created_at"])
+            result = payload["result"]
+            digest = str(payload["diagnostic_digest"])
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return None
+        if time.time() - created_at > max(0.0, float(max_age_seconds)):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return None
+        expected = _sha256_bytes(
+            _canonical_json(
+                {
+                    "cache_key": key.digest,
+                    "created_at": created_at,
+                    "result": result,
+                }
+            ).encode("utf-8")
+        )
+        if digest != expected or not isinstance(result, Mapping):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return None
+        if str(result.get("outcome") or "") != (
+            ValidationOutcome.DETERMINISTIC_FAILURE.value
+        ):
+            return None
+        return dict(result)
+
+    def put_diagnostic(
+        self,
+        key: ValidationCacheKey,
+        result: Mapping[str, object],
+    ) -> bool:
+        """Persist a bounded diagnostic that can never satisfy authority."""
+
+        if str(result.get("outcome") or "") != (
+            ValidationOutcome.DETERMINISTIC_FAILURE.value
+        ):
+            return False
+        path = (
+            self.cache_dir
+            / "diagnostics"
+            / key.digest[:2]
+            / f"{key.digest}.json"
+        )
+        created_at = time.time()
+        safe_result = _json_safe(dict(result))
+        unsigned = {
+            "cache_key": key.digest,
+            "created_at": created_at,
+            "result": safe_result,
+        }
+        payload = {
+            **unsigned,
+            "diagnostic_digest": _sha256_bytes(
+                _canonical_json(unsigned).encode("utf-8")
+            ),
+            "authoritative": False,
+        }
+        rendered = _canonical_json(payload)
+        if len(rendered.encode("utf-8")) > 256 * 1024:
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(
+            f".{os.getpid()}.{threading.get_ident()}.tmp"
+        )
+        try:
+            temporary.write_text(rendered, encoding="utf-8")
+            os.replace(temporary, path)
+        except OSError:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            return False
+        return True
+
     @contextmanager
     def single_flight(self, key: ValidationCacheKey) -> Iterable[None]:
         if key.semantic_key is None:
@@ -663,10 +777,26 @@ def run_validation_command(
     workspace_path: Path,
     timeout_seconds: float,
     environment: Mapping[str, str],
+    runtime_context: HermeticValidationRuntime | None = None,
+    cancellation_token: ValidationCancellationToken | None = None,
+    attempt_number: int = 1,
 ) -> dict[str, object]:
     """Default non-interactive shell runner with captured combined output."""
 
     started_at = utc_now()
+    if runtime_context is not None:
+        result = run_hermetic_validation_process(
+            runtime_context,
+            cancellation_token=cancellation_token,
+        )
+        return {
+            "command": spec.command,
+            "raw_command": spec.raw_command or spec.command,
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "attempt_number": int(attempt_number),
+            **result,
+        }
     try:
         completed = subprocess.run(
             validation_shell_command(spec.command),
@@ -700,6 +830,114 @@ def run_validation_command(
             "timed_out": True,
             "output": output,
         }
+
+
+def _attempt_diagnostic_signature(result: Mapping[str, object]) -> str:
+    output = str(result.get("output") or "")
+    return _sha256_bytes(
+        _canonical_json(
+            {
+                "returncode": int(result.get("returncode", 1)),
+                "timed_out": bool(result.get("timed_out", False)),
+                "cancelled": bool(result.get("cancelled", False)),
+                "infrastructure_failure": bool(
+                    result.get("infrastructure_failure", False)
+                ),
+                "inconclusive": bool(result.get("inconclusive", False)),
+                "error": str(result.get("error") or ""),
+                "seeded_defect_id": str(
+                    result.get("seeded_defect_id") or ""
+                ),
+                "seeded_defect_ids": sorted(
+                    str(value)
+                    for value in (
+                        (result.get("seeded_defect_ids"),)
+                        if isinstance(
+                            result.get("seeded_defect_ids"), str
+                        )
+                        else result.get("seeded_defect_ids") or ()
+                    )
+                ),
+                "output_sha256": _sha256_bytes(output.encode("utf-8")),
+            }
+        ).encode("utf-8")
+    )
+
+
+def classify_validation_attempts(
+    attempts: Sequence[Mapping[str, object]],
+) -> ValidationOutcome:
+    """Classify repeated observations without promoting intermittent passes."""
+
+    if not attempts:
+        return ValidationOutcome.INCONCLUSIVE
+    if any(bool(item.get("cancelled", False)) for item in attempts):
+        return ValidationOutcome.CANCELLED
+    if any(bool(item.get("timed_out", False)) for item in attempts):
+        return ValidationOutcome.TIMEOUT
+    if any(
+        bool(item.get("infrastructure_failure", False))
+        or str(item.get("error") or "").startswith(
+            ("resource_admission_", "hermetic_runtime_")
+        )
+        for item in attempts
+    ):
+        return ValidationOutcome.INFRASTRUCTURE_FAILURE
+    if any(bool(item.get("inconclusive", False)) for item in attempts):
+        return ValidationOutcome.INCONCLUSIVE
+    pass_states = [
+        int(item.get("returncode", 1)) == 0 for item in attempts
+    ]
+    signatures = {
+        _attempt_diagnostic_signature(item) for item in attempts
+    }
+    if len(set(pass_states)) > 1:
+        return ValidationOutcome.FLAKY
+    if all(pass_states):
+        # Successful command output is allowed to contain nondeterministic
+        # timing text. Stability is about the verdict, not byte-identical logs.
+        return ValidationOutcome.PASSED
+    if len(signatures) > 1:
+        return ValidationOutcome.FLAKY
+    return ValidationOutcome.DETERMINISTIC_FAILURE
+
+
+def validation_benchmark(
+    *,
+    baseline_seconds: Sequence[float],
+    optimized_seconds: Sequence[float],
+    minimum_reduction: float = 0.30,
+) -> dict[str, object]:
+    """Return a deterministic median time-to-useful-failure comparison."""
+
+    import statistics
+
+    baseline = tuple(float(value) for value in baseline_seconds)
+    optimized = tuple(float(value) for value in optimized_seconds)
+    if not baseline or not optimized or any(
+        value < 0 for value in (*baseline, *optimized)
+    ):
+        raise ValidationDAGError(
+            "validation benchmark requires non-negative baseline and optimized samples"
+        )
+    baseline_median = statistics.median(baseline)
+    optimized_median = statistics.median(optimized)
+    reduction = (
+        (baseline_median - optimized_median) / baseline_median
+        if baseline_median > 0
+        else 0.0
+    )
+    threshold = float(minimum_reduction)
+    return {
+        "schema": HERMETIC_VALIDATION_BENCHMARK_SCHEMA,
+        "baseline_samples_seconds": list(baseline),
+        "optimized_samples_seconds": list(optimized),
+        "baseline_median_seconds": baseline_median,
+        "optimized_median_seconds": optimized_median,
+        "reduction": reduction,
+        "minimum_reduction": threshold,
+        "passed": reduction >= threshold,
+    }
 
 
 def _object_mapping(value: Any) -> dict[str, Any]:
@@ -924,6 +1162,205 @@ class ValidationNodeDisposition(str, Enum):
     OMITTED = "omitted"
 
 
+class ValidationTechnique(str, Enum):
+    """Orthogonal test technique applied by an impact-selected check."""
+
+    STANDARD = "standard"
+    CONTRACT = "contract"
+    DIFFERENTIAL = "differential"
+    METAMORPHIC = "metamorphic"
+    MUTATION = "mutation"
+
+
+class ValidationOutcome(str, Enum):
+    """Typed terminal outcome for a stabilized validation node."""
+
+    PASSED = "passed"
+    DETERMINISTIC_FAILURE = "deterministic_failure"
+    FLAKY = "flaky"
+    TIMEOUT = "timeout"
+    INFRASTRUCTURE_FAILURE = "infrastructure_failure"
+    INCONCLUSIVE = "inconclusive"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class HermeticValidationPolicy:
+    """Execution and evidence policy for authority-bearing validation."""
+
+    stability_runs: int = 2
+    complete_selected_dag: bool = True
+    strict_isolation: bool = True
+    required_techniques: tuple[ValidationTechnique, ...] = (
+        ValidationTechnique.CONTRACT,
+        ValidationTechnique.DIFFERENTIAL,
+        ValidationTechnique.METAMORPHIC,
+        ValidationTechnique.MUTATION,
+    )
+    resource_bounds: ValidationResourceBounds = field(
+        default_factory=ValidationResourceBounds
+    )
+    diagnostic_ttl_seconds: float = 3600.0
+    minimum_time_to_failure_reduction: float = 0.30
+    policy_id: str = ""
+
+    def __post_init__(self) -> None:
+        if isinstance(self.stability_runs, bool) or int(self.stability_runs) < 2:
+            raise ValidationDAGError(
+                "hermetic validation requires at least two stability runs"
+            )
+        object.__setattr__(self, "stability_runs", int(self.stability_runs))
+        object.__setattr__(
+            self, "complete_selected_dag", bool(self.complete_selected_dag)
+        )
+        object.__setattr__(self, "strict_isolation", bool(self.strict_isolation))
+        if not self.strict_isolation:
+            raise ValidationDAGError(
+                "hermetic validation cannot disable strict isolation"
+            )
+        raw_techniques = self.required_techniques
+        techniques = tuple(
+            sorted(
+                {
+                    ValidationTechnique(value)
+                    for value in (
+                        (raw_techniques,)
+                        if isinstance(raw_techniques, str)
+                        else raw_techniques
+                    )
+                },
+                key=lambda value: list(ValidationTechnique).index(value),
+            )
+        )
+        if ValidationTechnique.STANDARD in techniques:
+            raise ValidationDAGError(
+                "standard is not a hermetic coverage technique"
+            )
+        object.__setattr__(self, "required_techniques", techniques)
+        if not isinstance(self.resource_bounds, ValidationResourceBounds):
+            object.__setattr__(
+                self,
+                "resource_bounds",
+                ValidationResourceBounds.from_dict(self.resource_bounds),
+            )
+        ttl = float(self.diagnostic_ttl_seconds)
+        if ttl <= 0:
+            raise ValidationDAGError(
+                "hermetic diagnostic TTL must be positive"
+            )
+        object.__setattr__(self, "diagnostic_ttl_seconds", ttl)
+        reduction = float(self.minimum_time_to_failure_reduction)
+        if reduction < 0 or reduction >= 1:
+            raise ValidationDAGError(
+                "time-to-failure reduction must be in [0, 1)"
+            )
+        object.__setattr__(
+            self, "minimum_time_to_failure_reduction", reduction
+        )
+        claimed = str(self.policy_id or "").strip()
+        object.__setattr__(self, "policy_id", "")
+        actual = _sha256_bytes(
+            _canonical_json(self._identity_payload()).encode("utf-8")
+        )
+        if claimed and claimed != actual:
+            raise ValidationDAGError(
+                "hermetic validation policy identity mismatch"
+            )
+        object.__setattr__(self, "policy_id", actual)
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema": HERMETIC_VALIDATION_POLICY_SCHEMA,
+            "stability_runs": self.stability_runs,
+            "complete_selected_dag": self.complete_selected_dag,
+            "strict_isolation": self.strict_isolation,
+            "required_techniques": [
+                value.value for value in self.required_techniques
+            ],
+            "resource_bounds": self.resource_bounds.to_dict(),
+            "diagnostic_ttl_seconds": self.diagnostic_ttl_seconds,
+            "minimum_time_to_failure_reduction": (
+                self.minimum_time_to_failure_reduction
+            ),
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity_payload(), "policy_id": self.policy_id}
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "HermeticValidationPolicy":
+        return cls(
+            stability_runs=int(value.get("stability_runs", 2)),
+            complete_selected_dag=bool(
+                value.get("complete_selected_dag", True)
+            ),
+            strict_isolation=bool(value.get("strict_isolation", True)),
+            required_techniques=tuple(
+                ValidationTechnique(item)
+                for item in value.get(
+                    "required_techniques",
+                    (
+                        "contract",
+                        "differential",
+                        "metamorphic",
+                        "mutation",
+                    ),
+                )
+            ),
+            resource_bounds=ValidationResourceBounds.from_dict(
+                value.get("resource_bounds") or {}
+            ),
+            diagnostic_ttl_seconds=float(
+                value.get("diagnostic_ttl_seconds", 3600.0)
+            ),
+            minimum_time_to_failure_reduction=float(
+                value.get("minimum_time_to_failure_reduction", 0.30)
+            ),
+            policy_id=str(value.get("policy_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class SeededValidationDefect:
+    """Expected defect observation used to audit validation effectiveness."""
+
+    defect_id: str
+    path: str
+    expected_check_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        defect_id = str(self.defect_id or "").strip()
+        path = _normalize_impact_path(self.path)
+        if not defect_id or not path:
+            raise ValidationDAGError(
+                "seeded validation defect requires identity and path"
+            )
+        object.__setattr__(self, "defect_id", defect_id)
+        object.__setattr__(self, "path", path)
+        object.__setattr__(
+            self,
+            "expected_check_ids",
+            tuple(
+                sorted(
+                    {
+                        str(value).strip()
+                        for value in self.expected_check_ids
+                        if str(value).strip()
+                    }
+                )
+            ),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "defect_id": self.defect_id,
+            "path": self.path,
+            "expected_check_ids": list(self.expected_check_ids),
+        }
+
+
 def _normalize_impact_path(value: object) -> str:
     text = str(value or "").strip().replace("\\", "/")
     while text.startswith("./"):
@@ -1002,6 +1439,7 @@ class ImpactValidationCheck:
     check_id: str
     kind: ImpactValidationKind
     command: str
+    technique: ValidationTechnique | None = None
     targets: tuple[str, ...] = ()
     acceptance_criteria: tuple[str, ...] = ()
     depends_on: tuple[str, ...] = ()
@@ -1021,6 +1459,16 @@ class ImpactValidationCheck:
         object.__setattr__(self, "check_id", check_id)
         object.__setattr__(self, "command", command)
         object.__setattr__(self, "kind", ImpactValidationKind(self.kind))
+        technique = self.technique
+        if technique is None:
+            technique = (
+                ValidationTechnique.CONTRACT
+                if self.kind is ImpactValidationKind.CONTRACT
+                else ValidationTechnique.STANDARD
+            )
+        object.__setattr__(
+            self, "technique", ValidationTechnique(technique)
+        )
         for name in ("targets", "acceptance_criteria", "depends_on"):
             raw_values = getattr(self, name)
             values = (
@@ -1092,6 +1540,7 @@ class ImpactValidationCheck:
         return {
             "check_id": self.check_id,
             "kind": self.kind.value,
+            "technique": self.technique.value,
             "command": self.command,
             "targets": list(self.targets),
             "acceptance_criteria": list(self.acceptance_criteria),
@@ -1124,6 +1573,11 @@ class ImpactValidationCheck:
             kind=ImpactValidationKind(
                 str(value.get("kind") or value.get("check_kind") or "")
             ),
+            technique=(
+                ValidationTechnique(str(value.get("technique")))
+                if value.get("technique")
+                else None
+            ),
             command=str(value.get("command") or ""),
             targets=values("targets", "impact_targets", "impact_paths"),
             acceptance_criteria=values("acceptance_criteria"),
@@ -1145,6 +1599,7 @@ class RepositoryValidationPolicy:
     """Exact repository rules used to derive mandatory DAG nodes."""
 
     required_kinds: tuple[ImpactValidationKind, ...] = MANDATORY_VALIDATION_KINDS
+    required_techniques: tuple[ValidationTechnique, ...] = ()
     required_check_ids: tuple[str, ...] = ()
     acceptance_bindings: Mapping[str, Sequence[str]] = field(default_factory=dict)
     kind_dependencies: Mapping[
@@ -1174,6 +1629,24 @@ class RepositoryValidationPolicy:
             )
         )
         object.__setattr__(self, "required_kinds", required_kinds)
+        raw_required_techniques = self.required_techniques
+        object.__setattr__(
+            self,
+            "required_techniques",
+            tuple(
+                sorted(
+                    {
+                        ValidationTechnique(value)
+                        for value in (
+                            (raw_required_techniques,)
+                            if isinstance(raw_required_techniques, str)
+                            else raw_required_techniques
+                        )
+                    },
+                    key=lambda value: list(ValidationTechnique).index(value),
+                )
+            ),
+        )
         object.__setattr__(
             self,
             "required_check_ids",
@@ -1273,6 +1746,9 @@ class RepositoryValidationPolicy:
         return {
             "policy_version": self.policy_version,
             "required_kinds": [value.value for value in self.required_kinds],
+            "required_techniques": [
+                value.value for value in self.required_techniques
+            ],
             "required_check_ids": list(self.required_check_ids),
             "acceptance_bindings": self.acceptance_bindings,
             "kind_dependencies": {
@@ -1301,6 +1777,10 @@ class RepositoryValidationPolicy:
                     if isinstance(raw_kinds, str)
                     else raw_kinds
                 )
+            ),
+            required_techniques=tuple(
+                ValidationTechnique(item)
+                for item in value.get("required_techniques") or ()
             ),
             required_check_ids=(
                 (raw_check_ids,)
@@ -1730,6 +2210,23 @@ def build_impact_selected_validation_dag(
                 f"repository_policy_requires:{kind.value}"
             )
 
+    for technique in policy.required_techniques:
+        candidates = tuple(
+            check
+            for check in check_values
+            if check.technique is technique and applicable[check.check_id]
+        )
+        if not candidates:
+            uncovered.add(
+                f"missing_mandatory_{technique.value}_technique"
+            )
+            continue
+        for check in candidates:
+            mandatory.add(check.check_id)
+            selection_reasons[check.check_id].add(
+                f"repository_policy_requires_technique:{technique.value}"
+            )
+
     for check_id in policy.required_check_ids:
         check = check_by_id.get(check_id)
         if check is None:
@@ -1868,6 +2365,7 @@ class ImpactValidationNodeReceipt:
     disposition: ValidationNodeDisposition
     reason: str
     mandatory: bool
+    technique: ValidationTechnique = ValidationTechnique.STANDARD
     selection_reasons: tuple[str, ...] = ()
     skipped_reason: str = ""
     depends_on: tuple[str, ...] = ()
@@ -1895,6 +2393,9 @@ class ImpactValidationNodeReceipt:
                 "impact validation node receipt is incomplete"
             )
         object.__setattr__(self, "kind", ImpactValidationKind(self.kind))
+        object.__setattr__(
+            self, "technique", ValidationTechnique(self.technique)
+        )
         object.__setattr__(
             self, "disposition", ValidationNodeDisposition(self.disposition)
         )
@@ -2000,6 +2501,7 @@ class ImpactValidationNodeReceipt:
         return {
             "check_id": self.check_id,
             "kind": self.kind.value,
+            "technique": self.technique.value,
             "command": self.command,
             "disposition": self.disposition.value,
             "reason": self.reason,
@@ -2023,6 +2525,16 @@ class ImpactValidationNodeReceipt:
         return cls(
             check_id=str(value.get("check_id") or ""),
             kind=ImpactValidationKind(str(value.get("kind") or "")),
+            technique=ValidationTechnique(
+                str(
+                    value.get("technique")
+                    or (
+                        "contract"
+                        if str(value.get("kind") or "") == "contract"
+                        else "standard"
+                    )
+                )
+            ),
             command=str(value.get("command") or ""),
             disposition=ValidationNodeDisposition(
                 str(value.get("disposition") or "")
@@ -2080,6 +2592,7 @@ class ImpactValidationDAGReceipt:
             planned = plan_by_id[node.check_id]
             if (
                 node.kind is not planned.check.kind
+                or node.technique is not planned.check.technique
                 or node.command != planned.check.command
                 or node.mandatory != planned.mandatory
                 or node.depends_on != planned.depends_on
@@ -4084,6 +4597,9 @@ class ValidationScheduler:
         resource_admission_timeout_seconds: float = 5.0,
         default_timeout_seconds: float = 1800.0,
         runner: ValidationRunner | None = None,
+        hermetic_policy: (
+            HermeticValidationPolicy | Mapping[str, Any] | None
+        ) = None,
     ) -> None:
         if int(max_workers) <= 0:
             raise ValueError("max_workers must be positive")
@@ -4147,6 +4663,13 @@ class ValidationScheduler:
         self._resource_decision_lock = threading.Lock()
         self.default_timeout_seconds = max(0.001, float(default_timeout_seconds))
         self.runner = runner or run_validation_command
+        self.hermetic_policy = (
+            hermetic_policy
+            if isinstance(hermetic_policy, HermeticValidationPolicy)
+            else HermeticValidationPolicy.from_dict(hermetic_policy)
+            if hermetic_policy is not None
+            else None
+        )
 
     @staticmethod
     def _read_capacity_source(source: Any, spec: ValidationCommand) -> Any:
@@ -4246,13 +4769,76 @@ class ValidationScheduler:
         environment: Mapping[str, str],
         dependency_state: Mapping[str, object] | Sequence[object] | str,
         runner: ValidationRunner,
+        hermetic_policy: HermeticValidationPolicy | None = None,
+        cancellation_token: ValidationCancellationToken | None = None,
         _cache_lease_held: bool = False,
     ) -> dict[str, object]:
+        if hermetic_policy is None:
+            hermetic_policy = self.hermetic_policy
+        timeout = spec.timeout_seconds or self.default_timeout_seconds
+        runtime_context: HermeticValidationRuntime | None = None
+        effective_dependencies = dependency_state
+        if hermetic_policy is not None:
+            cancellation_id = (
+                cancellation_token.cancellation_id
+                if cancellation_token is not None
+                else "validation:"
+                + _sha256_bytes(
+                    _canonical_json(
+                        {
+                            "tree": target_commit,
+                            "validation_id": spec.validation_id,
+                            "command": spec.command,
+                            "policy_id": hermetic_policy.policy_id,
+                        }
+                    ).encode("utf-8")
+                )
+            )
+            try:
+                runtime_context = build_hermetic_validation_runtime(
+                    command=spec.command,
+                    workspace_path=workspace_path,
+                    repository_tree_id=target_commit,
+                    environment=environment,
+                    timeout_seconds=timeout,
+                    cancellation_id=cancellation_id,
+                    resource_bounds=hermetic_policy.resource_bounds,
+                )
+            except Exception as exc:
+                now = utc_now()
+                return {
+                    "command": spec.command,
+                    "raw_command": spec.raw_command or spec.command,
+                    "started_at": now,
+                    "finished_at": now,
+                    "returncode": 75,
+                    "output": "",
+                    "error": (
+                        f"hermetic_runtime_invalid:{type(exc).__name__}:{exc}"
+                    ),
+                    "infrastructure_failure": True,
+                    "outcome": ValidationOutcome.INFRASTRUCTURE_FAILURE.value,
+                    "classification": (
+                        ValidationOutcome.INFRASTRUCTURE_FAILURE.value
+                    ),
+                    "authoritative": False,
+                    "stable": False,
+                    "cache_hit": False,
+                    "stage": spec.stage.label,
+                    "resource_cost": spec.resource_cost,
+                    "ordinal": spec.ordinal,
+                    "validation_id": spec.validation_id,
+                }
+            effective_dependencies = {
+                "candidate": _json_safe(dependency_state),
+                "hermetic_policy_id": hermetic_policy.policy_id,
+                "hermetic_runtime_id": runtime_context.runtime_id,
+            }
         cache_key = build_validation_cache_key(
             target_commit=target_commit,
             command=spec,
             environment=environment,
-            dependency_state=dependency_state,
+            dependency_state=effective_dependencies,
             relevant_environment_keys=environment,
         )
         if spec.cacheable and self.cache is not None:
@@ -4279,9 +4865,46 @@ class ValidationScheduler:
                         "stage": spec.stage.label,
                         "resource_cost": spec.resource_cost,
                         "ordinal": spec.ordinal,
+                        "validation_id": spec.validation_id,
                     }
                 )
+                if hermetic_policy is not None:
+                    result.setdefault(
+                        "outcome", ValidationOutcome.PASSED.value
+                    )
+                    result.setdefault(
+                        "classification", ValidationOutcome.PASSED.value
+                    )
+                    result.setdefault("authoritative", True)
+                    result.setdefault("stable", True)
+                    result.setdefault(
+                        "attempt_count", hermetic_policy.stability_runs
+                    )
                 return result
+            if hermetic_policy is not None:
+                diagnostic = self.cache.get_diagnostic(
+                    cache_key,
+                    max_age_seconds=(
+                        hermetic_policy.diagnostic_ttl_seconds
+                    ),
+                )
+                if diagnostic is not None:
+                    result = dict(diagnostic)
+                    result.update(
+                        {
+                            "command": spec.command,
+                            "raw_command": spec.raw_command or spec.command,
+                            "cache_hit": False,
+                            "diagnostic_cache_hit": True,
+                            "cache_key": cache_key.digest,
+                            "stage": spec.stage.label,
+                            "resource_cost": spec.resource_cost,
+                            "ordinal": spec.ordinal,
+                            "validation_id": spec.validation_id,
+                            "authoritative": False,
+                        }
+                    )
+                    return result
             if not _cache_lease_held:
                 # Acquire the process-shared key lease before resource
                 # admission.  The recursive call repeats the exact validated
@@ -4294,6 +4917,8 @@ class ValidationScheduler:
                         environment=environment,
                         dependency_state=dependency_state,
                         runner=runner,
+                        hermetic_policy=hermetic_policy,
+                        cancellation_token=cancellation_token,
                         _cache_lease_held=True,
                     )
 
@@ -4302,7 +4927,7 @@ class ValidationScheduler:
         )
         if resource_lease is None:
             now = utc_now()
-            return {
+            rejected = {
                 "command": spec.command,
                 "raw_command": spec.raw_command or spec.command,
                 "started_at": now,
@@ -4315,27 +4940,179 @@ class ValidationScheduler:
                 "stage": spec.stage.label,
                 "resource_cost": spec.resource_cost,
                 "ordinal": spec.ordinal,
+                "validation_id": spec.validation_id,
                 "resource_admission": decision.to_dict(),
+                "infrastructure_failure": True,
+                "outcome": ValidationOutcome.INFRASTRUCTURE_FAILURE.value,
+                "classification": (
+                    ValidationOutcome.INFRASTRUCTURE_FAILURE.value
+                ),
+                "authoritative": False,
+                "stable": False,
             }
+            rejected["validation_result_digest"] = _validation_result_digest(
+                rejected, cache_key=cache_key
+            )
+            return rejected
 
-        timeout = spec.timeout_seconds or self.default_timeout_seconds
         try:
-            try:
-                raw_result = runner(
-                    spec=spec,
-                    workspace_path=workspace_path,
-                    timeout_seconds=timeout,
-                    environment=environment,
+            attempts: list[dict[str, object]] = []
+            attempt_total = (
+                hermetic_policy.stability_runs
+                if hermetic_policy is not None
+                else 1
+            )
+            for attempt_number in range(1, attempt_total + 1):
+                if (
+                    cancellation_token is not None
+                    and cancellation_token.is_set()
+                ):
+                    attempt = {
+                        "returncode": 130,
+                        "output": "",
+                        "cancelled": True,
+                        "error": cancellation_token.reason or "cancelled",
+                    }
+                else:
+                    try:
+                        runner_kwargs: dict[str, object] = {
+                            "spec": spec,
+                            "workspace_path": workspace_path,
+                            "timeout_seconds": timeout,
+                            "environment": environment,
+                        }
+                        if hermetic_policy is not None:
+                            try:
+                                signature = inspect.signature(runner)
+                                accepts_extra = any(
+                                    parameter.kind
+                                    is inspect.Parameter.VAR_KEYWORD
+                                    for parameter in signature.parameters.values()
+                                )
+                            except (TypeError, ValueError):
+                                accepts_extra = True
+                                signature = None
+                            optional = {
+                                "runtime_context": runtime_context,
+                                "cancellation_token": cancellation_token,
+                                "attempt_number": attempt_number,
+                            }
+                            for key, value in optional.items():
+                                if (
+                                    accepts_extra
+                                    or signature is not None
+                                    and key in signature.parameters
+                                ):
+                                    runner_kwargs[key] = value
+                        raw_result = runner(**runner_kwargs)
+                        attempt = dict(raw_result)
+                        if (
+                            cancellation_token is not None
+                            and cancellation_token.is_set()
+                        ):
+                            attempt = {
+                                **attempt,
+                                "returncode": 130,
+                                "cancelled": True,
+                                "error": (
+                                    cancellation_token.reason or "cancelled"
+                                ),
+                            }
+                    except subprocess.TimeoutExpired:
+                        attempt = {
+                            "returncode": 124,
+                            "timed_out": True,
+                            "output": "",
+                        }
+                    except Exception as exc:
+                        attempt = {
+                            "returncode": 75,
+                            "output": "",
+                            "infrastructure_failure": True,
+                            "error": (
+                                f"runner_failed:{type(exc).__name__}:{exc}"
+                            ),
+                        }
+                attempt["returncode"] = int(attempt.get("returncode", 1))
+                attempt["attempt_number"] = attempt_number
+                attempt["diagnostic_signature"] = (
+                    _attempt_diagnostic_signature(attempt)
                 )
-                result = dict(raw_result)
-            except subprocess.TimeoutExpired:
-                result = {"returncode": 124, "timed_out": True, "output": ""}
-            except Exception as exc:  # runner is an execution isolation boundary
-                result = {
-                    "returncode": 1,
-                    "output": "",
-                    "error": f"{type(exc).__name__}: {exc}",
+                attempts.append(attempt)
+                if (
+                    hermetic_policy is not None
+                    and (
+                        attempt.get("timed_out")
+                        or attempt.get("cancelled")
+                        or attempt.get("infrastructure_failure")
+                        or attempt.get("inconclusive")
+                    )
+                ):
+                    break
+            result = dict(attempts[-1])
+            if hermetic_policy is not None:
+                outcome = classify_validation_attempts(attempts)
+                result["attempts"] = [_json_safe(item) for item in attempts]
+                result["attempt_count"] = len(attempts)
+                result["outcome"] = outcome.value
+                result["classification"] = outcome.value
+                result["stable"] = outcome in {
+                    ValidationOutcome.PASSED,
+                    ValidationOutcome.DETERMINISTIC_FAILURE,
                 }
+                result["intermittent_pass"] = (
+                    outcome is ValidationOutcome.FLAKY
+                    and any(
+                        int(item.get("returncode", 1)) == 0
+                        for item in attempts
+                    )
+                )
+                result["authoritative"] = (
+                    outcome is ValidationOutcome.PASSED
+                )
+                observed_seed_ids: set[str] = set()
+                for item in attempts:
+                    singular = str(
+                        item.get("seeded_defect_id") or ""
+                    ).strip()
+                    if singular:
+                        observed_seed_ids.add(singular)
+                    multiple = item.get("seeded_defect_ids") or ()
+                    if isinstance(multiple, str):
+                        multiple = (multiple,)
+                    observed_seed_ids.update(
+                        str(value).strip()
+                        for value in multiple
+                        if str(value).strip()
+                    )
+                result["seeded_defect_ids"] = sorted(observed_seed_ids)
+                if len(observed_seed_ids) == 1:
+                    result["seeded_defect_id"] = next(
+                        iter(observed_seed_ids)
+                    )
+                result["returncode"] = {
+                    ValidationOutcome.PASSED: 0,
+                    ValidationOutcome.DETERMINISTIC_FAILURE: int(
+                        attempts[0].get("returncode", 1)
+                    )
+                    or 1,
+                    ValidationOutcome.FLAKY: 86,
+                    ValidationOutcome.TIMEOUT: 124,
+                    ValidationOutcome.INFRASTRUCTURE_FAILURE: 75,
+                    ValidationOutcome.INCONCLUSIVE: 79,
+                    ValidationOutcome.CANCELLED: 130,
+                }[outcome]
+                result["runtime_id"] = (
+                    runtime_context.runtime_id if runtime_context else ""
+                )
+                result["cancellation_id"] = (
+                    runtime_context.cancellation_id
+                    if runtime_context
+                    else ""
+                )
+                result["hermetic_runtime"] = (
+                    runtime_context.to_dict() if runtime_context else None
+                )
         finally:
             self.resource_scheduler.release(resource_lease)
         result.setdefault("command", spec.command)
@@ -4348,9 +5125,15 @@ class ValidationScheduler:
         result["stage"] = spec.stage.label
         result["resource_cost"] = spec.resource_cost
         result["ordinal"] = spec.ordinal
+        result["validation_id"] = spec.validation_id
         result["validation_result_digest"] = _validation_result_digest(
             result, cache_key=cache_key
         )
+        if (
+            result.get("outcome")
+            == ValidationOutcome.DETERMINISTIC_FAILURE.value
+        ):
+            result["diagnostic_id"] = result["validation_result_digest"]
         result["resource_admission"] = decision.to_dict()
         result["resource_lease"] = {
             "lease_id": resource_lease.lease_id,
@@ -4359,11 +5142,27 @@ class ValidationScheduler:
             "child_limits": resource_lease.child_limits.to_dict(),
             "released": True,
         }
-        if spec.cacheable and self.cache is not None and result["returncode"] == 0:
+        if (
+            spec.cacheable
+            and self.cache is not None
+            and result["returncode"] == 0
+            and (
+                hermetic_policy is None
+                or result.get("authoritative") is True
+            )
+        ):
             # The cache quota bounds disk use, so retain the complete result.
             # Exact receipt reuse means a replay must not silently substitute
             # an output-less approximation for the result that actually ran.
             self.cache.put(cache_key, result)
+        elif (
+            spec.cacheable
+            and self.cache is not None
+            and hermetic_policy is not None
+            and result.get("outcome")
+            == ValidationOutcome.DETERMINISTIC_FAILURE.value
+        ):
+            self.cache.put_diagnostic(cache_key, result)
         return result
 
     @staticmethod
@@ -4471,6 +5270,15 @@ class ValidationScheduler:
             Mapping[str, object] | Sequence[object] | str | None
         ) = None,
         runner: ValidationRunner | None = None,
+        hermetic_policy: (
+            HermeticValidationPolicy | Mapping[str, Any] | None
+        ) = None,
+        cancellation_token: ValidationCancellationToken | None = None,
+        seeded_defects: Iterable[
+            SeededValidationDefect | Mapping[str, Any]
+        ] = (),
+        baseline_time_to_first_failure_seconds: Sequence[float] = (),
+        optimized_time_to_first_failure_seconds: Sequence[float] = (),
     ) -> dict[str, Any]:
         """Plan and execute the AST- and policy-derived validation DAG.
 
@@ -4493,6 +5301,33 @@ class ValidationScheduler:
         )
         symbol_changes = tuple(changed_symbols)
         path_changes = tuple(changed_paths)
+        hermetic = (
+            hermetic_policy
+            if isinstance(hermetic_policy, HermeticValidationPolicy)
+            else HermeticValidationPolicy.from_dict(hermetic_policy)
+            if hermetic_policy is not None
+            else self.hermetic_policy
+        )
+        defect_values = tuple(
+            value
+            if isinstance(value, SeededValidationDefect)
+            else SeededValidationDefect(
+                defect_id=str(
+                    value.get("defect_id")
+                    or value.get("seeded_defect_id")
+                    or ""
+                ),
+                path=str(
+                    value.get("path")
+                    or value.get("seeded_defect_path")
+                    or ""
+                ),
+                expected_check_ids=tuple(
+                    value.get("expected_check_ids") or ()
+                ),
+            )
+            for value in seeded_defects
+        )
         proposal_receipt: dict[str, Any] | None = None
         if proposal_validation is not None:
             from .proposal_validation import ProposalValidationResult
@@ -4574,13 +5409,38 @@ class ValidationScheduler:
             raise ValidationDAGError(
                 "target tree does not match the code impact index"
             )
+        effective_repository_policy = repository_policy
+        if hermetic is not None:
+            policy_value = (
+                repository_policy
+                if isinstance(repository_policy, RepositoryValidationPolicy)
+                else RepositoryValidationPolicy.from_dict(repository_policy)
+                if repository_policy is not None
+                else RepositoryValidationPolicy()
+            )
+            policy_payload = policy_value.to_dict()
+            policy_payload["policy_id"] = ""
+            policy_payload["required_techniques"] = [
+                value.value
+                for value in tuple(
+                    dict.fromkeys(
+                        (
+                            *policy_value.required_techniques,
+                            *hermetic.required_techniques,
+                        )
+                    )
+                )
+            ]
+            effective_repository_policy = (
+                RepositoryValidationPolicy.from_dict(policy_payload)
+            )
         plan = build_impact_selected_validation_dag(
             impact_index=index,
             checks=check_values,
             changed_symbols=symbol_changes,
             changed_paths=path_changes,
             acceptance_criteria=acceptance_criteria,
-            repository_policy=repository_policy,
+            repository_policy=effective_repository_policy,
         )
         workspace = Path(workspace_path)
         execution_environment = build_validation_environment(environment)
@@ -4612,6 +5472,7 @@ class ValidationScheduler:
                 outcomes[node.check_id] = ImpactValidationNodeReceipt(
                     check_id=node.check_id,
                     kind=node.check.kind,
+                    technique=node.check.technique,
                     command=node.check.command,
                     disposition=ValidationNodeDisposition.OMITTED,
                     reason="not_selected",
@@ -4627,6 +5488,7 @@ class ValidationScheduler:
                 outcomes[node.check_id] = ImpactValidationNodeReceipt(
                     check_id=node.check_id,
                     kind=node.check.kind,
+                    technique=node.check.technique,
                     command=node.check.command,
                     disposition=ValidationNodeDisposition.BLOCKED,
                     reason="uncovered_validation_impact",
@@ -4641,6 +5503,7 @@ class ValidationScheduler:
                 Future[dict[str, object]], tuple[str, int, float]
             ] = {}
             successful: set[str] = set()
+            completed_ids: set[str] = set()
             failed_ids: set[str] = set()
             occupied = 0
             fail_fast = False
@@ -4657,6 +5520,8 @@ class ValidationScheduler:
                         "policy_id": plan.policy.policy_id,
                     },
                     runner=command_runner,
+                    hermetic_policy=hermetic,
+                    cancellation_token=cancellation_token,
                 )
 
             def failed_ancestors(check_id: str) -> tuple[str, ...]:
@@ -4683,11 +5548,24 @@ class ValidationScheduler:
                     # as a fail-fast receipt rather than silently disappearing.
                     for check_id in sorted(tuple(pending)):
                         blocked_by = failed_ancestors(check_id)
-                        if blocked_by or fail_fast:
+                        if (
+                            blocked_by
+                            and not (
+                                hermetic is not None
+                                and hermetic.complete_selected_dag
+                            )
+                        ) or (
+                            fail_fast
+                            and not (
+                                hermetic is not None
+                                and hermetic.complete_selected_dag
+                            )
+                        ):
                             node = selected_nodes[check_id]
                             outcomes[check_id] = ImpactValidationNodeReceipt(
                                 check_id=check_id,
                                 kind=node.check.kind,
+                                technique=node.check.technique,
                                 command=node.check.command,
                                 disposition=ValidationNodeDisposition.BLOCKED,
                                 reason=(
@@ -4706,7 +5584,12 @@ class ValidationScheduler:
                         check_id
                         for check_id in sorted(pending)
                         if set(selected_nodes[check_id].depends_on).issubset(
-                            successful
+                            completed_ids
+                            if (
+                                hermetic is not None
+                                and hermetic.complete_selected_dag
+                            )
+                            else successful
                         )
                     ]
                     for check_id in ready:
@@ -4736,6 +5619,7 @@ class ValidationScheduler:
                                     ImpactValidationNodeReceipt(
                                         check_id=check_id,
                                         kind=node.check.kind,
+                                        technique=node.check.technique,
                                         command=node.check.command,
                                         disposition=(
                                             ValidationNodeDisposition.BLOCKED
@@ -4764,6 +5648,7 @@ class ValidationScheduler:
                         occupied -= cost
                         result = future.result()
                         raw_results[check_id] = result
+                        completed_ids.add(check_id)
                         returncode = int(result.get("returncode", 1))
                         node = selected_nodes[check_id]
                         if returncode == 0:
@@ -4772,7 +5657,10 @@ class ValidationScheduler:
                         else:
                             failed_ids.add(check_id)
                             disposition = ValidationNodeDisposition.FAILED
-                            fail_fast = True
+                            fail_fast = not (
+                                hermetic is not None
+                                and hermetic.complete_selected_dag
+                            )
                             if first_failure_elapsed is None:
                                 first_failure_elapsed = (
                                     time.monotonic() - started_monotonic
@@ -4781,6 +5669,7 @@ class ValidationScheduler:
                         outcomes[check_id] = ImpactValidationNodeReceipt(
                             check_id=check_id,
                             kind=node.check.kind,
+                            technique=node.check.technique,
                             command=node.check.command,
                             disposition=disposition,
                             reason=(
@@ -4884,7 +5773,129 @@ class ValidationScheduler:
             ),
             "max_workers": self.max_workers,
             "resource_budget": self.resource_budget,
+            "hermetic": hermetic is not None,
+            "hermetic_policy": (
+                hermetic.to_dict() if hermetic is not None else None
+            ),
+            "outcome_counts": {
+                outcome.value: sum(
+                    str(result.get("outcome") or "")
+                    == outcome.value
+                    for result in results
+                )
+                for outcome in ValidationOutcome
+            },
         }
+        observed_by_check: dict[str, set[str]] = {}
+        for check_id, result in raw_results.items():
+            observed = {
+                str(result.get("seeded_defect_id") or "").strip()
+            }
+            raw_observed = result.get("seeded_defect_ids") or ()
+            if isinstance(raw_observed, str):
+                raw_observed = (raw_observed,)
+            observed.update(
+                str(value).strip() for value in raw_observed
+            )
+            observed_by_check[check_id] = {
+                value for value in observed if value
+            }
+        defect_rows: list[dict[str, object]] = []
+        escaped: list[str] = []
+        for defect in defect_values:
+            seeded_impact = plan.impact_index.impact(
+                changed_paths=(defect.path,)
+            )
+            eligible_checks = (
+                set(defect.expected_check_ids)
+                if defect.expected_check_ids
+                else set(observed_by_check)
+            )
+            transitive_chains: dict[str, list[str]] = {}
+            for check_id in sorted(eligible_checks):
+                planned_node = selected_nodes.get(check_id)
+                if planned_node is None:
+                    continue
+                for target in planned_node.check.targets:
+                    chain = seeded_impact.dependency_chains.get(target, ())
+                    if len(chain) >= 3:
+                        transitive_chains[check_id] = list(chain)
+                        break
+                    normalized_target = _normalize_impact_path(target)
+                    path_chain = seeded_impact.dependency_chains.get(
+                        normalized_target, ()
+                    )
+                    if len(path_chain) >= 3:
+                        transitive_chains[check_id] = list(path_chain)
+                        break
+            observing_checks = tuple(
+                sorted(
+                    check_id
+                    for check_id, observed in observed_by_check.items()
+                    if check_id in eligible_checks
+                    and defect.defect_id in observed
+                    and int(
+                        raw_results[check_id].get("returncode", 1)
+                    )
+                    != 0
+                )
+            )
+            detected = bool(observing_checks)
+            if not detected:
+                escaped.append(defect.defect_id)
+            defect_rows.append(
+                {
+                    **defect.to_dict(),
+                    "detected": detected,
+                    "transitive": bool(transitive_chains),
+                    "transitive_impact_chains": transitive_chains,
+                    "observing_check_ids": list(observing_checks),
+                }
+            )
+        report["seeded_defects"] = defect_rows
+        report["seeded_defect_summary"] = {
+            "seeded_count": len(defect_rows),
+            "detected_count": len(defect_rows) - len(escaped),
+            "escaped_count": len(escaped),
+            "zero_escaped": not escaped,
+        }
+        report["escaped_seeded_defect_ids"] = escaped
+        if escaped:
+            report["passed"] = False
+            report["returncode"] = 87
+            report["error"] = "seeded_defect_escaped"
+        baseline_samples = tuple(
+            float(value)
+            for value in baseline_time_to_first_failure_seconds
+        )
+        optimized_samples = tuple(
+            float(value)
+            for value in optimized_time_to_first_failure_seconds
+        )
+        if baseline_samples:
+            if not optimized_samples and first_failure_elapsed is not None:
+                optimized_samples = (first_failure_elapsed,)
+            if optimized_samples:
+                report["time_to_first_failure_benchmark"] = (
+                    validation_benchmark(
+                        baseline_seconds=baseline_samples,
+                        optimized_seconds=optimized_samples,
+                        minimum_reduction=(
+                            hermetic.minimum_time_to_failure_reduction
+                            if hermetic is not None
+                            else 0.30
+                        ),
+                    )
+                )
+        for non_authority_field in (
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+            "freshness_authoritative",
+            "authoritative",
+            "merge_eligible",
+        ):
+            report[non_authority_field] = False
         if proposal_receipt is not None:
             report["proposal_receipt"] = proposal_receipt
         if failed_result is not None:
@@ -4892,6 +5903,22 @@ class ValidationScheduler:
                 failed_result.get("command") or ""
             )
         return report
+
+    def run_hermetic_impact_selected(
+        self,
+        checks: Iterable[ImpactValidationCheck | Mapping[str, Any]],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Execute the complete impact DAG under the strict v2 policy."""
+
+        policy = kwargs.pop("hermetic_policy", None)
+        if policy is None:
+            policy = HermeticValidationPolicy()
+        return self.run_impact_selected(
+            checks,
+            hermetic_policy=policy,
+            **kwargs,
+        )
 
     def run_validated(
         self,
@@ -6527,6 +7554,7 @@ def schedule_validations(
         "resource_admission_timeout_seconds",
         "default_timeout_seconds",
         "runner",
+        "hermetic_policy",
     }
     scheduler_kwargs = {key: kwargs.pop(key) for key in tuple(kwargs) if key in scheduler_keys}
     return ValidationScheduler(**scheduler_kwargs).run(
@@ -6557,6 +7585,7 @@ def schedule_staged_validations(
         "resource_admission_timeout_seconds",
         "default_timeout_seconds",
         "runner",
+        "hermetic_policy",
     }
     scheduler_kwargs = {
         key: kwargs.pop(key) for key in tuple(kwargs) if key in scheduler_keys
@@ -6590,6 +7619,7 @@ def schedule_validated_proposal(
         "resource_admission_timeout_seconds",
         "default_timeout_seconds",
         "runner",
+        "hermetic_policy",
     }
     scheduler_kwargs = {
         key: kwargs.pop(key) for key in tuple(kwargs) if key in scheduler_keys
@@ -6624,6 +7654,7 @@ def schedule_impact_selected_validations(
         "resource_admission_timeout_seconds",
         "default_timeout_seconds",
         "runner",
+        "hermetic_policy",
     }
     scheduler_kwargs = {
         key: kwargs.pop(key) for key in tuple(kwargs) if key in scheduler_keys

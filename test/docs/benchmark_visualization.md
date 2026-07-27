@@ -481,7 +481,7 @@ if regressions:
 ## Related Documentation
 
 - [Visualization Guide](VISUALIZATION_GUIDE.md)
-- [Benchmark Database Guide](../BENCHMARK_DATABASE_GUIDE.md)
+- [Benchmark Database Guide](../../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
 - [Performance Dashboard Specification](../PERFORMANCE_DASHBOARD_SPECIFICATION.md)
-- [Hardware Benchmarking Guide](../HARDWARE_BENCHMARKING_GUIDE.md)
-- [CI/CD Integration Guide](CI_CD_INTEGRATION_GUIDE.md)
+- [Hardware Benchmarking Guide](../../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)
+- [CI/CD Integration Guide](CICD_INTEGRATION_GUIDE.md)

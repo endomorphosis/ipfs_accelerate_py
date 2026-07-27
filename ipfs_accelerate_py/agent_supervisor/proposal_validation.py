@@ -13,13 +13,15 @@ import ast
 import fnmatch
 import hashlib
 import json
+import os
 import re
 import shlex
+import stat
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .code_proof_obligations import CandidateDiffEntry, DiffChangeKind
@@ -73,6 +75,9 @@ PROPOSAL_GATE_EVIDENCE_SCHEMA = (
 )
 PROPOSAL_REJECTION_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proposal-rejection-evidence@1"
+)
+UNTRUSTED_PROPOSAL_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/untrusted-proposal-admission@2"
 )
 
 
@@ -136,6 +141,18 @@ class ProposalFindingCode(str, Enum):
     TEST_WEAKENING_FORBIDDEN = "test_weakening_forbidden"
     COMMAND_FORBIDDEN = "command_forbidden"
     PYTHON_SYNTAX_ERROR = "python_syntax_error"
+    INVALID_ENCODING = "invalid_encoding"
+    DUPLICATE_FIELD = "duplicate_field"
+    NON_CANONICAL_ID = "non_canonical_id"
+    BASELINE_CONTENT_MISMATCH = "baseline_content_mismatch"
+    CANDIDATE_IDENTITY_MISMATCH = "candidate_identity_mismatch"
+    EXPECTED_EFFECT_MISMATCH = "expected_effect_mismatch"
+    HARDLINK_BOUNDARY_FORBIDDEN = "hardlink_boundary_forbidden"
+    PROTECTED_PATH_FORBIDDEN = "protected_path_forbidden"
+    REPOSITORY_PATH_RACE = "repository_path_race"
+    REPOSITORY_CONTENT_MISMATCH = "repository_content_mismatch"
+    ARCHIVE_CHANGE_FORBIDDEN = "archive_change_forbidden"
+    VALIDATION_WEAKENING_FORBIDDEN = "validation_weakening_forbidden"
 
 
 QUALIFYING_FAIL_FAST_CODES = frozenset(
@@ -304,6 +321,281 @@ def _safe_patch_path(value: str) -> str:
     ):
         raise ProposalValidationError(f"unsafe patch path: {raw!r}")
     return path.as_posix()
+
+
+_CANONICAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$")
+_SHA256_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_ARCHIVE_SUFFIXES = (
+    ".7z",
+    ".bz2",
+    ".gz",
+    ".jar",
+    ".rar",
+    ".tar",
+    ".tbz",
+    ".tgz",
+    ".war",
+    ".xz",
+    ".zip",
+)
+_ARCHIVE_MAGIC = (
+    b"PK\x03\x04",
+    b"PK\x05\x06",
+    b"PK\x07\x08",
+    b"\x1f\x8b",
+    b"7z\xbc\xaf\x27\x1c",
+    b"Rar!\x1a\x07",
+)
+_GENERATED_MARKERS_RE = re.compile(
+    r"(?im)^\s*(?:[#/;*-]+\s*)?(?:@generated|generated (?:file|code)|"
+    r"do not edit|automatically generated)\b"
+)
+_VALIDATION_CONFIG_PATHS = (
+    ".github/workflows/",
+    "conftest.py",
+    "pytest.ini",
+    "pyproject.toml",
+    "setup.cfg",
+    "tox.ini",
+)
+
+
+def _strict_repo_path(value: Any, *, field_name: str) -> str:
+    """Validate a provider path without lossy normalization."""
+
+    if not isinstance(value, str):
+        raise ProposalValidationError(f"{field_name} must be a string")
+    if value != value.strip() or "\\" in value:
+        raise ProposalValidationError(
+            f"{field_name} must be a canonical repository-relative path"
+        )
+    if value.startswith(("/", "./", "../", "//")) or "//" in value:
+        raise ProposalValidationError(
+            f"{field_name} must be a canonical repository-relative path"
+        )
+    pure = PurePosixPath(value)
+    if (
+        not value
+        or pure.as_posix() != value
+        or any(part in {"", ".", ".."} for part in pure.parts)
+        or any(ord(character) < 32 for character in value)
+        or "\x00" in value
+    ):
+        raise ProposalValidationError(
+            f"{field_name} must be a canonical repository-relative path"
+        )
+    return value
+
+
+def _strict_text(
+    value: Any,
+    *,
+    field_name: str,
+    allow_empty: bool = False,
+    max_bytes: int = 16_384,
+) -> str:
+    if not isinstance(value, str):
+        raise ProposalValidationError(f"{field_name} must be a string")
+    if not allow_empty and not value:
+        raise ProposalValidationError(f"{field_name} must not be empty")
+    if "\x00" in value or value.startswith("\ufeff") or any(
+        0xD800 <= ord(character) <= 0xDFFF for character in value
+    ):
+        raise ProposalValidationError(f"{field_name} has an invalid encoding")
+    try:
+        size = len(value.encode("utf-8", errors="strict"))
+    except UnicodeEncodeError as exc:
+        raise ProposalValidationError(f"{field_name} has an invalid encoding") from exc
+    if size > max_bytes:
+        raise ProposalValidationError(f"{field_name} exceeds its byte bound")
+    return value
+
+
+def _strict_id(value: Any, *, field_name: str) -> str:
+    result = _strict_text(value, field_name=field_name, max_bytes=256)
+    if result != result.strip() or _CANONICAL_ID_RE.fullmatch(result) is None:
+        raise ProposalValidationError(f"{field_name} is not a canonical identifier")
+    return result
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def _source_digest(source: str | None) -> str:
+    if source is None:
+        return ""
+    return _sha256_bytes(source.encode("utf-8", errors="strict"))
+
+
+def _looks_binary(value: bytes) -> bool:
+    if not value:
+        return False
+    sample = value[:8_192]
+    if b"\x00" in sample:
+        return True
+    controls = sum(
+        byte < 32 and byte not in {9, 10, 12, 13} for byte in sample
+    )
+    return controls * 20 > len(sample)
+
+
+def _looks_archive(path: str, value: bytes = b"") -> bool:
+    lowered = path.lower()
+    return lowered.endswith(_ARCHIVE_SUFFIXES) or any(
+        value.startswith(magic) for magic in _ARCHIVE_MAGIC
+    )
+
+
+def _bounded_plain_value(
+    value: Any,
+    *,
+    max_depth: int,
+    max_items: int,
+    max_string_bytes: int,
+) -> None:
+    """Validate an already decoded provider value without invoking user code."""
+
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    seen: set[int] = set()
+    item_count = 0
+    while stack:
+        current, depth = stack.pop()
+        if depth > max_depth:
+            raise ProposalValidationError("provider output exceeds the depth bound")
+        if current is None or type(current) is bool:
+            continue
+        if type(current) is int:
+            if current.bit_length() > 256:
+                raise ProposalValidationError(
+                    "provider output integer exceeds the numeric bound"
+                )
+            continue
+        if type(current) is float:
+            if current != current or current in (float("inf"), float("-inf")):
+                raise ProposalValidationError("provider output contains a non-finite number")
+            continue
+        if type(current) is str:
+            _strict_text(
+                current,
+                field_name="provider string",
+                allow_empty=True,
+                max_bytes=max_string_bytes,
+            )
+            continue
+        if type(current) not in {dict, list, tuple}:
+            raise ProposalValidationError(
+                "provider output contains an unsupported value type"
+            )
+        identity = id(current)
+        if identity in seen:
+            raise ProposalValidationError("provider output contains a container cycle")
+        seen.add(identity)
+        children: Iterable[Any]
+        if type(current) is dict:
+            for key in current:
+                if type(key) is not str:
+                    raise ProposalValidationError("provider object keys must be strings")
+                _strict_text(
+                    key,
+                    field_name="provider object key",
+                    max_bytes=256,
+                )
+            children = current.values()
+            item_count += len(current)
+        else:
+            children = current
+            item_count += len(current)
+        if item_count > max_items:
+            raise ProposalValidationError("provider output exceeds the item-count bound")
+        stack.extend((child, depth + 1) for child in children)
+
+
+class _DuplicateJSONField(ProposalValidationError):
+    pass
+
+
+def _decode_untrusted_output(
+    value: bytes | bytearray | str | Mapping[str, Any],
+    *,
+    max_bytes: int,
+    max_depth: int,
+    max_items: int,
+) -> tuple[dict[str, Any], str]:
+    """Decode one JSON object using a closed, bounded, duplicate-free envelope."""
+
+    if isinstance(value, Mapping):
+        if type(value) is not dict:
+            raise ProposalValidationError("provider output mapping must be a plain object")
+        decoded = value
+        _bounded_plain_value(
+            decoded,
+            max_depth=max_depth,
+            max_items=max_items,
+            max_string_bytes=max_bytes,
+        )
+        encoded = _canonical_json(decoded).encode("utf-8", errors="strict")
+        if len(encoded) > max_bytes:
+            raise ProposalValidationError("provider output exceeds the byte bound")
+        return dict(decoded), _sha256_bytes(encoded)
+
+    if isinstance(value, bytearray):
+        raw = bytes(value)
+    elif isinstance(value, bytes):
+        raw = value
+    elif isinstance(value, str):
+        try:
+            raw = value.encode("utf-8", errors="strict")
+        except UnicodeEncodeError as exc:
+            raise ProposalValidationError("provider output is not canonical UTF-8") from exc
+    else:
+        raise ProposalValidationError(
+            "provider output must be UTF-8 JSON bytes, text, or a plain object"
+        )
+    if not raw or len(raw) > max_bytes:
+        raise ProposalValidationError("provider output violates the byte bound")
+    if raw.startswith((b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff")) or b"\x00" in raw:
+        raise ProposalValidationError("provider output is not canonical UTF-8")
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ProposalValidationError("provider output is not canonical UTF-8") from exc
+
+    def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in items:
+            if key in result:
+                raise _DuplicateJSONField("provider output contains duplicate object fields")
+            result[key] = item
+        return result
+
+    def reject_constant(_value: str) -> None:
+        raise ProposalValidationError("provider output contains a non-finite number")
+
+    try:
+        decoded = json.loads(
+            text,
+            object_pairs_hook=pairs,
+            parse_constant=reject_constant,
+        )
+    except _DuplicateJSONField:
+        raise
+    except (
+        json.JSONDecodeError,
+        RecursionError,
+        ProposalValidationError,
+        ValueError,
+    ) as exc:
+        raise ProposalValidationError("provider output is not valid bounded JSON") from exc
+    if type(decoded) is not dict:
+        raise ProposalValidationError("provider output must be one JSON object")
+    _bounded_plain_value(
+        decoded,
+        max_depth=max_depth,
+        max_items=max_items,
+        max_string_bytes=max_bytes,
+    )
+    return decoded, _sha256_bytes(raw)
 
 
 @dataclass(frozen=True)
@@ -634,6 +926,7 @@ class ProposalValidationPolicy:
     consumed_proposal_ids: tuple[str, ...] = ()
     symlink_paths: tuple[str, ...] = ()
     submodule_paths: tuple[str, ...] = ()
+    protected_paths: tuple[str, ...] = ()
     sensitive_path_patterns: tuple[str, ...] = (
         ".env*",
         "*.pem",
@@ -644,6 +937,13 @@ class ProposalValidationPolicy:
         "*secrets*",
         ".aws/",
         ".ssh/",
+    )
+    generated_path_patterns: tuple[str, ...] = (
+        "build/",
+        "dist/",
+        "*.generated.*",
+        "*.min.js",
+        "*_pb2.py",
     )
     allowed_validation_commands: tuple[tuple[str, ...], ...] = (
         ("python", "-m", "pytest"),
@@ -658,6 +958,9 @@ class ProposalValidationPolicy:
     allow_generated: bool = False
     allow_test_deletion: bool = False
     allow_test_weakening: bool = False
+    allow_archives: bool = False
+    allow_hardlinks: bool = False
+    allow_validation_config_changes: bool = False
     require_declared_paths: bool = True
     require_python_syntax: bool = True
     require_structured_details: bool = False
@@ -668,6 +971,10 @@ class ProposalValidationPolicy:
     max_output_depth: int = 16
     max_file_bytes: int = 1_000_000
     max_operations: int = 256
+    max_expected_effects: int = 256
+    max_path_depth: int = 32
+    max_path_bytes: int = 512
+    max_output_items: int = 16_384
     max_findings: int = 32
     policy_version: str = "strict-proposal-v1"
     policy_id: str = ""
@@ -688,7 +995,9 @@ class ProposalValidationPolicy:
             "consumed_proposal_ids",
             "symlink_paths",
             "submodule_paths",
+            "protected_paths",
             "sensitive_path_patterns",
+            "generated_path_patterns",
         ):
             object.__setattr__(self, name, _strings(getattr(self, name)))
         commands: list[tuple[str, ...]] = []
@@ -712,6 +1021,9 @@ class ProposalValidationPolicy:
             "allow_generated",
             "allow_test_deletion",
             "allow_test_weakening",
+            "allow_archives",
+            "allow_hardlinks",
+            "allow_validation_config_changes",
             "require_declared_paths",
             "require_python_syntax",
             "require_structured_details",
@@ -738,6 +1050,10 @@ class ProposalValidationPolicy:
             "max_output_depth",
             "max_file_bytes",
             "max_operations",
+            "max_expected_effects",
+            "max_path_depth",
+            "max_path_bytes",
+            "max_output_items",
             "max_findings",
         ):
             value = getattr(self, name)
@@ -768,7 +1084,9 @@ class ProposalValidationPolicy:
             "consumed_proposal_ids": self.consumed_proposal_ids,
             "symlink_paths": self.symlink_paths,
             "submodule_paths": self.submodule_paths,
+            "protected_paths": self.protected_paths,
             "sensitive_path_patterns": self.sensitive_path_patterns,
+            "generated_path_patterns": self.generated_path_patterns,
             "allowed_validation_commands": self.allowed_validation_commands,
             "allow_binary": self.allow_binary,
             "allow_secrets": self.allow_secrets,
@@ -776,6 +1094,9 @@ class ProposalValidationPolicy:
             "allow_generated": self.allow_generated,
             "allow_test_deletion": self.allow_test_deletion,
             "allow_test_weakening": self.allow_test_weakening,
+            "allow_archives": self.allow_archives,
+            "allow_hardlinks": self.allow_hardlinks,
+            "allow_validation_config_changes": self.allow_validation_config_changes,
             "require_declared_paths": self.require_declared_paths,
             "require_python_syntax": self.require_python_syntax,
             "require_structured_details": self.require_structured_details,
@@ -786,6 +1107,10 @@ class ProposalValidationPolicy:
             "max_output_depth": self.max_output_depth,
             "max_file_bytes": self.max_file_bytes,
             "max_operations": self.max_operations,
+            "max_expected_effects": self.max_expected_effects,
+            "max_path_depth": self.max_path_depth,
+            "max_path_bytes": self.max_path_bytes,
+            "max_output_items": self.max_output_items,
             "max_findings": self.max_findings,
             "policy_version": self.policy_version,
         }
@@ -819,9 +1144,14 @@ class ProposalValidationPolicy:
             consumed_proposal_ids=tuple(payload.get("consumed_proposal_ids") or ()),
             symlink_paths=tuple(payload.get("symlink_paths") or ()),
             submodule_paths=tuple(payload.get("submodule_paths") or ()),
+            protected_paths=tuple(payload.get("protected_paths") or ()),
             sensitive_path_patterns=tuple(
                 payload.get("sensitive_path_patterns")
                 or cls.__dataclass_fields__["sensitive_path_patterns"].default
+            ),
+            generated_path_patterns=tuple(
+                payload.get("generated_path_patterns")
+                or cls.__dataclass_fields__["generated_path_patterns"].default
             ),
             allowed_validation_commands=tuple(
                 tuple(command) if not isinstance(command, str) else command
@@ -836,6 +1166,11 @@ class ProposalValidationPolicy:
             allow_generated=payload.get("allow_generated", False),
             allow_test_deletion=payload.get("allow_test_deletion", False),
             allow_test_weakening=payload.get("allow_test_weakening", False),
+            allow_archives=payload.get("allow_archives", False),
+            allow_hardlinks=payload.get("allow_hardlinks", False),
+            allow_validation_config_changes=payload.get(
+                "allow_validation_config_changes", False
+            ),
             require_declared_paths=payload.get("require_declared_paths", True),
             require_python_syntax=payload.get("require_python_syntax", True),
             require_structured_details=payload.get(
@@ -848,9 +1183,75 @@ class ProposalValidationPolicy:
             max_output_depth=int(payload.get("max_output_depth", 16)),
             max_file_bytes=int(payload.get("max_file_bytes", 1_000_000)),
             max_operations=int(payload.get("max_operations", 256)),
+            max_expected_effects=int(payload.get("max_expected_effects", 256)),
+            max_path_depth=int(payload.get("max_path_depth", 32)),
+            max_path_bytes=int(payload.get("max_path_bytes", 512)),
+            max_output_items=int(payload.get("max_output_items", 16_384)),
             max_findings=int(payload.get("max_findings", 32)),
             policy_version=str(payload.get("policy_version") or "strict-proposal-v1"),
             policy_id=str(payload.get("policy_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class ProposalExpectedEffect:
+    """Provider-declared, independently recomputable effect for one path."""
+
+    operation: str
+    path: str
+    before_sha256: str = ""
+    after_sha256: str = ""
+
+    def __post_init__(self) -> None:
+        operation = str(self.operation or "").strip()
+        if operation not in {item.value for item in DiffChangeKind} - {"unknown"}:
+            raise ProposalValidationError("expected effect has an invalid operation")
+        object.__setattr__(self, "operation", operation)
+        object.__setattr__(
+            self, "path", _strict_repo_path(self.path, field_name="expected_effect.path")
+        )
+        for name in ("before_sha256", "after_sha256"):
+            value = str(getattr(self, name) or "")
+            if value and _SHA256_ID_RE.fullmatch(value) is None:
+                raise ProposalValidationError(
+                    f"expected_effect.{name} must be a canonical SHA-256 identity"
+                )
+            object.__setattr__(self, name, value)
+        if operation == "add" and self.before_sha256:
+            raise ProposalValidationError("add effect cannot declare before content")
+        if operation == "delete" and self.after_sha256:
+            raise ProposalValidationError("delete effect cannot declare after content")
+        if operation not in {"add", "delete"} and (
+            not self.before_sha256 or not self.after_sha256
+        ):
+            raise ProposalValidationError(
+                "modified effects require before and after content identities"
+            )
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "operation": self.operation,
+            "path": self.path,
+            "before_sha256": self.before_sha256,
+            "after_sha256": self.after_sha256,
+        }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "ProposalExpectedEffect":
+        if type(value) is not dict:
+            raise ProposalValidationError("expected effect must be a plain object")
+        expected = {"operation", "path", "before_sha256", "after_sha256"}
+        if set(value) != expected:
+            raise ProposalValidationError(
+                "expected effect must contain exactly its versioned fields"
+            )
+        if any(type(value[name]) is not str for name in expected):
+            raise ProposalValidationError("expected effect fields must be strings")
+        return cls(
+            operation=value["operation"],
+            path=value["path"],
+            before_sha256=value["before_sha256"],
+            after_sha256=value["after_sha256"],
         )
 
 
@@ -869,6 +1270,7 @@ class ImplementationProposal:
     validation_plan: tuple[ProposalValidationStep, ...] = ()
     risks: tuple[ProposalRisk, ...] = ()
     authority_claims: Mapping[str, Any] = field(default_factory=dict)
+    expected_effects: tuple[ProposalExpectedEffect, ...] = ()
     patch_text: str = ""
     replay_nonce: str = ""
     context_id: str = ""
@@ -929,6 +1331,13 @@ class ImplementationProposal:
         )
         object.__setattr__(self, "validation_plan", validations)
         object.__setattr__(self, "risks", risks)
+        effects = tuple(
+            item
+            if isinstance(item, ProposalExpectedEffect)
+            else ProposalExpectedEffect.from_mapping(item)
+            for item in self.expected_effects
+        )
+        object.__setattr__(self, "expected_effects", effects)
         claims = {
             str(key).strip(): _canonical(value)
             for key, value in sorted(dict(self.authority_claims).items())
@@ -978,6 +1387,7 @@ class ImplementationProposal:
             "validation_plan": [step.to_dict() for step in self.validation_plan],
             "risks": [risk.to_dict() for risk in self.risks],
             "authority_claims": dict(self.authority_claims),
+            "expected_effects": [effect.to_dict() for effect in self.expected_effects],
             "patch_text": self.patch_text,
             "candidate_diff": [
                 entry.to_dict(include_sources=True) for entry in self.candidate_diff
@@ -1030,6 +1440,10 @@ class ImplementationProposal:
                 ProposalRisk.from_mapping(item) for item in payload.get("risks") or ()
             ),
             authority_claims=dict(payload.get("authority_claims") or {}),
+            expected_effects=tuple(
+                ProposalExpectedEffect.from_mapping(item)
+                for item in payload.get("expected_effects") or ()
+            ),
             patch_text=str(payload.get("patch_text") or payload.get("patch") or ""),
             candidate_diff=tuple(
                 CandidateDiffEntry.from_mapping(item)
@@ -2778,6 +3192,41 @@ class ProposalValidator:
                 ProposalGate.PATCH,
                 "candidate diff has no observable content or path change",
             )
+        if len(proposal.expected_effects) > policy.max_expected_effects:
+            add(
+                ProposalFindingCode.OUTPUT_TOO_LARGE,
+                ProposalGate.STRUCTURE,
+                "expected effects exceed the count bound",
+            )
+        if proposal.expected_effects:
+            actual_effects = tuple(
+                sorted(
+                    (
+                        entry.change_kind.value,
+                        entry.path,
+                        _source_digest(entry.before_source),
+                        _source_digest(entry.after_source),
+                    )
+                    for entry in entries
+                )
+            )
+            declared_effects = tuple(
+                sorted(
+                    (
+                        effect.operation,
+                        effect.path,
+                        effect.before_sha256,
+                        effect.after_sha256,
+                    )
+                    for effect in proposal.expected_effects
+                )
+            )
+            if declared_effects != actual_effects:
+                add(
+                    ProposalFindingCode.EXPECTED_EFFECT_MISMATCH,
+                    ProposalGate.PATCH,
+                    "declared expected effects do not exactly match candidate content",
+                )
         for entry in entries:
             old_required = entry.change_kind in {
                 DiffChangeKind.MODIFY,
@@ -2923,6 +3372,16 @@ class ProposalValidator:
                         "candidate path is forbidden by repository policy",
                         path,
                     )
+                if any(
+                    _path_matches(path, protected)
+                    for protected in policy.protected_paths
+                ):
+                    add(
+                        ProposalFindingCode.PROTECTED_PATH_FORBIDDEN,
+                        ProposalGate.PATH,
+                        "candidate path is operator-protected",
+                        path,
+                    )
                 if _path_at_boundary(path, policy.symlink_paths):
                     add(
                         ProposalFindingCode.SYMLINK_BOUNDARY_FORBIDDEN,
@@ -2959,6 +3418,23 @@ class ProposalValidator:
                     ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
                     ProposalGate.PATH,
                     "binary changes require explicit policy authority",
+                    entry.path,
+                )
+            source_bytes = (entry.after_source or "").encode(
+                "utf-8", errors="surrogatepass"
+            )
+            if not policy.allow_binary and _looks_binary(source_bytes):
+                add(
+                    ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
+                    ProposalGate.CONTENT,
+                    "binary candidate content requires explicit policy authority",
+                    entry.path,
+                )
+            if not policy.allow_archives and _looks_archive(entry.path, source_bytes):
+                add(
+                    ProposalFindingCode.ARCHIVE_CHANGE_FORBIDDEN,
+                    ProposalGate.CONTENT,
+                    "archive changes require explicit policy authority",
                     entry.path,
                 )
             if (
@@ -2998,6 +3474,40 @@ class ProposalValidator:
                     ProposalFindingCode.GENERATED_CHANGE_FORBIDDEN,
                     ProposalGate.PATH,
                     "generated-file changes require explicit policy authority",
+                    entry.path,
+                )
+            if (
+                not policy.allow_generated
+                and entry.generated is not True
+                and (
+                    any(
+                        _path_matches(entry.path, pattern)
+                        or fnmatch.fnmatchcase(entry.path, pattern)
+                        or fnmatch.fnmatchcase(
+                            entry.path.rsplit("/", 1)[-1], pattern
+                        )
+                        for pattern in policy.generated_path_patterns
+                    )
+                    or _GENERATED_MARKERS_RE.search(entry.after_source or "")
+                )
+            ):
+                add(
+                    ProposalFindingCode.GENERATED_CHANGE_FORBIDDEN,
+                    ProposalGate.CONTENT,
+                    "generated content markers require explicit policy authority",
+                    entry.path,
+                )
+            if (
+                not policy.allow_validation_config_changes
+                and any(
+                    _path_matches(entry.path, config_path)
+                    for config_path in _VALIDATION_CONFIG_PATHS
+                )
+            ):
+                add(
+                    ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
+                    ProposalGate.CONTENT,
+                    "validation configuration changes require explicit task authority",
                     entry.path,
                 )
             if (
@@ -3091,6 +3601,825 @@ class ProposalValidator:
         return ProposalValidationResult(proposal, policy, receipt)
 
 
+class _RepositoryEnvelopeIssue(ProposalValidationError):
+    def __init__(
+        self,
+        code: ProposalFindingCode,
+        message: str,
+        path: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.path = path
+
+
+def _strict_sequence(
+    value: Any,
+    *,
+    field_name: str,
+    maximum: int,
+) -> Sequence[Any]:
+    if type(value) not in {list, tuple}:
+        raise ProposalValidationError(f"{field_name} must be a sequence")
+    if len(value) > maximum:
+        raise ProposalValidationError(f"{field_name} exceeds its item-count bound")
+    return value
+
+
+def _strict_string_sequence(
+    value: Any,
+    *,
+    field_name: str,
+    maximum: int,
+    canonical: bool = True,
+) -> tuple[str, ...]:
+    sequence = _strict_sequence(value, field_name=field_name, maximum=maximum)
+    result = tuple(
+        _strict_text(item, field_name=f"{field_name}[{index}]")
+        for index, item in enumerate(sequence)
+    )
+    if canonical and result != tuple(sorted(set(result))):
+        raise ProposalValidationError(f"{field_name} must be sorted and unique")
+    return result
+
+
+def _validate_strict_provider_mapping(
+    payload: dict[str, Any],
+    policy: ProposalValidationPolicy,
+) -> ImplementationProposal:
+    """Validate exact v2 field types before any normalizing constructor runs."""
+
+    identity_fields = {
+        "schema",
+        "proposal_version",
+        "task_id",
+        "accepted_plan_id",
+        "repository_id",
+        "repository_tree_id",
+        "objective_id",
+        "baseline_id",
+        "context_id",
+        "replay_nonce",
+        "declared_paths",
+        "operations",
+        "rationale_references",
+        "validation_plan",
+        "risks",
+        "authority_claims",
+        "expected_effects",
+        "patch_text",
+        "candidate_diff",
+    }
+    derived_fields = {"changed_paths", "diff_digest", "proposal_id"}
+    if set(payload) != identity_fields | derived_fields:
+        raise ProposalValidationError(
+            "provider proposal must contain exactly the versioned top-level fields"
+        )
+    if payload["schema"] != PROPOSAL_VALIDATION_REQUEST_SCHEMA:
+        raise ProposalValidationError("provider proposal schema is unsupported")
+    if payload["proposal_version"] != "2":
+        raise ProposalValidationError("provider proposal must use version 2")
+    for name in (
+        "task_id",
+        "accepted_plan_id",
+        "repository_id",
+        "repository_tree_id",
+        "objective_id",
+        "baseline_id",
+        "context_id",
+        "replay_nonce",
+    ):
+        _strict_id(payload[name], field_name=name)
+
+    declared_paths = _strict_string_sequence(
+        payload["declared_paths"],
+        field_name="declared_paths",
+        maximum=policy.max_diff_entries * 2,
+    )
+    for index, path in enumerate(declared_paths):
+        _strict_repo_path(path, field_name=f"declared_paths[{index}]")
+        if len(path.encode("utf-8")) > policy.max_path_bytes:
+            raise ProposalValidationError("declared path exceeds the byte bound")
+        if len(PurePosixPath(path).parts) > policy.max_path_depth:
+            raise ProposalValidationError("declared path exceeds the depth bound")
+
+    rationale_references = _strict_string_sequence(
+        payload["rationale_references"],
+        field_name="rationale_references",
+        maximum=policy.max_operations * 4,
+    )
+    operations = _strict_sequence(
+        payload["operations"],
+        field_name="operations",
+        maximum=policy.max_operations,
+    )
+    for index, operation in enumerate(operations):
+        if type(operation) is not dict or set(operation) != {
+            "operation",
+            "path",
+            "old_path",
+            "rationale_refs",
+        }:
+            raise ProposalValidationError(
+                f"operations[{index}] must contain exactly its versioned fields"
+            )
+        _strict_text(operation["operation"], field_name=f"operations[{index}].operation")
+        _strict_repo_path(operation["path"], field_name=f"operations[{index}].path")
+        if operation["old_path"]:
+            _strict_repo_path(
+                operation["old_path"], field_name=f"operations[{index}].old_path"
+            )
+        _strict_string_sequence(
+            operation["rationale_refs"],
+            field_name=f"operations[{index}].rationale_refs",
+            maximum=policy.max_operations * 4,
+        )
+
+    validation_plan = _strict_sequence(
+        payload["validation_plan"],
+        field_name="validation_plan",
+        maximum=policy.max_operations,
+    )
+    for index, step in enumerate(validation_plan):
+        if type(step) is not dict or set(step) != {"command", "rationale_refs"}:
+            raise ProposalValidationError(
+                f"validation_plan[{index}] must contain exactly its versioned fields"
+            )
+        command = _strict_sequence(
+            step["command"],
+            field_name=f"validation_plan[{index}].command",
+            maximum=64,
+        )
+        for part_index, part in enumerate(command):
+            _strict_text(
+                part,
+                field_name=f"validation_plan[{index}].command[{part_index}]",
+                max_bytes=4_096,
+            )
+        _strict_string_sequence(
+            step["rationale_refs"],
+            field_name=f"validation_plan[{index}].rationale_refs",
+            maximum=policy.max_operations * 4,
+        )
+
+    risks = _strict_sequence(
+        payload["risks"], field_name="risks", maximum=policy.max_operations
+    )
+    for index, risk in enumerate(risks):
+        if type(risk) is not dict or set(risk) != {"risk", "mitigation"}:
+            raise ProposalValidationError(
+                f"risks[{index}] must contain exactly its versioned fields"
+            )
+        _strict_text(risk["risk"], field_name=f"risks[{index}].risk")
+        _strict_text(risk["mitigation"], field_name=f"risks[{index}].mitigation")
+
+    claims = payload["authority_claims"]
+    if type(claims) is not dict:
+        raise ProposalValidationError("authority_claims must be a plain object")
+    identity_claims = {
+        "task_id",
+        "accepted_plan_id",
+        "repository_id",
+        "repository_tree_id",
+        "objective_id",
+        "baseline_id",
+        "context_id",
+    }
+    non_authority_claims = {
+        "proof_authoritative",
+        "code_proof_authoritative",
+        "completion_authoritative",
+        "merge_eligible",
+        "merge_authoritative",
+        "freshness_authoritative",
+        "authoritative",
+        "completed",
+        "proof_complete",
+    }
+    if set(claims) - identity_claims - non_authority_claims:
+        raise ProposalValidationError("authority_claims contains unsupported fields")
+    if not identity_claims.issubset(claims):
+        raise ProposalValidationError("authority_claims omits canonical identity fields")
+    for name in identity_claims:
+        _strict_id(claims[name], field_name=f"authority_claims.{name}")
+    for name in set(claims) & non_authority_claims:
+        if type(claims[name]) is not bool:
+            raise ProposalValidationError(
+                f"authority_claims.{name} must be a boolean"
+            )
+
+    effects = _strict_sequence(
+        payload["expected_effects"],
+        field_name="expected_effects",
+        maximum=policy.max_expected_effects,
+    )
+    if not effects:
+        raise ProposalValidationError("expected_effects must not be empty")
+    for effect in effects:
+        ProposalExpectedEffect.from_mapping(effect)
+
+    entries = _strict_sequence(
+        payload["candidate_diff"],
+        field_name="candidate_diff",
+        maximum=policy.max_diff_entries,
+    )
+    if not entries:
+        raise ProposalValidationError("candidate_diff must not be empty")
+    entry_fields = {
+        "old_path",
+        "new_path",
+        "change_kind",
+        "before_blob_id",
+        "after_blob_id",
+        "binary",
+        "generated",
+        "metadata",
+        "before_source",
+        "after_source",
+    }
+    for index, entry in enumerate(entries):
+        if type(entry) is not dict or set(entry) != entry_fields:
+            raise ProposalValidationError(
+                f"candidate_diff[{index}] must contain exactly its versioned fields"
+            )
+        for name in ("old_path", "new_path"):
+            path = entry[name]
+            if type(path) is not str:
+                raise ProposalValidationError(
+                    f"candidate_diff[{index}].{name} must be a string"
+                )
+            if path:
+                _strict_repo_path(
+                    path, field_name=f"candidate_diff[{index}].{name}"
+                )
+                if len(path.encode("utf-8")) > policy.max_path_bytes:
+                    raise ProposalValidationError("candidate path exceeds the byte bound")
+                if len(PurePosixPath(path).parts) > policy.max_path_depth:
+                    raise ProposalValidationError("candidate path exceeds the depth bound")
+        if entry["change_kind"] not in {
+            item.value for item in DiffChangeKind
+        } - {"unknown"}:
+            raise ProposalValidationError("candidate change kind is not canonical")
+        if type(entry["binary"]) is not bool:
+            raise ProposalValidationError("candidate binary flag must be a boolean")
+        if entry["generated"] is not None and type(entry["generated"]) is not bool:
+            raise ProposalValidationError("candidate generated flag must be boolean or null")
+        if type(entry["metadata"]) is not dict:
+            raise ProposalValidationError("candidate metadata must be a plain object")
+        metadata_fields = {
+            "after_mode",
+            "after_size_bytes",
+            "before_mode",
+            "before_size_bytes",
+            "media_type",
+            "size_bytes",
+        }
+        if set(entry["metadata"]) - metadata_fields:
+            raise ProposalValidationError(
+                "candidate metadata contains unsupported fields"
+            )
+        for name, value in entry["metadata"].items():
+            if name.endswith("_bytes") or name == "size_bytes":
+                if type(value) is not int or value < 0:
+                    raise ProposalValidationError(
+                        f"candidate metadata {name} must be a non-negative integer"
+                    )
+            elif type(value) is not str:
+                raise ProposalValidationError(
+                    f"candidate metadata {name} must be a string"
+                )
+        for source_name in ("before_source", "after_source"):
+            source = entry[source_name]
+            if source is not None:
+                _strict_text(
+                    source,
+                    field_name=f"candidate_diff[{index}].{source_name}",
+                    allow_empty=True,
+                    max_bytes=policy.max_file_bytes,
+                )
+        for source_name, blob_name in (
+            ("before_source", "before_blob_id"),
+            ("after_source", "after_blob_id"),
+        ):
+            blob_id = entry[blob_name]
+            if type(blob_id) is not str:
+                raise ProposalValidationError(
+                    f"candidate_diff[{index}].{blob_name} must be a string"
+                )
+            expected = _source_digest(entry[source_name])
+            if blob_id != expected:
+                raise ProposalValidationError(
+                    f"candidate_diff[{index}].{blob_name} is detached from materialized content"
+                )
+
+    _strict_text(
+        payload["patch_text"],
+        field_name="patch_text",
+        max_bytes=policy.max_patch_bytes,
+    )
+    proposal = ImplementationProposal.from_dict(payload)
+    # These derived identities are mandatory in the hostile envelope.  The
+    # constructor recomputes them, so aliases or stale candidate material fail.
+    if payload["proposal_id"] != proposal.proposal_id:
+        raise ProposalValidationError("proposal_id is detached from canonical content")
+    if payload["diff_digest"] != proposal.diff_digest:
+        raise ProposalValidationError("diff_digest is detached from candidate content")
+    if tuple(payload["changed_paths"]) != proposal.changed_paths:
+        raise ProposalValidationError("changed_paths is detached from candidate paths")
+    return proposal
+
+
+def _stat_fingerprint(value: os.stat_result) -> tuple[int, ...]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+    )
+
+
+def _lstat_chain(root: Path, path: str) -> tuple[tuple[str, os.stat_result], ...]:
+    result: list[tuple[str, os.stat_result]] = []
+    current = root
+    for index, part in enumerate(PurePosixPath(path).parts):
+        current = current / part
+        try:
+            metadata = os.lstat(current)
+        except FileNotFoundError:
+            if index != len(PurePosixPath(path).parts) - 1:
+                raise _RepositoryEnvelopeIssue(
+                    ProposalFindingCode.REPOSITORY_CONTENT_MISMATCH,
+                    "candidate parent path does not exist",
+                    path,
+                )
+            break
+        if stat.S_ISLNK(metadata.st_mode):
+            raise _RepositoryEnvelopeIssue(
+                ProposalFindingCode.SYMLINK_BOUNDARY_FORBIDDEN,
+                "repository path crosses a live symlink boundary",
+                path,
+            )
+        if index < len(PurePosixPath(path).parts) - 1 and not stat.S_ISDIR(
+            metadata.st_mode
+        ):
+            raise _RepositoryEnvelopeIssue(
+                ProposalFindingCode.REPOSITORY_CONTENT_MISMATCH,
+                "candidate parent path is not a directory",
+                path,
+            )
+        result.append(("/".join(PurePosixPath(path).parts[: index + 1]), metadata))
+    return tuple(result)
+
+
+def _read_repository_file(
+    root: Path,
+    path: str,
+    *,
+    maximum: int,
+    allow_hardlinks: bool,
+) -> tuple[bytes | None, tuple[tuple[str, os.stat_result], ...]]:
+    before_chain = _lstat_chain(root, path)
+    if not before_chain or before_chain[-1][0] != path:
+        return None, before_chain
+    target = before_chain[-1][1]
+    if not stat.S_ISREG(target.st_mode):
+        raise _RepositoryEnvelopeIssue(
+            ProposalFindingCode.REPOSITORY_CONTENT_MISMATCH,
+            "candidate baseline path is not a regular file",
+            path,
+        )
+    if target.st_nlink > 1 and not allow_hardlinks:
+        raise _RepositoryEnvelopeIssue(
+            ProposalFindingCode.HARDLINK_BOUNDARY_FORBIDDEN,
+            "candidate baseline path has multiple hard links",
+            path,
+        )
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    close_on_exec = getattr(os, "O_CLOEXEC", 0)
+    directory_flags = os.O_RDONLY | close_on_exec | no_follow | getattr(
+        os, "O_DIRECTORY", 0
+    )
+    file_flags = os.O_RDONLY | close_on_exec | no_follow
+    directory_descriptor = -1
+    descriptor = -1
+    try:
+        root_before = os.lstat(root)
+        directory_descriptor = os.open(root, directory_flags)
+        if _stat_fingerprint(root_before) != _stat_fingerprint(
+            os.fstat(directory_descriptor)
+        ):
+            raise OSError("repository root identity changed")
+        parts = PurePosixPath(path).parts
+        for index, part in enumerate(parts[:-1]):
+            child_descriptor = os.open(
+                part,
+                directory_flags,
+                dir_fd=directory_descriptor,
+            )
+            child_stat = os.fstat(child_descriptor)
+            expected_name, expected_stat = before_chain[index]
+            if (
+                expected_name != "/".join(parts[: index + 1])
+                or _stat_fingerprint(child_stat)
+                != _stat_fingerprint(expected_stat)
+            ):
+                os.close(child_descriptor)
+                raise OSError("repository ancestor identity changed")
+            os.close(directory_descriptor)
+            directory_descriptor = child_descriptor
+        descriptor = os.open(
+            parts[-1],
+            file_flags,
+            dir_fd=directory_descriptor,
+        )
+    except OSError as exc:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if directory_descriptor >= 0:
+            os.close(directory_descriptor)
+        raise _RepositoryEnvelopeIssue(
+            ProposalFindingCode.REPOSITORY_PATH_RACE,
+            "candidate baseline changed during no-follow open",
+            path,
+        ) from exc
+    os.close(directory_descriptor)
+    try:
+        opened_before = os.fstat(descriptor)
+        chunks: list[bytes] = []
+        remaining = maximum + 1
+        while remaining:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        opened_after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    value = b"".join(chunks)
+    if len(value) > maximum:
+        raise _RepositoryEnvelopeIssue(
+            ProposalFindingCode.LARGE_FILE_FORBIDDEN,
+            "candidate baseline exceeds the file byte bound",
+            path,
+        )
+    after_chain = _lstat_chain(root, path)
+    if (
+        _stat_fingerprint(root_before)
+        != _stat_fingerprint(os.lstat(root))
+        or
+        _stat_fingerprint(target) != _stat_fingerprint(opened_before)
+        or _stat_fingerprint(opened_before) != _stat_fingerprint(opened_after)
+        or len(before_chain) != len(after_chain)
+        or any(
+            before_name != after_name
+            or _stat_fingerprint(before_stat) != _stat_fingerprint(after_stat)
+            for (before_name, before_stat), (after_name, after_stat) in zip(
+                before_chain, after_chain
+            )
+        )
+    ):
+        raise _RepositoryEnvelopeIssue(
+            ProposalFindingCode.REPOSITORY_PATH_RACE,
+            "candidate baseline identity changed while it was inspected",
+            path,
+        )
+    return value, after_chain
+
+
+def _validate_repository_envelope(
+    proposal: ImplementationProposal,
+    policy: ProposalValidationPolicy,
+    repository_root: str | os.PathLike[str],
+) -> str:
+    root = Path(repository_root)
+    if not root.is_absolute():
+        raise _RepositoryEnvelopeIssue(
+            ProposalFindingCode.UNSAFE_PATH,
+            "repository root must be absolute",
+        )
+    try:
+        root_stat = os.lstat(root)
+    except OSError as exc:
+        raise _RepositoryEnvelopeIssue(
+            ProposalFindingCode.REPOSITORY_CONTENT_MISMATCH,
+            "repository root is unavailable",
+        ) from exc
+    if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
+        raise _RepositoryEnvelopeIssue(
+            ProposalFindingCode.SYMLINK_BOUNDARY_FORBIDDEN,
+            "repository root must be a real directory",
+        )
+
+    snapshots: list[dict[str, Any]] = []
+    for entry in proposal.candidate_diff:
+        path = entry.old_path or entry.new_path
+        for candidate_path in (entry.old_path, entry.new_path):
+            if not candidate_path:
+                continue
+            if any(
+                _path_matches(candidate_path, protected)
+                for protected in policy.protected_paths
+            ):
+                raise _RepositoryEnvelopeIssue(
+                    ProposalFindingCode.PROTECTED_PATH_FORBIDDEN,
+                    "candidate path is operator-protected",
+                    candidate_path,
+                )
+            # A nested .git marker identifies a submodule or an embedded
+            # repository.  Its contents are untrusted and are never parsed.
+            parent = PurePosixPath(candidate_path).parent
+            accumulated = Path()
+            for part in parent.parts:
+                accumulated /= part
+                marker = root / accumulated / ".git"
+                try:
+                    marker_stat = os.lstat(marker)
+                except FileNotFoundError:
+                    continue
+                if stat.S_ISLNK(marker_stat.st_mode) or stat.S_ISREG(
+                    marker_stat.st_mode
+                ) or stat.S_ISDIR(marker_stat.st_mode):
+                    raise _RepositoryEnvelopeIssue(
+                        ProposalFindingCode.SUBMODULE_BOUNDARY_FORBIDDEN,
+                        "candidate path crosses a nested repository boundary",
+                        candidate_path,
+                    )
+
+        baseline, chain = _read_repository_file(
+            root,
+            path,
+            maximum=policy.max_file_bytes,
+            allow_hardlinks=policy.allow_hardlinks,
+        )
+        expects_existing = entry.change_kind is not DiffChangeKind.ADD
+        if expects_existing != (baseline is not None):
+            raise _RepositoryEnvelopeIssue(
+                ProposalFindingCode.REPOSITORY_CONTENT_MISMATCH,
+                "candidate operation does not match baseline path existence",
+                path,
+            )
+        if baseline is not None:
+            if _looks_binary(baseline) and not policy.allow_binary:
+                raise _RepositoryEnvelopeIssue(
+                    ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
+                    "binary baseline content requires explicit policy authority",
+                    path,
+                )
+            if _looks_archive(path, baseline) and not policy.allow_archives:
+                raise _RepositoryEnvelopeIssue(
+                    ProposalFindingCode.ARCHIVE_CHANGE_FORBIDDEN,
+                    "archive baseline content requires explicit policy authority",
+                    path,
+                )
+            try:
+                baseline_text = baseline.decode("utf-8", errors="strict")
+            except UnicodeDecodeError as exc:
+                raise _RepositoryEnvelopeIssue(
+                    ProposalFindingCode.INVALID_ENCODING,
+                    "candidate baseline is not canonical UTF-8 text",
+                    path,
+                ) from exc
+            if baseline_text.startswith("\ufeff") or any(
+                0xD800 <= ord(character) <= 0xDFFF for character in baseline_text
+            ):
+                raise _RepositoryEnvelopeIssue(
+                    ProposalFindingCode.INVALID_ENCODING,
+                    "candidate baseline is not canonical UTF-8 text",
+                    path,
+                )
+            if entry.before_source != baseline_text:
+                raise _RepositoryEnvelopeIssue(
+                    ProposalFindingCode.BASELINE_CONTENT_MISMATCH,
+                    "materialized before content does not match the repository baseline",
+                    path,
+                )
+            if entry.before_blob_id != _sha256_bytes(baseline):
+                raise _RepositoryEnvelopeIssue(
+                    ProposalFindingCode.BASELINE_CONTENT_MISMATCH,
+                    "before content identity does not match the repository baseline",
+                    path,
+                )
+        snapshots.append(
+            {
+                "path": path,
+                "exists": baseline is not None,
+                "sha256": _sha256_bytes(baseline) if baseline is not None else "",
+                "chain": [
+                    (name, _stat_fingerprint(metadata)) for name, metadata in chain
+                ],
+            }
+        )
+    return _identity(
+        {
+            "schema": "ipfs_accelerate_py/agent-supervisor/repository-snapshot@2",
+            "root": _stat_fingerprint(root_stat),
+            "paths": snapshots,
+        }
+    )
+
+
+@dataclass(frozen=True)
+class UntrustedProposalAdmissionResult:
+    """Bounded pre-dispatch outcome for hostile provider and repository data."""
+
+    accepted: bool
+    policy_id: str
+    input_digest: str
+    repository_snapshot_id: str = ""
+    findings: tuple[ProposalValidationFinding, ...] = ()
+    proposal_validation: ProposalValidationResult | None = None
+    expensive_checks_started: int = 0
+
+    def __post_init__(self) -> None:
+        if type(self.accepted) is not bool:
+            raise ProposalValidationError("untrusted admission accepted must be boolean")
+        if self.expensive_checks_started != 0:
+            raise ProposalValidationError(
+                "untrusted admission cannot start expensive checks"
+            )
+        if self.accepted != (
+            self.proposal_validation is not None
+            and self.proposal_validation.accepted
+            and not self.findings
+            and bool(self.repository_snapshot_id)
+        ):
+            raise ProposalValidationError("untrusted admission verdict is inconsistent")
+
+    @property
+    def dispatch_allowed(self) -> bool:
+        return self.accepted
+
+    @property
+    def rejection_codes(self) -> tuple[str, ...]:
+        return tuple(sorted({finding.code.value for finding in self.findings}))
+
+    @property
+    def proposal(self) -> ImplementationProposal | None:
+        return (
+            self.proposal_validation.proposal
+            if self.proposal_validation is not None
+            else None
+        )
+
+    @property
+    def admission_id(self) -> str:
+        return _identity(self._identity_payload())
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": UNTRUSTED_PROPOSAL_ADMISSION_SCHEMA,
+            "accepted": self.accepted,
+            "policy_id": self.policy_id,
+            "input_digest": self.input_digest,
+            "repository_snapshot_id": self.repository_snapshot_id,
+            "findings": [finding.to_dict() for finding in self.findings],
+            "proposal_validation_receipt_id": (
+                self.proposal_validation.receipt.receipt_id
+                if self.proposal_validation is not None
+                else ""
+            ),
+            "expensive_checks_started": 0,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+            "merge_eligible": False,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._identity_payload(), "admission_id": self.admission_id}
+
+
+def validate_untrusted_implementation_proposal(
+    provider_output: bytes | bytearray | str | Mapping[str, Any],
+    *,
+    policy: ProposalValidationPolicy | Mapping[str, Any],
+    repository_root: str | os.PathLike[str],
+) -> UntrustedProposalAdmissionResult:
+    """Fail-fast admission for a hostile provider output and checkout.
+
+    This function performs no writes, subprocess calls, imports, archive
+    extraction, or validation dispatch.  A caller may dispatch expensive work
+    only when ``dispatch_allowed`` is true.
+    """
+
+    if not isinstance(policy, ProposalValidationPolicy):
+        policy = ProposalValidationPolicy.from_dict(policy)
+    input_digest = ""
+
+    def rejected(
+        code: ProposalFindingCode,
+        message: str,
+        *,
+        gate: ProposalGate = ProposalGate.SCHEMA,
+        path: str = "",
+        proposal_validation: ProposalValidationResult | None = None,
+    ) -> UntrustedProposalAdmissionResult:
+        finding = ProposalValidationFinding(code, gate, message, path)
+        combined = (
+            tuple(proposal_validation.findings) + (finding,)
+            if proposal_validation is not None
+            else (finding,)
+        )
+        combined = tuple(
+            sorted(
+                combined[: policy.max_findings],
+                key=lambda item: (
+                    ORDERED_PROPOSAL_GATES.index(item.gate),
+                    item.path,
+                    item.code.value,
+                    item.message,
+                ),
+            )
+        )
+        return UntrustedProposalAdmissionResult(
+            accepted=False,
+            policy_id=policy.policy_id,
+            input_digest=input_digest,
+            findings=combined,
+            proposal_validation=proposal_validation,
+        )
+
+    try:
+        payload, input_digest = _decode_untrusted_output(
+            provider_output,
+            max_bytes=policy.max_output_bytes,
+            max_depth=policy.max_output_depth,
+            max_items=policy.max_output_items,
+        )
+    except _DuplicateJSONField as exc:
+        return rejected(ProposalFindingCode.DUPLICATE_FIELD, str(exc))
+    except ProposalValidationError as exc:
+        message = str(exc)
+        if "not canonical UTF-8" in message or "invalid encoding" in message:
+            code = ProposalFindingCode.INVALID_ENCODING
+        elif "depth bound" in message:
+            code = ProposalFindingCode.OUTPUT_TOO_DEEP
+        elif "byte bound" in message or "item-count bound" in message:
+            code = ProposalFindingCode.OUTPUT_TOO_LARGE
+        else:
+            code = ProposalFindingCode.INVALID_SCHEMA
+        return rejected(code, str(exc))
+
+    try:
+        proposal = _validate_strict_provider_mapping(payload, policy)
+    except ProposalValidationError as exc:
+        message = str(exc)
+        if "identifier" in message:
+            code = ProposalFindingCode.NON_CANONICAL_ID
+        elif "identity" in message or "detached" in message:
+            code = ProposalFindingCode.CANDIDATE_IDENTITY_MISMATCH
+        elif "encoding" in message:
+            code = ProposalFindingCode.INVALID_ENCODING
+        elif "path" in message:
+            code = ProposalFindingCode.UNSAFE_PATH
+        elif "byte bound" in message or "item-count" in message:
+            code = ProposalFindingCode.OUTPUT_TOO_LARGE
+        else:
+            code = ProposalFindingCode.INVALID_SCHEMA
+        return rejected(code, message)
+
+    validation = validate_implementation_proposal(proposal, policy=policy)
+    if not validation.accepted:
+        return UntrustedProposalAdmissionResult(
+            accepted=False,
+            policy_id=policy.policy_id,
+            input_digest=input_digest,
+            findings=validation.findings,
+            proposal_validation=validation,
+        )
+    try:
+        snapshot_id = _validate_repository_envelope(
+            proposal, policy, repository_root
+        )
+    except _RepositoryEnvelopeIssue as exc:
+        return rejected(
+            exc.code,
+            str(exc),
+            gate=(
+                ProposalGate.CONTENT
+                if exc.code
+                in {
+                    ProposalFindingCode.BASELINE_CONTENT_MISMATCH,
+                    ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
+                    ProposalFindingCode.ARCHIVE_CHANGE_FORBIDDEN,
+                    ProposalFindingCode.INVALID_ENCODING,
+                }
+                else ProposalGate.PATH
+            ),
+            path=exc.path,
+            proposal_validation=validation,
+        )
+    return UntrustedProposalAdmissionResult(
+        accepted=True,
+        policy_id=policy.policy_id,
+        input_digest=input_digest,
+        repository_snapshot_id=snapshot_id,
+        proposal_validation=validation,
+    )
+
+
 def validate_implementation_proposal(
     proposal: ImplementationProposal | Mapping[str, Any],
     *,
@@ -3126,6 +4455,7 @@ __all__ = [
     "PROPOSAL_VALIDATION_RECEIPT_SCHEMA",
     "PROPOSAL_VALIDATION_REQUEST_SCHEMA",
     "ProposalFindingCode",
+    "ProposalExpectedEffect",
     "ProposalGate",
     "ProposalOperation",
     "ProposalRejectionEvidence",
@@ -3139,7 +4469,10 @@ __all__ = [
     "ProposalValidationStep",
     "ProposalValidator",
     "StrictProposalValidator",
+    "UNTRUSTED_PROPOSAL_ADMISSION_SCHEMA",
+    "UntrustedProposalAdmissionResult",
     "parse_unified_patch",
     "validate_implementation_proposal",
+    "validate_untrusted_implementation_proposal",
     "validate_proposal",
 ]

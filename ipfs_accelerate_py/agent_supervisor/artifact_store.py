@@ -9,19 +9,25 @@ from __future__ import annotations
 
 import argparse
 import base64
+import errno
 import fcntl
 import hashlib
 import json
 import os
 import re
+import shutil
+import tempfile
 import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Final, Iterable, Iterator, Mapping, Sequence
+
+from .supervisor_v2_contracts import MAX_PROJECTION_BYTES, MAX_RECEIPT_BYTES
 
 BUNDLE_INDEX_KIND = "bundle_planning_index"
 SCHEDULER_MANIFEST_KIND = "scheduler_manifest"
@@ -66,9 +72,74 @@ DUCKDB_ARTIFACT_THREADS = 2
 DUCKDB_ARTIFACT_MEMORY_LIMIT = "1GB"
 MAX_INLINE_GRAPH_ITEMS = 128
 MAX_INLINE_COVERAGE_TASKS = 128
+MAX_ADAPTER_READ_FIELDS = 64
+MAX_ADAPTER_READ_BYTES = 256 * 1024
+MAX_ADAPTER_QUERY_BYTES = 1024 * 1024
+
+BOUNDED_ARTIFACT_STORE_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.bounded-artifact-store@1"
+)
+BOUNDED_ARTIFACT_MANIFEST_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.bounded-artifact-manifest@1"
+)
+BOUNDED_BLOB_REFERENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.bounded-blob-reference@1"
+)
+BOUNDED_PROJECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.bounded-projection@1"
+)
+DEFAULT_ARTIFACT_STORE_MAX_BYTES: Final = 512 * 1024 * 1024
+DEFAULT_ARTIFACT_STORE_MAX_BLOBS: Final = 16_384
+DEFAULT_ARTIFACT_STORE_MAX_PROJECTIONS: Final = 4_096
+DEFAULT_ARTIFACT_BLOB_MAX_BYTES: Final = 64 * 1024 * 1024
+DEFAULT_ARTIFACT_COMPACTION_BATCH: Final = 128
+DEFAULT_NEGATIVE_TTL_SECONDS: Final = 5 * 60
+DEFAULT_INCONCLUSIVE_TTL_SECONDS: Final = 5 * 60
+DEFAULT_MAX_ARTIFACT_TTL_SECONDS: Final = 30 * 24 * 60 * 60
+MAX_ROUTINE_PROJECTION_BYTES: Final = MAX_PROJECTION_BYTES
+RECEIPT_MAX_BYTES: Final = MAX_RECEIPT_BYTES
+ROUTINE_PROJECTION_MAX_BYTES: Final = MAX_PROJECTION_BYTES
+
+_EMBEDDED_BODY_FIELDS = frozenset(
+    {
+        "body",
+        "bytes",
+        "checkpoint",
+        "checkpoints",
+        "decoded_model_text",
+        "decoded_text",
+        "full_source",
+        "model_output_text",
+        "model_text",
+        "nested_artifact_graph",
+        "nested_artifact_graphs",
+        "proof_trace",
+        "proof_traces",
+        "source_bodies",
+        "source_body",
+        "source_text",
+    }
+)
+_GRAPH_BODY_FIELDS = frozenset(
+    {"artifact_graph", "artifact_graphs", "evidence_graph", "nested_graph"}
+)
+_REFERENCE_BODY_FIELDS = frozenset(
+    {
+        "body",
+        "bytes",
+        "content",
+        "contents",
+        "data",
+        "payload",
+        "source",
+        "text",
+    }
+)
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _READ_ONLY_SQL = re.compile(r"^(?:select|with|describe|show)\b", re.IGNORECASE)
+_SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -77,6 +148,1834 @@ class QueryArtifactPaths:
 
     json_path: Path
     duckdb_path: Path
+
+
+@dataclass(frozen=True)
+class QueryableArtifactReference:
+    """Verified, body-free identity for a paired queryable artifact.
+
+    ``digest`` addresses the portable artifact's logical JSON content and is
+    deliberately independent of its filesystem location. ``source_sha256``
+    binds the reference to one exact on-disk JSON generation, including its
+    query-store descriptor, so an adapter can reject source replacement before
+    returning projected data.
+    """
+
+    artifact_id: str
+    digest: str
+    path: str
+    kind: str
+    schema: str
+    size_bytes: int
+    source_sha256: str
+    duckdb_path: str
+
+    def __post_init__(self) -> None:
+        if not _SHA256_DIGEST.fullmatch(self.digest):
+            raise ValueError("queryable artifact digest must be sha256:<hex>")
+        if self.artifact_id != f"queryable-artifact:{self.digest}":
+            raise ValueError("queryable artifact identity does not match its digest")
+        if not _SHA256_HEX.fullmatch(self.source_sha256):
+            raise ValueError("queryable artifact source_sha256 must be lowercase hex")
+        if (
+            isinstance(self.size_bytes, bool)
+            or not isinstance(self.size_bytes, int)
+            or self.size_bytes < 1
+        ):
+            raise ValueError("queryable artifact size_bytes must be positive")
+        for name in ("path", "duckdb_path"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"queryable artifact {name} is required")
+            if not Path(value).is_absolute():
+                raise ValueError(f"queryable artifact {name} must be absolute")
+        for name in ("kind", "schema"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"queryable artifact {name} is required")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return complete verification metadata without the artifact body."""
+
+        return {
+            "artifact_id": self.artifact_id,
+            "digest": self.digest,
+            "path": self.path,
+            "kind": self.kind,
+            "schema": self.schema,
+            "size_bytes": self.size_bytes,
+            "source_sha256": self.source_sha256,
+            "duckdb_path": self.duckdb_path,
+        }
+
+    def to_artifact_reference(self) -> dict[str, Any]:
+        """Return the shallow shape accepted by common cache envelopes."""
+
+        return {
+            "artifact_id": self.artifact_id,
+            "digest": self.digest,
+            "path": self.path,
+            "kind": self.kind,
+            "schema": self.schema,
+            "size_bytes": self.size_bytes,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "QueryableArtifactReference":
+        if not isinstance(value, Mapping):
+            raise ValueError("queryable artifact reference must be an object")
+        required = {
+            "artifact_id",
+            "digest",
+            "path",
+            "kind",
+            "schema",
+            "size_bytes",
+            "source_sha256",
+            "duckdb_path",
+        }
+        missing = sorted(required.difference(value))
+        unknown = sorted(set(value).difference(required))
+        if missing:
+            raise ValueError(
+                "queryable artifact reference is missing fields: "
+                + ", ".join(missing)
+            )
+        if unknown:
+            raise ValueError(
+                "queryable artifact reference has unknown fields: "
+                + ", ".join(unknown)
+            )
+        return cls(
+            artifact_id=value["artifact_id"],
+            digest=value["digest"],
+            path=value["path"],
+            kind=value["kind"],
+            schema=value["schema"],
+            size_bytes=value["size_bytes"],
+            source_sha256=value["source_sha256"],
+            duckdb_path=value["duckdb_path"],
+        )
+
+
+class BoundedPersistenceError(RuntimeError):
+    """Base error for bounded persistence failures."""
+
+
+class ArtifactPayloadTooLarge(BoundedPersistenceError, ValueError):
+    """A receipt, projection, or individual blob exceeded its hard bound."""
+
+
+class ArtifactQuotaExceeded(BoundedPersistenceError):
+    """The configured quota cannot admit an object without unsafe eviction."""
+
+
+class ArtifactBlobIntegrityError(BoundedPersistenceError, ValueError):
+    """A referenced immutable blob is absent, truncated, or corrupt."""
+
+
+class RetentionClass(str, Enum):
+    """Eviction class, ordered from easiest to hardest to discard."""
+
+    EPHEMERAL = "ephemeral"
+    NEGATIVE = "negative"
+    ROUTINE = "routine"
+    CHECKPOINT = "checkpoint"
+    AUTHORITATIVE = "authoritative"
+    PINNED = "pinned"
+
+    TRANSIENT = "ephemeral"
+    FAILED = "negative"
+    DURABLE = "authoritative"
+
+
+class ArtifactOutcome(str, Enum):
+    SUCCESSFUL = "successful"
+    NEGATIVE = "negative"
+    INCONCLUSIVE = "inconclusive"
+
+    @classmethod
+    def coerce(cls, value: "ArtifactOutcome | str") -> "ArtifactOutcome":
+        if isinstance(value, cls):
+            return value
+        normalized = str(value or "").strip().casefold().replace("-", "_")
+        aliases = {
+            "complete": cls.SUCCESSFUL,
+            "completed": cls.SUCCESSFUL,
+            "success": cls.SUCCESSFUL,
+            "succeeded": cls.SUCCESSFUL,
+            "ok": cls.SUCCESSFUL,
+            "failed": cls.NEGATIVE,
+            "failure": cls.NEGATIVE,
+            "error": cls.NEGATIVE,
+            "timed_out": cls.NEGATIVE,
+            "timeout": cls.NEGATIVE,
+            "partial": cls.INCONCLUSIVE,
+            "unknown": cls.INCONCLUSIVE,
+        }
+        try:
+            return aliases.get(normalized, cls(normalized))
+        except ValueError as exc:
+            raise ValueError(
+                "outcome must be successful, negative, or inconclusive"
+            ) from exc
+
+    @property
+    def can_complete(self) -> bool:
+        return self is ArtifactOutcome.SUCCESSFUL
+
+
+@dataclass(frozen=True)
+class ArtifactQuotaPolicy:
+    """Aggregate and per-object policy for the durable artifact store."""
+
+    max_bytes: int = DEFAULT_ARTIFACT_STORE_MAX_BYTES
+    max_blobs: int = DEFAULT_ARTIFACT_STORE_MAX_BLOBS
+    max_projections: int = DEFAULT_ARTIFACT_STORE_MAX_PROJECTIONS
+    max_blob_bytes: int = DEFAULT_ARTIFACT_BLOB_MAX_BYTES
+    max_receipt_bytes: int = MAX_RECEIPT_BYTES
+    max_projection_bytes: int = MAX_PROJECTION_BYTES
+    min_free_bytes: int = 0
+    compaction_batch_size: int = DEFAULT_ARTIFACT_COMPACTION_BATCH
+    negative_ttl_seconds: int = DEFAULT_NEGATIVE_TTL_SECONDS
+    inconclusive_ttl_seconds: int = DEFAULT_INCONCLUSIVE_TTL_SECONDS
+    max_ttl_seconds: int = DEFAULT_MAX_ARTIFACT_TTL_SECONDS
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            value = getattr(self, name)
+            minimum = 0 if name == "min_free_bytes" else 1
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < minimum
+            ):
+                qualifier = "non-negative" if minimum == 0 else "positive"
+                raise ValueError(f"{name} must be a {qualifier} integer")
+        if self.max_blob_bytes > self.max_bytes:
+            raise ValueError("max_blob_bytes cannot exceed max_bytes")
+        if self.max_receipt_bytes > MAX_RECEIPT_BYTES:
+            raise ValueError(
+                f"max_receipt_bytes cannot exceed {MAX_RECEIPT_BYTES}"
+            )
+        if self.max_projection_bytes > MAX_PROJECTION_BYTES:
+            raise ValueError(
+                f"max_projection_bytes cannot exceed {MAX_PROJECTION_BYTES}"
+            )
+        if self.max_receipt_bytes > self.max_projection_bytes:
+            raise ValueError(
+                "max_receipt_bytes cannot exceed max_projection_bytes"
+            )
+        for name in ("negative_ttl_seconds", "inconclusive_ttl_seconds"):
+            if getattr(self, name) > self.max_ttl_seconds:
+                raise ValueError(f"{name} cannot exceed max_ttl_seconds")
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+
+ArtifactStoreQuota = ArtifactQuotaPolicy
+PersistenceQuotaPolicy = ArtifactQuotaPolicy
+ArtifactStoreConfig = ArtifactQuotaPolicy
+
+
+@dataclass(frozen=True)
+class BlobReference:
+    """Shallow, location-independent reference to one immutable blob."""
+
+    artifact_id: str
+    digest: str
+    size_bytes: int
+    kind: str
+    media_type: str = "application/octet-stream"
+    schema: str = BOUNDED_BLOB_REFERENCE_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != BOUNDED_BLOB_REFERENCE_SCHEMA:
+            raise ArtifactBlobIntegrityError(
+                "unsupported bounded blob reference schema"
+            )
+        if not _SHA256_DIGEST.fullmatch(str(self.digest)):
+            raise ArtifactBlobIntegrityError(
+                "blob digest must be sha256:<lowercase hex>"
+            )
+        if self.artifact_id != f"blob:{self.digest}":
+            raise ArtifactBlobIntegrityError(
+                "blob artifact_id does not match its digest"
+            )
+        if (
+            isinstance(self.size_bytes, bool)
+            or not isinstance(self.size_bytes, int)
+            or self.size_bytes < 0
+        ):
+            raise ArtifactBlobIntegrityError(
+                "blob size_bytes must be a non-negative integer"
+            )
+        for name in ("kind", "media_type"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ArtifactBlobIntegrityError(f"blob {name} is required")
+
+    @property
+    def blob_id(self) -> str:
+        return self.artifact_id
+
+    @property
+    def cid(self) -> str:
+        return self.artifact_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "artifact_id": self.artifact_id,
+            "digest": self.digest,
+            "size_bytes": self.size_bytes,
+            "kind": self.kind,
+            "media_type": self.media_type,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "BlobReference":
+        if not isinstance(value, Mapping):
+            raise ArtifactBlobIntegrityError("blob reference must be an object")
+        allowed = {
+            "schema",
+            "artifact_id",
+            "blob_id",
+            "digest",
+            "size_bytes",
+            "kind",
+            "media_type",
+            "retention_class",
+            "outcome",
+            "created_at_ms",
+            "last_accessed_at_ms",
+            "expires_at_ms",
+            "references",
+        }
+        if set(value).difference(allowed):
+            raise ArtifactBlobIntegrityError(
+                "blob reference contains unsupported fields"
+            )
+        artifact_id = value.get("artifact_id") or value.get("blob_id") or ""
+        return cls(
+            schema=str(value.get("schema") or BOUNDED_BLOB_REFERENCE_SCHEMA),
+            artifact_id=str(artifact_id),
+            digest=str(value.get("digest") or ""),
+            size_bytes=value.get("size_bytes", -1),
+            kind=str(value.get("kind") or "artifact"),
+            media_type=str(
+                value.get("media_type") or "application/octet-stream"
+            ),
+        )
+
+
+ArtifactBlobReference = BlobReference
+ContentReference = BlobReference
+
+
+@dataclass(frozen=True)
+class ProjectionReference:
+    """Body-free identity of one bounded receipt or routine projection."""
+
+    artifact_id: str
+    digest: str
+    size_bytes: int
+    projection_kind: str
+    retention_class: RetentionClass
+    outcome: ArtifactOutcome
+    created_at_ms: int
+    expires_at_ms: int | None
+    artifact_references: tuple[BlobReference, ...] = ()
+    schema: str = BOUNDED_PROJECTION_SCHEMA
+
+    @property
+    def can_complete(self) -> bool:
+        return self.outcome.can_complete
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "artifact_id": self.artifact_id,
+            "digest": self.digest,
+            "size_bytes": self.size_bytes,
+            "projection_kind": self.projection_kind,
+            "retention_class": self.retention_class.value,
+            "outcome": self.outcome.value,
+            "created_at_ms": self.created_at_ms,
+            "expires_at_ms": self.expires_at_ms,
+            "artifact_references": [
+                item.to_dict() for item in self.artifact_references
+            ],
+            "can_complete": self.can_complete,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ProjectionReference":
+        if not isinstance(value, Mapping):
+            raise ArtifactBlobIntegrityError(
+                "projection reference must be an object"
+            )
+        return cls(
+            schema=str(value.get("schema") or BOUNDED_PROJECTION_SCHEMA),
+            artifact_id=str(value.get("artifact_id") or ""),
+            digest=str(value.get("digest") or ""),
+            size_bytes=value.get("size_bytes", -1),
+            projection_kind=str(value.get("projection_kind") or ""),
+            retention_class=RetentionClass(
+                str(value.get("retention_class") or RetentionClass.ROUTINE.value)
+            ),
+            outcome=ArtifactOutcome.coerce(
+                str(value.get("outcome") or ArtifactOutcome.SUCCESSFUL.value)
+            ),
+            created_at_ms=value.get("created_at_ms", -1),
+            expires_at_ms=value.get("expires_at_ms"),
+            artifact_references=tuple(
+                BlobReference.from_dict(item)
+                for item in value.get("artifact_references", ())
+            ),
+        )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.retention_class, RetentionClass):
+            object.__setattr__(
+                self,
+                "retention_class",
+                RetentionClass(str(self.retention_class)),
+            )
+        if not isinstance(self.outcome, ArtifactOutcome):
+            object.__setattr__(
+                self, "outcome", ArtifactOutcome.coerce(self.outcome)
+            )
+        if self.schema != BOUNDED_PROJECTION_SCHEMA:
+            raise ArtifactBlobIntegrityError(
+                "unsupported bounded projection schema"
+            )
+        if not _SHA256_DIGEST.fullmatch(str(self.digest)):
+            raise ArtifactBlobIntegrityError(
+                "projection digest must be sha256:<lowercase hex>"
+            )
+        if self.artifact_id != f"projection:{self.digest}":
+            raise ArtifactBlobIntegrityError(
+                "projection artifact_id does not match its digest"
+            )
+        if (
+            isinstance(self.size_bytes, bool)
+            or not isinstance(self.size_bytes, int)
+            or self.size_bytes < 1
+        ):
+            raise ArtifactBlobIntegrityError(
+                "projection size_bytes must be positive"
+            )
+        if (
+            isinstance(self.created_at_ms, bool)
+            or not isinstance(self.created_at_ms, int)
+            or self.created_at_ms < 0
+        ):
+            raise ArtifactBlobIntegrityError(
+                "projection created_at_ms must be non-negative"
+            )
+        if self.expires_at_ms is not None and (
+            isinstance(self.expires_at_ms, bool)
+            or not isinstance(self.expires_at_ms, int)
+            or self.expires_at_ms <= self.created_at_ms
+        ):
+            raise ArtifactBlobIntegrityError(
+                "projection expires_at_ms must follow created_at_ms"
+            )
+        if not self.outcome.can_complete and self.expires_at_ms is None:
+            raise ArtifactBlobIntegrityError(
+                "negative and inconclusive projections require finite expiry"
+            )
+        if not isinstance(self.projection_kind, str) or not self.projection_kind:
+            raise ArtifactBlobIntegrityError("projection_kind is required")
+
+
+BoundedProjectionReference = ProjectionReference
+ArtifactRetentionClass = RetentionClass
+PersistenceOutcome = ArtifactOutcome
+
+
+@dataclass(frozen=True)
+class ArtifactStoreMetrics:
+    writes: int = 0
+    blob_writes: int = 0
+    deduplicated_blob_writes: int = 0
+    projection_writes: int = 0
+    reads: int = 0
+    compactions: int = 0
+    scanned: int = 0
+    evictions: int = 0
+    evicted_bytes: int = 0
+    expired_evictions: int = 0
+    quota_evictions: int = 0
+    quota_rejections: int = 0
+    disk_pressure_rejections: int = 0
+    corruption_recoveries: int = 0
+    manifest_recoveries: int = 0
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+
+@dataclass(frozen=True)
+class CompactionResult:
+    scanned: int
+    evicted: int
+    evicted_bytes: int
+    expired: int
+    quota_evicted: int
+    cursor: int
+    quota_satisfied: bool
+    evicted_artifact_ids: tuple[str, ...] = ()
+
+    @property
+    def evictions(self) -> int:
+        return self.evicted
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "scanned": self.scanned,
+            "evicted": self.evicted,
+            "evicted_bytes": self.evicted_bytes,
+            "expired": self.expired,
+            "quota_evicted": self.quota_evicted,
+            "cursor": self.cursor,
+            "quota_satisfied": self.quota_satisfied,
+            "evicted_artifact_ids": list(self.evicted_artifact_ids),
+        }
+
+
+def _bounded_canonical_bytes(
+    value: Any,
+    *,
+    maximum: int,
+    label: str,
+) -> bytes:
+    try:
+        payload = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise ArtifactBlobIntegrityError(
+            f"{label} must contain canonical JSON values"
+        ) from exc
+    if len(payload) > maximum:
+        raise ArtifactPayloadTooLarge(
+            f"{label} exceeds {maximum} bytes"
+        )
+    return payload
+
+
+def enforce_receipt_bound(value: Any) -> bytes:
+    """Return canonical receipt bytes after enforcing the 256 KiB ceiling."""
+
+    return _bounded_canonical_bytes(
+        value, maximum=MAX_RECEIPT_BYTES, label="receipt"
+    )
+
+
+def enforce_projection_bound(value: Any) -> bytes:
+    """Return canonical routine projection bytes after enforcing 1 MiB."""
+
+    return _bounded_canonical_bytes(
+        value, maximum=MAX_PROJECTION_BYTES, label="routine projection"
+    )
+
+
+def _atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        try:
+            directory = os.open(path.parent, os.O_RDONLY)
+        except OSError:
+            directory = -1
+        if directory >= 0:
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+_BOUNDED_STORE_LOCKS: dict[str, threading.RLock] = {}
+_BOUNDED_STORE_LOCKS_GUARD = threading.Lock()
+
+
+def _bounded_store_lock(path: Path) -> threading.RLock:
+    identity = str(path.absolute())
+    with _BOUNDED_STORE_LOCKS_GUARD:
+        return _BOUNDED_STORE_LOCKS.setdefault(identity, threading.RLock())
+
+
+class BoundedArtifactStore:
+    """Crash-recoverable CAS for bounded projections and referenced bodies.
+
+    Projection files contain only compact summaries and shallow blob
+    references. Blob identities are derived solely from bytes, so deduplication
+    and compaction never rewrite a surviving reference.
+    """
+
+    _retention_rank = {
+        RetentionClass.EPHEMERAL: 0,
+        RetentionClass.NEGATIVE: 1,
+        RetentionClass.ROUTINE: 2,
+        RetentionClass.CHECKPOINT: 3,
+        RetentionClass.AUTHORITATIVE: 4,
+        RetentionClass.PINNED: 5,
+    }
+
+    def __init__(
+        self,
+        path: Path | str,
+        *,
+        quotas: ArtifactQuotaPolicy | Mapping[str, Any] | None = None,
+        quota: ArtifactQuotaPolicy | Mapping[str, Any] | None = None,
+        clock: Callable[[], float] = time.time,
+        eviction_observer: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> None:
+        if quotas is not None and quota is not None:
+            raise ValueError("pass quotas or quota, not both")
+        selected_quota = quotas if quotas is not None else quota
+        self.quotas = (
+            selected_quota
+            if isinstance(selected_quota, ArtifactQuotaPolicy)
+            else ArtifactQuotaPolicy(**dict(selected_quota or {}))
+        )
+        self.path = Path(path)
+        self.blobs_path = self.path / "blobs" / "sha256"
+        self.projections_path = self.path / "projections"
+        self.manifest_path = self.path / "manifest.json"
+        self.previous_manifest_path = self.path / "manifest.previous.json"
+        self.eviction_log_path = self.path / "evictions.jsonl"
+        self.lock_path = self.path / ".bounded-store.lock"
+        for directory in (self.path, self.blobs_path, self.projections_path):
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._clock = clock
+        self._eviction_observer = eviction_observer
+        self._thread_lock = _bounded_store_lock(self.lock_path)
+        self._metrics_lock = threading.Lock()
+        self._metric_values = {
+            name: 0 for name in ArtifactStoreMetrics.__dataclass_fields__
+        }
+        self._closed = False
+        with self._locked():
+            self._manifest = self._load_or_recover_manifest()
+
+    def __enter__(self) -> "BoundedArtifactStore":
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        self.close()
+
+    def _increment(self, name: str, amount: int = 1) -> None:
+        with self._metrics_lock:
+            self._metric_values[name] += amount
+
+    def _now_ms(self) -> int:
+        return int(self._clock() * 1000)
+
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        with self._thread_lock:
+            handle = self.lock_path.open("a+b")
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                handle.close()
+
+    @staticmethod
+    def _manifest_digest(value: Mapping[str, Any]) -> str:
+        body = dict(value)
+        body.pop("manifest_digest", None)
+        return "sha256:" + hashlib.sha256(
+            _bounded_canonical_bytes(
+                body,
+                maximum=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
+                label="artifact manifest",
+            )
+        ).hexdigest()
+
+    def _empty_manifest(self) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "schema": BOUNDED_ARTIFACT_MANIFEST_SCHEMA,
+            "generation": 0,
+            "updated_at_ms": self._now_ms(),
+            "compaction_cursor": 0,
+            "blobs": {},
+            "projections": {},
+        }
+        value["manifest_digest"] = self._manifest_digest(value)
+        return value
+
+    def _decode_manifest(self, path: Path) -> dict[str, Any] | None:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        if (
+            not isinstance(value, dict)
+            or value.get("schema") != BOUNDED_ARTIFACT_MANIFEST_SCHEMA
+            or value.get("manifest_digest") != self._manifest_digest(value)
+            or not isinstance(value.get("blobs"), dict)
+            or not isinstance(value.get("projections"), dict)
+        ):
+            return None
+        return value
+
+    def _load_or_recover_manifest(self) -> dict[str, Any]:
+        manifest = self._decode_manifest(self.manifest_path)
+        if manifest is None:
+            manifest = self._decode_manifest(self.previous_manifest_path)
+            if manifest is not None:
+                self._increment("manifest_recoveries")
+        if manifest is None:
+            manifest = self._empty_manifest()
+            if self.manifest_path.exists() or self.previous_manifest_path.exists():
+                self._increment("manifest_recoveries")
+        changed = self._reconcile_files(manifest)
+        if changed or not self.manifest_path.exists():
+            self._write_manifest(manifest, preserve_previous=False)
+        return manifest
+
+    def _reconcile_files(self, manifest: dict[str, Any]) -> bool:
+        changed = False
+        projections = manifest["projections"]
+        blobs = manifest["blobs"]
+        for path in self.projections_path.glob("*/*.json"):
+            try:
+                wrapper = json.loads(path.read_text(encoding="utf-8"))
+                reference = ProjectionReference.from_dict(wrapper["reference"])
+                payload_bytes = _bounded_canonical_bytes(
+                    wrapper["payload"],
+                    maximum=self.quotas.max_projection_bytes,
+                    label="stored projection",
+                )
+                if self._projection_digest(
+                    wrapper["payload"],
+                    projection_kind=reference.projection_kind,
+                    retention_class=reference.retention_class,
+                    outcome=reference.outcome,
+                ) != reference.digest:
+                    raise ArtifactBlobIntegrityError(
+                        "stored projection digest mismatch"
+                    )
+            except (
+                OSError,
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+                self._increment("corruption_recoveries")
+                changed = True
+                continue
+            if reference.artifact_id not in projections:
+                projections[reference.artifact_id] = self._projection_metadata(
+                    reference
+                )
+                changed = True
+            for blob_ref in reference.artifact_references:
+                metadata = blobs.get(blob_ref.artifact_id)
+                if metadata is not None:
+                    references = set(metadata.get("references", ()))
+                    if reference.artifact_id not in references:
+                        references.add(reference.artifact_id)
+                        metadata["references"] = sorted(references)
+                        changed = True
+        for artifact_id in tuple(projections):
+            try:
+                reference = ProjectionReference.from_dict(projections[artifact_id])
+            except (TypeError, ValueError):
+                projections.pop(artifact_id, None)
+                changed = True
+                continue
+            if not self._projection_path(reference).exists():
+                projections.pop(artifact_id, None)
+                for metadata in blobs.values():
+                    references = set(metadata.get("references", ()))
+                    if artifact_id in references:
+                        references.discard(artifact_id)
+                        metadata["references"] = sorted(references)
+                changed = True
+        for path in self.blobs_path.glob("*/*.blob"):
+            digest = "sha256:" + path.stem
+            artifact_id = f"blob:{digest}"
+            if artifact_id not in blobs:
+                try:
+                    size = path.stat().st_size
+                except OSError:
+                    continue
+                blobs[artifact_id] = {
+                    "schema": BOUNDED_BLOB_REFERENCE_SCHEMA,
+                    "artifact_id": artifact_id,
+                    "digest": digest,
+                    "size_bytes": size,
+                    "kind": "recovered",
+                    "media_type": "application/octet-stream",
+                    "retention_class": RetentionClass.ROUTINE.value,
+                    "outcome": ArtifactOutcome.SUCCESSFUL.value,
+                    "created_at_ms": self._now_ms(),
+                    "last_accessed_at_ms": self._now_ms(),
+                    "expires_at_ms": None,
+                    "references": [],
+                }
+                changed = True
+        for artifact_id in tuple(blobs):
+            try:
+                reference = BlobReference.from_dict(blobs[artifact_id])
+            except (TypeError, ValueError):
+                blobs.pop(artifact_id, None)
+                changed = True
+                continue
+            if not self._blob_path(reference).exists():
+                blobs.pop(artifact_id, None)
+                changed = True
+                continue
+            owners = set(blobs[artifact_id].get("references", ()))
+            live_owners = owners.intersection(projections)
+            if owners != live_owners:
+                blobs[artifact_id]["references"] = sorted(live_owners)
+                changed = True
+        return changed
+
+    def _write_manifest(
+        self,
+        manifest: dict[str, Any],
+        *,
+        preserve_previous: bool = True,
+    ) -> None:
+        manifest["generation"] = int(manifest.get("generation", 0)) + 1
+        manifest["updated_at_ms"] = self._now_ms()
+        manifest["manifest_digest"] = self._manifest_digest(manifest)
+        encoded = _bounded_canonical_bytes(
+            manifest,
+            maximum=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
+            label="artifact manifest",
+        ) + b"\n"
+        if preserve_previous and self.manifest_path.exists():
+            current = self._decode_manifest(self.manifest_path)
+            if current is not None:
+                _atomic_write_bytes(
+                    self.previous_manifest_path,
+                    self.manifest_path.read_bytes(),
+                )
+        _atomic_write_bytes(self.manifest_path, encoded)
+
+    @staticmethod
+    def _digest_hex(value: str, prefix: str) -> str:
+        if not isinstance(value, str) or not value.startswith(prefix):
+            raise ArtifactBlobIntegrityError("artifact identity is not canonical")
+        digest = value.removeprefix(prefix)
+        if len(digest) != 64 or not _SHA256_HEX.fullmatch(digest):
+            raise ArtifactBlobIntegrityError("artifact identity is not canonical")
+        return digest
+
+    def _blob_path(self, reference: BlobReference | str) -> Path:
+        artifact_id = (
+            reference.artifact_id
+            if isinstance(reference, BlobReference)
+            else reference
+        )
+        digest = self._digest_hex(artifact_id, "blob:sha256:")
+        return self.blobs_path / digest[:2] / f"{digest}.blob"
+
+    def _projection_path(
+        self, reference: ProjectionReference | str
+    ) -> Path:
+        artifact_id = (
+            reference.artifact_id
+            if isinstance(reference, ProjectionReference)
+            else reference
+        )
+        digest = self._digest_hex(artifact_id, "projection:sha256:")
+        return self.projections_path / digest[:2] / f"{digest}.json"
+
+    def _coerce_retention(
+        self, value: RetentionClass | str
+    ) -> RetentionClass:
+        return value if isinstance(value, RetentionClass) else RetentionClass(str(value))
+
+    def _expiry(
+        self,
+        outcome: ArtifactOutcome,
+        ttl_seconds: int | None,
+        now_ms: int,
+    ) -> int | None:
+        if ttl_seconds is not None and (
+            isinstance(ttl_seconds, bool)
+            or not isinstance(ttl_seconds, int)
+            or ttl_seconds < 1
+        ):
+            raise ValueError("ttl_seconds must be a positive integer or None")
+        if outcome is ArtifactOutcome.NEGATIVE:
+            ttl_seconds = ttl_seconds or self.quotas.negative_ttl_seconds
+        elif outcome is ArtifactOutcome.INCONCLUSIVE:
+            ttl_seconds = ttl_seconds or self.quotas.inconclusive_ttl_seconds
+        if ttl_seconds is None:
+            return None
+        return now_ms + min(ttl_seconds, self.quotas.max_ttl_seconds) * 1000
+
+    @staticmethod
+    def _blob_bytes(value: Any) -> tuple[bytes, str]:
+        if isinstance(value, bytes):
+            return value, "application/octet-stream"
+        if isinstance(value, bytearray):
+            return bytes(value), "application/octet-stream"
+        if isinstance(value, str):
+            return value.encode("utf-8"), "text/plain; charset=utf-8"
+        return (
+            _bounded_canonical_bytes(
+                value,
+                maximum=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
+                label="artifact blob",
+            ),
+            "application/json",
+        )
+
+    def _assert_open(self) -> None:
+        if self._closed:
+            raise BoundedPersistenceError("artifact store is closed")
+
+    def _disk_pressure(self, additional_bytes: int) -> bool:
+        if self.quotas.min_free_bytes <= 0:
+            return False
+        try:
+            free = shutil.disk_usage(self.path).free
+        except OSError:
+            return False
+        return free - additional_bytes < self.quotas.min_free_bytes
+
+    def _usage(self) -> tuple[int, int, int]:
+        blobs = self._manifest["blobs"]
+        projections = self._manifest["projections"]
+        total = sum(
+            int(item.get("size_bytes", 0)) for item in blobs.values()
+        ) + sum(
+            int(item.get("size_bytes", 0)) for item in projections.values()
+        )
+        return total, len(blobs), len(projections)
+
+    def _has_capacity(
+        self,
+        *,
+        additional_bytes: int = 0,
+        additional_blobs: int = 0,
+        additional_projections: int = 0,
+    ) -> bool:
+        total, blobs, projections = self._usage()
+        return (
+            total + additional_bytes <= self.quotas.max_bytes
+            and blobs + additional_blobs <= self.quotas.max_blobs
+            and projections + additional_projections
+            <= self.quotas.max_projections
+            and not self._disk_pressure(additional_bytes)
+        )
+
+    def _ensure_capacity(
+        self,
+        *,
+        additional_bytes: int = 0,
+        additional_blobs: int = 0,
+        additional_projections: int = 0,
+    ) -> None:
+        if self._has_capacity(
+            additional_bytes=additional_bytes,
+            additional_blobs=additional_blobs,
+            additional_projections=additional_projections,
+        ):
+            return
+        if self._disk_pressure(additional_bytes):
+            # Disk-reserve pressure is not evidence that live supervisor state
+            # should be discarded. Reclaim one bounded batch of expired
+            # records, then degrade the new write if the reserve is still low.
+            self._compact_locked(
+                max_items=self.quotas.compaction_batch_size,
+                force_quota=False,
+                reserve_bytes=additional_bytes,
+                reserve_blobs=additional_blobs,
+                reserve_projections=additional_projections,
+            )
+            if self._disk_pressure(additional_bytes):
+                self._increment("disk_pressure_rejections")
+                raise ArtifactQuotaExceeded(
+                    "artifact write rejected by the configured disk-free reserve"
+                )
+        remaining = self.quotas.compaction_batch_size
+        while remaining > 0:
+            result = self._compact_locked(
+                max_items=remaining,
+                force_quota=True,
+                reserve_bytes=additional_bytes,
+                reserve_blobs=additional_blobs,
+                reserve_projections=additional_projections,
+            )
+            remaining -= max(1, result.scanned)
+            if result.quota_satisfied or result.evicted == 0:
+                break
+        if self._has_capacity(
+            additional_bytes=additional_bytes,
+            additional_blobs=additional_blobs,
+            additional_projections=additional_projections,
+        ):
+            return
+        if self._disk_pressure(additional_bytes):
+            self._increment("disk_pressure_rejections")
+            raise ArtifactQuotaExceeded(
+                "artifact write rejected by the configured disk-free reserve"
+            )
+        self._increment("quota_rejections")
+        raise ArtifactQuotaExceeded(
+            "artifact write exceeds aggregate persistence quota"
+        )
+
+    def put_blob(
+        self,
+        value: Any,
+        *,
+        kind: str = "artifact",
+        retention_class: RetentionClass | str = RetentionClass.ROUTINE,
+        retention: RetentionClass | str | None = None,
+        outcome: ArtifactOutcome | str = ArtifactOutcome.SUCCESSFUL,
+        ttl_seconds: int | None = None,
+        media_type: str | None = None,
+    ) -> BlobReference:
+        """Store bytes once and return a shallow content-addressed reference."""
+
+        self._assert_open()
+        data, inferred_media_type = self._blob_bytes(value)
+        if len(data) > self.quotas.max_blob_bytes:
+            raise ArtifactPayloadTooLarge(
+                f"artifact blob exceeds {self.quotas.max_blob_bytes} bytes"
+            )
+        digest = "sha256:" + hashlib.sha256(data).hexdigest()
+        reference = BlobReference(
+            artifact_id=f"blob:{digest}",
+            digest=digest,
+            size_bytes=len(data),
+            kind=str(kind or "artifact"),
+            media_type=str(media_type or inferred_media_type),
+        )
+        record_outcome = ArtifactOutcome.coerce(outcome)
+        selected_retention = self._coerce_retention(
+            retention if retention is not None else retention_class
+        )
+        if not record_outcome.can_complete and selected_retention not in {
+            RetentionClass.EPHEMERAL,
+            RetentionClass.NEGATIVE,
+        }:
+            selected_retention = RetentionClass.NEGATIVE
+        now_ms = self._now_ms()
+        expires_at_ms = self._expiry(record_outcome, ttl_seconds, now_ms)
+        with self._locked():
+            existing = self._manifest["blobs"].get(reference.artifact_id)
+            if existing is not None:
+                current = BlobReference.from_dict(existing)
+                if (
+                    current.digest != reference.digest
+                    or current.size_bytes != reference.size_bytes
+                    or not self.verify_blob(current)
+                ):
+                    raise ArtifactBlobIntegrityError(
+                        "existing blob does not match its content identity"
+                    )
+                existing["last_accessed_at_ms"] = now_ms
+                self._increment("deduplicated_blob_writes")
+                return current
+            self._ensure_capacity(
+                additional_bytes=len(data), additional_blobs=1
+            )
+            try:
+                _atomic_write_bytes(self._blob_path(reference), data)
+            except OSError as exc:
+                if exc.errno in {errno.ENOSPC, errno.EDQUOT}:
+                    self._increment("disk_pressure_rejections")
+                    raise ArtifactQuotaExceeded(
+                        "artifact blob could not be persisted under disk pressure"
+                    ) from exc
+                raise
+            self._manifest["blobs"][reference.artifact_id] = {
+                **reference.to_dict(),
+                "retention_class": selected_retention.value,
+                "outcome": record_outcome.value,
+                "created_at_ms": now_ms,
+                "last_accessed_at_ms": now_ms,
+                "expires_at_ms": expires_at_ms,
+                "references": [],
+            }
+            self._write_manifest(self._manifest)
+            self._increment("writes")
+            self._increment("blob_writes")
+        return reference
+
+    store_blob = put_blob
+    write_blob = put_blob
+
+    @staticmethod
+    def _is_shallow_reference(value: Any) -> bool:
+        if not isinstance(value, Mapping):
+            return False
+        return (
+            ("artifact_id" in value or "blob_id" in value or "cid" in value)
+            and "digest" in value
+        )
+
+    @staticmethod
+    def _validate_shallow_reference(value: Mapping[str, Any]) -> dict[str, Any]:
+        body_fields = set(value).intersection(_REFERENCE_BODY_FIELDS)
+        if body_fields:
+            raise ArtifactBlobIntegrityError(
+                "artifact references cannot recursively embed bodies: "
+                + ", ".join(sorted(body_fields))
+            )
+        for item in value.values():
+            if isinstance(item, Mapping) and set(item).intersection(
+                _REFERENCE_BODY_FIELDS
+            ):
+                raise ArtifactBlobIntegrityError(
+                    "artifact references cannot contain nested bodies"
+                )
+        return dict(value)
+
+    def project_payload(
+        self,
+        payload: Any,
+        *,
+        retention_class: RetentionClass | str = RetentionClass.ROUTINE,
+        outcome: ArtifactOutcome | str = ArtifactOutcome.SUCCESSFUL,
+        ttl_seconds: int | None = None,
+    ) -> tuple[Any, tuple[BlobReference, ...]]:
+        """Externalize known large-body fields and deduplicate their bytes."""
+
+        references: dict[str, BlobReference] = {}
+        active: set[int] = set()
+
+        def visit(value: Any, field_name: str = "") -> Any:
+            if self._is_shallow_reference(value):
+                return self._validate_shallow_reference(value)
+            if field_name in _EMBEDDED_BODY_FIELDS or field_name in _GRAPH_BODY_FIELDS:
+                reference = self.put_blob(
+                    value,
+                    kind=field_name or "artifact",
+                    retention_class=retention_class,
+                    outcome=outcome,
+                    ttl_seconds=ttl_seconds,
+                )
+                references[reference.artifact_id] = reference
+                return {"artifact_ref": reference.to_dict()}
+            if isinstance(value, Mapping):
+                identity = id(value)
+                if identity in active:
+                    raise ArtifactBlobIntegrityError(
+                        "recursive artifact payloads are not supported"
+                    )
+                active.add(identity)
+                try:
+                    return {
+                        str(key): visit(item, str(key))
+                        for key, item in value.items()
+                    }
+                finally:
+                    active.remove(identity)
+            if isinstance(value, (list, tuple)):
+                identity = id(value)
+                if identity in active:
+                    raise ArtifactBlobIntegrityError(
+                        "recursive artifact payloads are not supported"
+                    )
+                active.add(identity)
+                try:
+                    return [visit(item, field_name) for item in value]
+                finally:
+                    active.remove(identity)
+            if isinstance(value, bytearray):
+                return base64.b64encode(bytes(value)).decode("ascii")
+            if isinstance(value, bytes):
+                return base64.b64encode(value).decode("ascii")
+            if value is None or isinstance(value, (str, bool, int, float)):
+                return value
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                return visit(converter(), field_name)
+            raise ArtifactBlobIntegrityError(
+                f"unsupported projection value: {type(value).__name__}"
+            )
+
+        projected = visit(payload)
+        return projected, tuple(
+            references[key] for key in sorted(references)
+        )
+
+    externalize_payload = project_payload
+
+    @staticmethod
+    def _projection_metadata(
+        reference: ProjectionReference,
+    ) -> dict[str, Any]:
+        return reference.to_dict()
+
+    @staticmethod
+    def _projection_digest(
+        payload: Any,
+        *,
+        projection_kind: str,
+        retention_class: RetentionClass,
+        outcome: ArtifactOutcome,
+    ) -> str:
+        identity = {
+            "payload": payload,
+            "projection_kind": projection_kind,
+            "retention_class": retention_class.value,
+            "outcome": outcome.value,
+        }
+        encoded = _bounded_canonical_bytes(
+            identity,
+            maximum=MAX_PROJECTION_BYTES + MAX_RECEIPT_BYTES,
+            label="projection identity",
+        )
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def store_projection(
+        self,
+        payload: Any,
+        *,
+        projection_kind: str = "routine",
+        kind: str | None = None,
+        retention_class: RetentionClass | str = RetentionClass.ROUTINE,
+        retention: RetentionClass | str | None = None,
+        outcome: ArtifactOutcome | str = ArtifactOutcome.SUCCESSFUL,
+        ttl_seconds: int | None = None,
+    ) -> ProjectionReference:
+        """Persist a bounded projection whose large bodies are blob references."""
+
+        self._assert_open()
+        selected_kind = str(kind or projection_kind or "routine")
+        record_outcome = ArtifactOutcome.coerce(outcome)
+        selected_retention = self._coerce_retention(
+            retention if retention is not None else retention_class
+        )
+        if not record_outcome.can_complete:
+            selected_retention = RetentionClass.NEGATIVE
+        projected, references = self.project_payload(
+            payload,
+            retention_class=selected_retention,
+            outcome=record_outcome,
+            ttl_seconds=ttl_seconds,
+        )
+        maximum = (
+            self.quotas.max_receipt_bytes
+            if "receipt" in selected_kind.casefold()
+            else self.quotas.max_projection_bytes
+        )
+        encoded = _bounded_canonical_bytes(
+            projected,
+            maximum=maximum,
+            label=(
+                "receipt"
+                if maximum <= self.quotas.max_receipt_bytes
+                else "routine projection"
+            ),
+        )
+        digest = self._projection_digest(
+            projected,
+            projection_kind=selected_kind,
+            retention_class=selected_retention,
+            outcome=record_outcome,
+        )
+        now_ms = self._now_ms()
+        reference = ProjectionReference(
+            artifact_id=f"projection:{digest}",
+            digest=digest,
+            size_bytes=len(encoded),
+            projection_kind=selected_kind,
+            retention_class=selected_retention,
+            outcome=record_outcome,
+            created_at_ms=now_ms,
+            expires_at_ms=self._expiry(
+                record_outcome, ttl_seconds, now_ms
+            ),
+            artifact_references=references,
+        )
+        wrapper = {
+            "schema": BOUNDED_ARTIFACT_STORE_SCHEMA,
+            "reference": reference.to_dict(),
+            "payload": projected,
+        }
+        wrapper_bytes = _bounded_canonical_bytes(
+            wrapper,
+            maximum=self.quotas.max_projection_bytes
+            + self.quotas.max_receipt_bytes,
+            label="stored projection envelope",
+        ) + b"\n"
+        with self._locked():
+            existing = self._manifest["projections"].get(
+                reference.artifact_id
+            )
+            if existing is not None:
+                existing_reference = ProjectionReference.from_dict(existing)
+                if (
+                    existing_reference.expires_at_ms is None
+                    or now_ms < existing_reference.expires_at_ms
+                ):
+                    return existing_reference
+                self._evict_projection(
+                    existing_reference.artifact_id, reason="expired"
+                )
+            staged_blob_metadata: list[dict[str, Any]] = []
+            for blob_reference in references:
+                metadata = self._manifest["blobs"].get(
+                    blob_reference.artifact_id
+                )
+                if metadata is None:
+                    raise ArtifactBlobIntegrityError(
+                        "projection references a missing blob"
+                    )
+                owners = set(metadata.get("references", ()))
+                owners.add(reference.artifact_id)
+                metadata["references"] = sorted(owners)
+                staged_blob_metadata.append(metadata)
+            try:
+                self._ensure_capacity(
+                    additional_bytes=len(encoded), additional_projections=1
+                )
+                try:
+                    _atomic_write_bytes(
+                        self._projection_path(reference), wrapper_bytes
+                    )
+                except OSError as exc:
+                    if exc.errno in {errno.ENOSPC, errno.EDQUOT}:
+                        self._increment("disk_pressure_rejections")
+                        raise ArtifactQuotaExceeded(
+                            "projection could not be persisted under disk pressure"
+                        ) from exc
+                    raise
+            except BaseException:
+                for metadata in staged_blob_metadata:
+                    owners = set(metadata.get("references", ()))
+                    owners.discard(reference.artifact_id)
+                    metadata["references"] = sorted(owners)
+                raise
+            self._manifest["projections"][reference.artifact_id] = (
+                self._projection_metadata(reference)
+            )
+            self._write_manifest(self._manifest)
+            self._increment("writes")
+            self._increment("projection_writes")
+        return reference
+
+    persist = store_projection
+    write_projection = store_projection
+    put = store_projection
+
+    def store_receipt(self, payload: Any, **kwargs: Any) -> ProjectionReference:
+        """Persist one receipt while always applying the 256 KiB bound."""
+
+        supplied = kwargs.pop("projection_kind", "receipt")
+        if "receipt" not in str(supplied).casefold():
+            supplied = f"{supplied}_receipt"
+        return self.store_projection(
+            payload, projection_kind=str(supplied), **kwargs
+        )
+
+    def store_routine_projection(
+        self, payload: Any, **kwargs: Any
+    ) -> ProjectionReference:
+        """Persist one ordinary projection under the 1 MiB bound."""
+
+        return self.store_projection(
+            payload,
+            projection_kind=str(kwargs.pop("projection_kind", "routine")),
+            **kwargs,
+        )
+
+    def _coerce_blob_reference(
+        self, value: BlobReference | Mapping[str, Any] | str
+    ) -> BlobReference:
+        if isinstance(value, BlobReference):
+            return value
+        if isinstance(value, Mapping):
+            return BlobReference.from_dict(value)
+        metadata = self._manifest["blobs"].get(str(value))
+        if metadata is None:
+            raise ArtifactBlobIntegrityError("blob reference is unknown")
+        return BlobReference.from_dict(metadata)
+
+    def verify_blob(
+        self, value: BlobReference | Mapping[str, Any] | str
+    ) -> bool:
+        try:
+            reference = self._coerce_blob_reference(value)
+            data = self._blob_path(reference).read_bytes()
+        except (OSError, TypeError, ValueError):
+            return False
+        return (
+            len(data) == reference.size_bytes
+            and "sha256:" + hashlib.sha256(data).hexdigest()
+            == reference.digest
+        )
+
+    verify = verify_blob
+
+    def read_blob(
+        self,
+        value: BlobReference | Mapping[str, Any] | str,
+        *,
+        decode: bool = False,
+    ) -> Any:
+        self._assert_open()
+        with self._locked():
+            reference = self._coerce_blob_reference(value)
+            try:
+                data = self._blob_path(reference).read_bytes()
+            except OSError as exc:
+                raise ArtifactBlobIntegrityError(
+                    "referenced blob is missing"
+                ) from exc
+            if (
+                len(data) != reference.size_bytes
+                or "sha256:" + hashlib.sha256(data).hexdigest()
+                != reference.digest
+            ):
+                self._increment("corruption_recoveries")
+                raise ArtifactBlobIntegrityError(
+                    "referenced blob failed content integrity verification"
+                )
+            metadata = self._manifest["blobs"].get(reference.artifact_id)
+            if metadata is not None:
+                metadata["last_accessed_at_ms"] = self._now_ms()
+            self._increment("reads")
+        if not decode:
+            return data
+        if reference.media_type.startswith("text/"):
+            return data.decode("utf-8")
+        if reference.media_type == "application/json":
+            return json.loads(data)
+        return data
+
+    get_blob = read_blob
+    load_blob = read_blob
+
+    def _coerce_projection_reference(
+        self, value: ProjectionReference | Mapping[str, Any] | str
+    ) -> ProjectionReference:
+        if isinstance(value, ProjectionReference):
+            return value
+        if isinstance(value, Mapping):
+            return ProjectionReference.from_dict(value)
+        metadata = self._manifest["projections"].get(str(value))
+        if metadata is None:
+            raise ArtifactBlobIntegrityError("projection reference is unknown")
+        return ProjectionReference.from_dict(metadata)
+
+    def read_projection(
+        self,
+        value: ProjectionReference | Mapping[str, Any] | str,
+        *,
+        verify_blobs: bool = True,
+    ) -> Any:
+        self._assert_open()
+        with self._locked():
+            reference = self._coerce_projection_reference(value)
+            if (
+                reference.expires_at_ms is not None
+                and self._now_ms() >= reference.expires_at_ms
+            ):
+                raise ArtifactBlobIntegrityError("projection has expired")
+            try:
+                wrapper = json.loads(
+                    self._projection_path(reference).read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ArtifactBlobIntegrityError(
+                    "stored projection is missing or corrupt"
+                ) from exc
+            encoded = _bounded_canonical_bytes(
+                wrapper.get("payload"),
+                maximum=self.quotas.max_projection_bytes,
+                label="stored projection",
+            )
+            if (
+                len(encoded) != reference.size_bytes
+                or self._projection_digest(
+                    wrapper.get("payload"),
+                    projection_kind=reference.projection_kind,
+                    retention_class=reference.retention_class,
+                    outcome=reference.outcome,
+                )
+                != reference.digest
+            ):
+                raise ArtifactBlobIntegrityError(
+                    "stored projection failed content integrity verification"
+                )
+            if verify_blobs:
+                for blob_reference in reference.artifact_references:
+                    if not self.verify_blob(blob_reference):
+                        raise ArtifactBlobIntegrityError(
+                            "stored projection contains a corrupt blob reference"
+                        )
+            self._increment("reads")
+            return wrapper["payload"]
+
+    get = read_projection
+    load = read_projection
+
+    def _emit_eviction(
+        self,
+        *,
+        artifact_id: str,
+        size_bytes: int,
+        reason: str,
+        retention_class: str,
+    ) -> None:
+        event = {
+            "type": "artifact_evicted",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "artifact_id": artifact_id,
+            "size_bytes": size_bytes,
+            "reason": reason,
+            "retention_class": retention_class,
+        }
+        encoded = _bounded_canonical_bytes(
+            event, maximum=MAX_RECEIPT_BYTES, label="eviction event"
+        ) + b"\n"
+        self.eviction_log_path.parent.mkdir(
+            parents=True, exist_ok=True, mode=0o700
+        )
+        with self.eviction_log_path.open("ab") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if self._eviction_observer is not None:
+            self._eviction_observer(dict(event))
+
+    def _evict_projection(
+        self, artifact_id: str, *, reason: str
+    ) -> tuple[int, str]:
+        metadata = self._manifest["projections"].pop(artifact_id)
+        reference = ProjectionReference.from_dict(metadata)
+        try:
+            self._projection_path(reference).unlink()
+        except FileNotFoundError:
+            pass
+        for blob_reference in reference.artifact_references:
+            blob_metadata = self._manifest["blobs"].get(
+                blob_reference.artifact_id
+            )
+            if blob_metadata is not None:
+                owners = set(blob_metadata.get("references", ()))
+                owners.discard(artifact_id)
+                blob_metadata["references"] = sorted(owners)
+        self._emit_eviction(
+            artifact_id=artifact_id,
+            size_bytes=reference.size_bytes,
+            reason=reason,
+            retention_class=reference.retention_class.value,
+        )
+        return reference.size_bytes, reference.retention_class.value
+
+    def _evict_blob(
+        self, artifact_id: str, *, reason: str
+    ) -> tuple[int, str]:
+        metadata = self._manifest["blobs"].pop(artifact_id)
+        reference = BlobReference.from_dict(metadata)
+        try:
+            self._blob_path(reference).unlink()
+        except FileNotFoundError:
+            pass
+        retention = str(
+            metadata.get("retention_class") or RetentionClass.ROUTINE.value
+        )
+        self._emit_eviction(
+            artifact_id=artifact_id,
+            size_bytes=reference.size_bytes,
+            reason=reason,
+            retention_class=retention,
+        )
+        return reference.size_bytes, retention
+
+    def _quota_satisfied(
+        self,
+        reserve_bytes: int,
+        reserve_blobs: int,
+        reserve_projections: int,
+    ) -> bool:
+        return self._has_capacity(
+            additional_bytes=reserve_bytes,
+            additional_blobs=reserve_blobs,
+            additional_projections=reserve_projections,
+        )
+
+    def _compact_locked(
+        self,
+        *,
+        max_items: int,
+        force_quota: bool,
+        reserve_bytes: int = 0,
+        reserve_blobs: int = 0,
+        reserve_projections: int = 0,
+    ) -> CompactionResult:
+        if isinstance(max_items, bool) or not isinstance(max_items, int) or max_items < 1:
+            raise ValueError("max_items must be a positive integer")
+        now_ms = self._now_ms()
+        candidates: list[tuple[int, int, str, str, Mapping[str, Any]]] = []
+        for artifact_id, metadata in self._manifest["projections"].items():
+            retention = RetentionClass(
+                str(
+                    metadata.get("retention_class")
+                    or RetentionClass.ROUTINE.value
+                )
+            )
+            expires_at = metadata.get("expires_at_ms")
+            expired = isinstance(expires_at, int) and now_ms >= expires_at
+            if expired or (
+                force_quota and retention is not RetentionClass.PINNED
+            ):
+                candidates.append(
+                    (
+                        0 if expired else 1,
+                        self._retention_rank[retention],
+                        artifact_id,
+                        "projection",
+                        metadata,
+                    )
+                )
+        for artifact_id, metadata in self._manifest["blobs"].items():
+            if metadata.get("references"):
+                continue
+            retention = RetentionClass(
+                str(
+                    metadata.get("retention_class")
+                    or RetentionClass.ROUTINE.value
+                )
+            )
+            expires_at = metadata.get("expires_at_ms")
+            expired = isinstance(expires_at, int) and now_ms >= expires_at
+            if expired or (
+                force_quota and retention is not RetentionClass.PINNED
+            ):
+                candidates.append(
+                    (
+                        0 if expired else 1,
+                        self._retention_rank[retention],
+                        artifact_id,
+                        "blob",
+                        metadata,
+                    )
+                )
+        candidates.sort(
+            key=lambda item: (
+                item[0],
+                item[1],
+                int(
+                    item[4].get("last_accessed_at_ms")
+                    or item[4].get("created_at_ms")
+                    or 0
+                ),
+                item[2],
+            )
+        )
+        cursor = int(self._manifest.get("compaction_cursor", 0))
+        if candidates:
+            cursor %= len(candidates)
+            ordered = candidates[cursor:] + candidates[:cursor]
+        else:
+            ordered = []
+            cursor = 0
+        scanned = evicted = evicted_bytes = expired_count = quota_count = 0
+        evicted_ids: list[str] = []
+        for expiry_rank, _retention_rank, artifact_id, kind, _metadata in ordered:
+            if scanned >= max_items:
+                break
+            scanned += 1
+            if (
+                expiry_rank != 0
+                and self._quota_satisfied(
+                    reserve_bytes, reserve_blobs, reserve_projections
+                )
+            ):
+                continue
+            if kind == "projection":
+                size, _retention = self._evict_projection(
+                    artifact_id,
+                    reason="expired" if expiry_rank == 0 else "quota",
+                )
+            else:
+                size, _retention = self._evict_blob(
+                    artifact_id,
+                    reason="expired" if expiry_rank == 0 else "quota",
+                )
+            evicted += 1
+            evicted_bytes += size
+            evicted_ids.append(artifact_id)
+            if expiry_rank == 0:
+                expired_count += 1
+            else:
+                quota_count += 1
+        self._manifest["compaction_cursor"] = (
+            (cursor + scanned) % max(1, len(candidates))
+        )
+        if evicted or scanned:
+            self._write_manifest(self._manifest)
+        self._increment("compactions")
+        self._increment("scanned", scanned)
+        self._increment("evictions", evicted)
+        self._increment("evicted_bytes", evicted_bytes)
+        self._increment("expired_evictions", expired_count)
+        self._increment("quota_evictions", quota_count)
+        return CompactionResult(
+            scanned=scanned,
+            evicted=evicted,
+            evicted_bytes=evicted_bytes,
+            expired=expired_count,
+            quota_evicted=quota_count,
+            cursor=int(self._manifest["compaction_cursor"]),
+            quota_satisfied=self._quota_satisfied(
+                reserve_bytes, reserve_blobs, reserve_projections
+            ),
+            evicted_artifact_ids=tuple(evicted_ids),
+        )
+
+    def compact(
+        self,
+        *,
+        max_items: int | None = None,
+        limit: int | None = None,
+        force_quota: bool = False,
+    ) -> CompactionResult:
+        """Inspect at most one batch and atomically checkpoint the GC cursor."""
+
+        self._assert_open()
+        if max_items is not None and limit is not None:
+            raise ValueError("pass max_items or limit, not both")
+        with self._locked():
+            return self._compact_locked(
+                max_items=max_items
+                or limit
+                or self.quotas.compaction_batch_size,
+                force_quota=force_quota,
+            )
+
+    incremental_compact = compact
+    gc = compact
+
+    def manifest(self) -> dict[str, Any]:
+        """Return a detached manifest snapshot for restart diagnostics."""
+
+        with self._locked():
+            return json.loads(json.dumps(self._manifest))
+
+    def eviction_events(self) -> list[dict[str, Any]]:
+        try:
+            lines = self.eviction_log_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        except OSError:
+            return []
+        events: list[dict[str, Any]] = []
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, dict):
+                events.append(event)
+        return events
+
+    def metrics(self) -> ArtifactStoreMetrics:
+        with self._metrics_lock:
+            return ArtifactStoreMetrics(**self._metric_values)
+
+    stats = metrics
+
+    def usage(self) -> dict[str, Any]:
+        """Return the current logical quota projection without scanning bodies."""
+
+        with self._locked():
+            blob_bytes = sum(
+                int(item.get("size_bytes", 0))
+                for item in self._manifest["blobs"].values()
+            )
+            projection_bytes = sum(
+                int(item.get("size_bytes", 0))
+                for item in self._manifest["projections"].values()
+            )
+            try:
+                disk_free_bytes = shutil.disk_usage(self.path).free
+            except OSError:
+                disk_free_bytes = None
+            return {
+                "total_bytes": blob_bytes + projection_bytes,
+                "blob_bytes": blob_bytes,
+                "projection_bytes": projection_bytes,
+                "blob_count": len(self._manifest["blobs"]),
+                "projection_count": len(self._manifest["projections"]),
+                "disk_free_bytes": disk_free_bytes,
+                "quotas": self.quotas.to_dict(),
+            }
+
+    def close(
+        self,
+        *,
+        timeout_seconds: float = 1.0,
+        timeout: float | None = None,
+    ) -> bool:
+        """Synchronously checkpoint state; no unbounded background drain exists."""
+
+        if timeout is not None:
+            if timeout_seconds != 1.0:
+                raise ValueError("pass timeout_seconds or timeout, not both")
+            timeout_seconds = timeout
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("timeout_seconds must be positive")
+        if self._closed:
+            return True
+        deadline = time.monotonic() + float(timeout_seconds)
+        with self._locked():
+            if time.monotonic() >= deadline:
+                return False
+            self._write_manifest(self._manifest)
+            self._closed = True
+        return time.monotonic() <= deadline
+
+    shutdown = close
+
+
+BoundedPersistenceStore = BoundedArtifactStore
+ContentAddressedArtifactStore = BoundedArtifactStore
+ArtifactBlobStore = BoundedArtifactStore
+ArtifactStore = BoundedArtifactStore
 
 
 def query_artifact_paths(path: Path | str) -> QueryArtifactPaths:
@@ -2983,6 +4882,312 @@ def query_artifact(
         "truncated": truncated,
         "limit": row_limit,
     }
+
+
+def _logical_artifact_digest(payload: Mapping[str, Any]) -> str:
+    """Address portable content without its location-dependent sidecar hint."""
+
+    logical_payload = dict(payload)
+    logical_payload.pop("query_store", None)
+    try:
+        encoded = json.dumps(
+            logical_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "queryable artifact must contain canonical JSON values"
+        ) from exc
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _queryable_artifact_snapshot(
+    path: Path | str,
+    *,
+    kind: str | None,
+) -> QueryableArtifactReference:
+    """Capture one verified paired generation, rebuilding its sidecar if needed."""
+
+    paths = query_artifact_paths(path)
+    if not paths.json_path.exists():
+        raise FileNotFoundError(
+            "a paired JSON source is required to verify a queryable artifact: "
+            f"{paths.json_path}"
+        )
+    for _attempt in range(3):
+        # Always enter through JSON.  In addition to creating a missing
+        # sidecar, this replaces a corrupt DuckDB database from its portable
+        # source under the existing cross-process artifact lock.
+        database_path = ensure_query_database(paths.json_path, kind=kind)
+        payload, source_stat, source_sha256 = _read_stable_json(paths.json_path)
+        resolved_kind = kind or _artifact_kind(payload)
+        if not _database_fresh(
+            database_path, paths.json_path, resolved_kind
+        ):
+            continue
+
+        duckdb = _duckdb_module()
+        try:
+            connection = duckdb.connect(str(database_path), read_only=True)
+            try:
+                rows = connection.execute(
+                    "SELECT artifact_kind, schema_version, source_sha256, "
+                    "source_size, source_mtime_ns "
+                    "FROM artifact_catalog"
+                ).fetchall()
+            finally:
+                connection.close()
+        except Exception:
+            # A sidecar can be replaced or damaged after the freshness check.
+            # The next pass asks ensure_query_database to recover it.
+            continue
+        if len(rows) != 1:
+            raise ValueError(
+                "queryable artifact catalog must contain exactly one record"
+            )
+        catalog = rows[0]
+        if (
+            str(catalog[0]) != resolved_kind
+            or str(catalog[1]) != QUERY_SCHEMA
+            or str(catalog[2]) != source_sha256
+            or int(catalog[3]) != source_stat.st_size
+            or int(catalog[4]) != source_stat.st_mtime_ns
+        ):
+            continue
+        final_identity = _stable_file_identity(paths.json_path)
+        if final_identity is None:
+            continue
+        final_stat, final_sha256 = final_identity
+        if (
+            final_sha256 != source_sha256
+            or final_stat.st_size != source_stat.st_size
+            or final_stat.st_mtime_ns != source_stat.st_mtime_ns
+        ):
+            continue
+
+        digest = _logical_artifact_digest(payload)
+        return QueryableArtifactReference(
+            artifact_id=f"queryable-artifact:{digest}",
+            digest=digest,
+            path=str(paths.json_path),
+            kind=resolved_kind,
+            schema=str(payload.get("schema") or QUERY_SCHEMA),
+            size_bytes=source_stat.st_size,
+            source_sha256=source_sha256,
+            duckdb_path=str(database_path),
+        )
+    raise RuntimeError(
+        f"queryable artifact changed repeatedly while being verified: {paths.json_path}"
+    )
+
+
+def queryable_artifact_reference(
+    path: Path | str,
+    *,
+    kind: str | None = None,
+) -> QueryableArtifactReference:
+    """Return a canonical, body-free reference to an existing artifact."""
+
+    return _queryable_artifact_snapshot(path, kind=kind)
+
+
+def _adapter_reference_constraints(
+    reference: QueryableArtifactReference | Mapping[str, Any],
+) -> dict[str, Any]:
+    if isinstance(reference, QueryableArtifactReference):
+        return reference.to_dict()
+    if not isinstance(reference, Mapping):
+        raise ValueError("queryable artifact reference must be an object")
+    allowed = {
+        "artifact_id",
+        "digest",
+        "path",
+        "kind",
+        "schema",
+        "size_bytes",
+        "source_sha256",
+        "duckdb_path",
+    }
+    unknown = sorted(set(reference).difference(allowed))
+    if unknown:
+        raise ValueError(
+            "queryable artifact reference has unsupported fields: "
+            + ", ".join(unknown)
+        )
+    required = {"artifact_id", "digest", "path"}
+    missing = sorted(required.difference(reference))
+    if missing:
+        raise ValueError(
+            "queryable artifact reference is missing identity fields: "
+            + ", ".join(missing)
+        )
+    constraints = dict(reference)
+    if not _SHA256_DIGEST.fullmatch(str(constraints["digest"])):
+        raise ValueError("queryable artifact digest must be sha256:<hex>")
+    if constraints["artifact_id"] != (
+        f"queryable-artifact:{constraints['digest']}"
+    ):
+        raise ValueError("queryable artifact identity does not match its digest")
+    supplied_path = Path(str(constraints["path"]))
+    if not supplied_path.is_absolute():
+        raise ValueError("queryable artifact path must be absolute")
+    constraints["path"] = str(supplied_path.resolve())
+    if "duckdb_path" in constraints:
+        supplied_database = Path(str(constraints["duckdb_path"]))
+        if not supplied_database.is_absolute():
+            raise ValueError("queryable artifact duckdb_path must be absolute")
+        constraints["duckdb_path"] = str(supplied_database.resolve())
+    return constraints
+
+
+def _bounded_adapter_bytes(value: Any, *, maximum: int, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{label} must be a positive integer")
+    return min(value, maximum)
+
+
+class QueryableArtifactCASAdapter:
+    """Read-only CAS adapter over the existing JSON/DuckDB artifact pair.
+
+    The adapter does not assign cache authority and never returns a complete
+    artifact body.  Runtime stores can retain its shallow reference while
+    namespace-specific code continues to query the existing normalized tables.
+    """
+
+    def __init__(self, path: Path | str, *, kind: str | None = None) -> None:
+        self.paths = query_artifact_paths(path)
+        self.kind = kind
+
+    def reference(self) -> QueryableArtifactReference:
+        """Return the currently verified source generation."""
+
+        return _queryable_artifact_snapshot(
+            self.paths.json_path,
+            kind=self.kind,
+        )
+
+    def verify(
+        self,
+        reference: QueryableArtifactReference | Mapping[str, Any],
+    ) -> bool:
+        """Return whether a body-free reference still names the exact source."""
+
+        try:
+            constraints = _adapter_reference_constraints(reference)
+            current = self.reference().to_dict()
+        except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return all(current.get(name) == value for name, value in constraints.items())
+
+    def _verified_reference(
+        self,
+        reference: QueryableArtifactReference | Mapping[str, Any] | None,
+    ) -> QueryableArtifactReference:
+        expected = self.reference() if reference is None else reference
+        if not self.verify(expected):
+            raise ValueError(
+                "queryable artifact reference does not match the current source"
+            )
+        return (
+            expected
+            if isinstance(expected, QueryableArtifactReference)
+            else self.reference()
+        )
+
+    def read(
+        self,
+        reference: QueryableArtifactReference | Mapping[str, Any] | None = None,
+        *,
+        field_names: Sequence[str] = (),
+        fields: Sequence[str] | None = None,
+        max_bytes: int = MAX_ADAPTER_READ_BYTES,
+    ) -> dict[str, Any]:
+        """Read selected top-level fields with hard field and byte bounds.
+
+        With no requested fields this returns verification metadata only.  It
+        intentionally has no spelling that loads the complete JSON body.
+        """
+
+        selected_fields = tuple(field_names)
+        if fields is not None:
+            if selected_fields:
+                raise ValueError("use either field_names or fields, not both")
+            selected_fields = tuple(fields)
+        if len(selected_fields) > MAX_ADAPTER_READ_FIELDS:
+            raise ValueError("queryable artifact field selection exceeds its bound")
+        if len(set(selected_fields)) != len(selected_fields):
+            raise ValueError("queryable artifact fields must be unique")
+        if any(
+            not isinstance(field, str) or not field.strip()
+            for field in selected_fields
+        ):
+            raise ValueError("queryable artifact fields must be nonempty strings")
+        byte_limit = _bounded_adapter_bytes(
+            max_bytes,
+            maximum=MAX_ADAPTER_READ_BYTES,
+            label="max_bytes",
+        )
+        verified = self._verified_reference(reference)
+        if not selected_fields:
+            return verified.to_dict()
+        result = read_artifact_fields(
+            verified.path,
+            selected_fields,
+            kind=verified.kind,
+        )
+        if len(_json_text(result).encode("utf-8")) > byte_limit:
+            raise ValueError("queryable artifact field projection exceeds max_bytes")
+        if not self.verify(verified):
+            raise RuntimeError("queryable artifact changed during bounded read")
+        return result
+
+    def query(
+        self,
+        reference: QueryableArtifactReference | Mapping[str, Any] | None = None,
+        *,
+        max_bytes: int = MAX_ADAPTER_QUERY_BYTES,
+        **query: Any,
+    ) -> dict[str, Any]:
+        """Run an existing row-bounded query with an additional byte bound."""
+
+        byte_limit = _bounded_adapter_bytes(
+            max_bytes,
+            maximum=MAX_ADAPTER_QUERY_BYTES,
+            label="max_bytes",
+        )
+        verified = self._verified_reference(reference)
+        supplied_kind = query.pop("kind", verified.kind)
+        if supplied_kind != verified.kind:
+            raise ValueError("query kind does not match the artifact reference")
+        result = query_artifact(
+            verified.path,
+            kind=verified.kind,
+            **query,
+        )
+        if len(_json_text(result).encode("utf-8")) > byte_limit:
+            raise ValueError("queryable artifact query result exceeds max_bytes")
+        if not self.verify(verified):
+            raise RuntimeError("queryable artifact changed during bounded query")
+        return result
+
+
+def queryable_artifact_adapter(
+    path: Path | str,
+    *,
+    kind: str | None = None,
+) -> QueryableArtifactCASAdapter:
+    """Construct a read-only adapter for an existing queryable artifact."""
+
+    return QueryableArtifactCASAdapter(path, kind=kind)
+
+
+# Compatibility spellings for callers that name the adapted subsystem or the
+# consuming runtime first.
+ArtifactStoreCASAdapter = QueryableArtifactCASAdapter
+RuntimeCASArtifactStoreAdapter = QueryableArtifactCASAdapter
 
 
 def query_code_evidence_graph(

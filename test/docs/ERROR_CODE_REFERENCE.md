@@ -1499,4 +1499,4 @@ except ResourceNotAvailableError as e:
 - [Hardware Compatibility Guide](COMPATIBILITY_MATRIX_GUIDE.md)
 - [WebGPU Implementation Guide](WEBGPU_IMPLEMENTATION_GUIDE.md)
 - [Web Platform Integration Guide](WEB_PLATFORM_INTEGRATION_GUIDE.md)
-- [Browser-Specific Troubleshooting](browser_troubleshooting.md)
+- [Browser-Specific Troubleshooting](WEBGPU_BROWSER_COMPATIBILITY.md)

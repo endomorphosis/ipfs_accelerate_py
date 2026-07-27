@@ -259,7 +259,7 @@ def test_context_rejects_path_escapes_mixed_trees_and_invalid_truncation() -> No
     delta = _context_capsule(
         parent_capsule_id="capsule:previous",
         truncated=True,
-        omissions=("unchanged source excerpts",),
+        omissions=("source-on-demand:token_budget",),
         expansion_references=(
             ContextReference(
                 "source-on-demand",
@@ -526,7 +526,7 @@ def test_applied_mutation_result_requires_and_binds_audit_receipts() -> None:
                 "supervisor:primary",
                 paths=("ipfs_accelerate_py/agent_supervisor",),
                 applied=True,
-                receipt_id="audit:effect:1",
+                receipt_id="audit:operation:1",
             ),
         ),
         idempotency_key=request.idempotency_key,

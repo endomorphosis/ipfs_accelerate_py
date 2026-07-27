@@ -60,6 +60,57 @@ TASK_PROPOSAL_OPERATIONS = frozenset({"add", "modify", "delete", "rename"})
 DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS = 12_288
 DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE = 512
 
+
+def _runtime_cancelled(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if callable(value):
+        return bool(value())
+    checker = getattr(value, "is_set", None)
+    if callable(checker):
+        return bool(checker())
+    raise TypeError("cancellation must be a boolean, predicate, event, or None")
+
+
+def _route_decision_runtime(
+    runtime: Any,
+    boundary: str,
+    payload: Mapping[str, Any],
+    callback: Callable[[], Any] | None = None,
+    *,
+    mutation: bool = False,
+) -> Any:
+    """Converge provider callbacks and writes on one injected runtime."""
+
+    if runtime is None:
+        return callback() if callback is not None else None
+    route = getattr(runtime, "route", None)
+    if not callable(route):
+        raise TypeError("decision_runtime must expose route()")
+    decision = route(boundary, dict(payload))
+    if callback is None:
+        return decision
+    if not mutation:
+        return callback()
+    authorize = getattr(runtime, "authorize_mutation", None)
+    if not callable(authorize):
+        raise TypeError(
+            "decision_runtime must expose authorize_mutation() for writes"
+        )
+
+    def dispatch() -> dict[str, Any]:
+        value = callback()
+        request = getattr(decision, "decision_request", None)
+        expected = tuple(getattr(request, "expected_effects", ()))
+        return {"value": value, "observed_effects": expected}
+
+    result = authorize(decision, dispatch)
+    wrapped = getattr(result, "value", result)
+    return wrapped.get("value") if isinstance(wrapped, Mapping) else wrapped
+
+
 TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -164,6 +215,7 @@ class TaskProposalRouterConfig:
         repr=False,
         compare=False,
     )
+    decision_runtime: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -236,6 +288,7 @@ class TaskProposalRouteSpec:
         repr=False,
         compare=False,
     )
+    decision_runtime: Any = field(default=None, repr=False, compare=False)
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER"
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL"
     default_model: str = "gpt-5.3-codex-spark"
@@ -396,6 +449,7 @@ def build_task_proposal_router_cli_config(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -425,6 +479,7 @@ def build_task_proposal_router_cli_config(
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
             provider_batch_scheduler=provider_batch_scheduler,
+            decision_runtime=decision_runtime,
         ),
         description=description,
         task_id_help=task_id_help,
@@ -543,6 +598,7 @@ def build_configured_task_proposal_router_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -575,6 +631,7 @@ def build_configured_task_proposal_router_runner(
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
             provider_batch_scheduler=provider_batch_scheduler,
+            decision_runtime=decision_runtime,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -612,6 +669,7 @@ def build_repo_task_proposal_router_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -655,6 +713,7 @@ def build_repo_task_proposal_router_runner(
         provider_max_input_tokens=provider_max_input_tokens,
         context_tokenizer=context_tokenizer,
         provider_batch_scheduler=provider_batch_scheduler,
+        decision_runtime=decision_runtime,
         provider_env=provider_env,
         model_env=model_env,
         default_model=default_model,
@@ -699,6 +758,7 @@ def build_repo_task_proposal_route_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -764,6 +824,7 @@ def build_repo_task_proposal_route_runner(
         provider_max_input_tokens=provider_max_input_tokens,
         context_tokenizer=context_tokenizer,
         provider_batch_scheduler=provider_batch_scheduler,
+        decision_runtime=decision_runtime,
         provider_env=provider_env,
         model_env=model_env,
         default_model=default_model,
@@ -815,6 +876,7 @@ def build_repo_task_proposal_route_runner_from_spec(
         provider_max_input_tokens=route_spec.provider_max_input_tokens,
         context_tokenizer=route_spec.context_tokenizer,
         provider_batch_scheduler=route_spec.provider_batch_scheduler,
+        decision_runtime=route_spec.decision_runtime,
         provider_env=route_spec.provider_env,
         model_env=route_spec.model_env,
         default_model=route_spec.default_model,
@@ -1426,6 +1488,18 @@ def run_task_proposal_router(
             decision.to_dict() for decision in compiled_context.decisions
         ],
     }
+    runtime_payload = {
+        "task_id": _task_value(selected, "task_id"),
+        "context_id": context_id,
+        "repository_tree_id": repository_tree_id,
+        "context_capsule_id": compiled_context.capsule.capsule_id,
+        "generate": bool(generate),
+    }
+    _route_decision_runtime(
+        config.decision_runtime,
+        "task_proposal",
+        runtime_payload,
+    )
     if not generate:
         return payload
 
@@ -1438,31 +1512,50 @@ def run_task_proposal_router(
         max_new_tokens=int(max_new_tokens),
         reject_effective_provider_name=None if allow_local_fallback else "local_hf",
     )
-    raw_proposal, batch_result = _call_text_provider(
-        prompt,
-        invocation,
-        scheduler=config.provider_batch_scheduler,
-        route="task-proposal-router",
-        operation="task_implementation_proposal.v1",
-        context_limit=compiled_context.receipt.effective_input_limit,
-        response_contract=TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
-        provenance={
-            "task_id": _task_value(selected, "task_id"),
-            "repository_tree_id": repository_tree_id,
-            "context_id": context_id,
-            "context_capsule_id": compiled_context.capsule.capsule_id,
-        },
+    raw_proposal, batch_result = _route_decision_runtime(
+        config.decision_runtime,
+        "task_proposal",
+        {**runtime_payload, "operation": "task_implementation_proposal.v1"},
+        lambda: _call_text_provider(
+            prompt,
+            invocation,
+            scheduler=config.provider_batch_scheduler,
+            route="task-proposal-router",
+            operation="task_implementation_proposal.v1",
+            context_limit=compiled_context.receipt.effective_input_limit,
+            response_contract=TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+            provenance={
+                "task_id": _task_value(selected, "task_id"),
+                "repository_tree_id": repository_tree_id,
+                "context_id": context_id,
+                "context_capsule_id": compiled_context.capsule.capsule_id,
+            },
+        ),
     )
     if batch_result is not None:
         payload["provider_batch"] = batch_result.to_dict()
-    config.artifact_dir.mkdir(parents=True, exist_ok=True)
     task_name = (_task_value(selected, "task_id") or "task").lower()
     context_receipt_path = (
         config.artifact_dir / f"{task_name}-context-receipt.json"
     )
-    context_receipt_path.write_text(
-        compiled_context.receipt.to_json() + "\n",
-        encoding="utf-8",
+    _route_decision_runtime(
+        config.decision_runtime,
+        "file_mutation",
+        {
+            **runtime_payload,
+            "path": _artifact_relative_path(
+                context_receipt_path, config.repo_root
+            ),
+            "artifact_kind": "context_receipt",
+        },
+        lambda: (
+            config.artifact_dir.mkdir(parents=True, exist_ok=True),
+            context_receipt_path.write_text(
+                compiled_context.receipt.to_json() + "\n",
+                encoding="utf-8",
+            ),
+        )[-1],
+        mutation=True,
     )
     payload["context_receipt"] = _artifact_relative_path(
         context_receipt_path, config.repo_root
@@ -1480,26 +1573,38 @@ def run_task_proposal_router(
         rejection_path = (
             config.artifact_dir / f"{task_name}-proposal-rejection.json"
         )
-        rejection_path.write_text(
-            json.dumps(
-                {
-                    "schema": (
-                        "ipfs_accelerate_py/agent-supervisor/"
-                        "task-proposal-rejection@1"
-                    ),
-                    "accepted": False,
-                    "task_id": _task_value(selected, "task_id"),
-                    "repository_tree_id": repository_tree_id,
-                    "context_id": context_id,
-                    "reason_codes": [exc.reason_code],
-                    "proof_authoritative": False,
-                    "completion_authoritative": False,
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
+        _route_decision_runtime(
+            config.decision_runtime,
+            "file_mutation",
+            {
+                **runtime_payload,
+                "path": _artifact_relative_path(
+                    rejection_path, config.repo_root
+                ),
+                "artifact_kind": "proposal_rejection",
+            },
+            lambda: rejection_path.write_text(
+                json.dumps(
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "task-proposal-rejection@1"
+                        ),
+                        "accepted": False,
+                        "task_id": _task_value(selected, "task_id"),
+                        "repository_tree_id": repository_tree_id,
+                        "context_id": context_id,
+                        "reason_codes": [exc.reason_code],
+                        "proof_authoritative": False,
+                        "completion_authoritative": False,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            ),
+            mutation=True,
         )
         raise TaskProposalRouterError(
             f"{exc}; compact rejection: "
@@ -1507,9 +1612,19 @@ def run_task_proposal_router(
             reason_code=exc.reason_code,
         ) from exc
     output_path = config.artifact_dir / f"{task_name}-proposal.json"
-    output_path.write_text(
-        json.dumps(proposal, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    _route_decision_runtime(
+        config.decision_runtime,
+        "file_mutation",
+        {
+            **runtime_payload,
+            "path": _artifact_relative_path(output_path, config.repo_root),
+            "artifact_kind": "task_proposal",
+        },
+        lambda: output_path.write_text(
+            json.dumps(proposal, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        ),
+        mutation=True,
     )
     payload["artifact"] = _artifact_relative_path(output_path, config.repo_root)
     payload["proposal_schema"] = TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
@@ -1609,6 +1724,8 @@ class StructuredPlanRouterConfig:
         repr=False,
         compare=False,
     )
+    decision_runtime: Any = field(default=None, repr=False, compare=False)
+    cancellation: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if int(self.branch_count) < 1:
@@ -2367,17 +2484,28 @@ def generate_structured_plan_branches(
     raw_response: str | None = None
     batch_results: list[ProviderBatchResult] = []
     try:
-        raw_response = (
-            router(prompt)
-            if router is not None
-            else _default_structured_router(
-                prompt,
-                resolved_config,
-                route="structured-plan-router",
-                operation="structured_plan.v1",
-                response_contract="plan-branches@1",
-                batch_results=batch_results,
-            )
+        if _runtime_cancelled(resolved_config.cancellation):
+            raise RuntimeError("structured plan routing cancelled")
+        raw_response = _route_decision_runtime(
+            resolved_config.decision_runtime,
+            "plan_selection",
+            {
+                "operation": "structured_plan.v1",
+                "branch_count": count,
+                "repo_root": str(resolved_config.repo_root),
+            },
+            lambda: (
+                router(prompt)
+                if router is not None
+                else _default_structured_router(
+                    prompt,
+                    resolved_config,
+                    route="structured-plan-router",
+                    operation="structured_plan.v1",
+                    response_contract="plan-branches@1",
+                    batch_results=batch_results,
+                )
+            ),
         )
         branches = parse_structured_plan_branches(raw_response)
         if len(branches) != count:
@@ -2391,6 +2519,14 @@ def generate_structured_plan_branches(
             batch_result=batch_results[-1] if batch_results else None,
         )
     except Exception as exc:
+        if type(exc).__name__.startswith("DecisionRuntime") or type(
+            exc
+        ).__name__ in {
+            "DecisionRuntimeCancelled",
+            "CancelledError",
+            "CancellationError",
+        } or _runtime_cancelled(resolved_config.cancellation):
+            raise
         error = f"{type(exc).__name__}: {exc}"[:1000]
         planner = fallback_planner or deterministic_plan_branches
         fallback_values = planner(subgoal, count)
@@ -2560,17 +2696,29 @@ def generate_analysis_proposals(
     for _attempt in range(attempt_limit):
         calls += 1
         try:
-            raw = (
-                router(prompt)
-                if router is not None
-                else _default_structured_router(
-                    prompt,
-                    replace(resolved, max_new_tokens=token_cost),
-                    route="analysis-proposal-router",
-                    operation="analysis_proposal.v1",
-                    response_contract="analysis-proposals@1",
-                    batch_results=batch_results,
-                )
+            if _runtime_cancelled(resolved.cancellation):
+                raise RuntimeError("analysis proposal routing cancelled")
+            raw = _route_decision_runtime(
+                resolved.decision_runtime,
+                "analysis_request",
+                {
+                    "operation": "analysis_proposal.v1",
+                    "attempt": _attempt + 1,
+                    "proposal_count": desired,
+                    "repo_root": str(resolved.repo_root),
+                },
+                lambda: (
+                    router(prompt)
+                    if router is not None
+                    else _default_structured_router(
+                        prompt,
+                        replace(resolved, max_new_tokens=token_cost),
+                        route="analysis-proposal-router",
+                        operation="analysis_proposal.v1",
+                        response_contract="analysis-proposals@1",
+                        batch_results=batch_results,
+                    )
+                ),
             )
             raw_responses.append(str(raw))
             proposals = parse_analysis_proposals(raw)
@@ -2603,6 +2751,14 @@ def generate_analysis_proposals(
             reasons = ", ".join(item.reason for item in last_evaluation.rejected)
             errors.append(f"all router proposals rejected: {reasons or 'no accepted proposals'}")
         except Exception as exc:
+            if type(exc).__name__.startswith("DecisionRuntime") or type(
+                exc
+            ).__name__ in {
+                "DecisionRuntimeCancelled",
+                "CancelledError",
+                "CancellationError",
+            } or _runtime_cancelled(resolved.cancellation):
+                raise
             errors.append(f"{type(exc).__name__}: {exc}"[:1000])
 
     fallback_count = max(1, min(desired, limits.max_novel_proposals or 1))

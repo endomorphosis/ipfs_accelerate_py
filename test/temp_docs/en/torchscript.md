@@ -131,7 +131,7 @@ Refer to the [AWS Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/lates
 
 ### Model architectures
 
-BERT-based models - like [DistilBERT](./model_doc/distilbert) or [RoBERTa](./model_doc/roberta) - run best on Inf1 instances for non-generative tasks such as extractive question answering, and sequence or token classification.
+BERT-based models - like [DistilBERT](./model_doc/distilbert.md) or [RoBERTa](./model_doc/roberta.md) - run best on Inf1 instances for non-generative tasks such as extractive question answering, and sequence or token classification.
 
 Text generation can be adapted to run on an Inf1 instance as shown in the [Transformers MarianMT](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/src/examples/pytorch/transformers-marianmt.html) tutorial.
 

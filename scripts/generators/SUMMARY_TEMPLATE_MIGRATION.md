@@ -98,7 +98,7 @@ Templates include methods for each hardware platform:
 
 ## Next Steps
 
-See [NEXT_STEPS.md](../scripts/generators/templates/NEXT_STEPS.md) for detailed next steps, including:
+See [NEXT_STEPS.md](templates/NEXT_STEPS.md) for detailed next steps, including:
 
 1. Fix remaining templates with syntax errors
 2. Improve template placeholder handling

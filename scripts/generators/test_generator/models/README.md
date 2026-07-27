@@ -79,6 +79,6 @@ python run_refactored_test_suite.py --model vision
 ## Documentation
 
 For more information on the refactored test suite:
-- [TEST_REFACTORING_PLAN.md](../../TEST_REFACTORING_PLAN.md): Overall refactoring plan
-- [TEMPLATE_REFACTORING_GUIDE.md](../../template_integration/TEMPLATE_REFACTORING_GUIDE.md): Guide for template integration
-- [TEMPLATE_INTEGRATION_COMPLETED.md](../../template_integration/TEMPLATE_INTEGRATION_COMPLETED.md): Template integration completion report
+- [TEST_REFACTORING_PLAN.md](../../../../test/TEST_REFACTORING_PLAN.md): Overall refactoring plan
+- [TEMPLATE_REFACTORING_GUIDE.md](../../../../test/template_integration/TEMPLATE_REFACTORING_GUIDE.md): Guide for template integration
+- [TEMPLATE_INTEGRATION_COMPLETED.md](../../../../test/template_integration/TEMPLATE_INTEGRATION_COMPLETED.md): Template integration completion report

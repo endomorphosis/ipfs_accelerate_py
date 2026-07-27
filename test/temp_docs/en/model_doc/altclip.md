@@ -77,7 +77,7 @@ encode the text and prepare the images. The following example shows how to get t
 
 <Tip>
 
-This model is based on `CLIPModel`, use it like you would use the original [CLIP](clip).
+This model is based on `CLIPModel`, use it like you would use the original [CLIP](clip.md).
 
 </Tip>
 

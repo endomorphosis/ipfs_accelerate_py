@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The X-MOD model was proposed in [Lifting the Curse of Multilinguality by Pre-training Modular Transformers](http://dx.doi.org/10.18653/v1/2022.naacl-main.255) by Jonas Pfeiffer, Naman Goyal, Xi Lin, Xian Li, James Cross, Sebastian Riedel, and Mikel Artetxe.
-X-MOD extends multilingual masked language models like [XLM-R](xlm-roberta) to include language-specific modular components (_language adapters_) during pre-training. For fine-tuning, the language adapters in each transformer layer are frozen.
+X-MOD extends multilingual masked language models like [XLM-R](xlm-roberta.md) to include language-specific modular components (_language adapters_) during pre-training. For fine-tuning, the language adapters in each transformer layer are frozen.
 
 The abstract from the paper is the following:
 
@@ -35,7 +35,7 @@ The original code can be found [here](https://github.com/facebookresearch/fairse
 ## Usage tips
 
 Tips:
-- X-MOD is similar to [XLM-R](xlm-roberta), but a difference is that the input language needs to be specified so that the correct language adapter can be activated.
+- X-MOD is similar to [XLM-R](xlm-roberta.md), but a difference is that the input language needs to be specified so that the correct language adapter can be activated.
 - The main models – base and large – have adapters for 81 languages.
 
 ## Adapter Usage
@@ -90,12 +90,12 @@ model.set_default_language("de_DE")
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## XmodConfig
 

@@ -32,22 +32,22 @@ Current status (as of March 17, 2025):
 
 ### Implementation Guides
 
-- [HARDWARE_BENCHMARKING_GUIDE.md](HARDWARE_BENCHMARKING_GUIDE.md) - Hardware benchmarking system
-- [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) - Database architecture and usage
+- [HARDWARE_BENCHMARKING_GUIDE.md](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md) - Hardware benchmarking system
+- [BENCHMARK_DATABASE_GUIDE.md](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md) - Database architecture and usage
 - [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) - Migrating data to the database
 - [WEB_PLATFORM_AUDIO_TESTING_GUIDE.md](WEB_PLATFORM_AUDIO_TESTING_GUIDE.md) - Web platform audio testing
-- [TRAINING_BENCHMARKING_GUIDE.md](TRAINING_BENCHMARKING_GUIDE.md) - Training mode benchmarking
+- [TRAINING_BENCHMARKING_GUIDE.md](../data/benchmarks/TRAINING_BENCHMARKING_GUIDE.md) - Training mode benchmarking
 
 ### Reference Documentation
 
 - [PHASE16_DATABASE_IMPLEMENTATION.md](PHASE16_DATABASE_IMPLEMENTATION.md) - Database implementation details
-- [PHASE16_HARDWARE_IMPLEMENTATION.md](PHASE16_HARDWARE_IMPLEMENTATION.md) - Hardware implementation details
+- [HARDWARE_BENCHMARKING_GUIDE.md](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md) - Hardware implementation and benchmarking details
 - [PHASE16_WEB_DATABASE_INTEGRATION.md](PHASE16_WEB_DATABASE_INTEGRATION.md) - Web platform database integration
 - [QUALCOMM_POWER_METRICS_GUIDE.md](QUALCOMM_POWER_METRICS_GUIDE.md) - Qualcomm power metrics guide
 
 ### Integration Documentation
 
-- [WEB_PLATFORM_INTEGRATION_SUMMARY.md](WEB_PLATFORM_INTEGRATION_SUMMARY.md) - Web platform integration summary
+- [WEB_PLATFORM_IMPLEMENTATION_SUMMARY.md](WEB_PLATFORM_IMPLEMENTATION_SUMMARY.md) - Web platform integration summary
 - [WEB_PLATFORM_INTEGRATION_GUIDE.md](WEB_PLATFORM_INTEGRATION_GUIDE.md) - Web platform integration guide
 
 ## Core Components

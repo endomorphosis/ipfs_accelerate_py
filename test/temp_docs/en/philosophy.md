@@ -27,8 +27,8 @@ The library was designed with two strong goals in mind:
 1. Be as easy and fast to use as possible:
 
   - We strongly limited the number of user-facing abstractions to learn, in fact, there are almost no abstractions,
-    just three standard classes required to use each model: [configuration](main_classes/configuration),
-    [models](main_classes/model), and a preprocessing class ([tokenizer](main_classes/tokenizer) for NLP, [image processor](main_classes/image_processor) for vision, [feature extractor](main_classes/feature_extractor) for audio, and [processor](main_classes/processors) for multimodal inputs).
+    just three standard classes required to use each model: [configuration](main_classes/configuration.md),
+    [models](main_classes/model.md), and a preprocessing class ([tokenizer](main_classes/tokenizer.md) for NLP, [image processor](main_classes/image_processor.md) for vision, [feature extractor](main_classes/feature_extractor.md) for audio, and [processor](main_classes/processors.md) for multimodal inputs).
   - All of these classes can be initialized in a simple and unified way from pretrained instances by using a common
     `from_pretrained()` method which downloads (if needed), caches and
     loads the related class instance and associated data (configurations' hyperparameters, tokenizers' vocabulary,
@@ -66,7 +66,7 @@ The library is built around three types of classes for each model:
 
 - **Model classes** can be PyTorch models ([torch.nn.Module](https://pytorch.org/docs/stable/nn.html#torch.nn.Module)), Keras models ([tf.keras.Model](https://www.tensorflow.org/api_docs/python/tf/keras/Model)) or JAX/Flax models ([flax.linen.Module](https://flax.readthedocs.io/en/latest/api_reference/flax.linen/module.html)) that work with the pretrained weights provided in the library.
 - **Configuration classes** store the hyperparameters required to build a model (such as the number of layers and hidden size). You don't always need to instantiate these yourself. In particular, if you are using a pretrained model without any modification, creating the model will automatically take care of instantiating the configuration (which is part of the model).
-- **Preprocessing classes** convert the raw data into a format accepted by the model. A [tokenizer](main_classes/tokenizer) stores the vocabulary for each model and provide methods for encoding and decoding strings in a list of token embedding indices to be fed to a model. [Image processors](main_classes/image_processor) preprocess vision inputs, [feature extractors](main_classes/feature_extractor) preprocess audio inputs, and a [processor](main_classes/processors) handles multimodal inputs.
+- **Preprocessing classes** convert the raw data into a format accepted by the model. A [tokenizer](main_classes/tokenizer.md) stores the vocabulary for each model and provide methods for encoding and decoding strings in a list of token embedding indices to be fed to a model. [Image processors](main_classes/image_processor.md) preprocess vision inputs, [feature extractors](main_classes/feature_extractor.md) preprocess audio inputs, and a [processor](main_classes/processors.md) handles multimodal inputs.
 
 All these classes can be instantiated from pretrained instances, saved locally, and shared on the Hub with three methods:
 

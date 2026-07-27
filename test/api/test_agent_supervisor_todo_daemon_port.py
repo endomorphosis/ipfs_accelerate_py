@@ -1216,6 +1216,72 @@ def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
     assert "wallet_interface/ui/tracked.css" not in paths
 
 
+def test_validation_prunes_unchanged_start_context_after_daemon_restart(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "baseline")
+
+    initial = repo / "docs" / "architecture" / "initial-context.md"
+    initial.parent.mkdir(parents=True)
+    initial.write_text("available at task start\n", encoding="utf-8")
+    changed = repo / "docs" / "architecture" / "changed-context.md"
+    changed.write_text("available at task start\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    state_path = tmp_path / "state" / "task_state.json"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    events_path = tmp_path / "state" / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_path,
+        strategy_path=strategy_path,
+        events_path=events_path,
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+    worktree = worktree_root / "attempt"
+    branch = "implementation/context-snapshot"
+
+    daemon._create_seeded_worktree(worktree, branch)
+    assert (worktree / initial.relative_to(repo)).read_text(encoding="utf-8") == (
+        "available at task start\n"
+    )
+    changed_in_worktree = worktree / changed.relative_to(repo)
+    changed_in_worktree.write_text("changed by implementation\n", encoding="utf-8")
+
+    late = repo / "docs" / "architecture" / "late-concurrent-context.md"
+    late.write_text("created by another lane\n", encoding="utf-8")
+    restarted_daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_path,
+        strategy_path=strategy_path,
+        events_path=events_path,
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+    restarted_daemon._prepare_worktree_for_validation(worktree, branch_name=branch)
+
+    assert not (worktree / late.relative_to(repo)).exists()
+    assert not (worktree / initial.relative_to(repo)).exists()
+    assert changed_in_worktree.read_text(encoding="utf-8") == "changed by implementation\n"
+    status = _git(worktree, "status", "--short", "--untracked-files=all")
+    assert status.splitlines() == ["?? docs/architecture/changed-context.md"]
+    assert not restarted_daemon.worktree_context_snapshot_path.exists()
+    cleanup = restarted_daemon._cleanup_merged_worktree(worktree, branch)
+    assert cleanup["cleaned"] is True
+
+
 def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6530,14 +6596,42 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     captured: dict[str, object] = {}
     hostile_bin = tmp_path / "hostile-bin"
     hostile_bin.mkdir()
+    hostile_home = tmp_path / "hostile-home"
+    hostile_home.mkdir()
     monkeypatch.setenv("BASH_ENV", str(tmp_path / "hostile-bash-env"))
     monkeypatch.setenv("ENV", str(tmp_path / "hostile-env"))
+    monkeypatch.setenv("HOME", str(hostile_home))
     monkeypatch.setenv("VALIDATION_SECRET", "must-not-leak")
     monkeypatch.setenv("PATH", f"{hostile_bin}{os.pathsep}{os.environ['PATH']}")
 
     def fake_run(*args, **kwargs):
+        if "env" not in kwargs:
+            return subprocess.CompletedProcess(
+                args=args[0],
+                returncode=1,
+                stdout="",
+                stderr="",
+            )
         captured["args"] = args
         captured["kwargs"] = kwargs
+        environment = kwargs["env"]
+        validation_home = Path(environment["HOME"])
+        captured["validation_home"] = validation_home
+        captured["home_existed_during_run"] = validation_home.is_dir()
+        captured["home_mode_during_run"] = validation_home.stat().st_mode & 0o777
+        captured["xdg_dirs_existed_during_run"] = all(
+            Path(environment[key]).is_dir()
+            for key in (
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_STATE_HOME",
+            )
+        )
+        (validation_home / "writable-state").write_text(
+            "ok\n",
+            encoding="utf-8",
+        )
         return subprocess.CompletedProcess(args=args[0], returncode=0)
 
     monkeypatch.setattr(
@@ -6579,6 +6673,11 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     environment = captured["kwargs"]["env"]
     assert isinstance(environment, dict)
     assert hostile_bin.as_posix() not in environment["PATH"].split(os.pathsep)
+    assert Path(environment["HOME"]) != hostile_home
+    assert captured["home_existed_during_run"] is True
+    assert captured["home_mode_during_run"] == 0o700
+    assert captured["xdg_dirs_existed_during_run"] is True
+    assert not Path(captured["validation_home"]).exists()
     assert not {"BASH_ENV", "ENV", "VALIDATION_SECRET"} & set(environment)
 
 
@@ -7622,6 +7721,42 @@ def test_parse_task_file_preserves_quoted_validation_semicolons(tmp_path):
     task = parse_task_file(todo_path, task_header_prefix="## ACCEL-")[0]
 
     assert task.validation == [inline_python, "test -f src/config.yml"]
+
+
+def test_parse_task_file_keeps_mixed_lane_metadata_isolated(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text(
+        """# Shared taskboard
+
+## ACCEL-001 Accelerate task
+
+- Status: todo
+- Track: accelerate
+- Validation: python validate.py --track accelerate
+
+## DATA-001 Datasets task
+
+- Status: todo
+- Track: datasets
+- Validation: python validate.py --track datasets
+
+## ACCEL-002 Second accelerate task
+
+- Status: todo
+- Track: accelerate
+- Validation: python validate.py --track accelerate --path README.md
+""",
+        encoding="utf-8",
+    )
+
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+
+    assert [task.task_id for task in tasks] == ["ACCEL-001", "ACCEL-002"]
+    assert tasks[0].track == "accelerate"
+    assert tasks[0].validation == ["python validate.py --track accelerate"]
+    assert tasks[1].validation == [
+        "python validate.py --track accelerate --path README.md"
+    ]
 
 
 def test_implementation_daemon_clears_active_task_when_finished(tmp_path):
@@ -12591,8 +12726,14 @@ def test_implementation_prompt_can_disable_unavailable_subagents(monkeypatch, tm
 
     prompt = daemon._build_implementation_prompt(task, attempt=1)
 
-    assert "Do not invoke collaboration or sub-agent tools" in prompt
-    assert "Use sub-agents or parallel execution" not in prompt
+    capsule = json.loads(prompt)
+    edit_policy = capsule["authority"]["edit_policy"]
+    assert edit_policy["subagents_allowed"] is False
+    assert edit_policy["allowed_paths"] == task.outputs
+    assert all(
+        "Use sub-agents or parallel execution" not in rule
+        for rule in capsule["authority"]["generic_prompt_policy"]
+    )
 
 
 def test_todo_vector_context_binds_reused_display_id_to_canonical_identity(tmp_path):
@@ -12770,22 +12911,22 @@ def test_completion_gap_prompt_authorizes_only_exact_predicted_files(
 
     prompt = daemon._build_implementation_prompt(task, attempt=1)
 
-    assert (
-        "Strict completion-gap edit authorization "
-        "(overrides every general breadth or output instruction):"
-    ) in prompt
-    assert (
-        "ONLY these exact repository-relative files:\n"
-        "- docs/runtime.md\n"
-        "- src/completion_check.py"
-    ) in prompt
-    assert "These are exact file paths, not directory prefixes." in prompt
-    assert (
-        "Task outputs outside that allowlist are control/evidence references and "
-        "are read-only: data/agent_supervisor/discovery/accel-001.md, "
-        "objective-heap.md"
-    ) in prompt
-    assert "do not edit the task board, objective heap, discovery records" in prompt
+    capsule = json.loads(prompt)
+    edit_policy = capsule["authority"]["edit_policy"]
+    assert edit_policy["mode"] == "completion_gap_exact"
+    assert edit_policy["allowed_paths"] == [
+        "docs/runtime.md",
+        "src/completion_check.py",
+    ]
+    assert edit_policy["protected_paths"] == []
+    assert edit_policy["read_only_outputs"] == [
+        "data/agent_supervisor/discovery/accel-001.md",
+        "objective-heap.md",
+    ]
+    assert edit_policy["validation_may_read_other_paths"] is True
+    assert edit_policy["operator_directive"] == ""
+    assert capsule["scope"]["allowed_edit_paths"] == edit_policy["allowed_paths"]
+    assert capsule["scope"]["expected_outputs"] == task.outputs
 
 
 def test_completion_gap_without_precise_targets_is_not_executed(tmp_path):
@@ -15820,6 +15961,74 @@ def test_implementation_supervisor_cleans_merged_backlogged_worktrees(tmp_path):
         check=False,
     )
     assert branch_exists.returncode != 0
+
+
+def test_implementation_supervisor_keeps_peer_lane_active_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+
+    branch = "implementation/peer-active"
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "peer-active"
+    _git(repo, "branch", branch)
+    _git(repo, "worktree", "add", str(worktree_path), branch)
+    (worktree_path / "feature.py").write_text(
+        "VALUE = 'candidate'\n",
+        encoding="utf-8",
+    )
+
+    shared_state_root = repo / "state"
+    own_state_dir = shared_state_root / "lane-0"
+    peer_state_dir = shared_state_root / "lane-1"
+    own_state_dir.mkdir(parents=True)
+    peer_state_dir.mkdir(parents=True)
+    peer_state_path = peer_state_dir / "lane_1_task_state.json"
+    TodoTaskState(
+        active_task_id="ACCEL-PEER",
+        active_task_title="Peer candidate",
+        active_attempt=1,
+        active_phase="validating",
+        active_worktree_path=str(worktree_path),
+        active_branch=branch,
+        implementation_in_progress=True,
+    ).save(peer_state_path)
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=own_state_dir / "lane_0_task_state.json",
+            strategy_path=own_state_dir / "strategy.json",
+            events_path=own_state_dir / "events.jsonl",
+            state_dir=own_state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 0
+    peer_skip = next(
+        item
+        for item in result["skipped"]
+        if item["reason"] == "active_peer_state_worktree"
+    )
+    assert peer_skip["owner_task_id"] == "ACCEL-PEER"
+    assert peer_skip["owner_state_path"] == str(peer_state_path)
+    assert worktree_path.exists()
+    assert _git(worktree_path, "branch", "--show-current") == branch
+    assert (worktree_path / "feature.py").read_text(encoding="utf-8") == (
+        "VALUE = 'candidate'\n"
+    )
 
 
 def test_implementation_supervisor_cleans_redundant_dirty_merged_worktree(tmp_path):

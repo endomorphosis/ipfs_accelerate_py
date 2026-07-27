@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final
 
 from .formal_verification_contracts import (
@@ -38,7 +39,7 @@ from .prover_matrix_registry import (
     _default_command_runner as _bounded_command_runner,
 )
 
-AUTHORIZATION_LOGIC_VERSION: Final = 1
+AUTHORIZATION_LOGIC_VERSION: Final = 2
 PRINCIPAL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/principal@1"
 AUTHORIZATION_GRANT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/authorization-grant@1"
@@ -2150,6 +2151,202 @@ class AuthorizationReport(CanonicalContract):
         return result
 
 
+@dataclass(frozen=True)
+class ControlMutationPolicy:
+    """Authoritative policy snapshot for exact control-plane mutation permits.
+
+    Control contracts deliberately keep permit evidence transport-neutral.
+    This snapshot supplies the missing policy trust boundary: only decisions
+    present in ``permits`` are policy-issued, and their target identities and
+    lease fences must still match the current snapshot at dispatch time.
+    """
+
+    policy_id: str
+    policy_revision: str
+    permits: tuple[Any, ...]
+    current_tree_ids: Mapping[str, str]
+    current_objective_revisions: Mapping[str, str]
+    active_lease_fences: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        from .control_contracts import AuthorizationDecision as ControlDecision
+
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
+        object.__setattr__(
+            self,
+            "policy_revision",
+            _text(self.policy_revision, "policy_revision"),
+        )
+        normalized: list[ControlDecision] = []
+        decision_ids: set[str] = set()
+        for raw in self.permits:
+            if isinstance(raw, ControlDecision):
+                decision = raw
+            elif isinstance(raw, Mapping):
+                decision = ControlDecision.from_dict(raw)
+            else:
+                raise AuthorizationValidationError(
+                    "control mutation permits must be authorization decisions"
+                )
+            if not decision.permitted:
+                raise AuthorizationValidationError(
+                    "control mutation policy cannot register a deny decision"
+                )
+            if (
+                decision.policy_id != self.policy_id
+                or decision.policy_revision != self.policy_revision
+            ):
+                raise AuthorizationValidationError(
+                    "control permit policy binding does not match its snapshot"
+                )
+            if decision.decision_id in decision_ids:
+                raise AuthorizationValidationError(
+                    "control mutation permits must be unique"
+                )
+            decision_ids.add(decision.decision_id)
+            normalized.append(decision)
+        if not normalized:
+            raise AuthorizationValidationError(
+                "control mutation policy must contain at least one permit"
+            )
+        object.__setattr__(
+            self,
+            "permits",
+            tuple(sorted(normalized, key=lambda item: item.decision_id)),
+        )
+        object.__setattr__(
+            self,
+            "current_tree_ids",
+            self._text_map(self.current_tree_ids, "current_tree_ids"),
+        )
+        object.__setattr__(
+            self,
+            "current_objective_revisions",
+            self._text_map(
+                self.current_objective_revisions,
+                "current_objective_revisions",
+            ),
+        )
+        if not isinstance(self.active_lease_fences, Mapping):
+            raise AuthorizationValidationError(
+                "active_lease_fences must be a mapping"
+            )
+        fences: dict[str, int] = {}
+        for raw_lease, raw_epoch in self.active_lease_fences.items():
+            lease = _text(raw_lease, "active lease id")
+            if (
+                isinstance(raw_epoch, bool)
+                or not isinstance(raw_epoch, int)
+                or raw_epoch < 0
+            ):
+                raise AuthorizationValidationError(
+                    "active lease fencing epochs must be non-negative integers"
+                )
+            fences[lease] = raw_epoch
+        object.__setattr__(
+            self,
+            "active_lease_fences",
+            MappingProxyType(dict(sorted(fences.items()))),
+        )
+
+    @staticmethod
+    def _text_map(values: Mapping[str, str], name: str) -> Mapping[str, str]:
+        if not isinstance(values, Mapping):
+            raise AuthorizationValidationError(f"{name} must be a mapping")
+        normalized = {
+            _text(key, f"{name} key"): _text(value, f"{name} value")
+            for key, value in values.items()
+        }
+        return MappingProxyType(dict(sorted(normalized.items())))
+
+    @property
+    def permit_ids(self) -> tuple[str, ...]:
+        return tuple(item.decision_id for item in self.permits)
+
+
+class ControlMutationAuthorizer:
+    """Validate policy provenance and current target/lease state before dispatch."""
+
+    def __init__(
+        self,
+        policy: ControlMutationPolicy
+        | Callable[[Any], ControlMutationPolicy],
+        *,
+        clock_ms: Callable[[], int] | None = None,
+    ) -> None:
+        if not isinstance(policy, ControlMutationPolicy) and not callable(policy):
+            raise TypeError("policy must be a snapshot or policy resolver")
+        self._policy = policy
+        self._clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
+
+    def validate(self, request: Any) -> bool:
+        from .control_contracts import MUTATION_OPERATIONS, OperationRequest
+
+        if not isinstance(request, OperationRequest):
+            raise AuthorizationValidationError(
+                "control authorization requires an OperationRequest"
+            )
+        if request.operation not in MUTATION_OPERATIONS or request.dry_run:
+            return True
+        policy = (
+            self._policy(request)
+            if callable(self._policy)
+            else self._policy
+        )
+        if not isinstance(policy, ControlMutationPolicy):
+            raise AuthorizationValidationError(
+                "control policy resolver returned an invalid snapshot"
+            )
+        decision = request.authorization
+        if decision is None:
+            raise AuthorizationValidationError(
+                "real mutation has no permit decision"
+            )
+        registered = {
+            item.decision_id: item for item in policy.permits
+        }.get(decision.decision_id)
+        if registered is None or registered != decision:
+            raise AuthorizationValidationError(
+                "permit decision was not issued by the current policy"
+            )
+        if (
+            request.policy_id != policy.policy_id
+            or request.policy_revision != policy.policy_revision
+        ):
+            raise AuthorizationValidationError(
+                "request policy revision is stale"
+            )
+        if policy.current_tree_ids.get(request.repository_id) != request.tree_id:
+            raise AuthorizationValidationError(
+                "request repository tree is stale"
+            )
+        if (
+            policy.current_objective_revisions.get(request.objective_id)
+            != request.objective_revision
+        ):
+            raise AuthorizationValidationError(
+                "request objective revision is stale"
+            )
+        if (
+            policy.active_lease_fences.get(request.lease_id)
+            != request.fencing_epoch
+        ):
+            raise AuthorizationValidationError(
+                "request lease is inactive or fencing epoch is stale"
+            )
+        now = self._clock_ms()
+        if decision.evaluated_at_ms > now:
+            raise AuthorizationValidationError(
+                "permit decision is not yet valid"
+            )
+        if decision.expires_at_ms is not None and now >= decision.expires_at_ms:
+            raise AuthorizationValidationError("permit decision has expired")
+        return True
+
+    authorize = validate
+    check = validate
+
+
 class AuthorizationChecker:
     """Run deterministic enforcement even when every external lane is absent."""
 
@@ -2223,6 +2420,50 @@ def check_authorization(
     return AuthorizationChecker(adapters=adapters).evaluate(policy, request)
 
 
+_EXECUTION_PERMIT_EXPORTS: Final[frozenset[str]] = frozenset(
+    {
+        "ExactExecutionPermit",
+        "ExecutionAttempt",
+        "ExecutionEvidence",
+        "ExecutionPermit",
+        "ExecutionPermitAuthorizer",
+        "ExecutionPermitError",
+        "ExecutionPermitIssuer",
+        "ExecutionPermitLedger",
+        "ExecutionPermitRequest",
+        "ExecutionPermitUse",
+        "ExecutionPermitVerifier",
+        "MandatoryEvidenceState",
+        "PermitIssuanceError",
+        "PermitReplayError",
+        "PermitUseLedger",
+        "PermitUseReceipt",
+        "PermitVerificationCode",
+        "PermitVerificationError",
+        "PermitVerificationResult",
+        "issue_execution_permit",
+        "issue_permit",
+        "verify_execution_permit",
+        "verify_permit",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily expose the downstream permit boundary.
+
+    SecurityIR compilation imports this module while the plan-admission module
+    is still initializing.  A lazy export preserves that layering and avoids
+    turning independent policy compilation into a circular dependency.
+    """
+
+    if name in _EXECUTION_PERMIT_EXPORTS:
+        from . import execution_permit
+
+        return getattr(execution_permit, name)
+    raise AttributeError(name)
+
+
 __all__ = [
     "AUTHORIZATION_CONFORMANCE_FIXTURES",
     "AUTHORIZATION_LOGIC_VERSION",
@@ -2252,6 +2493,8 @@ __all__ = [
     "AuthorizationVerdict",
     "Capability",
     "ConformanceStatus",
+    "ControlMutationAuthorizer",
+    "ControlMutationPolicy",
     "DatalogAuthorizationAdapter",
     "DatalogEngineAdapter",
     "DelegationGrant",
@@ -2259,8 +2502,27 @@ __all__ = [
     "EngineCapability",
     "EngineConformanceReceipt",
     "EngineSupportStatus",
+    "ExactExecutionPermit",
+    "ExecutionAttempt",
+    "ExecutionEvidence",
+    "ExecutionPermit",
+    "ExecutionPermitAuthorizer",
+    "ExecutionPermitError",
+    "ExecutionPermitIssuer",
+    "ExecutionPermitLedger",
+    "ExecutionPermitRequest",
+    "ExecutionPermitUse",
+    "ExecutionPermitVerifier",
     "GeneratedCodeCorrectness",
     "LaneStatus",
+    "MandatoryEvidenceState",
+    "PermitIssuanceError",
+    "PermitReplayError",
+    "PermitUseLedger",
+    "PermitUseReceipt",
+    "PermitVerificationCode",
+    "PermitVerificationError",
+    "PermitVerificationResult",
     "PolicyEngine",
     "PolicyEvaluator",
     "PolicyGrant",
@@ -2273,9 +2535,13 @@ __all__ = [
     "check_authorization",
     "default_authorization_fixtures",
     "evaluate_authorization",
+    "issue_execution_permit",
+    "issue_permit",
     "probe_authorization_engines",
     "render_datalog",
     "render_datalog_policy",
     "render_secpal",
     "render_secpal_policy",
+    "verify_execution_permit",
+    "verify_permit",
 ]

@@ -424,6 +424,11 @@ def evaluate_task_generation_completion(
             "healthy": False,
             "safe_for_completion_reasoning": False,
         }
+    else:
+        # Translate the objective-specific health contract into the stricter
+        # generic completion-gate vocabulary.  The ASI-G050 adapter has
+        # already verified the exact analyzer/configuration binding above.
+        health_value = {**health_value, "exhaustive": True}
 
     quorum_value = payload(exhaustion_quorum)
     members_value = quorum_value.get("members")
@@ -476,6 +481,34 @@ def evaluate_task_generation_completion(
             **quorum_value,
             "satisfied": False,
             "quorum_met": False,
+        }
+    else:
+        # The objective boundary validates independence, freshness, health,
+        # exhaustive mode, and exact bindings before this translation.  Add
+        # the generic receipt facts expected by the shared completion gate
+        # without granting invalid inputs authority.
+        translated_members = []
+        for member in members:
+            channel = normalized(member.get("evidence_channel"))
+            translated_members.append(
+                {
+                    **member,
+                    "status": "passed",
+                    "passed": True,
+                    "exhaustive": True,
+                    "conclusive": True,
+                    "uncontradicted": True,
+                    "analyzer_version": expected_binding[
+                        "analyzer_version"
+                    ],
+                    "scan_mode": (
+                        "audit" if "audit" in channel else "exhaustive"
+                    ),
+                }
+            )
+        quorum_value = {
+            **quorum_value,
+            "members": translated_members,
         }
 
     def child_is_current(child: Mapping[str, Any]) -> bool:

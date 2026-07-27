@@ -469,6 +469,6 @@ For more detailed information, refer to the following documentation:
 
 ## References
 
-- [SIMULATION_ACCURACY_VALIDATION_DESIGN.md](/SIMULATION_ACCURACY_VALIDATION_DESIGN.md): Original design document
-- [NEXT_STEPS_BENCHMARKING_PLAN.md](/NEXT_STEPS_BENCHMARKING_PLAN.md): Overall benchmarking plan
-- [NEXT_STEPS.md](/NEXT_STEPS.md): General roadmap and next steps
+- [SIMULATION_ACCURACY_VALIDATION_DESIGN.md](../../SIMULATION_ACCURACY_VALIDATION_DESIGN.md): Original design document
+- [NEXT_STEPS_BENCHMARKING_PLAN.md](../../NEXT_STEPS_BENCHMARKING_PLAN.md): Overall benchmarking plan
+- [NEXT_STEPS.md](../../NEXT_STEPS.md): General roadmap and next steps

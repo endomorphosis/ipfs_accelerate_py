@@ -69,14 +69,14 @@ An example:
 - Available checkpoints can be found in the [model hub](https://huggingface.co/models?search=blenderbot).
 - This is the *default* Blenderbot model class. However, some smaller checkpoints, such as
   `facebook/blenderbot_small_90M`, have a different architecture and consequently should be used with
-  [BlenderbotSmall](blenderbot-small).
+  [BlenderbotSmall](blenderbot-small.md).
 
   
 ## Resources
 
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## BlenderbotConfig
 

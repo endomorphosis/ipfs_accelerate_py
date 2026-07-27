@@ -124,14 +124,14 @@ If you maintain or work with any of these files or other benchmark-related scrip
 
 The following documentation files now reflect this change:
 
-1. [BENCHMARK_DATABASE_GUIDE.md](/home/barberb/ipfs_accelerate_py/test/BENCHMARK_DATABASE_GUIDE.md) - Complete guide to database usage
-2. [DATABASE_MIGRATION_GUIDE.md](/home/barberb/ipfs_accelerate_py/test/DATABASE_MIGRATION_GUIDE.md) - Details on the migration process
-3. [README.md](/home/barberb/ipfs_accelerate_py/test/README.md) - Important notice about benchmark storage
-4. [CLAUDE.md](/home/barberb/ipfs_accelerate_py/test/CLAUDE.md) - Updated benchmark command examples
+1. [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) - Complete guide to database usage
+2. [DATABASE_MIGRATION_GUIDE.md](../../test/DATABASE_MIGRATION_GUIDE.md) - Details on the migration process
+3. [README.md](../../test/README.md) - Important notice about benchmark storage
+4. [CLAUDE.md](../../test/CLAUDE.md) - Updated benchmark command examples
 
 ## Support
 
 If you have questions about the database system or need help migrating your code, refer to:
 
-- [BENCHMARK_DATABASE_GUIDE.md](/home/barberb/ipfs_accelerate_py/test/BENCHMARK_DATABASE_GUIDE.md) - Comprehensive database documentation
-- [DATABASE_MIGRATION_GUIDE.md](/home/barberb/ipfs_accelerate_py/test/DATABASE_MIGRATION_GUIDE.md) - Migration process details
+- [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) - Comprehensive database documentation
+- [DATABASE_MIGRATION_GUIDE.md](../../test/DATABASE_MIGRATION_GUIDE.md) - Migration process details

@@ -56,7 +56,7 @@ There are two ways you can load an image processor, with [`AutoImageProcessor`] 
 <hfoptions id="image-processor-classes">
 <hfoption id="AutoImageProcessor">
 
-The [AutoClass](./model_doc/auto) API provides a convenient method to load an image processor without directly specifying the model the image processor is associated with.
+The [AutoClass](./model_doc/auto.md) API provides a convenient method to load an image processor without directly specifying the model the image processor is associated with.
 
 Use [`~AutoImageProcessor.from_pretrained`] to load an image processor, and set `use_fast=True` to load a fast image processor if it's supported.
 
@@ -205,7 +205,7 @@ For other vision tasks like object detection or segmentation, the image processo
 
 ### Padding
 
-Some models, like [DETR](./model_doc/detr), applies [scale augmentation](https://paperswithcode.com/method/image-scale-augmentation) during training which can cause images in a batch to have different sizes. Images with different sizes can't be batched together.
+Some models, like [DETR](./model_doc/detr.md), applies [scale augmentation](https://paperswithcode.com/method/image-scale-augmentation) during training which can cause images in a batch to have different sizes. Images with different sizes can't be batched together.
 
 To fix this, pad the images with the special padding token `0`. Use the [pad](https://github.com/huggingface/transformers/blob/9578c2597e2d88b6f0b304b5a05864fd613ddcc1/src/transformers/models/detr/image_processing_detr.py#L1151) method to pad the images, and define a custom collate function to batch them together.
 

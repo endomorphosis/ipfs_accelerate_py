@@ -4,6 +4,16 @@ This objective heap is the durable source of intent for the self-improvement
 program. The companion todo board is an executable projection. A drained board
 does not complete these goals without fresh, bound validation evidence.
 
+`ASI-G000` through `ASI-G115` retain the generation-1 lifecycle and closed
+population rules. The independent `ASI-G200` tree defines generation 2 and
+must not be inserted into, substituted for, or used to narrow a generation-1
+producer or child population.
+
+The independent `ASI-G300` tree defines the proof-directed decision-runtime
+integration. It reuses generation-1 and generation-2 contracts, but its
+producer and child populations are separately closed so it does not
+retroactively narrow or expand either earlier completion population.
+
 Child-goal evidence entries are stable opaque receipt requirement IDs. The
 current scanner must treat them as missing until a qualifying source emits the
 exact ID; their presence in this objective heap is never evidence. ASI-003
@@ -1290,3 +1300,379 @@ receipt instead of accepting textual or embedding similarity as completion.
 - State transitioned at: 2026-07-25T05:38:02.324084+00:00
 - State transition reason: Produce completion evidence for: A persisted failed refinement attempt starts a finite policy-bounded retry window; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
 - Provisional at: 2026-07-25T05:38:02.324084+00:00
+
+## ASI-G200 Evidence-efficient self-optimizing supervisor, generation 2
+
+- Status: active
+- Parent:
+- Depends on:
+- Fib priority: 1
+- Track: self-improvement-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/root
+- Goal: Convert the mature generation-1 components into one causally measured, event-driven supervisor that minimizes model reasoning per accepted criterion, outsources bounded software reasoning safely, plans and validates better, scales independent work, exposes one control contract, and refills itself only from measured novel residuals.
+- Closed producer population: ASI-092, ASI-093, ASI-094, ASI-095, ASI-096, ASI-097, ASI-098, ASI-099, ASI-100, ASI-101, ASI-102, ASI-103, ASI-104, ASI-105, ASI-106, ASI-107, ASI-108, ASI-109, ASI-110, ASI-111, ASI-112, ASI-113, ASI-114, ASI-115, ASI-116, ASI-117, ASI-118, ASI-119, ASI-120, ASI-121, ASI-122, ASI-123
+- Direct children: ASI-G210, ASI-G220, ASI-G230, ASI-G240, ASI-G250, ASI-G260, ASI-G270, ASI-G280, ASI-G290
+- Evidence: supervisor_v2_benchmark.V2_PAIRED_BASELINE_REQUIREMENT_ID, supervisor_v2_contracts.V2_CONTRACT_INTEGRITY_REQUIREMENT_ID, self_improvement_v2_rollout.V2_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: The exact ASI-092 through ASI-123 producer population is terminal-successful on the current tree; the exact ASI-G210 through ASI-G290 child population is freshly verified with conclusive proof and complete criterion coverage; the complete non-narrowable v2 paired population passes every non-compensable and quantitative gate; a later separate evaluation confirms the still-current tree, policy, capabilities, operation catalog, and storage policy before automatic operation.
+- Evidence source policy: Plans, objectives, todo status, generated discovery prose, model confidence, provider claims, cache summaries, process exit, and a drained board are non-authoritative. Completion requires fresh current-tree producer-owned typed receipts, exact criterion-to-implementation-and-validation coverage, explicit completion-safe analyzer health, independent exhaustive evidence, and the closed rollout report recomputed from its complete fixture population. A failed safety, authority, freshness, escaped-defect, artifact-bound, idempotency, or population gate cannot be compensated by another score.
+- Outputs: docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_V2_PLAN.md, docs/architecture/agent_supervisor_self_improvement.todo.md, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/self_improvement_v2_rollout.py
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_v2_rollout.py test/api/test_agent_supervisor_v2_public_api.py -q
+- Acceptance: All nine direct child goals have fresh current-tree evidence; every exact v2 producing task is terminally accepted; the closed paired population satisfies every safety and quantitative gate; Python, CLI, and MCP agree; drained-board idle work and unchanged writes satisfy their bounds; refill is bounded and idempotent; generation-1 compatibility remains green; and any later regression returns affected behavior to shadow.
+- Gap task: Implement the highest-priority unmet child criterion without weakening generation-1 contracts or creating a duplicate semantic task.
+- Refinement: Preserve the nine workstream partition. Refine inside a child from a typed benchmark residual or uncovered criterion, and add a new direct child only through an explicit objective revision that also updates the closed v2 completion population.
+- Embedding query: generation two agent supervisor causal tokens software reasoning planning validation cache parallel goals tasks bundles control event driven bounded refill
+- AST query: V2PairedBenchmark V2SupervisorContract V2SelfImprovementEpoch V2RolloutDecision
+
+## ASI-G210 Causal token efficiency and prefix-stable context
+
+- Status: active
+- Parent: ASI-G200
+- Depends on:
+- Fib priority: 2
+- Track: token-efficiency-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/context
+- Goal: Attribute all model cost to terminal accepted criteria and compile the smallest decision-changing context while maximizing valid provider prefix reuse.
+- Producing tasks: ASI-094, ASI-095, ASI-096
+- Evidence: supervisor_token_ledger.ACCEPTED_CRITERION_TOKEN_REQUIREMENT_ID, context_compiler.PREFIX_REUSE_REQUIREMENT_ID, context_compiler.VALUE_OF_INFORMATION_REQUIREMENT_ID
+- Evidence criteria: Lifecycle token accounting is population-complete and charges rejected work; stable prefixes preserve required authority and invalidate on every semantic dependency; value-of-information selection and bounded expansion reduce tokens without reducing required evidence.
+- Evidence source policy: Token estimates, prompt length, cache configuration, and task completion are diagnostic only. Qualifying evidence is a provider-tokenizer or calibrated typed ledger joined to terminal accepted criteria plus fresh paired prefix and evidence-selection receipts on the current tree and provider envelope.
+- Outputs: ipfs_accelerate_py/agent_supervisor/supervisor_token_ledger.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, ipfs_accelerate_py/agent_supervisor/analysis_retrieval.py
+- Validation: python -m pytest test/api/test_agent_supervisor_token_ledger.py test/api/test_agent_supervisor_prefix_context.py test/api/test_agent_supervisor_evidence_value.py -q
+- Acceptance: Median input tokens per accepted criterion fall by at least 40 percent and retry-input tokens by at least 60 percent; at least 70 percent of eligible stable-prefix tokens are reused on warm fixtures; required evidence coverage and safety do not regress; and semantic dependency changes cause exact invalidation.
+- Gap task: Repair the unmet attribution, prefix-reuse, or evidence-value criterion with the smallest current-tree-bound change.
+- Refinement: Keep token accounting, prefix layout, and evidence selection as separate sequential concerns because they share the context contract but have distinct evidence producers.
+- Embedding query: provider tokenizer token ledger accepted criterion prompt cache kv cache stable prefix value information evidence expansion
+- AST query: SupervisorTokenLedger ContextCompiler ContextCapsule EvidenceSelectionDecision
+
+## ASI-G220 Software-first analysis and ipfs_datasets reasoning fabric
+
+- Status: active
+- Parent: ASI-G200
+- Depends on:
+- Fib priority: 2
+- Track: analysis-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/analysis
+- Goal: Route reusable AST, GraphRAG, premise, legal/logic, and proof-candidate reasoning through one bounded local and optional ipfs_datasets_py operation fabric.
+- Producing tasks: ASI-097, ASI-098, ASI-099
+- Evidence: analysis_transport.ASYNC_TRANSPORT_REQUIREMENT_ID, analysis_operation_registry.OPERATION_REGISTRY_REQUIREMENT_ID, analysis_consensus.PROVENANCE_DISAGREEMENT_REQUIREMENT_ID
+- Evidence criteria: Capability discovery and dispatch are lazy, bounded, cancellable, and fallback-safe; all required analysis families have typed local and optional provider routes; provenance, disagreement, uncertainty, and non-authority survive normalization and caching.
+- Evidence source policy: Provider confidence, generated text, retrieval similarity, and a successful RPC are proposal-tier only. Evidence must be a fresh producer-owned typed operation receipt with exact tree, capability, policy, provenance, bounds, result references, fallback or disagreement state, and independent validation where required.
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis_transport.py, ipfs_accelerate_py/agent_supervisor/analysis_operation_registry.py, ipfs_accelerate_py/agent_supervisor/analysis_consensus.py, ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py
+- Validation: python -m pytest test/api/test_agent_supervisor_analysis_transport.py test/api/test_agent_supervisor_analysis_operation_registry.py test/api/test_agent_supervisor_analysis_consensus.py -q
+- Acceptance: At least 70 percent of eligible repeated analysis is reused or offloaded; every timeout, disagreement, capability change, and fallback is typed and bounded; local deterministic fallback remains available; no provider gains mutation, proof, merge, or completion authority; and TDFOL, DCEC, FLogic, modal/deontic, frame, KG, and event-calculus families remain distinguishable.
+- Gap task: Close the highest-value missing operation, provenance, disagreement, cancellation, or fallback criterion without broadening provider authority.
+- Refinement: Split transport, operation population, and result reconciliation so optional-provider work can evolve without destabilizing core orchestration.
+- Embedding query: ipfs datasets software reasoning AST GraphRAG premise selection contradiction legal logic proof candidate provenance disagreement fallback
+- AST query: AnalysisTransport AnalysisOperationRegistry AnalysisConsensusReceipt IPFSDatasetsAnalysisProvider
+
+## ASI-G230 Constraint-based planning and responsive goals
+
+- Status: active
+- Parent: ASI-G200
+- Depends on: ASI-G210, ASI-G220
+- Fib priority: 3
+- Track: planning-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/planning
+- Goal: Compile high-quality typed goals into bounded hard-constrained alternatives and refine only the affected plan or goal suffix when meaningful evidence changes.
+- Producing tasks: ASI-103, ASI-104, ASI-105, ASI-106
+- Evidence: goal_quality.GOAL_GRAMMAR_REQUIREMENT_ID, adaptive_planner.AND_OR_SEARCH_REQUIREMENT_ID, plan_failure_memory.DELTA_REPLAN_REQUIREMENT_ID, adaptive_goal_refiner.EVENT_REFINEMENT_REQUIREMENT_ID
+- Evidence criteria: Goals are linted for outcome, scope, assumptions, acceptance, evidence, freshness, resources, uncertainty, and refinement bounds; AND/OR search always includes a deterministic baseline and prunes every hard violation; counterexamples invalidate only dependent plan suffixes; unchanged events cause no planning call or objective write.
+- Evidence source policy: A plausible plan, model explanation, high composite score, or changed objective prose is non-authoritative. Evidence is a fresh typed plan/refinement receipt whose complete candidate population, hard-constraint decisions, frozen root, dependency graph, changed evidence, independent validation, and bounded cost revalidate.
+- Outputs: ipfs_accelerate_py/agent_supervisor/goal_quality.py, ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, ipfs_accelerate_py/agent_supervisor/plan_failure_memory.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_goal_quality.py test/api/test_agent_supervisor_and_or_planner.py test/api/test_agent_supervisor_delta_replanning.py test/api/test_agent_supervisor_event_goal_refinement.py -q
+- Acceptance: First-valid-plan rate improves by at least 15 percentage points or invalid branches fall by at least 25 percent; no hard constraint is violated; changed counterexamples or capabilities trigger one bounded affected-suffix replan; unchanged failures back off; and polls without semantic change consume no planning tokens or objective writes.
+- Gap task: Repair the highest-impact goal-quality, hard-constraint, branch-memory, or event-refinement residual identified by the paired benchmark.
+- Refinement: Keep goal linting independent, then serialize search, delta replanning, and objective refinement where their state transitions depend on the previous contract.
+- Embedding query: goal grammar uncertainty debt AND OR search hard constraints plan branches counterexample delta replanning event refinement
+- AST query: GoalQualityReport AdaptivePlanner PlanEvaluator PlanFailureMemory AdaptiveGoalRefiner
+
+## ASI-G240 Hermetic output, semantic, proof, and merge validation
+
+- Status: active
+- Parent: ASI-G200
+- Depends on: ASI-G220
+- Fib priority: 3
+- Track: validation-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/validation
+- Goal: Reject untrusted or semantically insufficient changes early and grant authority only from complete hermetic validation and post-merge current-tree evidence.
+- Producing tasks: ASI-107, ASI-108, ASI-109
+- Evidence: proposal_validation.UNTRUSTED_PROPOSAL_REQUIREMENT_ID, validation_runtime.HERMETIC_VALIDATION_REQUIREMENT_ID, code_evidence_graph.POST_MERGE_EVIDENCE_REQUIREMENT_ID
+- Evidence criteria: Output, patch, path, authority, and repository boundaries fail closed before expensive work; impact, differential, metamorphic, mutation, flaky, semantic, logic, proof, and protocol checks execute as a complete hermetic DAG; only the merged-tree evidence assembler can open merge and completion authority.
+- Evidence source policy: Provider claims, pre-merge success, one passing command, intermittent passes, omitted DAG nodes, and detached proof candidates are non-authoritative. Qualifying evidence is a fresh complete typed receipt from each owner, bound to the exact candidate and merged trees, environment, selected population, executed results, acceptance coverage, and authority closure.
+- Outputs: ipfs_accelerate_py/agent_supervisor/proposal_validation.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_runtime.py, ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py, ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py, ipfs_accelerate_py/agent_supervisor/merge_train.py
+- Validation: python -m pytest test/api/test_agent_supervisor_untrusted_proposal.py test/api/test_agent_supervisor_hermetic_validation.py test/api/test_agent_supervisor_post_merge_evidence.py -q
+- Acceptance: Zero seeded defects, path escapes, forged authority, validation omissions, stale receipts, or contradictory proofs escape; median time to first useful failure is at least 30 percent lower; flaky outcomes never grant authority; and every accepted criterion maps to fresh merged-tree implementation, validation, semantic/proof, and merge evidence.
+- Gap task: Add the smallest producer or adversarial fixture needed to close the highest-risk uncovered validation or authority criterion.
+- Refinement: Preserve fail-fast proposal admission, hermetic execution, and post-merge evidence assembly as distinct dependency-ordered authority owners.
+- Embedding query: untrusted output patch path authority hermetic impact differential mutation flaky semantic theorem proof merged tree evidence
+- AST query: ProposalValidationReceipt ValidationDAGReceipt HermeticValidationRuntime CodeEvidenceGraph CompletionAdmissionGate
+
+## ASI-G250 Tiered content-addressed caching and bounded persistence
+
+- Status: active
+- Parent: ASI-G200
+- Depends on:
+- Fib priority: 2
+- Track: cache-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/cache
+- Goal: Reuse every semantically identical expensive result once, invalidate exactly affected descendants, and keep all state, events, receipts, and artifacts durably bounded.
+- Producing tasks: ASI-100, ASI-101, ASI-102
+- Evidence: runtime_cas.DEPENDENCY_CAS_REQUIREMENT_ID, cache_coordinator.DISTRIBUTED_SINGLEFLIGHT_REQUIREMENT_ID, artifact_store.BOUNDED_PERSISTENCE_REQUIREMENT_ID
+- Evidence criteria: Tiered cache records preserve namespace authority and complete semantic dependencies; fenced single-flight collapses identical misses without stale publication; receipts, projections, payloads, retention, and compaction satisfy hard byte and recovery bounds.
+- Evidence source policy: A cache-hit flag, matching title, advisory provider key, or state-file presence is non-authoritative. Evidence is a live cache/store/coordinator receipt that revalidates key dependencies, producer authority, lease and fencing state, content identity, freshness, quotas, and current-tree admissibility.
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, ipfs_accelerate_py/agent_supervisor/lease_coordination.py, ipfs_accelerate_py/agent_supervisor/artifact_store.py, ipfs_accelerate_py/agent_supervisor/event_log.py
+- Validation: python -m pytest test/api/test_agent_supervisor_runtime_cas.py test/api/test_agent_supervisor_distributed_singleflight.py test/api/test_agent_supervisor_bounded_persistence.py -q
+- Acceptance: Warm exact reuse is at least 80 percent and duplicate-miss collapse at least 60 percent; stale authoritative hits are zero; receipts are at most 256 KiB and routine projections at most 1 MiB; payload graphs are referenced rather than duplicated; compaction and corruption recovery preserve identities; and aggregate storage remains within policy.
+- Gap task: Repair the highest-cost cache miss, stale dependency, duplicate computation, payload duplication, retention, or recovery residual without collapsing authority namespaces.
+- Refinement: Separate CAS dependency modeling, lease coordination, and storage lifecycle because they have different failure and authority boundaries.
+- Embedding query: tiered content addressed cache semantic dependency invalidation distributed single flight lease bounded receipt artifact retention compaction
+- AST query: RuntimeCAS CacheCoordinator LeaseCoordinator ArtifactStore EventLog
+
+## ASI-G260 Measured task granularity and adaptive parallel runtime
+
+- Status: active
+- Parent: ASI-G200
+- Depends on: ASI-G230, ASI-G240, ASI-G250
+- Fib priority: 5
+- Track: parallelism-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/runtime
+- Goal: Convert acceptance criteria into cost-calibrated tasks and conflict-aware bundles, then saturate useful local or distributed capacity without duplicate work or merge instability.
+- Producing tasks: ASI-110, ASI-111, ASI-112, ASI-113
+- Evidence: task_quality.MEASURED_GRANULARITY_REQUIREMENT_ID, bundle_optimizer.BUNDLE_PLAN_V2_REQUIREMENT_ID, resource_scheduler.STAGE_SCHEDULER_V2_REQUIREMENT_ID, bundle_supervisor.DISTRIBUTED_LANE_REQUIREMENT_ID
+- Evidence criteria: Task split/coalesce decisions preserve exact acceptance coverage and semantic identity; bundles preserve dependency width and serialize only real conflicts; stage scheduling adapts with fairness and backpressure; optional distributed lanes remain fenced, deduplicated, capability-bound, and merge-gated.
+- Evidence source policy: Configured worker count, CPU utilization, queued tasks, or a remote completion message is non-authoritative. Evidence is a fresh typed task, bundle, scheduler, lease, and merge receipt over the complete canonical task population with exact effects, resources, execution ownership, validation, and terminal accepted results.
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/bundle_supervisor.py, ipfs_accelerate_py/agent_supervisor/merge_train.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_granularity.py test/api/test_agent_supervisor_bundle_optimizer_v2.py test/api/test_agent_supervisor_stage_scheduler_v2.py test/api/test_agent_supervisor_distributed_lanes.py -q
+- Acceptance: Independent work achieves at least 3x one-lane accepted throughput with less than 5 percent duplicate compute, stable memory and disk, no conflict or escaped-defect regression, no starvation, exact acceptance coverage, fewer model calls per accepted criterion, and deterministic fallback when distributed capacity is absent.
+- Gap task: Close the measured task, bundle, scheduler, provider-batch, lease, distributed-worker, or merge-pressure bottleneck with an exact paired fixture.
+- Refinement: Preserve task sizing, bundle optimization, local stage scheduling, and distributed execution as separate layers joined by canonical identities and receipts.
+- Embedding query: task granularity split coalesce acceptance bundle conflict graph critical path work stealing batching backpressure distributed lane merge train
+- AST query: TaskQualityPolicy BundleOptimizer ResourceScheduler ProviderBatchScheduler BundleSupervisor MergeTrain
+
+## ASI-G270 Catalog-driven Python, CLI, and MCP control
+
+- Status: active
+- Parent: ASI-G200
+- Depends on:
+- Fib priority: 2
+- Track: control-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/control
+- Goal: Make every supported supervisor read, proposal, and mutation operation discoverable and behaviorally identical through Python, CLI, and MCP under one authorization and transaction policy.
+- Producing tasks: ASI-114, ASI-115, ASI-116
+- Evidence: control_contracts.OPERATION_CATALOG_V2_REQUIREMENT_ID, control_plane.CONTROL_CONFORMANCE_V2_REQUIREMENT_ID, authorization_logic.MUTATION_TRANSACTION_REQUIREMENT_ID
+- Evidence criteria: One catalog owns schemas, capabilities, bounds, authority, target, cursor, dry-run, idempotency, lease, fencing, and audit semantics; all three transports pass the same fixtures; every mutation is target-bound, authorized, previewable, idempotent, fenced, and recoverable.
+- Evidence source policy: A documented command, imported symbol, MCP tool name, successful dry-run, or possession of a path is non-authoritative. Evidence is a fresh catalog-conformance and mutation-transaction receipt from the shared service over the exact operation population and transport effects.
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/agent_supervisor/authorization_logic.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py
+- Validation: python -m pytest test/api/test_agent_supervisor_control_catalog.py test/api/test_agent_supervisor_control_conformance_v2.py test/api/test_agent_supervisor_control_transactions.py -q
+- Acceptance: Python, CLI, and MCP expose exactly the cataloged operations and produce canonical equivalent results and effects; discovery and imports are side-effect-free; every mutation enforces authorization, roots, expected effects, idempotency, lease, fencing, compare-and-swap revision, audit, and repair; and no transport-specific bypass exists.
+- Gap task: Repair the smallest missing catalog declaration, adapter parity case, authorization boundary, transaction, cursor, or idempotency failure.
+- Refinement: Land the provider-free catalog first, transport parity second, and real mutation policy last to keep discovery separate from authority.
+- Embedding query: supervisor control capability catalog Python CLI MCP schema parity event cursor authorization dry run idempotency transaction lease fencing
+- AST query: OperationCatalog SupervisorControlService SupervisorClient register_agent_cli native_agent_supervisor_tools
+
+## ASI-G280 Event-driven idle efficiency and bounded recovery
+
+- Status: active
+- Parent: ASI-G200
+- Depends on: ASI-G240, ASI-G250, ASI-G270
+- Fib priority: 5
+- Track: reliability-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/reliability
+- Goal: Make unchanged and drained operation nearly free while preserving deterministic bounded recovery from process, storage, provider, validation, lease, and merge faults.
+- Producing tasks: ASI-117, ASI-118
+- Evidence: implementation_daemon.EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID, supervisor_recovery.BOUNDED_RECOVERY_REQUIREMENT_ID
+- Evidence criteria: Semantic events and cursors replace routine full polling and unchanged writes; a low-frequency safety timer preserves liveness; delta checkpoints and compact logs recover exactly; injected faults either recover with a typed receipt or fail closed into bounded quarantine.
+- Evidence source policy: A live process, watchdog heartbeat, empty queue, restart, or unchanged rendered status is non-authoritative. Evidence is a measured idle/runtime receipt and fault-recovery receipt bound to exact event, cursor, checkpoint, process tree, repository, state, policy, and resulting authoritative projection identities.
+- Outputs: ipfs_accelerate_py/agent_supervisor/event_log.py, ipfs_accelerate_py/agent_supervisor/taskboard_store.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py
+- Validation: python -m pytest test/api/test_agent_supervisor_event_driven_runtime.py test/api/test_agent_supervisor_fault_recovery_v2.py -q
+- Acceptance: A drained board averages less than 2 percent of one CPU core for 10 minutes and performs zero unchanged state writes; no event is lost or double-applied; restart and compaction preserve canonical state; every injected crash, partial write, stale lease, corrupt cache, duplicate event, provider loss, disk fault, interrupted validation, and merge interruption has a bounded deterministic recovery or fail-closed quarantine path.
+- Gap task: Close the highest-cost idle poll, full projection, missed event, unbounded retry, partial-state, or recovery ambiguity with a reproducible fault fixture.
+- Refinement: Keep event/delta runtime work separate from fault recovery so the steady-state path remains small and independently measurable.
+- Embedding query: event driven daemon idle cpu delta checkpoint event cursor fault injection crash recovery bounded retry quarantine watchdog
+- AST query: PortalImplementationDaemon EventLog TaskboardStore SupervisorRecovery SupervisorWatchdog
+
+## ASI-G290 Reward-resistant bounded self-refill and rollout
+
+- Status: active
+- Parent: ASI-G200
+- Depends on: ASI-G210, ASI-G220, ASI-G230, ASI-G240, ASI-G250, ASI-G260, ASI-G270, ASI-G280
+- Fib priority: 8
+- Track: self-refill-v2
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v2/refill
+- Goal: Evaluate self-improvement causally, create only bounded novel successor work from typed residuals, prove healthy exhaustion, and promote or roll back behavior through a closed paired gate.
+- Producing tasks: ASI-119, ASI-120, ASI-121, ASI-122, ASI-123
+- Evidence: self_improvement_v2.REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID, self_improvement_v2.TYPED_SUCCESSOR_REQUIREMENT_ID, self_improvement_v2.REFILL_EPOCH_REQUIREMENT_ID, self_improvement_v2_rollout.V2_ROLLOUT_REQUIREMENT_ID, agent_supervisor.V2_LAZY_PUBLIC_API_REQUIREMENT_ID
+- Evidence criteria: The complete paired population is recomputed as a non-compensable Pareto gate with causal ablations and anti-gaming checks; only typed novel residuals create proposals; an epoch transaction creates at most 8 goals and 24 tasks exactly once or records independent healthy exhaustion; exact replay does zero work; rollout and public controls remain lazy, current, reversible, and v1-compatible.
+- Evidence source policy: Composite scores, task counts, generated prose, objective similarity, a drained board, one analyzer, model nomination, or a rollout request are non-authoritative. Evidence is the current-tree producer-owned benchmark, successor, transaction/replay or healthy-exhaustion, rollout, and isolated-public-surface receipt over exact closed populations and policies.
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_improvement_v2.py, ipfs_accelerate_py/agent_supervisor/self_improvement_v2_rollout.py, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_v2_benchmark.py test/api/test_agent_supervisor_v2_successor_generation.py test/api/test_agent_supervisor_v2_refill_epoch.py test/api/test_agent_supervisor_self_improvement_v2_rollout.py test/api/test_agent_supervisor_v2_public_api.py -q
+- Acceptance: Every non-compensable and quantitative v2 gate passes on the complete population; metric gaming and denominator shifts fail closed; only typed novel residuals create work; no epoch exceeds 8 goals or 24 tasks; identical replay makes zero provider calls or writes; healthy exhaustion waits 6 hours or for a meaningful trigger; a later separate evaluation is required for automatic mode; regressions return to shadow; and stable Python, CLI, and MCP surfaces remain lazy and v1-compatible.
+- Gap task: Use the highest-severity typed residual or failed component gate to create one bounded novel successor, or preserve healthy exhaustion when no qualifying residual exists.
+- Refinement: Serialize evaluation, successor admission, transaction, rollout, and public integration. After the initial tranche, refine only from a current epoch receipt under novelty, cooldown, depth, breadth, token, goal, and task limits.
+- Embedding query: reward hacking Pareto self evaluation ablation typed residual successor goal dedup cooldown refill epoch healthy exhaustion rollout rollback public API
+- AST query: V2SelfImprovementEvaluator V2SuccessorAdmission V2RefillEpoch V2RolloutDecision V2StableExports
+
+## ASI-G300 Content-addressed proof-carrying decision runtime
+
+- Status: active
+- Parent:
+- Depends on:
+- Fib priority: 1
+- Track: proof-directed-runtime
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v3/root
+- Goal: Compile every supervisor decision from pinned intent, law, program-behavior, and security-policy artifacts into the smallest complete authoritative proof-dependency context, then permit only exact actions whose intent conformance, legal constraints, security authorization, and required proofs remain valid.
+- Closed producer population: ASI-124, ASI-125, ASI-126, ASI-127, ASI-128, ASI-129, ASI-130, ASI-131, ASI-132, ASI-133, ASI-134, ASI-135, ASI-136, ASI-137, ASI-138, ASI-139
+- Direct children: ASI-G310, ASI-G320, ASI-G330, ASI-G340, ASI-G350, ASI-G360
+- Evidence: decision_contracts.DECISION_ENVELOPE_REQUIREMENT_ID, ir_registry.PINNED_IR_ADAPTER_REQUIREMENT_ID, semantic_dependency_graph.AUTHORITATIVE_PROOF_CLOSURE_REQUIREMENT_ID, decision_context.COMPLETE_MINIMAL_CONTEXT_REQUIREMENT_ID, ir_constraint_compiler.IR_CONFORMANCE_REQUIREMENT_ID, execution_permit.EXACT_ACTION_PERMIT_REQUIREMENT_ID, decision_runtime_rollout.PROOF_DIRECTED_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: The exact ASI-124 through ASI-139 producer population is terminal-successful on the current tree; every direct child has fresh complete proof; each execution decision binds exact canonical roots for intent, law, program behavior, security policy, tools, and authority; retrieval can nominate but never manufacture authority; the complete mandatory dependency closure is represented by a verifiable context witness; and no mutation, commit, merge, or completion occurs without a current exact permit and post-effect evidence.
+- Evidence source policy: Objective prose, task status, a prompt, retrieval rank, embedding similarity, graph proximity, generated formal logic, model confidence, plan plausibility, provider output, and process success are non-authoritative. Completion requires producer-owned typed receipts over exact canonical bytes, CIDs and matching digests, schemas, provenance, trust and authority classes, IR and worktree roots, dependency paths, proof and authorization results, effects, permits, validation, and the closed adversarial paired population.
+- Outputs: docs/architecture/AGENT_SUPERVISOR_PROOF_DIRECTED_RUNTIME_REVIEW.md, ipfs_accelerate_py/agent_supervisor/decision_contracts.py, ipfs_accelerate_py/agent_supervisor/ir_registry.py, ipfs_accelerate_py/agent_supervisor/semantic_dependency_graph.py, ipfs_accelerate_py/agent_supervisor/decision_context.py, ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py, ipfs_accelerate_py/agent_supervisor/execution_permit.py, ipfs_accelerate_py/agent_supervisor/decision_runtime.py, ipfs_accelerate_py/agent_supervisor/decision_runtime_rollout.py
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_contracts.py test/api/test_agent_supervisor_ir_registry.py test/api/test_agent_supervisor_semantic_dependency_graph.py test/api/test_agent_supervisor_decision_context.py test/api/test_agent_supervisor_ir_constraint_compiler.py test/api/test_agent_supervisor_execution_permit.py test/api/test_agent_supervisor_decision_runtime_e2e.py test/api/test_agent_supervisor_decision_runtime_rollout.py -q
+- Acceptance: All six direct children have fresh current-tree evidence; every accepted action is traceable from an exact decision through the complete authoritative dependency closure to current proofs and an exact permit; optional retrieval remains context-only; mandatory closure never truncates; context grows with the current decision's proof graph rather than total corpus, repository, skill library, or conversation size; changed dependencies invalidate every and only affected descendant; and all adversarial, degraded, recovery, shadow, rollback, and public-control fixtures pass.
+- Gap task: Implement the highest-priority missing adapter, dependency edge, completeness witness, constraint check, enforcement gate, invalidation path, or paired safety fixture without weakening an existing authority boundary.
+- Refinement: Preserve the six-workstream partition. Reuse generation-1 and generation-2 contracts through adapters; do not create parallel context, CAS, proof, authorization, validation, or control stacks.
+- Embedding query: content addressed proof carrying agent runtime intent law legal security policy program behavior AST minimal decision context proof dependency graph execution permit
+- AST query: DecisionRequest IRRegistry SemanticProofDependencyGraph DecisionContextCompiler IRConstraintCompiler ExecutionPermit DecisionRuntime
+
+## ASI-G310 Pinned IR identities and trust-preserving adapters
+
+- Status: active
+- Parent: ASI-G300
+- Depends on:
+- Fib priority: 2
+- Track: proof-runtime-ir
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v3/ir
+- Goal: Import exact IntentIR, LegalIR, SecurityIR, and shared formalization artifacts lazily, preserve their canonical CIDs, provenance, trust, authority, schema, and bounded-result semantics, and expose normalized supervisor constraint inputs without copying corpora into prompts.
+- Producing tasks: ASI-124, ASI-125
+- Evidence: decision_contracts.DECISION_ENVELOPE_REQUIREMENT_ID, ir_registry.PINNED_IR_ADAPTER_REQUIREMENT_ID
+- Evidence criteria: Every decision-changing input is named in an immutable bounded envelope; CIDv1 and supervisor digest are verified over the same canonical bytes; adapters negotiate exact schemas and capabilities lazily; unsupported, partial, stale, ambiguous, quarantined, or contradictory required inputs fail closed; and package import and discovery load no optional dataset, model, graph, or prover.
+- Evidence source policy: A path, URL, dataset name, retrieved text, compatible-looking mapping, or digest string is non-authoritative. Evidence is a fresh typed envelope and adapter receipt that independently verifies canonical bytes, identity equivalence, provenance, producer, review/trust state, authority, schema, bounds, pinned roots, and deterministic local fallback.
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_contracts.py, ipfs_accelerate_py/agent_supervisor/ir_registry.py, ipfs_accelerate_py/agent_supervisor/ir_adapters.py
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_contracts.py test/api/test_agent_supervisor_ir_registry.py test/api/test_agent_supervisor_ir_adapters.py -q
+- Acceptance: Exact pinned artifacts round-trip across local and optional `ipfs_datasets_py` transports without identity or authority drift; changed canonical bytes, schemas, roots, producer policy, or trust state invalidate the decision; every unavailable required input has a typed fail-closed result; bounded handles replace corpus bodies; and isolated import/discovery tests remain side-effect-free.
+- Gap task: Close the smallest missing cross-repository identity, schema, provenance, authority, bounds, lazy-discovery, or deterministic-fallback case.
+- Refinement: Land provider-free decision/reference contracts before adapter discovery and transport wiring.
+- Embedding query: IntentIR LegalIR SecurityIR canonical CID provenance trust schema registry bounded result lazy adapter
+- AST query: DecisionRequest PinnedArtifactRef IRRegistry IRAdapterReceipt ResultAuthority
+
+## ASI-G320 Unified program and proof dependency graph
+
+- Status: active
+- Parent: ASI-G300
+- Depends on: ASI-G310
+- Fib priority: 3
+- Track: proof-runtime-graph
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v3/dependency-graph
+- Goal: Represent exact dirty-worktree program behavior, IR constraints, tools, effects, proofs, policies, and validations in one typed content-addressed graph whose forward closure explains a decision and whose reverse closure drives exact invalidation.
+- Producing tasks: ASI-129, ASI-130, ASI-131
+- Evidence: program_behavior.WORKTREE_BEHAVIOR_ROOT_REQUIREMENT_ID, semantic_dependency_graph.AUTHORITATIVE_PROOF_CLOSURE_REQUIREMENT_ID, proof_scope_index.CROSS_DOMAIN_INVALIDATION_REQUIREMENT_ID
+- Evidence criteria: The worktree root covers relevant staged, modified, deleted, and untracked bytes; AST symbols, interfaces, calls, effects, tests, IR declarations, obligations, receipts, tools, and resources have typed nodes and edges; proposal-only and authority-bearing edges cannot be confused; mandatory forward closure is deterministic; and a changed input identifies every and only transitive dependent context, plan, permit, proof, and validation artifact.
+- Evidence source policy: Git HEAD alone, timestamps, path lists, textual relatedness, GraphRAG annotations, model-inferred effects, and cache keys without complete dependencies are diagnostic only. Evidence is a fresh canonical graph/root receipt with exact input bytes, schemas, edge provenance and authority, closure policy, truncation state, and independently recomputed forward and reverse populations.
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_behavior.py, ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py, ipfs_accelerate_py/agent_supervisor/semantic_dependency_graph.py, ipfs_accelerate_py/agent_supervisor/proof_scope_index.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_behavior.py test/api/test_agent_supervisor_semantic_dependency_graph.py test/api/test_agent_supervisor_cross_domain_proof_scope.py -q
+- Acceptance: Dirty and untracked changes alter the program root; equivalent snapshots remain stable; typed intent, legal, security, AST, effect, tool, proof, and validation relationships round-trip without authority escalation; cycles and cross-root edges fail closed; controlled changes invalidate the exact transitive descendant population; and irrelevant corpus or repository growth does not enlarge a decision closure.
+- Gap task: Repair the highest-risk missing snapshot input, node/edge family, authority distinction, closure, or reverse-invalidation fixture.
+- Refinement: Establish the worktree/effect root first, graph ingestion second, and generalized reverse proof scope third.
+- Embedding query: dirty worktree AST call graph effect manifest intent legal security semantic proof dependency graph reverse invalidation
+- AST query: WorktreeBehaviorRoot CodeEvidenceGraph SemanticProofDependencyGraph CodeImpactIndex ProofScopeIndex
+
+## ASI-G330 Proof-directed retrieval and minimal complete contexts
+
+- Status: active
+- Parent: ASI-G300
+- Depends on: ASI-G310, ASI-G320
+- Fib priority: 5
+- Track: proof-runtime-context
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v3/context
+- Goal: Use BM25, vectors, AST, and GraphRAG only to nominate bounded evidence seeds, complete all mandatory authority and proof dependencies deterministically, and compile the smallest context with a machine-verifiable completeness witness and content-addressed expansion.
+- Producing tasks: ASI-132, ASI-133, ASI-134
+- Evidence: proof_directed_retrieval.RETRIEVAL_CLOSURE_REQUIREMENT_ID, decision_context.COMPLETE_MINIMAL_CONTEXT_REQUIREMENT_ID, decision_context.DEPENDENCY_DELTA_REQUIREMENT_ID
+- Evidence criteria: Retrieval receipts bind exact query, index/model/configuration/graph roots, partitions, bounds, candidates, omissions, and truncation; retrieved material remains context-only; every mandatory dependency is reached by authoritative closure; the context witness maps each mandatory node and path to an inline reference or verified handle; mandatory constraints never compete for optional budget; and retries transmit only changed or explicitly expanded dependencies.
+- Evidence source policy: Top-k recall, similarity, a plausible graph walk, prompt length, token estimates, or an included citation is non-authoritative. Evidence is a fresh closure and context receipt whose pinned dependency graph, required population, reference/handle identities, provider-token measurement, exclusions, expansions, and retry reconstruction independently revalidate.
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof_directed_retrieval.py, ipfs_accelerate_py/agent_supervisor/decision_context.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, ipfs_accelerate_py/agent_supervisor/analysis_retrieval.py
+- Validation: python -m pytest test/api/test_agent_supervisor_proof_directed_retrieval.py test/api/test_agent_supervisor_decision_context.py test/api/test_agent_supervisor_decision_context_delta.py -q
+- Acceptance: Mandatory intent, law, security, program, tool, proof, and validation dependencies have zero seeded omissions; approximate or truncated retrieval cannot suppress authoritative closure; budget overflow splits, expands, or fails closed instead of truncating; 10x irrelevant corpus, repository, skill, and conversation growth changes prompt size only by bounded index metadata; and warm retries preserve the exact invariant core while reducing input to changed dependency deltas.
+- Gap task: Close the smallest retrieval receipt, closure-completeness, mandatory-budget, expansion, context-scaling, or delta-invalidation residual.
+- Refinement: Implement seed/closure receipts before the context witness, then add dependency-bound expansion and retries.
+- Embedding query: BM25 vector embedding AST GraphRAG seed authoritative closure minimal context completeness witness progressive expansion delta
+- AST query: ProofDirectedRetriever RetrievalClosureReceipt DecisionContextCompiler ContextCompletenessWitness ContextDeltaCapsule
+
+## ASI-G340 Intent, legal, security, and plan constraint compilation
+
+- Status: active
+- Parent: ASI-G300
+- Depends on: ASI-G310, ASI-G320
+- Fib priority: 5
+- Track: proof-runtime-constraints
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v3/constraints
+- Goal: Compile IntentIR action contracts, applicable LegalIR norms, and SecurityIR policies into independent typed constraints and proof obligations, then admit only plans whose exact actions and effects satisfy all three domains.
+- Producing tasks: ASI-126, ASI-127, ASI-128, ASI-135
+- Evidence: intent_constraint_adapter.INTENT_CONFORMANCE_REQUIREMENT_ID, legal_constraint_adapter.LEGAL_APPLICABILITY_REQUIREMENT_ID, security_constraint_adapter.SECURITY_AUTHORIZATION_REQUIREMENT_ID, ir_constraint_compiler.IR_CONFORMANCE_REQUIREMENT_ID
+- Evidence criteria: Intent goals, preconditions, guards, invariants, effects, failures, and verification requirements bind exact plan actions; legal applicability binds jurisdiction, subject, resource, action, effective time, exceptions, permissions, prohibitions, obligations, and conflicts; SecurityIR declarations compile to exact principal/action/resource/effect authorization and state-machine checks; unknown and contradiction remain explicit; and no domain grants another domain's authority.
+- Evidence source policy: Skill prose, model translations, vector matches, GraphRAG premises, generated formulas, one policy decision, or a high plan score are proposal-tier. Evidence is a fresh typed adapter and conformance receipt over pinned declarations and formalization artifacts, exact applicability facts, proof obligations/results, complete candidate actions/effects, conflict policy, and deterministic independent checks.
+- Outputs: ipfs_accelerate_py/agent_supervisor/intent_constraint_adapter.py, ipfs_accelerate_py/agent_supervisor/legal_constraint_adapter.py, ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py, ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py, ipfs_accelerate_py/agent_supervisor/formal_plan_compiler.py
+- Validation: python -m pytest test/api/test_agent_supervisor_intent_constraints.py test/api/test_agent_supervisor_legal_constraints.py test/api/test_agent_supervisor_security_constraints.py test/api/test_agent_supervisor_ir_constraint_compiler.py -q
+- Acceptance: Plans cannot substitute retrieved intent for a pinned action contract, omit an applicable legal norm or exception, convert legal permission into security authorization, bypass a SecurityIR deny/unknown/state guard, or hide an undeclared effect; every action has exact domain-specific verdicts and obligations; unresolved mandatory applicability or contradiction fails closed; and deterministic baseline planning remains available without a model.
+- Gap task: Repair the smallest missing statement, applicability, conflict, policy/state, effect, obligation, or cross-domain non-interference case.
+- Refinement: Build the three adapters in independent lanes, then integrate them through one hard-constraint plan compiler.
+- Embedding query: IntentIR goal precondition invariant effect LegalIR applicability jurisdiction exception SecurityIR authorization state machine constrained planning
+- AST query: IntentConstraintAdapter LegalConstraintAdapter SecurityConstraintAdapter IRConstraintCompiler FormalPlanCompiler
+
+## ASI-G350 Exact execution permits and incremental enforcement
+
+- Status: active
+- Parent: ASI-G300
+- Depends on: ASI-G320, ASI-G330, ASI-G340
+- Fib priority: 8
+- Track: proof-runtime-enforcement
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v3/enforcement
+- Goal: Issue a short-lived exact permit only for a fully constrained and proven action, enforce it at every mutation boundary, and invalidate, recompile, and re-prove only affected decisions after any dependency or observed-effect change.
+- Producing tasks: ASI-136, ASI-137, ASI-138
+- Evidence: execution_permit.EXACT_ACTION_PERMIT_REQUIREMENT_ID, decision_runtime.LIVE_PATH_ENFORCEMENT_REQUIREMENT_ID, decision_runtime.INCREMENTAL_REVALIDATION_REQUIREMENT_ID
+- Evidence criteria: Permits bind the decision, plan/action, tool arguments, targets, effects, all semantic roots, proof closure, context witness, domain verdicts, lease, fencing, expiry, and idempotency; every tool/edit/control/commit/merge mutation checks the permit immediately before effects; changed arguments or roots fail closed; task proposal, implementation, retry, validation, and merge use the same runtime; and reverse dependency changes cause bounded exact revalidation.
+- Evidence source policy: A prompt instruction, path allowlist, successful dry-run, possession of credentials, prior authorization, process status, test pass, or pre-merge proof is non-authoritative. Evidence is a fresh permit-use and post-effect receipt from the shared mutation boundary over exact current roots, observed effects, lease/fence/idempotency state, invalidation closure, revalidation, and merged tree.
+- Outputs: ipfs_accelerate_py/agent_supervisor/execution_permit.py, ipfs_accelerate_py/agent_supervisor/decision_runtime.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/event_log.py
+- Validation: python -m pytest test/api/test_agent_supervisor_execution_permit.py test/api/test_agent_supervisor_decision_runtime_e2e.py test/api/test_agent_supervisor_decision_runtime_invalidation.py test/api/test_agent_supervisor_control_transactions.py -q
+- Acceptance: Zero mutation surface bypasses the common permit gate; replay, stale roots, changed arguments/effects, expired lease, fencing loss, cross-task reuse, path escape, partial transaction, restart, and merge drift fail closed; current generic prompt policy is moved inside the authoritative decision identity; unaffected artifacts and proofs remain reusable; and the merged tree receives a new exact permit and complete post-effect evidence before completion.
+- Gap task: Close the highest-risk permit field, mutation boundary, live-path integration, post-effect comparison, reverse invalidation, recovery, or merged-tree fixture.
+- Refinement: Land the standalone permit verifier first, wire all live paths second, then add incremental invalidation and recovery.
+- Embedding query: exact execution permit tool call file edit mutation commit merge lease fencing idempotency effect postcondition invalidation
+- AST query: ExecutionPermit DecisionRuntime PortalImplementationDaemon SupervisorControlService MergeTrain ProofScopeIndex
+
+## ASI-G360 Proof-dependency scaling benchmark and safe rollout
+
+- Status: active
+- Parent: ASI-G300
+- Depends on: ASI-G330, ASI-G340, ASI-G350
+- Fib priority: 13
+- Track: proof-runtime-rollout
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v3/rollout
+- Goal: Demonstrate causally that decision context and reasoning cost scale with the current mandatory proof closure rather than total corpus, repository, skill library, or conversation size, while preserving zero authority and mandatory-evidence regressions through shadow, assist, automatic, and rollback modes.
+- Producing tasks: ASI-139
+- Evidence: decision_runtime_rollout.PROOF_DIRECTED_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: A closed paired population compares the current and proof-directed live paths; irrelevant legal, code, skill, graph, and conversation inputs are independently scaled; provider tokens, closure size, cache reuse, invalidation precision, plan quality, proof/validation cost, and terminal outcomes are recomputed from producer receipts; adversarial and degraded fixtures are non-compensable; and promotion requires a later separate current-root evaluation.
+- Evidence source policy: Aggregate averages, selected tasks, model judgments, token estimates without calibration, successful demos, task status, and self-reported context sufficiency are non-authoritative. Evidence is a complete frozen paired and adversarial benchmark receipt with exact population, roots, policies, capabilities, provider tokenizer, ablations, omissions, failures, confidence bounds, and automatic rollback decision.
+- Outputs: ipfs_accelerate_py/agent_supervisor/decision_runtime_benchmark.py, ipfs_accelerate_py/agent_supervisor/decision_runtime_rollout.py, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md
+- Validation: python -m pytest test/api/test_agent_supervisor_decision_runtime_benchmark.py test/api/test_agent_supervisor_decision_runtime_adversarial.py test/api/test_agent_supervisor_decision_runtime_rollout.py test/api/test_agent_supervisor_decision_runtime_public_api.py -q
+- Acceptance: Zero seeded authority, stale-root, cross-partition, path/effect escape, forged identity, proof replay, and mandatory dependency omissions escape; increasing each irrelevant corpus by at least 10x leaves the decision and mandatory context unchanged except bounded index metadata; context tokens are strongly predicted by closure bytes/nodes and not total corpus bytes/nodes; exact warm reuse and invalidation gates pass; local degraded operation is deterministic and fail-closed; package discovery stays lazy; and any later safety or binding regression automatically returns the affected mode to shadow.
+- Gap task: Add the smallest missing paired scale factor, causal ablation, adversarial fixture, degraded-mode case, public-control parity check, or rollback trigger.
+- Refinement: Keep one closed benchmark/rollout owner so population, metrics, promotion, and rollback cannot be independently narrowed.
+- Embedding query: paired benchmark context proportional proof dependency closure corpus scale tokens adversarial shadow rollout rollback
+- AST query: DecisionRuntimeBenchmark ProofDependencyScalingReport DecisionRuntimeRolloutDecision DecisionRuntimePublicAPI

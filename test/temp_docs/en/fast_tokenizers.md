@@ -19,7 +19,7 @@ rendered properly in your Markdown viewer.
 Tokenizers convert text into an array of numbers known as tensors, the inputs to a text model. There are several tokenizer algorithms, but they all share the same purpose. Split text into smaller words or subwords (tokens) according to some rules, and convert them into numbers (input ids). A Transformers tokenizer also returns an attention mask to indicate which tokens should be attended to.
 
 > [!TIP]
-> Learn about the most popular tokenization algorithms on the [Summary of the tokenizers](./tokenizer_summary) doc.
+> Learn about the most popular tokenization algorithms on the [Summary of the tokenizers](./tokenizer_summary.md) doc.
 
 Call [`~PreTrainedTokenizer.from_pretrained`] to load a tokenizer and its configuration from the Hugging Face [Hub](https://hf.co) or a local directory. The pretrained tokenizer is saved in a [tokenizer.model](https://huggingface.co/google/gemma-2-2b/blob/main/tokenizer.model) file with all its associated vocabulary files.
 
@@ -52,7 +52,7 @@ There are two ways you can load a tokenizer, with [`AutoTokenizer`] or a model-s
 <hfoptions id="tokenizer-classes">
 <hfoption id="AutoTokenizer">
 
-The [AutoClass](./model_doc/auto) API is a fast and easy way to load a tokenizer without needing to know whether a Python or Rust-based implementation is available. By default, [`AutoTokenizer`] tries to load a fast tokenizer if it's available, otherwise, it loads the Python implementation.
+The [AutoClass](./model_doc/auto.md) API is a fast and easy way to load a tokenizer without needing to know whether a Python or Rust-based implementation is available. By default, [`AutoTokenizer`] tries to load a fast tokenizer if it's available, otherwise, it loads the Python implementation.
 
 Use [`~PreTrainedTokenizer.from_pretrained`] to load a tokenizer.
 
@@ -189,7 +189,7 @@ fast_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tokenizer.json")
 
 ## tiktoken
 
-[tiktoken](https://github.com/openai/tiktoken) is a [byte-pair encoding (BPE)](./tokenizer_summary#byte-pair-encoding-bpe) tokenizer by OpenAI. It includes several tokenization schemes or encodings for how text should be tokenized.
+[tiktoken](https://github.com/openai/tiktoken) is a [byte-pair encoding (BPE)](./tokenizer_summary.md#byte-pair-encoding-bpe) tokenizer by OpenAI. It includes several tokenization schemes or encodings for how text should be tokenized.
 
 There are currently two models trained and released with tiktoken, GPT2 and Llama3. Transformers supports models with a [tokenizer.model](https://hf.co/meta-llama/Meta-Llama-3-8B/blob/main/original/tokenizer.model) tiktoken file. The tiktoken file is automatically converted into Transformers Rust-based [`PreTrainedTokenizerFast`].
 
@@ -252,7 +252,7 @@ print(tokens)
 ['We', '▁are', '▁very', '▁happy', '▁to', '▁show', '▁you', '▁the', '▁🤗', '▁Transformers', '▁library']
 ```
 
-Gemma uses a [SentencePiece](./tokenizer_summary#sentencepiece) tokenizer which replaces spaces with an underscore `_`.
+Gemma uses a [SentencePiece](./tokenizer_summary.md#sentencepiece) tokenizer which replaces spaces with an underscore `_`.
 
 </hfoption>
 <hfoption id="2. convert tokens to ids">
@@ -334,7 +334,7 @@ print(encoded_inputs)
 ### Padding
 
 > [!TIP]
-> Learn about additional padding strategies in the [Padding and truncation](./pad_truncation) guide.
+> Learn about additional padding strategies in the [Padding and truncation](./pad_truncation.md) guide.
 
 In the output above, the `input_ids` have different lengths. This is an issue because Transformers expects them to have the same lengths so it can pack them into a batch. Sequences with uneven lengths can't be batched.
 
@@ -350,7 +350,7 @@ The tokenizer added the special padding token `0` to the left side (*left paddin
 ### Truncation
 
 > [!TIP]
-> Learn about additional truncation strategies in the [Padding and truncation](./pad_truncation) guide.
+> Learn about additional truncation strategies in the [Padding and truncation](./pad_truncation.md) guide.
 
 Models are only able to process sequences up to a certain length. If you try to process a sequence longer than a model can handle, it crashes.
 

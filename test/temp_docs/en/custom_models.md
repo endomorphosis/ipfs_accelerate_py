@@ -21,7 +21,7 @@ Transformers models are designed to be customizable. A models code is fully cont
 > [!TIP]
 > It may be easier to start from scratch if you're creating an entirely new model. But for models that are very similar to an existing one in Transformers, it is faster to reuse or subclass the same configuration and model class.
 
-This guide will show you how to customize a ResNet model, enable [AutoClass](./models#autoclass) support, and share it on the Hub.
+This guide will show you how to customize a ResNet model, enable [AutoClass](./models.md#custom-models) support, and share it on the Hub.
 
 ## Configuration
 
@@ -35,7 +35,7 @@ The main rules for customizing a configuration are:
 > [!TIP]
 > It is useful to check the validity of some of the parameters. In the example below, a check is implemented to ensure `block_type` and `stem_type` belong to one of the predefined values.
 >
-> Add `model_type` to the configuration class to enable [AutoClass](./models#autoclass) support.
+> Add `model_type` to the configuration class to enable [AutoClass](./models.md#custom-models) support.
 
 ```py
 from transformers import PretrainedConfig
@@ -189,9 +189,9 @@ resnet50d.model.load_state_dict(pretrained_model.state_dict())
 
 ## AutoClass
 
-The [AutoClass](./models#model-classes) API is a shortcut for automatically loading the correct architecture for a given model. It is convenient to enable this for users loading your custom model.
+The [AutoClass](./models.md#model-classes) API is a shortcut for automatically loading the correct architecture for a given model. It is convenient to enable this for users loading your custom model.
 
-Make sure you have the `model_type` attribute (must be different from existing model types) in the configuration class and `config_class` attribute in the model class. Use the [`~AutoConfig.register`] method to add the custom configuration and model to the [AutoClass](./models#model-classes) API.
+Make sure you have the `model_type` attribute (must be different from existing model types) in the configuration class and `config_class` attribute in the model class. Use the [`~AutoConfig.register`] method to add the custom configuration and model to the [AutoClass](./models.md#model-classes) API.
 
 > [!TIP]
 > The first argument to [`AutoConfig.register`] must match the `model_type` attribute in the custom configuration class, and the first argument to [`AutoModel.register`] must match the `config_class` of the custom model class.
@@ -204,7 +204,7 @@ AutoModel.register(ResnetConfig, ResnetModel)
 AutoModelForImageClassification.register(ResnetConfig, ResnetModelForImageClassification)
 ```
 
-Your custom model code is now compatible with the [AutoClass](./models#autoclass) API. Users can load the model with the [AutoModel](./model_doc/auto#automodel) or [`AutoModelForImageClassification`] classes.
+Your custom model code is now compatible with the [AutoClass](./models.md#custom-models) API. Users can load the model with the [AutoModel](./model_doc/auto.md#automodel) or [`AutoModelForImageClassification`] classes.
 
 ## Upload
 
@@ -294,4 +294,4 @@ resnet50d.push_to_hub("custom-resnet50d")
 
 The pretrained weights, configuration, `modeling.py` and `configuration.py` files should all be uploaded to the Hub now in a [repository](https://hf.co/sgugger/custom-resnet50d) under your namespace.
 
-Because a custom model doesn't use the same modeling code as a Transformers' model, you need to add `trust_remode_code=True` in [`~PreTrainedModel.from_pretrained`] to load it. Refer to the load [custom models](./models#custom-models) section for more information.
+Because a custom model doesn't use the same modeling code as a Transformers' model, you need to add `trust_remode_code=True` in [`~PreTrainedModel.from_pretrained`] to load it. Refer to the load [custom models](./models.md#custom-models) section for more information.

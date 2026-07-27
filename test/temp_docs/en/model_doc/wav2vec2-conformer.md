@@ -45,8 +45,8 @@ an improved word error rate.
 
 ## Resources
 
-- [Audio classification task guide](../tasks/audio_classification)
-- [Automatic speech recognition task guide](../tasks/asr)
+- [Audio classification task guide](../tasks/audio_classification.md)
+- [Automatic speech recognition task guide](../tasks/asr.md)
 
 ## Wav2Vec2ConformerConfig
 

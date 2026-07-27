@@ -13,6 +13,8 @@ authority and, when available, the originating request.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import posixpath
 from collections.abc import Iterable, Mapping, Sequence
@@ -34,6 +36,12 @@ from .formal_verification_contracts import (
 CONTROL_CONTRACT_VERSION = 1
 CONTRACT_VERSION = CONTROL_CONTRACT_VERSION
 SCHEMA_VERSION = CONTROL_CONTRACT_VERSION
+CONTROL_CATALOG_VERSION = 2
+OPERATION_CATALOG_VERSION = CONTROL_CATALOG_VERSION
+
+OPERATION_CATALOG_V2_REQUIREMENT_ID: Final[str] = (
+    "294719425747343997526263348545558645762"
+)
 
 CONTROL_BOUNDS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/control-bounds@1"
 EXPECTED_EFFECT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/expected-effect@1"
@@ -55,6 +63,35 @@ OPERATION_CAPABILITY_SCHEMA = (
 )
 CAPABILITY_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/capability-report@1"
+)
+CONTROL_TARGET_DESCRIPTOR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-target-descriptor@2"
+)
+CONTROL_PAGINATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-pagination@2"
+)
+CONTROL_OPERATION_DESCRIPTOR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-operation-descriptor@2"
+)
+CONTROL_OPERATION_CATALOG_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-operation-catalog@2"
+)
+CONTROL_CATALOG_NEGOTIATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-catalog-negotiation@2"
+)
+CONTROL_CAPABILITY_RESOLUTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-capability-resolution@2"
+)
+EVENT_CURSOR_SCHEMA = "ipfs_accelerate_py/agent-supervisor/event-cursor@2"
+EVENT_PAGE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/event-page@2"
+CONTROL_QUERY_AUDIT_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-query-audit-receipt@2"
+)
+CONTROL_PROPOSAL_AUDIT_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-proposal-audit-receipt@2"
+)
+CONTROL_MUTATION_AUDIT_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-audit-receipt@2"
 )
 CONTROL_DISCOVERY_MANIFEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-discovery-manifest@1"
@@ -286,6 +323,26 @@ class ControlBoundsError(ControlContractError):
     """Raised when a control record exceeds a count, byte, or depth bound."""
 
 
+class CatalogVersionNegotiationError(ControlContractError):
+    """Raised when peers have no mutually supported catalog version."""
+
+
+class UnsupportedCatalogVersionError(CatalogVersionNegotiationError):
+    """Compatibility spelling for a failed catalog version negotiation."""
+
+
+class UnsupportedCapabilityError(ControlContractError):
+    """Raised when an operation's required backend capability is absent."""
+
+
+class EventCursorError(ControlContractError):
+    """Raised when an event cursor is malformed or cannot be replayed."""
+
+
+class CursorReplayError(EventCursorError):
+    """Raised when an event cursor is stale, foreign, or out of range."""
+
+
 class _ControlCanonicalContract(CanonicalContract):
     """Canonical mixin whose decoding failures retain the control error type."""
 
@@ -360,6 +417,7 @@ class Operation(str, Enum):
     EVENTS = "events"
     RECEIPTS = "receipts"
     CACHE_INSPECT = "cache_inspect"
+    CACHES = "cache_inspect"
     ARTIFACT_QUERY = "artifact_query"
 
     OBJECTIVE_PREVIEW = "objective_preview"
@@ -368,6 +426,7 @@ class Operation(str, Enum):
     OBJECTIVE_REFINE = "objective_refine"
     OBJECTIVE_RECONCILE = "objective_reconcile"
     BACKLOG_REFILL = "backlog_refill"
+    REFILL = "backlog_refill"
     START = "start"
     PAUSE = "pause"
     RESUME = "resume"
@@ -472,6 +531,10 @@ class ErrorCode(str, Enum):
     STALE_TREE = "stale_tree"
     STALE_LEASE = "stale_lease"
     BOUNDS_EXCEEDED = "bounds_exceeded"
+    UNSUPPORTED_VERSION = "unsupported_version"
+    UNSUPPORTED_CAPABILITY = "unsupported_capability"
+    INVALID_CURSOR = "invalid_cursor"
+    CURSOR_EXPIRED = "cursor_expired"
     PATH_ESCAPE = "path_escape"
     IDEMPOTENCY_REQUIRED = "idempotency_required"
     IDEMPOTENCY_CONFLICT = "idempotency_conflict"
@@ -2332,6 +2395,1669 @@ class CapabilityReport(_ControlCanonicalContract):
         )
         _identity(payload, result.content_id, "capability report")
         return result
+
+
+class ControlTargetKind(str, Enum):
+    """Semantic object addressed by a catalog operation."""
+
+    SERVICE = "service"
+    REPOSITORY = "repository"
+    OBJECTIVE = "objective"
+    TASK = "task"
+    BUNDLE = "bundle"
+    LANE = "lane"
+    EVENT_STREAM = "event_stream"
+    RECEIPT = "receipt"
+    CACHE = "cache"
+    ARTIFACT = "artifact"
+    VALIDATION = "validation"
+
+
+class ControlRoot(str, Enum):
+    """Authority-bearing filesystem root an operation may address."""
+
+    REPOSITORY = "repository_root"
+    STATE = "state_root"
+    ARTIFACT = "artifact_root"
+
+
+class PaginationKind(str, Enum):
+    """Closed pagination behavior declared by an operation."""
+
+    NONE = "none"
+    CURSOR = "cursor"
+    EVENT_CURSOR = "event_cursor"
+
+
+class CapabilityDegradation(str, Enum):
+    """Fail-closed behavior when an advertised backend capability is absent."""
+
+    FAIL_CLOSED = "fail_closed"
+    LOCAL_READ_ONLY = "local_read_only"
+    PROPOSAL_ONLY = "proposal_only"
+    NOT_APPLICABLE = "not_applicable"
+
+
+@dataclass(frozen=True)
+class ControlTargetDescriptor(_ControlCanonicalContract):
+    """Target identity and roots required before an operation can dispatch."""
+
+    SCHEMA: ClassVar[str] = CONTROL_TARGET_DESCRIPTOR_SCHEMA
+
+    kind: ControlTargetKind
+    required_selectors: tuple[str, ...]
+    allowed_roots: tuple[ControlRoot, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "kind", _enum(self.kind, ControlTargetKind, "target kind")
+        )
+        selectors = _strings(
+            self.required_selectors,
+            "required_selectors",
+            required=True,
+            maximum=32,
+        )
+        allowed_selector_names = frozenset(
+            {
+                "service_id",
+                "repository_id",
+                "tree_id",
+                "objective_id",
+                "task_id",
+                "bundle_id",
+                "lane_id",
+                "stream_id",
+                "receipt_id",
+                "cache_namespace",
+                "artifact_id",
+                "validation_id",
+            }
+        )
+        if not set(selectors).issubset(allowed_selector_names):
+            raise ControlContractError(
+                "target descriptor contains an unknown selector"
+            )
+        object.__setattr__(self, "required_selectors", selectors)
+        try:
+            roots = tuple(
+                sorted(
+                    {
+                        item
+                        if isinstance(item, ControlRoot)
+                        else ControlRoot(str(item))
+                        for item in self.allowed_roots
+                    },
+                    key=lambda item: item.value,
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise ControlContractError(
+                "allowed_roots contains an unknown root"
+            ) from exc
+        if not roots:
+            raise ControlContractError(
+                "target descriptor must declare at least one allowed root"
+            )
+        object.__setattr__(self, "allowed_roots", roots)
+        _bounded_record(self, "control target descriptor")
+
+    @property
+    def roots(self) -> tuple[str, ...]:
+        return tuple(root.value for root in self.allowed_roots)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "catalog_version": CONTROL_CATALOG_VERSION,
+            "kind": self.kind,
+            "required_selectors": self.required_selectors,
+            "allowed_roots": self.allowed_roots,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlTargetDescriptor":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "catalog_version",
+                "kind",
+                "required_selectors",
+                "allowed_roots",
+                "content_id",
+            },
+            "control target descriptor",
+        )
+        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (
+            CONTROL_CATALOG_VERSION
+        ):
+            raise UnsupportedCatalogVersionError(
+                "unsupported target descriptor catalog version"
+            )
+        result = cls(
+            kind=payload.get("kind", ""),
+            required_selectors=payload.get("required_selectors", ()),
+            allowed_roots=payload.get("allowed_roots", ()),
+        )
+        _identity(payload, result.content_id, "control target descriptor")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlPagination(_ControlCanonicalContract):
+    """Bounded page/cursor behavior for one operation."""
+
+    SCHEMA: ClassVar[str] = CONTROL_PAGINATION_SCHEMA
+
+    kind: PaginationKind
+    default_limit: int
+    max_limit: int
+    cursor_schema: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "kind", _enum(self.kind, PaginationKind, "pagination kind")
+        )
+        object.__setattr__(
+            self, "default_limit", _positive(self.default_limit, "default_limit")
+        )
+        object.__setattr__(
+            self, "max_limit", _positive(self.max_limit, "max_limit")
+        )
+        if self.default_limit > self.max_limit:
+            raise ControlBoundsError(
+                "pagination default_limit cannot exceed max_limit"
+            )
+        object.__setattr__(
+            self,
+            "cursor_schema",
+            _text(
+                self.cursor_schema,
+                "cursor_schema",
+                required=self.kind is not PaginationKind.NONE,
+            ),
+        )
+        if self.kind is PaginationKind.NONE:
+            if self.cursor_schema:
+                raise ControlContractError(
+                    "non-paginated operations cannot declare a cursor schema"
+                )
+            if self.default_limit != 1 or self.max_limit != 1:
+                raise ControlBoundsError(
+                    "non-paginated operations must use a one-item bound"
+                )
+        elif self.kind is PaginationKind.EVENT_CURSOR:
+            if self.cursor_schema != EVENT_CURSOR_SCHEMA:
+                raise ControlContractError(
+                    "event pagination must use the canonical event cursor"
+                )
+        _bounded_record(self, "control pagination")
+
+    @property
+    def event_cursor(self) -> bool:
+        return self.kind is PaginationKind.EVENT_CURSOR
+
+    def validate_limit(self, limit: int | None) -> int:
+        selected = self.default_limit if limit is None else _positive(limit, "limit")
+        if selected > self.max_limit:
+            raise ControlBoundsError(
+                f"page limit {selected} exceeds operation maximum {self.max_limit}"
+            )
+        return selected
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "catalog_version": CONTROL_CATALOG_VERSION,
+            "kind": self.kind,
+            "default_limit": self.default_limit,
+            "max_limit": self.max_limit,
+            "cursor_schema": self.cursor_schema,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlPagination":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "catalog_version",
+                "kind",
+                "default_limit",
+                "max_limit",
+                "cursor_schema",
+                "content_id",
+            },
+            "control pagination",
+        )
+        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (
+            CONTROL_CATALOG_VERSION
+        ):
+            raise UnsupportedCatalogVersionError(
+                "unsupported pagination catalog version"
+            )
+        result = cls(
+            kind=payload.get("kind", ""),
+            default_limit=payload.get("default_limit", 0),
+            max_limit=payload.get("max_limit", 0),
+            cursor_schema=payload.get("cursor_schema", ""),
+        )
+        _identity(payload, result.content_id, "control pagination")
+        return result
+
+
+@dataclass(frozen=True)
+class EventCursor(_ControlCanonicalContract):
+    """Opaque, content-addressed position in one immutable event stream.
+
+    ``position`` is the last event consumed, so an initial cursor has position
+    zero and replay resumes strictly after it.  The stream and snapshot
+    bindings prevent a cursor from being reused against a different log or a
+    rewritten projection.
+    """
+
+    SCHEMA: ClassVar[str] = EVENT_CURSOR_SCHEMA
+
+    stream_id: str
+    position: int = 0
+    last_event_id: str = ""
+    snapshot_id: str = ""
+    catalog_version: int = CONTROL_CATALOG_VERSION
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stream_id", _text(self.stream_id, "stream_id"))
+        object.__setattr__(
+            self, "position", _nonnegative(self.position, "position")
+        )
+        object.__setattr__(
+            self,
+            "last_event_id",
+            _text(self.last_event_id, "last_event_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "snapshot_id",
+            _text(self.snapshot_id, "snapshot_id", required=False),
+        )
+        if self.catalog_version != CONTROL_CATALOG_VERSION:
+            raise UnsupportedCatalogVersionError(
+                f"unsupported event cursor catalog version "
+                f"{self.catalog_version!r}"
+            )
+        if self.position == 0 and self.last_event_id:
+            raise EventCursorError(
+                "an initial event cursor cannot name a last event"
+            )
+        if self.position > 0 and not self.last_event_id:
+            raise EventCursorError(
+                "a non-initial event cursor must name its last event"
+            )
+        _bounded_record(self, "event cursor", maximum=16_384)
+
+    @classmethod
+    def initial(
+        cls, stream_id: str, *, snapshot_id: str = ""
+    ) -> "EventCursor":
+        return cls(stream_id=stream_id, snapshot_id=snapshot_id)
+
+    @property
+    def offset(self) -> int:
+        return self.position
+
+    @property
+    def sequence(self) -> int:
+        return self.position
+
+    def advance(
+        self,
+        *,
+        position: int,
+        event_id: str,
+        snapshot_id: str | None = None,
+    ) -> "EventCursor":
+        selected = _nonnegative(position, "position")
+        if selected <= self.position:
+            raise CursorReplayError(
+                "event cursor advancement must be strictly monotonic"
+            )
+        next_snapshot = self.snapshot_id if snapshot_id is None else snapshot_id
+        if self.snapshot_id and next_snapshot != self.snapshot_id:
+            raise CursorReplayError(
+                "event cursor snapshot binding cannot change during replay"
+            )
+        return EventCursor(
+            stream_id=self.stream_id,
+            position=selected,
+            last_event_id=event_id,
+            snapshot_id=next_snapshot,
+            catalog_version=self.catalog_version,
+        )
+
+    def assert_replayable(
+        self,
+        *,
+        stream_id: str,
+        earliest_position: int,
+        latest_position: int,
+        snapshot_id: str = "",
+    ) -> None:
+        if _text(stream_id, "stream_id") != self.stream_id:
+            raise CursorReplayError(
+                "event cursor belongs to a different stream"
+            )
+        earliest = _nonnegative(earliest_position, "earliest_position")
+        latest = _nonnegative(latest_position, "latest_position")
+        if earliest > latest:
+            raise EventCursorError(
+                "earliest event position cannot exceed latest position"
+            )
+        # An initial position is replayable even when the first retained event
+        # is position one.  Any later cursor older than the retained prefix is
+        # expired.
+        if self.position and self.position < max(0, earliest - 1):
+            raise CursorReplayError(
+                "event cursor predates the retained replay window"
+            )
+        if self.position > latest:
+            raise CursorReplayError(
+                "event cursor is ahead of the event stream"
+            )
+        if self.snapshot_id and snapshot_id and self.snapshot_id != snapshot_id:
+            raise CursorReplayError(
+                "event cursor snapshot does not match the event stream"
+            )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "catalog_version": self.catalog_version,
+            "stream_id": self.stream_id,
+            "position": self.position,
+            "last_event_id": self.last_event_id,
+            "snapshot_id": self.snapshot_id,
+        }
+
+    def to_token(self) -> str:
+        """Encode a bounded, transport-neutral cursor with its content ID."""
+
+        encoded = base64.urlsafe_b64encode(
+            canonical_control_json_bytes(self.to_record())
+        ).rstrip(b"=")
+        return encoded.decode("ascii")
+
+    encode = to_token
+
+    @classmethod
+    def from_token(cls, token: str) -> "EventCursor":
+        if not isinstance(token, str) or not token or len(token) > 32_768:
+            raise EventCursorError("event cursor token is malformed")
+        try:
+            raw = token.encode("ascii")
+            padding = b"=" * (-len(raw) % 4)
+            decoded = base64.b64decode(
+                raw + padding,
+                altchars=b"-_",
+                validate=True,
+            )
+            payload = json.loads(decoded)
+        except (
+            UnicodeEncodeError,
+            UnicodeDecodeError,
+            binascii.Error,
+            json.JSONDecodeError,
+            TypeError,
+        ) as exc:
+            raise EventCursorError("event cursor token is malformed") from exc
+        if not isinstance(payload, Mapping):
+            raise EventCursorError("event cursor token must contain an object")
+        return cls.from_dict(payload)
+
+    decode = from_token
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EventCursor":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "catalog_version",
+                "stream_id",
+                "position",
+                "last_event_id",
+                "snapshot_id",
+                "content_id",
+            },
+            "event cursor",
+        )
+        result = cls(
+            stream_id=payload.get("stream_id", ""),
+            position=payload.get("position", 0),
+            last_event_id=payload.get("last_event_id", ""),
+            snapshot_id=payload.get("snapshot_id", ""),
+            catalog_version=payload.get(
+                "catalog_version", CONTROL_CATALOG_VERSION
+            ),
+        )
+        try:
+            _identity(payload, result.content_id, "event cursor")
+        except ControlContractError as exc:
+            raise EventCursorError(str(exc)) from exc
+        return result
+
+
+@dataclass(frozen=True)
+class EventPage(_ControlCanonicalContract):
+    """One exact bounded replay page and the cursor after its final event."""
+
+    SCHEMA: ClassVar[str] = EVENT_PAGE_SCHEMA
+
+    events: tuple[Mapping[str, Any], ...]
+    next_cursor: EventCursor
+    has_more: bool = False
+
+    def __post_init__(self) -> None:
+        if len(self.events) > ABSOLUTE_MAX_CONTROL_ITEMS:
+            raise ControlBoundsError("event page exceeds its item-count bound")
+        frozen_events: list[Mapping[str, Any]] = []
+        for event in self.events:
+            if not isinstance(event, Mapping):
+                raise EventCursorError("event page entries must be objects")
+            frozen_events.append(
+                _freeze_value(
+                    event,
+                    name="event",
+                    max_depth=ABSOLUTE_MAX_CONTROL_DEPTH,
+                    max_items=ABSOLUTE_MAX_CONTROL_ITEMS,
+                    max_text_bytes=ABSOLUTE_MAX_CONTROL_TEXT_BYTES,
+                    check_paths=False,
+                )
+            )
+        object.__setattr__(self, "events", tuple(frozen_events))
+        if not isinstance(self.next_cursor, EventCursor):
+            if not isinstance(self.next_cursor, Mapping):
+                raise EventCursorError(
+                    "next_cursor must be an EventCursor"
+                )
+            object.__setattr__(
+                self, "next_cursor", EventCursor.from_dict(self.next_cursor)
+            )
+        if not isinstance(self.has_more, bool):
+            raise EventCursorError("has_more must be a boolean")
+        _bounded_record(self, "event page")
+
+    @property
+    def cursor(self) -> EventCursor:
+        return self.next_cursor
+
+    @property
+    def items(self) -> tuple[Mapping[str, Any], ...]:
+        return self.events
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "catalog_version": CONTROL_CATALOG_VERSION,
+            "events": self.events,
+            "next_cursor": self.next_cursor.to_record(),
+            "has_more": self.has_more,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EventPage":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "catalog_version",
+                "events",
+                "next_cursor",
+                "has_more",
+                "content_id",
+            },
+            "event page",
+        )
+        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (
+            CONTROL_CATALOG_VERSION
+        ):
+            raise UnsupportedCatalogVersionError(
+                "unsupported event page catalog version"
+            )
+        result = cls(
+            events=payload.get("events", ()),
+            next_cursor=payload.get("next_cursor", {}),
+            has_more=payload.get("has_more", False),
+        )
+        _identity(payload, result.content_id, "event page")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlOperationDescriptor(_ControlCanonicalContract):
+    """Complete, immutable policy declaration for one control operation."""
+
+    SCHEMA: ClassVar[str] = CONTROL_OPERATION_DESCRIPTOR_SCHEMA
+
+    operation: Operation
+    request_schema: Mapping[str, Any]
+    result_schema: Mapping[str, Any]
+    authority: OperationAuthority
+    target_descriptor: ControlTargetDescriptor
+    bounds: ControlBounds
+    pagination: ControlPagination
+    supports_dry_run: bool
+    requires_idempotency: bool
+    requires_authorization: bool
+    requires_lease: bool
+    requires_fencing: bool
+    backend_capability: str
+    degradation: CapabilityDegradation
+    audit_receipt_schema: str
+    family: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "operation", _operation(self.operation))
+        object.__setattr__(self, "authority", _authority(self.authority))
+        if self.authority is not self.operation.authority:
+            raise AuthorityViolationError(
+                "catalog authority must match the closed operation registry"
+            )
+        for name, kind, decoder in (
+            (
+                "target_descriptor",
+                ControlTargetDescriptor,
+                ControlTargetDescriptor.from_dict,
+            ),
+            ("bounds", ControlBounds, ControlBounds.from_dict),
+            ("pagination", ControlPagination, ControlPagination.from_dict),
+        ):
+            current = getattr(self, name)
+            if not isinstance(current, kind):
+                if not isinstance(current, Mapping):
+                    raise ControlContractError(
+                        f"{name} must be a {kind.__name__}"
+                    )
+                object.__setattr__(self, name, decoder(current))
+        if self.pagination.max_limit > self.bounds.max_items:
+            raise ControlBoundsError(
+                "pagination maximum exceeds operation max_items"
+            )
+        for name in ("request_schema", "result_schema"):
+            schema = getattr(self, name)
+            if not isinstance(schema, Mapping):
+                raise ControlContractError(f"{name} must be an object")
+            expected_operation = (
+                schema.get("properties", {})
+                .get("operation", {})
+                .get("const")
+            )
+            if expected_operation != self.operation.value:
+                raise ControlContractError(
+                    f"{name} is not bound to operation {self.operation.value}"
+                )
+            object.__setattr__(
+                self,
+                name,
+                _freeze_value(
+                    schema,
+                    name=name,
+                    max_depth=ABSOLUTE_MAX_CONTROL_DEPTH,
+                    max_items=ABSOLUTE_MAX_CONTROL_ITEMS,
+                    max_text_bytes=ABSOLUTE_MAX_CONTROL_TEXT_BYTES,
+                    check_paths=False,
+                ),
+            )
+        for name in (
+            "supports_dry_run",
+            "requires_idempotency",
+            "requires_authorization",
+            "requires_lease",
+            "requires_fencing",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ControlContractError(f"{name} must be a boolean")
+        guarded = (
+            self.requires_idempotency,
+            self.requires_authorization,
+            self.requires_lease,
+            self.requires_fencing,
+        )
+        if self.operation.mutating:
+            if not self.supports_dry_run or not all(guarded):
+                raise ControlContractError(
+                    "catalog mutations must require dry-run support, "
+                    "idempotency, authorization, lease, and fencing"
+                )
+        elif any(guarded):
+            raise ControlContractError(
+                "non-mutation catalog operations cannot require mutation guards"
+            )
+        object.__setattr__(
+            self,
+            "backend_capability",
+            _text(self.backend_capability, "backend_capability"),
+        )
+        object.__setattr__(
+            self,
+            "degradation",
+            _enum(self.degradation, CapabilityDegradation, "degradation"),
+        )
+        object.__setattr__(
+            self,
+            "audit_receipt_schema",
+            _text(self.audit_receipt_schema, "audit_receipt_schema"),
+        )
+        object.__setattr__(self, "family", _text(self.family, "family"))
+        _bounded_record(self, "control operation descriptor")
+
+    @property
+    def target(self) -> ControlTargetDescriptor:
+        return self.target_descriptor
+
+    @property
+    def roots(self) -> tuple[str, ...]:
+        return self.target_descriptor.roots
+
+    @property
+    def dry_run(self) -> bool:
+        return self.supports_dry_run
+
+    @property
+    def idempotency(self) -> bool:
+        return self.requires_idempotency
+
+    @property
+    def leases(self) -> bool:
+        return self.requires_lease
+
+    @property
+    def fencing(self) -> bool:
+        return self.requires_fencing
+
+    @property
+    def audit_receipt(self) -> str:
+        return self.audit_receipt_schema
+
+    @property
+    def request_schema_id(self) -> str:
+        return content_identity(self.request_schema)
+
+    @property
+    def result_schema_id(self) -> str:
+        return content_identity(self.result_schema)
+
+    @property
+    def pagination_kind(self) -> PaginationKind:
+        return self.pagination.kind
+
+    @property
+    def degradation_policy(self) -> CapabilityDegradation:
+        return self.degradation
+
+    @property
+    def uses_event_cursor(self) -> bool:
+        return self.pagination.event_cursor
+
+    def validate_bounds(
+        self,
+        requested: ControlBounds | Mapping[str, Any],
+        *,
+        page_limit: int | None = None,
+    ) -> ControlBounds:
+        if not isinstance(requested, ControlBounds):
+            if not isinstance(requested, Mapping):
+                raise ControlBoundsError(
+                    "requested bounds must be a ControlBounds object"
+                )
+            try:
+                requested = ControlBounds(**dict(requested))
+            except (TypeError, ControlContractError) as exc:
+                raise ControlBoundsError("requested bounds are invalid") from exc
+        for field_name in (
+            "max_items",
+            "max_serialized_bytes",
+            "max_depth",
+            "max_text_bytes",
+            "max_paths",
+            "max_effects",
+            "timeout_ms",
+        ):
+            if getattr(requested, field_name) > getattr(self.bounds, field_name):
+                raise ControlBoundsError(
+                    f"{field_name} exceeds the catalog bound for "
+                    f"{self.operation.value}"
+                )
+        self.pagination.validate_limit(page_limit)
+        return requested
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "catalog_version": CONTROL_CATALOG_VERSION,
+            "operation": self.operation,
+            "request_schema": self.request_schema,
+            "result_schema": self.result_schema,
+            "authority": self.authority,
+            "target_descriptor": self.target_descriptor.to_record(),
+            "allowed_roots": self.roots,
+            "bounds": self.bounds.to_record(),
+            "pagination": self.pagination.to_record(),
+            "supports_dry_run": self.supports_dry_run,
+            "requires_idempotency": self.requires_idempotency,
+            "requires_authorization": self.requires_authorization,
+            "requires_lease": self.requires_lease,
+            "requires_fencing": self.requires_fencing,
+            "backend_capability": self.backend_capability,
+            "degradation": self.degradation,
+            "audit_receipt_schema": self.audit_receipt_schema,
+            "family": self.family,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlOperationDescriptor":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "catalog_version",
+                "operation",
+                "request_schema",
+                "result_schema",
+                "authority",
+                "target_descriptor",
+                "allowed_roots",
+                "bounds",
+                "pagination",
+                "supports_dry_run",
+                "requires_idempotency",
+                "requires_authorization",
+                "requires_lease",
+                "requires_fencing",
+                "backend_capability",
+                "degradation",
+                "audit_receipt_schema",
+                "family",
+                "content_id",
+            },
+            "control operation descriptor",
+        )
+        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (
+            CONTROL_CATALOG_VERSION
+        ):
+            raise UnsupportedCatalogVersionError(
+                "unsupported operation descriptor catalog version"
+            )
+        result = cls(
+            operation=payload.get("operation", ""),
+            request_schema=payload.get("request_schema", {}),
+            result_schema=payload.get("result_schema", {}),
+            authority=payload.get("authority", ""),
+            target_descriptor=payload.get("target_descriptor", {}),
+            bounds=payload.get("bounds", {}),
+            pagination=payload.get("pagination", {}),
+            supports_dry_run=payload.get("supports_dry_run", False),
+            requires_idempotency=payload.get(
+                "requires_idempotency", False
+            ),
+            requires_authorization=payload.get(
+                "requires_authorization", False
+            ),
+            requires_lease=payload.get("requires_lease", False),
+            requires_fencing=payload.get("requires_fencing", False),
+            backend_capability=payload.get("backend_capability", ""),
+            degradation=payload.get("degradation", ""),
+            audit_receipt_schema=payload.get("audit_receipt_schema", ""),
+            family=payload.get("family", ""),
+        )
+        claimed_roots = payload.get("allowed_roots")
+        if claimed_roots not in (None, ()) and tuple(claimed_roots) != result.roots:
+            raise ControlContractError(
+                "operation allowed_roots do not match its target descriptor"
+            )
+        _identity(payload, result.content_id, "control operation descriptor")
+        return result
+
+
+@dataclass(frozen=True)
+class CatalogNegotiation(_ControlCanonicalContract):
+    """Deterministic highest-mutual-version negotiation receipt."""
+
+    SCHEMA: ClassVar[str] = CONTROL_CATALOG_NEGOTIATION_SCHEMA
+
+    selected_version: int
+    client_versions: tuple[int, ...]
+    service_versions: tuple[int, ...]
+    catalog_id: str
+
+    def __post_init__(self) -> None:
+        for name in ("client_versions", "service_versions"):
+            raw = getattr(self, name)
+            if isinstance(raw, (str, bytes)) or not isinstance(raw, Sequence):
+                raise CatalogVersionNegotiationError(
+                    f"{name} must be a sequence of versions"
+                )
+            versions = tuple(
+                sorted({_positive(item, "catalog version") for item in raw})
+            )
+            if not versions:
+                raise CatalogVersionNegotiationError(
+                    f"{name} must not be empty"
+                )
+            object.__setattr__(self, name, versions)
+        selected = _positive(self.selected_version, "selected_version")
+        mutual = set(self.client_versions).intersection(self.service_versions)
+        if not mutual or selected != max(mutual):
+            raise CatalogVersionNegotiationError(
+                "selected catalog version is not the highest mutual version"
+            )
+        object.__setattr__(self, "selected_version", selected)
+        object.__setattr__(self, "catalog_id", _text(self.catalog_id, "catalog_id"))
+        _bounded_record(self, "catalog negotiation")
+
+    @property
+    def version(self) -> int:
+        return self.selected_version
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "selected_version": self.selected_version,
+            "client_versions": self.client_versions,
+            "service_versions": self.service_versions,
+            "catalog_id": self.catalog_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CatalogNegotiation":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "selected_version",
+                "client_versions",
+                "service_versions",
+                "catalog_id",
+                "content_id",
+            },
+            "catalog negotiation",
+        )
+        result = cls(
+            selected_version=payload.get("selected_version", 0),
+            client_versions=payload.get("client_versions", ()),
+            service_versions=payload.get("service_versions", ()),
+            catalog_id=payload.get("catalog_id", ""),
+        )
+        _identity(payload, result.content_id, "catalog negotiation")
+        return result
+
+
+@dataclass(frozen=True)
+class CapabilityResolution(_ControlCanonicalContract):
+    """Result of resolving one operation against runtime backend support."""
+
+    SCHEMA: ClassVar[str] = CONTROL_CAPABILITY_RESOLUTION_SCHEMA
+
+    operation: Operation
+    backend_capability: str
+    supported: bool
+    degraded: bool
+    degradation: CapabilityDegradation
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "operation", _operation(self.operation))
+        object.__setattr__(
+            self,
+            "backend_capability",
+            _text(self.backend_capability, "backend_capability"),
+        )
+        if not isinstance(self.supported, bool) or not isinstance(
+            self.degraded, bool
+        ):
+            raise ControlContractError(
+                "capability supported and degraded flags must be booleans"
+            )
+        object.__setattr__(
+            self,
+            "degradation",
+            _enum(self.degradation, CapabilityDegradation, "degradation"),
+        )
+        if self.supported and self.degraded:
+            raise ControlContractError(
+                "a supported capability cannot also be degraded"
+            )
+        if not self.supported and not self.degraded:
+            raise UnsupportedCapabilityError(
+                "unsupported capability must fail or declare degradation"
+            )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "catalog_version": CONTROL_CATALOG_VERSION,
+            "operation": self.operation,
+            "backend_capability": self.backend_capability,
+            "supported": self.supported,
+            "degraded": self.degraded,
+            "degradation": self.degradation,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CapabilityResolution":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "catalog_version",
+                "operation",
+                "backend_capability",
+                "supported",
+                "degraded",
+                "degradation",
+                "content_id",
+            },
+            "capability resolution",
+        )
+        result = cls(
+            operation=payload.get("operation", ""),
+            backend_capability=payload.get("backend_capability", ""),
+            supported=payload.get("supported", False),
+            degraded=payload.get("degraded", False),
+            degradation=payload.get("degradation", ""),
+        )
+        _identity(payload, result.content_id, "capability resolution")
+        return result
+
+
+@dataclass(frozen=True)
+class OperationCatalog(_ControlCanonicalContract):
+    """The complete, closed generation-2 supervisor control catalog."""
+
+    SCHEMA: ClassVar[str] = CONTROL_OPERATION_CATALOG_SCHEMA
+
+    operation_descriptors: tuple[ControlOperationDescriptor, ...]
+    catalog_version: int = CONTROL_CATALOG_VERSION
+    supported_versions: tuple[int, ...] = (CONTROL_CATALOG_VERSION,)
+    requirement_id: str = OPERATION_CATALOG_V2_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        if self.catalog_version != CONTROL_CATALOG_VERSION:
+            raise UnsupportedCatalogVersionError(
+                f"unsupported control catalog version {self.catalog_version!r}"
+            )
+        versions = tuple(
+            sorted(
+                {
+                    _positive(item, "supported catalog version")
+                    for item in self.supported_versions
+                }
+            )
+        )
+        if self.catalog_version not in versions:
+            raise CatalogVersionNegotiationError(
+                "catalog version must be in supported_versions"
+            )
+        object.__setattr__(self, "supported_versions", versions)
+        descriptors = _coerce_tuple(
+            self.operation_descriptors,
+            ControlOperationDescriptor,
+            ControlOperationDescriptor.from_dict,
+            "operation_descriptors",
+        )
+        operations = tuple(item.operation for item in descriptors)
+        if len(operations) != len(set(operations)):
+            raise ControlContractError(
+                "operation catalog contains duplicate operations"
+            )
+        expected = frozenset(Operation)
+        actual = frozenset(operations)
+        if actual != expected:
+            missing = sorted(item.value for item in expected.difference(actual))
+            extra = sorted(item.value for item in actual.difference(expected))
+            raise ControlContractError(
+                "operation catalog must exactly cover the closed operation "
+                f"vocabulary; missing={missing}, extra={extra}"
+            )
+        object.__setattr__(
+            self,
+            "operation_descriptors",
+            tuple(sorted(descriptors, key=lambda item: item.operation.value)),
+        )
+        if self.requirement_id != OPERATION_CATALOG_V2_REQUIREMENT_ID:
+            raise ControlContractError(
+                "operation catalog requirement identity does not match ASI-G270"
+            )
+        _bounded_record(self, "operation catalog")
+
+    @property
+    def operations(self) -> tuple[Operation, ...]:
+        return tuple(item.operation for item in self.operation_descriptors)
+
+    @property
+    def descriptors(self) -> tuple[ControlOperationDescriptor, ...]:
+        return self.operation_descriptors
+
+    @property
+    def capabilities(self) -> tuple[ControlOperationDescriptor, ...]:
+        return self.operation_descriptors
+
+    @property
+    def operation_names(self) -> tuple[str, ...]:
+        return tuple(item.value for item in self.operations)
+
+    @property
+    def version(self) -> int:
+        return self.catalog_version
+
+    @property
+    def by_name(self) -> Mapping[str, ControlOperationDescriptor]:
+        return MappingProxyType(
+            {
+                item.operation.value: item
+                for item in self.operation_descriptors
+            }
+        )
+
+    @property
+    def catalog_id(self) -> str:
+        return self.content_id
+
+    def __iter__(self):
+        return iter(self.operation_descriptors)
+
+    def __len__(self) -> int:
+        return len(self.operation_descriptors)
+
+    def operation(
+        self, operation: Operation | str
+    ) -> ControlOperationDescriptor:
+        selected = _operation(operation)
+        for descriptor in self.operation_descriptors:
+            if descriptor.operation is selected:
+                return descriptor
+        # The exact-population invariant makes this defensive branch
+        # unreachable for a valid enum member.
+        raise UnknownOperationError(f"unknown operation {selected.value!r}")
+
+    get = operation
+    descriptor_for = operation
+
+    def negotiate(self, client_versions: Iterable[int]) -> CatalogNegotiation:
+        try:
+            client = tuple(
+                sorted(
+                    {
+                        _positive(item, "client catalog version")
+                        for item in client_versions
+                    }
+                )
+            )
+        except TypeError as exc:
+            raise CatalogVersionNegotiationError(
+                "client_versions must be iterable"
+            ) from exc
+        if not client:
+            raise CatalogVersionNegotiationError(
+                "client_versions must not be empty"
+            )
+        mutual = set(client).intersection(self.supported_versions)
+        if not mutual:
+            raise UnsupportedCatalogVersionError(
+                "no mutually supported control catalog version"
+            )
+        return CatalogNegotiation(
+            selected_version=max(mutual),
+            client_versions=client,
+            service_versions=self.supported_versions,
+            catalog_id=self.catalog_id,
+        )
+
+    def negotiate_version(self, client_versions: Iterable[int]) -> int:
+        return self.negotiate(client_versions).selected_version
+
+    def require_backend_capability(
+        self,
+        operation: Operation | str,
+        available_capabilities: Iterable[str],
+    ) -> CapabilityResolution:
+        descriptor = self.operation(operation)
+        try:
+            available = frozenset(
+                _strings(
+                    available_capabilities,
+                    "available capabilities",
+                )
+            )
+        except TypeError as exc:
+            raise UnsupportedCapabilityError(
+                "available_capabilities must be iterable"
+            ) from exc
+        if descriptor.backend_capability not in available:
+            raise UnsupportedCapabilityError(
+                f"operation {descriptor.operation.value} requires backend "
+                f"capability {descriptor.backend_capability!r}"
+            )
+        return CapabilityResolution(
+            operation=descriptor.operation,
+            backend_capability=descriptor.backend_capability,
+            supported=True,
+            degraded=False,
+            degradation=descriptor.degradation,
+        )
+
+    require_capability = require_backend_capability
+
+    def resolve_backend_capability(
+        self,
+        operation: Operation | str,
+        available_capabilities: Iterable[str],
+    ) -> CapabilityResolution:
+        descriptor = self.operation(operation)
+        try:
+            return self.require_backend_capability(
+                descriptor.operation, available_capabilities
+            )
+        except UnsupportedCapabilityError:
+            if descriptor.degradation in {
+                CapabilityDegradation.LOCAL_READ_ONLY,
+                CapabilityDegradation.PROPOSAL_ONLY,
+            }:
+                return CapabilityResolution(
+                    operation=descriptor.operation,
+                    backend_capability=descriptor.backend_capability,
+                    supported=False,
+                    degraded=True,
+                    degradation=descriptor.degradation,
+                )
+            raise
+
+    resolve_capability = resolve_backend_capability
+
+    def validate_bounds(
+        self,
+        operation: Operation | str,
+        requested: ControlBounds | Mapping[str, Any],
+        *,
+        page_limit: int | None = None,
+    ) -> ControlBounds:
+        return self.operation(operation).validate_bounds(
+            requested, page_limit=page_limit
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "catalog_version": self.catalog_version,
+            "supported_versions": self.supported_versions,
+            "requirement_id": self.requirement_id,
+            "operation_descriptors": tuple(
+                item.to_record() for item in self.operation_descriptors
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "OperationCatalog":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "catalog_version",
+                "supported_versions",
+                "requirement_id",
+                "operation_descriptors",
+                "operations",
+                "content_id",
+            },
+            "operation catalog",
+        )
+        descriptors = payload.get(
+            "operation_descriptors", payload.get("operations", ())
+        )
+        result = cls(
+            operation_descriptors=descriptors,
+            catalog_version=payload.get(
+                "catalog_version", CONTROL_CATALOG_VERSION
+            ),
+            supported_versions=payload.get(
+                "supported_versions", (CONTROL_CATALOG_VERSION,)
+            ),
+            requirement_id=payload.get(
+                "requirement_id", OPERATION_CATALOG_V2_REQUIREMENT_ID
+            ),
+        )
+        _identity(payload, result.content_id, "operation catalog")
+        return result
+
+
+def replay_event_page(
+    events: Sequence[Mapping[str, Any]],
+    cursor: EventCursor | str,
+    *,
+    limit: int = 50,
+    stream_id: str | None = None,
+    snapshot_id: str = "",
+) -> EventPage:
+    """Replay one strictly ordered event page after ``cursor``.
+
+    Events must carry a positive integer ``sequence`` (or ``position``) and
+    may carry ``event_id``/``content_id``.  Duplicate or gapped sequences fail
+    closed so replay cannot silently skip or apply an event twice.
+    """
+
+    selected_cursor = (
+        EventCursor.from_token(cursor) if isinstance(cursor, str) else cursor
+    )
+    if not isinstance(selected_cursor, EventCursor):
+        raise EventCursorError("cursor must be an EventCursor or token")
+    selected_limit = _positive(limit, "limit")
+    if selected_limit > ABSOLUTE_MAX_CONTROL_ITEMS:
+        raise ControlBoundsError("event replay limit exceeds the absolute bound")
+    selected_stream = (
+        selected_cursor.stream_id
+        if stream_id is None
+        else _text(stream_id, "stream_id")
+    )
+    normalized: list[tuple[int, str, Mapping[str, Any]]] = []
+    previous = 0
+    for raw_event in events:
+        if not isinstance(raw_event, Mapping):
+            raise EventCursorError("event replay entries must be objects")
+        position = raw_event.get("sequence", raw_event.get("position"))
+        position = _positive(position, "event sequence")
+        if position <= previous:
+            raise CursorReplayError(
+                "event replay population must be strictly ordered and unique"
+            )
+        previous = position
+        event_id = raw_event.get("event_id", raw_event.get("content_id", ""))
+        if not event_id:
+            event_id = content_identity(raw_event)
+        event_id = _text(event_id, "event_id")
+        normalized.append((position, event_id, raw_event))
+    if normalized:
+        selected_cursor.assert_replayable(
+            stream_id=selected_stream,
+            earliest_position=normalized[0][0],
+            latest_position=normalized[-1][0],
+            snapshot_id=snapshot_id,
+        )
+    elif selected_stream != selected_cursor.stream_id:
+        raise CursorReplayError("event cursor belongs to a different stream")
+    if selected_cursor.position:
+        anchor = next(
+            (
+                item
+                for item in normalized
+                if item[0] == selected_cursor.position
+            ),
+            None,
+        )
+        if anchor is not None and anchor[1] != selected_cursor.last_event_id:
+            raise CursorReplayError(
+                "event cursor anchor does not match the replay population"
+            )
+    pending = [item for item in normalized if item[0] > selected_cursor.position]
+    if pending and pending[0][0] != selected_cursor.position + 1:
+        raise CursorReplayError(
+            "event replay contains a gap after the supplied cursor"
+        )
+    if any(
+        current[0] != previous[0] + 1
+        for previous, current in zip(pending, pending[1:])
+    ):
+        raise CursorReplayError(
+            "event replay contains a gap in the pending population"
+        )
+    page_population = pending[:selected_limit]
+    next_cursor = selected_cursor
+    if page_population:
+        final_position, final_event_id, _event = page_population[-1]
+        next_cursor = selected_cursor.advance(
+            position=final_position,
+            event_id=final_event_id,
+            snapshot_id=snapshot_id or None,
+        )
+    return EventPage(
+        events=tuple(item[2] for item in page_population),
+        next_cursor=next_cursor,
+        has_more=len(pending) > len(page_population),
+    )
+
+
+def _catalog_target(operation: Operation) -> ControlTargetDescriptor:
+    base_roots: tuple[ControlRoot, ...] = (
+        ControlRoot.REPOSITORY,
+        ControlRoot.STATE,
+    )
+    mapping: dict[Operation, tuple[ControlTargetKind, tuple[str, ...]]] = {
+        Operation.CAPABILITIES: (
+            ControlTargetKind.SERVICE,
+            ("service_id",),
+        ),
+        Operation.STATUS: (
+            ControlTargetKind.SERVICE,
+            ("repository_id",),
+        ),
+        Operation.HEALTH: (
+            ControlTargetKind.SERVICE,
+            ("repository_id",),
+        ),
+        Operation.METRICS: (
+            ControlTargetKind.SERVICE,
+            ("repository_id",),
+        ),
+        Operation.GOALS: (
+            ControlTargetKind.OBJECTIVE,
+            ("repository_id", "objective_id"),
+        ),
+        Operation.TASKS: (
+            ControlTargetKind.TASK,
+            ("repository_id", "objective_id"),
+        ),
+        Operation.BUNDLES: (
+            ControlTargetKind.BUNDLE,
+            ("repository_id",),
+        ),
+        Operation.LANES: (
+            ControlTargetKind.LANE,
+            ("repository_id",),
+        ),
+        Operation.EVENTS: (
+            ControlTargetKind.EVENT_STREAM,
+            ("repository_id", "stream_id"),
+        ),
+        Operation.RECEIPTS: (
+            ControlTargetKind.RECEIPT,
+            ("repository_id",),
+        ),
+        Operation.CACHE_INSPECT: (
+            ControlTargetKind.CACHE,
+            ("repository_id", "cache_namespace"),
+        ),
+        Operation.ARTIFACT_QUERY: (
+            ControlTargetKind.ARTIFACT,
+            ("repository_id",),
+        ),
+        Operation.OBJECTIVE_PREVIEW: (
+            ControlTargetKind.OBJECTIVE,
+            ("repository_id", "objective_id"),
+        ),
+        Operation.OBJECTIVE_REFINE: (
+            ControlTargetKind.OBJECTIVE,
+            ("repository_id", "objective_id"),
+        ),
+        Operation.OBJECTIVE_RECONCILE: (
+            ControlTargetKind.OBJECTIVE,
+            ("repository_id", "objective_id"),
+        ),
+        Operation.BACKLOG_REFILL: (
+            ControlTargetKind.OBJECTIVE,
+            ("repository_id", "objective_id"),
+        ),
+        Operation.PLAN: (
+            ControlTargetKind.OBJECTIVE,
+            ("repository_id", "objective_id"),
+        ),
+        Operation.RETRY: (
+            ControlTargetKind.TASK,
+            ("repository_id", "task_id"),
+        ),
+        Operation.CANCEL: (
+            ControlTargetKind.TASK,
+            ("repository_id", "task_id"),
+        ),
+        Operation.QUARANTINE: (
+            ControlTargetKind.TASK,
+            ("repository_id", "task_id"),
+        ),
+        Operation.VALIDATION_REPLAY: (
+            ControlTargetKind.VALIDATION,
+            ("repository_id", "validation_id"),
+        ),
+    }
+    lifecycle = {
+        Operation.START,
+        Operation.PAUSE,
+        Operation.RESUME,
+        Operation.DRAIN,
+        Operation.STOP,
+    }
+    kind, selectors = mapping.get(
+        operation,
+        (
+            ControlTargetKind.SERVICE,
+            ("repository_id",)
+            if operation in lifecycle
+            else ("repository_id", "tree_id"),
+        ),
+    )
+    roots = (
+        (*base_roots, ControlRoot.ARTIFACT)
+        if operation
+        in {Operation.ARTIFACT_QUERY, Operation.VALIDATION_REPLAY}
+        else base_roots
+    )
+    return ControlTargetDescriptor(
+        kind=kind,
+        required_selectors=selectors,
+        allowed_roots=roots,
+    )
+
+
+def _catalog_family(operation: Operation) -> str:
+    families: dict[Operation, str] = {
+        Operation.CAPABILITIES: "capabilities",
+        Operation.HEALTH: "health",
+        Operation.STATUS: "status",
+        Operation.METRICS: "metrics",
+        Operation.GOALS: "goals",
+        Operation.TASKS: "tasks",
+        Operation.BUNDLES: "bundles",
+        Operation.LANES: "lanes",
+        Operation.EVENTS: "events",
+        Operation.RECEIPTS: "receipts",
+        Operation.CACHE_INSPECT: "caches",
+        Operation.OBJECTIVE_PREVIEW: "objective",
+        Operation.OBJECTIVE_REFINE: "objective",
+        Operation.OBJECTIVE_RECONCILE: "objective",
+        Operation.BACKLOG_REFILL: "refill",
+        Operation.PLAN: "plan",
+        Operation.RETRY: "retry",
+        Operation.CANCEL: "cancel",
+        Operation.QUARANTINE: "quarantine",
+        Operation.ARTIFACT_QUERY: "artifact_query",
+        Operation.VALIDATION_REPLAY: "validation_replay",
+    }
+    if operation in {
+        Operation.START,
+        Operation.PAUSE,
+        Operation.RESUME,
+        Operation.DRAIN,
+        Operation.STOP,
+    }:
+        return "lifecycle"
+    return families[operation]
+
+
+def _build_operation_catalog() -> OperationCatalog:
+    query_bounds = ControlBounds()
+    cursor_operations = {
+        Operation.GOALS,
+        Operation.TASKS,
+        Operation.BUNDLES,
+        Operation.LANES,
+        Operation.RECEIPTS,
+        Operation.CACHE_INSPECT,
+        Operation.ARTIFACT_QUERY,
+    }
+    locally_degradable = {
+        Operation.STATUS,
+        Operation.HEALTH,
+        Operation.METRICS,
+        Operation.GOALS,
+        Operation.TASKS,
+        Operation.BUNDLES,
+        Operation.LANES,
+        Operation.EVENTS,
+        Operation.RECEIPTS,
+        Operation.CACHE_INSPECT,
+        Operation.ARTIFACT_QUERY,
+    }
+    descriptors: list[ControlOperationDescriptor] = []
+    for operation in sorted(Operation, key=lambda item: item.value):
+        if operation is Operation.EVENTS:
+            pagination = ControlPagination(
+                PaginationKind.EVENT_CURSOR,
+                default_limit=50,
+                max_limit=256,
+                cursor_schema=EVENT_CURSOR_SCHEMA,
+            )
+        elif operation in cursor_operations:
+            pagination = ControlPagination(
+                PaginationKind.CURSOR,
+                default_limit=50,
+                max_limit=256,
+                cursor_schema=(
+                    "ipfs_accelerate_py/agent-supervisor/query-cursor@2"
+                ),
+            )
+        else:
+            pagination = ControlPagination(
+                PaginationKind.NONE,
+                default_limit=1,
+                max_limit=1,
+            )
+        mutation = operation.mutating
+        authority = operation.authority
+        receipt_schema = {
+            OperationAuthority.READ: CONTROL_QUERY_AUDIT_RECEIPT_SCHEMA,
+            OperationAuthority.PROPOSAL: CONTROL_PROPOSAL_AUDIT_RECEIPT_SCHEMA,
+            OperationAuthority.MUTATION: CONTROL_MUTATION_AUDIT_RECEIPT_SCHEMA,
+        }[authority]
+        if operation is Operation.CAPABILITIES:
+            backend_capability = "control.catalog.v2"
+            degradation = CapabilityDegradation.NOT_APPLICABLE
+        else:
+            backend_capability = f"agent_supervisor.{operation.value}"
+            degradation = (
+                CapabilityDegradation.LOCAL_READ_ONLY
+                if operation in locally_degradable
+                else (
+                    CapabilityDegradation.PROPOSAL_ONLY
+                    if authority is OperationAuthority.PROPOSAL
+                    else CapabilityDegradation.FAIL_CLOSED
+                )
+            )
+        descriptors.append(
+            ControlOperationDescriptor(
+                operation=operation,
+                request_schema=operation_request_json_schema(operation),
+                result_schema=operation_result_json_schema(operation),
+                authority=authority,
+                target_descriptor=_catalog_target(operation),
+                bounds=query_bounds,
+                pagination=pagination,
+                supports_dry_run=mutation,
+                requires_idempotency=mutation,
+                requires_authorization=mutation,
+                requires_lease=mutation,
+                requires_fencing=mutation,
+                backend_capability=backend_capability,
+                degradation=degradation,
+                audit_receipt_schema=receipt_schema,
+                family=_catalog_family(operation),
+            )
+        )
+    return OperationCatalog(tuple(descriptors))
+
+
+def get_operation_catalog(
+    version: int = CONTROL_CATALOG_VERSION,
+) -> OperationCatalog:
+    """Return the immutable local catalog without resolving a backend."""
+
+    if version != CONTROL_CATALOG_VERSION:
+        raise UnsupportedCatalogVersionError(
+            f"unsupported control catalog version {version!r}"
+        )
+    return OPERATION_CATALOG_V2
+
+
+def discover_control_catalog(
+    version: int = CONTROL_CATALOG_VERSION,
+) -> OperationCatalog:
+    """Side-effect-free discovery spelling shared by future transports."""
+
+    return get_operation_catalog(version)
+
+
+def negotiate_catalog_version(
+    client_versions: Iterable[int],
+    service_versions: Iterable[int] = (CONTROL_CATALOG_VERSION,),
+) -> int:
+    """Select the highest mutual version without consulting runtime state."""
+
+    try:
+        client = tuple(client_versions)
+        service = tuple(service_versions)
+    except TypeError as exc:
+        raise CatalogVersionNegotiationError(
+            "catalog versions must be iterable"
+        ) from exc
+    client_normalized = {
+        _positive(item, "client catalog version") for item in client
+    }
+    service_normalized = {
+        _positive(item, "service catalog version") for item in service
+    }
+    mutual = client_normalized.intersection(service_normalized)
+    if not mutual:
+        raise UnsupportedCatalogVersionError(
+            "no mutually supported control catalog version"
+        )
+    return max(mutual)
+
+
+negotiate_control_version = negotiate_catalog_version
+ControlOperationCatalog = OperationCatalog
+ControlCapabilityCatalog = OperationCatalog
+ControlCatalog = OperationCatalog
+OperationDescriptor = ControlOperationDescriptor
+OperationSpec = ControlOperationDescriptor
+TargetDescriptor = ControlTargetDescriptor
+PaginationDescriptor = ControlPagination
+DegradationPolicy = CapabilityDegradation
+ControlEventCursor = EventCursor
+EventCursorReplayError = CursorReplayError
+VersionNegotiationError = CatalogVersionNegotiationError
+CapabilityUnavailableError = UnsupportedCapabilityError
 
 
 @dataclass(frozen=True)
@@ -5877,6 +7603,17 @@ def operation_result_json_schema(
     }
 
 
+# This singleton is assembled solely from local immutable values after the
+# schema producers above exist.  It imports no optional provider, resolves no
+# backend, starts no process, reads no file, and is safe for discovery.
+OPERATION_CATALOG_V2: Final[OperationCatalog] = _build_operation_catalog()
+CONTROL_OPERATION_CATALOG: Final[OperationCatalog] = OPERATION_CATALOG_V2
+OPERATION_CATALOG: Final[OperationCatalog] = OPERATION_CATALOG_V2
+CONTROL_CATALOG: Final[OperationCatalog] = OPERATION_CATALOG_V2
+CONTROL_CAPABILITY_CATALOG: Final[OperationCatalog] = OPERATION_CATALOG_V2
+DEFAULT_CONTROL_CATALOG: Final[OperationCatalog] = OPERATION_CATALOG_V2
+
+
 def canonical_control_json_bytes(value: Any) -> bytes:
     """Return canonical DAG-JSON bytes for a control value."""
 
@@ -5925,6 +7662,11 @@ ControlContractValidationError = ControlContractError
 __all__ = [
     "AUTHORIZATION_DECISION_SCHEMA",
     "CAPABILITY_REPORT_SCHEMA",
+    "CONTROL_CAPABILITY_CATALOG",
+    "CONTROL_CAPABILITY_RESOLUTION_SCHEMA",
+    "CONTROL_CATALOG_NEGOTIATION_SCHEMA",
+    "CONTROL_CATALOG_VERSION",
+    "CONTROL_CATALOG",
     "CONTRACT_VERSION",
     "CONTROL_BOUNDS_SCHEMA",
     "CONTROL_CONTRACT_VERSION",
@@ -5954,6 +7696,13 @@ __all__ = [
     "CONTROL_MUTATION_GUARD_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "CONTROL_MUTATION_GUARD_REQUIREMENT_ID",
     "CONTROL_MUTATION_RUNTIME_STATE_SCHEMA",
+    "CONTROL_MUTATION_AUDIT_RECEIPT_SCHEMA",
+    "CONTROL_OPERATION_CATALOG",
+    "CONTROL_OPERATION_CATALOG_SCHEMA",
+    "CONTROL_OPERATION_DESCRIPTOR_SCHEMA",
+    "CONTROL_PAGINATION_SCHEMA",
+    "CONTROL_PROPOSAL_AUDIT_RECEIPT_SCHEMA",
+    "CONTROL_QUERY_AUDIT_RECEIPT_SCHEMA",
     "CONTROL_SURFACE_PARITY_CASE_SCHEMA",
     "CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA",
     "CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION",
@@ -5965,6 +7714,14 @@ __all__ = [
     "CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION",
     "CONTROL_SURFACE_PARITY_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "CONTROL_SURFACE_PARITY_REQUIREMENT_ID",
+    "CONTROL_TARGET_DESCRIPTOR_SCHEMA",
+    "DEFAULT_CONTROL_CATALOG",
+    "EVENT_CURSOR_SCHEMA",
+    "EVENT_PAGE_SCHEMA",
+    "OPERATION_CATALOG",
+    "OPERATION_CATALOG_VERSION",
+    "OPERATION_CATALOG_V2",
+    "OPERATION_CATALOG_V2_REQUIREMENT_ID",
     "UNIFIED_CONTROL_ACCEPTANCE_CRITERIA",
     "UNIFIED_CONTROL_CHILD_GOAL_IDS",
     "UNIFIED_CONTROL_COMPLETION_ANALYZER_VERSION",
@@ -5994,13 +7751,21 @@ __all__ = [
     "AuthorizationDecision",
     "AuthorizationResult",
     "AuthorizationVerdict",
+    "CapabilityDegradation",
+    "CapabilityUnavailableError",
     "CapabilityReport",
+    "CapabilityResolution",
+    "CatalogNegotiation",
+    "CatalogVersionNegotiationError",
     "ControlBehaviorClass",
     "ControlBounds",
     "ControlBoundsError",
     "ControlContractError",
     "ControlContractValidationError",
     "ControlError",
+    "ControlCapabilityCatalog",
+    "ControlCatalog",
+    "ControlEventCursor",
     "ControlDiscoveryIsolationEvidence",
     "ControlDiscoveryManifest",
     "ControlDiscoveryCompletionQuorumEvidence",
@@ -6009,6 +7774,12 @@ __all__ = [
     "ControlDiscoveryRuntimeState",
     "ControlDiscoverySafetyEvidence",
     "ControlLimits",
+    "ControlOperationCatalog",
+    "ControlOperationDescriptor",
+    "ControlPagination",
+    "ControlRoot",
+    "ControlTargetDescriptor",
+    "ControlTargetKind",
     "ControlMutationCompletionMemberHealth",
     "ControlMutationCompletionQuorumEvidence",
     "ControlMutationGuardEvidence",
@@ -6020,9 +7791,14 @@ __all__ = [
     "ControlSurfaceParityCompletionQuorumEvidence",
     "ControlSurfaceParityEvidence",
     "DryRunPreview",
+    "DegradationPolicy",
     "EffectClaim",
     "EffectKind",
     "ErrorCode",
+    "EventCursor",
+    "EventCursorError",
+    "EventCursorReplayError",
+    "EventPage",
     "ExpectedEffect",
     "IdempotencyContract",
     "IdempotencyKey",
@@ -6035,6 +7811,9 @@ __all__ = [
     "MutationGuardExecutionObservation",
     "MutationGuardRejection",
     "Operation",
+    "OperationCatalog",
+    "OperationDescriptor",
+    "OperationSpec",
     "OperationAuthority",
     "OperationCapability",
     "OperationError",
@@ -6045,13 +7824,25 @@ __all__ = [
     "OperationResult",
     "OperationStatus",
     "PathEscapeError",
+    "PaginationDescriptor",
+    "PaginationKind",
     "RequestBounds",
     "TypedOperationError",
+    "TargetDescriptor",
+    "UnsupportedCapabilityError",
+    "UnsupportedCatalogVersionError",
+    "VersionNegotiationError",
     "UnknownOperationError",
+    "CursorReplayError",
     "canonical_control_json_bytes",
     "decode_operation_request",
+    "discover_control_catalog",
     "evaluate_unified_control_completion",
+    "get_operation_catalog",
+    "negotiate_catalog_version",
+    "negotiate_control_version",
     "operation_authority",
     "operation_request_json_schema",
     "operation_result_json_schema",
+    "replay_event_page",
 ]

@@ -41,8 +41,8 @@ The original code can be found [here](https://github.com/google/flaxformer/tree/
 
 ## Resources
 
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## SwitchTransformersConfig
 

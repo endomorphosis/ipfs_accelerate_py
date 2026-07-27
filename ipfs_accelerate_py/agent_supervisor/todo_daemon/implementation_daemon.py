@@ -39,11 +39,19 @@ from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
 from ..checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     checkout_lock_metadata,
     checkout_mutation_lock_path,
     serialized_lock_update,
 )
-from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
+from ..event_log import (
+    append_jsonl_event,
+    latest_event_cursor,
+    read_jsonl_events,
+    repair_jsonl_event_log,
+    unique_backup_path,
+)
 from ..merge_conflict_repair import (
     resolve_append_only_markdown_conflicts,
     resolve_launch_readiness_conflicts,
@@ -52,7 +60,11 @@ from ..merge_conflict_repair import (
 from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
 from ..task_identity import TaskIdentity, canonical_task_identity
-from ..taskboard_store import locked_taskboard, replace_locked_taskboard
+from ..taskboard_store import (
+    ProjectionDeltaCheckpointStore,
+    locked_taskboard,
+    replace_locked_taskboard,
+)
 from ..git_gc import GitGarbageCollector
 from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
@@ -93,6 +105,7 @@ DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
+WORKTREE_CONTEXT_SNAPSHOT_SCHEMA = "agent-supervisor-worktree-context-snapshot-v1"
 DEFAULT_WORKTREE_POOL_MAX_ENTRIES = 4
 SHARED_WORKTREE_SOURCE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT"
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
@@ -163,6 +176,16 @@ DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE = 16_384
 DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
+MAX_PENDING_SCOPE_ADJUDICATIONS = 256
+# ProposalValidationPolicy's ordinary limits are intentionally small for
+# provider output. The daemon constructs this proposal from a local Git diff
+# whose entries contain complete before/after source, so a small patch across
+# established modules can exceed those limits. Retain the ordinary raw-patch
+# limit independently and cap the larger local materialization envelope.
+DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES = 2_000_000
+DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES = 2_500_000
+MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES = 16_000_000
+MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "600")
 )
@@ -172,6 +195,26 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID = (
+    "asi-117:event-driven-delta-checkpoint-runtime"
+)
+RUNTIME_CHECKPOINT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.event-driven-runtime-checkpoint@1"
+)
+RUNTIME_WAKE_KINDS = frozenset(
+    {
+        "task_board",
+        "objective",
+        "repository",
+        "child_process",
+        "lease",
+        "validation",
+        "provider_capacity",
+        "policy",
+        "observation_window",
+    }
+)
+DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
 
 
 def default_llm_merge_resolver_command() -> str:
@@ -695,6 +738,19 @@ def write_json_atomic(path: Path, payload: Any) -> None:
     write_text_atomic(path, json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def write_json_atomic_if_changed(path: Path, payload: Any) -> bool:
+    """Atomically persist canonical JSON only when its bytes changed."""
+
+    rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    try:
+        if path.is_file() and path.read_text(encoding="utf-8") == rendered:
+            return False
+    except (OSError, UnicodeDecodeError):
+        pass
+    write_text_atomic(path, rendered, encoding="utf-8")
+    return True
+
+
 def load_json_dict(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
@@ -1091,8 +1147,10 @@ class PortalTaskState:
     strategy_generation: int = 0
     selection_idle_reason: str = ""
 
-    def save(self, path: Path) -> None:
-        write_json_atomic(path, asdict(self))
+    def save(self, path: Path) -> bool:
+        """Persist the projection if it changed and report whether bytes moved."""
+
+        return write_json_atomic_if_changed(path, asdict(self))
 
     @classmethod
     def load(cls, path: Path) -> "PortalTaskState":
@@ -1380,8 +1438,10 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
         block = []
 
     for index, line in enumerate(lines, start=1):
-        if line.startswith(task_header_prefix):
+        if line.startswith("## "):
             flush()
+            if not line.startswith(task_header_prefix):
+                continue
             header = line[3:].strip()
             parts = header.split(" ", 1)
             if len(parts) == 1:
@@ -1495,6 +1555,8 @@ class PortalImplementationDaemon:
         implementation_provider_max_input_tokens: int | None = None,
         implementation_max_repair_rounds: int = 3,
         implementation_cancelled: Any = None,
+        decision_runtime: Any = None,
+        decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -1532,6 +1594,32 @@ class PortalImplementationDaemon:
             implementation_max_repair_rounds
         )
         self.implementation_cancelled = implementation_cancelled
+        if decision_runtime is not None and decision_runtime_config is not None:
+            configured = getattr(decision_runtime, "config", None)
+            if configured is None:
+                raise ValueError(
+                    "decision_runtime_config cannot accompany a runtime "
+                    "without an inspectable config"
+                )
+            from ..decision_runtime import DecisionRuntimeConfig
+
+            expected_config = DecisionRuntimeConfig.from_dict(
+                decision_runtime_config
+            )
+            if getattr(configured, "config_id", None) != expected_config.config_id:
+                raise ValueError(
+                    "decision_runtime and decision_runtime_config disagree"
+                )
+        if decision_runtime is None and decision_runtime_config is not None:
+            from ..decision_runtime import DecisionRuntime
+
+            decision_runtime = DecisionRuntime(
+                decision_runtime_config,
+                cancellation=implementation_cancelled,
+            )
+        self.decision_runtime = decision_runtime
+        self._last_runtime_decision: Any = None
+        self._last_runtime_effect_observation: Any = None
         self._last_implementation_context: (
             ContextCompileResult | ContextDeltaResult
         ) | None = None
@@ -1545,6 +1633,7 @@ class PortalImplementationDaemon:
         ] = {}
         self._implementation_diagnostic_repeats: dict[str, int] = {}
         self._implementation_retry_not_before: dict[str, float] = {}
+        self._implementation_scope_adjudications: dict[str, Any] = {}
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
@@ -1573,6 +1662,12 @@ class PortalImplementationDaemon:
         self._worktree_pool_leases: dict[Path, WorktreeLease] = {}
         self._worktree_pool_effective_paths: dict[Path, Path] = {}
         self._worktree_setup_metrics: dict[Path, dict[str, Any]] = {}
+        self._seeded_worktree_context_snapshots: dict[
+            Path, dict[str, dict[str, Any]]
+        ] = {}
+        self.worktree_context_snapshot_path = self.state_path.with_name(
+            f"{self.state_path.stem}.worktree-context.json"
+        )
         self.merge_target_branch = str(merge_target_branch or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
@@ -1689,6 +1784,111 @@ class PortalImplementationDaemon:
         self.git_gc = GitGarbageCollector(
             repo_root=self.repo_root,
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
+        )
+        self.runtime_checkpoint_path = self.state_path.with_name(
+            f"{self.state_path.stem}.event-driven-checkpoint.json"
+        )
+        self.runtime_checkpoint_store = ProjectionDeltaCheckpointStore(
+            self.runtime_checkpoint_path
+        )
+        self._runtime_wake_coordinator: Any | None = None
+        self._pending_runtime_wake_events: list[Any] = []
+        self._current_runtime_wake_events: list[Any] = []
+        self._current_runtime_wake_kinds: set[str] = set()
+        self._runtime_checkpoint = self._load_runtime_checkpoint()
+        self._runtime_last_source_digest = str(
+            self._runtime_checkpoint.get("source_digest") or ""
+        )
+        cached_result = self._runtime_checkpoint.get("result")
+        self._runtime_last_result = (
+            dict(cached_result) if isinstance(cached_result, Mapping) else None
+        )
+        self._last_safety_reconciliation_monotonic = time.monotonic()
+
+    def _decision_runtime_route(
+        self,
+        boundary: str,
+        payload: Mapping[str, Any],
+    ) -> Any:
+        """Route a live daemon boundary through the configured runtime."""
+
+        if self._implementation_cancel_requested():
+            from ..decision_runtime import DecisionRuntimeCancelled
+
+            raise DecisionRuntimeCancelled(
+                ("cancelled", f"cancelled_before_{boundary}")
+            )
+        if self.decision_runtime is None:
+            return None
+        route = getattr(self.decision_runtime, "route", None)
+        if not callable(route):
+            raise TypeError("decision_runtime must expose route()")
+        decision = route(boundary, dict(payload))
+        self._last_runtime_decision = decision
+        return decision
+
+    def _decision_runtime_mutation(
+        self,
+        boundary: str,
+        payload: Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        """Verify a current permit immediately before a daemon effect."""
+
+        decision = self._decision_runtime_route(boundary, payload)
+        if decision is None:
+            return callback()
+        authorize = getattr(
+            self.decision_runtime, "authorize_mutation", None
+        )
+        if not callable(authorize):
+            raise TypeError(
+                "decision_runtime must expose authorize_mutation()"
+            )
+
+        def dispatch() -> dict[str, Any]:
+            value = callback()
+            request = getattr(decision, "decision_request", None)
+            return {
+                "value": value,
+                "observed_effects": tuple(
+                    getattr(request, "expected_effects", ())
+                ),
+            }
+
+        execution = authorize(decision, dispatch)
+        self._last_runtime_effect_observation = getattr(
+            execution, "effect_observation", None
+        )
+        wrapped = getattr(execution, "value", execution)
+        return wrapped.get("value") if isinstance(wrapped, Mapping) else wrapped
+
+    def _decision_runtime_completion(
+        self,
+        task: PortalTask,
+        *,
+        merged_tree_id: str,
+        evidence: Mapping[str, Any],
+    ) -> Any:
+        """Admit completion only from a fresh merged-tree decision."""
+
+        previous = getattr(self._last_runtime_decision, "receipt", None)
+        observation = self._last_runtime_effect_observation
+        return self._decision_runtime_route(
+            "completion",
+            {
+                "task_id": task.task_id,
+                "task_cid": self._canonical_ref(task),
+                "merged_tree_id": merged_tree_id,
+                "prior_decision_receipt_id": str(
+                    getattr(previous, "receipt_id", "")
+                ),
+                "effect_observation_receipt_id": str(
+                    getattr(observation, "receipt_id", "")
+                ),
+                "post_merge_evidence": dict(evidence),
+                "fresh_merged_tree_required": True,
+            },
         )
 
     @staticmethod
@@ -1830,8 +2030,10 @@ class PortalImplementationDaemon:
         ]
         if workspace != shared_checkout:
             roots.append(("shared_checkout", shared_checkout))
-        return {
-            scope: {
+        snapshot: dict[str, dict[str, Any]] = {}
+        for scope, root in roots:
+            head_before = self._implementation_protected_git_head(root)
+            scope_snapshot: dict[str, Any] = {
                 "root": str(root),
                 "paths": {
                     relative: self._implementation_protected_path_identity(
@@ -1841,7 +2043,150 @@ class PortalImplementationDaemon:
                     for relative in self.implementation_protected_paths
                 },
             }
-            for scope, root in roots
+            head_after = self._implementation_protected_git_head(root)
+            if head_before and head_before == head_after:
+                scope_snapshot["git_head"] = head_before
+            elif head_before or head_after:
+                scope_snapshot["git_head_error"] = "head_changed_while_snapshotting"
+            snapshot[scope] = scope_snapshot
+        return snapshot
+
+    @staticmethod
+    def _implementation_protected_git_head(root: Path) -> str:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            # A managed ephemeral worktree can legitimately disappear between
+            # the crash-surviving snapshot and reconciliation.  Its protected
+            # identities are still compared through the saved shared-checkout
+            # scope; every other missing-root case remains a path mutation.
+            return ""
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+
+    def _authorized_concurrent_protected_path_update(
+        self,
+        *,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+        after: Mapping[str, Mapping[str, Any]],
+        mutations: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Recognize a daemon-owned board commit made by another active lane."""
+
+        if workspace_path.resolve() == self.repo_root.resolve() or not mutations:
+            return {}
+        if any(
+            str(mutation.get("scope") or "") != "shared_checkout"
+            for mutation in mutations
+        ):
+            return {}
+
+        before_shared = before.get("shared_checkout")
+        after_shared = after.get("shared_checkout")
+        if not isinstance(before_shared, Mapping) or not isinstance(
+            after_shared, Mapping
+        ):
+            return {}
+        before_head = str(before_shared.get("git_head") or "")
+        after_head = str(after_shared.get("git_head") or "")
+        if not before_head or not after_head or before_head == after_head:
+            return {}
+
+        ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", before_head, after_head],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if ancestry.returncode != 0:
+            return {}
+
+        protected_paths = sorted(
+            {
+                str(mutation.get("path") or "")
+                for mutation in mutations
+                if str(mutation.get("path") or "")
+            }
+        )
+        if not protected_paths:
+            return {}
+        status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                *protected_paths,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0 or status.stdout.strip():
+            return {}
+
+        history = subprocess.run(
+            [
+                "git",
+                "log",
+                "--format=%H%x09%ae%x09%s",
+                f"{before_head}..{after_head}",
+                "--",
+                *protected_paths,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if history.returncode != 0:
+            return {}
+        commits: list[dict[str, str]] = []
+        for line in history.stdout.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) != 3:
+                return {}
+            commit, author_email, subject = parts
+            daemon_owned = (
+                author_email == "implementation-daemon@example.invalid"
+                and (
+                    subject.endswith(": mark todo completed")
+                    or subject.endswith(": update generated submodule pointer")
+                )
+            )
+            generated_board_update = (
+                author_email == BACKLOG_REFINERY_AUTHOR_EMAIL
+                and subject.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER)
+            )
+            if not daemon_owned and not generated_board_update:
+                return {}
+            commits.append(
+                {
+                    "commit": commit,
+                    "author_email": author_email,
+                    "subject": subject,
+                }
+            )
+        if not commits:
+            return {}
+        if self._implementation_protected_git_head(self.repo_root) != after_head:
+            return {}
+        return {
+            "before_head": before_head,
+            "after_head": after_head,
+            "protected_paths": protected_paths,
+            "commits": commits,
         }
 
     def _implementation_protected_active_snapshot_path(self) -> Path:
@@ -1950,6 +2295,46 @@ class PortalImplementationDaemon:
                     )
         return errors
 
+    def _missing_ephemeral_workspace_shared_snapshot(
+        self,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, Mapping[str, Any]] | None:
+        """Return a valid shared baseline when a managed disposable checkout vanished."""
+
+        try:
+            workspace = workspace_path.resolve(strict=False)
+            shared_checkout = self.repo_root.resolve(strict=False)
+            worktree_root = self.worktree_root.resolve(strict=False)
+        except (OSError, RuntimeError):
+            return None
+        if (
+            workspace == shared_checkout
+            or workspace.exists()
+            or not self._path_is_under(workspace, worktree_root)
+        ):
+            return None
+
+        workspace_snapshot = before.get("workspace")
+        shared_snapshot = before.get("shared_checkout")
+        if not isinstance(workspace_snapshot, Mapping) or not isinstance(
+            shared_snapshot,
+            Mapping,
+        ):
+            return None
+        expected_paths = set(self.implementation_protected_paths)
+        for scope_snapshot in (workspace_snapshot, shared_snapshot):
+            paths = scope_snapshot.get("paths")
+            if not isinstance(paths, Mapping) or set(map(str, paths)) != expected_paths:
+                return None
+        candidate = {
+            "workspace": workspace_snapshot,
+            "shared_checkout": shared_snapshot,
+        }
+        if self._implementation_protected_snapshot_errors(candidate):
+            return None
+        return {"shared_checkout": shared_snapshot}
+
     @staticmethod
     def _implementation_protected_change_kind(
         before: Mapping[str, Any],
@@ -2055,10 +2440,20 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Fail closed when any protected identity changes after agent execution."""
 
-        after = self._implementation_protected_path_snapshot(workspace_path)
+        missing_ephemeral_before = (
+            self._missing_ephemeral_workspace_shared_snapshot(
+                workspace_path,
+                before,
+            )
+        )
+        comparison_before = missing_ephemeral_before or before
+        comparison_workspace = (
+            self.repo_root if missing_ephemeral_before is not None else workspace_path
+        )
+        after = self._implementation_protected_path_snapshot(comparison_workspace)
         mutations: list[dict[str, Any]] = []
-        for scope in sorted(set(before) | set(after)):
-            before_scope = before.get(scope) or {}
+        for scope in sorted(set(comparison_before) | set(after)):
+            before_scope = comparison_before.get(scope) or {}
             after_scope = after.get(scope) or {}
             before_paths = before_scope.get("paths")
             after_paths = after_scope.get("paths")
@@ -2094,8 +2489,35 @@ class PortalImplementationDaemon:
                     }
                 )
         if not mutations:
+            if missing_ephemeral_before is not None:
+                self._record_event(
+                    "implementation_protected_path_missing_ephemeral_checked",
+                    {
+                        "task_id": task.task_id if task is not None else task_id,
+                        "attempt": attempt,
+                        "workspace_path": str(workspace_path),
+                        "shared_checkout_unchanged": True,
+                    },
+                )
             return {}
         resolved_task_id = task.task_id if task is not None else task_id
+        concurrent_update = self._authorized_concurrent_protected_path_update(
+            workspace_path=workspace_path,
+            before=comparison_before,
+            after=after,
+            mutations=mutations,
+        )
+        if concurrent_update:
+            self._record_event(
+                "implementation_protected_path_concurrent_update_accepted",
+                {
+                    "task_id": resolved_task_id,
+                    "attempt": attempt,
+                    "workspace_path": str(workspace_path),
+                    **concurrent_update,
+                },
+            )
+            return {}
         payload = {
             "reason": "implementation_protected_path_mutated",
             "task_id": resolved_task_id,
@@ -2155,6 +2577,13 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         if not self.implementation_protected_paths:
             return {}
+        missing_ephemeral_workspace = (
+            self._missing_ephemeral_workspace_shared_snapshot(
+                workspace_path,
+                before,
+            )
+            is not None
+        )
         violation = self._implementation_protected_path_violation(
             task=task,
             attempt=attempt,
@@ -2162,11 +2591,26 @@ class PortalImplementationDaemon:
             before=before,
         )
         if not violation:
+            clear_reason = (
+                "ephemeral_workspace_missing_shared_checkout_unchanged"
+                if missing_ephemeral_workspace
+                else reason
+            )
             self._clear_implementation_protected_snapshot(
                 task_id=task.task_id,
                 attempt=attempt,
-                reason=reason,
+                reason=clear_reason,
             )
+            if missing_ephemeral_workspace:
+                self._record_event(
+                    "implementation_protected_path_missing_ephemeral_reconciled",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "workspace_path": str(workspace_path),
+                        "terminal_reason": reason,
+                    },
+                )
         return violation
 
     def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
@@ -2215,9 +2659,23 @@ class PortalImplementationDaemon:
             attempt = 0
         workspace_value = str(active.get("workspace_path") or "")
         snapshot = active.get("snapshot")
+        missing_ephemeral_workspace = False
         try:
-            workspace_path = Path(workspace_value).resolve(strict=True)
+            workspace_path = Path(workspace_value).resolve(strict=False)
+            workspace_exists = workspace_path.exists()
+            missing_ephemeral_workspace = bool(
+                active.get("ephemeral_worktree") is True
+                and not workspace_exists
+                and isinstance(snapshot, Mapping)
+                and self._missing_ephemeral_workspace_shared_snapshot(
+                    workspace_path,
+                    snapshot,
+                )
+                is not None
+            )
             workspace_allowed = (
+                workspace_exists or missing_ephemeral_workspace
+            ) and (
                 workspace_path == self.repo_root.resolve()
                 or self._path_is_under(workspace_path, self.worktree_root.resolve())
             )
@@ -2285,16 +2743,22 @@ class PortalImplementationDaemon:
                 "reason": "implementation_protected_path_mutated",
                 "incident": violation,
             }
+        reconciliation_reason = (
+            "crash_reconciliation_ephemeral_workspace_missing"
+            if missing_ephemeral_workspace
+            else "crash_reconciliation_unchanged"
+        )
         self._clear_implementation_protected_snapshot(
             task_id=task_id,
             attempt=attempt,
-            reason="crash_reconciliation_unchanged",
+            reason=reconciliation_reason,
         )
         result = {
             "blocked": False,
-            "reason": "crash_reconciliation_unchanged",
+            "reason": reconciliation_reason,
             "task_id": task_id,
             "attempt": attempt,
+            "workspace_path": str(workspace_path),
         }
         self._record_event(
             "implementation_protected_path_snapshot_reconciled",
@@ -2516,6 +2980,284 @@ class PortalImplementationDaemon:
         merged["deprioritized_tasks"] = [str(item) for item in merged.get("deprioritized_tasks", [])]
         return merged
 
+    @staticmethod
+    def _runtime_path_metadata(path: Path) -> dict[str, Any]:
+        """Read a bounded, non-following source head before expensive work."""
+
+        try:
+            value = path.lstat()
+        except FileNotFoundError:
+            return {"path": str(path), "state": "missing"}
+        except OSError as exc:
+            return {
+                "path": str(path),
+                "state": "unreadable",
+                "errno": int(exc.errno or 0),
+            }
+        return {
+            "path": str(path),
+            "state": "present",
+            "device": int(value.st_dev),
+            "inode": int(value.st_ino),
+            "mode": int(value.st_mode),
+            "size": int(value.st_size),
+            "mtime_ns": int(value.st_mtime_ns),
+            "ctime_ns": int(value.st_ctime_ns),
+        }
+
+    def _runtime_source_paths(self) -> dict[str, tuple[Path, ...]]:
+        git_path = self.repo_root / ".git"
+        git_dir = git_path
+        if git_path.is_file():
+            try:
+                marker = git_path.read_text(encoding="utf-8").strip()
+            except (OSError, UnicodeDecodeError):
+                marker = ""
+            if marker.casefold().startswith("gitdir:"):
+                candidate = Path(marker.split(":", 1)[1].strip())
+                git_dir = (
+                    candidate
+                    if candidate.is_absolute()
+                    else (self.repo_root / candidate)
+                ).resolve()
+        objective_paths: list[Path] = []
+        if self.objective_path is not None:
+            objective_paths.append(Path(self.objective_path))
+        if self.objective_bundle_dir is not None:
+            objective_paths.append(Path(self.objective_bundle_dir))
+        lease_paths = [
+            Path(self.merge_queue_dir),
+            self.state_path.parent / IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+            *self.external_reservation_manifest_paths,
+        ]
+        policy_paths = [
+            self.strategy_path,
+            self._implementation_protected_active_snapshot_path(),
+            self._implementation_protected_incident_path(),
+        ]
+        return {
+            "task_board": (self.todo_path,),
+            "objective": tuple(objective_paths),
+            "repository": (
+                self.repo_root,
+                git_dir / "HEAD",
+                git_dir / "index",
+                git_dir / "MERGE_HEAD",
+                git_dir / "refs" / "heads",
+            ),
+            "child_process": (),
+            "lease": tuple(lease_paths),
+            "validation": (Path(self.validation_cache_dir),),
+            "provider_capacity": (),
+            "policy": tuple(policy_paths),
+            "observation_window": (),
+        }
+
+    def _runtime_source_head(self) -> tuple[str, dict[str, Any]]:
+        sources = {
+            kind: [
+                self._runtime_path_metadata(path)
+                for path in dict.fromkeys(paths)
+            ]
+            for kind, paths in self._runtime_source_paths().items()
+        }
+        # The daemon's event stream is also a durable coordination input. Its
+        # own writes are captured after a materialized pass, so they do not
+        # create a feedback loop on the next preflight.
+        sources["event_log"] = [self._runtime_path_metadata(self.events_path)]
+        sources["state"] = [self._runtime_path_metadata(self.state_path)]
+        encoded = json.dumps(
+            sources,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest(), sources
+
+    def _load_runtime_checkpoint(self) -> dict[str, Any]:
+        try:
+            loaded = self.runtime_checkpoint_store.load()
+        except (OSError, TypeError, ValueError):
+            return {}
+        if loaded is None:
+            return {}
+        projection, cursor = loaded
+        if (
+            projection.get("schema") != RUNTIME_CHECKPOINT_SCHEMA
+            or projection.get("requirement_id")
+            != EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID
+        ):
+            return {}
+        return {**projection, "cursor": cursor.to_record()}
+
+    @staticmethod
+    def _runtime_result_projection(result: Mapping[str, Any]) -> dict[str, Any]:
+        keys = (
+            "task_count",
+            "completed_count",
+            "ready_count",
+            "selectable_ready_count",
+            "eligible_ready_count",
+            "strict_deprioritized_ready_count",
+            "waiting_count",
+            "blocked_count",
+            "active_task_id",
+            "selection_idle_reason",
+            "state_path",
+            "strategy_path",
+            "events_path",
+            "reason",
+        )
+        return {key: result[key] for key in keys if key in result}
+
+    def _save_runtime_checkpoint(
+        self,
+        *,
+        source_digest: str,
+        sources: Mapping[str, Any],
+        result: Mapping[str, Any],
+        projection_delta: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        projection = {
+            "schema": RUNTIME_CHECKPOINT_SCHEMA,
+            "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+            "source_digest": source_digest,
+            "result": self._runtime_result_projection(result),
+            "task_state": asdict(PortalTaskState.load(self.state_path)),
+            "source_kinds": sorted(sources),
+        }
+        event_cursor = latest_event_cursor(self.events_path)
+        materialized = self.runtime_checkpoint_store.materialize(
+            projection,
+            event_cursor,
+        )
+        self._runtime_checkpoint = {
+            **projection,
+            "cursor": event_cursor.to_record(),
+        }
+        return {
+            "changed": materialized.changed,
+            "write_count": materialized.write_count,
+            "checkpoint_id": materialized.checkpoint_id,
+            "projection_id": materialized.projection_id,
+            "delta": dict(materialized.delta),
+            "event_cursor": self._runtime_checkpoint["cursor"],
+            "state_delta_keys": sorted(projection_delta),
+        }
+
+    @staticmethod
+    def _projection_delta(
+        previous: PortalTaskState,
+        current: PortalTaskState,
+    ) -> dict[str, Any]:
+        before = asdict(previous)
+        after = asdict(current)
+        return {
+            key: value
+            for key, value in after.items()
+            if before.get(key) != value
+        }
+
+    def _consume_runtime_wake_kinds(self) -> set[str]:
+        events = self._pending_runtime_wake_events
+        self._pending_runtime_wake_events = []
+        self._current_runtime_wake_events = list(events)
+        kinds: set[str] = set()
+        for event in events:
+            if isinstance(event, Mapping):
+                kind = str(event.get("kind") or "")
+                event_kinds = event.get("kinds") or ()
+            else:
+                raw_kind = getattr(event, "kind", "")
+                kind = str(getattr(raw_kind, "value", raw_kind) or "")
+                event_kinds = getattr(event, "kinds", ())
+            if kind in RUNTIME_WAKE_KINDS:
+                kinds.add(kind)
+            for raw_kind in event_kinds:
+                selected = str(getattr(raw_kind, "value", raw_kind) or "")
+                if selected in RUNTIME_WAKE_KINDS:
+                    kinds.add(selected)
+        return kinds
+
+    def _acknowledge_runtime_events(self) -> None:
+        coordinator = self._runtime_wake_coordinator
+        if coordinator is None:
+            self._current_runtime_wake_events = []
+            return
+        for event in self._current_runtime_wake_events:
+            coordinator.acknowledge(event)
+        self._current_runtime_wake_events = []
+
+    def _unchanged_runtime_result(
+        self,
+        *,
+        source_digest: str,
+        wake_kinds: set[str],
+    ) -> dict[str, Any]:
+        result = dict(self._runtime_last_result or {})
+        result.update(
+            {
+                "unchanged": True,
+                "write_count": 0,
+                "projection_delta": {},
+                "implementation_result": None,
+                "merge_reconciliation": [],
+                "source_digest": source_digest,
+                "wake_kinds": sorted(wake_kinds),
+                "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+            }
+        )
+        self._acknowledge_runtime_events()
+        return result
+
+    def notify_runtime_event(
+        self,
+        kind: str,
+        payload: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Wake the runtime for a non-filesystem semantic source."""
+
+        if kind not in RUNTIME_WAKE_KINDS:
+            raise ValueError(f"unsupported runtime wake kind: {kind}")
+        coordinator = self._ensure_runtime_wake_coordinator()
+        revision = "sha256:" + hashlib.sha256(
+            json.dumps(
+                dict(payload or {}),
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        coordinator.notify(kind, revision=revision)
+
+    def _ensure_runtime_wake_coordinator(self) -> Any:
+        if self._runtime_wake_coordinator is None:
+            from ..taskboard_store import RuntimeWakeCoordinator
+
+            self._runtime_wake_coordinator = RuntimeWakeCoordinator(
+                self._runtime_source_paths(),
+            )
+        return self._runtime_wake_coordinator
+
+    def wait_for_wake(self, timeout: float | None = None) -> list[Any]:
+        """Block for semantic input, using ``timeout`` as the safety deadline."""
+
+        coordinator = self._ensure_runtime_wake_coordinator()
+        event = coordinator.wait(timeout=timeout)
+        events = [event]
+        self._pending_runtime_wake_events.extend(events)
+        return events
+
+    def close_event_runtime(self) -> None:
+        """Release watcher resources owned by the event-driven runtime."""
+
+        coordinator = self._runtime_wake_coordinator
+        self._runtime_wake_coordinator = None
+        self._pending_runtime_wake_events = []
+        self._current_runtime_wake_events = []
+        if coordinator is not None:
+            coordinator.close()
+
     def _mark_long_running_phase(self, *, task_id: str, phase: str, detail: str = "") -> None:
         state = PortalTaskState.load(self.state_path)
         now = utc_now()
@@ -2546,7 +3288,7 @@ class PortalImplementationDaemon:
         live_inflight_implementation = self._find_live_inflight_implementation()
         now = utc_now()
         state = PortalTaskState.load(self.state_path)
-        state.heartbeat_at = now
+        state.heartbeat_at = previous.heartbeat_at
         if not state.last_progress_at:
             state.last_progress_at = now
         state.completed_task_ids = []
@@ -2582,7 +3324,11 @@ class PortalImplementationDaemon:
             state.recommended_task_id = ""
             state.recommended_actions = []
         state.selection_idle_reason = reason
-        state.save(self.state_path)
+        projection_delta = self._projection_delta(previous, state)
+        if projection_delta:
+            state.heartbeat_at = now
+            projection_delta = self._projection_delta(previous, state)
+        state_written = state.save(self.state_path)
         payload = {
             "reason": reason,
             "todo_path": str(self.todo_path),
@@ -2591,8 +3337,9 @@ class PortalImplementationDaemon:
         }
         if error:
             payload["error"] = error[-4000:]
-        self._record_event("daemon_no_tasks", payload)
-        return {
+        if state_written:
+            self._record_event("daemon_no_tasks", payload)
+        result = {
             "task_count": 0,
             "completed_count": 0,
             "ready_count": 0,
@@ -2609,7 +3356,27 @@ class PortalImplementationDaemon:
             "implementation_result": None,
             "merge_reconciliation": [],
             "reason": reason,
+            "unchanged": not state_written,
+            "state_written": state_written,
+            "write_count": int(state_written),
+            "projection_delta": projection_delta,
+            "wake_kinds": sorted(self._current_runtime_wake_kinds),
+            "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
+        final_source_digest, final_sources = self._runtime_source_head()
+        if state_written:
+            checkpoint_result = self._save_runtime_checkpoint(
+                source_digest=final_source_digest,
+                sources=final_sources,
+                result=result,
+                projection_delta=projection_delta,
+            )
+            result["delta_checkpoint"] = checkpoint_result
+            result["write_count"] += int(checkpoint_result["write_count"])
+        self._runtime_last_source_digest = final_source_digest
+        self._runtime_last_result = self._runtime_result_projection(result)
+        self._acknowledge_runtime_events()
+        return result
 
     def ensure_state_file(self) -> dict[str, Any]:
         """Repair malformed durable state before this pass reads it."""
@@ -2632,6 +3399,24 @@ class PortalImplementationDaemon:
         return result
 
     def run_once(self) -> dict[str, Any]:
+        wake_kinds = self._consume_runtime_wake_kinds()
+        self._current_runtime_wake_kinds = set(wake_kinds)
+        source_digest, _source_metadata = self._runtime_source_head()
+        forced_wake_kinds = wake_kinds.difference({"observation_window"})
+        safety_reconciliation_due = (
+            time.monotonic() - self._last_safety_reconciliation_monotonic
+            >= DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
+        )
+        if (
+            source_digest == self._runtime_last_source_digest
+            and not forced_wake_kinds
+            and not safety_reconciliation_due
+        ):
+            return self._unchanged_runtime_result(
+                source_digest=source_digest,
+                wake_kinds=wake_kinds,
+            )
+        self._last_safety_reconciliation_monotonic = time.monotonic()
         event_log_repair = self.ensure_event_log_file()
         state_file_repair = self.ensure_state_file()
         protected_path_reconciliation = (
@@ -2939,7 +3724,7 @@ class PortalImplementationDaemon:
         if selected is None and attempt_limit_idle_reason:
             selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
         state = PortalTaskState.load(self.state_path)
-        state.heartbeat_at = now
+        state.heartbeat_at = previous.heartbeat_at
         if newly_completed or not state.last_progress_at:
             state.last_progress_at = now
         state.completed_task_ids = sorted(completed_set)
@@ -3045,7 +3830,11 @@ class PortalImplementationDaemon:
             state.recommended_actions = []
             state.selection_idle_reason = str(selection_scope["selection_idle_reason"])
 
-        state.save(self.state_path)
+        projection_delta = self._projection_delta(previous, state)
+        if projection_delta:
+            state.heartbeat_at = now
+            projection_delta = self._projection_delta(previous, state)
+        state_written = state.save(self.state_path)
         if revision_reset_task_ids:
             self._record_event(
                 "task_revision_attempt_budget_reset",
@@ -3075,27 +3864,29 @@ class PortalImplementationDaemon:
                 self._record_event("implementation_skipped", implementation_result)
             else:
                 implementation_result = self._run_implementation(selected, state)
-        self._record_event(
-            "daemon_pass",
-            {
-                "completed_count": state.completed_count,
-                "ready_count": state.ready_count,
-                "waiting_count": state.waiting_count,
-                "blocked_count": state.blocked_count,
-                "active_task_id": state.active_task_id,
-                "selectable_ready_count": state.selectable_ready_count,
-                "eligible_ready_count": state.eligible_ready_count,
-                "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
-                "selection_idle_reason": state.selection_idle_reason,
-                "max_task_attempts": self.max_task_attempts,
-                "attempt_limited_task_ids": [
-                    item["task_id"] for item in attempt_limited_tasks
-                ],
-                "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
-                "shared_completed_task_ids": sorted(shared_completed_task_ids),
-            },
-        )
-        return {
+        if state_written or implementation_result is not None:
+            self._record_event(
+                "daemon_pass",
+                {
+                    "completed_count": state.completed_count,
+                    "ready_count": state.ready_count,
+                    "waiting_count": state.waiting_count,
+                    "blocked_count": state.blocked_count,
+                    "active_task_id": state.active_task_id,
+                    "selectable_ready_count": state.selectable_ready_count,
+                    "eligible_ready_count": state.eligible_ready_count,
+                    "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
+                    "selection_idle_reason": state.selection_idle_reason,
+                    "max_task_attempts": self.max_task_attempts,
+                    "attempt_limited_task_ids": [
+                        item["task_id"] for item in attempt_limited_tasks
+                    ],
+                    "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
+                    "shared_completed_task_ids": sorted(shared_completed_task_ids),
+                    "projection_delta_keys": sorted(projection_delta),
+                },
+            )
+        result = {
             "task_count": state.task_count,
             "completed_count": state.completed_count,
             "ready_count": state.ready_count,
@@ -3129,7 +3920,33 @@ class PortalImplementationDaemon:
             "canonical_task_count": len(aliases_by_cid),
             "merge_train_progress": merge_train_progress,
             "protected_path_reconciliation": protected_path_reconciliation,
+            "unchanged": not state_written and implementation_result is None,
+            "state_written": state_written,
+            "write_count": int(state_written),
+            "projection_delta": projection_delta,
+            "wake_kinds": sorted(wake_kinds),
+            "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
+        final_source_digest, final_sources = self._runtime_source_head()
+        # An implementation may mutate attempt, lease, validation, and active
+        # execution state after the board projection above was selected. Do
+        # not acknowledge that source head until a follow-up pass reconciles
+        # those effects into the task projection.
+        if state_written and implementation_result is None:
+            checkpoint_result = self._save_runtime_checkpoint(
+                source_digest=final_source_digest,
+                sources=final_sources,
+                result=result,
+                projection_delta=projection_delta,
+            )
+            result["delta_checkpoint"] = checkpoint_result
+            result["write_count"] += int(checkpoint_result["write_count"])
+        self._runtime_last_source_digest = (
+            final_source_digest if implementation_result is None else ""
+        )
+        self._runtime_last_result = self._runtime_result_projection(result)
+        self._acknowledge_runtime_events()
+        return result
 
     @staticmethod
     def _provider_capacity_backoff_seconds() -> float:
@@ -3502,12 +4319,23 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Started: {started_at}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
                 log_fh.flush()
-                completed = run_process_group_stream(
-                    command,
-                    cwd=workspace_path,
-                    stdout=log_fh,
-                    input_text=prompt,
-                    timeout_seconds=self.implementation_timeout,
+                completed = self._decision_runtime_mutation(
+                    "command_invocation",
+                    {
+                        "operation": "implementation_provider",
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "command": tuple(command),
+                        "workspace_path": str(workspace_path),
+                        "context_receipt_path": str(context_receipt_path),
+                    },
+                    lambda: run_process_group_stream(
+                        command,
+                        cwd=workspace_path,
+                        stdout=log_fh,
+                        input_text=prompt,
+                        timeout_seconds=self.implementation_timeout,
+                    ),
                 )
             effective_returncode = completed.returncode
             protected_path_violation = (
@@ -3620,6 +4448,21 @@ class PortalImplementationDaemon:
                         "protected_path_violation": protected_path_violation,
                     }
             if effective_returncode == 0:
+                _repository_id, completion_tree_id = (
+                    self._implementation_repository_and_tree_ids(task)
+                )
+                self._decision_runtime_completion(
+                    task,
+                    merged_tree_id=completion_tree_id,
+                    evidence={
+                        "passed": bool(
+                            validation_result.get("passed", False)
+                        ),
+                        "completion_authoritative": True,
+                        "repository_tree_id": completion_tree_id,
+                        "validation": dict(validation_result),
+                    },
+                )
                 todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
             finished_at = utc_now()
             self._record_task_attempt(state, task, attempt)
@@ -3949,6 +4792,31 @@ class PortalImplementationDaemon:
         )
 
     def _mark_tasks_completed_in_todo(
+        self,
+        task_ids: Sequence[str],
+        *,
+        primary_task_id: str,
+        completion_reason: str,
+        bundle_work_order: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._decision_runtime_mutation(
+            "task_board_mutation",
+            {
+                "operation": "mark_tasks_completed",
+                "todo_path": str(self.todo_path),
+                "task_ids": tuple(task_ids),
+                "primary_task_id": primary_task_id,
+                "completion_reason": completion_reason,
+            },
+            lambda: self._mark_tasks_completed_in_todo_unchecked(
+                task_ids,
+                primary_task_id=primary_task_id,
+                completion_reason=completion_reason,
+                bundle_work_order=bundle_work_order,
+            ),
+        )
+
+    def _mark_tasks_completed_in_todo_unchecked(
         self,
         task_ids: Sequence[str],
         *,
@@ -4754,6 +5622,18 @@ class PortalImplementationDaemon:
                 )
                 validation_proof["proof_gate"] = proof_gate_packet
                 metadata["proof_gate"] = proof_gate_packet
+            for gate_name in (
+                "proposal_gate",
+                "scope_adjudication",
+            ):
+                gate_record = validation_result.get(gate_name)
+                if isinstance(gate_record, Mapping):
+                    validation_proof[gate_name] = (
+                        _bounded_merge_proof_value(
+                            gate_record,
+                            field_name=gate_name,
+                        )
+                    )
             metadata["validation_proof"] = validation_proof
         if self.formal_verification_policy is not None:
             metadata["formal_verification_policy"] = _bounded_merge_proof_value(
@@ -4815,6 +5695,79 @@ class PortalImplementationDaemon:
         values.setdefault("priority", str(request.priority or "P2"))
         values.setdefault("track", "ops")
         return PortalTask(**values)
+
+    @staticmethod
+    def _scope_adjudication_merge_binding_error(
+        validation_proof: Mapping[str, Any],
+    ) -> str:
+        """Validate the compact scope-to-proposal authority chain."""
+
+        scope = validation_proof.get("scope_adjudication")
+        if scope is None:
+            return ""
+        proposal = validation_proof.get("proposal_gate")
+        if not isinstance(scope, Mapping):
+            return "scope_adjudication_malformed"
+        if not isinstance(proposal, Mapping):
+            return "scope_adjudication_proposal_missing"
+        if scope.get("accepted") is not True:
+            return "scope_adjudication_not_accepted"
+        if (
+            scope.get("proof_authoritative") is not False
+            or scope.get("completion_authoritative") is not False
+        ):
+            return "scope_adjudication_authority_forged"
+        proposal_id = str(scope.get("proposal_id") or "")
+        if (
+            not proposal_id
+            or proposal_id != str(proposal.get("proposal_id") or "")
+        ):
+            return "scope_adjudication_proposal_mismatch"
+        authorized_policy_id = str(
+            scope.get("authorized_policy_id") or ""
+        )
+        if (
+            not authorized_policy_id
+            or authorized_policy_id
+            != str(proposal.get("policy_id") or "")
+        ):
+            return "scope_adjudication_policy_mismatch"
+        if (
+            not str(scope.get("receipt_id") or "")
+            or str(scope.get("repository_tree_id") or "")
+            != str(proposal.get("repository_tree_id") or "")
+        ):
+            return "scope_adjudication_receipt_mismatch"
+        raw_authorized = scope.get("authorized_paths")
+        raw_denied = scope.get("denied_paths")
+        raw_changed = proposal.get("changed_paths")
+        if (
+            not isinstance(raw_authorized, Sequence)
+            or isinstance(raw_authorized, (str, bytes, bytearray))
+            or not raw_authorized
+            or not isinstance(raw_denied, Sequence)
+            or isinstance(raw_denied, (str, bytes, bytearray))
+            or bool(raw_denied)
+            or not isinstance(raw_changed, Sequence)
+            or isinstance(raw_changed, (str, bytes, bytearray))
+        ):
+            return "scope_adjudication_paths_malformed"
+        authorized = {
+            str(path).strip()
+            for path in raw_authorized
+            if str(path).strip()
+        }
+        changed = {
+            str(path).strip()
+            for path in raw_changed
+            if str(path).strip()
+        }
+        if (
+            len(authorized) != len(raw_authorized)
+            or not authorized.issubset(changed)
+        ):
+            return "scope_adjudication_paths_mismatch"
+        return ""
 
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
@@ -4905,6 +5858,21 @@ class PortalImplementationDaemon:
                         if not validation_proof.get("passed")
                         else "broad_pre_merge_scope_missing"
                     ),
+                }
+            scope_binding_error = (
+                self._scope_adjudication_merge_binding_error(
+                    validation_proof
+                )
+            )
+            if scope_binding_error:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "scope_adjudication_binding_invalid",
+                    "branch": branch_name,
+                    "validation_result": validation_proof,
+                    "validation_gate_reason": scope_binding_error,
                 }
         raw_changed_submodule_paths = metadata.get("changed_submodule_paths")
         changed_submodule_paths = (
@@ -5027,7 +5995,31 @@ class PortalImplementationDaemon:
                         worktree_submodule_paths=self.worktree_submodule_paths,
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,
+                        decision_runtime=self.decision_runtime,
                     )
+                completion_tree_id = str(
+                    result.get("merge_commit")
+                    or result.get("target_commit")
+                    or implementation_commit
+                )
+                completion_daemon._decision_runtime_completion(
+                    task,
+                    merged_tree_id=completion_tree_id,
+                    evidence={
+                        "passed": True,
+                        "completion_authoritative": True,
+                        "repository_tree_id": completion_tree_id,
+                        "merge_result": {
+                            key: result.get(key)
+                            for key in (
+                                "merged",
+                                "already_merged",
+                                "reason",
+                                "merge_commit",
+                            )
+                        },
+                    },
+                )
                 bundle_payload = metadata.get("bundle_work_order")
                 if isinstance(bundle_payload, dict):
                     task_ids = [
@@ -5183,6 +6175,8 @@ class PortalImplementationDaemon:
             formal_verification_policy=self.formal_verification_policy,
             proof_gate=self.proof_gate,
             proof_cache_dir=self.proof_cache_dir,
+            decision_runtime=self.decision_runtime,
+            decision_runtime_cancellation=self.implementation_cancelled,
         )
         return train.run_once()
 
@@ -5382,12 +6376,23 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Baseline: {baseline_ref}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
                 log_fh.flush()
-                completed = run_process_group_stream(
-                    command,
-                    cwd=worktree_path,
-                    stdout=log_fh,
-                    input_text=prompt,
-                    timeout_seconds=self.implementation_timeout,
+                completed = self._decision_runtime_mutation(
+                    "command_invocation",
+                    {
+                        "operation": "implementation_provider",
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "command": tuple(command),
+                        "workspace_path": str(worktree_path),
+                        "branch": branch_name,
+                    },
+                    lambda: run_process_group_stream(
+                        command,
+                        cwd=worktree_path,
+                        stdout=log_fh,
+                        input_text=prompt,
+                        timeout_seconds=self.implementation_timeout,
+                    ),
                 )
             returncode = completed.returncode
             protected_path_violation = (
@@ -5408,10 +6413,22 @@ class PortalImplementationDaemon:
                     "reason": "implementation_protected_path_mutated",
                     "protected_path_violation": protected_path_violation,
                 }
-                cleanup_result = self._cleanup_merged_worktree(
-                    worktree_path,
-                    branch_name,
-                    reusable=False,
+                failed_preservation_result = (
+                    self._preserve_protected_path_interrupted_worktree(
+                        worktree_path,
+                        branch_name,
+                        task,
+                        attempt,
+                        protected_path_violation,
+                        baseline_ref=baseline_ref,
+                    )
+                )
+                commit_result = dict(
+                    failed_preservation_result.get("commit_result") or commit_result
+                )
+                implementation_commit = str(commit_result.get("commit", ""))
+                cleanup_result = dict(
+                    failed_preservation_result.get("cleanup_result") or cleanup_result
                 )
             elif returncode != 0:
                 provider_failure = self._provider_capacity_failure_from_log(log_path)
@@ -5435,10 +6452,22 @@ class PortalImplementationDaemon:
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
                     }
-                    cleanup_result = self._cleanup_merged_worktree(
-                        worktree_path,
-                        branch_name,
-                        reusable=False,
+                    failed_preservation_result = (
+                        self._preserve_protected_path_interrupted_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            protected_path_violation,
+                            baseline_ref=baseline_ref,
+                        )
+                    )
+                    commit_result = dict(
+                        failed_preservation_result.get("commit_result") or commit_result
+                    )
+                    implementation_commit = str(commit_result.get("commit", ""))
+                    cleanup_result = dict(
+                        failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
             if returncode == 0 and not protected_path_violation:
                 self._mark_active_phase(
@@ -5498,10 +6527,24 @@ class PortalImplementationDaemon:
                         "protected_path_violation": protected_path_violation,
                     }
                     if worktree_path.exists():
-                        cleanup_result = self._cleanup_merged_worktree(
-                            worktree_path,
-                            branch_name,
-                            reusable=False,
+                        failed_preservation_result = (
+                            self._preserve_protected_path_interrupted_worktree(
+                                worktree_path,
+                                branch_name,
+                                task,
+                                attempt,
+                                protected_path_violation,
+                                baseline_ref=baseline_ref,
+                            )
+                        )
+                        commit_result = dict(
+                            failed_preservation_result.get("commit_result")
+                            or commit_result
+                        )
+                        implementation_commit = str(commit_result.get("commit", ""))
+                        cleanup_result = dict(
+                            failed_preservation_result.get("cleanup_result")
+                            or cleanup_result
                         )
                 elif validation_result.get("passed", False):
                     commit_result = self._commit_worktree_changes(
@@ -5524,7 +6567,50 @@ class PortalImplementationDaemon:
                             validation_result=validation_result,
                         )
                     elif commit_result.get("reason") == "no_changes":
-                        cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+                        current_head = self._run_git(
+                            ["rev-parse", "HEAD"],
+                            cwd=worktree_path,
+                        ).stdout.strip()
+                        current_branch = self._git_current_branch(worktree_path)
+                        no_change_guard = (
+                            self._validated_no_change_completion_guard(
+                                baseline_ref=baseline_ref,
+                                current_head=current_head,
+                                expected_branch=branch_name,
+                                current_branch=current_branch,
+                                validation_result=validation_result,
+                            )
+                        )
+                        commit_result["no_change_guard"] = no_change_guard
+                        if no_change_guard["allowed"]:
+                            cleanup_result = self._cleanup_merged_worktree(
+                                worktree_path,
+                                branch_name,
+                            )
+                        else:
+                            returncode = 1
+                            reason = "validated_candidate_missing_before_commit"
+                            validation_result = {
+                                **validation_result,
+                                "passed": False,
+                                "returncode": 1,
+                                "reason": reason,
+                                "no_change_guard": no_change_guard,
+                            }
+                            merge_result = {
+                                "merged": False,
+                                "reason": reason,
+                            }
+                            self._record_event(
+                                "implementation_candidate_lost_before_commit",
+                                {
+                                    "task_id": task.task_id,
+                                    "attempt": attempt,
+                                    "worktree_path": str(worktree_path),
+                                    "branch": branch_name,
+                                    **no_change_guard,
+                                },
+                            )
                     else:
                         returncode = 1
                         validation_result = {
@@ -5596,10 +6682,22 @@ class PortalImplementationDaemon:
                     "protected_path_violation": protected_path_violation,
                 }
                 if worktree_path.exists():
-                    cleanup_result = self._cleanup_merged_worktree(
-                        worktree_path,
-                        branch_name,
-                        reusable=False,
+                    failed_preservation_result = (
+                        self._preserve_protected_path_interrupted_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            protected_path_violation,
+                            baseline_ref=baseline_ref,
+                        )
+                    )
+                    commit_result = dict(
+                        failed_preservation_result.get("commit_result") or commit_result
+                    )
+                    implementation_commit = str(commit_result.get("commit", ""))
+                    cleanup_result = dict(
+                        failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
             timeout_result = {
                 "task_id": task.task_id,
@@ -5755,10 +6853,24 @@ class PortalImplementationDaemon:
                                 timeout_result,
                             )
                     elif protected_path_violation:
-                        cleanup_result = self._cleanup_merged_worktree(
-                            worktree_path,
-                            branch_name,
-                            reusable=False,
+                        failed_preservation_result = (
+                            self._preserve_protected_path_interrupted_worktree(
+                                worktree_path,
+                                branch_name,
+                                task,
+                                attempt,
+                                protected_path_violation,
+                                baseline_ref=baseline_ref,
+                            )
+                        )
+                        commit_result = dict(
+                            failed_preservation_result.get("commit_result")
+                            or commit_result
+                        )
+                        implementation_commit = str(commit_result.get("commit", ""))
+                        cleanup_result = dict(
+                            failed_preservation_result.get("cleanup_result")
+                            or cleanup_result
                         )
                     else:
                         failed_preservation_result = self._preserve_timed_out_worktree(
@@ -5813,6 +6925,28 @@ class PortalImplementationDaemon:
                         "implementation_timeout_salvage_failed",
                         timeout_result,
                     )
+            if not worktree_path.exists():
+                if (
+                    protected_path_snapshot is not None
+                    and not protected_path_violation
+                    and self._implementation_protected_active_snapshot_path().exists()
+                ):
+                    protected_path_violation = (
+                        self._finalize_implementation_protected_path_fence(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=worktree_path,
+                            before=protected_path_snapshot,
+                            reason="timeout_workspace_missing",
+                        )
+                    )
+                cleanup_result = self._cleanup_failed_setup_worktree(
+                    worktree_path,
+                    branch_name,
+                    task=task,
+                    attempt=attempt,
+                    exception_result=timeout_result,
+                )
         except Exception as exc:
             returncode = 1
             if protected_path_snapshot is not None and not protected_path_violation:
@@ -5837,9 +6971,31 @@ class PortalImplementationDaemon:
                 exception_result["protected_path_violation"] = (
                     protected_path_violation
                 )
-            # Clean up worktree on any exception, not just setup failures
-            if worktree_path.exists():
-                try:
+            # Preserve an implementation candidate when an operator-side
+            # protected-path update interrupts it. Other setup failures retain
+            # their existing cleanup path.
+            try:
+                if protected_path_violation and worktree_path.exists():
+                    failed_preservation_result = (
+                        self._preserve_protected_path_interrupted_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            protected_path_violation,
+                            baseline_ref=baseline_ref,
+                        )
+                    )
+                    commit_result = dict(
+                        failed_preservation_result.get("commit_result")
+                        or commit_result
+                    )
+                    implementation_commit = str(commit_result.get("commit", ""))
+                    cleanup_result = dict(
+                        failed_preservation_result.get("cleanup_result")
+                        or cleanup_result
+                    )
+                else:
                     cleanup_result = self._cleanup_failed_setup_worktree(
                         worktree_path,
                         branch_name,
@@ -5847,9 +7003,9 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                         exception_result=exception_result,
                     )
-                    exception_result["cleanup_result"] = cleanup_result
-                except Exception as cleanup_exc:
-                    exception_result["cleanup_error"] = str(cleanup_exc)[-1000:]
+                exception_result["cleanup_result"] = cleanup_result
+            except Exception as cleanup_exc:
+                exception_result["cleanup_error"] = str(cleanup_exc)[-1000:]
             self._record_event(
                 "implementation_exception",
                 {
@@ -5873,7 +7029,19 @@ class PortalImplementationDaemon:
             )
 
         finished_at = utc_now()
-        self._record_task_attempt(state, task, attempt)
+        protected_mutation_scopes = {
+            str(item.get("scope") or "")
+            for item in protected_path_violation.get("mutations", [])
+            if isinstance(item, Mapping)
+        }
+        protected_path_external_deferral = bool(protected_path_violation) and (
+            protected_mutation_scopes == {"shared_checkout"}
+        )
+        attempt_consumed = not protected_path_external_deferral
+        if attempt_consumed:
+            self._record_task_attempt(state, task, attempt)
+        else:
+            self._restore_task_attempt(state, task, max(0, attempt - 1))
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = finished_at
         state.last_implementation_returncode = returncode
@@ -5897,14 +7065,31 @@ class PortalImplementationDaemon:
             if merge_result.get("queued")
             else str(merge_result.get("stderr") or merge_result.get("reason") or "")
         )
+        no_change_guard = commit_result.get("no_change_guard") or {}
         no_change_completion = bool(
             not implementation_commit
             and commit_result.get("reason") == "no_changes"
-            and validation_result.get("passed", False)
+            and isinstance(no_change_guard, dict)
+            and no_change_guard.get("allowed")
         )
         if returncode == 0 and (
             no_change_completion or merge_result.get("merged")
         ):
+            completion_tree_id = str(
+                merge_result.get("merge_commit")
+                or implementation_commit
+                or baseline_ref
+            )
+            self._decision_runtime_completion(
+                task,
+                merged_tree_id=completion_tree_id,
+                evidence={
+                    "passed": bool(validation_result.get("passed", False)),
+                    "completion_authoritative": True,
+                    "repository_tree_id": completion_tree_id,
+                    "validation": dict(validation_result),
+                },
+            )
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
@@ -5913,7 +7098,7 @@ class PortalImplementationDaemon:
         terminal_outcome = bool(
             no_change_completion or merge_result.get("merged")
         )
-        if not merge_result.get("queued"):
+        if not merge_result.get("queued") and attempt_consumed:
             outcome_returncode = returncode
             outcome_reason = str(
                 exception_result.get("message")
@@ -5944,10 +7129,12 @@ class PortalImplementationDaemon:
             "cleanup_result": cleanup_result,
             "failed_preservation_result": failed_preservation_result,
             "workspace_setup": self._worktree_setup_result(worktree_path),
+            "attempt_consumed": attempt_consumed,
         }
         if protected_path_violation:
             result["reason"] = "implementation_protected_path_mutated"
             result["protected_path_violation"] = protected_path_violation
+            result["deferred"] = protected_path_external_deferral
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
         result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
         result["saved_duration_seconds"] = result["workspace_setup"]["saved_duration_seconds"]
@@ -5959,11 +7146,15 @@ class PortalImplementationDaemon:
             result["exception_result"] = exception_result
         if timeout_result:
             result["timeout_result"] = timeout_result
-        diagnostic = self._record_failed_attempt_retry_context(
-            task,
-            returncode=returncode,
-            validation_result=validation_result,
-            exception_result=exception_result,
+        diagnostic = (
+            self._record_failed_attempt_retry_context(
+                task,
+                returncode=returncode,
+                validation_result=validation_result,
+                exception_result=exception_result,
+            )
+            if attempt_consumed
+            else None
         )
         if diagnostic is not None:
             result["diagnostic_receipt_id"] = diagnostic.receipt_id
@@ -5971,6 +7162,43 @@ class PortalImplementationDaemon:
             result["todo_update_result"] = todo_update_result
         self._record_event("implementation_finished", result)
         return result
+
+    @staticmethod
+    def _validated_no_change_completion_guard(
+        *,
+        baseline_ref: str,
+        current_head: str,
+        expected_branch: str,
+        current_branch: str,
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        selection = validation_result.get("selection") or {}
+        changed_files = (
+            selection.get("changed_files") or []
+            if isinstance(selection, Mapping)
+            else []
+        )
+        normalized_changed_files = [
+            str(path)
+            for path in changed_files
+            if str(path).strip()
+        ]
+        reasons: list[str] = []
+        if normalized_changed_files:
+            reasons.append("validated_diff_disappeared")
+        if baseline_ref and current_head != baseline_ref:
+            reasons.append("head_changed_before_commit")
+        if expected_branch and current_branch != expected_branch:
+            reasons.append("branch_changed_before_commit")
+        return {
+            "allowed": not reasons,
+            "reasons": reasons,
+            "baseline_ref": baseline_ref,
+            "current_head": current_head,
+            "expected_branch": expected_branch,
+            "current_branch": current_branch,
+            "validated_changed_files": normalized_changed_files,
+        }
 
     def _missing_validation_workspace_result(
         self,
@@ -6009,7 +7237,11 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Remove partial worktrees when setup fails before the implementation command starts."""
 
-        cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+        cleanup_result = self._cleanup_merged_worktree(
+            worktree_path,
+            branch_name,
+            reusable=False,
+        )
         self._record_event(
             "failed_setup_worktree_cleanup",
             {
@@ -6192,6 +7424,7 @@ class PortalImplementationDaemon:
                 self._link_shared_worktree_paths(lease_path)
                 self._seed_untracked_worktree_context(lease_path, task=task, overwrite_existing=True)
             except BaseException:
+                self._forget_seeded_worktree_context(lease_path)
                 self._worktree_pool_effective_paths.pop(requested_path, None)
                 self._worktree_pool_leases.pop(lease_path, None)
                 self._worktree_setup_metrics.pop(lease_path, None)
@@ -6226,6 +7459,7 @@ class PortalImplementationDaemon:
         worktree_path: Path,
         *,
         reason: str,
+        reusable: bool = True,
     ) -> dict[str, Any]:
         """Release a pooled checkout while retaining its durable task branch."""
 
@@ -6233,6 +7467,7 @@ class PortalImplementationDaemon:
             lease_key = worktree_path.resolve()
         except OSError:
             lease_key = worktree_path
+        self._forget_seeded_worktree_context(worktree_path)
         lease = self._worktree_pool_leases.pop(lease_key, None)
         if lease is None:
             return {
@@ -6241,7 +7476,7 @@ class PortalImplementationDaemon:
                 "reason": "worktree_not_pooled",
                 "worktree_path": str(worktree_path),
             }
-        release_result = lease.release(reusable=True)
+        release_result = lease.release(reusable=reusable)
         result = {
             "attempted": True,
             "handoff_reason": reason,
@@ -6825,7 +8060,202 @@ class PortalImplementationDaemon:
     ) -> None:
         self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
         self._link_shared_worktree_paths(worktree_path)
-        self._seed_untracked_worktree_context(worktree_path, task=task)
+        # Untracked source context is snapshotted when the worktree lease starts.
+        # Re-reading the primary checkout here can attribute files created by a
+        # concurrent user or lane to this implementation after its agent exits.
+        self._drop_unchanged_seeded_worktree_context(worktree_path, task=task)
+
+    @staticmethod
+    def _seeded_worktree_context_identity(path: Path) -> dict[str, Any]:
+        """Return the content and executable-bit identity of a seeded path."""
+
+        try:
+            initial_stat = path.lstat()
+        except FileNotFoundError:
+            return {"kind": "missing"}
+        except OSError as exc:
+            return {"kind": "error", "error_type": type(exc).__name__}
+
+        mode = int(stat_module.S_IMODE(initial_stat.st_mode))
+        if stat_module.S_ISLNK(initial_stat.st_mode):
+            try:
+                target = os.readlink(path)
+                final_stat = path.lstat()
+            except OSError as exc:
+                return {"kind": "error", "error_type": type(exc).__name__}
+            if (
+                initial_stat.st_dev,
+                initial_stat.st_ino,
+                initial_stat.st_mode,
+                initial_stat.st_mtime_ns,
+            ) != (
+                final_stat.st_dev,
+                final_stat.st_ino,
+                final_stat.st_mode,
+                final_stat.st_mtime_ns,
+            ):
+                return {"kind": "error", "error_type": "ConcurrentPathChange"}
+            return {"kind": "symlink", "mode": mode, "target": target}
+
+        if not stat_module.S_ISREG(initial_stat.st_mode):
+            return {"kind": "unsupported", "mode": mode}
+
+        flags = os.O_RDONLY
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(path, flags)
+            try:
+                opened_stat = os.fstat(fd)
+                if (
+                    initial_stat.st_dev,
+                    initial_stat.st_ino,
+                    initial_stat.st_mode,
+                ) != (
+                    opened_stat.st_dev,
+                    opened_stat.st_ino,
+                    opened_stat.st_mode,
+                ):
+                    return {"kind": "error", "error_type": "ConcurrentPathChange"}
+                digest = hashlib.sha256()
+                while True:
+                    chunk = os.read(fd, 1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                final_fd_stat = os.fstat(fd)
+            finally:
+                os.close(fd)
+            final_path_stat = path.lstat()
+        except OSError as exc:
+            return {"kind": "error", "error_type": type(exc).__name__}
+
+        def stable_stat(path_stat: os.stat_result) -> tuple[int, ...]:
+            return (
+                int(path_stat.st_dev),
+                int(path_stat.st_ino),
+                int(path_stat.st_mode),
+                int(path_stat.st_size),
+                int(path_stat.st_mtime_ns),
+                int(path_stat.st_ctime_ns),
+            )
+
+        if (
+            stable_stat(initial_stat) != stable_stat(final_fd_stat)
+            or stable_stat(initial_stat) != stable_stat(final_path_stat)
+        ):
+            return {"kind": "error", "error_type": "ConcurrentPathChange"}
+        return {
+            "kind": "regular_file",
+            "mode": mode,
+            "size": int(initial_stat.st_size),
+            "sha256": digest.hexdigest(),
+        }
+
+    def _persist_seeded_worktree_context(
+        self,
+        worktree_path: Path,
+        snapshots: Mapping[str, Mapping[str, Any]],
+        *,
+        task: PortalTask | None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "schema": WORKTREE_CONTEXT_SNAPSHOT_SCHEMA,
+            "worktree_path": str(worktree_path.resolve()),
+            "created_at": utc_now(),
+            "snapshots": {
+                relative: dict(identity)
+                for relative, identity in snapshots.items()
+            },
+        }
+        if task is not None:
+            payload["task_id"] = task.task_id
+        write_json_atomic(self.worktree_context_snapshot_path, payload)
+
+    def _load_seeded_worktree_context(
+        self,
+        worktree_path: Path,
+    ) -> dict[str, dict[str, Any]]:
+        key = worktree_path.resolve()
+        cached = self._seeded_worktree_context_snapshots.get(key)
+        if cached is not None:
+            return cached
+        payload = load_json_dict(self.worktree_context_snapshot_path)
+        if (
+            not payload
+            or payload.get("schema") != WORKTREE_CONTEXT_SNAPSHOT_SCHEMA
+            or str(payload.get("worktree_path") or "") != str(key)
+        ):
+            return {}
+        raw_snapshots = payload.get("snapshots")
+        if not isinstance(raw_snapshots, dict):
+            return {}
+        snapshots = {
+            str(relative): dict(identity)
+            for relative, identity in raw_snapshots.items()
+            if isinstance(relative, str)
+            and isinstance(identity, dict)
+            and self._untracked_context_path_allowed(relative)
+        }
+        self._seeded_worktree_context_snapshots[key] = snapshots
+        return snapshots
+
+    def _forget_seeded_worktree_context(self, worktree_path: Path) -> None:
+        key = worktree_path.resolve()
+        self._seeded_worktree_context_snapshots.pop(key, None)
+        payload = load_json_dict(self.worktree_context_snapshot_path)
+        if payload and str(payload.get("worktree_path") or "") == str(key):
+            self.worktree_context_snapshot_path.unlink(missing_ok=True)
+
+    def _drop_unchanged_seeded_worktree_context(
+        self,
+        worktree_path: Path,
+        *,
+        task: PortalTask | None = None,
+    ) -> list[str]:
+        """Remove lease-start context that the implementation did not change."""
+
+        snapshots = self._load_seeded_worktree_context(worktree_path)
+        if not snapshots:
+            return []
+
+        removed: list[str] = []
+        retained: list[str] = []
+        missing: list[str] = []
+        for relative, expected_identity in sorted(snapshots.items()):
+            target = worktree_path / relative
+            observed_identity = self._seeded_worktree_context_identity(target)
+            if observed_identity == expected_identity:
+                target.unlink(missing_ok=True)
+                removed.append(relative)
+                parent = target.parent
+                while parent != worktree_path:
+                    try:
+                        parent.rmdir()
+                    except OSError:
+                        break
+                    parent = parent.parent
+            elif observed_identity.get("kind") == "missing":
+                missing.append(relative)
+            else:
+                retained.append(relative)
+
+        self._forget_seeded_worktree_context(worktree_path)
+        payload: dict[str, Any] = {
+            "worktree_path": str(worktree_path),
+            "removed_paths": removed,
+            "removed_count": len(removed),
+            "retained_paths": retained,
+            "retained_count": len(retained),
+            "missing_paths": missing,
+            "missing_count": len(missing),
+        }
+        if task is not None:
+            payload["task_id"] = task.task_id
+        self._record_event("worktree_context_pruned", payload)
+        return removed
 
     def _seed_untracked_worktree_context(
         self,
@@ -6834,14 +8264,18 @@ class PortalImplementationDaemon:
         task: PortalTask | None = None,
         overwrite_existing: bool = False,
     ) -> list[str]:
-        """Copy relevant new source context into an ephemeral worktree.
+        """Snapshot relevant new source context into an ephemeral worktree.
 
         Modified tracked files belong to the source checkout and must not leak
         into an isolated implementation branch. Otherwise an unrelated local
-        edit can be committed by the agent and later block the merge train.
+        edit can be committed by the agent and later block the merge train. This
+        method is called only while a task lease is being created; validation
+        must use that stable snapshot rather than rescan the primary checkout.
         """
 
+        self._forget_seeded_worktree_context(worktree_path)
         seeded: list[str] = []
+        snapshots: dict[str, dict[str, Any]] = {}
         for relative in self._untracked_worktree_context_paths():
             if not self._untracked_context_path_allowed(relative):
                 continue
@@ -6861,8 +8295,14 @@ class PortalImplementationDaemon:
             else:
                 shutil.copy2(source, target)
             seeded.append(relative)
+            identity = self._seeded_worktree_context_identity(target)
+            if identity.get("kind") in {"regular_file", "symlink"}:
+                snapshots[relative] = identity
 
         if seeded:
+            key = worktree_path.resolve()
+            self._seeded_worktree_context_snapshots[key] = snapshots
+            self._persist_seeded_worktree_context(worktree_path, snapshots, task=task)
             payload: dict[str, Any] = {
                 "worktree_path": str(worktree_path),
                 "seeded_paths": seeded,
@@ -6909,6 +8349,30 @@ class PortalImplementationDaemon:
         return relative == normalized or relative.startswith(f"{normalized}/")
 
     def _commit_worktree_changes(
+        self,
+        worktree_path: Path,
+        task: PortalTask,
+        attempt: int,
+        *,
+        baseline_ref: str = "",
+    ) -> dict[str, Any]:
+        return self._decision_runtime_mutation(
+            "commit",
+            {
+                "operation": "commit_worktree_changes",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "worktree_path": str(worktree_path),
+            },
+            lambda: self._commit_worktree_changes_unchecked(
+                worktree_path,
+                task,
+                attempt,
+                baseline_ref=baseline_ref,
+            ),
+        )
+
+    def _commit_worktree_changes_unchecked(
         self,
         worktree_path: Path,
         task: PortalTask,
@@ -7363,6 +8827,81 @@ class PortalImplementationDaemon:
             rescue_suffix="timed-out",
             event_type="timed_out_worktree_preserved",
             evidence_field="validation_result",
+            baseline_ref=baseline_ref,
+        )
+
+    def _preserve_protected_path_interrupted_worktree(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        task: PortalTask,
+        attempt: int,
+        protected_path_violation: dict[str, Any],
+        *,
+        baseline_ref: str = "",
+    ) -> dict[str, Any]:
+        """Preserve candidate work interrupted by an external policy update."""
+
+        workspace_mutated = any(
+            str(item.get("scope") or "") == "workspace"
+            for item in protected_path_violation.get("mutations", [])
+            if isinstance(item, Mapping)
+        )
+        if workspace_mutated:
+            cleanup_result = self._cleanup_merged_worktree(
+                worktree_path,
+                branch_name,
+                reusable=False,
+            )
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "branch": branch_name,
+                "worktree_path": str(worktree_path),
+                "preserved": False,
+                "reason": "workspace_protected_path_mutated",
+                "rescue_branch": "",
+                "implementation_commit": "",
+                "commit_result": {
+                    "committed": False,
+                    "reason": "workspace_protected_path_mutated",
+                },
+                "cleanup_result": cleanup_result,
+                "protected_path_violation": dict(protected_path_violation),
+            }
+            self._record_event(
+                "protected_path_interrupted_worktree_rejected",
+                result,
+            )
+            return result
+        if not self.use_ephemeral_worktree:
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "branch": branch_name,
+                "worktree_path": str(worktree_path),
+                "preserved": False,
+                "reason": "shared_checkout_retained",
+                "rescue_branch": "",
+                "implementation_commit": "",
+                "commit_result": {"committed": False, "reason": "shared_checkout_retained"},
+                "cleanup_result": {"cleaned": False, "reason": "shared_checkout_retained"},
+                "protected_path_violation": dict(protected_path_violation),
+            }
+            self._record_event(
+                "protected_path_interrupted_worktree_preserved",
+                result,
+            )
+            return result
+        return self._preserve_interrupted_worktree(
+            worktree_path,
+            branch_name,
+            task,
+            attempt,
+            evidence=protected_path_violation,
+            rescue_suffix="protected-path-interrupted",
+            event_type="protected_path_interrupted_worktree_preserved",
+            evidence_field="protected_path_violation",
             baseline_ref=baseline_ref,
         )
 
@@ -8238,6 +9777,66 @@ class PortalImplementationDaemon:
             )
         return "".join(sections)
 
+    @staticmethod
+    def _proposal_local_envelope_limits(proposal: Any) -> dict[str, int]:
+        """Return fail-closed limits for one locally collected proposal.
+
+        Full source is retained so the gate can verify content and baseline
+        identity, but it is not the effectful patch. The normal raw-patch limit
+        must pass before the materialized-source limits can be raised.
+        """
+
+        defaults = {
+            "max_patch_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
+            "max_output_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
+        }
+        patch_text = str(getattr(proposal, "patch_text", "") or "")
+        if (
+            len(patch_text.encode("utf-8", errors="surrogatepass"))
+            > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+        ):
+            return defaults
+
+        materialized_bytes = 0
+        for entry in tuple(getattr(proposal, "candidate_diff", ()) or ()):
+            for source_name in ("before_source", "after_source"):
+                source = getattr(entry, source_name, None)
+                if source is None:
+                    continue
+                materialized_bytes += len(
+                    str(source).encode("utf-8", errors="surrogatepass")
+                )
+                if (
+                    materialized_bytes
+                    > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+                ):
+                    return defaults
+
+        try:
+            serialized_bytes = len(
+                json.dumps(
+                    proposal.to_dict(),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8", errors="surrogatepass")
+            )
+        except (AttributeError, TypeError, ValueError):
+            return defaults
+        if serialized_bytes > MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES:
+            return defaults
+
+        return {
+            "max_patch_bytes": max(
+                DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
+                materialized_bytes,
+            ),
+            "max_output_bytes": max(
+                DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
+                serialized_bytes,
+            ),
+        }
+
     def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
         consumed: list[str] = []
         for event in reversed(list(self._iter_events())):
@@ -8301,9 +9900,14 @@ class PortalImplementationDaemon:
             ImplementationProposal,
             ProposalOperation,
             ProposalRisk,
+            ProposalFindingCode,
             ProposalValidationStep,
             ProposalValidationPolicy,
             validate_implementation_proposal,
+        )
+        from ..scope_adjudication import (
+            adjudicate_scope_expansion,
+            compact_scope_adjudication,
         )
 
         authority = self._proposal_authority_values(
@@ -8498,6 +10102,7 @@ class PortalImplementationDaemon:
         allowed_validation_commands = tuple(
             step.command for step in validation_steps
         ) or (("python", "-m", "pytest"),)
+        local_envelope_limits = self._proposal_local_envelope_limits(proposal)
         policy = ProposalValidationPolicy(
             allowed_paths=allowed_paths,
             expected_task_id=authority["task_id"],
@@ -8514,9 +10119,93 @@ class PortalImplementationDaemon:
             allowed_validation_commands=allowed_validation_commands,
             require_structured_details=True,
             require_patch_text=True,
-            policy_version="strict-proposal-v2",
+            policy_version="strict-proposal-v2+local-envelope-v1",
+            **local_envelope_limits,
         )
         result = validate_implementation_proposal(proposal, policy=policy)
+        finding_codes = tuple(
+            sorted(
+                {
+                    str(getattr(finding.code, "value", finding.code))
+                    for finding in result.findings
+                }
+            )
+        )
+        if (
+            not result.accepted
+            and finding_codes
+            == (ProposalFindingCode.PATH_OUTSIDE_SCOPE.value,)
+        ):
+            adjudication = adjudicate_scope_expansion(
+                task_id=task.task_id,
+                proposal_id=proposal.proposal_id,
+                initial_policy_id=policy.policy_id,
+                repository_id=authority["repository_id"],
+                repository_tree_id=authority["repository_tree_id"],
+                baseline_id=authority["baseline_id"],
+                original_scope_paths=scope_paths,
+                candidate_diff=entries,
+                initial_finding_codes=finding_codes,
+                validation_commands=task.validation,
+                workspace_path=workspace_path,
+            )
+            if adjudication.justified:
+                expanded_paths = tuple(
+                    sorted(
+                        {
+                            *allowed_paths,
+                            *adjudication.justified_paths,
+                        }
+                    )
+                )
+                expanded_policy_payload = policy.to_dict()
+                expanded_policy_payload.update(
+                    {
+                        "allowed_paths": expanded_paths,
+                        "task_owned_paths": expanded_paths,
+                        "policy_id": "",
+                        "policy_version": (
+                            "strict-proposal-v2"
+                            "+scope-adjudication-v1"
+                        ),
+                    }
+                )
+                expanded_policy = ProposalValidationPolicy.from_dict(
+                    expanded_policy_payload
+                )
+                adjudication = adjudication.bind_authorized_policy(
+                    expanded_policy.policy_id
+                )
+                result = validate_implementation_proposal(
+                    proposal,
+                    policy=expanded_policy,
+                )
+            adjudication_projection = compact_scope_adjudication(
+                adjudication
+            )
+            if (
+                proposal.proposal_id
+                not in self._implementation_scope_adjudications
+                and len(self._implementation_scope_adjudications)
+                >= MAX_PENDING_SCOPE_ADJUDICATIONS
+            ):
+                oldest_proposal_id = next(
+                    iter(self._implementation_scope_adjudications)
+                )
+                self._implementation_scope_adjudications.pop(
+                    oldest_proposal_id,
+                    None,
+                )
+            self._implementation_scope_adjudications[
+                proposal.proposal_id
+            ] = adjudication
+            self._record_event(
+                "implementation_scope_adjudicated",
+                {
+                    "task_id": task.task_id,
+                    **adjudication_projection,
+                },
+            )
         compact = self._compact_proposal_validation(
             result,
             error_code=(
@@ -8660,6 +10349,16 @@ class PortalImplementationDaemon:
             return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
 
         proof_options = self._proof_workflow_options(workspace_path, task)
+        self._decision_runtime_route(
+            "validation_selection",
+            {
+                "task_id": task.task_id,
+                "workspace_path": str(workspace_path),
+                "declared_commands": tuple(task.validation),
+                "proposal_bound": proposal_validation is not None,
+                "proof_workflow": bool(proof_options),
+            },
+        )
         if (
             not task.validation
             and not proof_options
@@ -8685,13 +10384,22 @@ class PortalImplementationDaemon:
         # still recorded and used for staging, but every unrelated targeted
         # check is escalated into the broad pre-merge stage here.
         if proposal_validation is None:
-            result = self.validation_scheduler.run(
-                commands,
-                workspace_path=workspace_path,
-                require_full_validation=True,
-                scope="pre_merge",
-                runner=self._validation_command_runner,
-                **proof_options,
+            result = self._decision_runtime_mutation(
+                "validation_execution",
+                {
+                    "task_id": task.task_id,
+                    "workspace_path": str(workspace_path),
+                    "commands": tuple(commands),
+                    "scope": "pre_merge",
+                },
+                lambda: self.validation_scheduler.run(
+                    commands,
+                    workspace_path=workspace_path,
+                    require_full_validation=True,
+                    scope="pre_merge",
+                    runner=self._validation_command_runner,
+                    **proof_options,
+                ),
             )
         else:
             strict_runner = getattr(self.validation_scheduler, "run_validated", None)
@@ -8735,16 +10443,26 @@ class PortalImplementationDaemon:
                         "configuration_detail": str(exc)[:1000],
                     }
                 else:
-                    result = strict_runner(
-                        proposal_validation,
-                        bound_commands,
-                        workspace_path=workspace_path,
-                        impact_graph=declared_graph,
-                        require_impact_graph=True,
-                        require_full_validation=True,
-                        scope="pre_merge",
-                        runner=self._validation_command_runner,
-                        **proof_options,
+                    result = self._decision_runtime_mutation(
+                        "validation_execution",
+                        {
+                            "task_id": task.task_id,
+                            "workspace_path": str(workspace_path),
+                            "commands": tuple(commands),
+                            "scope": "pre_merge",
+                            "validation_graph_id": declared_graph.graph_id,
+                        },
+                        lambda: strict_runner(
+                            proposal_validation,
+                            bound_commands,
+                            workspace_path=workspace_path,
+                            impact_graph=declared_graph,
+                            require_impact_graph=True,
+                            require_full_validation=True,
+                            scope="pre_merge",
+                            runner=self._validation_command_runner,
+                            **proof_options,
+                        ),
                     )
                     result["validation_plan_binding"] = {
                         "source": "proposal_declared_validation_plan",
@@ -8792,6 +10510,30 @@ class PortalImplementationDaemon:
                         }
                     )[:MAX_PERSISTED_PROPOSAL_REASON_CODES]
             result["proposal_gate"] = compact_proposal
+            proposal_id = str(
+                getattr(
+                    getattr(proposal_validation, "proposal", None),
+                    "proposal_id",
+                    "",
+                )
+                or ""
+            )
+            scope_adjudication = (
+                self._implementation_scope_adjudications.pop(
+                    proposal_id,
+                    None,
+                )
+                if proposal_id
+                else None
+            )
+            if scope_adjudication is not None:
+                from ..scope_adjudication import (
+                    compact_scope_adjudication,
+                )
+
+                result["scope_adjudication"] = (
+                    compact_scope_adjudication(scope_adjudication)
+                )
 
         scheduler_options = proof_options.get("proof_scheduler_options")
         proof_state_path = ""
@@ -8839,6 +10581,15 @@ class PortalImplementationDaemon:
                     f"succeeded={operator_state['succeeded']} "
                     f"active_leases={operator_state['active_leases']}\n"
                 )
+            scope_adjudication = result.get("scope_adjudication")
+            if isinstance(scope_adjudication, Mapping):
+                log_fh.write(
+                    "[scope adjudication] "
+                    f"accepted={scope_adjudication.get('accepted', False)} "
+                    "authorized="
+                    f"{scope_adjudication.get('authorized_paths', [])} "
+                    f"denied={scope_adjudication.get('denied_paths', [])}\n"
+                )
             for command_result in result.get("results", []):
                 if not isinstance(command_result, dict):
                     continue
@@ -8871,20 +10622,53 @@ class PortalImplementationDaemon:
         timeout_seconds: float,
         environment: dict[str, str],
     ) -> dict[str, Any]:
-        """Run one command through the daemon's patchable subprocess seam."""
+        """Run one command through the daemon's patchable subprocess seam.
+
+        The validation runtime deliberately removes the operator's real home
+        directory from the child environment.  Some repositories nevertheless
+        need writable per-process state for contract tests (for example, a VFS
+        mount registry).  Give every command a fresh private home rather than
+        exposing the operator's profile or sharing mutable state between
+        validations.
+        """
 
         started_at = utc_now()
-        completed = subprocess.run(
-            validation_shell_command(str(spec.command)),
-            cwd=workspace_path,
-            text=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=timeout_seconds,
-            check=False,
-            env=environment,
-        )
+        with tempfile.TemporaryDirectory(
+            prefix="ipfs-accelerate-validation-home-"
+        ) as temporary_home:
+            home_path = Path(temporary_home)
+            child_environment = dict(environment)
+            child_environment.update(
+                {
+                    "HOME": str(home_path),
+                    "XDG_CACHE_HOME": str(home_path / ".cache"),
+                    "XDG_CONFIG_HOME": str(home_path / ".config"),
+                    "XDG_DATA_HOME": str(home_path / ".local" / "share"),
+                    "XDG_STATE_HOME": str(home_path / ".local" / "state"),
+                }
+            )
+            for key in (
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_STATE_HOME",
+            ):
+                Path(child_environment[key]).mkdir(
+                    mode=0o700,
+                    parents=True,
+                    exist_ok=True,
+                )
+            completed = subprocess.run(
+                validation_shell_command(str(spec.command)),
+                cwd=workspace_path,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=timeout_seconds,
+                check=False,
+                env=child_environment,
+            )
         return {
             "command": str(spec.command),
             "raw_command": str(spec.raw_command or spec.command),
@@ -11671,6 +13455,7 @@ class PortalImplementationDaemon:
         lease: WorktreeLease | None = None
         lease_key: Path | None = None
         if worktree_path is not None:
+            self._forget_seeded_worktree_context(worktree_path)
             try:
                 lease_key = worktree_path.resolve()
             except OSError:
@@ -13939,6 +15724,12 @@ class PortalImplementationDaemon:
             return False
         if commit_result.get("reason") != "no_changes":
             return False
+        no_change_guard = commit_result.get("no_change_guard") or {}
+        if (
+            not isinstance(no_change_guard, dict)
+            or not no_change_guard.get("allowed")
+        ):
+            return False
         if int(latest.get("returncode") or 0) != 0:
             return False
         event_timestamp = parse_timestamp(str(latest.get("timestamp") or ""))
@@ -14724,6 +16515,21 @@ class PortalImplementationDaemon:
                     )
                     if proposal.get(key) not in (None, "", (), [], {})
                 }
+            scope_adjudication = validation.get("scope_adjudication")
+            if isinstance(scope_adjudication, Mapping):
+                selected["scope_adjudication"] = {
+                    key: scope_adjudication[key]
+                    for key in (
+                        "accepted",
+                        "receipt_id",
+                        "proposal_id",
+                        "authorized_paths",
+                        "denied_paths",
+                        "decisions",
+                    )
+                    if scope_adjudication.get(key)
+                    not in (None, "", (), [], {})
+                }
         if not selected:
             selected = {"kind": "implementation_failure", "reason": "unknown"}
         encoded = canonical_json(selected).encode("utf-8")
@@ -15035,6 +16841,17 @@ class PortalImplementationDaemon:
             ) from exc
         self._last_implementation_context = result.delta_result
         self._last_implementation_retry = result
+        self._decision_runtime_route(
+            "retry",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "repair_round": int(repair_round),
+                "prior_decision_id": prior_decision_id,
+                "diagnostic_receipt_id": diagnostic.receipt_id,
+                "context_receipt_id": result.delta_result.receipt.receipt_id,
+            },
+        )
         return result
 
     def _compile_implementation_context(
@@ -15074,10 +16891,47 @@ class PortalImplementationDaemon:
                 *rules,
                 "Use sub-agents or parallel execution when useful for independent output files.",
             )
+        allowed_edit_paths = tuple(
+            completion_scope
+            if completion_scope is not None
+            else task.outputs
+        )
+        protected_edit_paths = tuple(self.implementation_protected_paths)
+        read_only_outputs = tuple(
+            path for path in task.outputs if path not in allowed_edit_paths
+        )
+        protected_policy_text = (
+            "Operator-protected repository files (read-only; overrides every "
+            "task, output, and breadth instruction):\n"
+            + "\n".join(f"- {path}" for path in protected_edit_paths)
+            + "\nNever create, modify, rename, delete, replace, or regenerate "
+            "these exact files."
+            if protected_edit_paths
+            else ""
+        )
+        edit_policy = {
+            "mode": (
+                "completion_gap_exact"
+                if completion_scope is not None
+                else "task_output_exact"
+            ),
+            "allowed_paths": allowed_edit_paths,
+            "protected_paths": protected_edit_paths,
+            "read_only_outputs": read_only_outputs,
+            "validation_may_read_other_paths": True,
+            "subagents_allowed": not _env_bool(
+                DISABLE_SUBAGENTS_ENV, False
+            ),
+            "operator_directive": protected_policy_text,
+        }
         policy_revision = "sha256:" + hashlib.sha256(
             json.dumps(
-                rules,
+                {
+                    "generic_prompt_policy": rules,
+                    "edit_policy": edit_policy,
+                },
                 ensure_ascii=False,
+                sort_keys=True,
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
@@ -15167,7 +17021,8 @@ class PortalImplementationDaemon:
             authority={
                 "todo_file": todo_file,
                 "source_line": int(task.source_line),
-                "rules": rules,
+                "generic_prompt_policy": rules,
+                "edit_policy": edit_policy,
                 "primary_plan_documents": {
                     "AGENT-": "docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md",
                     "PORTAL-": "docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md",
@@ -15177,6 +17032,8 @@ class PortalImplementationDaemon:
             scope={
                 "depends_on": tuple(task.depends_on),
                 "expected_outputs": tuple(task.outputs),
+                "allowed_edit_paths": allowed_edit_paths,
+                "protected_edit_paths": protected_edit_paths,
             },
             acceptance={
                 "criteria": task.acceptance or "none listed",
@@ -15188,9 +17045,38 @@ class PortalImplementationDaemon:
         self._last_implementation_context = result
         self._last_implementation_retry = None
         self._implementation_base_contexts[self._canonical_ref(task)] = result
+        self._decision_runtime_route(
+            "implementation_context",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "context_receipt_id": result.receipt.receipt_id,
+                "policy_revision": policy_revision,
+                "allowed_edit_paths": allowed_edit_paths,
+                "protected_edit_paths": protected_edit_paths,
+            },
+        )
         return result
 
     def _persist_implementation_context_receipt(
+        self,
+        task: PortalTask,
+        attempt: int,
+    ) -> Path:
+        return self._decision_runtime_mutation(
+            "file_mutation",
+            {
+                "operation": "persist_implementation_context",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "directory": str(self.implementation_log_dir),
+            },
+            lambda: self._persist_implementation_context_receipt_unchecked(
+                task, attempt
+            ),
+        )
+
+    def _persist_implementation_context_receipt_unchecked(
         self,
         task: PortalTask,
         attempt: int,
@@ -15236,67 +17122,10 @@ class PortalImplementationDaemon:
         return path
 
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:
-        """Render dispatch policy that must survive context compaction."""
+        """Compatibility hook; all enforcement policy is capsule-bound."""
 
-        sections: list[str] = []
-        completion_scope = completion_gap_edit_scope(
-            task,
-            repo_root=self.repo_root,
-        )
-        if completion_scope is not None:
-            if completion_scope:
-                authorized_lines = "\n".join(
-                    f"- {path}" for path in completion_scope
-                )
-                read_only_outputs = [
-                    path for path in task.outputs if path not in completion_scope
-                ]
-                read_only_output_text = (
-                    ", ".join(read_only_outputs)
-                    if read_only_outputs
-                    else "none listed"
-                )
-                sections.append(
-                    f"""Strict completion-gap edit authorization (overrides every general breadth or output instruction):
-- You may create, modify, rename, or delete ONLY these exact repository-relative files:
-{authorized_lines}
-- These are exact file paths, not directory prefixes. Every other repository path is read-only.
-- Task outputs outside that allowlist are control/evidence references and are read-only: {read_only_output_text}
-- In particular, do not edit the task board, objective heap, discovery records, bundle shards/indexes,
-  objective-generation or completion artifacts, or supervisor state. You may read them for context.
-- Validation may read other paths, but it does not authorize edits outside the allowlist."""
-                )
-            else:
-                sections.append(
-                    """Strict completion-gap edit authorization:
-- No safe, precise Predicted files were authorized. Do not modify any repository file.
-- This task requires manual review and must remain non-executable until exact repository-relative
-  file targets are supplied by the completion-gap producer."""
-                )
-
-        if self.implementation_protected_paths:
-            protected_lines = "\n".join(
-                f"- {path}" for path in self.implementation_protected_paths
-            )
-            sections.append(
-                f"""Operator-protected repository files (read-only; overrides every task, output, and breadth instruction):
-{protected_lines}
-- Never create, modify, rename, delete, replace, or regenerate these exact files.
-- If the task appears to require changing one, stop and report the policy conflict."""
-            )
-
-        if _env_bool(DISABLE_SUBAGENTS_ENV, False):
-            sections.append(
-                """- Do not invoke collaboration or sub-agent tools in this implementation run.
-  The noninteractive supervisor session may not have a registered collaboration
-  thread; perform the task locally instead of waiting on unavailable workers."""
-            )
-        elif completion_scope is None and len(task.outputs) > 3:
-            sections.append(
-                """- This task has many expected outputs. Use sub-agents or parallel execution when possible:
-  decompose independent file or module implementations and work on them concurrently."""
-            )
-        return "\n\n".join(sections)
+        del task
+        return ""
 
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         if self._implementation_cancel_requested():
@@ -15348,12 +17177,7 @@ class PortalImplementationDaemon:
         if not rendered:
             result = self._compile_implementation_context(task, attempt)
             rendered = render_context_capsule(result.capsule)
-        policy_appendix = self._implementation_prompt_policy_appendix(task)
-        return (
-            f"{rendered}\n\n{policy_appendix}"
-            if policy_appendix
-            else rendered
-        )
+        return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
         actions = [f"Implement outputs for {task.task_id}: {', '.join(task.outputs)}"]
@@ -16116,12 +17940,15 @@ def main(argv: list[str] | None = None) -> None:
         validation_resource_budget=args.validation_resource_budget,
         maintenance_interval_seconds=args.maintenance_interval_seconds,
     )
-    while True:
-        result = daemon.run_once()
-        logger.info("Portal implementation daemon pass complete: %s", result)
-        if args.once:
-            break
-        time.sleep(args.interval)
+    try:
+        while True:
+            result = daemon.run_once()
+            logger.info("Portal implementation daemon pass complete: %s", result)
+            if args.once:
+                break
+            daemon.wait_for_wake(timeout=args.interval)
+    finally:
+        daemon.close_event_runtime()
 
 
 if __name__ == "__main__":

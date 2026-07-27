@@ -507,5 +507,4 @@ Key implementation status for the latest July 2025 features:
 
 For more information about web platform integration and optimizations, see:
 - [Web Platform Integration Guide](./web_platform_integration_guide.md)
-- [Web Platform Integration Summary](./WEB_PLATFORM_INTEGRATION_SUMMARY.md)
-- [BENCHMARK_DATABASE_GUIDE.md](./BENCHMARK_DATABASE_GUIDE.md)
+- [Benchmark Database Guide](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)

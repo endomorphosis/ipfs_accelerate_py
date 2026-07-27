@@ -476,4 +476,4 @@ Planned enhancements to the artifact URL retrieval system include:
 
 The Enhanced Artifact URL Retrieval System provides a robust, standardized way to access artifact URLs across different CI platforms and integrate with the Distributed Testing Framework. By implementing this functionality across all CI providers, the system enables rich reporting, notification, and visualization features that include direct links to test artifacts, enhancing the overall user experience of the framework.
 
-For more comprehensive documentation, see the detailed [ARTIFACT_URL_RETRIEVAL_GUIDE.md](../../ARTIFACT_URL_RETRIEVAL_GUIDE.md).
+For more comprehensive documentation, see the detailed [ARTIFACT_URL_RETRIEVAL_GUIDE.md](../ARTIFACT_URL_RETRIEVAL_GUIDE.md).

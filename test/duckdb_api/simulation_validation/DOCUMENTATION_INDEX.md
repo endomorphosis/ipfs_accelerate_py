@@ -53,7 +53,7 @@ This document serves as a central index for all documentation related to the Sim
 ## Examples and Tutorials
 
 - [examples/enhanced_validator_example.py](examples/enhanced_validator_example.py): Example of enhanced validator usage
-- [examples/README.md](examples/README.md): Examples documentation
+- [examples/](examples/): Examples and tutorials directory
 
 ## Recent Updates
 

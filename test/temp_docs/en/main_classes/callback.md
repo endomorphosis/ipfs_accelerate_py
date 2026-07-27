@@ -23,7 +23,7 @@ stopping).
 
 Callbacks are "read only" pieces of code, apart from the [`TrainerControl`] object they return, they
 cannot change anything in the training loop. For customizations that require changes in the training loop, you should
-subclass [`Trainer`] and override the methods you need (see [trainer](trainer) for examples).
+subclass [`Trainer`] and override the methods you need (see [trainer](./trainer.md) for examples).
 
 By default, `TrainingArguments.report_to` is set to `"all"`, so a [`Trainer`] will use the following callbacks.
 

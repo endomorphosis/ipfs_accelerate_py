@@ -20,7 +20,26 @@ The coordinator redundancy and failover feature implements a high-availability s
 
 The coordinator redundancy system uses a leader-follower architecture:
 
-![Coordinator Redundancy Architecture](../images/coordinator_redundancy_architecture.png)
+The cluster follows a leader-follower topology. The leader accepts writes and
+replicates them to the followers; followers participate in elections and take
+over when the leader fails.
+
+```
+                         client requests
+                               |
+                               v
+                    +-----------------------+
+                    |   Leader coordinator  |
+                    +-----------------------+
+                       /                  \
+             append entries          append entries
+                     /                      \
+                    v                        v
+          +------------------+      +------------------+
+          | Follower         |      | Follower         |
+          | coordinator      |      | coordinator      |
+          +------------------+      +------------------+
+```
 
 ### Components
 
@@ -385,4 +404,4 @@ The coordinator redundancy and failover feature completes the Fault Tolerance ph
 2. [In Search of an Understandable Consensus Algorithm](https://raft.github.io/raft.pdf)
 3. [Distributed Testing Framework Documentation](../README.md)
 4. [Deployment Guide](deployment_guide.md)
-5. [API Reference](api_reference.md)
+5. [API Reference](../INTEGRATION_EXTENSIBILITY_GUIDE.md#api-reference)

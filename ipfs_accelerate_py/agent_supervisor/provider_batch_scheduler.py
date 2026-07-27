@@ -48,7 +48,7 @@ PROVIDER_BATCH_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/provider-batch-receipt@1"
 )
 PROVIDER_BATCH_METRICS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/provider-batch-metrics@1"
+    "ipfs_accelerate_py/agent-supervisor/provider-batch-metrics@2"
 )
 _PROVIDER_BATCH_RECEIPT_SEAL: Final = object()
 _SINGLE_MEMBER_AUDIO_PROVIDERS: Final = frozenset(
@@ -747,6 +747,8 @@ class ProviderBatchMetrics:
     queued_requests: int
     active_batches: int
     provider_calls: int
+    physical_executions: int
+    duplicate_executions: int
     completed_batches: int
     batched_executions: int
     singleflight_hits: int
@@ -757,6 +759,7 @@ class ProviderBatchMetrics:
     admission_errors: int
     max_queue_depth: int
     max_observed_batch_size: int
+    peak_active_batches: int
     total_queue_wait_ms: int
     total_execution_ms: int
     elapsed_ms: int
@@ -776,6 +779,16 @@ class ProviderBatchMetrics:
             return 0
         return self.completed_requests * 1_000_000 // self.provider_calls
 
+    @property
+    def duplicate_compute_percent_millionths(self) -> int:
+        if self.physical_executions <= 0:
+            return 0
+        return (
+            self.duplicate_executions
+            * 100_000_000
+            // self.physical_executions
+        )
+
     def to_dict(self) -> dict[str, Any]:
         result = {
             name: getattr(self, name)
@@ -789,6 +802,8 @@ class ProviderBatchMetrics:
                 "queued_requests",
                 "active_batches",
                 "provider_calls",
+                "physical_executions",
+                "duplicate_executions",
                 "completed_batches",
                 "batched_executions",
                 "singleflight_hits",
@@ -799,6 +814,7 @@ class ProviderBatchMetrics:
                 "admission_errors",
                 "max_queue_depth",
                 "max_observed_batch_size",
+                "peak_active_batches",
                 "total_queue_wait_ms",
                 "total_execution_ms",
                 "elapsed_ms",
@@ -814,6 +830,9 @@ class ProviderBatchMetrics:
                 ),
                 "average_members_per_call_millionths": (
                     self.average_members_per_call_millionths
+                ),
+                "duplicate_compute_percent_millionths": (
+                    self.duplicate_compute_percent_millionths
                 ),
             }
         )
@@ -977,6 +996,7 @@ class ProviderBatchScheduler:
             OrderedDict()
         )
         self._singleflight: dict[str, _ExecutionGroup] = {}
+        self._running_fingerprints: set[str] = set()
         self._request_subscribers: dict[str, _Subscriber] = {}
         self._active_by_provider: dict[str, int] = {}
         self._active_batches = 0
@@ -995,6 +1015,8 @@ class ProviderBatchScheduler:
             "cancelled_requests": 0,
             "timed_out_requests": 0,
             "provider_calls": 0,
+            "physical_executions": 0,
+            "duplicate_executions": 0,
             "completed_batches": 0,
             "batched_executions": 0,
             "singleflight_hits": 0,
@@ -1005,6 +1027,7 @@ class ProviderBatchScheduler:
             "admission_errors": 0,
             "max_queue_depth": 0,
             "max_observed_batch_size": 0,
+            "peak_active_batches": 0,
             "total_queue_wait_ms": 0,
             "total_execution_ms": 0,
         }
@@ -1047,8 +1070,7 @@ class ProviderBatchScheduler:
                 raise ValueError(
                     f"request_id is already active: {normalized.request_id}"
                 )
-            queued = sum(len(group.subscribers) for queue in self._queues.values() for group in queue)
-            if queued >= self.config.max_queue_size:
+            if len(self._request_subscribers) >= self.config.max_queue_size:
                 raise RuntimeError("provider batch queue is full")
             fingerprint = normalized.execution_fingerprint
             group = self._singleflight.get(fingerprint)
@@ -1158,6 +1180,8 @@ class ProviderBatchScheduler:
                 queued_requests=queued,
                 active_batches=self._active_batches,
                 provider_calls=counters["provider_calls"],
+                physical_executions=counters["physical_executions"],
+                duplicate_executions=counters["duplicate_executions"],
                 completed_batches=counters["completed_batches"],
                 batched_executions=counters["batched_executions"],
                 singleflight_hits=counters["singleflight_hits"],
@@ -1168,6 +1192,7 @@ class ProviderBatchScheduler:
                 admission_errors=counters["admission_errors"],
                 max_queue_depth=counters["max_queue_depth"],
                 max_observed_batch_size=counters["max_observed_batch_size"],
+                peak_active_batches=counters["peak_active_batches"],
                 total_queue_wait_ms=counters["total_queue_wait_ms"],
                 total_execution_ms=counters["total_execution_ms"],
                 elapsed_ms=max(0, self._clock_ms() - self._started_at_ms),
@@ -1389,8 +1414,18 @@ class ProviderBatchScheduler:
             if not queue:
                 self._queues.pop(key, None)
             for group in groups:
+                if group.fingerprint in self._running_fingerprints:
+                    # This should be unreachable because running groups retain
+                    # their single-flight handle.  Keep the metric fail-visible
+                    # if an extension violates that invariant.
+                    self._counters["duplicate_executions"] += 1
+                self._running_fingerprints.add(group.fingerprint)
                 group.running = True
             self._active_batches += 1
+            self._counters["peak_active_batches"] = max(
+                self._counters["peak_active_batches"],
+                self._active_batches,
+            )
             self._active_by_provider[key.provider_id] = (
                 self._active_by_provider.get(key.provider_id, 0) + 1
             )
@@ -1413,6 +1448,7 @@ class ProviderBatchScheduler:
             except Exception:
                 self._release_admission(admission_grant)
                 for group in reversed(groups):
+                    self._running_fingerprints.discard(group.fingerprint)
                     group.running = False
                     queue.appendleft(group)
                 self._queues.setdefault(key, queue)
@@ -1480,6 +1516,7 @@ class ProviderBatchScheduler:
             with self._condition:
                 incomplete = [group for group in groups if not group.completed]
                 for group in incomplete:
+                    self._running_fingerprints.discard(group.fingerprint)
                     group.accepting_subscribers = False
                     if self._singleflight.get(group.fingerprint) is group:
                         self._singleflight.pop(group.fingerprint, None)
@@ -1540,6 +1577,7 @@ class ProviderBatchScheduler:
         try:
             with self._condition:
                 self._counters["provider_calls"] += 1
+                self._counters["physical_executions"] += len(groups)
                 self._provider_calls_by_id[key.provider_id] = (
                     self._provider_calls_by_id.get(key.provider_id, 0) + 1
                 )
@@ -1638,6 +1676,7 @@ class ProviderBatchScheduler:
                     subscriber, replace(result, receipt_id=receipt.evidence_id)
                 )
             for group in groups:
+                self._running_fingerprints.discard(group.fingerprint)
                 group.completed = True
             self._receipts.append(receipt)
             self._active_batches -= 1

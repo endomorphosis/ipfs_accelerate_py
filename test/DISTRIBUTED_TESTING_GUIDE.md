@@ -966,7 +966,7 @@ Here are examples of tasks for each orchestration strategy:
    }
    ```
 
-For more detailed information, see the [Multi-Device Orchestration Documentation](duckdb_api/distributed_testing/ORCHESTRATION_STRATEGIES.md).
+For more detailed information, see the [Multi-Device Orchestration Documentation](duckdb_api/distributed_testing/DYNAMIC_RESOURCE_MANAGEMENT.md).
 
 ## Fault Tolerance System
 
@@ -1012,7 +1012,7 @@ python duckdb_api/distributed_testing/run_integrated_system.py --fault-injection
 python duckdb_api/distributed_testing/run_integrated_system.py --max-retries 5 --circuit-break-threshold 10 --error-rate-threshold 0.3
 ```
 
-For more detailed information, see the [Fault Tolerance System Documentation](duckdb_api/distributed_testing/FAULT_TOLERANCE_SYSTEM.md).
+For more detailed information, see the [Fault Tolerance System Documentation](duckdb_api/distributed_testing/HARDWARE_FAULT_TOLERANCE_GUIDE.md).
 
 ## High Availability Clustering (NEW - March 2025)
 
@@ -1186,8 +1186,8 @@ For comprehensive documentation on the completed API Distributed Testing Framewo
 - [API_DISTRIBUTED_TESTING_GUIDE.md](API_DISTRIBUTED_TESTING_GUIDE.md) - Comprehensive guide to architecture, setup, and usage examples
 - [API_MONITORING_README.md](API_MONITORING_README.md) - In-depth documentation for the monitoring system with anomaly detection
 - [PREDICTIVE_ANALYTICS_README.md](PREDICTIVE_ANALYTICS_README.md) - Detailed guide to predictive analytics capabilities
-- [API_COST_OPTIMIZATION_GUIDE.md](API_COST_OPTIMIZATION_GUIDE.md) - Guide to API cost optimization features
-- [API_SIMULATION_GUIDE.md](API_SIMULATION_GUIDE.md) - Guide to using the API simulation capabilities
+- [API_COST_OPTIMIZATION_GUIDE.md](PREDICTIVE_ANALYTICS_README.md) - Guide to API cost optimization features
+- [API_SIMULATION_GUIDE.md](API_DISTRIBUTED_TESTING_GUIDE.md) - Guide to using the API simulation capabilities
 
 ## Conclusion
 

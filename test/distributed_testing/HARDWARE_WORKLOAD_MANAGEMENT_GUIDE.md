@@ -319,6 +319,6 @@ This system is particularly valuable in heterogeneous environments where differe
 
 ## References
 
-- [DISTRIBUTED_TESTING_DESIGN.md](DISTRIBUTED_TESTING_DESIGN.md): Comprehensive design of the Distributed Testing Framework
-- [HARDWARE_TAXONOMY.md](HARDWARE_TAXONOMY.md): Detailed documentation of the Hardware Taxonomy system
+- [DISTRIBUTED_TESTING_DESIGN.md](../DISTRIBUTED_TESTING_DESIGN.md): Comprehensive design of the Distributed Testing Framework
+- [ENHANCED_HARDWARE_TAXONOMY_IMPLEMENTATION.md](docs/ENHANCED_HARDWARE_TAXONOMY_IMPLEMENTATION.md): Detailed documentation of the Hardware Taxonomy system
 - [RESOURCE_POOL_INTEGRATION.md](docs/RESOURCE_POOL_INTEGRATION.md): Integration with WebGPU/WebNN Resource Pool

@@ -70,8 +70,8 @@ result = multiplex_inference(
 ## Documentation
 
 - **Complete Guide**: [`../../features/cli/CLI_ENDPOINT_ADAPTERS.md`](../../features/cli/CLI_ENDPOINT_ADAPTERS.md)
-- **Examples**: [`examples/cli_endpoint_usage.py`](examples/cli_endpoint_usage.py)
-- **Tests**: [`test_cli_endpoint_adapters.py`](test_cli_endpoint_adapters.py)
+- **Examples**: [`../../../examples/cli_endpoint_usage.py`](../../../examples/cli_endpoint_usage.py)
+- **Tests**: [`../../../test/test_cli_endpoint_adapters.py`](../../../test/test_cli_endpoint_adapters.py)
 
 ## MCP Server Integration
 

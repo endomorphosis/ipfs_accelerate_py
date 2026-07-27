@@ -654,10 +654,10 @@ Whether used through the RESTful API, client library, or CLI mode, the Hardware-
 
 ## Additional Resources
 
-- [HARDWARE_SELECTION_GUIDE.md](HARDWARE_SELECTION_GUIDE.md): Comprehensive guide to hardware selection
-- [MODEL_FAMILY_GUIDE.md](MODEL_FAMILY_GUIDE.md): Detailed information about model families
-- [HARDWARE_BENCHMARKING_GUIDE.md](HARDWARE_BENCHMARKING_GUIDE.md): Guide to hardware benchmarking
-- [HARDWARE_MODEL_PREDICTOR_GUIDE.md](HARDWARE_MODEL_PREDICTOR_GUIDE.md): Guide to the hardware model predictor
+- [HARDWARE_SELECTION_GUIDE.md](../HARDWARE_SELECTION_GUIDE.md): Comprehensive guide to hardware selection
+- [MODEL_FAMILY_GUIDE.md](../MODEL_FAMILY_GUIDE.md): Detailed information about model families
+- [HARDWARE_BENCHMARKING_GUIDE.md](../../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md): Guide to hardware benchmarking
+- [HARDWARE_MODEL_PREDICTOR_GUIDE.md](../HARDWARE_MODEL_PREDICTOR_GUIDE.md): Guide to the hardware model predictor
 
 --
 

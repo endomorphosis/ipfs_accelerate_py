@@ -77,7 +77,7 @@ print(vision_tokenizer.image_token, vision_tokenizer.image_token_id)
 ## PreTrainedTokenizerFast
 
 The [`PreTrainedTokenizerFast`] depend on the [tokenizers](https://huggingface.co/docs/tokenizers) library. The tokenizers obtained from the 🤗 tokenizers library can be
-loaded very simply into 🤗 transformers. Take a look at the [Using tokenizers from 🤗 tokenizers](../fast_tokenizers) page to understand how this is done.
+loaded very simply into 🤗 transformers. Take a look at the [Using tokenizers from 🤗 tokenizers](../fast_tokenizers.md) page to understand how this is done.
 
 [API documentation placeholder]
 

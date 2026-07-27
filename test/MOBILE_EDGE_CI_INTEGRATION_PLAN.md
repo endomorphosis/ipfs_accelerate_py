@@ -370,7 +370,7 @@ To complete the CI/CD integration in your environment:
    - Trigger the workflows manually through GitHub Actions
    - Review results in the generated reports and dashboard
 
-For detailed instructions, refer to the [Mobile CI Runner Setup Guide](test/MOBILE_CI_RUNNER_SETUP_GUIDE.md).
+For detailed instructions, refer to the [Mobile CI Runner Setup Guide](MOBILE_CI_RUNNER_SETUP_GUIDE.md).
 
 ## Conclusion
 

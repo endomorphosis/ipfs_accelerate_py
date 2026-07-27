@@ -80,7 +80,7 @@ performance_report = pool.get_performance_report()
 - [July 2025 Completion Report](WEB_RESOURCE_POOL_JULY2025_COMPLETION.md)
 - [Cross-Model Tensor Sharing Guide](IPFS_CROSS_MODEL_TENSOR_SHARING_GUIDE.md)
 - [Fault Tolerance Testing Guide](WEB_RESOURCE_POOL_FAULT_TOLERANCE_TESTING.md)
-- [Performance Analysis Guide](WEB_RESOURCE_POOL_PERFORMANCE_ANALYSIS.md)
+- [Performance Analysis and Database Integration](WEB_RESOURCE_POOL_DATABASE_INTEGRATION.md)
 - [WebGPU/WebNN Database Integration](WEBNN_WEBGPU_DATABASE_INTEGRATION.md)
 
 ## Future Enhancements

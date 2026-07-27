@@ -423,4 +423,4 @@ If you encounter "Out of Memory" errors:
    ])
    ```
 
-For more detailed information, refer to the [Web Platform Integration Guide](../web_platform_integration_guide.md) and the [Model Performance Optimization Guide](/docs/model_performance_optimization_guide.md).
+For more detailed information, refer to the [Web Platform Integration Guide](../web_platform_integration_guide.md) and the [Model Performance Optimization Guide](../WEB_PLATFORM_OPTIMIZATION_GUIDE.md).

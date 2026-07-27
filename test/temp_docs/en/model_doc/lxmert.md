@@ -62,7 +62,7 @@ This model was contributed by [eltoto1219](https://huggingface.co/eltoto1219). T
 
 ## Resources
 
-- [Question answering task guide](../tasks/question_answering)
+- [Question answering task guide](../tasks/question_answering.md)
 
 ## LxmertConfig
 

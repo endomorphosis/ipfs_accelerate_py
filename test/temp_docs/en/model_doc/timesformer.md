@@ -39,7 +39,7 @@ the number of input frames per clip changes based on the model size so you shoul
 
 ## Resources
 
-- [Video classification task guide](../tasks/video_classification)
+- [Video classification task guide](../tasks/video_classification.md)
 
 ## TimesformerConfig
 

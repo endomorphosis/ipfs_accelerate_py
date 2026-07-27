@@ -63,7 +63,7 @@ This model was contributed by [zphang](https://huggingface.co/zphang) with contr
 
 Based on the original LLaMA model, Meta AI has released some follow-up works:
 
-- **Llama2**: Llama2 is an improved version of Llama with some architectural tweaks (Grouped Query Attention), and is pre-trained on 2Trillion tokens. Refer to the documentation of Llama2 which can be found [here](llama2).
+- **Llama2**: Llama2 is an improved version of Llama with some architectural tweaks (Grouped Query Attention), and is pre-trained on 2Trillion tokens. Refer to the documentation of Llama2 which can be found [here](llama2.md).
 
 ## Resources
 

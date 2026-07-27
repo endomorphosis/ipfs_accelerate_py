@@ -24,7 +24,7 @@ rendered properly in your Markdown viewer.
 
 The GIT model was proposed in [GIT: A Generative Image-to-text Transformer for Vision and Language](https://arxiv.org/abs/2205.14100) by
 Jianfeng Wang, Zhengyuan Yang, Xiaowei Hu, Linjie Li, Kevin Lin, Zhe Gan, Zicheng Liu, Ce Liu, Lijuan Wang. GIT is a decoder-only Transformer
-that leverages [CLIP](clip)'s vision encoder to condition the model on vision inputs besides text. The model obtains state-of-the-art results on
+that leverages [CLIP](clip.md)'s vision encoder to condition the model on vision inputs besides text. The model obtains state-of-the-art results on
 image captioning and visual question answering benchmarks.
 
 The abstract from the paper is the following:
@@ -48,7 +48,7 @@ The original code can be found [here](https://github.com/microsoft/GenerativeIma
 A list of official Hugging Face and community (indicated by 🌎) resources to help you get started with GIT.
 
 - Demo notebooks regarding inference + fine-tuning GIT on custom data can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/GIT).
-- See also: [Causal language modeling task guide](../tasks/language_modeling)
+- See also: [Causal language modeling task guide](../tasks/language_modeling.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we will review it.
 The resource should ideally demonstrate something new instead of duplicating an existing resource.

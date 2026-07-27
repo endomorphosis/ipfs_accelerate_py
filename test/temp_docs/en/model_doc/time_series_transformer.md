@@ -44,7 +44,7 @@ pairs of (`past_values` and `future_values`) to the model.
     An example here is the store ID or region ID that identifies a given time-series.
     Note that these features need to be known for ALL data points (also those in the future).
     - `static_real_features`: real-valued features which are static over time (i.e., have the same value for all `past_values` and `future_values`).
-    An example here is the image representation of the product for which you have the time-series values (like the [ResNet](resnet) embedding of a "shoe" picture,
+    An example here is the image representation of the product for which you have the time-series values (like the [ResNet](./resnet.md#resnet) embedding of a "shoe" picture,
     if your time-series is about the sales of shoes).
     Note that these features need to be known for ALL data points (also those in the future).
 - The model is trained using "teacher-forcing", similar to how a Transformer is trained for machine translation. This means that, during training, one shifts the

@@ -5,6 +5,8 @@ That path is now deprecated in favor of lightweight monkeypatching via
 `ipfs_accelerate_py.auto_patch_transformers`.
 """
 
+import importlib
+import importlib.util
 import logging
 import os
 import tempfile
@@ -12,15 +14,29 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-HAS_TRANSFORMERS = False
-try:
-    import transformers
-    from transformers import AutoModel as _AutoModel
+HAS_TRANSFORMERS = importlib.util.find_spec("transformers") is not None
+transformers = None
+_AutoModel = None
+_TRANSFORMERS_LOADED = False
 
-    HAS_TRANSFORMERS = True
-except ImportError:
-    transformers = None  # type: ignore[assignment]
-    _AutoModel = None  # type: ignore[assignment]
+
+def _load_transformers() -> bool:
+    """Load the optional provider only when model functionality is invoked."""
+
+    global HAS_TRANSFORMERS, _TRANSFORMERS_LOADED, _AutoModel, transformers
+    if _TRANSFORMERS_LOADED:
+        return HAS_TRANSFORMERS
+    _TRANSFORMERS_LOADED = True
+    if not HAS_TRANSFORMERS:
+        return False
+    try:
+        transformers = importlib.import_module("transformers")
+        _AutoModel = getattr(transformers, "AutoModel")
+    except (ImportError, AttributeError):
+        HAS_TRANSFORMERS = False
+        transformers = None
+        _AutoModel = None
+    return HAS_TRANSFORMERS
 
 
 def _try_apply_transformers_patches() -> None:
@@ -29,7 +45,7 @@ def _try_apply_transformers_patches() -> None:
     If `ipfs_accelerate_py.auto_patch_transformers` is present, it can add
     methods like `AutoModel.from_ipfs` / `AutoModel.from_auto_download`.
     """
-    if not HAS_TRANSFORMERS:
+    if not _load_transformers():
         return
     try:
         from ipfs_accelerate_py import auto_patch_transformers
@@ -41,7 +57,7 @@ def _try_apply_transformers_patches() -> None:
 
 
 def _get_automodel():
-    if not HAS_TRANSFORMERS:
+    if not _load_transformers():
         return None
     _try_apply_transformers_patches()
     # Re-resolve after patching (it may wrap/replace attributes)
@@ -196,7 +212,7 @@ class TransformersModelProvider:
 
     def is_available(self) -> bool:
         """Check if transformers integration is available."""
-        return HAS_TRANSFORMERS
+        return _load_transformers()
 
     def load_model(
         self,

@@ -341,6 +341,7 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
     health = {
         "status": "healthy",
         "healthy": True,
+        "exhaustive": True,
         "safe_for_completion_reasoning": True,
         "analyzer_version": "asi-059-completion-analyzer@1",
     }
@@ -353,8 +354,6 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
     quorum = {
         "required_members": 2,
         "member_count": 2,
-        "satisfied": True,
-        "quorum_met": True,
         "binding": binding,
         "members": [
             {
@@ -363,8 +362,13 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
                 "receipt_cid": "scan:asi-059:implementation",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "analyzer_version": "asi-059-implementation-analyzer@1",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
                 "finished_at": now.isoformat(),
             },
             {
@@ -373,8 +377,13 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
                 "receipt_cid": "scan:asi-059:receipt-audit",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "analyzer_version": "asi-059-receipt-analyzer@1",
+                "passed": True,
                 "healthy": True,
+                "exhaustive": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -412,7 +421,13 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert not provisional.verified
-    assert provisional.gate is not None and provisional.gate.passed
+    assert (
+        provisional.gate is not None and provisional.gate.passed
+    ), tuple(
+        (check.name, check.reason_code, check.evidence)
+        for check in provisional.gate.checks
+        if not check.passed
+    )
     assert provisional.acceptance_criteria == criteria
     assert "provisional_transition_required" in provisional.reason_codes
     assert provisional.gate.evaluated_evidence["analysis_result"] == {}
@@ -495,9 +510,9 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
         assert unhealthy.state is GoalState.PROVISIONALLY_COMPLETE
         assert "analyzer_unhealthy" in unhealthy.reason_codes
 
-    # The configured quorum requires distinct channels and receipts, and every
-    # fresh member must explicitly be exhaustive, healthy, completion-safe,
-    # and bound to the active tree.
+    # The configured quorum requires independently derived scan channels and
+    # receipts, and every fresh member must explicitly pass, be exhaustive,
+    # healthy, conclusive, uncontradicted, completion-safe, and tree-bound.
     invalid_quorums = (
         {
             **quorum,
@@ -505,7 +520,9 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "evidence_channel": "implementation-validation",
+                    "analyzer_version": (
+                        quorum["members"][0]["analyzer_version"]
+                    ),
                 },
             ],
         },
@@ -523,7 +540,7 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
             **quorum,
             "members": [
                 quorum["members"][0],
-                {**quorum["members"][1], "scan_mode": "audit"},
+                {**quorum["members"][1], "exhaustive": False},
             ],
         },
         {

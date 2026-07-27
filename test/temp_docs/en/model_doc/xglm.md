@@ -51,7 +51,7 @@ This model was contributed by [Suraj](https://huggingface.co/valhalla). The orig
 
 ## Resources
 
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Causal language modeling task guide](../tasks/language_modeling.md#causal-language-modeling)
 
 ## XGLMConfig
 

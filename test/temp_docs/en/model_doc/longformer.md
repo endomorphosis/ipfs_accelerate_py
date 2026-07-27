@@ -91,11 +91,11 @@ loss = model(input_ids, labels=input_ids, masked_lm_labels=mlm_labels)[0]
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Text classification task guide](../tasks/sequence_classification.md#text-classification)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## LongformerConfig
 

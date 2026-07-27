@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import shlex
+import sys
 import threading
 
 import pytest
@@ -24,6 +26,9 @@ from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
 from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationCommand,
     ValidationStage,
+)
+from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+    VALIDATION_PYTHON_ENV,
 )
 from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ImpactSelectedValidationDAG,
@@ -241,6 +246,66 @@ def test_accepted_proposal_default_runner_uses_validation_python(
     assert "pytest " in report["results"][0]["output"]
 
 
+def test_strict_validation_builds_hardened_python_environment(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    profile_marker = tmp_path / "bash-environment-ran"
+    bash_environment = tmp_path / "bash-environment"
+    bash_environment.write_text(
+        f"touch {shlex.quote(str(profile_marker))}\n",
+        encoding="utf-8",
+    )
+    validation = validate_implementation_proposal(
+        _proposal((_source_change(),)),
+        policy=_policy(),
+    )
+    graph = ImpactDependencyGraph(
+        repository_tree_id=TREE_ID,
+        dependencies={"pkg/source.py": ()},
+        validation_targets={VALIDATION_ID: ("pkg/source.py",)},
+    )
+    command = ValidationCommand(
+        command=(
+            "python -c 'import os, sys; "
+            "assert os.environ.get("
+            '"IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"); '
+            'assert "VALIDATION_SECRET" not in os.environ; '
+            "print(sys.executable)'"
+        ),
+        stage=ValidationStage.TARGETED,
+        impact_paths=("pkg/source.py",),
+        validation_id=VALIDATION_ID,
+        cacheable=False,
+    )
+
+    report = ValidationScheduler(max_workers=1).run_validated(
+        validation,
+        (command,),
+        workspace_path=workspace,
+        impact_graph=graph,
+        dependency_state="fixture",
+        environment={
+            "BASH_ENV": str(bash_environment),
+            "VALIDATION_SECRET": "must-not-leak",
+        },
+    )
+
+    assert report["passed"] is True, [
+        (
+            result.get("returncode"),
+            result.get("output"),
+            result.get("error"),
+        )
+        for result in report["results"]
+    ]
+    assert str(Path(sys.executable).resolve()) in str(
+        report["results"][0]["output"]
+    )
+    assert not profile_marker.exists()
+
+
 def _failing_transitive_report(
     tmp_path: Path,
 ) -> tuple[dict[str, object], list[str]]:
@@ -287,6 +352,62 @@ def _failing_transitive_report(
         runner=runner,
     )
     return report, calls
+
+
+def test_strict_validation_runner_receives_sanitized_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proposal = _proposal((_source_change(),))
+    validation = validate_implementation_proposal(proposal, policy=_policy())
+    graph = ImpactDependencyGraph(
+        repository_tree_id=TREE_ID,
+        dependencies={
+            "pkg/consumer.py": ("pkg/source.py",),
+            "test/api/test_transitive_consumer.py": ("pkg/consumer.py",),
+        },
+        validation_targets={
+            VALIDATION_ID: ("test/api/test_transitive_consumer.py",),
+        },
+    )
+    captured_environments: list[dict[str, str]] = []
+
+    def runner(
+        *,
+        spec: ValidationCommand,
+        environment: dict[str, str],
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        captured_environments.append(dict(environment))
+        return _result(spec)
+
+    monkeypatch.setenv(VALIDATION_PYTHON_ENV, "/usr/bin/python3")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "must-not-cross-validation-boundary")
+
+    report = ValidationScheduler(max_workers=1).run_validated(
+        validation,
+        _commands(),
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        dependency_state="fixture",
+        runner=runner,
+    )
+
+    assert report["attempted"] is True
+    assert captured_environments
+    assert all(
+        environment["IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"]
+        == str(Path("/usr/bin/python3").resolve())
+        for environment in captured_environments
+    )
+    assert all(
+        "AWS_SECRET_ACCESS_KEY" not in environment
+        for environment in captured_environments
+    )
+    assert all(
+        environment["HOME"] == "/nonexistent/ipfs-accelerate-validation"
+        for environment in captured_environments
+    )
 
 
 def test_transitive_impact_selects_failing_test_and_proves_exact_g101_requirement(

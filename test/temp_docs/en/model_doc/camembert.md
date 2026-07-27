@@ -44,19 +44,19 @@ This model was contributed by [the ALMAnaCH team (Inria)](https://huggingface.co
 
 <Tip>
 
-This implementation is the same as RoBERTa. Refer to the [documentation of RoBERTa](roberta) for usage examples as well 
+This implementation is the same as RoBERTa. Refer to the [documentation of RoBERTa](roberta.md) for usage examples as well
 as the information relative to the inputs and outputs.
 
 </Tip>
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## CamembertConfig
 

@@ -34,7 +34,7 @@ ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID = (
     "122080003600146794820964010047426915846"
 )
 ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.adaptive-throughput-benchmark@1"
+    "ipfs_accelerate_py.agent_supervisor.adaptive-throughput-benchmark@2"
 )
 ADAPTIVE_STAGES = (
     "analysis",
@@ -1323,6 +1323,11 @@ class ResourcePolicy:
     adaptive_queue_depth_per_slot: int = 1
     adaptive_merge_age_ms: int = 60_000
     adaptive_starvation_age_ms: int = 300_000
+    adaptive_max_pending_tasks: int = 256
+    adaptive_max_merge_debt: int = 8
+    adaptive_artifact_pressure_high_watermark_percent: int = 90
+    adaptive_minimum_throughput_multiplier: int = 3
+    adaptive_max_duplicate_compute_percent: int = 5
     stage_concurrency_limits: Mapping[str, int] = field(default_factory=dict)
     stage_min_concurrency: Mapping[str, int] = field(default_factory=dict)
 
@@ -1343,6 +1348,9 @@ class ResourcePolicy:
             "max_cpu_proof_concurrency", "max_model_concurrency",
             "max_artifact_concurrency",
             "adaptive_merge_age_ms", "adaptive_starvation_age_ms",
+            "adaptive_max_pending_tasks", "adaptive_max_merge_debt",
+            "adaptive_minimum_throughput_multiplier",
+            "adaptive_max_duplicate_compute_percent",
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
@@ -1350,6 +1358,31 @@ class ResourcePolicy:
             raise ValueError("adaptive_target_utilization_percent must be in [1, 100]")
         if not 0 <= int(self.adaptive_hysteresis_percent) <= 100:
             raise ValueError("adaptive_hysteresis_percent must be in [0, 100]")
+        for name in (
+            "adaptive_max_pending_tasks",
+            "adaptive_max_merge_debt",
+            "adaptive_artifact_pressure_high_watermark_percent",
+            "adaptive_minimum_throughput_multiplier",
+            "adaptive_max_duplicate_compute_percent",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{name} must be an integer")
+        if not 0 <= int(
+            self.adaptive_artifact_pressure_high_watermark_percent
+        ) <= 100:
+            raise ValueError(
+                "adaptive_artifact_pressure_high_watermark_percent "
+                "must be in [0, 100]"
+            )
+        if self.adaptive_minimum_throughput_multiplier < 1:
+            raise ValueError(
+                "adaptive_minimum_throughput_multiplier must be positive"
+            )
+        if self.adaptive_max_duplicate_compute_percent > 100:
+            raise ValueError(
+                "adaptive_max_duplicate_compute_percent must be in [0, 100]"
+            )
         if (
             isinstance(self.adaptive_recovery_samples, bool)
             or int(self.adaptive_recovery_samples) <= 0
@@ -1532,6 +1565,69 @@ class ResourcePolicy:
                 defaults.adaptive_starvation_age_ms,
                 minimum=0,
             ),
+            adaptive_max_pending_tasks=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_max_pending_tasks",
+                        "max_pending_tasks",
+                        "task_generation_queue_limit",
+                    ),
+                    defaults.adaptive_max_pending_tasks,
+                ),
+                defaults.adaptive_max_pending_tasks,
+                minimum=0,
+            ),
+            adaptive_max_merge_debt=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_max_merge_debt",
+                        "max_merge_debt",
+                        "merge_debt_limit",
+                    ),
+                    defaults.adaptive_max_merge_debt,
+                ),
+                defaults.adaptive_max_merge_debt,
+                minimum=0,
+            ),
+            adaptive_artifact_pressure_high_watermark_percent=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_artifact_pressure_high_watermark_percent",
+                        "artifact_pressure_high_watermark_percent",
+                        "max_artifact_pressure_percent",
+                    ),
+                    defaults.adaptive_artifact_pressure_high_watermark_percent,
+                ),
+                defaults.adaptive_artifact_pressure_high_watermark_percent,
+                minimum=0,
+            ),
+            adaptive_minimum_throughput_multiplier=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_minimum_throughput_multiplier",
+                        "minimum_throughput_multiplier",
+                    ),
+                    defaults.adaptive_minimum_throughput_multiplier,
+                ),
+                defaults.adaptive_minimum_throughput_multiplier,
+                minimum=1,
+            ),
+            adaptive_max_duplicate_compute_percent=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_max_duplicate_compute_percent",
+                        "max_duplicate_compute_percent",
+                    ),
+                    defaults.adaptive_max_duplicate_compute_percent,
+                ),
+                defaults.adaptive_max_duplicate_compute_percent,
+                minimum=0,
+            ),
             stage_concurrency_limits=_mapping(
                 _first(value, ("stage_concurrency_limits", "stage_limits"), {})
             ),
@@ -1557,6 +1653,8 @@ class AdaptiveStageCapacity:
     merge_age_ms: int = 0
     provider_available_slots: int = UNKNOWN_LIMIT
     active_leases: int = 0
+    artifact_pressure_percent: int = 0
+    merge_debt: int = 0
     recovery_samples: int = 0
     hysteresis_state: str = "stable"
     observed_at_ms: int = 0
@@ -1568,6 +1666,69 @@ class AdaptiveStageCapacity:
             str(name): int(value)
             for name, value in sorted(self.signal_limits.items())
         }
+        return payload
+
+
+@dataclass(frozen=True)
+class FairWorkStealDecision:
+    """Deterministic selection for an idle stage worker.
+
+    A worker consumes its home-stage queue while it has work.  It may steal
+    from another independently limited stage when the home queue is empty, or
+    when a foreign item has crossed the configured starvation bound.  The
+    selected item remains subject to normal resource admission before it can
+    execute.
+    """
+
+    worker_stage: str
+    selected_lane_id: str = ""
+    selected_stage: str = ""
+    stolen: bool = False
+    starvation_override: bool = False
+    critical_path_length: int = 0
+    queue_age_ms: int = 0
+    considered_lane_ids: tuple[str, ...] = ()
+
+    @property
+    def selected(self) -> bool:
+        return bool(self.selected_lane_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["considered_lane_ids"] = list(self.considered_lane_ids)
+        payload["selected"] = self.selected
+        return payload
+
+
+@dataclass(frozen=True)
+class TaskGenerationAdmission:
+    """Backpressure decision for producers which create more scheduler work."""
+
+    admitted: bool
+    reasons: tuple[str, ...] = ()
+    pending_tasks: int = 0
+    effective_generation_limit: int = 0
+    available_generation_slots: int = 0
+    artifact_pressure_percent: int = 0
+    merge_debt: int = 0
+    disk_percent: int = 0
+    recovery_samples: int = 0
+    hysteresis_state: str = "stable"
+    observed_at_ms: int = 0
+
+    @property
+    def allowed(self) -> bool:
+        return self.admitted
+
+    @property
+    def reason(self) -> str:
+        return self.reasons[0] if self.reasons else ""
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["reasons"] = list(self.reasons)
+        payload["allowed"] = self.allowed
+        payload["reason"] = self.reason
         return payload
 
 
@@ -1666,6 +1827,13 @@ class _AdaptiveStageState:
     recovery_samples: int = 0
     state: str = "stable"
     limit_reason: str = "configured_limit"
+
+
+@dataclass
+class _TaskGenerationState:
+    backpressured: bool = False
+    last_observed_at_ms: int = 0
+    recovery_samples: int = 0
 
 
 @dataclass(frozen=True)
@@ -1789,6 +1957,7 @@ class ResourceScheduleSnapshot:
     backpressure_counts: Mapping[str, int] = field(default_factory=dict)
     signals: Mapping[str, Any] = field(default_factory=dict)
     pool_admissions: tuple[ResourcePoolAdmissionSnapshot, ...] = ()
+    task_generation: TaskGenerationAdmission | None = None
 
     @property
     def admitted_lane_ids(self) -> tuple[str, ...]:
@@ -1830,6 +1999,11 @@ class ResourceScheduleSnapshot:
             "pool_admissions": [
                 item.to_dict() for item in self.pool_admissions
             ],
+            "task_generation": (
+                self.task_generation.to_dict()
+                if self.task_generation is not None
+                else None
+            ),
             "signals": json.loads(
                 json.dumps(dict(self.signals), sort_keys=True)
             ),
@@ -1911,6 +2085,7 @@ class ResourceScheduler:
         self._metrics_lock = threading.RLock()
         self._stage_metrics: dict[str, _MutableStageMetrics] = {}
         self._adaptive_state: dict[str, _AdaptiveStageState] = {}
+        self._task_generation_state = _TaskGenerationState()
         self._cancelled_lanes: dict[str, str] = {}
         self._known_lanes: set[str] = set()
 
@@ -1926,6 +2101,8 @@ class ResourceScheduler:
         memory_available_slots: int = UNKNOWN_LIMIT,
         gpu_memory_available_slots: int = UNKNOWN_LIMIT,
         disk_available_slots: int = UNKNOWN_LIMIT,
+        artifact_pressure_percent: int = 0,
+        merge_debt: int = 0,
         active_leases: int = 0,
     ) -> AdaptiveStageCapacity:
         """Calculate a stage bound from configured limits and live pressure.
@@ -1967,6 +2144,38 @@ class ResourceScheduler:
         active_count = max(0, int(active))
         queued_count = max(0, int(queued))
         merge_age = max(0, int(merge_age_ms))
+        artifact_pressure = min(
+            100, max(0, int(artifact_pressure_percent))
+        )
+        current_merge_debt = max(0, int(merge_debt))
+        # Merge and persistence are drain stages.  Pressure in their queues
+        # contracts upstream generation while preserving capacity to pay down
+        # the debt itself.
+        if name not in {"merge", "persistence"}:
+            artifact_limit = (
+                self.policy.adaptive_artifact_pressure_high_watermark_percent
+            )
+            artifact_target = min(
+                artifact_limit,
+                self.policy.adaptive_target_utilization_percent,
+            )
+            if artifact_limit and artifact_pressure > artifact_target:
+                artifact_slots = max(
+                    0,
+                    resource_limit
+                    * max(0, artifact_limit - artifact_pressure)
+                    // max(1, artifact_limit - artifact_target),
+                )
+                signal_limits["artifact_pressure"] = artifact_slots
+            merge_limit = self.policy.adaptive_max_merge_debt
+            if merge_limit and current_merge_debt:
+                signal_limits["merge_debt"] = max(
+                    0,
+                    resource_limit
+                    * max(0, merge_limit - current_merge_debt)
+                    // merge_limit,
+                )
+        resource_limit = min(signal_limits.values(), default=configured)
         minimum = min(
             resource_limit,
             self.policy.stage_min_concurrency.get(name, 1),
@@ -1977,6 +2186,8 @@ class ResourceScheduler:
         ]
         if profile.disk_sensitive:
             pressure_values.append(snapshot.disk_percent)
+        if name != "persistence":
+            pressure_values.append(artifact_pressure)
         if (
             profile.gpu_memory_sensitive
             and snapshot.gpu_memory_total_bytes > 0
@@ -2124,6 +2335,8 @@ class ResourceScheduler:
             merge_age_ms=merge_age,
             provider_available_slots=int(provider_available_slots),
             active_leases=max(0, int(active_leases)),
+            artifact_pressure_percent=artifact_pressure,
+            merge_debt=current_merge_debt,
             recovery_samples=recovery_samples,
             hysteresis_state=hysteresis_state,
             observed_at_ms=observed_at_ms,
@@ -2229,6 +2442,210 @@ class ResourceScheduler:
             )
             self._stage_metrics.clear()
         return previous
+
+    def task_generation_backpressure(
+        self,
+        *,
+        host: HostResourceSnapshot | Mapping[str, Any],
+        pending_tasks: int,
+        artifact_pressure_percent: int = 0,
+        merge_debt: int = 0,
+        observed_at_ms: int | None = None,
+    ) -> TaskGenerationAdmission:
+        """Decide whether task producers may add more pending work.
+
+        Execution drain stages remain independently schedulable when this
+        gate closes.  Recovery requires fresh low-watermark samples so a queue
+        hovering around a limit cannot repeatedly fan task generation in and
+        out.
+        """
+
+        snapshot = (
+            host
+            if isinstance(host, HostResourceSnapshot)
+            else HostResourceSnapshot.from_mapping(host)
+        )
+        pending = max(0, int(pending_tasks))
+        artifact_pressure = min(
+            100, max(0, int(artifact_pressure_percent))
+        )
+        debt = max(0, int(merge_debt))
+        observed = (
+            max(0, int(observed_at_ms))
+            if observed_at_ms is not None
+            else snapshot.observed_at_ms or int(time.time() * 1000)
+        )
+        queue_limit = self.policy.adaptive_max_pending_tasks
+        merge_limit = self.policy.adaptive_max_merge_debt
+        artifact_limit = (
+            self.policy.adaptive_artifact_pressure_high_watermark_percent
+        )
+        if not self.policy.adaptive_enabled:
+            available = max(0, self.policy.max_lanes)
+            return TaskGenerationAdmission(
+                admitted=available > 0,
+                reasons=() if available else ("execution_capacity",),
+                pending_tasks=pending,
+                effective_generation_limit=pending + available,
+                available_generation_slots=available,
+                artifact_pressure_percent=artifact_pressure,
+                merge_debt=debt,
+                disk_percent=snapshot.disk_percent,
+                observed_at_ms=observed,
+            )
+        reasons: list[str] = []
+        if queue_limit and pending >= queue_limit:
+            reasons.append("pending_task_capacity")
+        if merge_limit and debt >= merge_limit:
+            reasons.append("merge_debt")
+        if artifact_limit and artifact_pressure >= artifact_limit:
+            reasons.append("artifact_pressure")
+        if snapshot.disk_percent >= self.policy.disk_high_watermark_percent:
+            reasons.append("host_disk_high_watermark")
+
+        effective_limit = queue_limit or max(
+            pending + self.policy.max_lanes,
+            self.policy.max_lanes,
+        )
+        available = max(0, effective_limit - pending)
+        if not available and "pending_task_capacity" not in reasons:
+            reasons.append("pending_task_capacity")
+        hysteresis_state = "stable"
+        recovery_samples = 0
+        with self._metrics_lock:
+            state = self._task_generation_state
+            if reasons:
+                state.backpressured = True
+                state.recovery_samples = 0
+                state.last_observed_at_ms = max(
+                    state.last_observed_at_ms, observed
+                )
+                hysteresis_state = "contracted"
+            elif state.backpressured:
+                hysteresis = self.policy.adaptive_hysteresis_percent
+                queue_margin = (
+                    max(1, queue_limit * hysteresis // 100)
+                    if queue_limit
+                    else 0
+                )
+                merge_margin = (
+                    max(1, merge_limit * hysteresis // 100)
+                    if merge_limit
+                    else 0
+                )
+                recovered_low = (
+                    (
+                        not queue_limit
+                        or pending <= max(0, queue_limit - queue_margin)
+                    )
+                    and (
+                        not merge_limit
+                        or debt <= max(0, merge_limit - merge_margin)
+                    )
+                    and (
+                        not artifact_limit
+                        or artifact_pressure
+                        <= max(0, artifact_limit - hysteresis)
+                    )
+                    and snapshot.disk_percent
+                    <= max(
+                        0,
+                        self.policy.disk_high_watermark_percent - hysteresis,
+                    )
+                )
+                if observed > state.last_observed_at_ms and recovered_low:
+                    state.recovery_samples += 1
+                    state.last_observed_at_ms = observed
+                if (
+                    state.recovery_samples
+                    >= self.policy.adaptive_recovery_samples
+                ):
+                    state.backpressured = False
+                    state.recovery_samples = 0
+                    hysteresis_state = "recovered"
+                else:
+                    hysteresis_state = "recovering"
+                    reasons.append("hysteresis_recovery")
+            recovery_samples = state.recovery_samples
+            admitted = not state.backpressured and not reasons and available > 0
+        return TaskGenerationAdmission(
+            admitted=admitted,
+            reasons=tuple(dict.fromkeys(reasons)),
+            pending_tasks=pending,
+            effective_generation_limit=effective_limit,
+            available_generation_slots=available,
+            artifact_pressure_percent=artifact_pressure,
+            merge_debt=debt,
+            disk_percent=snapshot.disk_percent,
+            recovery_samples=recovery_samples,
+            hysteresis_state=hysteresis_state,
+            observed_at_ms=observed,
+        )
+
+    evaluate_task_generation = task_generation_backpressure
+
+    def fair_work_order(
+        self,
+        requirements: Iterable[
+            LaneResourceRequirements | Mapping[str, Any]
+        ],
+    ) -> tuple[LaneResourceRequirements, ...]:
+        """Return critical-path, starvation-bounded round-robin order."""
+
+        normalized = tuple(
+            item
+            if isinstance(item, LaneResourceRequirements)
+            else LaneResourceRequirements.from_mapping(item)
+            for item in requirements
+        )
+        return self._fair_requirements(normalized)
+
+    def select_stealable_work(
+        self,
+        requirements: Iterable[
+            LaneResourceRequirements | Mapping[str, Any]
+        ],
+        *,
+        worker_stage: Any,
+    ) -> FairWorkStealDecision:
+        """Select home work or one fair foreign item for an idle stage worker."""
+
+        home = normalize_adaptive_stage(worker_stage)
+        ordered = tuple(
+            item
+            for item in self.fair_work_order(requirements)
+            if item.lane_id not in self._cancelled_lanes
+        )
+        starvation_age = self.policy.adaptive_starvation_age_ms
+        starved = tuple(
+            item
+            for item in ordered
+            if starvation_age and item.queue_age_ms >= starvation_age
+        )
+        local = tuple(item for item in ordered if item.stage == home)
+        selected = starved[0] if starved else (local[0] if local else None)
+        if selected is None and ordered:
+            selected = ordered[0]
+        if selected is None:
+            return FairWorkStealDecision(worker_stage=home)
+        starvation_override = bool(
+            starved
+            and selected is starved[0]
+            and selected.stage != home
+            and local
+        )
+        return FairWorkStealDecision(
+            worker_stage=home,
+            selected_lane_id=selected.lane_id,
+            selected_stage=selected.stage,
+            stolen=selected.stage != home,
+            starvation_override=starvation_override,
+            critical_path_length=selected.critical_path_length,
+            queue_age_ms=selected.queue_age_ms,
+            considered_lane_ids=tuple(item.lane_id for item in ordered),
+        )
+
+    select_work = select_stealable_work
 
     def _fair_requirements(
         self,
@@ -2419,6 +2836,8 @@ class ResourceScheduler:
         active_requirements: Iterable[LaneResourceRequirements] = (),
         queue_depth: int = 1,
         merge_age_ms: int | None = None,
+        artifact_pressure_percent: int = 0,
+        merge_debt: int = 0,
     ) -> AdmissionDecision:
         """Evaluate one lane without mutating caller-owned reservation state."""
 
@@ -2588,6 +3007,8 @@ class ResourceScheduler:
                 memory_available_slots=memory_slots,
                 gpu_memory_available_slots=gpu_slots,
                 disk_available_slots=disk_slots,
+                artifact_pressure_percent=artifact_pressure_percent,
+                merge_debt=merge_debt,
                 active_leases=active_lease_count,
             )
             decision_signals["pressure_percent"] = capacity.pressure_percent
@@ -3362,6 +3783,20 @@ class ResourceScheduler:
                         0,
                     ),
                 ),
+                artifact_pressure_percent=stage_signal(
+                    (
+                        "artifact_pressure_percent_by_stage",
+                        "artifact_pressure_percent",
+                        "artifact_pressure",
+                    ),
+                    requirement.stage,
+                    0,
+                ),
+                merge_debt=stage_signal(
+                    ("merge_debt_by_stage", "merge_debt"),
+                    requirement.stage,
+                    0,
+                ),
             )
             decision = replace(decision, admission_rank=admission_rank)
             decisions.append(decision)
@@ -3550,6 +3985,20 @@ class ResourceScheduler:
                     if stage == "inference"
                     else UNKNOWN_LIMIT
                 ),
+                artifact_pressure_percent=stage_signal(
+                    (
+                        "artifact_pressure_percent_by_stage",
+                        "artifact_pressure_percent",
+                        "artifact_pressure",
+                    ),
+                    stage,
+                    0,
+                ),
+                merge_debt=stage_signal(
+                    ("merge_debt_by_stage", "merge_debt"),
+                    stage,
+                    0,
+                ),
                 active_leases=active_lease_by_stage.get(stage, 0),
             )
             for stage in stages
@@ -3596,7 +4045,39 @@ class ResourceScheduler:
             },
             "active_process_slots": baseline_processes,
             "active_lease_count": len(leases),
+            "artifact_pressure_percent": stage_signal(
+                ("artifact_pressure_percent", "artifact_pressure"),
+                "persistence",
+                0,
+            ),
+            "merge_debt": stage_signal(
+                ("merge_debt",),
+                "merge",
+                0,
+            ),
         }
+        pending_tasks = stage_signal(
+            (
+                "pending_tasks",
+                "pending_task_count",
+                "task_generation_queue_depth",
+            ),
+            "analysis",
+            sum(queue_counts.values()),
+        )
+        generation = self.task_generation_backpressure(
+            host=host_snapshot,
+            pending_tasks=pending_tasks,
+            artifact_pressure_percent=signal_payload[
+                "artifact_pressure_percent"
+            ],
+            merge_debt=signal_payload["merge_debt"],
+            observed_at_ms=(
+                host_snapshot.observed_at_ms or int(time.time() * 1000)
+            ),
+        )
+        signal_payload["pending_tasks"] = pending_tasks
+        signal_payload["task_generation_admitted"] = generation.admitted
         return ResourceScheduleSnapshot(
             observed_at_ms=host_snapshot.observed_at_ms or int(time.time() * 1000),
             host=host_snapshot,
@@ -3614,6 +4095,7 @@ class ResourceScheduler:
             backpressure_counts=backpressure_counts,
             signals=signal_payload,
             pool_admissions=tuple(pool_admissions),
+            task_generation=generation,
         )
 
     # Descriptive aliases used by scheduler integrations and callers.
@@ -3658,6 +4140,24 @@ class AdaptiveThroughputRun:
     def throughput_per_million_ms(self) -> int:
         return self.accepted_count * 1_000_000 // self.duration_ms
 
+    @property
+    def duplicate_execution_count(self) -> int:
+        return max(
+            0,
+            len(self.executed_fixture_ids)
+            - len(set(self.executed_fixture_ids)),
+        )
+
+    @property
+    def duplicate_compute_percent_millionths(self) -> int:
+        if not self.executed_fixture_ids:
+            return 0
+        return (
+            self.duplicate_execution_count
+            * 100_000_000
+            // len(self.executed_fixture_ids)
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "fixture_ids": list(self.fixture_ids),
@@ -3667,6 +4167,10 @@ class AdaptiveThroughputRun:
             "peak_concurrency": self.peak_concurrency,
             "accepted_count": self.accepted_count,
             "throughput_per_million_ms": self.throughput_per_million_ms,
+            "duplicate_execution_count": self.duplicate_execution_count,
+            "duplicate_compute_percent_millionths": (
+                self.duplicate_compute_percent_millionths
+            ),
         }
 
     @classmethod
@@ -3700,7 +4204,8 @@ def _adaptive_benchmark_failure_codes(
         failures.append("repository_tree_unbound")
     if not policy.adaptive_enabled:
         failures.append("adaptive_policy_disabled")
-    if policy.max_lanes < 2:
+    throughput_multiplier = policy.adaptive_minimum_throughput_multiplier
+    if policy.max_lanes < throughput_multiplier:
         failures.append("insufficient_parallel_capacity")
     if len(expected) < 2 or len(expected_set) != len(expected):
         failures.append("invalid_fixture_identity")
@@ -3708,9 +4213,18 @@ def _adaptive_benchmark_failure_codes(
         failures.append("fixture_set_mismatch")
     for name, run in (("baseline", baseline), ("adaptive", adaptive)):
         executed = run.executed_fixture_ids
-        if len(executed) != len(set(executed)):
+        duplicate_count = run.duplicate_execution_count
+        duplicate_limit = policy.adaptive_max_duplicate_compute_percent
+        if (
+            duplicate_count
+            and (
+                duplicate_limit == 0
+                or duplicate_count * 100
+                >= duplicate_limit * len(executed)
+            )
+        ):
             failures.append(f"{name}_duplicate_execution")
-        if set(executed) != expected_set or len(executed) != len(expected):
+        if set(executed) != expected_set:
             failures.append(f"{name}_execution_incomplete")
         if (
             set(run.accepted_fixture_ids) != expected_set
@@ -3719,16 +4233,24 @@ def _adaptive_benchmark_failure_codes(
             failures.append(f"{name}_acceptance_incomplete")
     if baseline.peak_concurrency != 1:
         failures.append("baseline_not_single_lane")
-    if adaptive.peak_concurrency < 2:
+    if adaptive.peak_concurrency < min(
+        throughput_multiplier, policy.max_lanes
+    ):
         failures.append("adaptive_parallelism_unobserved")
     if adaptive.peak_concurrency > policy.max_lanes:
         failures.append("adaptive_resource_overcommit")
     # Cross multiplication avoids float precision and serialization.
     if (
         adaptive.accepted_count * baseline.duration_ms
-        < 2 * baseline.accepted_count * adaptive.duration_ms
+        < throughput_multiplier
+        * baseline.accepted_count
+        * adaptive.duration_ms
     ):
-        failures.append("throughput_below_two_x")
+        failures.append(
+            "throughput_below_three_x"
+            if throughput_multiplier == 3
+            else "throughput_below_required_multiplier"
+        )
     return tuple(dict.fromkeys(failures))
 
 
@@ -4733,6 +5255,7 @@ __all__ = [
     "ChildResourceLimits",
     "DEFAULT_RESOURCE_CLASSES",
     "FormalVerificationResourceScheduler",
+    "FairWorkStealDecision",
     "GoalRuntimeResourceScheduler",
     "HostResourceSnapshot",
     "LaneResourceRequirements",
@@ -4759,6 +5282,7 @@ __all__ = [
     "STAGE_RESOURCE_PROFILES",
     "StageResourceProfile",
     "SupervisorResourceLeaseBudget",
+    "TaskGenerationAdmission",
     "adaptive_stage_profile",
     "benchmark_adaptive_execution",
     "evaluate_adaptive_throughput_benchmark",

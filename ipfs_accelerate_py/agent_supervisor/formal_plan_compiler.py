@@ -20,7 +20,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from .ir_constraint_compiler import PlanAdmissionRequest, PlanAdmissionReceipt
 
 from .formal_logic_vocabulary import (
     LOGIC_VOCABULARY_VERSION,
@@ -67,6 +70,9 @@ FORMAL_PLAN_COMPILATION_SCHEMA: Final = (
 )
 FORMAL_PLAN_GRAPH_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-graph@1"
+)
+FORMAL_PLAN_ADMISSION_PROJECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/formal-plan-admission-projection@1"
 )
 FORMAL_PLAN_INPUT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-input@1"
@@ -175,6 +181,152 @@ class PlanGraphProjection:
 
 
 @dataclass(frozen=True)
+class PlanAdmissionProjection:
+    """Canonical action/effect/dependency input for hard plan admission.
+
+    This projection describes a candidate plan.  Formula identifiers name
+    compiler-generated propositions only; the projection intentionally carries
+    no proof results or proof claims.
+    """
+
+    plan_id: str
+    repository_tree_id: str
+    actions: tuple[Mapping[str, Any], ...] = ()
+    effects: tuple[Mapping[str, Any], ...] = ()
+    dependency_edges: tuple[Mapping[str, Any], ...] = ()
+    assumption_ids: tuple[str, ...] = ()
+    proof_obligation_ids: tuple[str, ...] = ()
+    validation_requirement_ids: tuple[str, ...] = ()
+    generated_formula_ids: tuple[str, ...] = ()
+    source_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "plan_id", str(self.plan_id or "").strip())
+        object.__setattr__(
+            self,
+            "repository_tree_id",
+            str(self.repository_tree_id or "").strip(),
+        )
+        if not self.plan_id:
+            raise ValueError("plan_id is required")
+        object.__setattr__(
+            self, "actions", _unique_records(self.actions, "action_id")
+        )
+        object.__setattr__(
+            self, "effects", _unique_records(self.effects, "effect_id")
+        )
+        object.__setattr__(
+            self,
+            "dependency_edges",
+            _unique_records(self.dependency_edges, "dependency_id"),
+        )
+        for name in (
+            "assumption_ids",
+            "proof_obligation_ids",
+            "validation_requirement_ids",
+            "generated_formula_ids",
+            "source_ids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                tuple(
+                    sorted(
+                        {
+                            str(item).strip()
+                            for item in getattr(self, name)
+                            if str(item).strip()
+                        }
+                    )
+                ),
+            )
+
+    @property
+    def projection_id(self) -> str:
+        return content_identity(self.canonical_records())
+
+    @property
+    def action_ids(self) -> tuple[str, ...]:
+        return tuple(str(item["action_id"]) for item in self.actions)
+
+    @property
+    def dependencies(self) -> tuple[Mapping[str, Any], ...]:
+        """Compatibility spelling for the canonical dependency edges."""
+
+        return self.dependency_edges
+
+    @property
+    def proof_results(self) -> tuple[Any, ...]:
+        """Proofs are supplied independently to plan admission, never inferred."""
+
+        return ()
+
+    def canonical_records(self) -> dict[str, Any]:
+        return {
+            "plan_id": self.plan_id,
+            "repository_tree_id": self.repository_tree_id,
+            "action_ids": list(self.action_ids),
+            "actions": [dict(item) for item in self.actions],
+            "effects": [dict(item) for item in self.effects],
+            "dependency_edges": [dict(item) for item in self.dependency_edges],
+            "assumption_ids": list(self.assumption_ids),
+            "proof_obligation_ids": list(self.proof_obligation_ids),
+            "validation_requirement_ids": list(
+                self.validation_requirement_ids
+            ),
+            "generated_formula_ids": list(self.generated_formula_ids),
+            "source_ids": list(self.source_ids),
+            "proof_results": [],
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": FORMAL_PLAN_ADMISSION_PROJECTION_SCHEMA,
+            "projection_id": self.projection_id,
+            **self.canonical_records(),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanAdmissionProjection":
+        supplied_schema = payload.get("schema")
+        if supplied_schema not in (None, "", FORMAL_PLAN_ADMISSION_PROJECTION_SCHEMA):
+            raise ValueError(
+                "unsupported formal-plan admission projection schema "
+                f"{supplied_schema!r}"
+            )
+        result = cls(
+            plan_id=str(payload.get("plan_id") or ""),
+            repository_tree_id=str(payload.get("repository_tree_id") or ""),
+            actions=tuple(payload.get("actions") or ()),
+            effects=tuple(payload.get("effects") or ()),
+            dependency_edges=tuple(
+                payload.get("dependency_edges")
+                or payload.get("dependencies")
+                or ()
+            ),
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            proof_obligation_ids=tuple(
+                payload.get("proof_obligation_ids") or ()
+            ),
+            validation_requirement_ids=tuple(
+                payload.get("validation_requirement_ids") or ()
+            ),
+            generated_formula_ids=tuple(
+                payload.get("generated_formula_ids") or ()
+            ),
+            source_ids=tuple(payload.get("source_ids") or ()),
+        )
+        claimed = str(payload.get("projection_id") or "")
+        if claimed and claimed != result.projection_id:
+            raise ValueError("plan-admission projection identity does not match payload")
+        if payload.get("proof_results"):
+            raise ValueError(
+                "formal-plan projections cannot carry proof results"
+            )
+        return result
+
+
+@dataclass(frozen=True)
 class PlanCompilationResult:
     """Compilation output, including failures which intentionally have no plan."""
 
@@ -253,6 +405,34 @@ class PlanCompilationResult:
             )
         )
 
+    @property
+    def generated_formula_ids(self) -> tuple[str, ...]:
+        """Identifiers of generated formulas, without implying proof."""
+
+        return tuple(item.formula_id for item in self.formulas)
+
+    @property
+    def proof_results(self) -> tuple[Any, ...]:
+        """Formal-plan compilation does not execute or manufacture proofs."""
+
+        return ()
+
+    @property
+    def admission_projection(self) -> PlanAdmissionProjection | None:
+        if self.plan is None:
+            return None
+        return project_formal_plan_for_admission(
+            self.plan,
+            generated_formula_ids=self.generated_formula_ids,
+        )
+
+    @property
+    def candidate_plan(self) -> Mapping[str, Any]:
+        """Canonical candidate-plan mapping accepted by plan admission."""
+
+        projection = self.admission_projection
+        return projection.to_dict() if projection is not None else {}
+
     def formula_by_id(self, formula_id: str) -> Formula | None:
         return next(
             (item for item in self.formulas if item.formula_id == formula_id), None
@@ -267,6 +447,13 @@ class PlanCompilationResult:
             "plan_id": self.plan_id,
             "plan": self.plan.to_record() if self.plan is not None else None,
             "formulas": [item.to_record() for item in self.formulas],
+            "generated_formula_ids": list(self.generated_formula_ids),
+            "proof_results": [],
+            "admission_projection": (
+                self.admission_projection.to_dict()
+                if self.admission_projection is not None
+                else None
+            ),
             "graph_projection": self.graph_projection.to_dict(),
             "issues": [
                 {**item.to_dict(), "issue_id": item.issue_id} for item in self.issues
@@ -563,6 +750,124 @@ def _unique_records(
             raise ValueError(f"conflicting graph record {identity}")
         result[identity] = item
     return tuple(result[item] for item in sorted(result))
+
+
+def project_formal_plan_for_admission(
+    plan: FormalWorkPlan,
+    *,
+    generated_formula_ids: Iterable[str] | None = None,
+) -> PlanAdmissionProjection:
+    """Project a formal plan into the exact graph checked at admission time."""
+
+    if not isinstance(plan, FormalWorkPlan):
+        raise TypeError("plan must be a FormalWorkPlan")
+
+    effect_records: list[dict[str, Any]] = []
+    effects_by_action: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    for effect in plan.effects:
+        record = {
+            "effect_id": effect.effect_id,
+            "action_id": effect.task_id,
+            "task_id": effect.task_id,
+            "operation": effect.operation.value,
+            "fluent_id": effect.fluent_id,
+            "event_id": effect.event_id,
+            "value": _canonical_safe(effect.value),
+            "metadata": _canonical_safe(effect.metadata),
+        }
+        effect_records.append(record)
+        effects_by_action[effect.task_id].append(record)
+
+    proof_obligation_ids = {
+        item.requirement_id for item in plan.evidence_requirements
+    }
+    validation_kinds = {
+        EvidenceRequirementKind.TEST,
+        EvidenceRequirementKind.STATIC_ANALYSIS,
+        EvidenceRequirementKind.PLAN_CHECK,
+        EvidenceRequirementKind.PLAN_CONFORMANCE,
+        EvidenceRequirementKind.REVIEW,
+    }
+    validation_requirement_ids = {
+        item.requirement_id
+        for item in plan.evidence_requirements
+        if item.kind in validation_kinds or item.fallback_check_ids
+    }
+
+    actions: list[dict[str, Any]] = []
+    dependency_edges: list[dict[str, Any]] = []
+    for task in plan.tasks:
+        action_effects = tuple(
+            sorted(
+                effects_by_action.get(task.task_id, ()),
+                key=lambda item: str(item["effect_id"]),
+            )
+        )
+        task_obligations = tuple(
+            sorted(
+                set(task.evidence_requirement_ids).intersection(
+                    proof_obligation_ids
+                )
+            )
+        )
+        task_validations = tuple(
+            sorted(
+                set(task.evidence_requirement_ids).intersection(
+                    validation_requirement_ids
+                )
+            )
+        )
+        actions.append(
+            {
+                "action_id": task.task_id,
+                "task_id": task.task_id,
+                "goal_id": task.goal_id,
+                "subgoal_id": task.subgoal_id,
+                "actor_ids": list(task.actor_ids),
+                "depends_on": list(task.depends_on),
+                "precondition_ids": list(task.precondition_ids),
+                "assumption_ids": list(task.precondition_ids),
+                "effect_ids": list(task.effect_ids),
+                "effects": [dict(item) for item in action_effects],
+                "event_ids": list(task.event_ids),
+                "proof_obligation_ids": list(task_obligations),
+                "validation_requirement_ids": list(task_validations),
+                "source_ids": list(task.metadata.get("source_cids") or ()),
+            }
+        )
+        for dependency_id in task.depends_on:
+            material = {
+                "action_id": task.task_id,
+                "depends_on_action_id": dependency_id,
+            }
+            dependency_edges.append(
+                {
+                    "dependency_id": content_identity(material),
+                    **material,
+                }
+            )
+
+    formula_ids = (
+        tuple(generated_formula_ids)
+        if generated_formula_ids is not None
+        else tuple(item.formula_id for item in plan.formulas)
+    )
+    return PlanAdmissionProjection(
+        plan_id=plan.plan_id,
+        repository_tree_id=plan.repository_tree_id,
+        actions=tuple(actions),
+        effects=tuple(effect_records),
+        dependency_edges=tuple(dependency_edges),
+        assumption_ids=tuple(
+            item.precondition_id for item in plan.preconditions
+        ),
+        proof_obligation_ids=tuple(sorted(proof_obligation_ids)),
+        validation_requirement_ids=tuple(
+            sorted(validation_requirement_ids)
+        ),
+        generated_formula_ids=formula_ids,
+        source_ids=plan.source_ids,
+    )
 
 
 def _graph_node(kind: str, record_id: str, **attributes: Any) -> dict[str, Any]:
@@ -878,6 +1183,30 @@ class FormalPlanCompiler:
             if suffix in {".duckdb", ".db"}:
                 return self.compile_duckdb(source)
         return self.compile_json(source)
+
+    def compile_admission(
+        self,
+        request: "PlanAdmissionRequest | Mapping[str, Any]",
+    ) -> "PlanAdmissionReceipt":
+        """Compile one hard-constrained admission receipt.
+
+        The import is intentionally local: the IR constraint compiler consumes
+        formal-plan projections and must not become an import-time dependency
+        of basic plan compilation.
+        """
+
+        from .ir_constraint_compiler import (
+            PlanAdmissionRequest,
+            PlanAdmissionReceipt,
+            compile_plan_admission as _compile,
+        )
+
+        if not isinstance(request, (PlanAdmissionRequest, Mapping)):
+            raise TypeError("request must be a PlanAdmissionRequest or mapping")
+        receipt = _compile(request)
+        if not isinstance(receipt, PlanAdmissionReceipt):
+            raise TypeError("IR constraint compiler returned an invalid receipt")
+        return receipt
 
     def _read_duckdb(self, connection: Any) -> dict[str, Any]:
         tables = {
@@ -2934,6 +3263,14 @@ def compile_formal_plan_duckdb(
     return FormalPlanCompiler().compile_duckdb(source, **records)
 
 
+def compile_plan_admission(
+    request: "PlanAdmissionRequest | Mapping[str, Any]",
+) -> "PlanAdmissionReceipt":
+    """Delegate a canonical request to the hard-constraint compiler."""
+
+    return FormalPlanCompiler().compile_admission(request)
+
+
 def write_formal_plan_compiler_input_duckdb(
     path: str | Path, source: Mapping[str, Any]
 ) -> Path:
@@ -2997,6 +3334,7 @@ __all__ = [
     "CompilationStatus",
     "CompilerResult",
     "DEFAULT_VOCABULARY_PROFILE_ID",
+    "FORMAL_PLAN_ADMISSION_PROJECTION_SCHEMA",
     "FORMAL_PLAN_COMPILATION_SCHEMA",
     "FORMAL_PLAN_COMPILER_VERSION",
     "FORMAL_PLAN_GRAPH_SCHEMA",
@@ -3004,10 +3342,13 @@ __all__ = [
     "FormalPlanCompilationResult",
     "FormalPlanCompiler",
     "FormalWorkPlanCompiler",
+    "PlanAdmissionProjection",
     "PlanCompilationResult",
     "PlanGraphProjection",
     "compile_formal_plan",
     "compile_formal_plan_duckdb",
     "compile_formal_plan_json",
+    "compile_plan_admission",
+    "project_formal_plan_for_admission",
     "write_formal_plan_compiler_input_duckdb",
 ]

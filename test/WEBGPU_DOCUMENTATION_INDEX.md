@@ -12,7 +12,7 @@ This document provides a complete index of all documentation and examples relate
 - [WebGPU Tensor Sharing Implementation Guide](WEBGPU_TENSOR_SHARING_GUIDE.md): Comprehensive implementation details
 - [Cross-Model Tensor Sharing Guide](CROSS_MODEL_TENSOR_SHARING_GUIDE.md): Memory-efficient tensor sharing between models
 - [Browser-Specific WebGPU Shader Optimization Guide](BROWSER_OPTIMIZATION_GUIDE.md): Detailed optimization techniques
-- [WebGPU Operation Fusion Guide](OPERATION_FUSION_GUIDE.md): Performance optimization through operation fusion
+- [WebGPU Operation Fusion Guide](ipfs_accelerate_js/docs/OPERATION_FUSION_GUIDE.md): Performance optimization through operation fusion
 
 ## Interactive Examples
 
@@ -35,12 +35,12 @@ This document provides a complete index of all documentation and examples relate
 ## Testing
 
 - [WebGPU Tensor Sharing Tests](ipfs_accelerate_js_webgpu_tensor_sharing.test.ts): Unit tests for WebGPU integration
-- [Browser Optimized Shader Tests](ipfs_accelerate_js_browser_optimized_shaders.test.ts): Tests for browser optimizations
+- [Browser Optimized Shader Tests](ipfs_accelerate_js/test/browser_specific_shaders_test.ts): Tests for browser optimizations
 
 ## Performance Benchmarks
 
 - [Matrix Multiplication Benchmark](browser_optimized_examples.ts#L87): Compare standard vs. optimized matrix multiplication
-- [Browser Comparison Benchmark](benchmark_browsers.ts): Performance comparison across different browsers
+- [Browser Comparison Benchmark](test_webgpu_browsers_comparison.py): Performance comparison across different browsers
 
 ## Usage by Topic
 

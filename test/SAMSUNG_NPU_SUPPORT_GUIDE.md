@@ -817,4 +817,4 @@ For comprehensive testing guidance, refer to the [Samsung NPU Testing Guide](SAM
 
 The Samsung NPU support in the IPFS Accelerate Python Framework provides a comprehensive solution for deploying and benchmarking AI models on Samsung Exynos devices. With features like One UI optimization, specialized thermal management, comprehensive benchmarking tools, and hardware comparison capabilities, developers can achieve optimal performance and efficiency on Samsung hardware.
 
-For more information on mobile and edge device support, including Qualcomm and MediaTek integration, see the [Mobile/Edge Support Guide](MOBILE_EDGE_SUPPORT_GUIDE.md) and [Hardware Comparison Guide](HARDWARE_COMPARISON_GUIDE.md).
+For more information on mobile and edge device support, including Qualcomm and MediaTek integration, see the [Mobile/Edge Support Guide](MOBILE_EDGE_SUPPORT_GUIDE.md). For cross-hardware benchmarking and comparison workflows, see the [Model Benchmarking Guide](MODEL_BENCHMARKING_GUIDE.md).

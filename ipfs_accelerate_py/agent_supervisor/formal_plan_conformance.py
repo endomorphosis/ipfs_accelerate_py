@@ -55,6 +55,9 @@ COMPLETION_POLICY_SCHEMA: Final = (
 GOAL_COMPLETION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-goal-completion@1"
 )
+POST_MERGE_COMPLETION_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/post-merge-completion-admission@1"
+)
 CONFORMANCE_REPLAY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-conformance-replay@1"
 )
@@ -1872,6 +1875,287 @@ class CompletionAdmissionGate:
         return result
 
 
+@dataclass(frozen=True)
+class PostMergeCompletionAdmissionGate:
+    """Re-derived authority projection for one merged-tree evidence receipt.
+
+    This gate deliberately stores the authoritative aggregate receipt identity
+    rather than copying its component verdicts.  Callers must construct it
+    through :func:`evaluate_post_merge_completion_admission`, which replays the
+    receipt against the current repository tree before projecting authority.
+    """
+
+    admitted: bool
+    post_merge_evidence_receipt_id: str = ""
+    revalidated_receipt_id: str = ""
+    evidence_graph_id: str = ""
+    repository_id: str = ""
+    merged_tree_id: str = ""
+    merge_commit_id: str = ""
+    covered_acceptance_criteria: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.admitted, bool):
+            raise ConformanceValidationError("admitted must be boolean")
+        for name in (
+            "post_merge_evidence_receipt_id",
+            "revalidated_receipt_id",
+            "evidence_graph_id",
+            "repository_id",
+            "merged_tree_id",
+            "merge_commit_id",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(getattr(self, name), field_name=name),
+            )
+        object.__setattr__(
+            self,
+            "covered_acceptance_criteria",
+            _strings(self.covered_acceptance_criteria),
+        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
+        if self.admitted and self.reason_codes:
+            raise ConformanceValidationError(
+                "admitted post-merge gate cannot contain rejection reasons"
+            )
+        if not self.admitted and not self.reason_codes:
+            raise ConformanceValidationError(
+                "rejected post-merge gate requires a reason"
+            )
+
+    @property
+    def receipt_id(self) -> str:
+        """Compatibility spelling for the aggregate receipt identity."""
+
+        return self.post_merge_evidence_receipt_id
+
+    @property
+    def graph_id(self) -> str:
+        """Compatibility spelling for the rebuilt graph identity."""
+
+        return self.evidence_graph_id
+
+    @property
+    def gate_id(self) -> str:
+        return content_identity(self.to_dict(include_id=False))
+
+    def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": POST_MERGE_COMPLETION_ADMISSION_SCHEMA,
+            "admitted": self.admitted,
+            "post_merge_evidence_receipt_id": (
+                self.post_merge_evidence_receipt_id
+            ),
+            "revalidated_receipt_id": self.revalidated_receipt_id,
+            "evidence_graph_id": self.evidence_graph_id,
+            "repository_id": self.repository_id,
+            "merged_tree_id": self.merged_tree_id,
+            "merge_commit_id": self.merge_commit_id,
+            "covered_acceptance_criteria": (
+                self.covered_acceptance_criteria
+            ),
+            "reason_codes": self.reason_codes,
+        }
+        if include_id:
+            payload["gate_id"] = self.gate_id
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "PostMergeCompletionAdmissionGate":
+        if not isinstance(payload, Mapping):
+            raise ConformanceValidationError(
+                "post-merge completion admission must be a mapping"
+            )
+        schema = str(
+            payload.get("schema") or POST_MERGE_COMPLETION_ADMISSION_SCHEMA
+        )
+        if schema != POST_MERGE_COMPLETION_ADMISSION_SCHEMA:
+            raise ConformanceValidationError(
+                f"unsupported post-merge completion admission schema: {schema}"
+            )
+        result = cls(
+            admitted=payload.get("admitted", False),
+            post_merge_evidence_receipt_id=str(
+                payload.get("post_merge_evidence_receipt_id")
+                or payload.get("receipt_id")
+                or ""
+            ),
+            revalidated_receipt_id=str(
+                payload.get("revalidated_receipt_id") or ""
+            ),
+            evidence_graph_id=str(
+                payload.get("evidence_graph_id")
+                or payload.get("graph_id")
+                or ""
+            ),
+            repository_id=str(payload.get("repository_id") or ""),
+            merged_tree_id=str(
+                payload.get("merged_tree_id")
+                or payload.get("repository_tree_id")
+                or ""
+            ),
+            merge_commit_id=str(
+                payload.get("merge_commit_id")
+                or payload.get("merge_commit")
+                or ""
+            ),
+            covered_acceptance_criteria=tuple(
+                payload.get("covered_acceptance_criteria")
+                or payload.get("acceptance_criteria")
+                or ()
+            ),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+        )
+        if payload.get("gate_id") and payload["gate_id"] != result.gate_id:
+            raise ConformanceValidationError(
+                "post-merge completion admission identity mismatch"
+            )
+        return result
+
+
+def evaluate_post_merge_completion_admission(
+    post_merge_evidence: Any = None,
+    *,
+    current_repository_tree_id: str,
+    expected_repository_id: str = "",
+    expected_merge_commit_id: str = "",
+    expected_evidence_graph_id: str = "",
+    expected_acceptance_criteria: Sequence[str] | None = None,
+    now: datetime | str | None = None,
+) -> PostMergeCompletionAdmissionGate:
+    """Replay and bind the sole merged-tree completion authority boundary.
+
+    The evidence assembler owns the detailed proposal, validation, semantic,
+    protocol, legal/logic, theorem, proof, merge, freshness, contradiction,
+    and coverage checks.  This adapter calls its canonical verifier and then
+    independently binds the resulting authority to the caller's current tree
+    and, when supplied, expected repository, merge commit, graph, and exact
+    acceptance population.  Provider verdicts and pre-merge summaries are not
+    accepted as substitutes.
+    """
+
+    from .code_evidence_graph import (
+        POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA,
+        PostMergeEvidenceReceipt,
+        verify_post_merge_evidence,
+    )
+
+    current_tree = _text(
+        current_repository_tree_id,
+        field_name="current_repository_tree_id",
+        required=True,
+    )
+    expected_repository = _text(
+        expected_repository_id,
+        field_name="expected_repository_id",
+    )
+    expected_commit = _text(
+        expected_merge_commit_id,
+        field_name="expected_merge_commit_id",
+    )
+    expected_graph = _text(
+        expected_evidence_graph_id,
+        field_name="expected_evidence_graph_id",
+    )
+    expected_criteria = tuple(
+        POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA
+        if expected_acceptance_criteria is None
+        else expected_acceptance_criteria
+    )
+    expected_criteria_set = set(_strings(expected_criteria))
+
+    if post_merge_evidence is None:
+        return PostMergeCompletionAdmissionGate(
+            admitted=False,
+            merged_tree_id=current_tree,
+            covered_acceptance_criteria=(),
+            reason_codes=("post_merge_evidence_missing",),
+        )
+
+    try:
+        receipt = (
+            post_merge_evidence
+            if isinstance(post_merge_evidence, PostMergeEvidenceReceipt)
+            else PostMergeEvidenceReceipt.from_dict(post_merge_evidence)
+        )
+        # Revalidation reconstructs every authority projection and returns a
+        # closed receipt for ordinary evidence failures.  Identity/schema
+        # tampering remains exceptional and is intentionally not softened.
+        verified = verify_post_merge_evidence(
+            receipt,
+            current_repository_tree_id=current_tree,
+            now=now,
+        )
+    except ConformanceValidationError:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise ConformanceValidationError(
+            f"invalid post-merge evidence receipt: {exc}"
+        ) from exc
+
+    reasons = list(verified.reason_codes)
+    receipt_criteria = tuple(verified.acceptance_criteria)
+    receipt_criteria_set = set(_strings(receipt_criteria))
+    exact_criteria = bool(
+        len(receipt_criteria) == len(expected_criteria)
+        and len(receipt_criteria_set) == len(receipt_criteria)
+        and receipt_criteria_set == expected_criteria_set
+    )
+
+    if verified.merged_tree_id != current_tree:
+        reasons.append("post_merge_tree_mismatch")
+    if (
+        expected_repository
+        and verified.repository_id != expected_repository
+    ):
+        reasons.append("post_merge_repository_mismatch")
+    if expected_commit and verified.merge_commit_id != expected_commit:
+        reasons.append("post_merge_commit_mismatch")
+    if expected_graph and verified.graph_id != expected_graph:
+        reasons.append("post_merge_evidence_graph_mismatch")
+    if not exact_criteria:
+        reasons.append("post_merge_acceptance_criteria_mismatch")
+    if not verified.accepted:
+        reasons.append("post_merge_evidence_not_accepted")
+    if not verified.authoritative:
+        reasons.append("post_merge_evidence_not_authoritative")
+    if not verified.merge_eligible:
+        reasons.append("post_merge_evidence_merge_ineligible")
+    if not getattr(verified, "merge_authoritative", verified.merge_eligible):
+        reasons.append("post_merge_merge_not_authoritative")
+    if not verified.completion_authoritative:
+        reasons.append("post_merge_completion_not_authoritative")
+    if not verified.freshness_authoritative:
+        reasons.append("post_merge_freshness_not_authoritative")
+
+    reason_codes = tuple(dict.fromkeys(reasons))
+    return PostMergeCompletionAdmissionGate(
+        admitted=not reason_codes,
+        post_merge_evidence_receipt_id=receipt.receipt_id,
+        revalidated_receipt_id=verified.receipt_id,
+        evidence_graph_id=verified.graph_id,
+        repository_id=verified.repository_id,
+        merged_tree_id=verified.merged_tree_id,
+        merge_commit_id=verified.merge_commit_id,
+        covered_acceptance_criteria=receipt_criteria,
+        reason_codes=reason_codes,
+    )
+
+
+# Compatibility names for callers that describe the same boundary as a gate
+# or verifier rather than an admission evaluation.
+PostMergeCompletionGate = PostMergeCompletionAdmissionGate
+verify_post_merge_completion_admission = (
+    evaluate_post_merge_completion_admission
+)
+
+
 def evaluate_completion_admission(
     *,
     proposal_validation: Any = None,
@@ -3492,6 +3776,7 @@ __all__ = [
     "FORMAL_PLAN_CONFORMANCE_SCHEMA",
     "FORMAL_PLAN_CONFORMANCE_VERSION",
     "GOAL_COMPLETION_SCHEMA",
+    "POST_MERGE_COMPLETION_ADMISSION_SCHEMA",
     "STRICT_VALIDATION_ACCEPTANCE_CRITERIA",
     "STRICT_VALIDATION_CHILD_GOAL_IDS",
     "STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION",
@@ -3531,6 +3816,8 @@ __all__ = [
     "PlanConformanceEvidenceStore",
     "PlanConformancePolicy",
     "PlanConformanceResult",
+    "PostMergeCompletionAdmissionGate",
+    "PostMergeCompletionGate",
     "TransitionDisposition",
     "TransitionFinding",
     "bind_goal_completion",
@@ -3540,12 +3827,14 @@ __all__ = [
     "compare_plan_conformance",
     "evaluate_completion_evidence",
     "evaluate_completion_admission",
+    "evaluate_post_merge_completion_admission",
     "evaluate_transitive_impact_admission_closure",
     "evaluate_formal_goal_completion",
     "evaluate_goal_completion",
     "evaluate_goal_completion_with_conformance",
     "evaluate_plan_conformance",
     "evaluate_strict_validation_completion",
+    "verify_post_merge_completion_admission",
     "invalidate_plan_conformance",
     "read_conformance_evidence",
     "read_formal_plan_conformance",

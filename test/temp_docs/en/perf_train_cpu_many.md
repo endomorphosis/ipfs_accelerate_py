@@ -17,7 +17,7 @@ rendered properly in your Markdown viewer.
 
 CPUs are commonly available and can be a cost-effective training option when GPUs are unavailable. When training large models or if a single CPU is too slow, distributed training with CPUs can help speed up training.
 
-This guide demonstrates how to perform distributed training with multiple CPUs using a [DistributedDataParallel (DDP)](./perf_train_gpu_many#distributeddataparallel) strategy on bare metal with [`Trainer`] and a Kubernetes cluster. All examples shown in this guide depend on the [Intel oneAPI HPC Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/hpc-toolkit.html).
+This guide demonstrates how to perform distributed training with multiple CPUs using a [DistributedDataParallel (DDP)](./perf_train_gpu_many.md) strategy on bare metal with [`Trainer`] and a Kubernetes cluster. All examples shown in this guide depend on the [Intel oneAPI HPC Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/hpc-toolkit.html).
 
 There are two toolkits you'll need from Intel oneAPI.
 

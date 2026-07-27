@@ -20,6 +20,7 @@ from ..checkout_lock import (
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
+    generated_protected_board_commit_subject,
     serialized_lock_update,
 )
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
@@ -65,6 +66,7 @@ from .supervisor import (
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
+from .worktrees import WORKTREE_POOL_SCHEMA, pid_is_alive
 
 REPO_ROOT = Path.cwd()
 
@@ -1677,6 +1679,93 @@ class PortalImplementationSupervisor:
     def _repo_merge_lock_path(self) -> Path:
         return checkout_mutation_lock_path(self.config.repo_root)
 
+    def _todo_board_is_implementation_protected(self) -> bool:
+        try:
+            relative = (
+                self.config.todo_path.resolve()
+                .relative_to(self.config.repo_root.resolve())
+                .as_posix()
+            )
+        except (OSError, ValueError):
+            return False
+        return relative in set(self.config.implementation_protected_paths)
+
+    def _generated_board_commit_policy(
+        self,
+        *,
+        configured_commit_outputs: bool,
+        configured_subject: str,
+    ) -> tuple[bool, str]:
+        protected = self._todo_board_is_implementation_protected()
+        commit_outputs = bool(configured_commit_outputs or protected)
+        subject = (
+            generated_protected_board_commit_subject(configured_subject)
+            if protected
+            else configured_subject
+        )
+        return commit_outputs, subject
+
+    def _run_generated_board_producer(
+        self,
+        *,
+        producer: str,
+        commit_outputs: bool,
+        callback,
+    ):
+        """Serialize a committed generated-board update with checkout mutations."""
+
+        if not commit_outputs:
+            return callback()
+        lock_path = self._repo_merge_lock_path()
+        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(
+            lock_path
+        )
+        if lock_fd is None:
+            payload: dict[str, Any] = {
+                "producer": producer,
+                "reason": f"checkout_mutation_{lock_reason}",
+                "lock_path": str(lock_path),
+            }
+            if existing_lock:
+                payload["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
+                payload["lock_owner_task_id"] = str(
+                    existing_lock.get("task_id") or ""
+                )
+                payload["lock_owner_branch"] = str(
+                    existing_lock.get("branch") or ""
+                )
+            self._record_event("generated_board_update_deferred", payload)
+            return []
+
+        try:
+            self._write_checkout_lock_metadata(
+                lock_fd,
+                checkout_lock_metadata(
+                    kind="merge",
+                    repo_root=self.config.repo_root,
+                    branch=f"generated-board:{producer}",
+                    owner_script=Path(sys.argv[0]).name,
+                    extra={
+                        "operation": "generated_board_update",
+                        "producer": producer,
+                        "state_dir": str(self.config.state_dir.resolve()),
+                        "state_path": str(self.config.state_path.resolve()),
+                        "started_at": utc_now(),
+                    },
+                ),
+            )
+            return callback()
+        finally:
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.warning(
+                    "Failed to remove generated-board checkout lock %s",
+                    lock_path,
+                )
+
     def _checkout_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         if not checkout_lock_owner_is_active(
             metadata,
@@ -2287,7 +2376,9 @@ class PortalImplementationSupervisor:
             root_resolved = worktree_root
         process_lines = self._list_process_commands()
         state = PortalTaskState.load(self.config.state_path)
-        active_worktree = state.active_worktree_path.strip()
+        active_worktree_owners = self._shared_active_worktree_owners(
+            worktree_root
+        )
         target_ref = self._git_current_branch(repo_root) or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
         stale_items: list[dict[str, Any]] = []
@@ -2320,8 +2411,12 @@ class PortalImplementationSupervisor:
                 "head": head,
                 "kind": "worktree",
             }
-            if active_worktree and path_resolved == Path(active_worktree).resolve():
-                skipped.append({**detail, "reason": "active_state_worktree"})
+            active_skip = self._active_worktree_skip_detail(
+                path_resolved,
+                active_worktree_owners,
+            )
+            if active_skip is not None:
+                skipped.append({**detail, **active_skip})
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
@@ -2415,11 +2510,9 @@ class PortalImplementationSupervisor:
         except OSError:
             root_resolved = worktree_root
         process_lines = self._list_process_commands()
-        active_worktree = ""
-        try:
-            active_worktree = PortalTaskState.load(self.config.state_path).active_worktree_path
-        except Exception:
-            active_worktree = ""
+        active_worktree_owners = self._shared_active_worktree_owners(
+            worktree_root
+        )
         target_ref = self._git_current_branch(repo_root) or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
         raw_main_status = self._main_status_for_worktree_reconciliation(repo_root, worktree_root)
@@ -2455,8 +2548,12 @@ class PortalImplementationSupervisor:
             branch = str(record.get("branch") or "").removeprefix("refs/heads/")
             head = str(record.get("HEAD") or "")
             detail: dict[str, Any] = {"path": str(path), "branch": branch, "head": head}
-            if active_worktree and path_resolved == Path(active_worktree).resolve():
-                skipped.append({**detail, "reason": "active_state_worktree"})
+            active_skip = self._active_worktree_skip_detail(
+                path_resolved,
+                active_worktree_owners,
+            )
+            if active_skip is not None:
+                skipped.append({**detail, **active_skip})
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
@@ -3062,6 +3159,170 @@ class PortalImplementationSupervisor:
     def _worktree_branch_can_delete_after_merge(branch: str) -> bool:
         return PortalImplementationSupervisor._worktree_branch_is_reconcilable(branch)
 
+    def _shared_active_worktree_owners(
+        self,
+        worktree_root: Path,
+    ) -> dict[Path, dict[str, str]]:
+        """Return durable active-worktree claims from every sibling lane.
+
+        A provider process can exit a few seconds before its daemon validates
+        and commits the candidate. Process inspection alone therefore has a
+        destructive false-negative window. The task state and protected-path
+        snapshot remain durable throughout that handoff and are authoritative
+        reasons for every supervisor sharing the worktree root to stand down.
+        """
+
+        try:
+            root_resolved = worktree_root.resolve()
+        except OSError:
+            root_resolved = worktree_root
+
+        owners: dict[Path, dict[str, str]] = {}
+
+        def register(raw_path: object, **metadata: object) -> None:
+            path_text = str(raw_path or "").strip()
+            if not path_text:
+                return
+            try:
+                resolved = Path(path_text).resolve()
+                resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                return
+            owners[resolved] = {
+                key: str(value or "")
+                for key, value in metadata.items()
+            }
+
+        state_paths = {self.config.state_path}
+        namespace_root = self.config.state_path.parent.parent
+        try:
+            sibling_dirs = [
+                path
+                for path in namespace_root.iterdir()
+                if path.is_dir()
+            ]
+        except OSError:
+            sibling_dirs = [self.config.state_path.parent]
+
+        for state_dir in sibling_dirs:
+            try:
+                state_paths.update(state_dir.glob("*task_state.json"))
+            except OSError:
+                continue
+
+        for state_path in sorted(state_paths):
+            try:
+                state = PortalTaskState.load(state_path)
+            except Exception:
+                continue
+            if not state.implementation_in_progress:
+                continue
+            register(
+                state.active_worktree_path,
+                source="task_state",
+                state_path=state_path,
+                task_id=state.active_task_id,
+                branch=state.active_branch,
+            )
+
+        for state_dir in sibling_dirs:
+            snapshot_path = (
+                state_dir / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+            )
+            payload = load_json_dict(snapshot_path)
+            if not payload:
+                continue
+            register(
+                payload.get("workspace_path"),
+                source="protected_path_snapshot",
+                snapshot_path=snapshot_path,
+                task_id=payload.get("task_id"),
+            )
+
+        pool_state_root = root_resolved / ".pool-state"
+        try:
+            pool_state_paths = sorted(pool_state_root.glob("*.json"))
+        except OSError:
+            pool_state_paths = []
+        for pool_state_path in pool_state_paths:
+            payload = load_json_dict(pool_state_path)
+            if not payload or payload.get("schema") != WORKTREE_POOL_SCHEMA:
+                continue
+            lease_state = str(payload.get("state") or "")
+            try:
+                lease_pid = int(payload.get("lease_pid") or 0)
+            except (TypeError, ValueError):
+                lease_pid = 0
+            lock_path = pool_state_path.with_suffix(".lock")
+            lock_payload = load_json_dict(lock_path)
+            try:
+                lock_pid = int((lock_payload or {}).get("pid") or 0)
+            except (TypeError, ValueError):
+                lock_pid = 0
+            live_owner_pid = 0
+            if lease_state in {"initializing", "leased"} and pid_is_alive(lease_pid):
+                live_owner_pid = lease_pid
+            elif pid_is_alive(lock_pid):
+                live_owner_pid = lock_pid
+            if not live_owner_pid:
+                continue
+            register(
+                payload.get("path"),
+                source="worktree_pool_lease",
+                pool_state_path=pool_state_path,
+                lease_state=lease_state,
+                lease_pid=live_owner_pid,
+                branch=payload.get("branch"),
+            )
+
+        return owners
+
+    def _active_worktree_skip_detail(
+        self,
+        path: Path,
+        owners: Mapping[Path, Mapping[str, str]],
+    ) -> dict[str, str] | None:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        owner = owners.get(resolved)
+        if owner is None:
+            return None
+        own_state_path = str(self.config.state_path.resolve())
+        owner_state_path = str(owner.get("state_path") or "")
+        owner_snapshot_path = str(owner.get("snapshot_path") or "")
+        own_snapshot_path = str(
+            (
+                self.config.state_path.parent
+                / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+            ).resolve()
+        )
+        own_lane = (
+            owner_state_path == own_state_path
+            or owner_snapshot_path == own_snapshot_path
+        )
+        owner_source = str(owner.get("source") or "")
+        return {
+            "reason": (
+                "active_worktree_pool_lease"
+                if owner_source == "worktree_pool_lease"
+                else (
+                    "active_state_worktree"
+                    if own_lane
+                    else "active_peer_state_worktree"
+                )
+            ),
+            "owner_source": owner_source,
+            "owner_state_path": owner_state_path,
+            "owner_snapshot_path": owner_snapshot_path,
+            "owner_pool_state_path": str(owner.get("pool_state_path") or ""),
+            "owner_task_id": str(owner.get("task_id") or ""),
+            "owner_branch": str(owner.get("branch") or ""),
+            "owner_lease_state": str(owner.get("lease_state") or ""),
+            "owner_lease_pid": str(owner.get("lease_pid") or ""),
+        }
+
     @staticmethod
     def _safe_rescue_branch_fragment(value: str) -> str:
         normalized = []
@@ -3285,11 +3546,9 @@ class PortalImplementationSupervisor:
         except OSError:
             root_resolved = worktree_root
         process_lines = self._list_process_commands()
-        active_worktree = ""
-        try:
-            active_worktree = PortalTaskState.load(self.config.state_path).active_worktree_path
-        except Exception:
-            active_worktree = ""
+        active_worktree_owners = self._shared_active_worktree_owners(
+            worktree_root
+        )
         target_ref = self._git_current_branch(repo_root) or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
         scan_cache = self._load_worktree_scan_cache()
@@ -3308,8 +3567,12 @@ class PortalImplementationSupervisor:
                 path_resolved.relative_to(root_resolved)
             except (OSError, ValueError):
                 continue
-            if active_worktree and path_resolved == Path(active_worktree).resolve():
-                skipped.append({"path": str(path), "reason": "active_state_worktree"})
+            active_skip = self._active_worktree_skip_detail(
+                path_resolved,
+                active_worktree_owners,
+            )
+            if active_skip is not None:
+                skipped.append({"path": str(path), **active_skip})
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({"path": str(path), "reason": "active_process"})
@@ -3903,17 +4166,25 @@ class PortalImplementationSupervisor:
                 discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
             except ValueError:
                 discovery_output_path = str(discovery_dir)
-        findings = record_dependency_guardrail_findings(
-            todo_path=self.config.todo_path,
-            strategy_path=self.config.strategy_path,
-            discovery_dir=discovery_dir,
-            task_header_prefix_value=self.config.task_prefix,
-            task_prefix=task_id_prefix(self.config.task_prefix),
-            max_findings=self.config.dependency_guardrail_max_findings,
-            discovery_output_path=discovery_output_path,
-            commit_outputs=self.config.dependency_guardrail_commit_outputs,
-            repo_root=self.config.repo_root,
-            commit_subject=self.config.dependency_guardrail_commit_subject,
+        commit_outputs, commit_subject = self._generated_board_commit_policy(
+            configured_commit_outputs=self.config.dependency_guardrail_commit_outputs,
+            configured_subject=self.config.dependency_guardrail_commit_subject,
+        )
+        findings = self._run_generated_board_producer(
+            producer="dependency-guardrail",
+            commit_outputs=commit_outputs,
+            callback=lambda: record_dependency_guardrail_findings(
+                todo_path=self.config.todo_path,
+                strategy_path=self.config.strategy_path,
+                discovery_dir=discovery_dir,
+                task_header_prefix_value=self.config.task_prefix,
+                task_prefix=task_id_prefix(self.config.task_prefix),
+                max_findings=self.config.dependency_guardrail_max_findings,
+                discovery_output_path=discovery_output_path,
+                commit_outputs=commit_outputs,
+                repo_root=self.config.repo_root,
+                commit_subject=commit_subject,
+            ),
         )
         if findings:
             self._record_event(
@@ -3952,20 +4223,28 @@ class PortalImplementationSupervisor:
             except ValueError:
                 discovery_output_path = str(discovery_dir)
         generated_paths, generated_prefixes = self._generated_main_checkout_status_filters()
-        findings = record_reconciliation_guardrail_findings(
-            todo_path=self.config.todo_path,
-            strategy_path=self.config.strategy_path,
-            discovery_dir=discovery_dir,
-            reconciliation_result=worktree_reconciliation,
-            cleanup_result=worktree_cleanup,
-            task_prefix=task_id_prefix(self.config.task_prefix),
-            max_findings=self.config.reconciliation_guardrail_max_findings,
-            discovery_output_path=discovery_output_path,
-            commit_outputs=self.config.reconciliation_guardrail_commit_outputs,
-            repo_root=self.config.repo_root,
-            commit_subject=self.config.reconciliation_guardrail_commit_subject,
-            additional_generated_status_paths=generated_paths,
-            additional_generated_status_prefixes=generated_prefixes,
+        commit_outputs, commit_subject = self._generated_board_commit_policy(
+            configured_commit_outputs=self.config.reconciliation_guardrail_commit_outputs,
+            configured_subject=self.config.reconciliation_guardrail_commit_subject,
+        )
+        findings = self._run_generated_board_producer(
+            producer="reconciliation-guardrail",
+            commit_outputs=commit_outputs,
+            callback=lambda: record_reconciliation_guardrail_findings(
+                todo_path=self.config.todo_path,
+                strategy_path=self.config.strategy_path,
+                discovery_dir=discovery_dir,
+                reconciliation_result=worktree_reconciliation,
+                cleanup_result=worktree_cleanup,
+                task_prefix=task_id_prefix(self.config.task_prefix),
+                max_findings=self.config.reconciliation_guardrail_max_findings,
+                discovery_output_path=discovery_output_path,
+                commit_outputs=commit_outputs,
+                repo_root=self.config.repo_root,
+                commit_subject=commit_subject,
+                additional_generated_status_paths=generated_paths,
+                additional_generated_status_prefixes=generated_prefixes,
+            ),
         )
         if findings:
             self._record_event(
@@ -3999,20 +4278,29 @@ class PortalImplementationSupervisor:
                 discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
             except ValueError:
                 discovery_output_path = str(discovery_dir)
-        findings = record_retry_budget_findings(
-            todo_path=self.config.todo_path,
-            events_path=self.config.state_dir / f"{self.config.state_prefix}_events.jsonl",
-            strategy_path=self.config.strategy_path,
-            discovery_dir=discovery_dir,
-            task_header_prefix_value=self.config.task_prefix,
-            task_prefix=task_id_prefix(self.config.task_prefix),
-            validation_retry_budget=self.config.validation_retry_budget,
-            merge_retry_budget=self.config.merge_retry_budget,
-            implementation_retry_budget=self.config.implementation_retry_budget,
-            discovery_output_path=discovery_output_path,
-            commit_outputs=self.config.retry_budget_commit_outputs,
-            repo_root=self.config.repo_root,
-            commit_subject=self.config.retry_budget_commit_subject,
+        commit_outputs, commit_subject = self._generated_board_commit_policy(
+            configured_commit_outputs=self.config.retry_budget_commit_outputs,
+            configured_subject=self.config.retry_budget_commit_subject,
+        )
+        findings = self._run_generated_board_producer(
+            producer="retry-budget",
+            commit_outputs=commit_outputs,
+            callback=lambda: record_retry_budget_findings(
+                todo_path=self.config.todo_path,
+                events_path=self.config.state_dir
+                / f"{self.config.state_prefix}_events.jsonl",
+                strategy_path=self.config.strategy_path,
+                discovery_dir=discovery_dir,
+                task_header_prefix_value=self.config.task_prefix,
+                task_prefix=task_id_prefix(self.config.task_prefix),
+                validation_retry_budget=self.config.validation_retry_budget,
+                merge_retry_budget=self.config.merge_retry_budget,
+                implementation_retry_budget=self.config.implementation_retry_budget,
+                discovery_output_path=discovery_output_path,
+                commit_outputs=commit_outputs,
+                repo_root=self.config.repo_root,
+                commit_subject=commit_subject,
+            ),
         )
         if findings:
             self._record_event(

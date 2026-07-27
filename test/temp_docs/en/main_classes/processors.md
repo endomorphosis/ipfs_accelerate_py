@@ -17,8 +17,8 @@ rendered properly in your Markdown viewer.
 # Processors
 
 Processors can mean two different things in the Transformers library:
-- the objects that pre-process inputs for multi-modal models such as [Wav2Vec2](../model_doc/wav2vec2) (speech and text)
-  or [CLIP](../model_doc/clip) (text and vision)
+- the objects that pre-process inputs for multi-modal models such as [Wav2Vec2](../model_doc/wav2vec2.md) (speech and text)
+  or [CLIP](../model_doc/clip.md) (text and vision)
 - deprecated objects that were used in older versions of the library to preprocess data for GLUE or SQUAD.
 
 ## Multi-modal processors

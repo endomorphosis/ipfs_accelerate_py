@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The X-CLIP model was proposed in [Expanding Language-Image Pretrained Models for General Video Recognition](https://arxiv.org/abs/2208.02816) by Bolin Ni, Houwen Peng, Minghao Chen, Songyang Zhang, Gaofeng Meng, Jianlong Fu, Shiming Xiang, Haibin Ling.
-X-CLIP is a minimal extension of [CLIP](clip) for video. The model consists of a text encoder, a cross-frame vision encoder, a multi-frame integration Transformer, and a video-specific prompt generator.
+X-CLIP is a minimal extension of [CLIP](clip.md) for video. The model consists of a text encoder, a cross-frame vision encoder, a multi-frame integration Transformer, and a video-specific prompt generator.
 
 The abstract from the paper is the following:
 
@@ -31,7 +31,7 @@ The abstract from the paper is the following:
 
 Tips:
 
-- Usage of X-CLIP is identical to [CLIP](clip).
+- Usage of X-CLIP is identical to [CLIP](clip.md).
 
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/model_doc/xclip_architecture.png"
 alt="drawing" width="600"/>

@@ -50,6 +50,7 @@ from .merge_queue import MergeQueue, MergeQueueFenceError, MergeRequest
 MergeCallback = Callable[[MergeRequest], Mapping[str, Any]]
 PreflightCallback = Callable[..., Mapping[str, Any] | bool]
 PostMergeValidationCallback = Callable[..., Mapping[str, Any] | bool]
+PostMergeEvidenceCallback = Callable[..., Any]
 
 PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/parallel-acceptance-receipt@1"
@@ -88,6 +89,13 @@ PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
 PARALLEL_GATE_CACHE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/parallel-gate-cache@1"
 )
+DISTRIBUTED_LANE_PUBLICATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-lane-publication@1"
+)
+DISTRIBUTED_LANE_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-lane-admission@1"
+)
+_DISTRIBUTED_PUBLICATION_METADATA_KEY: Final = "distributed_publication"
 _PARALLEL_ACCEPTANCE_RECEIPT_SEAL: Final = object()
 
 
@@ -761,6 +769,10 @@ class MergeTrain:
         proof_gate: Evidence provider for selected proof requirements.  The
             ``proof_gate_callback`` spelling is retained as an adapter alias.
         proof_cache_dir: Durable exact-selection gate cache shared by retries.
+        post_merge_evidence: Optional authoritative evidence assembler for the
+            exact synthesized merged commit and Git tree.  When configured,
+            its content-addressed receipt must independently grant merge and
+            completion authority before the target CAS can run.
     """
 
     def __init__(
@@ -782,6 +794,8 @@ class MergeTrain:
         preflight_callback: PreflightCallback | None = None,
         post_merge_validation: PostMergeValidationCallback | None = None,
         post_merge_validator: PostMergeValidationCallback | None = None,
+        post_merge_evidence: PostMergeEvidenceCallback | None = None,
+        post_merge_evidence_callback: PostMergeEvidenceCallback | None = None,
         preflight_workers: int = 1,
         parallel_workers: int | None = None,
         preflight_target_sensitive: bool = False,
@@ -790,6 +804,12 @@ class MergeTrain:
         reuse_gate_receipts: bool = True,
         max_worktree_disk_bytes: int = 8 * 1024 * 1024 * 1024,
         max_active_worktrees: int = 1,
+        distributed_publication_required: bool = False,
+        distributed_repository_id: str | None = None,
+        repository_id: str | None = None,
+        distributed_post_merge_evidence_required: bool = True,
+        decision_runtime: Any = None,
+        decision_runtime_cancellation: Any = None,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.queue = queue
@@ -797,6 +817,10 @@ class MergeTrain:
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
         self.merge_callback = merge_callback
+        self.decision_runtime = decision_runtime
+        self.decision_runtime_cancellation = decision_runtime_cancellation
+        self._last_merge_runtime_decision: Any = None
+        self._last_merge_effect_observation: Any = None
         queue_dir = Path(getattr(queue, "queue_dir", self.repo_root / ".merge-queue"))
         self.state_dir = Path(state_dir) if state_dir is not None else queue_dir / "train"
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -805,8 +829,32 @@ class MergeTrain:
         self.worktree_dir.mkdir(parents=True, exist_ok=True)
         self.receipt_dir.mkdir(parents=True, exist_ok=True)
         self.consumer_lock_path = self.state_dir / "consumer.lock"
+        self.distributed_publication_ledger_path = (
+            self.state_dir / "distributed-publications.json"
+        )
         self.git_timeout_seconds = max(1.0, float(git_timeout_seconds))
         self.owner_id = owner_id or f"merge-train:{os.getpid()}:{uuid.uuid4().hex}"
+        if (
+            distributed_repository_id is not None
+            and repository_id is not None
+            and str(distributed_repository_id).strip()
+            != str(repository_id).strip()
+        ):
+            raise ValueError(
+                "distributed_repository_id and repository_id must match"
+            )
+        self.distributed_publication_required = bool(
+            distributed_publication_required
+        )
+        self.distributed_repository_id = str(
+            distributed_repository_id
+            if distributed_repository_id is not None
+            else repository_id or ""
+        ).strip()
+        self.repository_id = self.distributed_repository_id
+        self.distributed_post_merge_evidence_required = bool(
+            distributed_post_merge_evidence_required
+        )
         if (
             post_merge_validation is not None
             and post_merge_validator is not None
@@ -815,6 +863,15 @@ class MergeTrain:
             raise ValueError(
                 "post_merge_validation and post_merge_validator must refer to "
                 "the same callback"
+            )
+        if (
+            post_merge_evidence is not None
+            and post_merge_evidence_callback is not None
+            and post_merge_evidence is not post_merge_evidence_callback
+        ):
+            raise ValueError(
+                "post_merge_evidence and post_merge_evidence_callback must "
+                "refer to the same callback"
             )
         workers = (
             parallel_workers
@@ -828,6 +885,26 @@ class MergeTrain:
             post_merge_validation or post_merge_validator
         )
         self.post_merge_validator = self.post_merge_validation
+        self.post_merge_evidence = (
+            post_merge_evidence or post_merge_evidence_callback
+        )
+        self.post_merge_evidence_callback = self.post_merge_evidence
+        if (
+            self.post_merge_evidence is not None
+            and self.post_merge_validation is None
+        ):
+            raise ValueError(
+                "post_merge_evidence requires post_merge_validation"
+            )
+        if (
+            self.post_merge_evidence is not None
+            and self.merge_callback is not None
+        ):
+            raise ValueError(
+                "post_merge_evidence requires the built-in synthesized-commit "
+                "CAS path; merge_callback may mutate the target before "
+                "post-merge authority is established"
+            )
         self.preflight_workers = int(workers)
         self.preflight_target_sensitive = bool(preflight_target_sensitive)
         self.preflight_gate_id = (
@@ -958,6 +1035,7 @@ class MergeTrain:
             if (
                 self.preflight_callback is not None
                 or self.post_merge_validation is not None
+                or self.post_merge_evidence is not None
             ):
                 target = self._target_commit()
                 preflight = self._run_preflight(request, target_commit=target)
@@ -992,6 +1070,7 @@ class MergeTrain:
                 if (
                     self.preflight_callback is not None
                     or self.post_merge_validation is not None
+                    or self.post_merge_evidence is not None
                 ):
                     preflight = self._run_preflight(
                         request, target_commit=self._target_commit()
@@ -1392,6 +1471,8 @@ class MergeTrain:
                     "validation_dag_receipt",
                     "impact_validation_receipt",
                     "proposal_receipt",
+                    "post_merge_evidence",
+                    "post_merge_evidence_receipt",
                     "receipt",
                     "receipts",
                 ):
@@ -1405,6 +1486,211 @@ class MergeTrain:
 
         visit(value, depth=0)
         return tuple(sorted(found))
+
+    def _repository_tree_id(
+        self,
+        commit: str,
+        *,
+        workspace: Path | None = None,
+    ) -> str:
+        """Return the canonical Git tree identity for one exact commit."""
+
+        if not str(commit or "").strip():
+            return ""
+        tree = self._git(
+            "rev-parse",
+            "--verify",
+            f"{str(commit).strip()}^{{tree}}",
+            cwd=workspace,
+        )
+        if tree.returncode != 0 or not tree.stdout.strip():
+            return ""
+        return f"git-tree:{tree.stdout.strip()}"
+
+    @staticmethod
+    def _post_merge_evidence_payload(value: Any) -> dict[str, Any]:
+        """Project a typed post-merge receipt without trusting its verdict."""
+
+        if isinstance(value, Mapping):
+            for key in (
+                "post_merge_evidence_receipt",
+                "post_merge_evidence",
+                "receipt",
+            ):
+                nested = value.get(key)
+                if nested is not None:
+                    value = nested
+                    break
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            value = converter()
+        return dict(value) if isinstance(value, Mapping) else {}
+
+    @staticmethod
+    def _verified_post_merge_evidence(
+        value: Any,
+        *,
+        candidate_tree_id: str,
+        repository_tree_id: str,
+        merge_commit: str,
+        expected_repository_id: str = "",
+        expected_task_id: str = "",
+        expected_policy_id: str = "",
+    ) -> tuple[dict[str, Any], tuple[str, ...]]:
+        """Reconstruct and independently verify one authority receipt."""
+
+        payload = MergeTrain._post_merge_evidence_payload(value)
+        if not payload:
+            return {}, ("post_merge_evidence_receipt_missing",)
+        try:
+            from .code_evidence_graph import PostMergeEvidenceReceipt
+            from .formal_plan_conformance import (
+                evaluate_post_merge_completion_admission,
+            )
+
+            receipt = (
+                value
+                if isinstance(value, PostMergeEvidenceReceipt)
+                else PostMergeEvidenceReceipt.from_dict(payload)
+            )
+        except (AttributeError, ImportError, TypeError, ValueError) as exc:
+            return payload, (
+                "post_merge_evidence_receipt_invalid",
+                f"{type(exc).__name__}: {exc}",
+            )
+
+        # A typed object receives no special trust. Reconstruct its canonical
+        # projection and independently replay completion admission.
+        reconstructed = receipt.to_dict()
+        canonical_reconstructed = json.dumps(
+            reconstructed,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        canonical_payload = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        if canonical_reconstructed != canonical_payload:
+            return payload, ("post_merge_evidence_receipt_noncanonical",)
+
+        try:
+            admission = evaluate_post_merge_completion_admission(
+                receipt,
+                current_repository_tree_id=repository_tree_id,
+                expected_repository_id=expected_repository_id,
+                expected_merge_commit_id=merge_commit,
+            )
+        except (TypeError, ValueError) as exc:
+            return payload, (
+                "post_merge_evidence_verification_failed",
+                f"{type(exc).__name__}: {exc}",
+            )
+
+        failures = list(admission.reason_codes)
+        if admission.admitted is not True and not failures:
+            failures.append("post_merge_evidence_admission_rejected")
+        if receipt.merge_authoritative is not True:
+            failures.append("post_merge_evidence_merge_not_authoritative")
+        if str(receipt.candidate_tree_id or "") != candidate_tree_id:
+            failures.append("post_merge_evidence_candidate_tree_mismatch")
+        if expected_task_id and str(receipt.task_id or "") != expected_task_id:
+            failures.append("post_merge_evidence_task_mismatch")
+        if (
+            expected_policy_id
+            and str(receipt.policy_id or "") != expected_policy_id
+        ):
+            failures.append("post_merge_evidence_policy_mismatch")
+        return payload, tuple(dict.fromkeys(failures))
+
+    def _assemble_post_merge_evidence(
+        self,
+        *,
+        request: MergeRequest,
+        workspace: Path,
+        candidate_commit: str,
+        synthesized_commit: str,
+        target_commit_before: str,
+        repository_tree_id: str,
+        validation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Build and verify evidence for the exact commit proposed to the CAS."""
+
+        callback = self.post_merge_evidence
+        if callback is None:
+            return {}
+        producer = callback if callable(callback) else getattr(
+            callback, "assemble", None
+        )
+        if not callable(producer):
+            return {
+                "passed": False,
+                "reason": "post_merge_evidence_callback_invalid",
+            }
+        candidate_tree_id = self._repository_tree_id(
+            candidate_commit,
+            workspace=workspace,
+        )
+        if not candidate_tree_id:
+            return {
+                "passed": False,
+                "reason": "post_merge_candidate_tree_missing",
+            }
+        repository_id = _request_value(
+            request, "repository_id", "repository_id"
+        )
+        task_id = _request_value(request, "task_id")
+        policy_id = _request_value(request, "policy_id", "policy_id")
+        try:
+            raw = self._call_compatible(
+                producer,
+                request,
+                workspace=workspace,
+                repo_root=self.repo_root,
+                repository_id=repository_id,
+                task_id=task_id,
+                policy_id=policy_id,
+                candidate_commit=candidate_commit,
+                candidate_tree_id=candidate_tree_id,
+                merge_commit=synthesized_commit,
+                merge_commit_id=synthesized_commit,
+                merged_commit=synthesized_commit,
+                synthesized_commit=synthesized_commit,
+                target_commit=synthesized_commit,
+                target_commit_before=target_commit_before,
+                repository_tree_id=repository_tree_id,
+                merged_tree_id=repository_tree_id,
+                current_repository_tree_id=repository_tree_id,
+                post_merge_validation=dict(validation),
+                validation_report=dict(validation),
+            )
+        except Exception as exc:
+            return {
+                "passed": False,
+                "reason": "post_merge_evidence_exception",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        payload, failures = self._verified_post_merge_evidence(
+            raw,
+            candidate_tree_id=candidate_tree_id,
+            repository_tree_id=repository_tree_id,
+            merge_commit=synthesized_commit,
+            expected_repository_id=repository_id,
+            expected_task_id=task_id,
+            expected_policy_id=policy_id,
+        )
+        return {
+            "passed": not failures,
+            "reason": "" if not failures else failures[0],
+            "reason_codes": list(failures),
+            "receipt": payload,
+            "receipt_id": str(payload.get("receipt_id") or ""),
+            "repository_tree_id": repository_tree_id,
+            "merge_commit": synthesized_commit,
+        }
 
     def _gate_cache_binding(
         self,
@@ -1491,12 +1777,598 @@ class MergeTrain:
             },
         )
 
+    @staticmethod
+    def distributed_publication_digest(
+        publication: Mapping[str, Any],
+    ) -> str:
+        """Return the canonical identity of an untrusted lane publication.
+
+        The producer signs/seals the same projection: ``digest`` is omitted
+        from the hashed content so the identity is stable when embedded in the
+        envelope.  JSON's non-finite number extension is disabled because it
+        is not portable across receipt implementations.
+        """
+
+        if not isinstance(publication, Mapping):
+            raise TypeError("distributed publication must be a mapping")
+
+        def validate(item: Any) -> None:
+            if item is None or isinstance(item, (str, bool, int)):
+                return
+            if isinstance(item, float):
+                raise ValueError(
+                    "distributed publication cannot contain floats"
+                )
+            if isinstance(item, list):
+                for child in item:
+                    validate(child)
+                return
+            if isinstance(item, Mapping):
+                if not all(isinstance(key, str) for key in item):
+                    raise ValueError(
+                        "distributed publication keys must be strings"
+                    )
+                for child in item.values():
+                    validate(child)
+                return
+            raise ValueError(
+                "unsupported distributed publication value: "
+                f"{type(item).__name__}"
+            )
+
+        content = {
+            key: value
+            for key, value in publication.items()
+            if key != "digest"
+        }
+        validate(content)
+        canonical = json.dumps(
+            content,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        return (
+            "sha256:"
+            + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        )
+
+    def _read_distributed_publication_ledger(
+        self,
+    ) -> tuple[dict[str, Any], str]:
+        try:
+            value = json.loads(
+                self.distributed_publication_ledger_path.read_text(
+                    encoding="utf-8"
+                )
+            )
+        except FileNotFoundError:
+            return {
+                "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+                "publications": {},
+                "tasks": {},
+            }, ""
+        except (OSError, json.JSONDecodeError) as exc:
+            return {}, f"{type(exc).__name__}: {exc}"
+        if (
+            not isinstance(value, Mapping)
+            or value.get("schema") != DISTRIBUTED_LANE_ADMISSION_SCHEMA
+            or not isinstance(value.get("publications"), Mapping)
+            or not isinstance(value.get("tasks"), Mapping)
+        ):
+            return {}, "distributed publication ledger is malformed"
+        return {
+            "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+            "publications": dict(value["publications"]),
+            "tasks": dict(value["tasks"]),
+        }, ""
+
+    @staticmethod
+    def _positive_publication_integer(
+        value: Any,
+        *,
+        name: str,
+        required: bool = True,
+    ) -> tuple[int, str]:
+        if value in (None, "") and not required:
+            return 0, ""
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value <= 0
+        ):
+            return 0, f"distributed_publication_{name}_invalid"
+        return int(value), ""
+
+    def _reject_distributed_publication(
+        self,
+        request: MergeRequest,
+        *,
+        reason: str,
+        publication: Mapping[str, Any] | None = None,
+        details: Mapping[str, Any] | None = None,
+        cancelled: bool = False,
+    ) -> dict[str, Any]:
+        """Persist one terminal admission decision without escaping a fence."""
+
+        result: dict[str, Any] = {
+            "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+            "status": "cancelled" if cancelled else "quarantined",
+            "admitted": False,
+            "accepted": False,
+            "integrated": False,
+            "merged": False,
+            "request_id": request.request_id,
+            "task_id": _request_value(request, "task_id"),
+            "canonical_task_id": (
+                str(getattr(request, "canonical_identity", "") or "")
+                or _request_value(request, "canonical_task_id")
+                or _request_value(request, "task_id")
+            ),
+            "commit_sha": _request_value(
+                request,
+                "commit_sha",
+                "implementation_commit",
+                "commit",
+            ),
+            "reason": str(reason),
+            "distributed_publication": dict(publication or {}),
+            "finished_at": time.time(),
+            **dict(details or {}),
+        }
+        stored = getattr(self.queue, "get", lambda _request_id: None)(
+            request.request_id
+        )
+        pending_unclaimed = bool(
+            stored is not None
+            and str(getattr(stored, "status", "")) == "pending"
+            and not str(getattr(request, "claim_token", "") or "")
+        )
+        if not self._owns_claim(request) and not pending_unclaimed:
+            if (
+                stored is not None
+                and str(getattr(stored, "status", "")) == "completed"
+            ):
+                result.update(
+                    {
+                        "status": "duplicate",
+                        "duplicate": True,
+                        "accepted": True,
+                        "reason": "distributed_publication_already_completed",
+                    }
+                )
+            else:
+                result.update(
+                    {
+                        "status": "fenced_out",
+                        "reason": "merge_queue_claim_fenced",
+                        "fence_stage": "distributed_publication_admission",
+                    }
+                )
+            self._write_receipt(
+                f"distributed-{result['status']}-{request.request_id}",
+                result,
+            )
+            return result
+        try:
+            if cancelled:
+                cancel = getattr(self.queue, "cancel", None)
+                if callable(cancel):
+                    cancel(
+                        request,
+                        reason=reason,
+                        metadata=result,
+                    )
+                else:
+                    self._call_queue_failure(
+                        self.queue.fail,
+                        request,
+                        reason,
+                        result,
+                        retryable=False,
+                    )
+            else:
+                quarantine = getattr(self.queue, "quarantine", None)
+                if callable(quarantine):
+                    self._call_queue_failure(
+                        quarantine,
+                        request,
+                        reason,
+                        result,
+                    )
+                else:
+                    self._call_queue_failure(
+                        self.queue.fail,
+                        request,
+                        reason,
+                        result,
+                        retryable=False,
+                    )
+        except MergeQueueFenceError as exc:
+            result.update(
+                {
+                    "status": "fenced_out",
+                    "reason": "merge_queue_claim_fenced",
+                    "fence_error": f"{type(exc).__name__}: {exc}",
+                    "fence_stage": "distributed_publication_terminal",
+                }
+            )
+        self._write_receipt(
+            f"distributed-{result['status']}-{request.request_id}",
+            result,
+        )
+        return result
+
+    def admit_distributed_publication(
+        self,
+        request: MergeRequest,
+    ) -> dict[str, Any]:
+        """Validate and durably fence an optional remote result publication.
+
+        Queue claim fencing protects the local consumer.  This second boundary
+        protects it from the producer: repository/task/commit bindings,
+        immutable input and environment receipts, publication content identity,
+        and the remote lease epoch/token must all agree before any candidate is
+        allowed to reach integration.
+        """
+
+        metadata = getattr(request, "metadata", {})
+        metadata = metadata if isinstance(metadata, Mapping) else {}
+        raw = metadata.get(_DISTRIBUTED_PUBLICATION_METADATA_KEY)
+        if raw is None:
+            if not self.distributed_publication_required:
+                return {
+                    "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+                    "status": "local",
+                    "admitted": True,
+                    "distributed": False,
+                    "request_id": request.request_id,
+                }
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_missing",
+            )
+        if not isinstance(raw, Mapping):
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_malformed",
+            )
+        publication = dict(raw)
+        if publication.get("schema") != DISTRIBUTED_LANE_PUBLICATION_SCHEMA:
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_schema_invalid",
+                publication=publication,
+            )
+
+        canonical = (
+            str(getattr(request, "canonical_identity", "") or "")
+            or _request_value(request, "canonical_task_id")
+            or _request_value(request, "task_id")
+        )
+        candidate = _request_value(
+            request,
+            "commit_sha",
+            "implementation_commit",
+            "commit",
+        )
+        publication_id = str(
+            publication.get("publication_id")
+            or publication.get("request_id")
+            or ""
+        ).strip()
+        repository_id = str(
+            publication.get("repository_id") or ""
+        ).strip()
+        task_cid = str(
+            publication.get("task_cid")
+            or publication.get("canonical_task_id")
+            or ""
+        ).strip()
+        artifact_id = str(
+            publication.get("artifact_id")
+            or publication.get("input_artifact_id")
+            or ""
+        ).strip()
+        worker_id = str(publication.get("worker_id") or "").strip()
+        claimant = str(publication.get("claimant") or "").strip()
+        claim_cid = str(publication.get("claim_cid") or "").strip()
+        published_candidate = str(
+            publication.get("candidate_commit") or ""
+        ).strip()
+        capability_receipt_id = str(
+            publication.get("capability_receipt_id")
+            or publication.get("capability_receipt_cid")
+            or ""
+        ).strip()
+        environment_receipt_id = str(
+            publication.get("environment_receipt_id")
+            or publication.get("environment_receipt_cid")
+            or ""
+        ).strip()
+
+        required_text = {
+            "publication_id": publication_id,
+            "repository_id": repository_id,
+            "task_cid": task_cid,
+            "artifact_id": artifact_id,
+            "worker_id": worker_id,
+            "claim_cid": claim_cid,
+            "candidate_commit": published_candidate,
+            "capability_receipt_id": capability_receipt_id,
+            "environment_receipt_id": environment_receipt_id,
+        }
+        missing = sorted(
+            name for name, value in required_text.items() if not value
+        )
+        if missing:
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_malformed",
+                publication=publication,
+                details={"missing_fields": missing},
+            )
+
+        logical_epoch, epoch_error = self._positive_publication_integer(
+            publication.get(
+                "logical_epoch",
+                publication.get("fencing_epoch"),
+            ),
+            name="logical_epoch",
+        )
+        fencing_epoch, fencing_epoch_error = (
+            self._positive_publication_integer(
+                publication.get("fencing_epoch"),
+                name="fencing_epoch",
+                required=False,
+            )
+        )
+        fencing_token, token_error = self._positive_publication_integer(
+            publication.get("fencing_token"),
+            name="fencing_token",
+        )
+        integer_error = (
+            epoch_error or fencing_epoch_error or token_error
+        )
+        if integer_error:
+            return self._reject_distributed_publication(
+                request,
+                reason=integer_error,
+                publication=publication,
+            )
+
+        expected_repository_id = (
+            self.distributed_repository_id
+            or str(metadata.get("repository_id") or "").strip()
+        )
+        binding_failures: list[str] = []
+        if (
+            expected_repository_id
+            and repository_id != expected_repository_id
+        ):
+            binding_failures.append(
+                "distributed_publication_repository_mismatch"
+            )
+        if task_cid != canonical:
+            binding_failures.append(
+                "distributed_publication_task_mismatch"
+            )
+        if published_candidate != candidate:
+            binding_failures.append(
+                "distributed_publication_candidate_mismatch"
+            )
+        if binding_failures:
+            return self._reject_distributed_publication(
+                request,
+                reason=binding_failures[0],
+                publication=publication,
+                details={"reason_codes": binding_failures},
+            )
+
+        supplied_digest = str(publication.get("digest") or "").strip()
+        try:
+            derived_digest = self.distributed_publication_digest(publication)
+        except (TypeError, ValueError) as exc:
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_malformed",
+                publication=publication,
+                details={"digest_error": f"{type(exc).__name__}: {exc}"},
+            )
+        if supplied_digest != derived_digest:
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_digest_mismatch",
+                publication=publication,
+                details={
+                    "supplied_digest": supplied_digest,
+                    "derived_digest": derived_digest,
+                },
+            )
+
+        if publication.get("cancelled") is True:
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_cancelled",
+                publication=publication,
+                cancelled=True,
+            )
+        if publication.get("cancelled") not in (False, None):
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_cancelled_invalid",
+                publication=publication,
+            )
+        if self.post_merge_validation is None:
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_post_merge_validation_required",
+                publication=publication,
+            )
+        if (
+            self.distributed_post_merge_evidence_required
+            and self.post_merge_evidence is None
+        ):
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_post_merge_evidence_required",
+                publication=publication,
+            )
+        if not self._owns_claim(request):
+            return self._reject_distributed_publication(
+                request,
+                reason="merge_queue_claim_fenced",
+                publication=publication,
+            )
+
+        ledger, ledger_error = self._read_distributed_publication_ledger()
+        if ledger_error:
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_ledger_malformed",
+                publication=publication,
+                details={"ledger_error": ledger_error},
+            )
+        publications = ledger["publications"]
+        tasks = ledger["tasks"]
+        prior_publication = publications.get(publication_id)
+        if prior_publication is not None:
+            if (
+                not isinstance(prior_publication, Mapping)
+                or str(prior_publication.get("digest") or "")
+                != derived_digest
+            ):
+                return self._reject_distributed_publication(
+                    request,
+                    reason="distributed_publication_id_conflict",
+                    publication=publication,
+                )
+            return {
+                "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+                "status": "duplicate",
+                "admitted": True,
+                "distributed": True,
+                "duplicate": True,
+                "request_id": request.request_id,
+                "publication_id": publication_id,
+                "publication_digest": derived_digest,
+                "fencing_token": fencing_token,
+                "logical_epoch": logical_epoch,
+                "fencing_epoch": fencing_epoch,
+            }
+
+        prior_task = tasks.get(task_cid)
+        if prior_task is not None and not isinstance(
+            prior_task, Mapping
+        ):
+            return self._reject_distributed_publication(
+                request,
+                reason="distributed_publication_ledger_malformed",
+                publication=publication,
+            )
+        if isinstance(prior_task, Mapping):
+            prior_token = int(prior_task.get("fencing_token") or 0)
+            prior_epoch = int(prior_task.get("logical_epoch") or 0)
+            prior_claim = str(prior_task.get("claim_cid") or "")
+            if (
+                fencing_token < prior_token
+                or logical_epoch < prior_epoch
+            ):
+                return self._reject_distributed_publication(
+                    request,
+                    reason="distributed_publication_stale_fence",
+                    publication=publication,
+                    details={
+                        "current_fencing_token": prior_token,
+                        "current_logical_epoch": prior_epoch,
+                    },
+                )
+            if (
+                fencing_token == prior_token
+                and logical_epoch == prior_epoch
+                and (
+                    prior_claim != claim_cid
+                    or str(prior_task.get("publication_id") or "")
+                    != publication_id
+                )
+            ):
+                return self._reject_distributed_publication(
+                    request,
+                    reason="distributed_publication_foreign_claim",
+                    publication=publication,
+                    details={
+                        "current_claim_cid": prior_claim,
+                        "current_publication_id": str(
+                            prior_task.get("publication_id") or ""
+                        ),
+                    },
+                )
+
+        admitted_at = time.time()
+        publications[publication_id] = {
+            "digest": derived_digest,
+            "request_id": request.request_id,
+            "task_cid": task_cid,
+            "artifact_id": artifact_id,
+            "candidate_commit": published_candidate,
+            "worker_id": worker_id,
+            "claimant": claimant,
+            "claim_cid": claim_cid,
+            "logical_epoch": logical_epoch,
+            "fencing_epoch": fencing_epoch,
+            "fencing_token": fencing_token,
+            "admitted_at": admitted_at,
+        }
+        tasks[task_cid] = {
+            "publication_id": publication_id,
+            "digest": derived_digest,
+            "claim_cid": claim_cid,
+            "logical_epoch": logical_epoch,
+            "fencing_epoch": fencing_epoch,
+            "fencing_token": fencing_token,
+        }
+        self._atomic_json(
+            self.distributed_publication_ledger_path,
+            ledger,
+        )
+        admission = {
+            "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+            "status": "admitted",
+            "admitted": True,
+            "distributed": True,
+            "duplicate": False,
+            "request_id": request.request_id,
+            "publication_id": publication_id,
+            "publication_digest": derived_digest,
+            "repository_id": repository_id,
+            "task_cid": task_cid,
+            "artifact_id": artifact_id,
+            "worker_id": worker_id,
+            "claim_cid": claim_cid,
+            "logical_epoch": logical_epoch,
+            "fencing_epoch": fencing_epoch,
+            "fencing_token": fencing_token,
+            "admitted_at": admitted_at,
+        }
+        self._write_receipt(
+            f"distributed-admission-{publication_id}",
+            admission,
+        )
+        return admission
+
+    # Adapter spelling used by remote dispatchers.
+    submit_distributed_result = admit_distributed_publication
+
     def _process_after_preflight(
         self,
         request: MergeRequest,
         preflight: Mapping[str, Any],
     ) -> dict[str, Any]:
         started_at = time.time()
+        publication_admission = self.admit_distributed_publication(request)
+        if not bool(publication_admission.get("admitted")):
+            return publication_admission
         if not bool(preflight.get("passed")):
             return self._finish_failure(
                 request,
@@ -1512,6 +2384,7 @@ class MergeTrain:
             request,
             defer_completion=True,
             preflight_receipt=preflight,
+            publication_admission=publication_admission,
         )
         if not bool(integration.get("integrated")):
             return integration
@@ -1573,6 +2446,50 @@ class MergeTrain:
                     "synthesized_commit": target,
                 }
             )
+        live_target = self._target_commit()
+        if live_target != target:
+            validation.update(
+                {
+                    "passed": False,
+                    "reason": "post_merge_target_changed",
+                    "validated_commit": validated_commit,
+                    "synthesized_commit": target,
+                    "current_target_commit": live_target,
+                    "retryable": True,
+                }
+            )
+        if (
+            validation.get("passed") is True
+            and self.post_merge_evidence is not None
+        ):
+            current_tree_id = self._repository_tree_id(live_target)
+            evidence_payload, evidence_failures = (
+                self._verified_post_merge_evidence(
+                    validation.get("post_merge_evidence_receipt"),
+                    candidate_tree_id=self._repository_tree_id(candidate),
+                    repository_tree_id=current_tree_id,
+                    merge_commit=live_target,
+                    expected_repository_id=_request_value(
+                        request, "repository_id", "repository_id"
+                    ),
+                    expected_task_id=_request_value(request, "task_id"),
+                    expected_policy_id=_request_value(
+                        request, "policy_id", "policy_id"
+                    ),
+                )
+            )
+            validation["post_merge_evidence_receipt"] = evidence_payload
+            if evidence_failures:
+                validation.update(
+                    {
+                        "passed": False,
+                        "reason": evidence_failures[0],
+                        "reason_codes": list(evidence_failures),
+                        "current_repository_tree_id": current_tree_id,
+                        "current_target_commit": live_target,
+                        "retryable": True,
+                    }
+                )
         claim_current = self._owns_claim(request)
         receipt = ParallelAcceptanceReceipt(
             request_id=request.request_id,
@@ -1641,13 +2558,47 @@ class MergeTrain:
         # The evidence receipt is durable before queue completion.  A crash in
         # between leaves a recoverable processing claim, never a falsely
         # completed request.
+        self._runtime_completion(
+            request,
+            target_commit=target,
+            status="merged",
+            evidence=validation,
+        )
         try:
+            post_merge_evidence_receipt = dict(
+                validation.get("post_merge_evidence_receipt") or {}
+            )
             self.queue.complete(
                 request,
                 metadata={
                     "acceptance_receipt_id": receipt.receipt_id,
                     "requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
                     "target_commit": target,
+                    **(
+                        {
+                            "post_merge_evidence_receipt_id": str(
+                                post_merge_evidence_receipt.get("receipt_id")
+                                or ""
+                            ),
+                            "post_merge_evidence_requirement_id": str(
+                                post_merge_evidence_receipt.get(
+                                    "requirement_id"
+                                )
+                                or next(
+                                    iter(
+                                        post_merge_evidence_receipt.get(
+                                            "proved_requirement_ids"
+                                        )
+                                        or ()
+                                    ),
+                                    "",
+                                )
+                                or ""
+                            ),
+                        }
+                        if post_merge_evidence_receipt
+                        else {}
+                    ),
                 },
             )
         except MergeQueueFenceError as exc:
@@ -1671,6 +2622,18 @@ class MergeTrain:
                 "accepted": True,
                 "acceptance_pending": False,
                 "post_merge_validation": validation,
+                **(
+                    {
+                        "post_merge_evidence_receipt": dict(
+                            validation.get(
+                                "post_merge_evidence_receipt"
+                            )
+                            or {}
+                        )
+                    }
+                    if validation.get("post_merge_evidence_receipt")
+                    else {}
+                ),
                 "validation_receipt_ids": list(
                     receipt.validation_receipt_ids
                 ),
@@ -1833,6 +2796,19 @@ class MergeTrain:
             "post_merge_validation_required": (
                 self.post_merge_validation is not None
             ),
+            "post_merge_evidence_required": (
+                self.post_merge_evidence is not None
+            ),
+            "distributed_publication_required": (
+                self.distributed_publication_required
+            ),
+            "distributed_repository_id": self.distributed_repository_id,
+            "distributed_post_merge_evidence_required": (
+                self.distributed_post_merge_evidence_required
+            ),
+            "distributed_publication_ledger_path": str(
+                self.distributed_publication_ledger_path
+            ),
             "acceptance_requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
             "throughput": dict(self._last_throughput),
             "worktree_resources": {
@@ -1854,8 +2830,15 @@ class MergeTrain:
         *,
         defer_completion: bool = False,
         preflight_receipt: Mapping[str, Any] | None = None,
+        publication_admission: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         started_at = time.time()
+        if publication_admission is None:
+            publication_admission = self.admit_distributed_publication(
+                request
+            )
+        if not bool(publication_admission.get("admitted")):
+            return dict(publication_admission)
         canonical = str(getattr(request, "canonical_identity", "") or "") or _request_value(
             request,
             "canonical_task_id",
@@ -1972,6 +2955,9 @@ class MergeTrain:
                     started_at=started_at,
                     extra={
                         "duplicate_of": previous.get("request_id", ""),
+                        "distributed_publication_admission": dict(
+                            publication_admission
+                        ),
                         **(
                             {
                                 "proof_gate": proof_gate_receipt,
@@ -1995,11 +2981,18 @@ class MergeTrain:
                     started_at=started_at,
                     extra=(
                         {
+                            "distributed_publication_admission": dict(
+                                publication_admission
+                            ),
                             "proof_gate": proof_gate_receipt,
                             "repository_tree_id": proof_tree_id,
                         }
                         if proof_gate_receipt
-                        else None
+                        else {
+                            "distributed_publication_admission": dict(
+                                publication_admission
+                            )
+                        }
                     ),
                     defer_completion=defer_completion,
                     preflight_receipt=preflight_receipt,
@@ -2017,7 +3010,20 @@ class MergeTrain:
                     retryable=True,
                 )
             try:
-                callback_result = dict(self.merge_callback(request) or {})
+                callback_result = dict(
+                    self._runtime_mutation(
+                        "merge",
+                        {
+                            "operation": "merge_callback",
+                            "request_id": request.request_id,
+                            "candidate_commit": candidate,
+                            "target_commit": target,
+                            "target_branch": self.target_branch,
+                        },
+                        lambda: dict(self.merge_callback(request) or {}),
+                    )
+                    or {}
+                )
             except Exception as exc:  # callbacks are an isolation boundary
                 return self._finish_failure(
                     request,
@@ -2080,6 +3086,9 @@ class MergeTrain:
                     started_at=started_at,
                     extra={
                         "merge_result": callback_result,
+                        "distributed_publication_admission": dict(
+                            publication_admission
+                        ),
                         **(
                             {
                                 "proof_gate": proof_gate_receipt,
@@ -2134,6 +3143,9 @@ class MergeTrain:
                 started_at=started_at,
                 extra={
                     **result,
+                    "distributed_publication_admission": dict(
+                        publication_admission
+                    ),
                     **(
                         {
                             "proof_gate": proof_gate_receipt,
@@ -2733,7 +3745,14 @@ class MergeTrain:
             target_commit=synthesized_commit,
             gate_id=self.post_merge_gate_id,
         )
-        cached = self._read_gate_cache(binding)
+        # Authoritative evidence is rebuilt for every actual synthesized tree:
+        # freshness, revocation and source receipt changes must not be hidden
+        # behind an earlier passing validation cache record.
+        cached = (
+            None
+            if self.post_merge_evidence is not None
+            else self._read_gate_cache(binding)
+        )
         if cached is not None:
             return cached
         started = time.monotonic()
@@ -2775,10 +3794,51 @@ class MergeTrain:
                     "reason": "post_merge_validation_target_mismatch",
                 }
             )
+        repository_tree_id = self._repository_tree_id(
+            synthesized_commit,
+            workspace=workspace,
+        )
+        validation["repository_tree_id"] = repository_tree_id
+        if not repository_tree_id:
+            validation.update(
+                {
+                    "passed": False,
+                    "reason": "post_merge_repository_tree_missing",
+                }
+            )
+        if (
+            validation.get("passed") is True
+            and self.post_merge_evidence is not None
+        ):
+            evidence = self._assemble_post_merge_evidence(
+                request=request,
+                workspace=workspace,
+                candidate_commit=candidate_commit,
+                synthesized_commit=synthesized_commit,
+                target_commit_before=target_commit_before,
+                repository_tree_id=repository_tree_id,
+                validation=validation,
+            )
+            validation["post_merge_evidence"] = evidence
+            validation["post_merge_evidence_receipt"] = dict(
+                evidence.get("receipt") or {}
+            )
+            if evidence.get("passed") is not True:
+                validation.update(
+                    {
+                        "passed": False,
+                        "reason": str(
+                            evidence.get("reason")
+                            or "post_merge_evidence_failed"
+                        ),
+                        "retryable": False,
+                    }
+                )
         validation["validation_receipt_ids"] = list(
             self._validation_receipt_ids(validation)
         )
-        self._write_gate_cache(binding, validation)
+        if self.post_merge_evidence is None:
+            self._write_gate_cache(binding, validation)
         return validation
 
     def _validate_existing_integrated_commit(
@@ -3178,6 +4238,17 @@ class MergeTrain:
                 }
             )
             return result
+        self._runtime_completion(
+            request,
+            target_commit=target,
+            status=status,
+            evidence=(
+                extra.get("post_merge_validation")
+                if isinstance(extra, Mapping)
+                and isinstance(extra.get("post_merge_validation"), Mapping)
+                else {}
+            ),
+        )
         self._write_receipt(self._dedupe_key(canonical, candidate), result)
         try:
             self.queue.complete(request)
@@ -3291,6 +4362,110 @@ class MergeTrain:
         result = self._git("rev-parse", "--verify", f"refs/heads/{self.target_branch}^{{commit}}")
         return result.stdout.strip() if result.returncode == 0 else ""
 
+    def _decision_runtime_cancelled(self) -> bool:
+        value = self.decision_runtime_cancellation
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        if callable(value):
+            return bool(value())
+        checker = getattr(value, "is_set", None)
+        if callable(checker):
+            return bool(checker())
+        raise TypeError(
+            "decision_runtime_cancellation must be a boolean, predicate, "
+            "event, or None"
+        )
+
+    def _runtime_decision(
+        self, boundary: str, payload: Mapping[str, Any]
+    ) -> Any:
+        if self._decision_runtime_cancelled():
+            from .decision_runtime import DecisionRuntimeCancelled
+
+            raise DecisionRuntimeCancelled(
+                ("cancelled", f"cancelled_before_{boundary}")
+            )
+        if self.decision_runtime is None:
+            return None
+        route = getattr(self.decision_runtime, "route", None)
+        if not callable(route):
+            raise TypeError("decision_runtime must expose route()")
+        return route(boundary, dict(payload))
+
+    def _runtime_mutation(
+        self,
+        boundary: str,
+        payload: Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        decision = self._runtime_decision(boundary, payload)
+        if decision is None:
+            return callback()
+        authorize = getattr(
+            self.decision_runtime, "authorize_mutation", None
+        )
+        if not callable(authorize):
+            raise TypeError(
+                "decision_runtime must expose authorize_mutation()"
+            )
+
+        def dispatch() -> dict[str, Any]:
+            value = callback()
+            request = getattr(decision, "decision_request", None)
+            return {
+                "value": value,
+                "observed_effects": tuple(
+                    getattr(request, "expected_effects", ())
+                ),
+            }
+
+        execution = authorize(decision, dispatch)
+        self._last_merge_runtime_decision = decision
+        self._last_merge_effect_observation = getattr(
+            execution, "effect_observation", None
+        )
+        wrapped = getattr(execution, "value", execution)
+        return wrapped.get("value") if isinstance(wrapped, Mapping) else wrapped
+
+    def _runtime_completion(
+        self,
+        request: MergeRequest,
+        *,
+        target_commit: str,
+        status: str,
+        evidence: Mapping[str, Any] | None = None,
+    ) -> Any:
+        """Require a fresh merged-tree completion decision before queue state."""
+
+        return self._runtime_decision(
+            "completion",
+            {
+                "request_id": request.request_id,
+                "task_id": _request_value(request, "task_id"),
+                "target_branch": self.target_branch,
+                "merged_commit": target_commit,
+                "status": status,
+                "merge_decision_id": str(
+                    getattr(
+                        getattr(
+                            self._last_merge_runtime_decision, "receipt", None
+                        ),
+                        "receipt_id",
+                        "",
+                    )
+                ),
+                "effect_observation_receipt_id": str(
+                    getattr(
+                        self._last_merge_effect_observation, "receipt_id", ""
+                    )
+                ),
+                "post_merge_evidence": dict(evidence or {}),
+                "fresh_merged_tree_required": True,
+            },
+        )
+
     def _advance_target(
         self,
         rebased_commit: str,
@@ -3299,35 +4474,54 @@ class MergeTrain:
     ) -> subprocess.CompletedProcess[str]:
         """Fast-forward the target without leaving a checked-out tree stale."""
 
-        target_worktree = self._target_worktree()
-        if target_worktree is None:
+        def advance() -> subprocess.CompletedProcess[str]:
+            target_worktree = self._target_worktree()
+            if target_worktree is None:
+                return self._git(
+                    "update-ref",
+                    f"refs/heads/{self.target_branch}",
+                    rebased_commit,
+                    expected_target,
+                )
+            status = self._git(
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+                cwd=target_worktree,
+            )
+            if status.returncode != 0:
+                return status
+            if status.stdout.strip():
+                return subprocess.CompletedProcess(
+                    ["git", "status", "--porcelain"],
+                    2,
+                    stdout=status.stdout,
+                    stderr=f"target worktree is dirty: {target_worktree}",
+                )
+            current = self._git("rev-parse", "HEAD", cwd=target_worktree)
+            if current.returncode != 0:
+                return current
+            if current.stdout.strip() != expected_target:
+                return subprocess.CompletedProcess(
+                    ["git", "rev-parse", "HEAD"],
+                    3,
+                    stdout=current.stdout,
+                    stderr="target advanced while candidate was rebased",
+                )
             return self._git(
-                "update-ref",
-                f"refs/heads/{self.target_branch}",
-                rebased_commit,
-                expected_target,
+                "merge", "--ff-only", rebased_commit, cwd=target_worktree
             )
-        status = self._git("status", "--porcelain", "--untracked-files=normal", cwd=target_worktree)
-        if status.returncode != 0:
-            return status
-        if status.stdout.strip():
-            return subprocess.CompletedProcess(
-                ["git", "status", "--porcelain"],
-                2,
-                stdout=status.stdout,
-                stderr=f"target worktree is dirty: {target_worktree}",
-            )
-        current = self._git("rev-parse", "HEAD", cwd=target_worktree)
-        if current.returncode != 0:
-            return current
-        if current.stdout.strip() != expected_target:
-            return subprocess.CompletedProcess(
-                ["git", "rev-parse", "HEAD"],
-                3,
-                stdout=current.stdout,
-                stderr="target advanced while candidate was rebased",
-            )
-        return self._git("merge", "--ff-only", rebased_commit, cwd=target_worktree)
+
+        return self._runtime_mutation(
+            "merge",
+            {
+                "target_branch": self.target_branch,
+                "expected_target": expected_target,
+                "rebased_commit": rebased_commit,
+                "operation": "advance_target",
+            },
+            advance,
+        )
 
     def _target_worktree(self) -> Path | None:
         """Return the worktree currently holding the target branch, if any."""
@@ -3456,6 +4650,7 @@ __all__ = [
     "PARALLEL_EXECUTION_PRODUCING_TASK_IDS",
     "PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "ParallelAcceptanceReceipt",
+    "PostMergeEvidenceCallback",
     "PostMergeValidationCallback",
     "PreflightCallback",
     "conflict_fingerprint",

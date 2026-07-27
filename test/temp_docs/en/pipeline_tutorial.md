@@ -26,7 +26,7 @@ Transformers has two pipeline classes, a generic [`Pipeline`] and many individua
 
 Each task is configured to use a default pretrained model and preprocessor, but this can be overridden with the `model` parameter if you want to use a different model.
 
-For example, to use the [`TextGenerationPipeline`] with [Gemma 2](./model_doc/gemma2), set `task="text-generation"` and `model="google/gemma-2-2b"`.
+For example, to use the [`TextGenerationPipeline`] with [Gemma 2](model_doc/gemma2.md), set `task="text-generation"` and `model="google/gemma-2-2b"`.
 
 ```py
 from transformers import pipeline

@@ -22,6 +22,7 @@ import subprocess
 import time
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -34,6 +35,7 @@ from .analyzer_health import (
     classify_analyzer_health,
     run_analyzer_canaries,
 )
+from .checkout_lock import BACKLOG_REFINERY_AUTHOR_EMAIL
 from .event_log import read_jsonl_events
 from .goal_completion import (
     DEFAULT_CLOCK_SKEW_SECONDS,
@@ -183,6 +185,7 @@ DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_RECORD_LIMIT = int(
         "4096",
     )
 )
+SELF_IMPROVEMENT_SUCCESSOR_REJECTION_DETAIL_LIMIT = 512
 SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.self_improvement_successor_admission.v1"
 )
@@ -280,11 +283,70 @@ class SelfImprovementSuccessorRejection:
 
     canonical_id: str
     semantic_key: str
-    reason: str
+    reason: "SelfImprovementSuccessorRejectionReason | str"
     detail: str = ""
 
+    def __post_init__(self) -> None:
+        try:
+            reason = (
+                self.reason
+                if isinstance(
+                    self.reason, SelfImprovementSuccessorRejectionReason
+                )
+                else SelfImprovementSuccessorRejectionReason(str(self.reason))
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"unsupported successor rejection reason {self.reason!r}"
+            ) from exc
+        # Preserve the longstanding public ``str`` field while validating it
+        # against the closed vocabulary above.
+        object.__setattr__(self, "reason", reason.value)
+        object.__setattr__(
+            self,
+            "detail",
+            bounded_successor_rejection_detail(self.detail),
+        )
+
     def to_dict(self) -> dict[str, str]:
-        return asdict(self)
+        return {
+            "canonical_id": self.canonical_id,
+            "semantic_key": self.semantic_key,
+            "reason": self.reason,
+            "detail": self.detail,
+        }
+
+
+class SelfImprovementSuccessorRejectionReason(str, Enum):
+    """Closed reason vocabulary for bounded successor pre-admission."""
+
+    INVALID_PROPOSAL = "invalid_proposal"
+    CANDIDATE_LIMIT = "candidate_limit"
+    LIFECYCLE_DUPLICATE = "lifecycle_duplicate"
+    PRIOR_ADMISSION_DUPLICATE = "prior_admission_duplicate"
+    SUCCESSOR_COOLDOWN = "successor_cooldown"
+    BATCH_DUPLICATE = "batch_duplicate"
+    SEMANTIC_DUPLICATE = "semantic_duplicate"
+    UNSUPPORTED_DEPENDENCY = "unsupported_dependency"
+
+
+def bounded_successor_rejection_detail(
+    detail: Any,
+    *,
+    max_bytes: int = SELF_IMPROVEMENT_SUCCESSOR_REJECTION_DETAIL_LIMIT,
+) -> str:
+    """Return UTF-8-safe rejection detail within one hard byte budget."""
+
+    if (
+        isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or max_bytes < 0
+    ):
+        raise ValueError("max_bytes must be a non-negative integer")
+    encoded = str(detail or "").encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return encoded.decode("utf-8")
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
 @dataclass(frozen=True)
@@ -924,6 +986,148 @@ def _self_improvement_successor_timestamp(
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _successor_semantic_tokens(value: Any) -> frozenset[str]:
+    """Project successor content to stable lexical terms.
+
+    Identity digests, timestamps, and mapping keys are deliberately excluded:
+    novelty is about the proposed work, not serialization details.  Proposal
+    objects use the same evidence/scope fields as objective refinement.
+    """
+
+    if isinstance(value, ObjectiveWorkProposal):
+        value = (
+            value.kind.value,
+            value.title,
+            value.parent_goal_id,
+            value.parent_objective_terms,
+            value.expected_evidence_delta,
+            value.predicted_files,
+            value.predicted_symbols,
+            value.acceptance_subset,
+            value.effects,
+            value.evidence_subset,
+        )
+    elif isinstance(value, ObjectiveGoal):
+        value = (
+            value.title,
+            value.fields.get("goal", ""),
+            value.required_evidence,
+            value.predicted_files,
+            value.predicted_symbols,
+        )
+    elif isinstance(value, Mapping):
+        semantic_fields = (
+            "kind",
+            "title",
+            "goal",
+            "parent_goal_id",
+            "parent_objective_terms",
+            "expected_evidence_delta",
+            "predicted_files",
+            "predicted_symbols",
+            "acceptance_subset",
+            "acceptance",
+            "effects",
+            "evidence_subset",
+        )
+        value = tuple(value.get(name) for name in semantic_fields if name in value)
+
+    pieces: list[str] = []
+
+    def append(item: Any) -> None:
+        if item is None:
+            return
+        if isinstance(item, str):
+            pieces.append(item)
+            return
+        if isinstance(item, Mapping):
+            for child in item.values():
+                append(child)
+            return
+        if isinstance(item, Iterable) and not isinstance(
+            item, (bytes, bytearray)
+        ):
+            for child in item:
+                append(child)
+            return
+        pieces.append(str(item))
+
+    append(value)
+    return frozenset(
+        re.findall(r"[a-z0-9]+", " ".join(pieces).casefold())
+    )
+
+
+def semantic_novelty_distance(
+    candidate_text: Any,
+    existing_texts: Iterable[Any] | Any = (),
+) -> float:
+    """Return the candidate's deterministic distance from its nearest peer.
+
+    Distance is one minus lexical Jaccard similarity and is therefore finite
+    and bounded in ``[0, 1]``.  No history means fully novel.  Empty candidate
+    content is never treated as novel when a comparison population exists.
+    """
+
+    if existing_texts is None:
+        references = ()
+    elif isinstance(
+        existing_texts,
+        (str, bytes, bytearray, Mapping, ObjectiveWorkProposal, ObjectiveGoal),
+    ):
+        references = (existing_texts,)
+    else:
+        references = tuple(existing_texts)
+    if not references:
+        return 1.0
+    candidate_tokens = _successor_semantic_tokens(candidate_text)
+    if not candidate_tokens:
+        return 0.0
+    nearest_similarity = 0.0
+    for reference in references:
+        reference_tokens = _successor_semantic_tokens(reference)
+        union = candidate_tokens | reference_tokens
+        similarity = (
+            len(candidate_tokens & reference_tokens) / len(union)
+            if union
+            else 1.0
+        )
+        nearest_similarity = max(nearest_similarity, similarity)
+    return max(0.0, min(1.0, 1.0 - nearest_similarity))
+
+
+def unsupported_successor_dependencies(
+    dependencies: Iterable[Any],
+    supported_dependencies: Iterable[Any],
+) -> tuple[str, ...]:
+    """Return exact declared dependencies absent from a capability snapshot."""
+
+    dependency_values = (
+        (dependencies,)
+        if isinstance(dependencies, (str, bytes, bytearray))
+        else tuple(dependencies)
+    )
+    supported_values = (
+        (supported_dependencies,)
+        if isinstance(supported_dependencies, (str, bytes, bytearray))
+        else tuple(supported_dependencies)
+    )
+    supported = {
+        str(item).strip().casefold()
+        for item in supported_values
+        if str(item).strip()
+    }
+    unsupported: dict[str, str] = {}
+    for raw in dependency_values:
+        dependency = str(raw).strip()
+        if dependency and dependency.casefold() not in supported:
+            unsupported.setdefault(dependency.casefold(), dependency)
+    return tuple(
+        unsupported[key]
+        for key in sorted(unsupported, key=lambda item: (item, unsupported[item]))
+    )
 
 
 def self_improvement_successor_lifecycle_identities(
@@ -1627,7 +1831,7 @@ def commit_specific_path(repo: Path, relative: str, *, subject: str) -> dict[str
             "-c",
             "user.name=Accelerator Backlog Refinery",
             "-c",
-            "user.email=accelerator-backlog-refinery@example.invalid",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
             "commit",
             "-m",
             subject,

@@ -26,13 +26,13 @@ rendered properly in your Markdown viewer.
 
 ## Overview
 
-The Speech2Text2 model is used together with [Wav2Vec2](wav2vec2) for Speech Translation models proposed in
+The Speech2Text2 model is used together with [Wav2Vec2](./wav2vec2.md) for Speech Translation models proposed in
 [Large-Scale Self- and Semi-Supervised Learning for Speech Translation](https://arxiv.org/abs/2104.06678) by
 Changhan Wang, Anne Wu, Juan Pino, Alexei Baevski, Michael Auli, Alexis Conneau.
 
 Speech2Text2 is a *decoder-only* transformer model that can be used with any speech *encoder-only*, such as
-[Wav2Vec2](wav2vec2) or [HuBERT](hubert) for Speech-to-Text tasks. Please refer to the
-[SpeechEncoderDecoder](speech-encoder-decoder) class on how to combine Speech2Text2 with any speech *encoder-only*
+[Wav2Vec2](./wav2vec2.md) or [HuBERT](./hubert.md) for Speech-to-Text tasks. Please refer to the
+[SpeechEncoderDecoder](./speech-encoder-decoder.md) class on how to combine Speech2Text2 with any speech *encoder-only*
 model.
 
 This model was contributed by [Patrick von Platen](https://huggingface.co/patrickvonplaten).
@@ -43,7 +43,7 @@ The original code can be found [here](https://github.com/pytorch/fairseq/blob/1f
 
 - Speech2Text2 achieves state-of-the-art results on the CoVoST Speech Translation dataset. For more information, see
   the [official models](https://huggingface.co/models?other=speech2text2) .
-- Speech2Text2 is always used within the [SpeechEncoderDecoder](speech-encoder-decoder) framework.
+- Speech2Text2 is always used within the [SpeechEncoderDecoder](./speech-encoder-decoder.md) framework.
 - Speech2Text2's tokenizer is based on [fastBPE](https://github.com/glample/fastBPE).
 
 ## Inference
@@ -107,7 +107,7 @@ See [model hub](https://huggingface.co/models?filter=speech2text2) to look for S
 
 ## Resources
 
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## Speech2Text2Config
 

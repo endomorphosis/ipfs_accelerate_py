@@ -39,7 +39,7 @@ This model was contributed by [nielsr](https://huggingface.co/nielsr). The origi
 - The quickest way to get started with Donut is by checking the [tutorial
   notebooks](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/Donut), which show how to use the model
   at inference time as well as fine-tuning on custom data.
-- Donut is always used within the [VisionEncoderDecoder](vision-encoder-decoder) framework.
+- Donut is always used within the [VisionEncoderDecoder](vision-encoder-decoder.md) framework.
 
 ## Inference examples
 

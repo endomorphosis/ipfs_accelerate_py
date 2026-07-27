@@ -55,5 +55,5 @@ A XLM-V (base size) model is available under the [`facebook/xlm-v-base`](https:/
 
 <Tip>
 
-XLM-V architecture is the same as XLM-RoBERTa, refer to [XLM-RoBERTa documentation](xlm-roberta) for API reference, and examples.
+XLM-V architecture is the same as XLM-RoBERTa, refer to [XLM-RoBERTa documentation](./xlm-roberta.md) for API reference, and examples.
 </Tip>

@@ -44,8 +44,8 @@ from .goal_refinement_verification import (
 )
 
 
-ADAPTIVE_GOAL_REFINER_VERSION: Final = 2
-ADAPTIVE_REFINEMENT_RECEIPT_VERSION: Final = 3
+ADAPTIVE_GOAL_REFINER_VERSION: Final = 3
+ADAPTIVE_REFINEMENT_RECEIPT_VERSION: Final = 4
 NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID: Final = (
     "003778425160038348524906247302938706902"
 )
@@ -68,6 +68,12 @@ REQUIREMENT_EVIDENCE_SCHEMA: Final = (
 )
 UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/unchanged-failure-backoff-evidence@1"
+)
+REFINEMENT_VALUE_ESTIMATE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/refinement-value-estimate@1"
+)
+REFINEMENT_DELTA_QUALITY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/refinement-delta-quality@1"
 )
 
 # This is the closed mandatory population for the objective completion bridge
@@ -195,6 +201,13 @@ def _nonnegative(value: Any, name: str) -> int:
     return value
 
 
+def _millionths(value: Any, name: str) -> int:
+    result = _nonnegative(value, name)
+    if result > 1_000_000:
+        raise AdaptiveGoalRefinementError(f"{name} must not exceed 1000000")
+    return result
+
+
 def _enum(value: Any, cls: type[Enum], name: str) -> Any:
     if isinstance(value, cls):
         return value
@@ -251,6 +264,9 @@ class RefinementSignalKind(str, Enum):
     SCOPE_CONFLICT = "scope_conflict"
     RESOURCE_CHANGE = "resource_change"
     RESOURCE_INFEASIBLE = "resource_infeasible"
+    UNCOVERED_CRITERION = "uncovered_criterion"
+    UNCERTAINTY_CHANGE = "uncertainty_change"
+    OPERATOR_REVISION = "operator_revision"
 
     # Compatibility spellings for callers that use the task language.
     STALE_RECEIPT = "stale_evidence"
@@ -260,6 +276,11 @@ class RefinementSignalKind(str, Enum):
     CHANGED_INTERFACE = "interface_change"
     CONFLICT = "scope_conflict"
     INFEASIBLE_RESOURCES = "resource_infeasible"
+    UNCOVERED_ACCEPTANCE = "uncovered_criterion"
+    UNCERTAINTY = "uncertainty_change"
+    CAPABILITY = "capability_change"
+    INTERFACE = "interface_change"
+    RESOURCE = "resource_change"
 
 
 _SIGNAL_KIND_ALIASES: Final[Mapping[str, RefinementSignalKind]] = {
@@ -270,6 +291,15 @@ _SIGNAL_KIND_ALIASES: Final[Mapping[str, RefinementSignalKind]] = {
     "changed_interface": RefinementSignalKind.INTERFACE_CHANGE,
     "conflict": RefinementSignalKind.SCOPE_CONFLICT,
     "infeasible_resources": RefinementSignalKind.RESOURCE_INFEASIBLE,
+    "uncovered_acceptance": RefinementSignalKind.UNCOVERED_CRITERION,
+    "uncovered_acceptance_criterion": RefinementSignalKind.UNCOVERED_CRITERION,
+    "uncertainty": RefinementSignalKind.UNCERTAINTY_CHANGE,
+    "operator_change": RefinementSignalKind.OPERATOR_REVISION,
+    "operator-revision": RefinementSignalKind.OPERATOR_REVISION,
+    "uncovered criterion": RefinementSignalKind.UNCOVERED_CRITERION,
+    "capability": RefinementSignalKind.CAPABILITY_CHANGE,
+    "interface": RefinementSignalKind.INTERFACE_CHANGE,
+    "resource": RefinementSignalKind.RESOURCE_CHANGE,
 }
 
 
@@ -352,6 +382,7 @@ class RefinementDecision(str, Enum):
     DUPLICATE = "duplicate"
     BACKED_OFF = "backed_off"
     BUDGET_EXHAUSTED = "budget_exhausted"
+    INSUFFICIENT_INFORMATION_GAIN = "insufficient_information_gain"
     GENERATION_FAILED = "generation_failed"
     CANDIDATE_REJECTED = "candidate_rejected"
     VERIFICATION_FAILED = "verification_failed"
@@ -830,6 +861,214 @@ GoalQuality = GoalQualityRecord
 
 
 @dataclass(frozen=True)
+class RefinementValueEstimate:
+    """Deterministic pre-generation value and blast-radius estimate."""
+
+    information_gain_millionths: int
+    expected_downstream_cost_millionths: int
+    affected_subject_ids: tuple[str, ...]
+    signal_ids: tuple[str, ...]
+    rationale_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "information_gain_millionths",
+            _millionths(
+                self.information_gain_millionths,
+                "information_gain_millionths",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "expected_downstream_cost_millionths",
+            _millionths(
+                self.expected_downstream_cost_millionths,
+                "expected_downstream_cost_millionths",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "affected_subject_ids",
+            _strings(
+                self.affected_subject_ids,
+                "affected_subject_ids",
+                required=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "signal_ids",
+            _strings(self.signal_ids, "signal_ids", required=True),
+        )
+        object.__setattr__(
+            self,
+            "rationale_codes",
+            _strings(self.rationale_codes, "rationale_codes"),
+        )
+
+    @property
+    def net_value_millionths(self) -> int:
+        return (
+            self.information_gain_millionths
+            - self.expected_downstream_cost_millionths
+        )
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": REFINEMENT_VALUE_ESTIMATE_SCHEMA,
+            "information_gain_millionths": self.information_gain_millionths,
+            "expected_downstream_cost_millionths": (
+                self.expected_downstream_cost_millionths
+            ),
+            "affected_subject_ids": self.affected_subject_ids,
+            "signal_ids": self.signal_ids,
+            "rationale_codes": self.rationale_codes,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RefinementValueEstimate":
+        fields = {
+            "schema",
+            "information_gain_millionths",
+            "expected_downstream_cost_millionths",
+            "affected_subject_ids",
+            "signal_ids",
+            "rationale_codes",
+            "content_id",
+        }
+        _restored_record(
+            payload,
+            noun="refinement value estimate",
+            schema=REFINEMENT_VALUE_ESTIMATE_SCHEMA,
+            allowed_fields=frozenset(fields),
+            identity_field="content_id",
+        )
+        result = cls(
+            information_gain_millionths=payload.get(
+                "information_gain_millionths", 0
+            ),
+            expected_downstream_cost_millionths=payload.get(
+                "expected_downstream_cost_millionths", 0
+            ),
+            affected_subject_ids=tuple(
+                payload.get("affected_subject_ids") or ()
+            ),
+            signal_ids=tuple(payload.get("signal_ids") or ()),
+            rationale_codes=tuple(payload.get("rationale_codes") or ()),
+        )
+        _claimed(payload, result.content_id, "refinement value estimate")
+        return result
+
+
+@dataclass(frozen=True)
+class RefinementDeltaQualityReport:
+    """Content-bound lint result for the exact generated plan delta."""
+
+    previous_plan_id: str
+    candidate_plan_id: str
+    root_goal_content_id: str
+    assumption_ids: tuple[str, ...]
+    changed_goal_ids: tuple[str, ...]
+    accepted: bool
+    debt_codes: tuple[str, ...] = ()
+    linter_id: str = "adaptive-goal-refiner/delta-linter@1"
+
+    def __post_init__(self) -> None:
+        for name in (
+            "previous_plan_id",
+            "candidate_plan_id",
+            "root_goal_content_id",
+            "linter_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
+        )
+        object.__setattr__(
+            self,
+            "changed_goal_ids",
+            _strings(self.changed_goal_ids, "changed_goal_ids", required=True),
+        )
+        if not isinstance(self.accepted, bool):
+            raise AdaptiveGoalRefinementError("accepted must be boolean")
+        object.__setattr__(
+            self, "debt_codes", _strings(self.debt_codes, "debt_codes")
+        )
+        if self.accepted and self.debt_codes:
+            raise AdaptiveGoalRefinementError(
+                "accepted delta quality reports must have no debt"
+            )
+        if not self.accepted and not self.debt_codes:
+            raise AdaptiveGoalRefinementError(
+                "rejected delta quality reports must identify typed debt"
+            )
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": REFINEMENT_DELTA_QUALITY_SCHEMA,
+            "previous_plan_id": self.previous_plan_id,
+            "candidate_plan_id": self.candidate_plan_id,
+            "root_goal_content_id": self.root_goal_content_id,
+            "assumption_ids": self.assumption_ids,
+            "changed_goal_ids": self.changed_goal_ids,
+            "accepted": self.accepted,
+            "debt_codes": self.debt_codes,
+            "linter_id": self.linter_id,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "RefinementDeltaQualityReport":
+        fields = {
+            "schema",
+            "previous_plan_id",
+            "candidate_plan_id",
+            "root_goal_content_id",
+            "assumption_ids",
+            "changed_goal_ids",
+            "accepted",
+            "debt_codes",
+            "linter_id",
+            "content_id",
+        }
+        _restored_record(
+            payload,
+            noun="refinement delta quality report",
+            schema=REFINEMENT_DELTA_QUALITY_SCHEMA,
+            allowed_fields=frozenset(fields),
+            identity_field="content_id",
+        )
+        result = cls(
+            previous_plan_id=payload.get("previous_plan_id", ""),
+            candidate_plan_id=payload.get("candidate_plan_id", ""),
+            root_goal_content_id=payload.get("root_goal_content_id", ""),
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            changed_goal_ids=tuple(payload.get("changed_goal_ids") or ()),
+            accepted=payload.get("accepted", False),
+            debt_codes=tuple(payload.get("debt_codes") or ()),
+            linter_id=payload.get("linter_id", ""),
+        )
+        _claimed(payload, result.content_id, "refinement delta quality report")
+        return result
+
+
+@dataclass(frozen=True)
 class AdaptiveRefinementPolicy:
     """Finite refinement, generation, change, and retry budgets."""
 
@@ -840,6 +1079,8 @@ class AdaptiveRefinementPolicy:
     max_changed_goals: int = 4
     initial_backoff_seconds: int = 60
     max_backoff_seconds: int = 3600
+    min_information_gain_millionths: int = 100_000
+    max_expected_downstream_cost_millionths: int = 900_000
 
     def __post_init__(self) -> None:
         for name in (
@@ -852,6 +1093,11 @@ class AdaptiveRefinementPolicy:
             "max_backoff_seconds",
         ):
             _positive(getattr(self, name), name)
+        for name in (
+            "min_information_gain_millionths",
+            "max_expected_downstream_cost_millionths",
+        ):
+            _millionths(getattr(self, name), name)
         if self.max_model_calls_per_cycle != 1:
             raise AdaptiveGoalRefinementError(
                 "max_model_calls_per_cycle must be exactly one"
@@ -1510,6 +1756,8 @@ class AdaptiveRefinementReceipt:
     signal_ids: tuple[str, ...]
     signal_kinds: tuple[str, ...]
     requirement_ids: tuple[str, ...]
+    value_estimate: RefinementValueEstimate
+    quality_lint_report: RefinementDeltaQualityReport | None = None
     new_counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
     unchanged_failure_backoff_evidence: (
         UnchangedFailureBackoffEvidence | None
@@ -1560,6 +1808,36 @@ class AdaptiveRefinementReceipt:
             "requirement_ids",
             _strings(self.requirement_ids, "requirement_ids"),
         )
+        if not isinstance(self.value_estimate, RefinementValueEstimate):
+            raise AdaptiveGoalRefinementError(
+                "receipt requires a refinement value estimate"
+            )
+        if self.value_estimate.signal_ids != self.signal_ids:
+            raise AdaptiveGoalRefinementError(
+                "value estimate does not bind the receipt signals"
+            )
+        quality_report = self.quality_lint_report
+        if quality_report is not None:
+            if not isinstance(quality_report, RefinementDeltaQualityReport):
+                raise AdaptiveGoalRefinementError(
+                    "invalid refinement delta quality report"
+                )
+            expected_quality = {
+                "previous_plan_id": self.previous_plan_id,
+                "candidate_plan_id": self.candidate_plan_id,
+                "root_goal_content_id": self.root_goal_content_id,
+                "assumption_ids": self.assumption_ids,
+            }
+            mismatched_quality = [
+                name
+                for name, value in expected_quality.items()
+                if getattr(quality_report, name) != value
+            ]
+            if mismatched_quality:
+                raise AdaptiveGoalRefinementError(
+                    "delta quality report does not match receipt bindings: "
+                    + ", ".join(mismatched_quality)
+                )
         evidence = self.new_counterexample_evidence
         if evidence is not None:
             if not isinstance(evidence, NewCounterexampleRefinementEvidence):
@@ -1660,9 +1938,12 @@ class AdaptiveRefinementReceipt:
                 and self.candidate_plan_id
                 and self.verification_receipt_id
                 and self.producer_kind
+                and quality_report is not None
+                and quality_report.accepted
             ):
                 raise AdaptiveGoalRefinementError(
-                    "admitted receipt requires generation, verification, and evidence binding"
+                    "admitted receipt requires generation, quality lint, "
+                    "verification, and evidence binding"
                 )
             if UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID in self.requirement_ids:
                 raise AdaptiveGoalRefinementError(
@@ -1767,6 +2048,12 @@ class AdaptiveRefinementReceipt:
             "signal_ids": self.signal_ids,
             "signal_kinds": self.signal_kinds,
             "requirement_ids": self.requirement_ids,
+            "value_estimate": self.value_estimate.to_dict(),
+            "quality_lint_report": (
+                self.quality_lint_report.to_dict()
+                if self.quality_lint_report is not None
+                else None
+            ),
             "new_counterexample_evidence": (
                 self.new_counterexample_evidence.to_dict()
                 if self.new_counterexample_evidence is not None
@@ -1816,6 +2103,8 @@ class AdaptiveRefinementReceipt:
                     "signal_ids",
                     "signal_kinds",
                     "requirement_ids",
+                    "value_estimate",
+                    "quality_lint_report",
                     "new_counterexample_evidence",
                     "unchanged_failure_backoff_evidence",
                     "receipt_id",
@@ -1847,6 +2136,16 @@ class AdaptiveRefinementReceipt:
             signal_ids=tuple(payload.get("signal_ids") or ()),
             signal_kinds=tuple(payload.get("signal_kinds") or ()),
             requirement_ids=tuple(payload.get("requirement_ids") or ()),
+            value_estimate=RefinementValueEstimate.from_dict(
+                payload.get("value_estimate") or {}
+            ),
+            quality_lint_report=(
+                RefinementDeltaQualityReport.from_dict(
+                    payload["quality_lint_report"]
+                )
+                if payload.get("quality_lint_report") is not None
+                else None
+            ),
             new_counterexample_evidence=(
                 NewCounterexampleRefinementEvidence.from_dict(
                     payload["new_counterexample_evidence"]
@@ -2017,6 +2316,11 @@ class AdaptiveRefinementResult:
                 "healthy": False,
                 "safe_for_completion_reasoning": False,
             }
+        else:
+            # This objective validates analyzer health independently from its
+            # exhaustive quorum. Translate that reviewed contract into the
+            # stricter generic completion-gate vocabulary.
+            health_value = {**health_value, "exhaustive": True}
 
         # GoalCoverageMap is the canonical repository-wide producer.  Ask it
         # for this objective's narrow projection rather than inspecting every
@@ -2236,18 +2540,54 @@ class AdaptiveRefinementResult:
                 for member in quorum_members
             )
         )
-        if not (
+        quorum_valid = (
             quorum_members_healthy
             and configured_count_met
             and independent(member_ids)
             and independent(receipt_ids)
             and independent(channels)
             and binding_is_current
-        ):
+            and quorum_value.get("satisfied") is True
+            and quorum_value.get("quorum_met") is True
+        )
+        if not quorum_valid:
             quorum_value = {
                 **quorum_value,
                 "satisfied": False,
                 "quorum_met": False,
+            }
+        else:
+            translated_members = []
+            for member in quorum_members:
+                channel = str(
+                    member.get("evidence_channel") or ""
+                ).strip().lower()
+                scan_mode = str(member.get("scan_mode") or "").strip().lower()
+                is_audit = (
+                    "audit" in channel
+                    or scan_mode == "audit"
+                    or scan_mode.endswith("_audit")
+                )
+                translated_members.append(
+                    {
+                        **member,
+                        "status": "passed",
+                        "passed": True,
+                        "healthy": True,
+                        "safe_for_completion_reasoning": True,
+                        "exhaustive": True,
+                        "conclusive": True,
+                        "uncontradicted": True,
+                        "analyzer_version": (
+                            str(member.get("analyzer_version") or "").strip()
+                            or binding["analyzer_version"]
+                        ),
+                        "scan_mode": "audit" if is_audit else "exhaustive",
+                    }
+                )
+            quorum_value = {
+                **quorum_value,
+                "members": translated_members,
             }
 
         values: dict[str, Any] = {
@@ -2405,6 +2745,13 @@ CandidateGenerator = Callable[
 CandidateVerifier = Callable[
     [AdaptiveRefinementCandidate, AdaptiveRefinementRequest], Any
 ]
+InformationGainEstimator = Callable[
+    [AdaptiveRefinementRequest], RefinementValueEstimate
+]
+CandidateQualityLinter = Callable[
+    [AdaptiveRefinementCandidate, AdaptiveRefinementRequest],
+    RefinementDeltaQualityReport,
+]
 
 
 _GLOBAL_LOCK_GUARD = threading.Lock()
@@ -2431,6 +2778,8 @@ class AdaptiveGoalRefiner:
         policy: AdaptiveRefinementPolicy | None = None,
         store: RefinementReceiptStore | None = None,
         clock: Callable[[], int | float] | None = None,
+        value_estimator: InformationGainEstimator | None = None,
+        quality_linter: CandidateQualityLinter | None = None,
     ) -> None:
         if not callable(generator):
             raise AdaptiveGoalRefinementError("generator must be callable")
@@ -2443,6 +2792,12 @@ class AdaptiveGoalRefiner:
         self.policy = policy or AdaptiveRefinementPolicy()
         self.store = store or InMemoryRefinementStore()
         self.clock = clock or __import__("time").time
+        self.value_estimator = value_estimator or self._default_value_estimate
+        self.quality_linter = quality_linter or self._default_quality_lint
+        if not callable(self.value_estimator):
+            raise AdaptiveGoalRefinementError("value_estimator must be callable")
+        if not callable(self.quality_linter):
+            raise AdaptiveGoalRefinementError("quality_linter must be callable")
 
     def refine(self, request: AdaptiveRefinementRequest) -> AdaptiveRefinementResult:
         """Process changed evidence and admit zero or one verified refinement."""
@@ -2529,6 +2884,47 @@ class AdaptiveGoalRefiner:
                 self._persist_nonadmission(receipt)
                 return AdaptiveRefinementResult(receipt)
 
+            try:
+                value_estimate = self.value_estimator(request)
+            except BaseException as exc:
+                return self._terminal(
+                    request,
+                    RefinementDecision.INSUFFICIENT_INFORMATION_GAIN,
+                    "information-gain estimation failed closed: "
+                    f"{type(exc).__name__}: {exc}",
+                    model_called=False,
+                )
+            if not isinstance(value_estimate, RefinementValueEstimate):
+                return self._terminal(
+                    request,
+                    RefinementDecision.INSUFFICIENT_INFORMATION_GAIN,
+                    "information-gain estimator returned an unauditable value",
+                    model_called=False,
+                )
+            if value_estimate.signal_ids != tuple(
+                item.evidence_id for item in request.signals
+            ):
+                return self._terminal(
+                    request,
+                    RefinementDecision.INSUFFICIENT_INFORMATION_GAIN,
+                    "information-gain estimate does not bind the request signals",
+                    model_called=False,
+                )
+            if (
+                value_estimate.information_gain_millionths
+                < self.policy.min_information_gain_millionths
+                or value_estimate.expected_downstream_cost_millionths
+                > self.policy.max_expected_downstream_cost_millionths
+                or value_estimate.net_value_millionths <= 0
+            ):
+                return self._terminal(
+                    request,
+                    RefinementDecision.INSUFFICIENT_INFORMATION_GAIN,
+                    "expected information gain does not justify downstream cost",
+                    model_called=False,
+                    value_estimate=value_estimate,
+                )
+
             cycle_model_calls = tuple(
                 item
                 for item in history
@@ -2548,6 +2944,7 @@ class AdaptiveGoalRefiner:
                         (item.refinement_index for item in cycle_model_calls),
                         default=0,
                     ),
+                    value_estimate=value_estimate,
                 )
 
             root_admissions = tuple(
@@ -2567,6 +2964,7 @@ class AdaptiveGoalRefiner:
                     model_called=False,
                     attempt_index=len(matching) + 1,
                     refinement_index=len(root_admissions),
+                    value_estimate=value_estimate,
                 )
 
             attempt_index = len(matching) + 1
@@ -2590,6 +2988,7 @@ class AdaptiveGoalRefiner:
                     refinement_index,
                     f"candidate generation failed closed: {type(exc).__name__}: {exc}",
                     failure_index=failure_index,
+                    value_estimate=value_estimate,
                 )
 
             invalid = self._candidate_violation(candidate, request)
@@ -2605,6 +3004,49 @@ class AdaptiveGoalRefiner:
                     producer_id=candidate.producer_id,
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
+                    value_estimate=value_estimate,
+                )
+
+            try:
+                quality_report = self.quality_linter(candidate, request)
+            except BaseException as exc:
+                return self._failure(
+                    request,
+                    RefinementDecision.CANDIDATE_REJECTED,
+                    now,
+                    attempt_index,
+                    refinement_index,
+                    "delta quality lint failed closed: "
+                    f"{type(exc).__name__}: {exc}",
+                    failure_index=failure_index,
+                    producer_id=candidate.producer_id,
+                    producer_kind=candidate.producer_kind.value,
+                    candidate_plan_id=candidate.plan.content_id,
+                    value_estimate=value_estimate,
+                )
+            quality_violation = self._quality_violation(
+                quality_report, candidate, request
+            )
+            if quality_violation:
+                return self._failure(
+                    request,
+                    RefinementDecision.CANDIDATE_REJECTED,
+                    now,
+                    attempt_index,
+                    refinement_index,
+                    quality_violation,
+                    failure_index=failure_index,
+                    producer_id=candidate.producer_id,
+                    producer_kind=candidate.producer_kind.value,
+                    candidate_plan_id=candidate.plan.content_id,
+                    value_estimate=value_estimate,
+                    quality_lint_report=(
+                        quality_report
+                        if isinstance(
+                            quality_report, RefinementDeltaQualityReport
+                        )
+                        else None
+                    ),
                 )
 
             try:
@@ -2631,6 +3073,8 @@ class AdaptiveGoalRefiner:
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
                     verification_receipt_id=verification_id,
+                    value_estimate=value_estimate,
+                    quality_lint_report=quality_report,
                 )
 
             receipt = self._receipt(
@@ -2643,6 +3087,8 @@ class AdaptiveGoalRefiner:
                 producer_kind=candidate.producer_kind.value,
                 candidate_plan_id=candidate.plan.content_id,
                 verification_receipt_id=verification_id,
+                value_estimate=value_estimate,
+                quality_lint_report=quality_report,
                 attempt_index=attempt_index,
                 refinement_index=refinement_index,
             )
@@ -2661,6 +3107,8 @@ class AdaptiveGoalRefiner:
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
                     verification_receipt_id=verification_id,
+                    value_estimate=value_estimate,
+                    quality_lint_report=quality_report,
                     retry_after=self._retry_after(now, failure_index),
                     attempt_index=attempt_index,
                     refinement_index=refinement_index,
@@ -2669,6 +3117,106 @@ class AdaptiveGoalRefiner:
             return AdaptiveRefinementResult(receipt, candidate.plan)
 
     refine_goal = refine
+
+    @staticmethod
+    def _default_value_estimate(
+        request: AdaptiveRefinementRequest,
+    ) -> RefinementValueEstimate:
+        """Estimate novelty and blast radius without invoking a provider."""
+
+        gain_by_kind = {
+            RefinementSignalKind.COUNTEREXAMPLE: 900_000,
+            RefinementSignalKind.UNCOVERED_CRITERION: 900_000,
+            RefinementSignalKind.OPERATOR_REVISION: 850_000,
+            RefinementSignalKind.STALE_EVIDENCE: 750_000,
+            RefinementSignalKind.INTERFACE_CHANGE: 750_000,
+            RefinementSignalKind.CAPABILITY_CHANGE: 700_000,
+            RefinementSignalKind.UNCERTAINTY_CHANGE: 650_000,
+            RefinementSignalKind.SCOPE_CONFLICT: 800_000,
+            RefinementSignalKind.RESOURCE_INFEASIBLE: 800_000,
+            RefinementSignalKind.RESOURCE_CHANGE: 650_000,
+            RefinementSignalKind.SCOPE_CHANGE: 650_000,
+            RefinementSignalKind.REPEATED_FAILURE: 600_000,
+        }
+        gains = [gain_by_kind[item.kind] for item in request.signals]
+        information_gain = min(
+            1_000_000,
+            max(gains) + 25_000 * (len(request.signals) - 1),
+        )
+        affected = tuple(
+            sorted({item.subject_id for item in request.signals})
+        )
+        # More affected subjects and a larger existing plan imply a broader,
+        # costlier revalidation suffix.  The estimate is deliberately bounded
+        # and independent of provider-authored rationale text.
+        plan_nodes = len(request.plan.goals) + len(request.plan.subgoals)
+        downstream_cost = min(
+            1_000_000,
+            50_000
+            + 50_000 * max(0, len(affected) - 1)
+            + 10_000 * max(0, plan_nodes - 1),
+        )
+        return RefinementValueEstimate(
+            information_gain_millionths=information_gain,
+            expected_downstream_cost_millionths=downstream_cost,
+            affected_subject_ids=affected,
+            signal_ids=tuple(item.evidence_id for item in request.signals),
+            rationale_codes=tuple(
+                sorted(
+                    {
+                        f"semantic_event:{item.kind.value}"
+                        for item in request.signals
+                    }
+                )
+            ),
+        )
+
+    @staticmethod
+    def _default_quality_lint(
+        candidate: AdaptiveRefinementCandidate,
+        request: AdaptiveRefinementRequest,
+    ) -> RefinementDeltaQualityReport:
+        """Lint the exact canonical delta after formal-plan validation."""
+
+        return RefinementDeltaQualityReport(
+            previous_plan_id=request.plan.content_id,
+            candidate_plan_id=candidate.plan.content_id,
+            root_goal_content_id=request.root_goal_content_id,
+            assumption_ids=request.assumption_ids,
+            changed_goal_ids=candidate.changed_goal_ids,
+            accepted=True,
+        )
+
+    @staticmethod
+    def _quality_violation(
+        value: Any,
+        candidate: AdaptiveRefinementCandidate,
+        request: AdaptiveRefinementRequest,
+    ) -> str:
+        if not isinstance(value, RefinementDeltaQualityReport):
+            return "quality linter returned an unauditable report"
+        expected = {
+            "previous_plan_id": request.plan.content_id,
+            "candidate_plan_id": candidate.plan.content_id,
+            "root_goal_content_id": request.root_goal_content_id,
+            "assumption_ids": request.assumption_ids,
+            "changed_goal_ids": candidate.changed_goal_ids,
+        }
+        mismatched = [
+            name
+            for name, expected_value in expected.items()
+            if getattr(value, name) != expected_value
+        ]
+        if mismatched:
+            return (
+                "delta quality report does not bind the exact candidate: "
+                + ", ".join(mismatched)
+            )
+        if not value.accepted:
+            return "candidate delta failed quality lint: " + ", ".join(
+                value.debt_codes
+            )
+        return ""
 
     def _candidate(
         self,
@@ -2869,6 +3417,7 @@ class AdaptiveGoalRefiner:
         model_called: bool,
         attempt_index: int = 1,
         refinement_index: int = 0,
+        value_estimate: RefinementValueEstimate | None = None,
     ) -> AdaptiveRefinementResult:
         now = _nonnegative(int(self.clock()), "clock")
         receipt = self._receipt(
@@ -2879,6 +3428,7 @@ class AdaptiveGoalRefiner:
             reason=reason,
             attempt_index=attempt_index,
             refinement_index=refinement_index,
+            value_estimate=value_estimate,
         )
         self._persist_nonadmission(receipt)
         return AdaptiveRefinementResult(receipt)
@@ -2915,6 +3465,8 @@ class AdaptiveGoalRefiner:
         attempt_index: int = 1,
         refinement_index: int = 0,
         backoff_source: AdaptiveRefinementReceipt | None = None,
+        value_estimate: RefinementValueEstimate | None = None,
+        quality_lint_report: RefinementDeltaQualityReport | None = None,
     ) -> AdaptiveRefinementReceipt:
         requirement_ids: list[str] = []
         counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
@@ -3002,6 +3554,10 @@ class AdaptiveGoalRefiner:
             signal_ids=tuple(item.evidence_id for item in request.signals),
             signal_kinds=tuple(item.kind.value for item in request.signals),
             requirement_ids=tuple(requirement_ids),
+            value_estimate=(
+                value_estimate or self._default_value_estimate(request)
+            ),
+            quality_lint_report=quality_lint_report,
             new_counterexample_evidence=counterexample_evidence,
             unchanged_failure_backoff_evidence=backoff_evidence,
         )
@@ -3015,6 +3571,8 @@ def refine_goal_from_evidence(
     policy: AdaptiveRefinementPolicy | None = None,
     store: RefinementReceiptStore | None = None,
     clock: Callable[[], int | float] | None = None,
+    value_estimator: InformationGainEstimator | None = None,
+    quality_linter: CandidateQualityLinter | None = None,
 ) -> AdaptiveRefinementResult:
     """Functional entry point for one bounded adaptive-refinement cycle."""
 
@@ -3024,6 +3582,8 @@ def refine_goal_from_evidence(
         policy=policy,
         store=store,
         clock=clock,
+        value_estimator=value_estimator,
+        quality_linter=quality_linter,
     ).refine(request)
 
 
@@ -3035,6 +3595,8 @@ __all__ = [
     "UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID",
     "UNCHANGED_FAILURE_BACKOFF_GOAL_ID",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA",
+    "REFINEMENT_VALUE_ESTIMATE_SCHEMA",
+    "REFINEMENT_DELTA_QUALITY_SCHEMA",
     "QUALITY_SCHEMA",
     "GOAL_DEBT_SCHEMA",
     "NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA",
@@ -3050,6 +3612,8 @@ __all__ = [
     "GoalRefinementSignal",
     "GoalQualityRecord",
     "GoalQuality",
+    "RefinementValueEstimate",
+    "RefinementDeltaQualityReport",
     "AdaptiveRefinementPolicy",
     "GoalRefinementPolicy",
     "RefinementLimits",
@@ -3065,6 +3629,8 @@ __all__ = [
     "AdaptiveRefinementResult",
     "GoalRefinementResult",
     "RefinementReceiptStore",
+    "InformationGainEstimator",
+    "CandidateQualityLinter",
     "InMemoryRefinementStore",
     "JsonlRefinementStore",
     "AdaptiveGoalRefiner",

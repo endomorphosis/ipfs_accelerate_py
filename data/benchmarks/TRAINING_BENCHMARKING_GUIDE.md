@@ -404,5 +404,5 @@ The Training Benchmarking System provides a comprehensive framework for evaluati
 
 For more information, see related documentation:
 - [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md)
-- [Hardware Selection Guide](HARDWARE_SELECTION_GUIDE.md)
-- [Model Compression Guide](MODEL_COMPRESSION_GUIDE.md)
+- [Hardware Selection Guide](../../test/HARDWARE_SELECTION_GUIDE.md)
+- [Model Compression Guide](../../test/MODEL_COMPRESSION_GUIDE.md)

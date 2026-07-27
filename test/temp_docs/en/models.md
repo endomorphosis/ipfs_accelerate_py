@@ -38,7 +38,7 @@ All models have a `configuration.py` file with specific attributes like the numb
 <!-- insert diagram of model and configuration -->
 
 > [!TIP]
-> An *architecture* refers to the model's skeleton and a *checkpoint* refers to the model's weights for a given architecture. For example, [BERT](./model_doc/bert) is an architecture while [google-bert/bert-base-uncased](https://huggingface.co/google-bert/bert-base-uncased) is a checkpoint. You'll see the term *model* used interchangeably with architecture and checkpoint.
+> An *architecture* refers to the model's skeleton and a *checkpoint* refers to the model's weights for a given architecture. For example, [BERT](./model_doc/bert.md) is an architecture while [google-bert/bert-base-uncased](https://huggingface.co/google-bert/bert-base-uncased) is a checkpoint. You'll see the term *model* used interchangeably with architecture and checkpoint.
 
 There are two general types of models you can load:
 
@@ -87,14 +87,14 @@ model = FlaxMistralForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
 
 To get a pretrained model, you need to load the weights into the model. This is done by calling [`~PreTrainedModel.from_pretrained`] which accepts weights from the Hugging Face Hub or a local directory.
 
-There are two model classes, the [AutoModel](./model_doc/auto) class and a model-specific class.
+There are two model classes, the [AutoModel](./model_doc/auto.md) class and a model-specific class.
 
 <hfoptions id="model-classes">
 <hfoption id="AutoModel">
 
 <Youtube id="AhChOFRegn4"/>
 
-The [AutoModel](./model_doc/auto) class is a convenient way to load an architecture without needing to know the exact model class name because there are many models available. It automatically selects the correct model class based on the configuration file. You only need to know the task and checkpoint you want to use.
+The [AutoModel](./model_doc/auto.md) class is a convenient way to load an architecture without needing to know the exact model class name because there are many models available. It automatically selects the correct model class based on the configuration file. You only need to know the task and checkpoint you want to use.
 
 Easily switch between models or tasks, as long as the architecture is supported for a given task.
 
@@ -123,7 +123,7 @@ model = AutoModelForCausalLM.from_pretrained("google/gemma-7b")
 </hfoption>
 <hfoption id="model-specific class">
 
-The [AutoModel](./model_doc/auto) class builds on top of model-specific classes. All model classes that support a specific task are mapped to their respective `AutoModelFor` task class.
+The [AutoModel](./model_doc/auto.md) class builds on top of model-specific classes. All model classes that support a specific task are mapped to their respective `AutoModelFor` task class.
 
 If you already know which model class you want to use, then you could use its model-specific class directly.
 
@@ -322,4 +322,4 @@ model = AutoModelForImageClassification.from_pretrained(
 )
 ```
 
-Refer to the [Customize models](./custom_models) guide for more information.
+Refer to the [Customize models](./custom_models.md) guide for more information.

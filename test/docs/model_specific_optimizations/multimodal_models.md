@@ -447,7 +447,7 @@ For web-based multimodal processing:
 
 ## Related Documentation
 
-- [Parallel Loading Optimization Guide](../WEB_PLATFORM_OPTIMIZATION_GUIDE.md)
-- [WebGPU Shader Precompilation Guide](../WEB_PLATFORM_SHADER_PRECOMPILATION.md)
-- [Qualcomm Implementation Guide](../QUALCOMM_IMPLEMENTATION_GUIDE.md)
-- [Hardware Selection Guide](../HARDWARE_SELECTION_GUIDE.md)
+- [Parallel Loading Optimization Guide](../../WEB_PLATFORM_OPTIMIZATION_GUIDE.md)
+- [WebGPU Shader Precompilation Guide](../../WEB_PLATFORM_SHADER_PRECOMPILATION.md)
+- [Qualcomm Integration Guide](../../QUALCOMM_INTEGRATION_GUIDE.md)
+- [Hardware Selection Guide](../../HARDWARE_SELECTION_GUIDE.md)

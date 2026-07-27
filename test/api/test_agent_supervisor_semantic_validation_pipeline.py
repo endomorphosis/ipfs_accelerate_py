@@ -326,6 +326,7 @@ def _g100_completion_packet(tmp_path: Path) -> tuple[
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "binding": analyzer_binding,
     }
     quorum = {
@@ -341,8 +342,20 @@ def _g100_completion_packet(tmp_path: Path) -> tuple[
                 "receipt_cid": "scan:asi-091:implementation",
                 "binding": analyzer_binding,
                 "scan_mode": "exhaustive",
+                "analyzer_version": (
+                    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION
+                    + "/implementation"
+                ),
+                "passed": True,
+                "analyzer_health": {
+                    "status": "healthy",
+                    "healthy": True,
+                },
+                "exhaustive": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
                 "finished_at": now.isoformat(),
             },
             {
@@ -351,8 +364,20 @@ def _g100_completion_packet(tmp_path: Path) -> tuple[
                 "receipt_cid": "scan:asi-091:replay",
                 "binding": analyzer_binding,
                 "scan_mode": "exhaustive",
+                "analyzer_version": (
+                    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION
+                    + "/replay"
+                ),
+                "passed": True,
+                "analyzer_health": {
+                    "status": "healthy",
+                    "healthy": True,
+                },
+                "exhaustive": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -453,10 +478,11 @@ def test_g100_completion_rejects_detached_unsafe_or_nonindependent_proof(
     ).isoformat()
     cases.append({**values, "exhaustion_quorum": stale_quorum})
     non_exhaustive_quorum = deepcopy(values["exhaustion_quorum"])
-    non_exhaustive_quorum["members"][1]["scan_mode"] = "audit"
+    non_exhaustive_quorum["members"][1]["exhaustive"] = False
     cases.append({**values, "exhaustion_quorum": non_exhaustive_quorum})
     implicit_health_quorum = deepcopy(values["exhaustion_quorum"])
     del implicit_health_quorum["members"][1]["healthy"]
+    del implicit_health_quorum["members"][1]["analyzer_health"]
     cases.append({**values, "exhaustion_quorum": implicit_health_quorum})
     typed_coverage = values["coverage"]
     assert isinstance(typed_coverage, GoalCoverageMap)
@@ -664,6 +690,7 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
     }
     binding = {
@@ -690,8 +717,20 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
                 "receipt_cid": "scan:asi-075:implementation",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "analyzer_version": (
+                    TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION
+                    + "/implementation"
+                ),
+                "passed": True,
+                "analyzer_health": {
+                    "status": "healthy",
+                    "healthy": True,
+                },
+                "exhaustive": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
                 "finished_at": now.isoformat(),
             },
             {
@@ -700,8 +739,20 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
                 "receipt_cid": "scan:asi-075:replay",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "analyzer_version": (
+                    TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION
+                    + "/replay"
+                ),
+                "passed": True,
+                "analyzer_health": {
+                    "status": "healthy",
+                    "healthy": True,
+                },
+                "exhaustive": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -809,15 +860,42 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
             ),
         ),
     )
+    typed_quorum_payload = typed_quorum.to_dict()
+    typed_artifact_binding = {
+        "objective_id": TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        "validation_policy_id": dag.policy_id,
+        "operational_receipt_id": dag.receipt_id,
+    }
+    typed_quorum_payload["binding"].update(typed_artifact_binding)
+    for index, member in enumerate(typed_quorum_payload["members"]):
+        member["binding"].update(typed_artifact_binding)
+        member.update(
+            {
+                "analyzer_version": (
+                    TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION
+                    + ("/implementation" if index == 0 else "/replay")
+                ),
+                "passed": True,
+                "analyzer_health": {
+                    "status": "healthy",
+                    "healthy": True,
+                },
+                "exhaustive": True,
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
+            }
+        )
     canonical = dag.evaluate_objective_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
         **{
             **values,
             "coverage": canonical_coverage,
-            "exhaustion_quorum": typed_quorum,
+            "exhaustion_quorum": typed_quorum_payload,
         },
     )
-    assert canonical.state is GoalState.VERIFIED_COMPLETE
+    assert canonical.state is GoalState.VERIFIED_COMPLETE, canonical.reason_codes
     assert canonical.verified
 
     unbound = tuple(
@@ -1391,8 +1469,20 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
             "receipt_cid": "scan:asi-089:implementation-validation",
             "binding": dict(binding),
             "scan_mode": "exhaustive",
+            "analyzer_version": (
+                STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION
+                + "/implementation"
+            ),
+            "passed": True,
+            "analyzer_health": {
+                "status": "healthy",
+                "healthy": True,
+            },
+            "exhaustive": True,
             "healthy": True,
             "safe_for_completion_reasoning": True,
+            "conclusive": True,
+            "contradicted": False,
             "finished_at": (now - timedelta(minutes=4)).isoformat(),
         },
         {
@@ -1401,8 +1491,20 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
             "receipt_cid": "scan:asi-089:independent-replay",
             "binding": dict(binding),
             "scan_mode": "exhaustive",
+            "analyzer_version": (
+                STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION
+                + "/replay"
+            ),
+            "passed": True,
+            "analyzer_health": {
+                "status": "healthy",
+                "healthy": True,
+            },
+            "exhaustive": True,
             "healthy": True,
             "safe_for_completion_reasoning": True,
+            "conclusive": True,
+            "contradicted": False,
             "finished_at": (now - timedelta(minutes=3)).isoformat(),
         },
     ]
@@ -1424,6 +1526,7 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
             "status": "healthy",
             "healthy": True,
             "safe_for_completion_reasoning": True,
+            "exhaustive": True,
             "binding": dict(binding),
         },
         "exhaustion_quorum": {
@@ -1803,6 +1906,7 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": (
             PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
         ),
@@ -1836,8 +1940,20 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
                 "receipt_cid": "scan:asi-070:implementation",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "analyzer_version": (
+                    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+                    + "/implementation"
+                ),
+                "passed": True,
+                "analyzer_health": {
+                    "status": "healthy",
+                    "healthy": True,
+                },
+                "exhaustive": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
                 "finished_at": now.isoformat(),
             },
             {
@@ -1846,8 +1962,20 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
                 "receipt_cid": "scan:asi-070:replay",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "analyzer_version": (
+                    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+                    + "/replay"
+                ),
+                "passed": True,
+                "analyzer_health": {
+                    "status": "healthy",
+                    "healthy": True,
+                },
+                "exhaustive": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "conclusive": True,
+                "contradicted": False,
                 "finished_at": now.isoformat(),
             },
         ],

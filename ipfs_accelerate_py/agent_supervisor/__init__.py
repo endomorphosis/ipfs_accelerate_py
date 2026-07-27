@@ -1,5 +1,7 @@
 """Autonomous agent supervisor helpers for objective-driven todo execution."""
 
+from types import MappingProxyType as _MappingProxyType
+
 # These two modules define the reviewed, transport-neutral public control API.
 # They are deliberately provider-free: importing the package exposes the same
 # contracts and service used by Python, CLI, and MCP without loading optional
@@ -498,6 +500,9 @@ from .code_proof_obligations import (
     validate_code_proof_receipt_bindings,
 )
 from .proof_scope_index import (
+    ArtifactActivityState,
+    CrossDomainArtifact,
+    CrossDomainArtifactKind,
     DEFAULT_MAX_INVALIDATION_REASON_CHAIN,
     PROOF_INVALIDATION_EVENT_SCHEMA,
     PROOF_INVALIDATION_EVENT_SCHEMA_VERSION,
@@ -520,7 +525,9 @@ from .proof_scope_index import (
     ProofScopeIndexStats,
     ProofScopeKey,
     ScopeDependents,
+    build_cross_domain_proof_scope_index,
     build_proof_scope_index,
+    invalidate_cross_domain_proof_scope,
     invalidate_proof_evidence,
     invalidate_proof_scope_inputs,
     rebuild_proof_scope_index,
@@ -899,6 +906,7 @@ from .todo_vector_index import (
 )
 from .plan_evaluator import (
     ANALYSIS_PROPOSAL_JSON_SCHEMA,
+    AND_OR_PLAN_EVALUATOR_VERSION,
     AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID,
     EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION,
     OBJECTIVE_WORK_EVALUATOR_VERSION,
@@ -906,6 +914,9 @@ from .plan_evaluator import (
     PLAN_EVALUATOR_VERSION,
     AnalysisProposal,
     AnalysisProposalEvaluation,
+    AndOrPlanBranch,
+    AndOrPlanEvaluation,
+    EvaluatedAndOrPlanBranch,
     EvaluatedEvidenceAwarePlan,
     EvaluatedObjectiveWorkProposal,
     EvaluatedPlanBranch,
@@ -920,13 +931,17 @@ from .plan_evaluator import (
     PlanBranch,
     PlanBranchValidationError,
     PlanEvaluation,
+    PlanSearchHardConstraint,
+    PlanSearchHardFailure,
     RejectedAnalysisProposal,
     RejectedObjectiveWorkProposal,
     evaluate_analysis_proposals,
+    evaluate_and_or_plan_branches,
     evaluate_evidence_aware_plans,
     evaluate_objective_work_proposals,
     evaluate_plan_branches,
     validate_evidence_aware_plan_evaluation,
+    validate_and_or_plan_evaluation,
 )
 from .task_proposal_router import (
     ADAPTIVE_CANDIDATE_ROUTER_SCHEMA,
@@ -1043,6 +1058,11 @@ __all__ = [
     "ADAPTIVE_REFINEMENT_RECEIPT_VERSION",
     "ADAPTIVE_PLAN_SELECTION_SCHEMA",
     "ADAPTIVE_PLANNER_VERSION",
+    "AND_OR_GRAPH_SCHEMA",
+    "AND_OR_PLAN_EVALUATOR_VERSION",
+    "AND_OR_PLANNER_VERSION",
+    "AND_OR_SEARCH_RECEIPT_SCHEMA",
+    "AND_OR_SEARCH_REQUIREMENT_ID",
     "AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA",
     "AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID",
     "AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID",
@@ -1071,6 +1091,17 @@ __all__ = [
     "AdaptivePlanningRunStore",
     "AdaptivePlanner",
     "AdaptivePlannerValidationError",
+    "AndOrNodeKind",
+    "AndOrPlanAlternative",
+    "AndOrPlanBranch",
+    "AndOrPlanEvaluation",
+    "AndOrPlanGraph",
+    "AndOrPlanNode",
+    "AndOrPlannerBenchmark",
+    "AndOrPlannerPromotionGate",
+    "AndOrProducerKind",
+    "AndOrSearchBounds",
+    "AndOrSearchReceipt",
     "AdaptiveRefinementCandidate",
     "AdaptiveRefinementPolicy",
     "AdaptiveRefinementPersistenceError",
@@ -1084,6 +1115,7 @@ __all__ = [
     "CandidateProviderOutcome",
     "CandidateProviderStatus",
     "EvaluatedEvidenceAwarePlan",
+    "EvaluatedAndOrPlanBranch",
     "EvidenceAwarePlanCandidate",
     "EvidenceAwarePlanEvaluation",
     "EvidenceAwarePlanPolicy",
@@ -1110,6 +1142,8 @@ __all__ = [
     "UnchangedFailureBackoffEvidence",
     "PlanDimensionAssessment",
     "PlanEvaluationDimension",
+    "PlanSearchHardConstraint",
+    "PlanSearchHardFailure",
     "PlanQualityCostMetrics",
     "RefinementDecision",
     "RefinementLimits",
@@ -1120,15 +1154,25 @@ __all__ = [
     "ResponsiveReplanDecision",
     "RESPONSIVE_REPLAN_SIGNAL_KINDS",
     "evaluate_evidence_aware_plans",
+    "evaluate_and_or_plan_branches",
+    "evaluate_and_or_plan_promotion",
+    "evaluate_and_or_planner_promotion",
     "validate_evidence_aware_plan_evaluation",
+    "validate_and_or_plan_evaluation",
     "adaptive_plan_candidate_snapshot_id",
     "deterministic_evidence_aware_candidate",
     "deterministic_hard_gate_receipts",
+    "compile_and_or_plan_graph",
+    "compile_typed_goal",
+    "compile_typed_goal_to_and_or_graph",
     "plan_adaptively",
+    "plan_typed_goal",
     "refine_goal_from_evidence",
     "replan_if_changed",
     "replan_for_signal",
     "select_adaptive_plan",
+    "search_and_or_plans",
+    "search_typed_goal_plans",
     "route_adaptive_plan_candidates",
     "ATTESTATION_PROTOCOL_MODEL",
     "ATTESTATION_PROTOCOL_QUERIES",
@@ -1821,6 +1865,7 @@ __all__ = [
     "CANONICAL_ADAPTIVE_STAGES",
     "DEFAULT_RESOURCE_CLASSES",
     "FormalVerificationResourceScheduler",
+    "FairWorkStealDecision",
     "GoalRuntimeResourceScheduler",
     "HostResourceSnapshot",
     "LaneResourceRequirements",
@@ -1845,6 +1890,7 @@ __all__ = [
     "ScheduledProofWorkRequest",
     "ScheduledProofWorkResult",
     "SupervisorResourceLeaseBudget",
+    "TaskGenerationAdmission",
     "STAGE_RESOURCE_PROFILES",
     "StageResourceProfile",
     "adaptive_stage_profile",
@@ -1936,6 +1982,9 @@ __all__ = [
     "IndexedReceipt",
     "IndexedScopeRecord",
     "InvalidationRecord",
+    "ArtifactActivityState",
+    "CrossDomainArtifact",
+    "CrossDomainArtifactKind",
     "ProofCriterionBinding",
     "ProofInputKind",
     "ProofInvalidationEdge",
@@ -1949,7 +1998,9 @@ __all__ = [
     "ProofScopeIndexStats",
     "ProofScopeKey",
     "ScopeDependents",
+    "build_cross_domain_proof_scope_index",
     "build_proof_scope_index",
+    "invalidate_cross_domain_proof_scope",
     "invalidate_proof_evidence",
     "invalidate_proof_scope_inputs",
     "rebuild_proof_scope_index",
@@ -2402,6 +2453,39 @@ __all__ = [
     "read_evidence_graph_projection",
     "write_code_evidence_graph_artifact",
     "write_evidence_graph_artifact",
+    "SEMANTIC_DEPENDENCY_EDGE_SCHEMA",
+    "SEMANTIC_DEPENDENCY_GRAPH_SCHEMA",
+    "SEMANTIC_DEPENDENCY_NODE_SCHEMA",
+    "MANDATORY_CLOSURE_SCHEMA",
+    "ClosureBounds",
+    "CrossRootEdgeError",
+    "DependencyEdge",
+    "DependencyEdgeKind",
+    "DependencyGraph",
+    "DependencyNode",
+    "DependencyNodeKind",
+    "MandatoryClosure",
+    "MandatoryDependencyClosure",
+    "SemanticAuthority",
+    "SemanticDependencyEdge",
+    "SemanticDependencyGraph",
+    "SemanticDependencyNode",
+    "SemanticEdge",
+    "SemanticEdgeKind",
+    "SemanticGraphBoundsError",
+    "SemanticGraphError",
+    "SemanticNode",
+    "SemanticNodeKind",
+    "SemanticProvenance",
+    "SemanticTrust",
+    "UnsafeDependencyCycleError",
+    "build_semantic_dependency_graph",
+    "canonical_semantic_json",
+    "compute_mandatory_closure",
+    "nodes_and_edges_from_code_evidence",
+    "nodes_and_edges_from_normalized_ir",
+    "nodes_and_edges_from_program_behavior",
+    "nodes_from_normalized_ir",
     "ContextBudget",
     "ContextCapsule",
     "ContextEntry",
@@ -2524,6 +2608,247 @@ _LAZY_STABLE_EXPORTS = {
 for _stable_export_names in _LAZY_STABLE_EXPORTS.values():
     __all__.extend(_stable_export_names)
 del _stable_export_names
+
+# Generation 2 is published as a deliberately reviewed subset instead of
+# re-exporting every implementation detail from its modules.  The owner map is
+# static so package import, manifest inspection, and capability discovery do
+# not import the self-evaluation, refill, benchmark, or rollout implementations.
+# A caller can also verify that a root object is the exact object owned by the
+# named module; transports must not wrap or recreate these contracts.
+AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION = 2
+V2_LAZY_PUBLIC_API_REQUIREMENT_ID = (
+    "309385021661773043261965122618904035729"
+)
+_AGENT_SUPERVISOR_V2_EXPORT_GROUPS = (
+    (
+        f"{__name__}.control_contracts",
+        (
+            "CapabilityReport",
+            "ControlDiscoveryManifest",
+            "ControlSurface",
+            "OPERATION_CATALOG_V2",
+            "Operation",
+            "OperationRequest",
+            "OperationResult",
+            "OperationStatus",
+            "get_operation_catalog",
+        ),
+    ),
+    (
+        f"{__name__}.control_plane",
+        (
+            "SupervisorClient",
+            "SupervisorControlService",
+            "control_service_publication",
+        ),
+    ),
+    (
+        f"{__name__}.supervisor_v2_contracts",
+        (
+            "ARTIFACT_BOUNDS_SCHEMA",
+            "DISAGREEMENT_RECORD_SCHEMA",
+            "EVIDENCE_REFERENCE_SCHEMA",
+            "MAX_PAYLOAD_DEPTH",
+            "MAX_PROJECTION_BYTES",
+            "MAX_RECEIPT_BYTES",
+            "MAX_REFILL_GOALS",
+            "MAX_REFILL_TASKS",
+            "NON_COMPENSABLE_GATES",
+            "PROMOTION_VECTOR_SCHEMA",
+            "REFILL_EPOCH_SCHEMA",
+            "RESULT_BINDING_SCHEMA",
+            "SEMANTIC_DEPENDENCY_IDENTITY_SCHEMA",
+            "STAGE_EVENT_SCHEMA",
+            "STAGE_RECEIPT_SCHEMA",
+            "SUPERVISOR_V2_CONTRACT_VERSION",
+            "SUPERVISOR_V2_POLICY_SCHEMA",
+            "TYPED_FAILURE_SCHEMA",
+            "UNCERTAINTY_RECORD_SCHEMA",
+            "V2_CONTRACT_INTEGRITY_REQUIREMENT_ID",
+            "ArtifactBounds",
+            "AuthorityClass",
+            "AuthorityClassError",
+            "BindingIdentity",
+            "ContractBoundsError",
+            "DetachedReferenceError",
+            "DisagreementRecord",
+            "DisagreementResolution",
+            "EvidenceFreshness",
+            "EvidenceRef",
+            "EvidenceReference",
+            "FailureCode",
+            "FailureReceipt",
+            "ForgedSummaryError",
+            "PromotionDecision",
+            "PromotionGateError",
+            "PromotionGateVector",
+            "PromotionVector",
+            "RefillEpoch",
+            "RefillEpochStatus",
+            "ResultBinding",
+            "RetryDisposition",
+            "SemanticDependency",
+            "SemanticDependencyIdentity",
+            "StageEvent",
+            "StageEventKind",
+            "StageReceipt",
+            "SupervisorV2ContractError",
+            "SupervisorV2Policy",
+            "TargetKind",
+            "TypedFailure",
+            "UncertaintyDisposition",
+            "UncertaintyRecord",
+            "UnknownFieldError",
+            "V2Policy",
+            "canonical_v2_json_bytes",
+            "semantic_dependency_set_id",
+        ),
+    ),
+    (
+        f"{__name__}.self_improvement_v2",
+        (
+            "ACTIONABLE_V2_RESIDUAL_KINDS",
+            "ANTI_GAMING_CHECKS",
+            "MAX_V2_ABLATIONS",
+            "MAX_V2_COMPONENT_RECEIPT_BYTES",
+            "MAX_V2_SELF_EVALUATION_BYTES",
+            "MAX_V2_SUCCESSOR_GOALS",
+            "MAX_V2_SUCCESSOR_REJECTIONS",
+            "MAX_V2_SUCCESSOR_RESIDUALS",
+            "MAX_V2_SUCCESSOR_TASKS",
+            "REQUIRED_V2_OBJECTIVE_DIMENSIONS",
+            "REWARD_RESISTANT_EVALUATION_GOAL_ID",
+            "REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID",
+            "TYPED_SUCCESSOR_REQUIREMENT_ID",
+            "V2AblationReceipt",
+            "V2AblationResult",
+            "V2CacheState",
+            "V2ComponentReceipt",
+            "V2EvaluationDecision",
+            "V2GoalTaskMapping",
+            "V2MetricDirection",
+            "V2MetricSample",
+            "V2ObjectiveDimension",
+            "V2ParetoComponent",
+            "V2ProducerReceipt",
+            "V2RefillEpochBinding",
+            "V2RefillEpochPreview",
+            "V2RefillEpochResult",
+            "V2RefillEpochStatus",
+            "V2RefillObservation",
+            "V2ResidualKind",
+            "V2ResidualSignal",
+            "V2RewardResistantEvaluator",
+            "V2SelfEvaluationDimension",
+            "V2SelfEvaluationError",
+            "V2SelfEvaluationReport",
+            "V2SelfImprovementEvaluator",
+            "V2SuccessorAdmission",
+            "V2SuccessorCandidate",
+            "V2SuccessorGenerationPolicy",
+            "V2SuccessorGenerationResult",
+            "V2SuccessorRejection",
+            "V2SuccessorRejectionReason",
+            "V2_COMPONENT_RECEIPT_SCHEMA",
+            "V2_REFILL_COOLDOWN_SECONDS",
+            "V2_REFILL_REQUIRED_EXHAUSTION_RECEIPTS",
+            "V2_SELF_EVALUATION_CONTRACT_VERSION",
+            "V2_SELF_EVALUATION_POLICY_ID",
+            "V2_SELF_EVALUATION_SCHEMA",
+            "build_frozen_v2_ablation_receipts",
+            "build_frozen_v2_producer_receipts",
+            "build_frozen_v2_self_evaluation_inputs",
+            "build_reward_resistant_evaluation_report",
+            "evaluate_v2_self_improvement",
+            "generate_v2_successor_goals",
+            "preview_v2_refill_epoch",
+            "replay_v2_self_evaluation",
+            "run_v2_refill_epoch",
+            "verify_v2_self_evaluation_report",
+        ),
+    ),
+    (
+        f"{__name__}.self_improvement_v2_rollout",
+        (
+            "Generation2RolloutMode",
+            "Generation2RolloutReport",
+            "MAX_V2_ROLLOUT_REASON_CODES",
+            "MAX_V2_ROLLOUT_REPORT_BYTES",
+            "PairedV2RolloutPolicy",
+            "PairedV2RolloutReport",
+            "SelfImprovementV2RolloutMode",
+            "V2RolloutBinding",
+            "V2RolloutError",
+            "V2RolloutEvaluation",
+            "V2RolloutEvaluationResult",
+            "V2RolloutMode",
+            "V2RolloutPolicy",
+            "V2RolloutReport",
+            "V2_ROLLOUT_BEHAVIOR_ID",
+            "V2_ROLLOUT_BINDING_SCHEMA",
+            "V2_ROLLOUT_CONTRACT_VERSION",
+            "V2_ROLLOUT_EVALUATION_SCHEMA",
+            "V2_ROLLOUT_METRIC_DIRECTIONS",
+            "V2_ROLLOUT_POLICY_SCHEMA",
+            "V2_ROLLOUT_REPORT_SCHEMA",
+            "evaluate_generation2_rollout",
+            "evaluate_paired_v2_self_improvement_rollout",
+            "evaluate_v2_rollout",
+            "evaluate_v2_self_improvement_rollout",
+            "recompute_v2_rollout_evaluation",
+            "replay_v2_rollout",
+            "verify_v2_rollout_report",
+        ),
+    ),
+    (
+        __name__,
+        (
+            "agent_supervisor_v2_control_surface_publication",
+            "agent_supervisor_v2_discovery_manifest",
+        ),
+    ),
+)
+_agent_supervisor_v2_export_pairs = tuple(
+    (name, module_name)
+    for module_name, names in _AGENT_SUPERVISOR_V2_EXPORT_GROUPS
+    for name in names
+)
+if len(_agent_supervisor_v2_export_pairs) != len(
+    {name for name, _module_name in _agent_supervisor_v2_export_pairs}
+):
+    raise RuntimeError("generation-2 stable export names must be unique")
+AGENT_SUPERVISOR_V2_EXPORT_MODULES = _MappingProxyType(
+    dict(_agent_supervisor_v2_export_pairs)
+)
+AGENT_SUPERVISOR_V2_STABLE_EXPORTS = tuple(
+    AGENT_SUPERVISOR_V2_EXPORT_MODULES
+)
+# Concise compatibility spelling for clients which negotiated generation 2.
+V2_STABLE_EXPORTS = AGENT_SUPERVISOR_V2_STABLE_EXPORTS
+
+
+def agent_supervisor_v2_discovery_manifest():
+    """Return static Python discovery for the canonical v2 control catalog."""
+
+    return ControlDiscoveryManifest(surface=ControlSurface.PYTHON)
+
+
+# Preserve exact function identity with the transport-neutral publication
+# entry point.  Adapters must call the same catalog validator.
+agent_supervisor_v2_control_surface_publication = control_service_publication
+
+__all__.extend(
+    name
+    for name in (
+        "AGENT_SUPERVISOR_V2_EXPORT_MODULES",
+        "AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION",
+        "AGENT_SUPERVISOR_V2_STABLE_EXPORTS",
+        "V2_LAZY_PUBLIC_API_REQUIREMENT_ID",
+        "V2_STABLE_EXPORTS",
+        *AGENT_SUPERVISOR_V2_STABLE_EXPORTS,
+    )
+    if name not in __all__
+)
 
 
 # Provider-backed planning modules are intentionally absent from the package's
@@ -2735,6 +3060,10 @@ _LAZY_PROVIDER_EXPORTS = {
     ),
     "adaptive_planner": frozenset(
         {
+            "AND_OR_GRAPH_SCHEMA",
+            "AND_OR_PLANNER_VERSION",
+            "AND_OR_SEARCH_RECEIPT_SCHEMA",
+            "AND_OR_SEARCH_REQUIREMENT_ID",
             "ADAPTIVE_PLANNING_RUN_SCHEMA",
             "ADAPTIVE_PLAN_SELECTION_SCHEMA",
             "ADAPTIVE_PLANNER_VERSION",
@@ -2747,6 +3076,15 @@ _LAZY_PROVIDER_EXPORTS = {
             "AdaptivePlanningRunStore",
             "AdaptivePlanner",
             "AdaptivePlannerValidationError",
+            "AndOrNodeKind",
+            "AndOrPlanAlternative",
+            "AndOrPlanGraph",
+            "AndOrPlanNode",
+            "AndOrPlannerBenchmark",
+            "AndOrPlannerPromotionGate",
+            "AndOrProducerKind",
+            "AndOrSearchBounds",
+            "AndOrSearchReceipt",
             "AuthorityNonCompensationEvidence",
             "FrozenPlanningGoal",
             "GateProducerKind",
@@ -2754,8 +3092,16 @@ _LAZY_PROVIDER_EXPORTS = {
             "HardGateEvaluator",
             "HardPlanConstraint",
             "adaptive_plan_candidate_snapshot_id",
+            "compile_and_or_plan_graph",
+            "compile_typed_goal",
+            "compile_typed_goal_to_and_or_graph",
             "deterministic_hard_gate_receipts",
+            "evaluate_and_or_plan_promotion",
+            "evaluate_and_or_planner_promotion",
             "plan_adaptively",
+            "plan_typed_goal",
+            "search_and_or_plans",
+            "search_typed_goal_plans",
             "select_adaptive_plan",
         }
     ),
@@ -2770,6 +3116,14 @@ _LAZY_PROVIDER_EXPORT_ALIASES = {
 
 
 def __getattr__(name: str):
+    v2_owner = AGENT_SUPERVISOR_V2_EXPORT_MODULES.get(name)
+    if v2_owner is not None:
+        from importlib import import_module
+
+        module = import_module(v2_owner)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
     for module_name, export_names in _LAZY_STABLE_EXPORTS.items():
         if name in export_names:
             from importlib import import_module
@@ -2975,6 +3329,44 @@ def __getattr__(name: str):
 
         return getattr(code_evidence_graph, name)
     if name in {
+        "SEMANTIC_DEPENDENCY_EDGE_SCHEMA",
+        "SEMANTIC_DEPENDENCY_GRAPH_SCHEMA",
+        "SEMANTIC_DEPENDENCY_NODE_SCHEMA",
+        "MANDATORY_CLOSURE_SCHEMA",
+        "ClosureBounds",
+        "CrossRootEdgeError",
+        "DependencyEdge",
+        "DependencyEdgeKind",
+        "DependencyGraph",
+        "DependencyNode",
+        "DependencyNodeKind",
+        "MandatoryClosure",
+        "MandatoryDependencyClosure",
+        "SemanticAuthority",
+        "SemanticDependencyEdge",
+        "SemanticDependencyGraph",
+        "SemanticDependencyNode",
+        "SemanticEdge",
+        "SemanticEdgeKind",
+        "SemanticGraphBoundsError",
+        "SemanticGraphError",
+        "SemanticNode",
+        "SemanticNodeKind",
+        "SemanticProvenance",
+        "SemanticTrust",
+        "UnsafeDependencyCycleError",
+        "build_semantic_dependency_graph",
+        "canonical_semantic_json",
+        "compute_mandatory_closure",
+        "nodes_and_edges_from_code_evidence",
+        "nodes_and_edges_from_normalized_ir",
+        "nodes_and_edges_from_program_behavior",
+        "nodes_from_normalized_ir",
+    }:
+        from . import semantic_dependency_graph
+
+        return getattr(semantic_dependency_graph, name)
+    if name in {
         "ContextBudget",
         "ContextCapsule",
         "ContextEntry",
@@ -3082,6 +3474,7 @@ def __getattr__(name: str):
         "CANONICAL_ADAPTIVE_STAGES",
         "DEFAULT_RESOURCE_CLASSES",
         "FormalVerificationResourceScheduler",
+        "FairWorkStealDecision",
         "GoalRuntimeResourceScheduler",
         "HostResourceSnapshot",
         "LaneResourceRequirements",
@@ -3106,6 +3499,7 @@ def __getattr__(name: str):
         "ScheduledProofWorkRequest",
         "ScheduledProofWorkResult",
         "SupervisorResourceLeaseBudget",
+        "TaskGenerationAdmission",
         "STAGE_RESOURCE_PROFILES",
         "StageResourceProfile",
         "adaptive_stage_profile",

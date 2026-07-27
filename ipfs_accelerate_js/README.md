@@ -107,7 +107,7 @@ For detailed documentation, see:
 - [API Documentation](docs/API_DOCUMENTATION.md)
 - [TypeScript Implementation](docs/TYPESCRIPT_IMPLEMENTATION_SUMMARY.md)
 - [Developer Guide](docs/DEVELOPER_GUIDE.md)
-- [Model Support](docs/MODEL_SUPPORT.md)
+- [Model Support](docs/IMPLEMENTATION_STATUS.md)
 - [WebGPU Optimization Guide](test/performance/webgpu_optimizer/OPTIMIZER_TESTING_GUIDE.md)
 
 ## Browser Support

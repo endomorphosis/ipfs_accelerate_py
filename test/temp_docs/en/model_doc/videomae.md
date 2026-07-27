@@ -24,7 +24,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The VideoMAE model was proposed in [VideoMAE: Masked Autoencoders are Data-Efficient Learners for Self-Supervised Video Pre-Training](https://arxiv.org/abs/2203.12602) by Zhan Tong, Yibing Song, Jue Wang, Limin Wang.
-VideoMAE extends masked auto encoders ([MAE](vit_mae)) to video, claiming state-of-the-art performance on several video classification benchmarks.
+VideoMAE extends masked auto encoders ([MAE](vit_mae.md)) to video, claiming state-of-the-art performance on several video classification benchmarks.
 
 The abstract from the paper is the following:
 
@@ -75,7 +75,7 @@ review it! The resource should ideally demonstrate something new instead of dupl
 **Video classification**
 - [A notebook](https://github.com/huggingface/notebooks/blob/main/examples/video_classification.ipynb) that shows how
 to fine-tune a VideoMAE model on a custom dataset.
-- [Video classification task guide](../tasks/video_classification)
+- [Video classification task guide](../tasks/video_classification.md)
 - [A 🤗 Space](https://huggingface.co/spaces/sayakpaul/video-classification-ucf101-subset) showing how to perform inference with a video classification model.
 
 ## VideoMAEConfig

@@ -2994,3 +2994,468 @@ def evaluate_objective_work_proposals(
         admitted_cost=float(admitted_cost),
         admitted_tokens=admitted_tokens,
     )
+
+
+# ---------------------------------------------------------------------------
+# Bounded AND/OR search evaluation (ASI-104)
+# ---------------------------------------------------------------------------
+
+AND_OR_PLAN_EVALUATOR_VERSION = "and-or-plan-evaluator-v1"
+
+
+class PlanSearchHardConstraint(str, Enum):
+    """Closed set of non-compensable constraints for an AND/OR branch."""
+
+    AUTHORITY = "authority"
+    SCOPE = "scope"
+    DEPENDENCY = "dependency"
+    RESOURCE = "resource"
+    FRESHNESS = "freshness"
+    VALIDATION = "validation"
+    PROOF = "proof"
+
+
+@dataclass(frozen=True)
+class PlanSearchHardFailure:
+    """A typed hard-gate failure retained without provider reasoning text."""
+
+    constraint: PlanSearchHardConstraint
+    reason_codes: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "constraint", PlanSearchHardConstraint(self.constraint)
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            tuple(sorted(set(_string_tuple(self.reason_codes, "reason_codes")))),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "constraint": self.constraint.value,
+            "reason_codes": list(self.reason_codes),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanSearchHardFailure":
+        if set(payload) != {"constraint", "reason_codes"}:
+            raise PlanBranchValidationError(
+                "plan-search hard failure must use the closed schema"
+            )
+        return cls(
+            constraint=payload.get("constraint", ""),
+            reason_codes=payload.get("reason_codes") or (),
+        )
+
+
+@dataclass(frozen=True)
+class AndOrPlanBranch:
+    """One complete selection of an alternative for every required OR node.
+
+    All quantities are typed branch features.  Provider prose and model
+    reasoning are deliberately outside this boundary.
+    """
+
+    branch_id: str
+    goal_content_id: str
+    repository_tree_id: str
+    context_id: str
+    alternative_ids: tuple[str, ...]
+    producer_kinds: tuple[str, ...]
+    required_obligation_ids: tuple[str, ...]
+    covered_obligation_ids: tuple[str, ...]
+    required_uncertainty_ids: tuple[str, ...] = ()
+    reduced_uncertainty_ids: tuple[str, ...] = ()
+    critical_path_length: int = 0
+    conflict_risk_millionths: int = 0
+    estimated_cost_microunits: int = 0
+    estimated_tokens: int = 0
+    estimated_time_milliseconds: int = 0
+    historical_failure_millionths: int = 0
+    hard_failures: tuple[PlanSearchHardFailure, ...] = ()
+
+    def __post_init__(self) -> None:
+        for name in (
+            "branch_id",
+            "goal_content_id",
+            "repository_tree_id",
+            "context_id",
+        ):
+            object.__setattr__(
+                self, name, _required_string(getattr(self, name), name)
+            )
+        for name in (
+            "required_obligation_ids",
+            "covered_obligation_ids",
+            "required_uncertainty_ids",
+            "reduced_uncertainty_ids",
+        ):
+            value = _string_tuple(
+                getattr(self, name),
+                name,
+                allow_empty=name in {
+                    "required_uncertainty_ids",
+                    "reduced_uncertainty_ids",
+                },
+            )
+            object.__setattr__(self, name, tuple(sorted(set(value))))
+        alternative_ids = _string_tuple(self.alternative_ids, "alternative_ids")
+        if isinstance(self.producer_kinds, (str, bytes)) or not isinstance(
+            self.producer_kinds, Sequence
+        ):
+            raise PlanBranchValidationError(
+                "producer_kinds must be an array of strings"
+            )
+        producer_kinds = tuple(
+            _required_string(item, f"producer_kinds[{index}]")
+            for index, item in enumerate(self.producer_kinds)
+        )
+        if len(alternative_ids) != len(producer_kinds):
+            raise PlanBranchValidationError(
+                "alternative_ids and producer_kinds must have equal length"
+            )
+        pairs = tuple(sorted(zip(alternative_ids, producer_kinds)))
+        object.__setattr__(
+            self, "alternative_ids", tuple(item[0] for item in pairs)
+        )
+        object.__setattr__(
+            self, "producer_kinds", tuple(item[1] for item in pairs)
+        )
+        for name in (
+            "critical_path_length",
+            "estimated_cost_microunits",
+            "estimated_tokens",
+            "estimated_time_milliseconds",
+        ):
+            object.__setattr__(
+                self, name, _non_negative_integer(getattr(self, name), name)
+            )
+        for name in (
+            "conflict_risk_millionths",
+            "historical_failure_millionths",
+        ):
+            value = _non_negative_integer(getattr(self, name), name)
+            if value > 1_000_000:
+                raise PlanBranchValidationError(
+                    f"{name} must be at most 1000000"
+                )
+            object.__setattr__(self, name, value)
+        failures = tuple(
+            item
+            if isinstance(item, PlanSearchHardFailure)
+            else PlanSearchHardFailure.from_dict(item)
+            for item in self.hard_failures
+        )
+        constraints = [item.constraint for item in failures]
+        if len(constraints) != len(set(constraints)):
+            raise PlanBranchValidationError(
+                "hard_failures must contain at most one item per constraint"
+            )
+        object.__setattr__(
+            self,
+            "hard_failures",
+            tuple(sorted(failures, key=lambda item: item.constraint.value)),
+        )
+
+    @property
+    def admissible(self) -> bool:
+        return not self.hard_failures
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "branch_id": self.branch_id,
+            "goal_content_id": self.goal_content_id,
+            "repository_tree_id": self.repository_tree_id,
+            "context_id": self.context_id,
+            "alternative_ids": list(self.alternative_ids),
+            "producer_kinds": list(self.producer_kinds),
+            "required_obligation_ids": list(self.required_obligation_ids),
+            "covered_obligation_ids": list(self.covered_obligation_ids),
+            "required_uncertainty_ids": list(self.required_uncertainty_ids),
+            "reduced_uncertainty_ids": list(self.reduced_uncertainty_ids),
+            "critical_path_length": self.critical_path_length,
+            "conflict_risk_millionths": self.conflict_risk_millionths,
+            "estimated_cost_microunits": self.estimated_cost_microunits,
+            "estimated_tokens": self.estimated_tokens,
+            "estimated_time_milliseconds": self.estimated_time_milliseconds,
+            "historical_failure_millionths": (
+                self.historical_failure_millionths
+            ),
+            "hard_failures": [item.to_dict() for item in self.hard_failures],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrPlanBranch":
+        fields = set(cls.__dataclass_fields__)
+        if set(payload) != fields:
+            raise PlanBranchValidationError(
+                "AND/OR plan branch must use the closed schema"
+            )
+        return cls(**dict(payload))
+
+
+@dataclass(frozen=True)
+class EvaluatedAndOrPlanBranch:
+    branch: AndOrPlanBranch
+    score_millionths: int | None
+    soft_scores: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.branch, AndOrPlanBranch):
+            raise PlanBranchValidationError("branch must be AndOrPlanBranch")
+        if self.branch.admissible != (self.score_millionths is not None):
+            raise PlanBranchValidationError(
+                "hard-pruned branches must not receive a soft score"
+            )
+        scores = dict(self.soft_scores)
+        expected = {
+            "evidence_coverage",
+            "uncertainty_reduction",
+            "critical_path",
+            "conflict_risk",
+            "cost",
+            "historical_failure",
+        }
+        if self.branch.admissible and set(scores) != expected:
+            raise PlanBranchValidationError(
+                "admissible branch is missing a soft evaluation dimension"
+            )
+        if not self.branch.admissible and scores:
+            raise PlanBranchValidationError(
+                "hard-pruned branch cannot contain soft scores"
+            )
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            or value > 1_000_000
+            for value in scores.values()
+        ):
+            raise PlanBranchValidationError(
+                "soft scores must be integer millionths"
+            )
+        object.__setattr__(self, "soft_scores", MappingProxyType(scores))
+
+    @property
+    def branch_id(self) -> str:
+        return self.branch.branch_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "branch": self.branch.to_dict(),
+            "score_millionths": self.score_millionths,
+            "soft_scores": dict(sorted(self.soft_scores.items())),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "EvaluatedAndOrPlanBranch":
+        if set(payload) != {"branch", "score_millionths", "soft_scores"}:
+            raise PlanBranchValidationError(
+                "evaluated AND/OR branch must use the closed schema"
+            )
+        return cls(
+            branch=AndOrPlanBranch.from_dict(payload.get("branch") or {}),
+            score_millionths=payload.get("score_millionths"),
+            soft_scores=payload.get("soft_scores") or {},
+        )
+
+
+@dataclass(frozen=True)
+class AndOrPlanEvaluation:
+    """Deterministic result with an explicit prune-before-score population."""
+
+    selected: EvaluatedAndOrPlanBranch | None
+    ranked: tuple[EvaluatedAndOrPlanBranch, ...]
+    pruned: tuple[EvaluatedAndOrPlanBranch, ...]
+    evaluator_version: str = AND_OR_PLAN_EVALUATOR_VERSION
+
+    def __post_init__(self) -> None:
+        if self.evaluator_version != AND_OR_PLAN_EVALUATOR_VERSION:
+            raise PlanBranchValidationError("unsupported AND/OR evaluator version")
+        if any(item.score_millionths is None for item in self.ranked):
+            raise PlanBranchValidationError("ranked branches must be scored")
+        if any(item.score_millionths is not None for item in self.pruned):
+            raise PlanBranchValidationError("pruned branches must be unscored")
+        if self.selected != (self.ranked[0] if self.ranked else None):
+            raise PlanBranchValidationError(
+                "selected branch must be the first deterministic rank"
+            )
+        ids = [item.branch_id for item in (*self.ranked, *self.pruned)]
+        if len(ids) != len(set(ids)):
+            raise PlanBranchValidationError(
+                "AND/OR evaluation contains duplicate branches"
+            )
+
+    @property
+    def admissible(self) -> tuple[EvaluatedAndOrPlanBranch, ...]:
+        return self.ranked
+
+    @property
+    def rejected(self) -> tuple[EvaluatedAndOrPlanBranch, ...]:
+        return self.pruned
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "evaluator_version": self.evaluator_version,
+            "selected": self.selected.to_dict() if self.selected else None,
+            "ranked": [item.to_dict() for item in self.ranked],
+            "pruned": [item.to_dict() for item in self.pruned],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrPlanEvaluation":
+        if set(payload) != {
+            "evaluator_version",
+            "selected",
+            "ranked",
+            "pruned",
+        }:
+            raise PlanBranchValidationError(
+                "AND/OR evaluation must use the closed schema"
+            )
+        ranked = tuple(
+            EvaluatedAndOrPlanBranch.from_dict(item)
+            for item in payload.get("ranked") or ()
+        )
+        pruned = tuple(
+            EvaluatedAndOrPlanBranch.from_dict(item)
+            for item in payload.get("pruned") or ()
+        )
+        selected_payload = payload.get("selected")
+        result = cls(
+            selected=(
+                EvaluatedAndOrPlanBranch.from_dict(selected_payload)
+                if selected_payload is not None
+                else None
+            ),
+            ranked=ranked,
+            pruned=pruned,
+            evaluator_version=payload.get("evaluator_version", ""),
+        )
+        recomputed = evaluate_and_or_plan_branches(
+            item.branch for item in (*ranked, *pruned)
+        )
+        if recomputed != result:
+            raise PlanBranchValidationError(
+                "AND/OR evaluation does not match deterministic recomputation"
+            )
+        return result
+
+
+def _ratio_score(observed: int, required: int) -> int:
+    if required <= 0:
+        return 1_000_000
+    return min(1_000_000, (max(0, observed) * 1_000_000) // required)
+
+
+def _score_and_or_branch(branch: AndOrPlanBranch) -> EvaluatedAndOrPlanBranch:
+    if branch.hard_failures:
+        return EvaluatedAndOrPlanBranch(
+            branch=branch, score_millionths=None, soft_scores={}
+        )
+    required = set(branch.required_obligation_ids)
+    covered = required.intersection(branch.covered_obligation_ids)
+    uncertainties = set(branch.required_uncertainty_ids)
+    reduced = uncertainties.intersection(branch.reduced_uncertainty_ids)
+    scores = {
+        "evidence_coverage": _ratio_score(len(covered), len(required)),
+        "uncertainty_reduction": _ratio_score(
+            len(reduced), len(uncertainties)
+        ),
+        "critical_path": 1_000_000 // (1 + branch.critical_path_length),
+        "conflict_risk": 1_000_000 - branch.conflict_risk_millionths,
+        "cost": 1_000_000_000_000
+        // (1_000_000 + branch.estimated_cost_microunits),
+        "historical_failure": (
+            1_000_000 - branch.historical_failure_millionths
+        ),
+    }
+    # Equal weights keep every named objective visible and avoid float drift.
+    score = sum(scores.values()) // len(scores)
+    return EvaluatedAndOrPlanBranch(
+        branch=branch,
+        score_millionths=score,
+        soft_scores=scores,
+    )
+
+
+def evaluate_and_or_plan_branches(
+    branches: Iterable[AndOrPlanBranch | Mapping[str, Any]],
+) -> AndOrPlanEvaluation:
+    """Prune every hard violation before applying deterministic soft scoring."""
+
+    normalized = tuple(
+        item if isinstance(item, AndOrPlanBranch) else AndOrPlanBranch.from_dict(item)
+        for item in branches
+    )
+    if not normalized:
+        raise PlanBranchValidationError(
+            "at least one AND/OR plan branch is required"
+        )
+    ids = [item.branch_id for item in normalized]
+    if len(ids) != len(set(ids)):
+        raise PlanBranchValidationError(
+            "AND/OR plan branch identifiers must be unique"
+        )
+    evaluated = tuple(_score_and_or_branch(item) for item in normalized)
+    ranked = tuple(
+        sorted(
+            (item for item in evaluated if item.score_millionths is not None),
+            key=lambda item: (
+                -int(item.score_millionths or 0),
+                item.branch_id,
+                json.dumps(
+                    item.branch.to_dict(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ),
+        )
+    )
+    pruned = tuple(
+        sorted(
+            (item for item in evaluated if item.score_millionths is None),
+            key=lambda item: (
+                tuple(
+                    (failure.constraint.value, failure.reason_codes)
+                    for failure in item.branch.hard_failures
+                ),
+                item.branch_id,
+            ),
+        )
+    )
+    return AndOrPlanEvaluation(
+        selected=ranked[0] if ranked else None,
+        ranked=ranked,
+        pruned=pruned,
+    )
+
+
+# Compatibility spellings for callers that use "search" rather than "AND/OR".
+PlanSearchBranch = AndOrPlanBranch
+EvaluatedPlanSearchBranch = EvaluatedAndOrPlanBranch
+PlanSearchEvaluation = AndOrPlanEvaluation
+evaluate_plan_search_branches = evaluate_and_or_plan_branches
+
+
+def validate_and_or_plan_evaluation(
+    evaluation: AndOrPlanEvaluation,
+) -> AndOrPlanEvaluation:
+    """Recompute an AND/OR evaluation before trusting persisted scores."""
+
+    if not isinstance(evaluation, AndOrPlanEvaluation):
+        raise PlanBranchValidationError(
+            "evaluation must be AndOrPlanEvaluation"
+        )
+    recomputed = evaluate_and_or_plan_branches(
+        item.branch for item in (*evaluation.ranked, *evaluation.pruned)
+    )
+    if recomputed != evaluation:
+        raise PlanBranchValidationError(
+            "AND/OR evaluation does not match deterministic recomputation"
+        )
+    return evaluation

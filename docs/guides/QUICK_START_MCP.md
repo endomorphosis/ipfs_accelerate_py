@@ -38,6 +38,6 @@ evidence requirements.
 
 - [MCP setup](MCP_SETUP_GUIDE.md)
 - [MCP dashboard](../MCP_DASHBOARD_GUIDE.md)
-- [MCP integration](../features/mcp-integration/README.md)
+- [MCP integration](../features/mcp-integration/p2p-integration.md)
 - [Current documentation state](../development/DOCUMENTATION_CURRENT_STATE.md)
 - [Testing guide](../development/testing.md)

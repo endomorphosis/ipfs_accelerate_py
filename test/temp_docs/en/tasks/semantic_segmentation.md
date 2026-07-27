@@ -505,7 +505,7 @@ Your `compute_metrics` function is ready to go now, and you'll return to it when
 <pt>
 <Tip>
 
-If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the basic tutorial [here](../training#finetune-with-trainer)!
+If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the basic tutorial [here](../training.md#finetune-with-trainer)!
 
 </Tip>
 
@@ -564,7 +564,7 @@ Once training is completed, share your model to the Hub with the [`~transformers
 <tf>
 <Tip>
 
-If you are unfamiliar with fine-tuning a model with Keras, check out the [basic tutorial](./training#train-a-tensorflow-model-with-keras) first!
+If you are unfamiliar with fine-tuning a model with Keras, check out the [basic tutorial](../training.md#train-a-tensorflow-model-with-keras) first!
 
 </Tip>
 
@@ -631,7 +631,7 @@ Convert your datasets to the `tf.data.Dataset` format using the [`~datasets.Data
 ... )
 ```
 
-To compute the accuracy from the predictions and push your model to the 🤗 Hub, use [Keras callbacks](../main_classes/keras_callbacks).
+To compute the accuracy from the predictions and push your model to the 🤗 Hub, use [Keras callbacks](../main_classes/keras_callbacks.md).
 Pass your `compute_metrics` function to [`KerasMetricCallback`],
 and use the [`PushToHubCallback`] to upload the model:
 

@@ -23,6 +23,19 @@ except ImportError:  # pragma: no cover - exercised only on non-Windows hosts
 
 
 DEFAULT_CHECKOUT_MUTATION_LOCK_NAME = "implementation-main-merge.lock"
+BACKLOG_REFINERY_AUTHOR_EMAIL = "accelerator-backlog-refinery@example.invalid"
+GENERATED_PROTECTED_BOARD_COMMIT_MARKER = (
+    "[agent-supervisor:generated-protected-board]"
+)
+
+
+def generated_protected_board_commit_subject(subject: str) -> str:
+    """Tag a supervisor-generated protected-board commit for fence validation."""
+
+    normalized = str(subject or "").strip()
+    if normalized.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER):
+        return normalized
+    return f"{normalized} {GENERATED_PROTECTED_BOARD_COMMIT_MARKER}".strip()
 
 
 @contextmanager

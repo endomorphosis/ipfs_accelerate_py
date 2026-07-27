@@ -58,9 +58,9 @@ the left.
 
 ## Resources
 
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## BlenderbotSmallConfig
 

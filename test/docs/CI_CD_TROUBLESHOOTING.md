@@ -139,7 +139,7 @@ The coordinator cannot distribute tasks to workers.
 
 ## Best Practices
 
-1. **Use Template Files**: Reference the up-to-date template file at `docs/github-actions-template-2025.yml` for correct action versions.
+1. **Use Template Files**: Reference the up-to-date template file at `github-actions-template-2025.yml` for correct action versions.
 
 2. **Regular Updates**: Periodically review and update GitHub Actions versions.
 
@@ -159,5 +159,5 @@ The coordinator cannot distribute tasks to workers.
 
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [GitHub Runner Documentation](https://docs.github.com/en/actions/using-github-hosted-runners)
-- [Distributed Testing Design](../distributed_testing/DISTRIBUTED_TESTING_DESIGN.md)
+- [Distributed Testing Design](../DISTRIBUTED_TESTING_DESIGN.md)
 - [Hardware Compatibility Testing](../skills/HARDWARE_COMPATIBILITY_README.md)

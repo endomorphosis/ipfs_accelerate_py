@@ -270,7 +270,7 @@ CREATE TABLE cross_origin_sharing_stats (
 
 | Document | Description |
 |----------|-------------|
-| **WEB_PLATFORM_IMPLEMENTATION_PLAN.md** | Comprehensive implementation plan with architecture details |
+| **WEB_PLATFORM_DOCUMENTATION.md** | Comprehensive implementation plan with architecture details |
 | **WEB_PLATFORM_TESTING_README.md** | Guide for testing web platform features |
 | **WEB_PLATFORM_INTEGRATION_GUIDE.md** | Detailed integration guide for developers |
 | **WEBGPU_4BIT_INFERENCE_README.md** | Guide for 4-bit quantization usage |
@@ -641,7 +641,7 @@ These advancements represent a significant step forward in web-based machine lea
 
 ## Related Documentation
 
-- [WEB_PLATFORM_IMPLEMENTATION_PLAN.md](./WEB_PLATFORM_IMPLEMENTATION_PLAN.md): Comprehensive implementation plan
+- [WEB_PLATFORM_DOCUMENTATION.md](./WEB_PLATFORM_DOCUMENTATION.md): Comprehensive implementation plan and architecture documentation
 - [WEB_PLATFORM_TESTING_README.md](./WEB_PLATFORM_TESTING_README.md): Testing guide for web platform features
 - [WEBGPU_4BIT_INFERENCE_README.md](./WEBGPU_4BIT_INFERENCE_README.md): Guide for 4-bit quantization
 - [WEB_PLATFORM_OPTIMIZATION_GUIDE.md](./WEB_PLATFORM_OPTIMIZATION_GUIDE.md): Detailed optimization guide

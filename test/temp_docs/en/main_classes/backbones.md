@@ -25,19 +25,19 @@ A backbone is a model used for feature extraction for higher level computer visi
 
 Backbones are supported for the following models:
 
-* [BEiT](../model_doc/beit)
-* [BiT](../model_doc/bit)
-* [ConvNext](../model_doc/convnext)
-* [ConvNextV2](../model_doc/convnextv2)
-* [DiNAT](../model_doc/dinat)
-* [DINOV2](../model_doc/dinov2)
-* [FocalNet](../model_doc/focalnet)
-* [MaskFormer](../model_doc/maskformer)
-* [NAT](../model_doc/nat)
-* [ResNet](../model_doc/resnet)
-* [Swin Transformer](../model_doc/swin)
-* [Swin Transformer v2](../model_doc/swinv2)
-* [ViTDet](../model_doc/vitdet)
+* [BEiT](../model_doc/beit.md)
+* [BiT](../model_doc/bit.md)
+* [ConvNext](../model_doc/convnext.md)
+* [ConvNextV2](../model_doc/convnextv2.md)
+* [DiNAT](../model_doc/dinat.md)
+* [DINOV2](../model_doc/dinov2.md)
+* [FocalNet](../model_doc/focalnet.md)
+* [MaskFormer](../model_doc/maskformer.md)
+* [NAT](../model_doc/nat.md)
+* [ResNet](../model_doc/resnet.md)
+* [Swin Transformer](../model_doc/swin.md)
+* [Swin Transformer v2](../model_doc/swinv2.md)
+* [ViTDet](../model_doc/vitdet.md)
 
 ## AutoBackbone
 

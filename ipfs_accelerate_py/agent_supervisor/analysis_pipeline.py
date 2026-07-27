@@ -52,6 +52,15 @@ from .analysis_contracts import (
     AnalysisStageReceipt,
     AnalysisStageStatus,
 )
+from .analysis_consensus import (
+    AnalysisClaimProvenance,
+    AnalysisClaimStatus,
+    AnalysisConsensusClaim,
+    AnalysisConsensusPolicy,
+    AnalysisConsensusReceipt,
+    AnalysisProducerKind,
+    build_analysis_consensus_receipt,
+)
 from .analysis_retrieval import (
     RetrievalLimits,
     RetrievalQuery,
@@ -165,6 +174,9 @@ DEFAULT_CONFIGURATION_DIGEST: Final = digest_analysis_input(
 _PACKET_ARTIFACT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/analysis-packet-artifact@1"
 )
+_CONSENSUS_ARTIFACT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/analysis-consensus-artifact@1"
+)
 
 
 class AnalysisPipelineError(RuntimeError):
@@ -274,6 +286,9 @@ class AnalysisPipelinePolicy:
     require_local_completion: bool = True
     cache_negative_results: bool = True
     negative_ttl_seconds: int = 300
+    consensus_policy: AnalysisConsensusPolicy = field(
+        default_factory=AnalysisConsensusPolicy
+    )
 
     def __post_init__(self) -> None:
         limits = RetrievalLimits.from_value(self.retrieval_limits)
@@ -293,6 +308,11 @@ class AnalysisPipelinePolicy:
         object.__setattr__(
             self, "negative_ttl_seconds", int(self.negative_ttl_seconds)
         )
+        object.__setattr__(
+            self,
+            "consensus_policy",
+            AnalysisConsensusPolicy.from_value(self.consensus_policy),
+        )
 
     @classmethod
     def from_value(
@@ -309,6 +329,10 @@ class AnalysisPipelinePolicy:
             values["retrieval_limits"] = RetrievalLimits.from_value(
                 values["retrieval_limits"]
             )
+        if "consensus_policy" in values:
+            values["consensus_policy"] = AnalysisConsensusPolicy.from_value(
+                values["consensus_policy"]
+            )
         unknown = sorted(set(values) - set(cls.__dataclass_fields__))
         if unknown:
             raise ValueError(
@@ -323,6 +347,7 @@ class AnalysisPipelinePolicy:
             "require_local_completion": self.require_local_completion,
             "cache_negative_results": self.cache_negative_results,
             "negative_ttl_seconds": self.negative_ttl_seconds,
+            "consensus_policy": self.consensus_policy.to_dict(),
         }
 
 
@@ -949,6 +974,7 @@ class AnalysisPipelineResult:
     provider_policy: AnalysisProviderPolicy | None = field(
         default=None, repr=False, compare=False
     )
+    consensus_receipt: AnalysisConsensusReceipt | None = None
     single_flight_collapse_evidence: SingleFlightCollapseEvidence | None = None
     coordination_result: CacheCoordinationResult | None = field(
         default=None, repr=False, compare=False
@@ -1000,6 +1026,36 @@ class AnalysisPipelineResult:
         object.__setattr__(
             self, "retrieval_truncation", dict(self.retrieval_truncation)
         )
+        consensus = self.consensus_receipt
+        if isinstance(consensus, Mapping):
+            consensus = AnalysisConsensusReceipt.from_dict(consensus)
+            object.__setattr__(self, "consensus_receipt", consensus)
+        if consensus is not None:
+            if not isinstance(consensus, AnalysisConsensusReceipt):
+                raise AnalysisBindingError(
+                    "consensus_receipt must be a typed consensus receipt"
+                )
+            expected_consensus_binding = {
+                "repository_id": self.request.repository_id,
+                "tree_id": self.request.tree_id,
+                "objective_revision": self.request.objective_revision,
+                "operation": self.request.provider_operation,
+            }
+            if any(
+                getattr(consensus, name) != expected
+                for name, expected in expected_consensus_binding.items()
+            ):
+                raise AnalysisBindingError(
+                    "consensus receipt is detached from the pipeline request"
+                )
+            if (
+                consensus.completion_authority
+                or consensus.is_completion_evidence
+                or consensus.safe_for_completion_reasoning
+            ):
+                raise AnalysisBindingError(
+                    "analysis consensus cannot create completion authority"
+                )
         if advisory_claims:
             if not isinstance(self.provider_result, AnalysisProviderResult):
                 raise AnalysisBindingError(
@@ -1264,6 +1320,11 @@ class AnalysisPipelineResult:
             },
             "retrieval_truncation": dict(self.retrieval_truncation),
             "provider_result": provider,
+            "consensus_receipt": (
+                self.consensus_receipt.to_dict()
+                if self.consensus_receipt is not None
+                else None
+            ),
             "safe_for_completion_reasoning": self.safe_for_completion_reasoning,
         }
         if include_result_id:
@@ -2363,6 +2424,77 @@ class _PacketArtifactStore:
             raise AnalysisBindingError("packet artifact identity mismatch")
         return packet
 
+    def put_consensus(
+        self, receipt: AnalysisConsensusReceipt
+    ) -> dict[str, str]:
+        payload = {
+            "schema": _CONSENSUS_ARTIFACT_SCHEMA,
+            "consensus_receipt": receipt.to_dict(),
+        }
+        encoded = (
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+            + b"\n"
+        )
+        digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+        path = self._path(digest)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if not path.exists():
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            )
+            temporary = Path(temporary_name)
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(encoded)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, path)
+            finally:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
+        return {
+            "artifact_id": receipt.receipt_id,
+            "digest": digest,
+            "path": str(path),
+            "schema": _CONSENSUS_ARTIFACT_SCHEMA,
+        }
+
+    def get_consensus(
+        self, reference: Mapping[str, Any]
+    ) -> AnalysisConsensusReceipt:
+        if reference.get("schema") != _CONSENSUS_ARTIFACT_SCHEMA:
+            raise AnalysisBindingError("unsupported consensus artifact schema")
+        digest = _required_text(reference.get("digest"), "artifact digest")
+        path = Path(_required_text(reference.get("path"), "artifact path"))
+        expected = self._path(digest).resolve()
+        if path.resolve() != expected:
+            raise AnalysisBindingError(
+                "consensus artifact path is not content addressed"
+            )
+        raw = path.read_bytes()
+        if "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
+            raise AnalysisBindingError("consensus artifact digest mismatch")
+        payload = json.loads(raw)
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("schema") != _CONSENSUS_ARTIFACT_SCHEMA
+            or not isinstance(payload.get("consensus_receipt"), Mapping)
+        ):
+            raise AnalysisBindingError("malformed analysis consensus artifact")
+        receipt = AnalysisConsensusReceipt.from_dict(
+            payload["consensus_receipt"]
+        )
+        if reference.get("artifact_id") != receipt.receipt_id:
+            raise AnalysisBindingError("consensus artifact identity mismatch")
+        return receipt
+
 
 def _cache_receipt(
     packet: AnalysisEvidencePacket,
@@ -2370,6 +2502,8 @@ def _cache_receipt(
     request: AnalysisPipelineRequest,
     retrieval: RetrievalResponse,
     ast_index: AnalysisASTIndex | None,
+    consensus_receipt: AnalysisConsensusReceipt,
+    consensus_artifact: Mapping[str, str],
 ) -> dict[str, Any]:
     successful = packet.safe_for_completion_reasoning
     ranked_references = _ranked_retrieval_references(retrieval)
@@ -2399,6 +2533,8 @@ def _cache_receipt(
                 for name, value in sorted(retrieval.backend_health.items())
             },
             "retrieval_truncation": retrieval.truncation.to_dict(),
+            "consensus_receipt_id": consensus_receipt.receipt_id,
+            "consensus_artifact_ref": dict(consensus_artifact),
             "cache_namespace": namespace_metadata(
                 CacheNamespace.ANALYSIS,
                 authority=(
@@ -2432,6 +2568,221 @@ def _ranked_retrieval_references(
                 }
             )
     return tuple(references)
+
+
+def _first_reference_value(
+    references: Sequence[Mapping[str, Any]], *names: str
+) -> str:
+    for reference in references:
+        for name in names:
+            value = reference.get(name)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def _pipeline_consensus_receipt(
+    request: AnalysisPipelineRequest,
+    packet: AnalysisEvidencePacket,
+    context: AnalysisStageContext,
+    policy: AnalysisConsensusPolicy,
+) -> AnalysisConsensusReceipt:
+    """Normalize the local packet and optional result without adding authority."""
+
+    local_references: list[dict[str, Any]] = []
+    for reference in packet.provenance:
+        local_references.append(
+            {
+                "reference_id": reference.reference_id,
+                "kind": reference.kind.value,
+                "tree_id": reference.tree_id or request.tree_id,
+                "path": reference.path,
+                "record_id": reference.record_id,
+                "symbol": reference.symbol,
+            }
+        )
+    for artifact in packet.artifacts:
+        local_references.append(
+            {
+                "artifact_id": artifact.artifact_id,
+                "artifact_content_id": artifact.artifact_content_id,
+                "sha256": artifact.sha256,
+                "uri": artifact.uri,
+                "kind": artifact.kind,
+                "tree_id": request.tree_id,
+            }
+        )
+    if not local_references:
+        local_references.append(
+            {
+                "reference_id": packet.packet_id,
+                "kind": "analysis_packet",
+                "tree_id": request.tree_id,
+            }
+        )
+    if packet.safe_for_completion_reasoning:
+        local_status = AnalysisClaimStatus.CONCLUSIVE
+    elif packet.truncated or not packet.coverage_complete:
+        local_status = AnalysisClaimStatus.PARTIAL
+    else:
+        local_status = AnalysisClaimStatus.INCONCLUSIVE
+    local_claim = AnalysisConsensusClaim(
+        producer_kind=AnalysisProducerKind.LOCAL,
+        result_id=packet.packet_id,
+        verdict=packet.conclusion_code or packet.outcome.value,
+        status=local_status,
+        provenance=AnalysisClaimProvenance(
+            source_id=packet.packet_id,
+            producer_id=request.analyzer_id,
+            policy_id=request.effective_policy_digest,
+            capability_id=request.analyzer_version,
+            tree_id=request.tree_id,
+        ),
+        evidence_references=tuple(local_references),
+        proposal_only=False,
+        truncated=packet.truncated,
+        confidence_millionths=max(
+            (
+                receipt.confidence_millionths
+                for receipt in packet.stage_receipts
+            ),
+            default=0,
+        ),
+    )
+
+    provider_value = context.provider_result
+    datasets_claim: AnalysisConsensusClaim | None = None
+    fallback_reason = ""
+    if provider_value is not None:
+        converter = getattr(provider_value, "to_dict", None)
+        try:
+            projection = (
+                converter()
+                if callable(converter)
+                else (
+                    dict(provider_value)
+                    if isinstance(provider_value, Mapping)
+                    else {}
+                )
+            )
+        except Exception:
+            projection = {}
+        if not isinstance(projection, Mapping):
+            projection = {}
+        status_value = str(
+            getattr(getattr(provider_value, "status", ""), "value", "")
+            or projection.get("status")
+            or ""
+        ).strip()
+        reason = str(
+            getattr(provider_value, "reason_code", "")
+            or projection.get("reason_code")
+            or status_value
+            or "optional_provider_result_unknown"
+        ).strip()
+        truncated = bool(
+            getattr(provider_value, "truncated", False)
+            or projection.get("truncated", False)
+        )
+        if status_value == "completed" and not truncated:
+            datasets_status = AnalysisClaimStatus.CONCLUSIVE
+        elif status_value == "completed" or truncated:
+            datasets_status = AnalysisClaimStatus.PARTIAL
+        elif status_value == "stale":
+            datasets_status = AnalysisClaimStatus.STALE
+        elif status_value in {"partial", "inconclusive"}:
+            datasets_status = AnalysisClaimStatus.INCONCLUSIVE
+        else:
+            datasets_status = AnalysisClaimStatus.FAILED
+            fallback_reason = reason
+        evidence_raw = projection.get("evidence_references")
+        evidence_raw = (
+            evidence_raw
+            if isinstance(evidence_raw, Sequence)
+            and not isinstance(evidence_raw, (str, bytes))
+            else ()
+        )
+        provenance_raw = projection.get("provenance_references")
+        provenance_raw = (
+            provenance_raw
+            if isinstance(provenance_raw, Sequence)
+            and not isinstance(provenance_raw, (str, bytes))
+            else ()
+        )
+        compact_references = tuple(
+            item
+            for item in (*evidence_raw, *provenance_raw)
+            if isinstance(item, Mapping)
+        )
+        result_id = str(
+            getattr(provider_value, "result_id", "")
+            or projection.get("result_id")
+            or _json_digest(projection or {"reason_code": reason})
+        )
+        provider_id = str(
+            projection.get("provider_id")
+            or getattr(provider_value, "provider_id", "")
+            or "ipfs_datasets_py.analysis"
+        )
+        provider_version = str(
+            projection.get("provider_version")
+            or getattr(provider_value, "provider_version", "")
+            or "unknown"
+        )
+        datasets_claim = AnalysisConsensusClaim(
+            producer_kind=AnalysisProducerKind.DATASETS,
+            result_id=result_id,
+            verdict=str(projection.get("verdict") or reason),
+            status=datasets_status,
+            provenance=AnalysisClaimProvenance(
+                source_id=(
+                    _first_reference_value(
+                        compact_references,
+                        "source_id",
+                        "artifact_id",
+                        "reference_id",
+                        "evidence_id",
+                    )
+                    or result_id
+                ),
+                dataset_id=_first_reference_value(
+                    compact_references, "dataset_id", "dataset"
+                ),
+                graph_id=_first_reference_value(
+                    compact_references, "graph_id"
+                ),
+                chunk_id=_first_reference_value(
+                    compact_references, "chunk_id", "chunk"
+                ),
+                producer_id=provider_id,
+                model_id=_first_reference_value(
+                    compact_references, "model_id", "model"
+                ),
+                policy_id=request.effective_policy_digest,
+                capability_id=provider_version,
+                tree_id=request.tree_id,
+            ),
+            evidence_references=compact_references,
+            proposal_only=True,
+            truncated=truncated,
+            confidence_millionths=0,
+        )
+    else:
+        fallback_reason = (
+            "datasets_provider_disabled"
+            if not context.request.provider_operation
+            else "datasets_provider_not_configured_or_disabled"
+        )
+    return build_analysis_consensus_receipt(
+        repository_id=request.repository_id,
+        tree_id=request.tree_id,
+        objective_revision=request.objective_revision,
+        operation=request.provider_operation,
+        local_claim=local_claim,
+        datasets_claim=datasets_claim,
+        policy=policy,
+        fallback_reason_code=fallback_reason,
+    )
 
 
 def _packet_from_producer(
@@ -2652,6 +3003,18 @@ class AnalysisPipeline:
         receipt = lookup.receipt if isinstance(lookup.receipt, Mapping) else {}
         summary = receipt.get("summary")
         summary = summary if isinstance(summary, Mapping) else {}
+        consensus_reference = summary.get("consensus_artifact_ref")
+        if not isinstance(consensus_reference, Mapping):
+            raise AnalysisBindingError(
+                "cache hit lacks the normalized consensus artifact reference"
+            )
+        consensus_receipt = self._artifacts.get_consensus(
+            consensus_reference
+        )
+        if consensus_receipt.receipt_id != summary.get("consensus_receipt_id"):
+            raise AnalysisBindingError(
+                "cached consensus receipt ID does not match its artifact"
+            )
         return AnalysisPipelineResult(
             request=request,
             packet=packet,
@@ -2679,6 +3042,7 @@ class AnalysisPipeline:
                 if isinstance(summary.get("retrieval_truncation"), Mapping)
                 else {}
             ),
+            consensus_receipt=consensus_receipt,
         )
 
     def _accept_completion_lookup(
@@ -2864,19 +3228,31 @@ class AnalysisPipeline:
     def _prepare_receipt(
         self, request: AnalysisPipelineRequest
     ) -> tuple[
-        dict[str, Any], AnalysisEvidencePacket, AnalysisStageContext
+        dict[str, Any],
+        AnalysisEvidencePacket,
+        AnalysisStageContext,
+        AnalysisConsensusReceipt,
     ]:
         context = self._build_context(request)
         packet = self._invoke_analyzer(context)
+        consensus_receipt = _pipeline_consensus_receipt(
+            request,
+            packet,
+            context,
+            self.policy.consensus_policy,
+        )
         artifact = self._artifacts.put(packet)
+        consensus_artifact = self._artifacts.put_consensus(consensus_receipt)
         receipt = _cache_receipt(
             packet,
             artifact,
             request,
             context.retrieval,
             context.ast_index,
+            consensus_receipt,
+            consensus_artifact,
         )
-        return receipt, packet, context
+        return receipt, packet, context, consensus_receipt
 
     def analyze(
         self,
@@ -2919,9 +3295,12 @@ class AnalysisPipeline:
         produced: dict[str, Any] = {}
 
         def produce() -> Mapping[str, Any]:
-            receipt, packet, context = self._prepare_receipt(request)
+            receipt, packet, context, consensus_receipt = self._prepare_receipt(
+                request
+            )
             produced["packet"] = packet
             produced["context"] = context
+            produced["consensus_receipt"] = consensus_receipt
             return receipt
 
         def coordinated_produce() -> Any:
@@ -2946,9 +3325,11 @@ class AnalysisPipeline:
         )
         if coordinate is None:
             coordinate = getattr(self.coordinator, "run", None)
+        coordinated_receipt: Mapping[str, Any] = {}
         if coordinate is None:
             coordinated: CacheCoordinationResult | None = None
             receipt = produce()
+            coordinated_receipt = receipt
             ttl = (
                 None
                 if produced["packet"].safe_for_completion_reasoning
@@ -3003,10 +3384,12 @@ class AnalysisPipeline:
                     raise AnalysisPipelineError(
                         "coordinator returned no compact analysis receipt"
                     )
+                coordinated_receipt = receipt
                 packet = self._load_packet_receipt(
                     receipt, request, require_completion_evidence=False
                 )
             context = produced.get("context")
+            consensus_receipt = produced.get("consensus_receipt")
             if coordinated_status == "cache_hit":
                 # A leader may have filled the cache between our optimistic
                 # lookup and flight registration.  Treat this as exact reuse.
@@ -3021,6 +3404,7 @@ class AnalysisPipeline:
         else:
             status = PipelineCacheStatus.INCONCLUSIVE
         cached_summary: Mapping[str, Any] = {}
+        consensus_receipt = produced.get("consensus_receipt")
         if context is None:
             diagnostic_lookup = self.cache.lookup(
                 request.cache_key, require_completion_evidence=False
@@ -3028,11 +3412,23 @@ class AnalysisPipeline:
             diagnostic_receipt = (
                 diagnostic_lookup.receipt
                 if isinstance(diagnostic_lookup.receipt, Mapping)
-                else {}
+                else coordinated_receipt
             )
             candidate_summary = diagnostic_receipt.get("summary")
             if isinstance(candidate_summary, Mapping):
                 cached_summary = candidate_summary
+            cached_consensus = cached_summary.get("consensus_artifact_ref")
+            if isinstance(cached_consensus, Mapping):
+                consensus_receipt = self._artifacts.get_consensus(
+                    cached_consensus
+                )
+                if (
+                    consensus_receipt.receipt_id
+                    != cached_summary.get("consensus_receipt_id")
+                ):
+                    raise AnalysisBindingError(
+                        "cached consensus receipt identity mismatch"
+                    )
         return AnalysisPipelineResult(
             request=request,
             packet=packet,
@@ -3103,6 +3499,7 @@ class AnalysisPipeline:
             provider_policy=(
                 context.provider_policy if context is not None else None
             ),
+            consensus_receipt=consensus_receipt,
             single_flight_collapse_evidence=(
                 coordinated.single_flight_collapse_evidence
                 if isinstance(coordinated, CacheCoordinationResult)
@@ -3159,6 +3556,8 @@ __all__ = [
     "SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA",
     "SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID",
     "AnalysisBindingError",
+    "AnalysisConsensusPolicy",
+    "AnalysisConsensusReceipt",
     "AnalysisPipeline",
     "AnalysisPipelineError",
     "AnalysisPipelineMetrics",

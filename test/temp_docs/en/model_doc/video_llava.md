@@ -161,7 +161,7 @@ We value your feedback to help identify bugs before the full release! Check out 
 
 </Tip>
 
-Load the quantized model by simply adding [`BitsAndBytesConfig`](../main_classes/quantization#transformers.BitsAndBytesConfig) as shown below:
+Load the quantized model by simply adding [`BitsAndBytesConfig`](../main_classes/quantization.md#transformers.BitsAndBytesConfig) as shown below:
 
 
 ```python
@@ -180,7 +180,7 @@ model = VideoLlavaForConditionalGeneration.from_pretrained("LanguageBind/Video-L
 
 ### Flash-Attention 2 to speed-up generation
 
-Additionally, we can greatly speed-up model inference by using [Flash Attention](../perf_train_gpu_one#flash-attention-2), which is a faster implementation of the attention mechanism used inside the model.
+Additionally, we can greatly speed-up model inference by using [Flash Attention](../perf_train_gpu_one.md#flash-attention-2), which is a faster implementation of the attention mechanism used inside the model.
 
 First, make sure to install the latest version of Flash Attention 2:
 

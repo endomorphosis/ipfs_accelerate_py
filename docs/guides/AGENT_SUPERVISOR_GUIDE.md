@@ -128,6 +128,60 @@ routing work. Package presence, a model name, or an old successful receipt is
 not a current capability. Optional `ipfs_datasets_py`, Leanstral, and external
 prover integrations stay lazy until a configured operation invokes them.
 
+### Generation-2 stable discovery
+
+Generation 2 publishes only the reviewed provider-free names in
+`AGENT_SUPERVISOR_V2_STABLE_EXPORTS`. `V2_STABLE_EXPORTS` is its compatibility
+alias, `AGENT_SUPERVISOR_V2_EXPORT_MODULES` maps every name to its owner module,
+and `AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION` is `2`. Do not discover v2 by
+walking package modules or treating a private implementation symbol as stable.
+
+```python
+from ipfs_accelerate_py.agent_supervisor import (
+    AGENT_SUPERVISOR_V2_EXPORT_MODULES,
+    AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION,
+    AGENT_SUPERVISOR_V2_STABLE_EXPORTS,
+    OPERATION_CATALOG_V2,
+    Operation,
+    agent_supervisor_v2_control_surface_publication,
+    agent_supervisor_v2_discovery_manifest,
+)
+
+assert AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION == 2
+assert frozenset(AGENT_SUPERVISOR_V2_EXPORT_MODULES) == frozenset(
+    AGENT_SUPERVISOR_V2_STABLE_EXPORTS
+)
+
+manifest = agent_supervisor_v2_discovery_manifest()
+publication = agent_supervisor_v2_control_surface_publication()
+assert manifest.operations == tuple(
+    sorted(Operation, key=lambda item: item.value)
+)
+assert publication.catalog_id == OPERATION_CATALOG_V2.catalog_id
+```
+
+For CLI embedding, use `agent_cli_v2_discovery_manifest()` and
+`v2_cli_control_surface_publication()`. For MCP registration or a tools/list
+response, use the MCP adapter's
+`agent_supervisor_v2_discovery_manifest()` and
+`mcp_v2_control_surface_publication()`. These are equivalent static
+publications of `OPERATION_CATALOG_V2`; actual control still uses the existing
+CLI commands and MCP tools, each of which decodes the canonical
+`OperationRequest` and dispatches directly to `SupervisorControlService`.
+
+Run discovery before runtime capability inspection. In a fresh interpreter,
+package import, stable-manifest inspection, resolving every stable member, and
+repeated Python/CLI/MCP discovery must load no optional dataset, model,
+analysis, or prover provider; start no process; and preserve object identity
+with the declared owner modules. Discovery also must not resolve a service or
+backend. A later `capabilities` operation is read-only but may inspect the
+explicitly configured backend; it is not part of this cold-import guarantee.
+
+The v1 package exports, discovery functions, CLI command names, MCP tool names,
+and serialized v1 audit records remain supported. V2 reuses the canonical
+`Operation`, request/result contracts, and service dispatcher; it does not
+create look-alike enum members or silently upgrade persisted evidence.
+
 ## Python control
 
 `SupervisorTarget` binds every constructed request to one repository tree,
@@ -499,15 +553,29 @@ ipfs-accelerate-agent-implementation-supervisor \
 
 ## Context, cache, and resource profiles
 
-An operating profile is a reviewed recipe, not a global singleton. Bind its
-values into `ControlBounds`, `context_contracts.ContextBudget`,
+An operating profile is a reviewed configuration plus its sizing evidence, not
+a global singleton or a worker-count convention. Bind its values into
+`ControlBounds`, `context_contracts.ContextBudget`,
 `cache_coordinator.CacheQuotaPolicy`, `ResourcePolicy`,
 `ResourceLeaseBudget`, formal-verification
 `formal_verification_contracts.ResourceBudget`, and daemon CLI limits at the
-point each component is constructed. Persist the profile revision in requests,
-receipts, cache keys, plans, and epoch bindings.
+point each component is constructed. Persist the profile revision, repository
+and tree, host class, provider/capability snapshot, observation window, fixture
+population, measured high-watermarks, reserve, and effective ceilings in
+requests, receipts, cache keys, plans, and epoch bindings.
 
-Two supported starting recipes follow. They are ceilings, not targets.
+For every resource class, measure CPU saturation/time, peak RSS and GPU memory,
+processes, temporary and durable bytes, model tokens/quota, provider latency,
+queue delay, validation and merge pressure, and accepted throughput. Set its
+effective ceiling to the minimum of the hard contract limit, policy, current
+provider report, backend limit, and measured host capacity after the reviewed
+reserve. Missing or stale telemetry means zero new capacity. A configured lane
+or worker count is only the final admission ceiling produced by that
+calculation.
+
+The smoke recipe below uses a single serialized lane for deterministic testing.
+The production values are contract/context/cache envelopes; production
+concurrency must be measured.
 
 | Setting | Deterministic smoke | Production starting point |
 | --- | ---: | ---: |
@@ -517,8 +585,8 @@ Two supported starting recipes follow. They are ceilings, not targets.
 | Coordinator cache entries / namespace bytes / entry bytes | 64 / 4 MiB / 64 KiB | 512 / 32 MiB / 256 KiB |
 | Analysis cache entry / receipt bytes | 64 KiB / 48 KiB | 128 KiB / 96 KiB |
 | Negative TTL / maximum TTL | 60 s / 1 h | 5 min / 24 h |
-| Supervisor lanes | 1 | 4, reduced by admission telemetry |
-| Proof/model/artifact concurrency | 1 / 1 / 1 | 2 / 1 / 2, never above the top-level lease |
+| Supervisor lanes | 1, for deterministic serialization | Measured per host/resource class; never inferred from the smoke value |
+| Proof/model/artifact concurrency | 1 / 1 / 1 fixture slots | Minimum of measured class capacity, provider capacity, and the top-level/global lease |
 | Network and optional providers | Disabled | Disabled until capability and policy approval |
 | Rollout | `shadow` | Start `shadow`; promote through `assist` only after paired evidence |
 
@@ -554,8 +622,10 @@ Start production conservatively:
   entry initially. The analysis-receipt cache retains its stricter defaults of
   128 KiB per entry and 96 KiB per receipt; size from measured eviction and
   reuse rather than disabling quotas;
-- begin with four top-level lanes and concurrency two for CPU-proof, one for
-  model, and two for artifact classes; lower admission under host pressure,
+- derive top-level lane and CPU-proof/model/artifact ceilings from
+  representative cold, warm, independent-lane, conflicting-lane, and
+  artifact-pressure measurements on the deployment host. Record the measured
+  peak and reserve for each class; lower admission under host pressure,
   provider latency, quota reserve, merge age, or conflicting paths;
 - use explicit non-zero wall-time, memory, disk, process, output, token, and
   provider-quota limits in each production plan. A zero in `ResourceBudget`
@@ -570,6 +640,97 @@ Scale one dimension at a time. Increasing context, lane width, prover
 portfolio width, model concurrency, or cache TTL changes policy and invalidates
 receipts or cache entries bound to the previous profile.
 
+### Distributed profile
+
+Size every worker class and provider route independently. Persist per-node
+CPU/RSS/GPU/process/disk ceilings and enforce a separate global
+`ResourceLeaseBudget` for shared model quota, artifact I/O, validation,
+persistence, and merge capacity. Do not add per-node worker maxima together:
+provider pressure, conflicting paths, dependency admission, and the global
+lease can only reduce aggregate width.
+
+Qualify the measured ceiling with the independent- and conflicting-lane v2
+fixtures. Accepted throughput must improve without duplicate compute,
+conflict regression, resource-bound violations, or stale-fence publication.
+On partition, unknown telemetry, lease loss, or stale fencing epoch, stop new
+admission for the affected route; a surviving node does not inherit its
+authority or quota.
+
+### Degraded profile
+
+Enter degraded operation whenever a dataset/model/prover provider, network
+route, capability, or host resource disappears or its report becomes stale.
+Recompute the profile with that capacity set to zero. Consult the canonical
+operation descriptor in `OPERATION_CATALOG_V2`:
+
+- `local_read_only` permits only the bounded local read implementation;
+- `proposal_only` permits a proposal that still has no mutation authority;
+- `fail_closed` rejects the operation; and
+- `not_applicable` adds no fallback route.
+
+Record the capability and reason codes and run the unavailable-provider
+fixture. Never use import success, a stale cache receipt, or an alternate
+provider to increase authority. Return to the production/distributed profile
+only after a fresh capability report and the affected shadow checks pass.
+
+### Recovery profile
+
+Pause new admission and preserve journals, receipts, leases, fences, and
+content-addressed artifacts. Reserve measured CPU, memory, process, and I/O
+capacity for reconciliation; new-work capacity stays zero until repository
+tree, state, live fence, active phase, and last terminal receipt agree.
+
+Run the restart fixture and replay the exact request identities. An accepted
+mutation replay must return its persisted result without a second backend
+effect; a different request under the same idempotency key must conflict.
+Incomplete validation or merge work remains bounded and actionable. Do not
+delete state to speed recovery or infer completion from process exit.
+
+### Refill profile
+
+Observe a drained board for at least 10 minutes with at most 2,000
+milli-percent idle CPU and zero unchanged-state writes. Run a v2 refill epoch
+only after a meaningful binding change or an eligible scheduled observation
+window. The immutable ceiling is eight goals and twenty-four tasks per epoch
+with at least a six-hour cooldown; set lower `SupervisorV2Policy` values when
+measured validation and materialization capacity cannot safely process that
+population.
+
+Require exact replay to be a no-op, zero duplicate successors, fresh complete
+observations, and the healthy-exhaustion trigger guard. Preview before
+materialization. A partial, blocked, proposal-only, or stale epoch creates no
+work, and board drain does not prove objective completion.
+
+### Rollback profile
+
+Enter rollback on a stale rollout binding, current-tree regression, failed
+later evaluation, capability loss, or resource-bound violation. Set the
+affected `V2RolloutMode` to `shadow`, stop new automatic admission, and use the
+measured recovery reserve to drain or quarantine already admitted work.
+Persist `rollback_applied`, bounded reason codes, and the qualifying/current
+evaluation identities.
+
+Rollback is not a compensating mutation and does not edit objectives, code,
+policy, or completion state. A new qualifying complete v2 evaluation and a
+separate later current-tree evaluation are required before policy may restore
+automatic operation.
+
+### Migration profile
+
+Keep v1 and v2 discovery and reads side by side in smoke/shadow with v2
+mutation capacity set to zero. Measure schema/result parity, state and artifact
+growth, restart/replay time, and operator load. Require v2 Python, CLI, and MCP
+publications to share `OPERATION_CATALOG_V2`, the canonical `Operation`
+objects, request/result schema IDs, behavior IDs, and direct-service dispatcher
+identity.
+
+Move preview/dry-run next, then authorize one mutation family at a time.
+Retain v1 package imports, operation spellings, reports, and recovery paths
+until the migrated family has passed cold discovery, conformance, restart, and
+resource-ceiling checks. Any identity, capability, state, or recovery drift
+returns it to the v1 adapter or v2 shadow. Preserve v1 evidence as audit data;
+produce fresh v2 records rather than rewriting serialized v1 reports.
+
 ## Shadow, assist, and automatic rollout
 
 `SelfImprovementRolloutMode` has exactly `shadow`, `assist`, and `automatic`.
@@ -579,6 +740,83 @@ receipts or cache entries bound to the previous profile.
 | `shadow` | Run bounded candidates and write metrics/reports; do not change dispatch authority, objective state, task completion, or merge decisions. |
 | `assist` | Present or queue a validated proposal for an authorized operator; no unreviewed mutation. |
 | `automatic` | Apply only the narrowly approved capability after all policy, authorization, assurance, freshness, resource, and paired-rollout gates pass. |
+
+The generation-2 contract is `V2RolloutMode`, with `off` in addition to those
+three values. `V2RolloutPolicy` deliberately excludes `automatic` by default.
+`evaluate_v2_self_improvement_rollout()` requires a complete qualifying
+evaluation; automatic also requires an explicitly approving policy and a
+separate later current-tree evaluation. A stale binding or regression makes
+the effective mode `shadow` and records `rollback_applied`. The report remains
+evidence, not control authorization or goal-completion proof.
+
+### Proof-directed decision-runtime rollout
+
+The decision-runtime gate uses the separate `DecisionRuntimeRolloutMode`
+vocabulary: `off`, `shadow`, `assist`, and `automatic`. It compares the current
+and proof-directed live paths on the same frozen decisions. The closed paired
+population independently grows irrelevant legal corpus, codebase, SkillCenter
+rows, SkillCenter graph, and conversation history by at least 10x.
+
+Build `DecisionRuntimeProducerReceipt` values from context, runtime, cache,
+invalidation, plan, proof, validation, and effect producer receipts. Do not
+copy dashboard aggregates or token estimates into promotion evidence.
+`recompute_proof_dependency_scaling()` derives provider tokens, mandatory
+proof closure nodes/bytes, total-corpus nodes/bytes, exact warm reuse,
+invalidation true/false positives and false negatives, first-valid plans,
+retries, proof/validation cost, effects, and terminal results. For every scale
+ablation, the proof-directed provider context, mandatory closure, effects, and
+terminal result must remain fixed; only bounded index metadata may grow.
+
+The zero-escape population covers forged CID, canonicalization, schema, stale
+root, cross partition, prompt injection, poisoned embedding, inapplicable law,
+legal conflict, SecurityIR deny and unknown, intent-authority confusion, dirty
+file, changed tool arguments, stale lease, proof replay, graph truncation,
+recovery, path and effect escape, and mandatory omission. One escape fails the
+whole report. Optional provider loss must replay deterministically through the
+local fail-closed path, and public discovery must remain lazy.
+
+Automatic is a two-observation mode. Keep the complete qualifying frozen
+evaluation, then collect a later separate current-root evaluation from a
+distinct producer population. An explicit policy must approve the exact
+behavior and automatic mode. A stale binding, narrowed population, safety
+failure, or configured metric regression returns the affected behavior to
+shadow.
+
+The module-local facade provides equivalent controls without duplicating
+transport policy:
+
+```python
+from ipfs_accelerate_py.agent_supervisor.decision_runtime_rollout import (
+    DecisionRuntimeControlRequest,
+    DecisionRuntimePublicAPI,
+)
+
+api = DecisionRuntimePublicAPI(
+    qualification,
+    binding=binding,
+    policy=policy,
+    current_evaluation=later_current_root_evaluation,
+)
+
+request = DecisionRuntimeControlRequest(action="automatic")
+python_result = api.python(request)
+cli_result = api.cli(request.to_dict())
+mcp_result = api.mcp(request.to_dict())
+assert python_result.to_dict() == cli_result.to_dict() == mcp_result.to_dict()
+
+status = api.status()
+explanation = api.explanation()
+rollback = api.rollback()
+assert rollback.decision.effective_mode.value == "shadow"
+```
+
+The CLI-shaped action vocabulary and MCP-shaped request object are exactly the
+canonical `DecisionRuntimeControlRequest`: `off`, `shadow`, `assist`,
+`automatic`, `status`, `explanation`, and `rollback`. These adapters do not
+shell out, resolve a provider, or grant authority. A
+`DecisionRuntimeRolloutDecision` is rollout evidence only; live mutation still
+requires the exact current permit, lease/fence, expected effects, and
+post-effect validation.
 
 Evaluate baseline and candidate on the closed fixture population: cold, warm,
 broad goal, contradictory input, malformed output, stale cache, unavailable
@@ -801,6 +1039,10 @@ At minimum, monitor:
 - paired token reduction, repeated-cache reuse, planning coverage improvement,
   invalid-plan-branch reduction, independent throughput, all four component
   gates, and bounded reason codes;
+- proof-runtime provider tokens, mandatory-closure versus total-corpus
+  nodes/bytes, exact warm reuse, invalidation true/false positives and false
+  negatives, first-valid plans, retries, proof/validation cost, effects, and
+  terminal parity;
 - self-refill epoch status, blocker codes, successor counts, replay, and
   healthy exhaustion.
 
@@ -850,6 +1092,13 @@ not found, cancellation, timeout, and unavailable operations. Provider
 unavailability degrades to a typed local fallback or rejection; it never
 grants another provider more authority.
 
+Recover proof-runtime benchmark and rollout state by reloading the complete
+producer population and recomputing both reports. Never restore automatic from
+a serialized summary alone. A stale/corrupt source identity, replayed proof,
+changed root, omitted fixture, or later safety/binding regression returns the
+affected behavior to shadow and requires a fresh qualification/current-root
+pair.
+
 ## Self-refill epochs
 
 A drained board is a trigger for reconciliation, not proof that the objective
@@ -887,6 +1136,8 @@ Existing deployments can migrate incrementally:
 
 | Standalone pattern | Unified replacement |
 | --- | --- |
+| Import an internal v2 module or enumerate package globals | Import only package-root names in `AGENT_SUPERVISOR_V2_STABLE_EXPORTS`; use `AGENT_SUPERVISOR_V2_EXPORT_MODULES` to audit canonical ownership |
+| Maintain separate Python, CLI, or MCP operation tables | Discover `OPERATION_CATALOG_V2` through the surface-specific v2 discovery/publication entry point |
 | Read objective Markdown directly | `goals` with explicit `objective_path`, bounds, and target binding |
 | Parse the todo board in an operator script | `tasks` with explicit `todo_path` and `task_header_prefix` |
 | Read status, metrics, events, cache, or bundle JSON ad hoc | Corresponding bounded read operation |
@@ -920,8 +1171,37 @@ Standalone commands do not automatically gain unified authorization,
 idempotency, or MCP allowlists. During migration, protect them with the same
 filesystem ownership, process isolation, explicit paths, and operator policy;
 do not assume equivalence until their direct package handler is parity-tested.
+Keep v1 imports and records intact throughout this sequence. V1 and v2 must
+resolve the same canonical operation and request/result objects where their
+surfaces overlap; a wrapper must not manufacture a second enum or translate a
+v1 receipt into a v2 receipt.
 
 ## Validation
+
+Run the proof-runtime scaling, adversarial, rollout, and public-control gate:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_decision_runtime_benchmark.py \
+  test/api/test_agent_supervisor_decision_runtime_adversarial.py \
+  test/api/test_agent_supervisor_decision_runtime_rollout.py \
+  test/api/test_agent_supervisor_decision_runtime_public_api.py -q
+```
+
+Run the generation-2 public-surface, transport-conformance, and rollback gate:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_v2_public_api.py \
+  test/api/test_agent_supervisor_control_conformance_v2.py \
+  test/api/test_agent_supervisor_self_improvement_v2_rollout.py -q
+```
+
+The public API test includes the qualifying fresh-interpreter check. Running
+the same imports in a warm application is not evidence that package import,
+complete stable-member resolution, and repeated discovery start no process,
+load no optional dataset/model/prover provider, and preserve canonical
+identities.
 
 Run the deterministic contract and surface-parity suite:
 

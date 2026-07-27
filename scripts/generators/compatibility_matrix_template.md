@@ -63,4 +63,4 @@
 
 ---
 
-This compatibility matrix is automatically generated from the benchmark database. For detailed implementation guides and optimization recommendations, please refer to the [Hardware Selection Guide](HARDWARE_SELECTION_GUIDE.md) and [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md).
+This compatibility matrix is automatically generated from the benchmark database. For detailed implementation guides and optimization recommendations, please refer to the [Hardware Selection Guide](../../test/HARDWARE_SELECTION_GUIDE.md) and [Hardware Benchmarking Guide](../../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md).

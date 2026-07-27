@@ -62,6 +62,38 @@ obligation without resolving rollout code. This obligation is validated in a
 fresh interpreter across the complete manifest and optional-provider
 inventory; a warm-process import or a partial name check is non-authoritative.
 
+Generation 2 has a separate reviewed publication boundary.
+`AGENT_SUPERVISOR_V2_STABLE_EXPORTS` (also available as the
+`V2_STABLE_EXPORTS` compatibility alias) is the immutable package-root
+manifest; `AGENT_SUPERVISOR_V2_EXPORT_MODULES` records the provider-free owner
+module for every member. `AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION` is `2`.
+Only names in that manifest are public v2 contracts or control entry points.
+Accessing a manifest member resolves it once and returns the canonical
+owner-module object, so a package import, owner-module import, CLI adapter, and
+MCP adapter cannot acquire distinct class, enum, catalog, or operation
+identities.
+
+The v2 discovery entry points are
+`agent_supervisor_v2_discovery_manifest()` and
+`agent_supervisor_v2_control_surface_publication()` for Python,
+`agent_cli_v2_discovery_manifest()` and
+`v2_cli_control_surface_publication()` for CLI, and
+`agent_supervisor_v2_discovery_manifest()` and
+`mcp_v2_control_surface_publication()` in the MCP adapter. They all bind the
+same `OPERATION_CATALOG_V2`, canonical `Operation` members, schema identities,
+behavior identities, direct-service dispatcher identity, and catalog version.
+Discovery is static: it must not resolve a backend or service, read
+environment allowlists, import an optional dataset/model/prover provider, or
+start even a short-lived process. A runtime `capabilities` request is a later,
+separate read.
+
+The existing package exports, discovery spellings, request/result records,
+operation values, CLI command names, and MCP tool names remain the v1
+compatibility surface. Generation 2 extends their metadata and conformance
+checks; it does not renumber an operation, replace its enum object, or turn a
+legacy import into a provider load. A new name that cannot preserve those
+canonical identities is not admitted to the stable manifest.
+
 Availability is therefore an explicit two-step handshake:
 
 1. use the control discovery manifest or capability report to learn the closed
@@ -110,6 +142,15 @@ static. MCP tool registration is static, and listing its category, tools, or
 schemas does not resolve the configured service. Repeated discovery must be
 byte-deterministic and leave optional-provider imports, process starts, backend
 dispatches, and service-resolution counters unchanged.
+
+The generation-2 catalog makes that parity mechanically reviewable. Each
+`ControlOperationDescriptor` in `OPERATION_CATALOG_V2` fixes the operation's
+authority, target selectors and roots, request/result schemas, bounds,
+pagination, backend capability, degradation policy, audit schema, and
+dry-run/idempotency/authorization/lease/fence requirements. A
+`ControlSurfacePublication` qualifies only when it covers the complete catalog
+with the canonical schema and behavior identities and dispatches directly to
+the service. Partial CLI or MCP registration fails before publication.
 
 The shared operation contract provides behavioral parity, but it does not make
 every backend universally available. `RepositorySupervisorBackend` supplies
@@ -186,35 +227,52 @@ reason, dry-run flag, and the containing request must agree.
 
 ### Reviewed operating profiles
 
-The profiles below are configuration envelopes, not new Python classes or
-implicit modes. Operators construct them from
-`context_contracts.ContextBudget`, `ControlBounds`,
-`analysis_cache.AnalysisCache`, `ResourcePolicy`, `ResourceLeaseBudget`,
-provider-capacity records, rollout policies, and daemon settings. Persist the
-resulting typed configuration and policy identities with evidence. Neither
-profile bypasses capability discovery, authorization, proof freshness, or
-promotion gates.
+Profiles are versioned configuration-and-evidence envelopes, not Python
+classes, implicit modes, or folklore about worker counts. A profile binds
+`ControlBounds`, context/cache limits, `ResourcePolicy`,
+`ResourceLeaseBudget`, provider capacity, rollout policy, and daemon settings
+to the repository/tree, policy, capability snapshot, host class, and measured
+workload. Neither a profile name nor a configured worker maximum grants
+capacity or authority.
 
-| Setting | Deterministic smoke | Production starting envelope |
+For each admitted resource class, measure CPU time and saturation, peak RSS and
+GPU memory, process count, temporary and durable bytes, model tokens and
+provider quota, provider latency, queue delay, validation/merge pressure, and
+accepted throughput on the applicable v2 fixtures. The effective ceiling is
+the minimum of the contract bound, policy bound, current provider report,
+backend bound, and the measured host limit after the reviewed reserve. Persist
+the observation window, sample population, percentile/high-watermark method,
+reserve, and resulting ceiling in the profile revision. Missing or stale
+telemetry produces zero new capacity. Lane count is only the result of this
+admission calculation.
+
+The immutable contract ceilings are independent of host sizing:
+
+| Contract quantity | V2 ceiling or gate |
+| --- | --- |
+| One control request/result envelope | `ControlBounds`: 256 items, 256 KiB serialized, depth 8, 8 KiB text, 128 paths, 64 effects, 30 seconds; callers may only lower these |
+| One v2 component receipt / projection | 256 KiB / 1 MiB |
+| One refill epoch | At most 8 goals and 24 tasks, at least 6 hours cooldown; policy and measured capacity may lower both counts |
+| Drained-board observation | At least 10 minutes, at most 2,000 milli-percent idle CPU, and zero unchanged-state writes |
+| Safety and control | Zero authority, escaped-defect, stale-authoritative-hit, idempotency, resource-bound, and control-surface conformance violations |
+
+The reviewed profiles are:
+
+| Profile | Admission and measured ceiling | Required outcome |
 | --- | --- | --- |
-| Purpose | Repeatable contract, recovery, and local integration check | Durable supervised operation after environment sizing |
-| Rollout | `shadow` only | Start `shadow`; promote to `assist`, then narrowly to `automatic` only through the paired gate |
-| Providers | Deterministic local/fallback adapters; optional network/model routes disabled | Only explicitly configured routes with fresh capability and conformance receipts |
-| Context | `context_contracts.ContextBudget(max_input_tokens=2048, reserved_output_tokens=512, reserved_tool_tokens=128, max_items=32, max_item_bytes=8192, max_serialized_bytes=65536, max_depth=6, max_text_bytes=4096)` | Begin with the reviewed `context_contracts.ContextBudget()` defaults: 8192 input, 2048 output reserve, 512 tool reserve, 128 items, and 256 KiB serialized; lower to the provider-negotiated effective limit |
-| Coordinator caches | Temporary profile-specific state, 64 entries, 4 MiB total, 64 KiB entry; isolate namespaces per test | Durable profile-specific state, initially 512 entries, 32 MiB total, and 256 KiB per entry; quota changes require a new configuration digest |
-| Analysis receipt cache | `AnalysisCache`: 64 entries, 4 MiB total, 64 KiB entry, 48 KiB receipt, 60-second negative TTL; discard between cold fixtures | `AnalysisCache` reviewed defaults: 512 entries, 32 MiB total, 128 KiB entry, 96 KiB receipt, and 5-minute negative TTL; size and TTL changes require a new configuration digest |
-| Lanes and resources | One lane, one process, one CPU-proof slot, one model slot, one artifact slot; adaptive scheduling off | Explicit `ResourcePolicy`; start with no more than four lanes, CPU-proof 2, model 1, artifact 2, stage/class ceilings, provider telemetry required, and adaptive scheduling off until the paired parallel fixtures pass |
-| Control bounds | Prefer 32 items, 64 KiB serialized, 4 KiB text, 16 paths/effects, and a 10-second timeout | Default 256-item/256-KiB/30-second request envelope, further constrained by service and backend limits |
-| Refill | Run one fixed epoch fixture against temporary objective/task-board copies; never materialize successors | At board drain, evaluate one identity-bound epoch; materialize at most the policy-admitted bounded successor population |
-| State | New temporary state root per run; fixed clock and fixture identities where supported | Dedicated durable state root, fsynced receipts/reports, backups, retention, and monitored recovery |
+| Smoke | One serialized lane is chosen for reproducibility, not as a host-capacity claim. Use temporary state, deterministic local fixtures, the smaller 2,048-token/64-KiB context envelope, and disabled optional/network providers. | Complete cold import/discovery, every canonical operation/schema identity, stable errors, restart, exact replay, and a shadow fixture without repository mutation. |
+| Production | Start in `shadow`. Derive per-class concurrency and context/cache quotas from a representative cold/warm/broad/parallel/artifact-pressure load run on the deployment host; admit only within the persisted CPU/RSS/GPU/disk/process/token/quota/latency reserve. | Zero hard-gate violations and current capability/conformance receipts. Promotion proceeds through `assist`; `automatic` remains capability- and policy-specific. |
+| Distributed | Measure each worker class and provider route separately, then enforce both per-node ceilings and a global lease budget. Conflict-path exclusions, fencing, quota, and persistence throughput can reduce the sum of node capacities. | Independent-lane throughput passes without duplicate compute, conflict regression, stale publication, or resource-bound violations; partitions and stale fences fail closed. |
+| Degraded | Recompute capacity after a provider, dataset, prover, network route, or host resource disappears. The missing route has capacity zero. Only catalog-declared `local_read_only` or `proposal_only` fallback is available; mutation and undeclared fallbacks are `fail_closed`. | Capability and reason codes identify the loss. No cached success, import success, or alternate provider increases authority. |
+| Recovery | Pause admission, preserve journals/receipts/leases, and measure the restart/replay workload against a dedicated recovery reserve. New-work capacity remains zero until tree, state, fence, and last terminal receipt reconcile. | Restart fixture passes, exact successful mutations replay without another effect, incomplete work is bounded, and recovery produces no false completion. |
+| Refill | Run after a drained-board observation and a meaningful binding change or eligible scheduled window. Bound the epoch below both the 8-goal/24-task contract maxima and the measured validation/materialization capacity. | Exact epoch replay is a no-op, duplicate-successor rate is zero, cooldown/healthy-exhaustion guards hold, and proposal/partial evidence cannot create work. |
+| Rollback | Trigger on a stale binding, regression, failed current-tree evaluation, or lost capability. Set affected v2 behavior to `shadow`, stop new automatic admission, and drain or quarantine within the measured rollback reserve. | `rollback_applied` and bounded reason codes are persisted; no report, rollback, or shadow execution mutates objectives, policy, code, or completion state. |
+| Migration | Run v1 and v2 reads/discovery side by side in smoke/shadow with mutation capacity zero. Measure schema/result parity, state growth, restart time, and operator load before authorizing one mutation family at a time. | V1 imports and operation identities remain valid; v2 uses the canonical catalog objects; any parity or recovery drift returns the migrated family to the v1 path or v2 shadow. |
 
-The production numbers are a conservative starting ceiling, not a claim that a
-host can sustain them. Provider concurrency, CPU, memory, GPU memory, disk,
-quota, latency, merge pressure, and active leases can only reduce admitted
-width. Unknown telemetry does not grant capacity, and an explicit zero means
-exhausted. The smoke profile is smaller than production but exercises the same
-contracts, canonical serialization, stable errors, idempotent replay, restart
-loading, and no-side-effect discovery.
+The smoke limits are deterministic test choices. Production and distributed
+limits must never be copied from them or from an example lane count. Increasing
+context, cache, process, provider, or concurrency ceilings changes the profile
+identity and requires a new measured shadow population.
 
 Context, cache, and resources have independent invariants:
 
@@ -329,6 +387,70 @@ automatic decision does not silently translate into either `enforcement` or
 `auto_safe`: the downstream subsystem must also pass its own policy,
 capability, proof, and freshness gate.
 
+Generation-2 rollout is likewise a distinct contract:
+`V2RolloutMode` is `off`, `shadow`, `assist`, or `automatic`. Its default
+policy omits `automatic`; explicit policy approval, a qualifying complete v2
+evaluation, and a separate later current-tree evaluation are all required.
+`evaluate_v2_self_improvement_rollout()` returns the effective mode and
+`rollback_applied`. Any stale binding, current regression, or failed
+current-tree check returns the affected behavior to `shadow`. Replaying or
+verifying a v2 report recomputes it from source evaluations and cannot grant
+control mutation or goal-completion authority.
+
+#### Proof-directed decision-runtime rollout
+
+The proof-runtime rollout is a third, deliberately distinct contract.
+`DecisionRuntimeRolloutMode` is `off`, `shadow`, `assist`, or `automatic`;
+these values do not extend `DecisionRuntimeMode`. Only a completely gated
+`automatic` decision maps to runtime `enforce`. `assist` remains runtime
+`shadow` plus an operator-reviewed proposal, and neither mode manufactures
+mutation or completion authority.
+
+`DecisionRuntimeBenchmark` owns one closed paired population. It sends the
+same frozen canonical decisions through the current and proof-directed live
+paths, then independently increases each irrelevant legal corpus, codebase,
+SkillCenter row set, SkillCenter graph, and conversation history by at least
+10x. `ProofDependencyScalingReport` is replayed from the complete producer
+receipt population and causal ablations. It recomputes provider tokens,
+mandatory proof closure nodes/bytes, total-corpus nodes/bytes, exact warm
+cache reuse, invalidation true/false positives and false negatives,
+first-valid plans, retries, proof and validation cost, declared/observed
+effects, and terminal results. Aggregate averages, estimates, model judgments,
+or a narrowed fixture population cannot qualify promotion.
+
+For the proof-directed path, increasing irrelevant corpus changes only bounded
+index metadata. The decision, mandatory closure identity and size, effects,
+terminal result, and provider input context remain unchanged. Across decisions,
+context grows with the mandatory proof closure rather than total corpus size.
+Retrieval can nominate context but cannot manufacture authority; mandatory
+dependencies never compete for optional budget or truncate.
+
+The non-compensable adversarial population requires zero forged-CID,
+canonicalization, schema, stale-root, cross-partition, prompt-injection,
+poisoned-embedding, inapplicable-law, legal-conflict, SecurityIR deny/unknown,
+intent-authority-confusion, dirty-file, changed-tool-argument, stale-lease,
+proof-replay, graph-truncation, recovery, path/effect escape, or
+mandatory-omission escapes. Intent, LegalIR, and SecurityIR verdicts remain
+independent. Deterministic local degraded operation is fail closed when
+optional model, dataset, graph/vector, or prover facilities are unavailable;
+static discovery remains side-effect free and resolves none of them.
+
+`evaluate_decision_runtime_rollout()` requires an explicitly approving
+`DecisionRuntimeRolloutPolicy` for assist or automatic. Automatic additionally
+requires a distinct producer population observed later against the exact
+current root; replaying the qualification observation is rejected. Any
+binding, safety, population, or configured metric regression returns only the
+affected behavior to `shadow` and records both evaluation identities and
+bounded reason codes.
+
+`DecisionRuntimePublicAPI` exposes the same canonical request/result identity
+for Python, CLI-shaped, and MCP-shaped calls. All three support `off`,
+`shadow`, `assist`, policy-approved `automatic`, `status`, `explanation`, and
+`rollback`; the aliases dispatch one implementation and cannot add authority.
+The benchmark and rollout modules publish
+`PROOF_DIRECTED_ROLLOUT_REQUIREMENT_ID` evidence, not a permit, mutation, or
+completion receipt.
+
 ### Metrics, failure recovery, and self-refill epochs
 
 Operators should correlate canonical identities rather than scrape prose.
@@ -341,6 +463,15 @@ Proof and rollout projections report attempt outcomes, assurance, cache
 freshness, defect detection, authority violations, restart stability, and
 promotion reason codes. Metrics are bounded, low-cardinality projections;
 full outputs belong in content-addressed artifacts.
+
+Proof-runtime projections additionally report producer input/output/reused
+tokens, mandatory-closure and total-corpus nodes/bytes, exact warm reuse,
+invalidation true positives/false positives/false negatives, first-valid plan
+count, retries, proof/validation cost, effect parity, and terminal parity.
+Invalidation precision means every and only affected transitive dependent, not
+a cache hit rate. The report is content-addressed and re-derived from producer
+receipts after restart; a stale, corrupt, detached, or replayed report cannot
+restore automatic mode.
 
 Failures retain enough identity and evidence for deterministic recovery:
 
@@ -395,6 +526,17 @@ runtime runners may still construct the backend, but they must not maintain a
 second authorization or lifecycle policy. A compatibility wrapper should
 decode into `OperationRequest`, call the service once, and return
 `OperationResult`; it should not translate back into a shell command.
+
+For a v1-to-v2 migration, retain both compatibility manifests while comparing
+`agent_supervisor_v2_discovery_manifest()` with the legacy discovery result.
+Negotiate catalog version 2 explicitly, require the same canonical `Operation`
+objects and request/result schema identities on Python, CLI, and MCP, and keep
+v2 in smoke/shadow with mutation admission at zero. Move one operation family
+only after its dual-read or dry-run results, measured resource ceiling,
+restart/replay behavior, and audit receipts agree. Roll the family back to the
+v1 adapter or v2 shadow on any identity, capability, state, or recovery drift.
+Do not rewrite persisted v1 reports as v2 records: retain them for audit and
+produce fresh v2 evidence on the current binding.
 
 ## Architectural synthesis: a constrained feedback controller
 
@@ -1171,6 +1313,12 @@ many modules intentionally participate in more than one group.
 `logic_translation_validation.py`, `authorization_logic.py`,
 `interface_contract_codegen.py`, `validation_commands.py`,
 `validation_scheduler.py`, `supervisor_state_model.py`.
+
+**Proof-directed decision runtime:** `decision_contracts.py`,
+`ir_registry.py`, `semantic_dependency_graph.py`, `decision_context.py`,
+`context_compiler.py`, `ir_constraint_compiler.py`, `execution_permit.py`,
+`runtime_cas.py`, `decision_runtime.py`, `decision_runtime_benchmark.py`,
+`decision_runtime_rollout.py`.
 
 **Proof scope, providers, and assurance:** `code_proof_obligations.py`,
 `proof_obligation_templates.py`, `proof_context.py`, `proof_scope_index.py`,

@@ -20,9 +20,11 @@ from typing import Any, TextIO
 from .control_contracts import (
     MUTATION_OPERATIONS,
     AuthorizationDecision,
+    CapabilityDegradation,
     ControlBounds,
     ControlContractError,
     ControlDiscoveryManifest,
+    ControlOperationCatalog,
     ControlSurface,
     IdempotencyKey,
     Operation,
@@ -30,8 +32,15 @@ from .control_contracts import (
     OperationResult,
     OperationStatus,
     decode_operation_request,
+    get_operation_catalog,
 )
-from .control_plane import SupervisorControlService
+from .control_plane import (
+    DIRECT_CONTROL_SERVICE_DISPATCHER_ID,
+    ControlSurfacePublication,
+    SupervisorControlService,
+    control_operation_behavior_id,
+    validate_control_surface_publication,
+)
 
 
 AGENT_CLI_EXIT_SUCCESS = 0
@@ -39,6 +48,13 @@ AGENT_CLI_EXIT_FAILED = 1
 AGENT_CLI_EXIT_INVALID = 2
 AGENT_CLI_EXIT_CONFLICT = 3
 AGENT_CLI_EXIT_NOT_FOUND = 4
+# Canonical results retain the distinct unavailable/timeout/cancellation
+# status and typed error. Unavailable remains the legacy generic operation
+# failure, while bounded timeout and cancellation have conventional stable
+# process codes.
+AGENT_CLI_EXIT_UNAVAILABLE = AGENT_CLI_EXIT_FAILED
+AGENT_CLI_EXIT_TIMED_OUT = 124
+AGENT_CLI_EXIT_CANCELLED = 130
 MAX_WATCH_COUNT = 100
 MAX_WATCH_INTERVAL_MS = 60_000
 
@@ -87,8 +103,19 @@ _DIRECT_PARAMETER_ARGUMENTS = (
     "path",
     "limit",
     "offset",
+    "cursor",
+    "event_cursor",
     "task_header_prefix",
     "target_id",
+    "service_id",
+    "task_id",
+    "bundle_id",
+    "lane_id",
+    "stream_id",
+    "receipt_id",
+    "cache_namespace",
+    "artifact_id",
+    "validation_id",
     "reason",
     "requested_state",
 )
@@ -137,11 +164,31 @@ def _add_request_arguments(
     parser.add_argument("--path", help="Explicit root-relative data path.")
     parser.add_argument("--limit", type=int, help="Bounded result window size.")
     parser.add_argument("--offset", type=int, help="Result window offset.")
+    parser.add_argument("--cursor", help="Opaque bounded query cursor.")
+    parser.add_argument(
+        "--event-cursor",
+        help="Canonical event cursor token for replay.",
+    )
     parser.add_argument(
         "--task-header-prefix",
         help="Required task ID prefix for the tasks operation.",
     )
     parser.add_argument("--target-id", help="Explicit lifecycle/task target.")
+    parser.add_argument("--service-id", help="Catalog service selector.")
+    parser.add_argument("--task-id", help="Catalog task selector.")
+    parser.add_argument("--bundle-id", help="Catalog bundle selector.")
+    parser.add_argument("--lane-id", help="Catalog lane selector.")
+    parser.add_argument("--stream-id", help="Catalog event stream selector.")
+    parser.add_argument("--receipt-id", help="Catalog receipt selector.")
+    parser.add_argument(
+        "--cache-namespace",
+        help="Catalog cache namespace selector.",
+    )
+    parser.add_argument("--artifact-id", help="Catalog artifact selector.")
+    parser.add_argument(
+        "--validation-id",
+        help="Catalog validation replay selector.",
+    )
     parser.add_argument("--reason", help="Operator reason for a proposed mutation.")
     parser.add_argument(
         "--requested-state", help="Requested lifecycle state, when applicable."
@@ -229,6 +276,10 @@ def register_agent_cli(
 ) -> argparse.ArgumentParser:
     """Register the lightweight agent group on the product CLI parser."""
 
+    # Refuse to publish a parser whose vocabulary or schemas drifted from the
+    # immutable catalog. This is static validation: it neither constructs a
+    # service nor resolves a backend/provider.
+    cli_control_surface_publication()
     agent = subparsers.add_parser(
         "agent",
         help="Inspect and control the agent supervisor through typed contracts.",
@@ -266,6 +317,166 @@ def agent_cli_discovery_manifest() -> ControlDiscoveryManifest:
         surface=ControlSurface.CLI,
         operations=operations,
     )
+
+
+def validate_agent_cli_catalog(
+    catalog: ControlOperationCatalog | None = None,
+) -> ControlDiscoveryManifest:
+    """Fail closed unless CLI publication exactly conforms to ``catalog``.
+
+    Besides the closed operation population, publication binds every command
+    to the catalog's canonical request/result schemas and transport-neutral
+    behavior policy. The function is deliberately provider-free and
+    process-free so parser construction and tools/list-style discovery remain
+    safe.
+    """
+
+    selected = catalog or get_operation_catalog()
+    if not isinstance(selected, ControlOperationCatalog):
+        raise AgentCLIError("agent CLI catalog must be a ControlOperationCatalog")
+
+    commands = tuple(COMMAND_OPERATIONS)
+    if (
+        len(commands) != len(set(commands))
+        or any(
+            not isinstance(command, str)
+            or not command
+            or command.strip() != command
+            or any(character.isspace() for character in command)
+            for command in commands
+        )
+    ):
+        raise AgentCLIError("agent CLI command vocabulary is invalid")
+
+    mapped = tuple(COMMAND_OPERATIONS.values())
+    expected = tuple(selected.operations)
+    if (
+        len(mapped) != len(set(mapped))
+        or frozenset(mapped) != frozenset(expected)
+    ):
+        missing = sorted(
+            operation.value
+            for operation in frozenset(expected).difference(mapped)
+        )
+        extra = sorted(
+            str(getattr(operation, "value", operation))
+            for operation in frozenset(mapped).difference(expected)
+        )
+        raise AgentCLIError(
+            "agent CLI publication does not exactly cover the control catalog; "
+            f"missing={missing}, extra={extra}"
+        )
+
+    manifest = agent_cli_discovery_manifest()
+    if manifest.operations != tuple(
+        sorted(selected.operations, key=lambda operation: operation.value)
+    ):
+        raise AgentCLIError("agent CLI discovery operation order drifted")
+
+    for descriptor in selected:
+        operation = descriptor.operation
+        if (
+            descriptor.request_schema_id
+            != manifest.request_schema_ids[operation.value]
+            or descriptor.result_schema_id
+            != manifest.result_schema_ids[operation.value]
+        ):
+            raise AgentCLIError(
+                f"agent CLI schema identity drifted for {operation.value}"
+            )
+        guarded = (
+            descriptor.supports_dry_run,
+            descriptor.requires_idempotency,
+            descriptor.requires_authorization,
+            descriptor.requires_lease,
+            descriptor.requires_fencing,
+        )
+        if (
+            descriptor.authority is not operation.authority
+            or (operation.mutating and not all(guarded))
+            or (not operation.mutating and any(guarded))
+            or (
+                operation.mutating
+                and descriptor.degradation
+                is not CapabilityDegradation.FAIL_CLOSED
+            )
+        ):
+            raise AgentCLIError(
+                f"agent CLI behavior policy drifted for {operation.value}"
+            )
+    return manifest
+
+
+def cli_control_surface_publication(
+    catalog: ControlOperationCatalog | None = None,
+) -> ControlSurfacePublication:
+    """Publish the complete static CLI surface or fail before registration."""
+
+    selected = catalog or get_operation_catalog()
+    manifest = validate_agent_cli_catalog(selected)
+    publication = ControlSurfacePublication(
+        surface=ControlSurface.CLI,
+        catalog_id=selected.catalog_id,
+        operations=manifest.operations,
+        request_schema_ids=manifest.request_schema_ids,
+        result_schema_ids=manifest.result_schema_ids,
+        behavior_ids={
+            descriptor.operation: control_operation_behavior_id(descriptor)
+            for descriptor in selected
+        },
+        dispatcher_ids={
+            operation: DIRECT_CONTROL_SERVICE_DISPATCHER_ID
+            for operation in selected.operations
+        },
+        dispatch_mode="direct_service",
+        provider_free=True,
+        process_free=True,
+    )
+    return validate_control_surface_publication(publication, selected)
+
+
+# Generation-2 spellings intentionally preserve function identity with the
+# legacy-compatible entry points.  Both surfaces publish the one canonical
+# operation catalog; these are negotiation names, not alternate behavior.
+agent_cli_v2_discovery_manifest = agent_cli_discovery_manifest
+v2_cli_control_surface_publication = cli_control_surface_publication
+
+
+def build_agent_cli_command(
+    request: OperationRequest,
+    *,
+    executable: str = "ipfs-accelerate",
+) -> tuple[str, ...]:
+    """Generate a shell-free canonical argv vector for one catalog operation."""
+
+    if not isinstance(request, OperationRequest):
+        raise AgentCLIError("request must be an OperationRequest")
+    if not isinstance(executable, str) or not executable.strip():
+        raise AgentCLIError("agent CLI executable must be non-empty")
+    selected = get_operation_catalog()
+    validate_agent_cli_catalog(selected)
+    command_by_operation = {
+        operation: command for command, operation in COMMAND_OPERATIONS.items()
+    }
+    try:
+        command = command_by_operation[request.operation]
+    except KeyError as exc:  # defensive after publication validation
+        raise AgentCLIError(
+            f"agent CLI has no command for {request.operation.value}"
+        ) from exc
+    return (
+        executable,
+        "agent",
+        command,
+        "--request-json",
+        request.to_json(),
+        "--output-json",
+    )
+
+
+# Concise compatibility spellings for conformance harnesses.
+agent_cli_command = build_agent_cli_command
+generate_agent_cli_command = build_agent_cli_command
 
 
 def _json_value(raw: str, *, noun: str) -> Any:
@@ -345,6 +556,7 @@ def _request_overlay_arguments(args: argparse.Namespace) -> tuple[str, ...]:
 def build_agent_request(args: argparse.Namespace) -> OperationRequest:
     """Build the one canonical request accepted by every control surface."""
 
+    validate_agent_cli_catalog()
     operation = Operation(str(args.agent_operation))
     payload = _request_payload(args)
     if payload is not None:
@@ -499,6 +711,12 @@ def exit_code_for_result(result: OperationResult) -> int:
         return AGENT_CLI_EXIT_NOT_FOUND
     if result.status is OperationStatus.DENIED:
         return AGENT_CLI_EXIT_INVALID
+    if result.status is OperationStatus.UNAVAILABLE:
+        return AGENT_CLI_EXIT_UNAVAILABLE
+    if result.status is OperationStatus.TIMED_OUT:
+        return AGENT_CLI_EXIT_TIMED_OUT
+    if result.status is OperationStatus.CANCELLED:
+        return AGENT_CLI_EXIT_CANCELLED
     return AGENT_CLI_EXIT_FAILED
 
 
@@ -582,9 +800,22 @@ def run_agent_cli(
                 raise TypeError(
                     "agent control service returned a mismatched OperationResult"
                 ) from exc
+            record = result.to_record()
+            try:
+                canonical = OperationResult.from_dict(record)
+                canonical.validate_against(request)
+                if canonical.canonical_bytes() != result.canonical_bytes():
+                    raise ControlContractError(
+                        "operation result is not canonically stable"
+                    )
+            except ControlContractError as exc:
+                raise TypeError(
+                    "agent control service returned a non-canonical "
+                    "OperationResult"
+                ) from exc
             _write_record(
                 stdout,
-                result.to_record(),
+                canonical.to_record(),
                 compact=count > 1
                 or bool(getattr(args, "output_json", False)),
             )
@@ -606,6 +837,14 @@ def run_agent_cli(
         }
         _write_record(stderr, payload, compact=True)
         return AGENT_CLI_EXIT_INVALID
+    except KeyboardInterrupt:
+        payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
+            "status": OperationStatus.CANCELLED.value,
+            "message": "agent control operation cancelled",
+        }
+        _write_record(stderr, payload, compact=True)
+        return AGENT_CLI_EXIT_CANCELLED
     except Exception:
         payload = {
             "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
@@ -617,19 +856,29 @@ def run_agent_cli(
 
 
 __all__ = [
+    "AGENT_CLI_EXIT_CANCELLED",
     "AGENT_CLI_EXIT_CONFLICT",
     "AGENT_CLI_EXIT_FAILED",
     "AGENT_CLI_EXIT_INVALID",
     "AGENT_CLI_EXIT_NOT_FOUND",
     "AGENT_CLI_EXIT_SUCCESS",
+    "AGENT_CLI_EXIT_TIMED_OUT",
+    "AGENT_CLI_EXIT_UNAVAILABLE",
     "AgentCLIError",
     "COMMAND_OPERATIONS",
     "MAX_WATCH_COUNT",
     "MAX_WATCH_INTERVAL_MS",
+    "agent_cli_command",
     "build_agent_request",
+    "build_agent_cli_command",
     "agent_cli_discovery_manifest",
+    "agent_cli_v2_discovery_manifest",
+    "cli_control_surface_publication",
     "default_agent_control_service",
     "exit_code_for_result",
+    "generate_agent_cli_command",
     "register_agent_cli",
     "run_agent_cli",
+    "validate_agent_cli_catalog",
+    "v2_cli_control_surface_publication",
 ]

@@ -372,5 +372,5 @@ For more information about specific components, see:
 - [Hardware Selection Guide](HARDWARE_SELECTION_GUIDE.md) - Details on hardware selection algorithm and configuration
 - [Model Benchmarking Guide](MODEL_BENCHMARKING_GUIDE.md) - Guide to benchmarking models across hardware platforms
 - [Hardware Model Integration Guide](HARDWARE_MODEL_INTEGRATION_GUIDE.md) - Information on hardware-model compatibility
-- [Benchmark Database Guide](BENCHMARK_DATABASE_GUIDE.md) - Guide to the benchmark database system
-- [Phase 16 Implementation Update](PHASE16_IMPLEMENTATION_UPDATE.md) - Latest updates on hardware selection and prediction
+- [Benchmark Database Guide](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md) - Guide to the benchmark database system
+- [Phase 16 Completion Summary](PHASE16_COMPLETION_SUMMARY.md) - Latest updates on hardware selection and prediction
