@@ -216,6 +216,21 @@ _PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME = (
 _PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME = (
     "semantic_roundtrip_realization_v1"
 )
+_PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME = (
+    "srt023_replacement_l1_canonical_ir_v1"
+)
+_PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME = (
+    "srt023_replacement_t1_realization_v1"
+)
+_PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME = (
+    "srt023_replacement_l2_canonical_ir_v1"
+)
+_PINNED_SYMAI_REPLACEMENT_CANONICAL_SCHEMA_NAMES = frozenset(
+    {
+        _PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME,
+        _PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME,
+    }
+)
 _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS = 3072
 _PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS = 1536
 _PINNED_SYMAI_SEMANTIC_TIMEOUT_SECONDS = 120.0
@@ -5244,6 +5259,8 @@ def _pinned_symai_bounded_atom_enum(
 
 def _pinned_symai_semantic_canonical_schema(
     schema: object,
+    *,
+    require_nonempty: bool = False,
 ) -> dict[str, object]:
     if not isinstance(schema, dict):
         raise RuntimeError(
@@ -5298,50 +5315,132 @@ def _pinned_symai_semantic_canonical_schema(
             "enum": bounded_qualifiers,
         },
     }
+    expected_rules: dict[str, object] = {
+        "type": "array",
+        "maxItems": _PINNED_SYMAI_MAX_RULES,
+        "items": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "modality",
+                "actor",
+                "action",
+                "object",
+                "conditions",
+                "exceptions",
+                "temporal",
+            ],
+            "properties": {
+                "modality": {
+                    "type": "string",
+                    "enum": ["O", "P", "F"],
+                },
+                "actor": {
+                    "type": "string",
+                    "enum": bounded_actors,
+                },
+                "action": {
+                    "type": "string",
+                    "enum": bounded_actions,
+                },
+                "object": {
+                    "type": "string",
+                    "enum": bounded_objects,
+                },
+                "conditions": qualifier_schema,
+                "exceptions": json.loads(
+                    json.dumps(qualifier_schema)
+                ),
+                "temporal": json.loads(
+                    json.dumps(qualifier_schema)
+                ),
+            },
+        },
+    }
+    if require_nonempty:
+        expected_rules["minItems"] = 1
     expected: dict[str, object] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["rules"],
+        "properties": {
+            "rules": expected_rules,
+        },
+    }
+    if schema != expected:
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip canonical schema drifted"
+        )
+    return expected
+
+
+def _pinned_symai_replacement_realization_schema(
+    schema: object,
+) -> dict[str, object]:
+    """Validate the exact bounded, polarity-indexed SRT-023 T1 contract."""
+
+    if not isinstance(schema, dict):
+        raise RuntimeError(
+            "pinned SyMAI replacement realization schema is invalid"
+        )
+    try:
+        rules_schema = schema["properties"]["rules"]
+        count = rules_schema["minItems"]
+        maximum = rules_schema["maxItems"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(
+            "pinned SyMAI replacement realization schema is invalid"
+        ) from exc
+    if (
+        isinstance(count, bool)
+        or not isinstance(count, int)
+        or count < 1
+        or count > _PINNED_SYMAI_MAX_RULES
+        or maximum != count
+    ):
+        raise RuntimeError(
+            "pinned SyMAI replacement realization rule count is invalid"
+        )
+    expected = {
         "type": "object",
         "additionalProperties": False,
         "required": ["rules"],
         "properties": {
             "rules": {
                 "type": "array",
-                "maxItems": _PINNED_SYMAI_MAX_RULES,
+                "minItems": count,
+                "maxItems": count,
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
                     "required": [
+                        "index",
                         "modality",
-                        "actor",
-                        "action",
-                        "object",
-                        "conditions",
-                        "exceptions",
-                        "temporal",
+                        "polarity",
+                        "text",
                     ],
                     "properties": {
+                        "index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": count - 1,
+                        },
                         "modality": {
                             "type": "string",
                             "enum": ["O", "P", "F"],
                         },
-                        "actor": {
+                        "polarity": {
                             "type": "string",
-                            "enum": bounded_actors,
+                            "enum": [
+                                "obligation",
+                                "permission",
+                                "prohibition",
+                            ],
                         },
-                        "action": {
+                        "text": {
                             "type": "string",
-                            "enum": bounded_actions,
+                            "minLength": 1,
                         },
-                        "object": {
-                            "type": "string",
-                            "enum": bounded_objects,
-                        },
-                        "conditions": qualifier_schema,
-                        "exceptions": json.loads(
-                            json.dumps(qualifier_schema)
-                        ),
-                        "temporal": json.loads(
-                            json.dumps(qualifier_schema)
-                        ),
                     },
                 },
             }
@@ -5349,7 +5448,7 @@ def _pinned_symai_semantic_canonical_schema(
     }
     if schema != expected:
         raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip canonical schema drifted"
+            "pinned SyMAI replacement realization schema drifted"
         )
     return expected
 
@@ -5397,11 +5496,20 @@ def _validate_pinned_symai_response_format(
         json_schema["schema"] = _pinned_symai_semantic_canonical_schema(
             schema
         )
+    elif schema_name in _PINNED_SYMAI_REPLACEMENT_CANONICAL_SCHEMA_NAMES:
+        json_schema["schema"] = _pinned_symai_semantic_canonical_schema(
+            schema,
+            require_nonempty=True,
+        )
     elif schema_name == _PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME:
         if schema != _PINNED_SYMAI_REALIZATION_RESPONSE_SCHEMA:
             raise RuntimeError(
                 "pinned SyMAI semantic-roundtrip realization schema drifted"
             )
+    elif schema_name == _PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME:
+        json_schema["schema"] = (
+            _pinned_symai_replacement_realization_schema(schema)
+        )
     else:
         raise RuntimeError(
             "pinned SyMAI Leanstral route requires a supported frozen or "
@@ -5442,6 +5550,15 @@ def _validate_pinned_symai_generation_contract(
         ),
         _PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME: (
             _PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS
+        ),
+        _PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME: (
+            _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS
+        ),
+        _PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME: (
+            _PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS
+        ),
+        _PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME: (
+            _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS
         ),
     }
     is_semantic_roundtrip = schema_name in semantic_max_tokens

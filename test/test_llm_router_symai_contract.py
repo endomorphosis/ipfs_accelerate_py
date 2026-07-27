@@ -112,6 +112,81 @@ def _semantic_realization_response_format() -> dict[str, object]:
     }
 
 
+def _replacement_canonical_response_format(
+    role: str,
+) -> dict[str, object]:
+    response_format = _semantic_canonical_response_format()
+    json_schema = response_format["json_schema"]
+    assert isinstance(json_schema, dict)
+    json_schema["name"] = f"srt023_replacement_{role}_canonical_ir_v1"
+    schema = json_schema["schema"]
+    assert isinstance(schema, dict)
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    rules = properties["rules"]
+    assert isinstance(rules, dict)
+    rules["minItems"] = 1
+    return response_format
+
+
+def _replacement_realization_response_format(
+    *,
+    rule_count: int = 3,
+) -> dict[str, object]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "srt023_replacement_t1_realization_v1",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["rules"],
+                "properties": {
+                    "rules": {
+                        "type": "array",
+                        "minItems": rule_count,
+                        "maxItems": rule_count,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "index",
+                                "modality",
+                                "polarity",
+                                "text",
+                            ],
+                            "properties": {
+                                "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": rule_count - 1,
+                                },
+                                "modality": {
+                                    "type": "string",
+                                    "enum": ["O", "P", "F"],
+                                },
+                                "polarity": {
+                                    "type": "string",
+                                    "enum": [
+                                        "obligation",
+                                        "permission",
+                                        "prohibition",
+                                    ],
+                                },
+                                "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                },
+                            },
+                        },
+                    }
+                },
+            },
+        },
+    }
+
+
 def _semantic_generation_options(
     response_format: dict[str, object],
     *,
@@ -329,6 +404,65 @@ def test_pinned_symai_rejects_unsafe_semantic_schemas_before_http(
         )
 
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("response_format", "max_tokens"),
+    [
+        (_replacement_canonical_response_format("l1"), 3072),
+        (_replacement_realization_response_format(), 1536),
+        (_replacement_canonical_response_format("l2"), 3072),
+    ],
+)
+def test_pinned_symai_accepts_exact_srt023_replacement_contracts(
+    response_format: dict[str, object],
+    max_tokens: int,
+) -> None:
+    normalized = llm_router.validate_pinned_symai_request_contract(
+        model_name=llm_router._PINNED_SYMAI_LEANSTRAL_ALIAS,
+        route_binding=dict(llm_router._PINNED_SYMAI_ROUTE_BINDING),
+        generation_options=_semantic_generation_options(
+            response_format,
+            max_tokens=max_tokens,
+        ),
+    )
+
+    assert normalized["response_format"] == response_format
+    assert normalized["max_tokens"] == max_tokens
+    assert normalized["cache_prompt"] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["empty_canonical_allowed", "rule_count_mismatch", "unbounded_text"],
+)
+def test_pinned_symai_rejects_drifted_srt023_replacement_contracts(
+    mutation: str,
+) -> None:
+    if mutation == "empty_canonical_allowed":
+        response_format = _replacement_canonical_response_format("l1")
+        schema = response_format["json_schema"]["schema"]
+        del schema["properties"]["rules"]["minItems"]
+        max_tokens = 3072
+    else:
+        response_format = _replacement_realization_response_format()
+        schema = response_format["json_schema"]["schema"]
+        rules = schema["properties"]["rules"]
+        if mutation == "rule_count_mismatch":
+            rules["maxItems"] = rules["minItems"] + 1
+        else:
+            del rules["items"]["properties"]["text"]["minLength"]
+        max_tokens = 1536
+
+    with pytest.raises(RuntimeError, match="replacement|canonical schema"):
+        llm_router.validate_pinned_symai_request_contract(
+            model_name=llm_router._PINNED_SYMAI_LEANSTRAL_ALIAS,
+            route_binding=dict(llm_router._PINNED_SYMAI_ROUTE_BINDING),
+            generation_options=_semantic_generation_options(
+                response_format,
+                max_tokens=max_tokens,
+            ),
+        )
 
 
 def test_pinned_symai_accepts_exact_source_withheld_realization_contract(
