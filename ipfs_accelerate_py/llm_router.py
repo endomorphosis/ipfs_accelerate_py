@@ -3835,7 +3835,7 @@ def _grok_default_model() -> str:
             "GROK_MODEL",
             "ipfs_accelerate_py_XAI_MODEL",
         )
-        or "grok-4.5"
+        or "grok-4.6"
     )
 
 

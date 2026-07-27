@@ -757,7 +757,7 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or os.environ.get("GROK_MODEL", "").strip()
         or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or "grok-4.5"
+        or "grok-4.6"
     )
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "40").strip() or "40"
     grok = _grok_binary() or "grok"
