@@ -653,3 +653,36 @@ do not delete protected headers or rewrite completed history.
 - Candidate kind: evidence_cluster
 - Todo vector key: 39aca0a69b6e0270
 - Acceptance: Objective scan filed this gap for ASREF-G090. Use evidence in /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-014-objective-gap-3bf00dd5a620.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ASREF-G060, ASREF-G070, ASREF-G080), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f; implement a complete, cohesive change that fully advances the packet goals (ASREF-G090) and covers all the shared packet evidence in one comprehensive pass. Root hygiene may land earlier under asref/root-hygiene if parallelized, but cutover still owns the final no-old-import gate.
+
+## ASREF-015 Resolve validation retry-budget failure for ASREF-003
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASREF-001
+- Outputs: ipfs_accelerate_py/agent_supervisor/core/README.md, ipfs_accelerate_py/agent_supervisor/core/__init__.py, ipfs_accelerate_py/agent_supervisor/core, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-015-asref-003-retry-budget.md
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASREF-003. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-015-asref-003-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASREF-003 from strategy blocked_tasks.
+
+## ASREF-016 Resolve validation retry-budget failure for ASREF-006
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASREF-001
+- Outputs: .gitignore, docs/NESTED_PACKAGES.md, docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-016-asref-006-retry-budget.md
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASREF-006. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-016-asref-006-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASREF-006 from strategy blocked_tasks.
+
+## ASREF-017 Resolve validation retry-budget failure for ASREF-011
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: 
+- Outputs: ipfs_accelerate_py/agent_supervisor/objectives, ipfs_accelerate_py/agent_supervisor/planning, ipfs_accelerate_py/agent_supervisor/validation, ipfs_accelerate_py/agent_supervisor/merge, ipfs_accelerate_py/agent_supervisor/rescue, ipfs_accelerate_py/agent_supervisor/runtime, ipfs_accelerate_py/agent_supervisor/self_improvement, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-017-asref-011-retry-budget.md
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASREF-011. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-017-asref-011-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASREF-011 from strategy blocked_tasks.
