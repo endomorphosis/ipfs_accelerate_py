@@ -4563,3 +4563,19 @@ planner, and refill behavior defaults to shadow mode.
 - Outputs: ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/test_agent_supervisor_prompt_mcp.py, test/api/test_agent_supervisor_prompt_control_conformance.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-163-asi-153-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASI-153. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-163-asi-153-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASI-153 from strategy blocked_tasks.
+
+## ASI-164 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 8cc53e572c00d05cc3ca4fee9ec4850806c97b10
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery, docs/architecture/agent_supervisor_self_improvement.todo.md
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-164-reconciliation-8cc53e572c00.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-164-reconciliation-8cc53e572c00.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
