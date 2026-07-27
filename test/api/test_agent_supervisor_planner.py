@@ -212,7 +212,7 @@ def test_converging_dependency_dag_is_not_misclassified_as_a_cycle() -> None:
     }
 
 
-def test_terminal_duplicate_alias_does_not_block_its_live_canonical_task() -> None:
+def test_terminal_equivalent_alias_completes_its_shared_canonical_task() -> None:
     graph = materialize_task_dependency_dag(
         [
             {
@@ -230,12 +230,15 @@ def test_terminal_duplicate_alias_does_not_block_its_live_canonical_task() -> No
 
     assert graph.repair_evidence == []
     assert graph.invalid_task_cids == []
-    assert graph.nodes["cid-finding"].status == "todo"
+    # Display aliases do not create separate work identities. Once one
+    # semantically equivalent record for the shared canonical CID is terminal,
+    # another alias must not reopen or duplicate that completed work.
+    assert graph.nodes["cid-finding"].status == "completed"
     assert graph.nodes["cid-finding"].metadata["task_id_aliases"] == [
         "REF-084",
         "REF-091",
     ]
-    assert graph.schedule[0].claimable is True
+    assert graph.schedule[0].claimable is False
 
 
 def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_capacity(
