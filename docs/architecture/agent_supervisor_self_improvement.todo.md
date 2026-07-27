@@ -4335,7 +4335,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-149 Prove dual-projection equivalence, migration, and replay safety
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-task-storage
 - Depends on: ASI-148
