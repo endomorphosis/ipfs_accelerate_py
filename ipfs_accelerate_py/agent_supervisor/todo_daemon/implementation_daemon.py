@@ -3305,12 +3305,13 @@ class PortalImplementationDaemon:
         task_claim_metadata = self._build_implementation_task_claim_metadata(task, attempt, started_at)
         lock_path = self._implementation_lock_path()
         lock_metadata = self._build_implementation_lock_metadata(task, attempt, started_at)
-        task_claim_fd, task_claim_reason, existing_task_claim = self._try_acquire_lock(
-            task_claim_path,
-            lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
-            owner_active=self._implementation_task_claim_owner_is_active,
+        acquired_task_claim, task_claim_reason, existing_task_claim = (
+            self._try_acquire_implementation_task_claim(
+                task_claim_path,
+                task_claim_metadata,
+            )
         )
-        if task_claim_fd is None:
+        if not acquired_task_claim:
             result = {
                 "skipped": True,
                 "reason": f"task_claim_{task_claim_reason}",
@@ -3324,7 +3325,6 @@ class PortalImplementationDaemon:
             self._record_event("implementation_skipped", result)
             return result
 
-        acquired_task_claim = True
         acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         try:
@@ -3345,12 +3345,71 @@ class PortalImplementationDaemon:
                     else ""
                 ),
             }
-            self._record_event("implementation_retry_deferred", result)
-            if task_claim_fd is not None:
-                os.close(task_claim_fd)
-                task_claim_fd = None
-            task_claim_path.unlink(missing_ok=True)
+            try:
+                # Prompt/context compilation happens before a worker is
+                # launched and before an implementation attempt is marked
+                # active. Reconcile only the selection still owned by this
+                # canonical attempt so a concurrent state update cannot be
+                # overwritten by the deferring daemon.
+                current = PortalTaskState.load(self.state_path)
+                canonical_task_cid = self._canonical_ref(task)
+                owns_idle_projection = (
+                    current.active_task_id == task.task_id
+                    and current.active_task_cid == canonical_task_cid
+                    and not current.implementation_in_progress
+                )
+                if owns_idle_projection:
+                    self._clear_active_execution_state(current, clear_task=True)
+                    current.selectable_ready_task_ids = [
+                        task_id
+                        for task_id in current.selectable_ready_task_ids
+                        if task_id != task.task_id
+                    ]
+                    current.selectable_ready_count = len(
+                        current.selectable_ready_task_ids
+                    )
+                    current.eligible_ready_task_ids = [
+                        task_id
+                        for task_id in current.eligible_ready_task_ids
+                        if task_id != task.task_id
+                    ]
+                    current.eligible_ready_count = len(
+                        current.eligible_ready_task_ids
+                    )
+                    if not current.selectable_ready_task_ids:
+                        current.selection_idle_reason = (
+                            f"implementation_retry_deferred:{result['reason']}"
+                        )
+                    current.save(self.state_path)
+                    state.__dict__.update(asdict(current))
+                result["active_task_cleared"] = owns_idle_projection
+                self._record_event("implementation_retry_deferred", result)
+            finally:
+                if not self._release_implementation_task_claim(
+                    task_claim_path,
+                    task_claim_metadata,
+                ):
+                    logger.warning(
+                        "Refusing to remove implementation task claim no "
+                        "longer owned by this attempt: %s",
+                        task_claim_path,
+                    )
+                acquired_task_claim = False
             return result
+        except BaseException:
+            try:
+                if not self._release_implementation_task_claim(
+                    task_claim_path,
+                    task_claim_metadata,
+                ):
+                    logger.warning(
+                        "Refusing to remove implementation task claim no "
+                        "longer owned by this attempt after prompt failure: %s",
+                        task_claim_path,
+                    )
+            finally:
+                acquired_task_claim = False
+            raise
         workspace_path = self.repo_root
         baseline_ref = ""
         command: list[str] = []
@@ -3368,8 +3427,6 @@ class PortalImplementationDaemon:
         protected_path_violation: dict[str, Any] = {}
 
         try:
-            self._write_lock_metadata(task_claim_fd, task_claim_metadata)
-            task_claim_fd = None
             acquired_lock, lock_reason, existing_lock = (
                 self._try_acquire_implementation_lock(
                     lock_path,
@@ -3724,11 +3781,6 @@ class PortalImplementationDaemon:
             self._record_event("implementation_finished", result)
             return result
         finally:
-            if task_claim_fd is not None:
-                try:
-                    os.close(task_claim_fd)
-                except OSError:
-                    pass
             try:
                 if acquired_lock and not self._release_implementation_lock(
                     lock_path,
@@ -3746,8 +3798,15 @@ class PortalImplementationDaemon:
                     exc_info=True,
                 )
             try:
-                if acquired_task_claim and task_claim_path.exists():
-                    task_claim_path.unlink()
+                if acquired_task_claim and not self._release_implementation_task_claim(
+                    task_claim_path,
+                    task_claim_metadata,
+                ):
+                    logger.warning(
+                        "Refusing to remove implementation task claim no "
+                        "longer owned by this attempt: %s",
+                        task_claim_path,
+                    )
             except OSError:
                 logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
 
@@ -13345,6 +13404,10 @@ class PortalImplementationDaemon:
         started_at: str,
     ) -> dict[str, Any]:
         identity = self._identity_for_task(task)
+        lease_seed = (
+            f"task-claim:{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:"
+            f"{task.task_id}:{attempt}"
+        )
         return checkout_lock_metadata(
             kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
             repo_root=self.repo_root,
@@ -13360,6 +13423,7 @@ class PortalImplementationDaemon:
                 "board_namespace": identity.board_namespace,
                 "task_shard_count": self.task_shard_count,
                 "task_shard_index": self.task_shard_index,
+                "lease_id": hashlib.sha1(lease_seed.encode("utf-8")).hexdigest(),
             },
         )
 
@@ -13600,6 +13664,52 @@ class PortalImplementationDaemon:
                     # is held, so this cleanup can only remove our O_EXCL file.
                     lock_path.unlink(missing_ok=True)
             return True, reason, existing
+
+    def _try_acquire_implementation_task_claim(
+        self,
+        lock_path: Path,
+        metadata: dict[str, Any],
+    ) -> tuple[bool, str, dict[str, Any] | None]:
+        """Publish a complete canonical-task claim under its update guard."""
+
+        with serialized_lock_update(lock_path):
+            lock_fd, reason, existing = self._try_acquire_lock(
+                lock_path,
+                lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                owner_active=self._implementation_task_claim_owner_is_active,
+            )
+            if lock_fd is None:
+                return False, reason, existing
+            published = False
+            try:
+                self._write_lock_metadata(lock_fd, metadata)
+                published = True
+            finally:
+                if not published:
+                    lock_path.unlink(missing_ok=True)
+            return True, reason, existing
+
+    def _release_implementation_task_claim(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Release only the canonical-task claim owned by this attempt."""
+
+        with serialized_lock_update(lock_path):
+            existing = load_json_dict(lock_path)
+            lease_id = str(metadata.get("lease_id") or "")
+            if (
+                existing is None
+                or not lease_id
+                or str(existing.get("lease_id") or "") != lease_id
+            ):
+                return False
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                return False
+            return True
 
     def _release_implementation_lock(
         self,

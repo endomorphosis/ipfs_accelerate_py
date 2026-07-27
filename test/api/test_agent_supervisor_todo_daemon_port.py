@@ -7355,6 +7355,239 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tm
     assert daemon._find_live_inflight_implementation() is None
 
 
+def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Repair exhausted implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Outputs: feature.py
+- Validation: test -f feature.py
+- Acceptance: Preserve canonical attempt accounting while maintenance prepares a repair.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    task = parse_task_file(todo_path, task_header_prefix="## ACCEL-")[0]
+    canonical_task_cid = daemon._canonical_ref(task)
+    TodoTaskState(
+        implementation_attempts={task.task_id: 4},
+        implementation_attempts_by_cid={canonical_task_cid: 4},
+    ).save(state_path)
+    observed_claim: dict[str, object] = {}
+    build_prompt = daemon._build_implementation_prompt
+
+    def build_prompt_with_claim_check(selected, attempt):
+        claim_path = daemon._implementation_task_claim_path(
+            selected.task_id,
+            canonical_task_cid=daemon._canonical_ref(selected),
+        )
+        observed_claim.update(json.loads(claim_path.read_text(encoding="utf-8")))
+        return build_prompt(selected, attempt)
+
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        build_prompt_with_claim_check,
+    )
+
+    result = daemon.run_once()
+    persisted = TodoTaskState.load(state_path)
+
+    assert result["implementation_result"]["reason"] == (
+        "implementation_repair_round_budget_exhausted"
+    )
+    assert result["implementation_result"]["attempt"] == 5
+    assert result["implementation_result"]["active_task_cleared"] is True
+    assert observed_claim["canonical_task_cid"] == canonical_task_cid
+    assert observed_claim["attempt"] == 5
+    assert observed_claim["lease_id"]
+    assert result["active_task_id"] == ""
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.ready_task_ids == [task.task_id]
+    assert persisted.ready_count == 1
+    assert persisted.selectable_ready_task_ids == []
+    assert persisted.selectable_ready_count == 0
+    assert persisted.eligible_ready_task_ids == []
+    assert persisted.eligible_ready_count == 0
+    assert persisted.selection_idle_reason == (
+        "implementation_retry_deferred:"
+        "implementation_repair_round_budget_exhausted"
+    )
+    assert persisted.implementation_attempts == {task.task_id: 4}
+    assert persisted.implementation_attempts_by_cid == {canonical_task_cid: 4}
+    assert not daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=canonical_task_cid,
+    ).exists()
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            check_interval=60,
+        )
+    )
+    maintenance_calls = []
+
+    class Child:
+        pid = os.getpid()
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: maintenance_calls.append("maintenance")
+        or {"stuck": False, "main_checkout_repair": {"repaired": False}},
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(None, Child(), {})
+
+    assert decision.action == "continue"
+    assert maintenance_calls == ["maintenance"]
+
+
+def test_retry_deferral_does_not_overwrite_newer_active_projection(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Deferred task",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["feature.py"],
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    selected_state = TodoTaskState(
+        active_task_id=task.task_id,
+        active_task_cid=canonical_task_cid,
+        implementation_attempts={task.task_id: 4},
+        implementation_attempts_by_cid={canonical_task_cid: 4},
+    )
+    selected_state.save(state_path)
+    newer_state = TodoTaskState(
+        active_task_id="ACCEL-002",
+        active_task_cid="baguqeera-newer",
+        active_attempt=1,
+        active_phase="implementing",
+        implementation_in_progress=True,
+        selectable_ready_task_ids=["ACCEL-002"],
+        selectable_ready_count=1,
+    )
+
+    def replace_state_then_defer(_task, _attempt):
+        newer_state.save(state_path)
+        raise implementation_daemon_module.ImplementationRetryDeferred(
+            "implementation repair round budget exhausted"
+        )
+
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        replace_state_then_defer,
+    )
+
+    result = daemon._run_implementation(task, selected_state)
+    persisted = TodoTaskState.load(state_path)
+
+    assert result["active_task_cleared"] is False
+    assert persisted.active_task_id == "ACCEL-002"
+    assert persisted.active_task_cid == "baguqeera-newer"
+    assert persisted.implementation_in_progress is True
+    assert persisted.selectable_ready_task_ids == ["ACCEL-002"]
+
+
+def test_prompt_compilation_exception_releases_published_task_claim(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Prompt failure",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["feature.py"],
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    observed_claim: dict[str, object] = {}
+
+    def fail_after_claim_published(selected, _attempt):
+        claim_path = daemon._implementation_task_claim_path(
+            selected.task_id,
+            canonical_task_cid=daemon._canonical_ref(selected),
+        )
+        observed_claim.update(json.loads(claim_path.read_text(encoding="utf-8")))
+        raise RuntimeError("prompt compilation failed")
+
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        fail_after_claim_published,
+    )
+
+    with pytest.raises(RuntimeError, match="prompt compilation failed"):
+        daemon._run_implementation(task, TodoTaskState())
+
+    assert observed_claim["canonical_task_cid"] == canonical_task_cid
+    assert observed_claim["lease_id"]
+    assert not daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=canonical_task_cid,
+    ).exists()
+
+
 def test_validation_command_splitter_preserves_quoted_semicolons():
     inline_python = (
         "python3 -c 'import pathlib, sys; "
