@@ -269,8 +269,13 @@ SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
 # limit independently and cap the larger local materialization envelope.
 DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES = 2_000_000
 DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES = 2_500_000
+DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES = 1_000_000
 MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES = 16_000_000
 MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
+PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
+PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"
+)
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "600")
 )
@@ -11685,13 +11690,26 @@ class PortalImplementationDaemon:
             )
         return "".join(sections)
 
-    @staticmethod
-    def _proposal_local_envelope_limits(proposal: Any) -> dict[str, int]:
+    @classmethod
+    def _proposal_local_envelope_limits(
+        cls,
+        proposal: Any,
+        task: PortalTask | None = None,
+    ) -> dict[str, int]:
         """Return fail-closed limits for one locally collected proposal.
 
         Full source is retained so the gate can verify content and baseline
         identity, but it is not the effectful patch. The normal raw-patch limit
-        must pass before the materialized-source limits can be raised.
+        must pass before the materialized-source limits can be raised unless
+        task authority declares one strict, bounded artifact envelope.
+
+        The optional envelope is deliberately atomic JSON rather than a set of
+        independent booleans.  Every changed path must exactly match its path
+        set, that set must remain inside the task-owned scope, and requested
+        ceilings cannot exceed the daemon's immutable process bounds.  The
+        resulting policy uses measured sizes, not the looser declared
+        ceilings, and does not enable generated, binary, archive, or other
+        content exemptions.
         """
 
         defaults = {
@@ -11699,26 +11717,64 @@ class PortalImplementationDaemon:
             "max_output_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
         }
         patch_text = str(getattr(proposal, "patch_text", "") or "")
+        raw_patch_bytes = len(
+            patch_text.encode("utf-8", errors="surrogatepass")
+        )
+        if raw_patch_bytes > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES:
+            return defaults
         if (
-            len(patch_text.encode("utf-8", errors="surrogatepass"))
+            raw_patch_bytes
             > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+            and (
+                task is None
+                or not str(
+                    task.metadata.get(
+                        PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
+                        "",
+                    )
+                    or ""
+                ).strip()
+            )
         ):
             return defaults
 
         materialized_bytes = 0
+        largest_file_bytes = 0
         for entry in tuple(getattr(proposal, "candidate_diff", ()) or ()):
             for source_name in ("before_source", "after_source"):
                 source = getattr(entry, source_name, None)
                 if source is None:
                     continue
-                materialized_bytes += len(
+                source_bytes = len(
                     str(source).encode("utf-8", errors="surrogatepass")
                 )
+                materialized_bytes += source_bytes
+                largest_file_bytes = max(largest_file_bytes, source_bytes)
                 if (
                     materialized_bytes
                     > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+                    or largest_file_bytes
+                    > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
                 ):
                     return defaults
+            metadata = getattr(entry, "metadata", None)
+            if isinstance(metadata, Mapping):
+                for name in (
+                    "size_bytes",
+                    "before_size_bytes",
+                    "after_size_bytes",
+                ):
+                    value = metadata.get(name)
+                    if type(value) is int and value >= 0:
+                        largest_file_bytes = max(
+                            largest_file_bytes,
+                            value,
+                        )
+                        if (
+                            largest_file_bytes
+                            > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+                        ):
+                            return defaults
 
         try:
             serialized_bytes = len(
@@ -11731,12 +11787,139 @@ class PortalImplementationDaemon:
             )
         except (AttributeError, TypeError, ValueError):
             return defaults
-        if serialized_bytes > MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES:
+
+        if (
+            raw_patch_bytes
+            <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+            and largest_file_bytes
+            <= DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+        ):
+            if (
+                materialized_bytes
+                > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+                or serialized_bytes
+                > MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES
+            ):
+                return defaults
+            return {
+                "max_patch_bytes": max(
+                    DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
+                    materialized_bytes,
+                ),
+                "max_output_bytes": max(
+                    DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
+                    serialized_bytes,
+                ),
+            }
+
+        if task is None:
             return defaults
 
-        return {
+        raw_envelope = str(
+            task.metadata.get(
+                PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
+                "",
+            )
+            or ""
+        ).strip()
+        if not raw_envelope:
+            return defaults
+        try:
+            envelope = json.loads(raw_envelope)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return defaults
+        expected_fields = {
+            "schema",
+            "paths",
+            "max_file_bytes",
+            "max_patch_bytes",
+            "max_output_bytes",
+        }
+        if type(envelope) is not dict or set(envelope) != expected_fields:
+            return defaults
+        if envelope.get("schema") != PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA:
+            return defaults
+
+        raw_paths = envelope.get("paths")
+        if type(raw_paths) is not list or not raw_paths:
+            return defaults
+        artifact_paths: list[str] = []
+        for raw_path in raw_paths:
+            if type(raw_path) is not str:
+                return defaults
+            path = raw_path.strip()
+            if (
+                not path
+                or path != raw_path
+                or path in {".", ".."}
+                or path.startswith("/")
+                or path.endswith("/")
+                or "\\" in path
+                or "\0" in path
+                or "://" in path
+                or re.match(r"^[A-Za-z]:", path)
+                or any(character in path for character in "*?[]")
+                or ".." in Path(path).parts
+                or posixpath.normpath(path) != path
+            ):
+                return defaults
+            artifact_paths.append(path)
+        if len(set(artifact_paths)) != len(artifact_paths):
+            return defaults
+
+        changed_paths = tuple(
+            str(path)
+            for path in tuple(
+                getattr(proposal, "changed_paths", ()) or ()
+            )
+        )
+        if (
+            set(changed_paths) != set(artifact_paths)
+            or len(changed_paths) != len(artifact_paths)
+            or not set(artifact_paths).issubset(
+                {str(path) for path in task.outputs}
+            )
+        ):
+            return defaults
+
+        requested_limits: dict[str, int] = {}
+        for name in (
+            "max_file_bytes",
+            "max_patch_bytes",
+            "max_output_bytes",
+        ):
+            value = envelope.get(name)
+            if type(value) is not int or value <= 0:
+                return defaults
+            requested_limits[name] = value
+        if (
+            requested_limits["max_file_bytes"]
+            < DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+            or requested_limits["max_patch_bytes"]
+            < DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+            or requested_limits["max_output_bytes"]
+            < DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES
+            or requested_limits["max_file_bytes"]
+            > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+            or requested_limits["max_patch_bytes"]
+            > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+            or requested_limits["max_output_bytes"]
+            > MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES
+            or requested_limits["max_file_bytes"]
+            > requested_limits["max_patch_bytes"]
+            or requested_limits["max_patch_bytes"]
+            > requested_limits["max_output_bytes"]
+        ):
+            return defaults
+
+        measured_limits = {
+            "max_file_bytes": max(
+                DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
+                largest_file_bytes,
+            ),
             "max_patch_bytes": max(
                 DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
+                raw_patch_bytes,
                 materialized_bytes,
             ),
             "max_output_bytes": max(
@@ -11744,6 +11927,18 @@ class PortalImplementationDaemon:
                 serialized_bytes,
             ),
         }
+        if (
+            materialized_bytes
+            > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+            or serialized_bytes
+            > MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES
+            or any(
+                measured_limits[name] > requested_limits[name]
+                for name in measured_limits
+            )
+        ):
+            return defaults
+        return measured_limits
 
     def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
         consumed: list[str] = []
@@ -12088,9 +12283,20 @@ class PortalImplementationDaemon:
         allowed_validation_commands = tuple(
             step.command for step in validation_steps
         ) or (("python", "-m", "pytest"),)
-        local_envelope_limits = self._proposal_local_envelope_limits(proposal)
+        local_envelope_limits = self._proposal_local_envelope_limits(
+            proposal,
+            task=task,
+        )
+        policy_version = "strict-proposal-v2+local-envelope-v1"
+        policy_allowed_paths = allowed_paths
+        if "max_file_bytes" in local_envelope_limits:
+            policy_version += "+declared-artifact-envelope-v1"
+            # The envelope helper admitted only exact set equality between
+            # these changed paths and the identity-bound task outputs.
+            policy_allowed_paths = changed_paths
         policy = ProposalValidationPolicy(
             allowed_paths=allowed_paths,
+            allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
             expected_task_id=authority["task_id"],
             expected_plan_id=authority["accepted_plan_id"],
@@ -12107,6 +12313,7 @@ class PortalImplementationDaemon:
             require_structured_details=True,
             require_patch_text=True,
             policy_version="strict-proposal-v2+local-envelope-v2",
+            policy_version=policy_version,
             **local_envelope_limits,
         )
         result = validate_implementation_proposal(proposal, policy=policy)
