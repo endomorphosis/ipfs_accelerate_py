@@ -176,7 +176,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-007 Final public API README and no-old-import cutover gate
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: false
