@@ -12,11 +12,26 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
+import re
+import secrets
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+
+from ..model_catalog.identity import canonical_json_bytes
+from ..model_catalog.schema import SCHEMA_VERSION
+from ..model_catalog.security import (
+    AdvertisementVerificationError,
+    AdvertisementVerifier,
+    CatalogAuthorizationPolicy,
+    CatalogCapability,
+    CatalogInputPolicy,
+    ReplayCache,
+    SecurityPolicyError,
+)
 
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.service_registry")
 
@@ -28,6 +43,13 @@ SERVICE_TTL = 300.0
 MAX_OPERATION_SUMMARY = 64
 MAX_INTERFACE_CIDS = 32
 MAX_PAGE_SIZE = 1_000
+MAX_MULTIADDRS = 32
+MAX_METADATA_ITEMS = 64
+MAX_RECORD_TEXT_BYTES = 4_096
+SIGNATURE_ALGORITHM = "hmac-sha256"
+
+_NONCE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+_SIGNATURE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _service_identity(service_name: str, issuer: str) -> str:
@@ -82,24 +104,86 @@ class ServiceRecord:
     endpoint_protocol: Optional[str] = None
     issued_at: Optional[float] = None
     expires_at: Optional[float] = None
+    schema_version: str = SCHEMA_VERSION
+    nonce: str = field(default_factory=lambda: secrets.token_urlsafe(24))
+    signature_algorithm: str = SIGNATURE_ALGORITHM
 
     def __post_init__(self) -> None:
+        for value, name in (
+            (self.service_name, "service_name"),
+            (self.peer_id, "peer_id"),
+            (self.version, "version"),
+        ):
+            if (
+                not isinstance(value, str)
+                or not value
+                or len(value.encode("utf-8")) > MAX_RECORD_TEXT_BYTES
+            ):
+                raise ValueError("%s must be bounded non-empty text" % name)
+        for value, name, maximum in (
+            (self.multiaddrs, "multiaddrs", MAX_MULTIADDRS),
+            (self.tools, "tools", MAX_OPERATION_SUMMARY),
+            (self.operation_summary, "operation_summary", MAX_OPERATION_SUMMARY),
+            (self.interface_cids, "interface_cids", MAX_INTERFACE_CIDS),
+        ):
+            if (
+                not isinstance(value, list)
+                or len(value) > maximum
+                or any(
+                    not isinstance(item, str)
+                    or not item
+                    or len(item.encode("utf-8")) > MAX_RECORD_TEXT_BYTES
+                    for item in value
+                )
+            ):
+                raise ValueError("%s must be a bounded text list" % name)
+        if (
+            not isinstance(self.metadata, Mapping)
+            or len(self.metadata) > MAX_METADATA_ITEMS
+        ):
+            raise ValueError("metadata must be a bounded object")
+        CatalogInputPolicy().validate_record(self.metadata)
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError("unsupported service record schema_version")
+        if self.signature_algorithm != SIGNATURE_ALGORITHM:
+            raise ValueError("unsupported service record signature algorithm")
+        if not isinstance(self.nonce, str) or not _NONCE.fullmatch(self.nonce):
+            raise ValueError("service record nonce is invalid")
         self.issuer = self.issuer or self.peer_id
+        if (
+            not isinstance(self.issuer, str)
+            or not self.issuer
+            or len(self.issuer.encode("utf-8")) > MAX_RECORD_TEXT_BYTES
+        ):
+            raise ValueError("issuer must be bounded non-empty text")
         self.service_id = self.service_id or _service_identity(
             self.service_name, self.issuer
         )
+        if (
+            not isinstance(self.service_id, str)
+            or len(self.service_id.encode("utf-8")) > 256
+        ):
+            raise ValueError("service_id must be bounded text")
         self.issued_at = self.timestamp if self.issued_at is None else self.issued_at
         self.expires_at = (
             self.issued_at + self.ttl
             if self.expires_at is None
             else self.expires_at
         )
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            for value in (self.issued_at, self.expires_at)
+        ):
+            raise ValueError("service record times must be finite numbers")
         self.timestamp = float(self.issued_at)
         self.ttl = max(0.0, float(self.expires_at) - self.timestamp)
-        self.operation_summary = sorted(set(self.operation_summary))[
-            :MAX_OPERATION_SUMMARY
-        ]
-        self.interface_cids = sorted(set(self.interface_cids))[:MAX_INTERFACE_CIDS]
+        self.multiaddrs = list(self.multiaddrs)
+        self.tools = sorted(set(self.tools))
+        self.metadata = dict(self.metadata)
+        self.operation_summary = sorted(set(self.operation_summary))
+        self.interface_cids = sorted(set(self.interface_cids))
 
     @property
     def key(self) -> str:
@@ -145,31 +229,48 @@ class ServiceRecord:
             "endpoint_protocol": self.endpoint_protocol,
             "issued_at": self.issued_at,
             "expires_at": self.expires_at,
+            "schema_version": self.schema_version,
+            "nonce": self.nonce,
+            "signature_algorithm": self.signature_algorithm,
         }
 
     def signing_payload(self) -> bytes:
-        return json.dumps(
-            self._unsigned_dict(),
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode("utf-8")
+        return canonical_json_bytes(self._unsigned_dict())
 
-    def sign(self, key: Optional[bytes] = None) -> None:
+    def sign(
+        self, key: Optional[bytes | str] = None, *, rotate_nonce: bool = False
+    ) -> None:
         """Sign using the existing HMAC compatibility mechanism."""
 
-        signing_key = key or self.peer_id.encode()
+        if rotate_nonce:
+            self.nonce = secrets.token_urlsafe(24)
+        signing_key = (
+            key.encode("utf-8")
+            if isinstance(key, str)
+            else key or self.peer_id.encode("utf-8")
+        )
+        if not signing_key:
+            raise ValueError("signing key must not be empty")
         self.signature = hmac.new(
             signing_key, self.signing_payload(), hashlib.sha256
         ).hexdigest()
 
-    def verify_signature(self, key: Optional[bytes] = None) -> bool:
-        if not self.signature:
+    def verify_signature(self, key: Optional[bytes | str] = None) -> bool:
+        if not isinstance(self.signature, str) or not _SIGNATURE.fullmatch(
+            self.signature
+        ):
             return False
-        signing_key = key or self.peer_id.encode()
-        expected = hmac.new(
-            signing_key, self.signing_payload(), hashlib.sha256
-        ).hexdigest()
+        signing_key = (
+            key.encode("utf-8")
+            if isinstance(key, str)
+            else key or self.peer_id.encode("utf-8")
+        )
+        try:
+            expected = hmac.new(
+                signing_key, self.signing_payload(), hashlib.sha256
+            ).hexdigest()
+        except (TypeError, ValueError):
+            return False
         return hmac.compare_digest(self.signature, expected)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -179,6 +280,20 @@ class ServiceRecord:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "ServiceRecord":
+        if not isinstance(data, Mapping):
+            raise TypeError("service record must be an object")
+        CatalogInputPolicy().validate_record(data)
+        allowed = set(cls.__dataclass_fields__)
+        unknown = set(data) - allowed
+        if unknown:
+            raise ValueError("service record contains unknown fields")
+        for field_name in ("multiaddrs", "tools", "operation_summary", "interface_cids"):
+            value = data.get(field_name, [])
+            if not isinstance(value, list):
+                raise TypeError("%s must be a list" % field_name)
+        metadata = data.get("metadata", {})
+        if not isinstance(metadata, Mapping):
+            raise TypeError("metadata must be an object")
         return cls(
             service_name=data.get("service_name", ""),
             peer_id=data.get("peer_id", ""),
@@ -198,6 +313,9 @@ class ServiceRecord:
             endpoint_protocol=data.get("endpoint_protocol"),
             issued_at=data.get("issued_at"),
             expires_at=data.get("expires_at"),
+            schema_version=data.get("schema_version", ""),
+            nonce=data.get("nonce", ""),
+            signature_algorithm=data.get("signature_algorithm", ""),
         )
 
 
@@ -206,13 +324,105 @@ class ServiceRegistry:
 
     MAX_REMOTE_RECORDS_PER_SERVICE = 200
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        trusted_issuers: Optional[Mapping[str, bytes | str]] = None,
+        authorization_policy: Optional[CatalogAuthorizationPolicy] = None,
+        max_clock_skew: float = 30.0,
+        replay_window: float = 600.0,
+        max_advertisement_lifetime: float = 600.0,
+    ):
         self._lock = threading.Lock()
         self._local_records: Dict[str, ServiceRecord] = {}
         self._remote_records: Dict[str, Dict[str, ServiceRecord]] = {}
         self._change_callbacks: Dict[str, Callable] = {}
         self._catalog_providers: Dict[str, Callable[[], Any]] = {}
         self._catalog_snapshots: Dict[str, Any] = {}
+        # ``None`` retains authenticated-peer compatibility: the peer identity
+        # is the trust anchor for its own announcement.  Passing a mapping,
+        # including an empty one, enables an explicit authoritative trust store.
+        self._trusted_issuers = (
+            None if trusted_issuers is None else dict(trusted_issuers)
+        )
+        self._authorization_policy = authorization_policy
+        self._max_clock_skew = max_clock_skew
+        self._replay_window = replay_window
+        self._max_advertisement_lifetime = max_advertisement_lifetime
+        self._replay_cache = ReplayCache()
+
+    @staticmethod
+    def _catalog_resource(service_id: str) -> str:
+        return "catalog:%s" % service_id
+
+    def require_capability(
+        self,
+        actor: str,
+        resource: str,
+        capability: str | CatalogCapability,
+    ) -> None:
+        """Enforce an exact configured capability, if policy is enabled."""
+
+        if self._authorization_policy is None:
+            return
+        ability = (
+            capability.value
+            if isinstance(capability, CatalogCapability)
+            else capability
+        )
+        self._authorization_policy.require(actor, resource, ability)
+
+    def _advertisement_verifier(
+        self, record: ServiceRecord, sender_peer_id: str
+    ) -> AdvertisementVerifier:
+        if self._trusted_issuers is None:
+            # The transport-authenticated sender may speak only for itself.
+            if (
+                not sender_peer_id
+                or record.issuer != sender_peer_id
+                or record.peer_id != sender_peer_id
+            ):
+                raise AdvertisementVerificationError(
+                    "issuer_untrusted",
+                    "advertisement issuer is not the authenticated sender",
+                )
+            keys: Mapping[str, bytes | str] = {
+                sender_peer_id: sender_peer_id.encode("utf-8")
+            }
+        else:
+            keys = self._trusted_issuers
+        return AdvertisementVerifier(
+            keys,
+            max_clock_skew=self._max_clock_skew,
+            replay_window=self._replay_window,
+            max_lifetime=self._max_advertisement_lifetime,
+            replay_cache=self._replay_cache,
+        )
+
+    def _verify_remote(
+        self,
+        record: ServiceRecord,
+        *,
+        sender_peer_id: str,
+        now: Optional[float] = None,
+        consume_nonce: bool = True,
+    ) -> None:
+        if not record.is_catalog_advertisement:
+            raise AdvertisementVerificationError(
+                "invalid_catalog_advertisement",
+                "catalog advertisement is incomplete",
+            )
+        expected_service_id = _service_identity(record.service_name, record.issuer or "")
+        if record.service_id != expected_service_id:
+            raise AdvertisementVerificationError(
+                "service_identity_invalid",
+                "service identity does not match signed fields",
+            )
+        self._advertisement_verifier(record, sender_peer_id).verify(
+            record,
+            now=now,
+            consume_nonce=consume_nonce,
+        )
 
     def register_local(
         self,
@@ -275,7 +485,7 @@ class ServiceRegistry:
             record.expires_at = selected_now + lifetime
             record.timestamp = selected_now
             record.ttl = lifetime
-            record.sign()
+            record.sign(rotate_nonce=True)
             self._catalog_snapshots[service_name] = snapshot
         if changed:
             self._notify_change("catalog_update", record)
@@ -308,9 +518,35 @@ class ServiceRegistry:
                 logger.debug("Catalog refresh failed for %s: %s", name, exc)
         return tuple(changed)
 
-    def add_remote(self, record: ServiceRecord) -> bool:
-        if record.is_expired:
+    def add_remote(
+        self,
+        record: ServiceRecord,
+        *,
+        sender_peer_id: Optional[str] = None,
+        now: Optional[float] = None,
+        _verified: bool = False,
+    ) -> bool:
+        """Admit a remote record after catalog security verification.
+
+        Direct callers are treated as the authenticated peer represented by
+        ``record.peer_id`` unless they provide the transport identity.
+        """
+
+        selected_now = time.time() if now is None else float(now)
+        if record.is_expired_at(selected_now):
             return False
+        catalog_candidate = (
+            record.catalog_cid is not None or record.catalog_revision is not None
+        )
+        if catalog_candidate and not _verified:
+            try:
+                self._verify_remote(
+                    record,
+                    sender_peer_id=sender_peer_id or record.peer_id,
+                    now=selected_now,
+                )
+            except SecurityPolicyError:
+                return False
         with self._lock:
             bucket = self._remote_records.setdefault(record.service_name, {})
             previous = bucket.get(record.peer_id)
@@ -423,7 +659,7 @@ class ServiceRegistry:
                 record.expires_at = selected_now + SERVICE_TTL
                 record.timestamp = selected_now
                 record.ttl = SERVICE_TTL
-                record.sign()
+                record.sign(rotate_nonce=True)
             for peer_id in list(p2p_node._peers.keys()):
                 try:
                     await p2p_node.call_tool(
@@ -466,9 +702,15 @@ class ServiceRegistry:
             except Exception as exc:
                 logger.debug("Catalog watch error: %s", exc)
 
-    def handle_catalog_page(self, params: Mapping[str, Any]) -> Dict[str, Any]:
+    def handle_catalog_page(
+        self, params: Mapping[str, Any], sender_peer_id: str = ""
+    ) -> Dict[str, Any]:
         from ipfs_accelerate_py.model_catalog.snapshot import paginate_snapshot
 
+        try:
+            CatalogInputPolicy().validate_record(params)
+        except SecurityPolicyError as exc:
+            raise ValueError(exc.code) from None
         service_name = params.get("service_name", "")
         revision = params.get("catalog_revision", "")
         record_type = params.get("record_type", "")
@@ -489,6 +731,11 @@ class ServiceRegistry:
             snapshot = self._catalog_snapshots.get(service_name)
         if record is None or snapshot is None:
             raise KeyError("catalog service is unavailable")
+        self.require_capability(
+            sender_peer_id,
+            self._catalog_resource(record.service_id or ""),
+            CatalogCapability.READ,
+        )
         if revision != record.catalog_revision or revision != snapshot.revision:
             raise ValueError("catalog revision is stale or unavailable")
         return paginate_snapshot(
@@ -498,6 +745,10 @@ class ServiceRegistry:
     def handle_announce(
         self, params: Mapping[str, Any], sender_peer_id: str = ""
     ) -> Dict[str, Any]:
+        try:
+            CatalogInputPolicy().validate_record(params)
+        except SecurityPolicyError as exc:
+            return exc.to_dict()
         record_data = params.get("record", {})
         if not isinstance(record_data, Mapping) or not record_data:
             return {"status": "rejected", "reason": "empty_record"}
@@ -507,17 +758,37 @@ class ServiceRegistry:
             return {"status": "rejected", "reason": "malformed_record"}
         if sender_peer_id and record.peer_id != sender_peer_id:
             return {"status": "rejected", "reason": "peer_id_mismatch"}
-        if record.is_expired:
+        selected_now = time.time()
+        if record.is_expired_at(selected_now):
             return {"status": "rejected", "reason": "expired"}
         require_signature = (
             record.catalog_cid is not None
+            or record.catalog_revision is not None
             or os.environ.get("MCPPP_REQUIRE_SERVICE_SIGNATURES", "0") == "1"
         )
-        if record.catalog_cid is not None and not record.is_catalog_advertisement:
+        catalog_candidate = (
+            record.catalog_cid is not None or record.catalog_revision is not None
+        )
+        if catalog_candidate and not record.is_catalog_advertisement:
             return {"status": "rejected", "reason": "invalid_catalog_advertisement"}
-        if require_signature and not record.verify_signature():
+        if catalog_candidate:
+            try:
+                self._verify_remote(
+                    record,
+                    sender_peer_id=sender_peer_id or record.peer_id,
+                    now=selected_now,
+                )
+            except SecurityPolicyError as exc:
+                return exc.to_dict()
+        elif require_signature and not record.verify_signature():
             return {"status": "rejected", "reason": "invalid_signature"}
-        self.add_remote(record)
+        if not self.add_remote(
+            record,
+            sender_peer_id=sender_peer_id or record.peer_id,
+            now=selected_now,
+            _verified=catalog_candidate,
+        ):
+            return {"status": "rejected", "reason": "stale_or_duplicate"}
         return {
             "status": "accepted",
             "service": record.service_name,
