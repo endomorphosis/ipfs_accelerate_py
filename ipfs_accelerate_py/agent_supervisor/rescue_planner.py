@@ -382,7 +382,37 @@ def default_rescue_operation_catalog() -> Mapping[RescueOperation, RescueOperati
 DEFAULT_RESCUE_OPERATION_CATALOG = default_rescue_operation_catalog()
 
 
-def _response_schema() -> dict[str, Any]:
+def _parameter_response_schema(spec: RescueParameterSpec) -> dict[str, Any]:
+    result: dict[str, Any] = {"type": spec.kind}
+    if spec.minimum is not None:
+        result["minimum"] = spec.minimum
+    if spec.maximum is not None:
+        result["maximum"] = spec.maximum
+    if spec.choices:
+        result["enum"] = list(spec.choices)
+    return result
+
+
+def _response_schema(
+    *,
+    operation_catalog: Mapping[
+        RescueOperation, RescueOperationSpec
+    ] = DEFAULT_RESCUE_OPERATION_CATALOG,
+    allowed_operations: Sequence[RescueOperation] | None = None,
+    target_ids: Sequence[str] = (),
+    incident_cid: str = "",
+    exhaustion_receipt_cid: str = "",
+    repository_root_cid: str = "",
+    run_cid: str = "",
+    policy_root: str = "",
+    evidence_reference_cids: Sequence[str] = (),
+    max_actions: int | None = None,
+) -> dict[str, Any]:
+    selected_operations = tuple(
+        allowed_operations
+        if allowed_operations is not None
+        else operation_catalog
+    )
     action_fields = [
         "schema",
         "contract_version",
@@ -411,6 +441,100 @@ def _response_schema() -> dict[str, Any]:
         "created_at_ms",
         "updated_at_ms",
     ]
+    action_variants: list[dict[str, Any]] = []
+    for operation in selected_operations:
+        if operation not in operation_catalog:
+            continue
+        spec = operation_catalog[operation]
+        compatible_targets = [
+            target
+            for target in target_ids
+            if not spec.target_prefixes or target.startswith(spec.target_prefixes)
+        ]
+        if target_ids and not compatible_targets:
+            continue
+        parameter_properties = {
+            name: _parameter_response_schema(parameter)
+            for name, parameter in sorted(spec.parameters.items())
+        }
+        required_parameters = [
+            name
+            for name, parameter in sorted(spec.parameters.items())
+            if parameter.required
+        ]
+        rollback_values = [
+            None if item is None else item.value
+            for item in spec.rollback_operations
+        ]
+        properties: dict[str, Any] = {
+            "schema": {"const": RESCUE_ACTION_SCHEMA},
+            "contract_version": {"const": 1},
+            "operation": {"const": operation.value},
+            "target_id": (
+                {"enum": compatible_targets}
+                if compatible_targets
+                else {"type": "string", "minLength": 1}
+            ),
+            "parameters": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": required_parameters,
+                "properties": parameter_properties,
+            },
+            "precondition_cids": {
+                "type": "array",
+                "minItems": 2,
+                "uniqueItems": True,
+                "items": (
+                    {
+                        "enum": list(
+                            dict.fromkeys(
+                                (
+                                    incident_cid,
+                                    exhaustion_receipt_cid,
+                                    *evidence_reference_cids,
+                                )
+                            )
+                        )
+                    }
+                    if incident_cid and exhaustion_receipt_cid
+                    else {"type": "string"}
+                ),
+            },
+            "expected_effects": {"const": list(spec.expected_effects)},
+            "success_test": {"const": spec.success_test},
+            "stop_condition": {"const": spec.stop_condition},
+            "rollback_operation": {"enum": rollback_values},
+            "content_id": {"type": "string"},
+        }
+        action_variants.append(
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": action_fields,
+                "properties": properties,
+            }
+        )
+
+    def exact_string(value: str) -> dict[str, Any]:
+        return {"const": value} if value else {"type": "string"}
+
+    actions_schema: dict[str, Any] = {
+        "type": "array",
+        "minItems": 1,
+        "items": (
+            {"oneOf": action_variants}
+            if action_variants
+            else {"not": {}}
+        ),
+    }
+    if max_actions is not None:
+        actions_schema["maxItems"] = max_actions
+
+    max_actions_schema: dict[str, Any] = {"type": "integer", "minimum": 1}
+    if max_actions is not None:
+        max_actions_schema["maximum"] = max_actions
+
     return {
         "title": RESCUE_PLAN_RESPONSE_NAME,
         "type": "object",
@@ -419,59 +543,29 @@ def _response_schema() -> dict[str, Any]:
         "properties": {
             "schema": {"const": RESCUE_PLAN_SCHEMA},
             "contract_version": {"const": 1},
-            "incident_cid": {"type": "string"},
-            "exhaustion_receipt_cid": {"type": "string"},
-            "repository_root_cid": {"type": "string"},
-            "run_cid": {"type": "string"},
-            "policy_root": {"type": "string"},
-            "actions": {
-                "type": "array",
-                "minItems": 1,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": action_fields,
-                    "properties": {
-                        "schema": {"const": RESCUE_ACTION_SCHEMA},
-                        "contract_version": {"const": 1},
-                        "operation": {
-                            "enum": sorted(
-                                item.value
-                                for item in DEFAULT_RESCUE_OPERATION_CATALOG
-                            )
-                        },
-                        "target_id": {"type": "string"},
-                        "parameters": {"type": "object"},
-                        "precondition_cids": {
-                            "type": "array",
-                            "minItems": 2,
-                            "items": {"type": "string"},
-                        },
-                        "expected_effects": {
-                            "type": "array",
-                            "minItems": 1,
-                            "items": {"type": "string"},
-                        },
-                        "success_test": {"type": "string"},
-                        "stop_condition": {"type": "string"},
-                        "rollback_operation": {
-                            "type": ["string", "null"]
-                        },
-                        "content_id": {"type": "string"},
-                    },
-                },
-            },
+            "incident_cid": exact_string(incident_cid),
+            "exhaustion_receipt_cid": exact_string(exhaustion_receipt_cid),
+            "repository_root_cid": exact_string(repository_root_cid),
+            "run_cid": exact_string(run_cid),
+            "policy_root": exact_string(policy_root),
+            "actions": actions_schema,
             "rationale_reference_cids": {
                 "type": "array",
                 "minItems": 1,
-                "items": {"type": "string"},
+                "uniqueItems": True,
+                "items": (
+                    {"enum": list(evidence_reference_cids)}
+                    if evidence_reference_cids
+                    else {"type": "string"}
+                ),
             },
             "unresolved_risks": {
                 "type": "array",
                 "minItems": 1,
+                "maxItems": 32,
                 "items": {"type": "string"},
             },
-            "max_actions": {"type": "integer", "minimum": 1},
+            "max_actions": max_actions_schema,
             "status": {"const": "proposed"},
             "created_at_ms": {"const": 0},
             "updated_at_ms": {"const": 0},
@@ -736,6 +830,13 @@ class RescuePlannerState:
     last_provider_call_ms: dict[str, int] = field(default_factory=dict)
     consecutive_failures: dict[str, int] = field(default_factory=dict)
     open_circuits: set[str] = field(default_factory=set)
+    in_flight_incidents: set[str] = field(default_factory=set)
+    _lock: threading.RLock = field(
+        default_factory=threading.RLock,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
 
 RescueProvider = Callable[[str], str]
@@ -772,13 +873,39 @@ _FORBIDDEN_DIAGNOSTIC_KEYS = frozenset(
     }
 )
 _SECRET_VALUE_PATTERNS = (
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    re.compile(r"-----BEGIN [A-Z0-9 ]*(?:PRIVATE KEY|SECRET)[A-Z0-9 ]*-----"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b", re.IGNORECASE),
+    re.compile(
+        r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
+        r"(?:\.[A-Za-z0-9_-]{8,})?\b"
+    ),
+)
+_SECRET_FIELD_MARKERS = frozenset(
+    {
+        "apikey",
+        "accesstoken",
+        "authorization",
+        "authtoken",
+        "bearer",
+        "clientsecret",
+        "cookie",
+        "credential",
+        "password",
+        "passwd",
+        "privatekey",
+        "refreshtoken",
+        "secret",
+        "secretkey",
+        "sessiontoken",
+        "token",
+    }
 )
 _FORBIDDEN_PLAN_TEXT = (
-    re.compile(r"```"),
+    re.compile(r"`"),
     re.compile(r"\bdiff --git\b", re.IGNORECASE),
     re.compile(
         r"(?:^|\s)(?:sudo|bash|sh|powershell|cmd\.exe|rm|mv|cp|git|"
@@ -786,14 +913,26 @@ _FORBIDDEN_PLAN_TEXT = (
         re.IGNORECASE,
     ),
     re.compile(r"(?:\$\(|&&|\|\|)"),
+    re.compile(
+        r"\b(?:run|execute|invoke)\s+(?:a\s+|the\s+)?"
+        r"(?:shell\s+)?(?:command|script|binary)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\b(?:apply|write|edit)\s+(?:a\s+)?(?:code\s+)?patch\b", re.IGNORECASE),
     re.compile(r"\b(?:password|api[_ -]?key|access[_ -]?token)\s*[:=]\s*\S+", re.IGNORECASE),
     re.compile(r"(?:^|\s)/(?:tmp|etc|home|root|workspace|var)(?:/|\b)"),
+    re.compile(r"(?:^|\s)(?:\.\.?/|[A-Za-z]:\\|file://)"),
     re.compile(
         r"\b(?:self[- ]?authoriz\w*|grant (?:me|itself) authority)\b",
         re.IGNORECASE,
     ),
     re.compile(r"\b(?:change|override|weaken|disable)\s+(?:the\s+)?policy\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:change|modify|override|expand|elevate|grant|weaken|disable)\s+"
+        r"(?:the\s+|model(?:'s)?\s+|operator(?:'s)?\s+)?"
+        r"(?:authority|authorization|permissions?|roles?|scope|budgets?)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\b(?:rewrite|edit|update)\s+(?:the\s+)?task\s*board\b", re.IGNORECASE),
     re.compile(r"\bmark\s+(?:the\s+)?task\s+(?:as\s+)?complete", re.IGNORECASE),
     re.compile(r"\bclaim\s+(?:task\s+)?completion\b", re.IGNORECASE),
@@ -859,27 +998,35 @@ def _bounded_redacted_diagnostics(
             return item
         if isinstance(item, Mapping):
             result: dict[str, Any] = {}
+            normalized_keys: set[str] = set()
             for raw_key in sorted(item, key=lambda member: str(member)):
-                key = str(raw_key).strip()
-                normalized = key.lower().replace("-", "_")
+                if not isinstance(raw_key, str):
+                    raise RescuePlannerValidationError(
+                        "diagnostic object keys must be strings",
+                        reason_code="unredacted_evidence",
+                    )
+                key = raw_key.strip()
+                normalized = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
+                compact = normalized.replace("_", "")
                 if (
                     not key
                     or normalized in _FORBIDDEN_DIAGNOSTIC_KEYS
+                    or compact in _SECRET_FIELD_MARKERS
                     or any(
-                        marker in normalized
-                        for marker in (
-                            "password",
-                            "credential",
-                            "private_key",
-                            "access_token",
-                            "api_key",
-                        )
+                        marker in compact
+                        for marker in _SECRET_FIELD_MARKERS - {"token"}
                     )
                 ):
                     raise RescuePlannerValidationError(
                         "diagnostics contain a forbidden or unredacted field",
                         reason_code="unredacted_evidence",
                     )
+                if normalized in normalized_keys:
+                    raise RescuePlannerValidationError(
+                        "diagnostics contain ambiguous duplicate fields",
+                        reason_code="unredacted_evidence",
+                    )
+                normalized_keys.add(normalized)
                 result[key] = visit(item[raw_key], depth + 1, key)
             return result
         if isinstance(item, Sequence) and not isinstance(
@@ -1017,6 +1164,141 @@ def _parameter_schema_matches(
         spec.parameters[name].validate(value, name)
 
 
+def _closed_operation_catalog(
+    operation_catalog: Mapping[RescueOperation, RescueOperationSpec],
+    *,
+    error_type: type[RescuePlannerError] = RescuePlannerError,
+) -> Mapping[RescueOperation, RescueOperationSpec]:
+    """Copy and verify that a supplied catalog cannot widen rescue authority."""
+
+    normalized: dict[RescueOperation, RescueOperationSpec] = {}
+    try:
+        entries = operation_catalog.items()
+    except AttributeError as exc:
+        raise error_type("operation catalog must be a mapping") from exc
+    for raw_operation, spec in entries:
+        try:
+            operation = (
+                raw_operation
+                if isinstance(raw_operation, RescueOperation)
+                else RescueOperation(raw_operation)
+            )
+        except (TypeError, ValueError) as exc:
+            raise error_type("operation catalog contains an unknown operation") from exc
+        canonical = DEFAULT_RESCUE_OPERATION_CATALOG.get(operation)
+        if (
+            not isinstance(spec, RescueOperationSpec)
+            or spec.operation is not operation
+            or canonical is None
+            or spec != canonical
+        ):
+            raise error_type(
+                "operation catalog differs from the closed rescue catalog"
+            )
+        normalized[operation] = spec
+    if not normalized:
+        raise error_type("operation catalog must not be empty")
+    return MappingProxyType(normalized)
+
+
+def _validate_parse_context(
+    *,
+    incident: SupervisorIncident,
+    exhaustion_receipt: ProgrammaticRecoveryExhaustionReceipt,
+    current_repository_root_cid: str,
+    current_run_cid: str,
+    current_policy_root: str,
+    evidence_reference_cids: Sequence[str],
+) -> tuple[str, ...]:
+    if not isinstance(incident, SupervisorIncident):
+        raise RescuePlannerValidationError(
+            "rescue parsing requires a typed incident",
+            reason_code="invalid_incident",
+        )
+    if not isinstance(
+        exhaustion_receipt, ProgrammaticRecoveryExhaustionReceipt
+    ):
+        raise RescuePlannerValidationError(
+            "rescue parsing requires a typed exhaustion receipt",
+            reason_code="missing_exhaustion",
+        )
+    if (
+        exhaustion_receipt.incident_cid != incident.incident_cid
+        or exhaustion_receipt.repository_root_cid
+        != incident.repository_root_cid
+        or exhaustion_receipt.run_cid != incident.run_cid
+        or exhaustion_receipt.policy_root != incident.policy_root
+    ):
+        raise RescuePlannerValidationError(
+            "exhaustion receipt is not bound to the exact incident",
+            reason_code="exhaustion_mismatch",
+        )
+    if exhaustion_receipt.status is not RecordStatus.QUARANTINED:
+        raise RescuePlannerValidationError(
+            "exhaustion receipt is not terminal",
+            reason_code="exhaustion_not_terminal",
+        )
+    if exhaustion_receipt.updated_at_ms < exhaustion_receipt.created_at_ms:
+        raise RescuePlannerValidationError(
+            "exhaustion receipt has non-monotonic timestamps",
+            reason_code="stale_exhaustion",
+        )
+    if incident.status not in {RecordStatus.FAILED, RecordStatus.QUARANTINED}:
+        raise RescuePlannerValidationError(
+            "incident is not active",
+            reason_code="incident_not_active",
+        )
+    if incident.updated_at_ms < incident.observed_at_ms:
+        raise RescuePlannerValidationError(
+            "incident has non-monotonic timestamps",
+            reason_code="stale_incident",
+        )
+    if any(
+        attempt.target_id not in incident.target_ids
+        for attempt in exhaustion_receipt.attempts
+    ):
+        raise RescuePlannerValidationError(
+            "exhaustion attempts contain an unbound target",
+            reason_code="exhaustion_mismatch",
+        )
+    if (
+        current_repository_root_cid != incident.repository_root_cid
+        or current_run_cid != incident.run_cid
+        or current_policy_root != incident.policy_root
+    ):
+        raise RescuePlannerValidationError(
+            "parser context contains stale authority roots",
+            reason_code="stale_roots",
+        )
+    if isinstance(evidence_reference_cids, (str, bytes)) or not isinstance(
+        evidence_reference_cids, Sequence
+    ):
+        raise RescuePlannerValidationError(
+            "evidence references must be a bounded sequence",
+            reason_code="invalid_evidence_references",
+        )
+    references = tuple(evidence_reference_cids)
+    allowed_references = {
+        *incident.evidence_cids,
+        *(
+            attempt.receipt_cid
+            for attempt in exhaustion_receipt.attempts
+            if attempt.receipt_cid
+        ),
+    }
+    if (
+        not references
+        or any(not isinstance(item, str) for item in references)
+        or len(set(references)) != len(references)
+        or not set(references).issubset(allowed_references)
+    ):
+        raise RescuePlannerValidationError(
+            "parser context contains unbound evidence references",
+            reason_code="invalid_evidence_references",
+        )
+    return references
+
+
 def parse_rescue_plan(
     text: str,
     *,
@@ -1033,6 +1315,22 @@ def parse_rescue_plan(
 ) -> RescuePlan:
     """Parse and validate an exact ``RescuePlan/v1`` provider response."""
 
+    evidence_references = _validate_parse_context(
+        incident=incident,
+        exhaustion_receipt=exhaustion_receipt,
+        current_repository_root_cid=current_repository_root_cid,
+        current_run_cid=current_run_cid,
+        current_policy_root=current_policy_root,
+        evidence_reference_cids=evidence_reference_cids,
+    )
+    try:
+        closed_catalog = _closed_operation_catalog(
+            operation_catalog,
+            error_type=RescuePlannerValidationError,
+        )
+    except RescuePlannerValidationError as exc:
+        exc.reason_code = "invalid_catalog"
+        raise
     payload = _strict_json_object(text, policy=policy)
     plan_fields = (
         "schema",
@@ -1119,7 +1417,7 @@ def parse_rescue_plan(
     available_preconditions = {
         incident.incident_cid,
         exhaustion_receipt.receipt_cid,
-        *evidence_reference_cids,
+        *evidence_references,
     }
     required_preconditions = {
         incident.incident_cid,
@@ -1172,12 +1470,17 @@ def parse_rescue_plan(
                 f"actions[{index}] selects an unknown operation",
                 reason_code="unknown_operation",
             ) from exc
-        if operation not in allowed_operations or operation not in operation_catalog:
+        if operation not in allowed_operations or operation not in closed_catalog:
             raise RescuePlannerValidationError(
                 f"actions[{index}] selects a non-permitted operation",
                 reason_code="unknown_operation",
             )
-        spec = operation_catalog[operation]
+        if operation in exhaustion_receipt.inapplicable_operations:
+            raise RescuePlannerValidationError(
+                f"actions[{index}] selects an operation proven inapplicable",
+                reason_code="inapplicable_operation",
+            )
+        spec = closed_catalog[operation]
         target_id = raw_action.get("target_id")
         if not isinstance(target_id, str) or target_id not in incident.target_ids:
             raise RescuePlannerValidationError(
@@ -1238,7 +1541,7 @@ def parse_rescue_plan(
             )
 
     references = payload.get("rationale_reference_cids")
-    allowed_references = set(evidence_reference_cids)
+    allowed_references = set(evidence_references)
     if (
         not isinstance(references, list)
         or not references
@@ -1274,7 +1577,7 @@ def parse_rescue_plan(
     )
     try:
         plan = RescuePlan.from_dict(payload)
-    except PromptWorkflowContractError as exc:
+    except (PromptWorkflowContractError, TypeError, ValueError, UnicodeError) as exc:
         raise RescuePlannerValidationError(
             f"rescue plan violates its canonical contract: {exc}",
             reason_code="invalid_schema",
@@ -1303,11 +1606,47 @@ def build_rescue_prompt(
     evidence_references = tuple(
         request.evidence_reference_cids or incident.evidence_cids
     )
-    selected_catalog = {
-        operation.value: operation_catalog[operation].to_prompt_dict()
+    closed_catalog = _closed_operation_catalog(operation_catalog)
+    selected_operations = tuple(
+        operation
         for operation in policy.allowed_operations
-        if operation in operation_catalog
-    }
+        if (
+            operation in closed_catalog
+            and operation not in exhaustion.inapplicable_operations
+            and any(
+                not closed_catalog[operation].target_prefixes
+                or target.startswith(closed_catalog[operation].target_prefixes)
+                for target in incident.target_ids
+            )
+        )
+    )
+    selected_catalog: dict[str, Any] = {}
+    for operation in selected_operations:
+        spec = closed_catalog[operation]
+        entry = spec.to_prompt_dict()
+        entry["exact_target_ids"] = [
+            target
+            for target in incident.target_ids
+            if not spec.target_prefixes or target.startswith(spec.target_prefixes)
+        ]
+        selected_catalog[operation.value] = entry
+    max_actions = min(
+        policy.max_actions, exhaustion.budget.max_rescue_actions
+    )
+    provider_output_tokens = min(
+        request.max_provider_tokens or policy.max_provider_tokens,
+        policy.max_provider_tokens,
+        exhaustion.budget.max_provider_tokens,
+    )
+    timeout_ms = min(
+        request.timeout_ms or policy.max_latency_ms,
+        policy.max_latency_ms,
+        exhaustion.budget.max_latency_ms,
+    )
+    max_cost_microunits = min(
+        request.max_cost_microunits or policy.max_cost_microunits,
+        policy.max_cost_microunits,
+    )
     payload = {
         "instruction": (
             "Return exactly one strict JSON RescuePlan/v1 proposal. Select only "
@@ -1337,16 +1676,23 @@ def build_rescue_prompt(
         "evidence_reference_cids": list(evidence_references),
         "closed_operation_catalog": selected_catalog,
         "limits": {
-            "max_actions": min(
-                policy.max_actions, exhaustion.budget.max_rescue_actions
-            ),
-            "provider_output_tokens": min(
-                request.max_provider_tokens or policy.max_provider_tokens,
-                policy.max_provider_tokens,
-                exhaustion.budget.max_provider_tokens,
-            ),
+            "max_actions": max_actions,
+            "provider_output_tokens": provider_output_tokens,
+            "timeout_ms": timeout_ms,
+            "max_cost_microunits": max_cost_microunits,
         },
-        "response_schema": _response_schema(),
+        "response_schema": _response_schema(
+            operation_catalog=closed_catalog,
+            allowed_operations=selected_operations,
+            target_ids=incident.target_ids,
+            incident_cid=incident.incident_cid,
+            exhaustion_receipt_cid=exhaustion.receipt_cid,
+            repository_root_cid=request.current_repository_root_cid,
+            run_cid=request.current_run_cid,
+            policy_root=request.current_policy_root,
+            evidence_reference_cids=evidence_references,
+            max_actions=max_actions,
+        ),
     }
     return json.dumps(
         payload,
@@ -1362,7 +1708,7 @@ def _guidance_steps(reason_code: str, *, quarantine: bool) -> tuple[RescueGuidan
             RescueGuidanceStep.QUARANTINE_INCIDENT,
             RescueGuidanceStep.OPERATOR_REVIEW,
         )
-    if reason_code == "cooldown_active":
+    if "cooldown" in reason_code:
         return (
             RescueGuidanceStep.WAIT_FOR_COOLDOWN,
             RescueGuidanceStep.OPERATOR_REVIEW,
@@ -1402,11 +1748,11 @@ class RescuePlanner:
     ) -> None:
         self.policy = policy or RescuePlannerPolicy()
         self.provider = provider
-        self.operation_catalog = MappingProxyType(dict(operation_catalog))
         self.state = state or RescuePlannerState()
+        self.operation_catalog = _closed_operation_catalog(operation_catalog)
         self.clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
         self.provider_batch_scheduler = provider_batch_scheduler
-        self._lock = threading.RLock()
+        self._lock = self.state._lock
         if set(self.policy.allowed_operations).difference(self.operation_catalog):
             raise RescuePlannerError(
                 "policy operations are missing from the provided operation catalog"
@@ -1494,6 +1840,13 @@ class RescuePlanner:
             return self._no_plan(request, "exhaustion_mismatch"), None
         if exhaustion.status is not RecordStatus.QUARANTINED:
             return self._no_plan(request, "exhaustion_not_terminal"), None
+        if exhaustion.updated_at_ms < exhaustion.created_at_ms:
+            return self._no_plan(request, "stale_exhaustion"), None
+        if any(
+            attempt.target_id not in incident.target_ids
+            for attempt in exhaustion.attempts
+        ):
+            return self._no_plan(request, "exhaustion_mismatch"), None
         if (
             request.current_repository_root_cid != incident.repository_root_cid
             or request.current_run_cid != incident.run_cid
@@ -1505,6 +1858,8 @@ class RescuePlanner:
             RecordStatus.QUARANTINED,
         }:
             return self._no_plan(request, "incident_not_active"), None
+        if incident.updated_at_ms < incident.observed_at_ms:
+            return self._no_plan(request, "stale_incident"), None
         receipt_time = max(exhaustion.created_at_ms, exhaustion.updated_at_ms)
         if (
             receipt_time > now_ms
@@ -1520,6 +1875,12 @@ class RescuePlanner:
         if exhaustion.circuit_open:
             return self._no_plan(
                 request, "programmatic_circuit_open", quarantine=True
+            ), None
+        if "cooldown" in exhaustion.exhaustion_reason.casefold():
+            return self._no_plan(
+                request,
+                "programmatic_cooldown_active",
+                retry_after_ms=policy.cooldown_ms,
             ), None
         if not isinstance(request.evidence_redacted, bool) or not (
             request.evidence_redacted
@@ -1546,12 +1907,30 @@ class RescuePlanner:
         )
         if (
             not evidence_references
+            or any(not isinstance(item, str) for item in evidence_references)
             or len(set(evidence_references)) != len(evidence_references)
             or not set(evidence_references).issubset(
                 allowed_evidence_references
             )
         ):
             return self._no_plan(request, "invalid_evidence_references"), None
+        applicable_operations = tuple(
+            operation
+            for operation in policy.allowed_operations
+            if (
+                operation in self.operation_catalog
+                and operation not in exhaustion.inapplicable_operations
+                and any(
+                    not self.operation_catalog[operation].target_prefixes
+                    or target.startswith(
+                        self.operation_catalog[operation].target_prefixes
+                    )
+                    for target in incident.target_ids
+                )
+            )
+        )
+        if not applicable_operations:
+            return self._no_plan(request, "no_applicable_operations"), None
         for requested, maximum, reason in (
             (
                 request.max_provider_tokens,
@@ -1588,6 +1967,7 @@ class RescuePlanner:
         repository_root: str,
         output_tokens: int,
         timeout_ms: int,
+        prompt_token_limit: int,
     ) -> str:
         # These imports are intentionally deferred until every safety gate has
         # passed, preserving import-time isolation from providers and models.
@@ -1614,7 +1994,7 @@ class RescuePlanner:
             scheduler=self.provider_batch_scheduler,
             route=DEFAULT_RESCUE_ROUTE,
             operation="rescue_plan.v1",
-            context_limit=self.policy.max_prompt_tokens,
+            context_limit=prompt_token_limit,
             response_contract=RESCUE_PLAN_RESPONSE_NAME,
             provenance={"proposal_only": True},
         )
@@ -1647,11 +2027,18 @@ class RescuePlanner:
         """Return one validated proposal or effect-free typed guidance."""
 
         with self._lock:
-            now_ms = (
-                int(request.now_ms)
+            current_time = (
+                request.now_ms
                 if request.now_ms is not None
-                else int(self.clock_ms())
+                else self.clock_ms()
             )
+            if (
+                isinstance(current_time, bool)
+                or not isinstance(current_time, int)
+                or current_time < 0
+            ):
+                return self._no_plan(request, "invalid_current_time")
+            now_ms = current_time
             gated, diagnostics = self._gate(request, now_ms)
             if gated is not None:
                 return gated
@@ -1659,19 +2046,70 @@ class RescuePlanner:
             incident = request.incident
             exhaustion = request.exhaustion_receipt
             cooldown_key = incident.cooldown_key or incident.incident_cid
+            if incident.incident_cid in self.state.in_flight_incidents:
+                return self._no_plan(request, "identical_incident_in_flight")
 
             prior = self.state.prior_results.get(incident.incident_cid)
             if prior is not None:
-                if (
-                    prior.exhaustion_receipt_cid
-                    != exhaustion.receipt_cid
-                ):
+                if not isinstance(prior, RescuePlanningResult):
+                    self.state.open_circuits.add(cooldown_key)
+                    return self._no_plan(
+                        request,
+                        "planner_state_invalid",
+                        quarantine=True,
+                    )
+                if prior.incident_cid != incident.incident_cid:
+                    self.state.open_circuits.add(cooldown_key)
+                    return self._no_plan(
+                        request,
+                        "prior_result_binding_mismatch",
+                        quarantine=True,
+                    )
+                if prior.exhaustion_receipt_cid != exhaustion.receipt_cid:
                     return self._no_plan(
                         request,
                         "identical_incident_receipt_changed",
                         quarantine=True,
                     )
+                if (
+                    prior.guidance is not None
+                    and (
+                        prior.guidance.incident_cid != incident.incident_cid
+                        or prior.guidance.exhaustion_receipt_cid
+                        != exhaustion.receipt_cid
+                    )
+                ):
+                    self.state.open_circuits.add(cooldown_key)
+                    return self._no_plan(
+                        request,
+                        "prior_result_binding_mismatch",
+                        quarantine=True,
+                    )
                 if prior.plan is not None:
+                    try:
+                        parse_rescue_plan(
+                            prior.plan.to_json(),
+                            incident=incident,
+                            exhaustion_receipt=exhaustion,
+                            current_repository_root_cid=(
+                                request.current_repository_root_cid
+                            ),
+                            current_run_cid=request.current_run_cid,
+                            current_policy_root=request.current_policy_root,
+                            evidence_reference_cids=tuple(
+                                request.evidence_reference_cids
+                                or incident.evidence_cids
+                            ),
+                            policy=self.policy,
+                            operation_catalog=self.operation_catalog,
+                        )
+                    except Exception:
+                        self.state.open_circuits.add(cooldown_key)
+                        return self._no_plan(
+                            request,
+                            "prior_proposal_invalid",
+                            quarantine=True,
+                        )
                     return replace(
                         prior,
                         disposition=RescuePlanningDisposition.REUSED,
@@ -1680,18 +2118,45 @@ class RescuePlanner:
                         reason_code="identical_incident_reused",
                         elapsed_ms=0,
                     )
-                return replace(
-                    prior,
-                    provider_invoked=False,
-                    reused=True,
-                    reason_code="identical_incident_circuit_break",
-                    elapsed_ms=0,
+                guidance = self._no_plan(
+                    request,
+                    "identical_incident_circuit_break",
+                    quarantine=prior.quarantine_required,
                 )
+                return replace(guidance, reused=True)
             if cooldown_key in self.state.open_circuits:
                 return self._no_plan(
                     request, "planner_circuit_open", quarantine=True
                 )
+            failure_count = self.state.consecutive_failures.get(cooldown_key, 0)
+            if (
+                isinstance(failure_count, bool)
+                or not isinstance(failure_count, int)
+                or failure_count < 0
+            ):
+                self.state.open_circuits.add(cooldown_key)
+                return self._no_plan(
+                    request,
+                    "planner_state_invalid",
+                    quarantine=True,
+                )
+            if failure_count >= self.policy.circuit_breaker_failures:
+                self.state.open_circuits.add(cooldown_key)
+                return self._no_plan(
+                    request, "planner_circuit_open", quarantine=True
+                )
             last_call = self.state.last_provider_call_ms.get(cooldown_key)
+            if last_call is not None and (
+                isinstance(last_call, bool)
+                or not isinstance(last_call, int)
+                or last_call < 0
+            ):
+                self.state.open_circuits.add(cooldown_key)
+                return self._no_plan(
+                    request,
+                    "planner_state_invalid",
+                    quarantine=True,
+                )
             if (
                 last_call is not None
                 and now_ms - last_call < self.policy.cooldown_ms
@@ -1746,18 +2211,25 @@ class RescuePlanner:
             prompt_sha256 = hashlib.sha256(prompt_bytes).hexdigest()
             started = int(self.clock_ms())
             self.state.last_provider_call_ms[cooldown_key] = now_ms
+            self.state.in_flight_incidents.add(incident.incident_cid)
             response = ""
             try:
-                response = (
-                    self.provider(prompt)
-                    if self.provider is not None
-                    else self._default_provider(
-                        prompt,
-                        repository_root=incident.repository_root,
-                        output_tokens=output_tokens,
-                        timeout_ms=timeout_ms,
+                try:
+                    response = (
+                        self.provider(prompt)
+                        if self.provider is not None
+                        else self._default_provider(
+                            prompt,
+                            repository_root=incident.repository_root,
+                            output_tokens=output_tokens,
+                            timeout_ms=timeout_ms,
+                            prompt_token_limit=prompt_limit,
+                        )
                     )
-                )
+                finally:
+                    self.state.in_flight_incidents.discard(
+                        incident.incident_cid
+                    )
             except Exception:
                 elapsed = max(0, int(self.clock_ms()) - started)
                 result = self._no_plan(
@@ -1771,11 +2243,21 @@ class RescuePlanner:
                 return self._record_failure(request, result, cooldown_key)
 
             elapsed = max(0, int(self.clock_ms()) - started)
-            response_sha256 = (
-                hashlib.sha256(response.encode("utf-8")).hexdigest()
-                if isinstance(response, str)
-                else ""
-            )
+            response_sha256 = ""
+            if isinstance(response, str):
+                try:
+                    response_bytes = response.encode("utf-8")
+                except UnicodeEncodeError:
+                    result = self._no_plan(
+                        request,
+                        "provider_malformed_unicode",
+                        provider_invoked=True,
+                        prompt_sha256=prompt_sha256,
+                        estimated_cost_microunits=estimated_cost,
+                        elapsed_ms=elapsed,
+                    )
+                    return self._record_failure(request, result, cooldown_key)
+                response_sha256 = hashlib.sha256(response_bytes).hexdigest()
             if elapsed > timeout_ms:
                 result = self._no_plan(
                     request,
@@ -1827,6 +2309,17 @@ class RescuePlanner:
                     request,
                     f"provider_{exc.reason_code}",
                     quarantine=quarantine,
+                    provider_invoked=True,
+                    prompt_sha256=prompt_sha256,
+                    response_sha256=response_sha256,
+                    estimated_cost_microunits=estimated_cost,
+                    elapsed_ms=elapsed,
+                )
+                return self._record_failure(request, result, cooldown_key)
+            except Exception:
+                result = self._no_plan(
+                    request,
+                    "provider_malformed_plan",
                     provider_invoked=True,
                     prompt_sha256=prompt_sha256,
                     response_sha256=response_sha256,

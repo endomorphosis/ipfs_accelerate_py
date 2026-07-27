@@ -303,8 +303,36 @@ def test_prompt_contains_only_bounded_references_roots_diagnostics_and_catalog()
     assert "attempts" not in payload["exhaustion_reference"]
     assert "exhaustion_reason" not in payload["exhaustion_reference"]
     assert payload["response_schema"]["title"] == RESCUE_PLAN_RESPONSE_NAME
-    assert set(payload["closed_operation_catalog"]) == {
-        item.value for item in _policy().allowed_operations
+    assert RescueOperation.REPAIR_ORPHANED_LOCK.value not in (
+        payload["closed_operation_catalog"]
+    )
+    assert RescueOperation.OBJECTIVE_RECONCILE.value not in (
+        payload["closed_operation_catalog"]
+    )
+    restart = payload["closed_operation_catalog"][
+        RescueOperation.RESTART_LANE.value
+    ]
+    assert restart["exact_target_ids"] == ["lane:implementation"]
+    schema = payload["response_schema"]
+    assert schema["properties"]["incident_cid"] == {
+        "const": request.incident.incident_cid
+    }
+    assert schema["properties"]["repository_root_cid"] == {
+        "const": request.current_repository_root_cid
+    }
+    action_variants = schema["properties"]["actions"]["items"]["oneOf"]
+    assert {
+        item["properties"]["operation"]["const"] for item in action_variants
+    } == set(payload["closed_operation_catalog"])
+    assert all(
+        item["properties"]["target_id"]["enum"] == ["lane:implementation"]
+        for item in action_variants
+    )
+    assert payload["limits"] == {
+        "max_actions": 4,
+        "provider_output_tokens": 1_024,
+        "timeout_ms": 10_000,
+        "max_cost_microunits": 20_000,
     }
     assert len(prompt.encode("utf-8")) < _policy().max_prompt_tokens * 4
 
@@ -483,6 +511,211 @@ def test_parser_accepts_exact_typed_plan_and_contract_validates_action_identity(
         )
 
 
+def test_parser_rejects_a_foreign_exhaustion_context_before_parsing() -> None:
+    request = _request()
+    foreign_incident = _incident(fingerprint="c")
+
+    with pytest.raises(RescuePlannerValidationError) as raised:
+        parse_rescue_plan(
+            _valid_response(request),
+            incident=request.incident,
+            exhaustion_receipt=_exhaustion(foreign_incident),
+            current_repository_root_cid=request.current_repository_root_cid,
+            current_run_cid=request.current_run_cid,
+            current_policy_root=request.current_policy_root,
+            evidence_reference_cids=request.evidence_reference_cids,
+            policy=_policy(),
+        )
+
+    assert raised.value.reason_code == "exhaustion_mismatch"
+
+
+def test_parser_rejects_an_operation_proven_inapplicable() -> None:
+    request = _request()
+    payload = _raw_response(request)
+    spec = DEFAULT_RESCUE_OPERATION_CATALOG[
+        RescueOperation.REPAIR_ORPHANED_LOCK
+    ]
+    action = payload["actions"][0]
+    action.pop("content_id", None)
+    action.update(
+        {
+            "operation": RescueOperation.REPAIR_ORPHANED_LOCK.value,
+            "parameters": {},
+            "expected_effects": list(spec.expected_effects),
+            "success_test": spec.success_test,
+            "stop_condition": spec.stop_condition,
+        }
+    )
+
+    with pytest.raises(RescuePlannerValidationError) as raised:
+        parse_rescue_plan(
+            json.dumps(payload),
+            incident=request.incident,
+            exhaustion_receipt=request.exhaustion_receipt,
+            current_repository_root_cid=request.current_repository_root_cid,
+            current_run_cid=request.current_run_cid,
+            current_policy_root=request.current_policy_root,
+            evidence_reference_cids=request.evidence_reference_cids,
+            policy=_policy(),
+        )
+
+    assert raised.value.reason_code == "inapplicable_operation"
+
+
+@pytest.mark.parametrize(
+    "diagnostics",
+    [
+        {"access token": "redacted"},
+        {
+            "message": (
+                "eyJhbGciOiJIUzI1NiJ9."
+                "eyJzdWIiOiIxMjM0NTY3ODkwIn0."
+                "abcdefghijklmnopqrstuvwxyz"
+            )
+        },
+        {1: "non-json field name"},
+    ],
+)
+def test_redaction_gate_rejects_credential_aliases_and_non_json_keys(
+    diagnostics: dict[Any, Any],
+) -> None:
+    calls = 0
+
+    def provider(_prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        return "{}"
+
+    result = RescuePlanner(_policy(), provider=provider).plan(
+        _request(diagnostics=diagnostics)
+    )
+
+    assert result.reason_code == "unredacted_evidence"
+    assert not result.provider_invoked
+    assert calls == 0
+
+
+def test_programmatic_cooldown_and_no_applicable_catalog_do_not_call_provider() -> None:
+    incident = _incident()
+    exhaustion = replace(
+        _exhaustion(incident),
+        exhaustion_reason="action_cooldown_active",
+    )
+    calls = 0
+
+    def provider(_prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        return "{}"
+
+    cooldown = RescuePlanner(_policy(), provider=provider).plan(
+        _request(incident, exhaustion)
+    )
+    assert cooldown.reason_code == "programmatic_cooldown_active"
+    assert cooldown.guidance is not None
+    assert cooldown.guidance.next_steps[0] is RescueGuidanceStep.WAIT_FOR_COOLDOWN
+
+    no_operation = RescuePlanner(
+        _policy(
+            allowed_operations=(RescueOperation.REPAIR_ORPHANED_LOCK,)
+        ),
+        provider=provider,
+    ).plan(_request())
+    assert no_operation.reason_code == "no_applicable_operations"
+    assert calls == 0
+
+
+def test_malformed_unicode_returns_typed_no_plan_without_effects() -> None:
+    result = RescuePlanner(
+        _policy(),
+        provider=lambda _prompt: "\ud800",
+        clock_ms=lambda: NOW_MS,
+    ).plan(_request())
+
+    assert result.reason_code == "provider_malformed_unicode"
+    assert result.provider_invoked
+    assert result.plan is None
+    assert result.effects == ()
+
+
+def test_prior_proposal_is_revalidated_under_current_policy() -> None:
+    request = _request()
+    state = RescuePlannerState()
+    first = RescuePlanner(
+        _policy(),
+        provider=lambda _prompt: _valid_response(request),
+        state=state,
+        clock_ms=lambda: NOW_MS,
+    ).plan(request)
+    assert first.proposed
+
+    changed_policy = _policy(
+        allowed_operations=(RescueOperation.HEALTH,),
+    )
+    reused = RescuePlanner(
+        changed_policy,
+        provider=lambda _prompt: pytest.fail("provider must not be invoked"),
+        state=state,
+        clock_ms=lambda: NOW_MS,
+    ).plan(request)
+
+    assert reused.disposition is RescuePlanningDisposition.QUARANTINE
+    assert reused.reason_code == "prior_proposal_invalid"
+    assert not reused.provider_invoked
+    assert reused.effects == ()
+
+
+def test_restored_circuit_state_fails_closed_without_provider_access() -> None:
+    request = _request()
+    key = request.incident.cooldown_key
+    state = RescuePlannerState(consecutive_failures={key: 2})
+    calls = 0
+
+    def provider(_prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        return _valid_response(request)
+
+    result = RescuePlanner(
+        _policy(circuit_breaker_failures=2),
+        provider=provider,
+        state=state,
+    ).plan(request)
+
+    assert result.disposition is RescuePlanningDisposition.QUARANTINE
+    assert result.reason_code == "planner_circuit_open"
+    assert result.effects == ()
+    assert calls == 0
+
+
+def test_reentrant_identical_incident_is_suppressed_in_flight() -> None:
+    request = _request()
+    nested_results = []
+    calls = 0
+    planner: RescuePlanner
+
+    def provider(_prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        nested_results.append(planner.plan(request))
+        return _valid_response(request)
+
+    planner = RescuePlanner(
+        _policy(cooldown_ms=0),
+        provider=provider,
+        clock_ms=lambda: NOW_MS,
+    )
+    result = planner.plan(request)
+
+    assert result.proposed
+    assert calls == 1
+    assert len(nested_results) == 1
+    assert nested_results[0].reason_code == "identical_incident_in_flight"
+    assert not nested_results[0].provider_invoked
+    assert nested_results[0].effects == ()
+
+
 def _mutate_unknown_field(payload: dict[str, Any], request: RescuePlanningRequest) -> None:
     del request
     payload["shell_command"] = "true"
@@ -531,6 +764,16 @@ def _mutate_completion(payload: dict[str, Any], request: RescuePlanningRequest) 
 def _mutate_self_authority(payload: dict[str, Any], request: RescuePlanningRequest) -> None:
     del request
     payload["unresolved_risks"] = ["Self-authorize the proposed restart."]
+
+
+def _mutate_authority(payload: dict[str, Any], request: RescuePlanningRequest) -> None:
+    del request
+    payload["unresolved_risks"] = ["Elevate operator authority before retrying."]
+
+
+def _mutate_shell(payload: dict[str, Any], request: RescuePlanningRequest) -> None:
+    del request
+    payload["unresolved_risks"] = ["Run `ls -la` before retrying."]
 
 
 def _mutate_missing_stop(payload: dict[str, Any], request: RescuePlanningRequest) -> None:
@@ -588,6 +831,8 @@ def _mutate_excess_actions(payload: dict[str, Any], request: RescuePlanningReque
         (_mutate_taskboard, "forbidden_content"),
         (_mutate_completion, "forbidden_content"),
         (_mutate_self_authority, "forbidden_content"),
+        (_mutate_authority, "forbidden_content"),
+        (_mutate_shell, "forbidden_content"),
         (_mutate_missing_stop, "missing_stop_condition"),
         (_mutate_missing_success, "missing_success_condition"),
         (_mutate_effect, "invalid_expected_effects"),
