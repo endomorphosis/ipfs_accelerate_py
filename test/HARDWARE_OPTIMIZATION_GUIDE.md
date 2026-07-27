@@ -319,6 +319,6 @@ To customize the implementation templates:
 
 For more information, see the following resources:
 
-- [OPTIMIZATION_API_REFERENCE.md](OPTIMIZATION_API_REFERENCE.md): Complete API reference
+- [Hardware Optimization Exporter README](OPTIMIZATION_EXPORTER_README.md): API endpoints and exporter usage
 - [HARDWARE_BENCHMARKING_GUIDE.md](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md): Guide to hardware benchmarking
-- [MODEL_OPTIMIZATION_EXAMPLES.md](../examples/MODEL_OPTIMIZATION_EXAMPLES.md): Examples of optimized models
+- [Model optimization example](../examples/model_optimization.py): Example of selecting hardware and deployment strategies

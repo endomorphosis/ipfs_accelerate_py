@@ -7,9 +7,13 @@ This module is the small coordination boundary for that stream:
 * only requests with an identical :class:`ProviderBatchKey` share a call;
 * identical in-flight requests are single-flighted;
 * deadlines, cancellation, budgets, provenance, and results remain local to
-  each submitted request;
+  each submitted request (existing sibling isolation and single-flight receipts);
 * provider health and capacity are checked immediately before dispatch; and
 * every completed batch has a content-addressed receipt.
+
+IndexTTS/Whisper batch-size-one policy: IndexTTS and Whisper adapter aliases in
+``_SINGLE_MEMBER_AUDIO_PROVIDERS`` remain physical batch size one until those
+adapters prove real multi-member batching.
 
 Provider callbacks receive a tuple of :class:`ProviderBatchRequest` objects and
 may return either a sequence in request order or a mapping keyed by request id.
@@ -47,6 +51,23 @@ PROVIDER_BATCH_METRICS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/provider-batch-metrics@2"
 )
 _PROVIDER_BATCH_RECEIPT_SEAL: Final = object()
+_SINGLE_MEMBER_AUDIO_PROVIDERS: Final = frozenset(
+    {
+        "abby_hf_whisper",
+        "abby_index_tts",
+        "abby_indextts",
+        "abby_whisper",
+        "hf_whisper",
+        "huggingface_whisper",
+        "huggingface_whisper_http",
+        "huggingfacewhisperhttp",
+        "index_tts",
+        "index_tts_http",
+        "indextts",
+        "indexttshttp",
+        "whisper",
+    }
+)
 
 
 def _canonical(value: Any) -> Any:
@@ -130,6 +151,17 @@ def _cancelled(token: Any) -> bool:
     return False
 
 
+def _requires_single_member_batch(provider_id: str) -> bool:
+    """Enforce the IndexTTS/Whisper batch-size-one policy for audio adapters.
+
+    Returns whether the provider's current adapter lacks a batch wire API and
+    therefore must launch with at most one physical member per provider call.
+    """
+
+    normalized = str(provider_id).strip().lower().replace("-", "_")
+    return normalized in _SINGLE_MEMBER_AUDIO_PROVIDERS
+
+
 class ProviderBatchStatus(str, Enum):
     """Terminal and observable states of one submitted member."""
 
@@ -161,6 +193,13 @@ class ProviderBatchKey:
     context_limit: int
     policy_digest: str
     generation_digest: str
+    voice: str = ""
+    locale: str = ""
+    reference_hash: str = ""
+    codec: str = ""
+    sample_rate: int = 0
+    channels: int = 0
+    tenant_policy_digest: str = field(default_factory=lambda: _digest({}))
 
     def __post_init__(self) -> None:
         for name in ("provider_id", "route", "model", "operation"):
@@ -168,11 +207,28 @@ class ProviderBatchKey:
             if not value:
                 raise ValueError(f"{name} must not be empty")
             object.__setattr__(self, name, value)
-        _positive_integer(self.context_limit, "context_limit", allow_zero=True)
-        for name in ("policy_digest", "generation_digest"):
-            value = str(getattr(self, name))
+        for name in ("voice", "locale", "codec"):
+            object.__setattr__(self, name, str(getattr(self, name)).strip())
+        reference_hash = str(self.reference_hash).strip().lower()
+        if reference_hash and (
+            len(reference_hash) != 64
+            or any(character not in "0123456789abcdef" for character in reference_hash)
+        ):
+            raise ValueError("reference_hash must be an empty value or sha256 digest")
+        object.__setattr__(self, "reference_hash", reference_hash)
+        for name in ("context_limit", "sample_rate", "channels"):
+            _positive_integer(getattr(self, name), name, allow_zero=True)
+        for name in (
+            "policy_digest",
+            "tenant_policy_digest",
+            "generation_digest",
+        ):
+            value = str(getattr(self, name)).lower()
             if len(value) != 64:
                 raise ValueError(f"{name} must be a sha256 digest")
+            if any(character not in "0123456789abcdef" for character in value):
+                raise ValueError(f"{name} must be a sha256 digest")
+            object.__setattr__(self, name, value)
 
     @property
     def digest(self) -> str:
@@ -185,7 +241,14 @@ class ProviderBatchKey:
             "model": self.model,
             "operation": self.operation,
             "context_limit": self.context_limit,
+            "voice": self.voice,
+            "locale": self.locale,
+            "reference_hash": self.reference_hash,
+            "codec": self.codec,
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
             "policy_digest": self.policy_digest,
+            "tenant_policy_digest": self.tenant_policy_digest,
             "generation_digest": self.generation_digest,
         }
 
@@ -201,7 +264,14 @@ class ProviderBatchRequest:
     model: str = "default"
     operation: str = "generate"
     context_limit: int = 0
+    voice: str = ""
+    locale: str = ""
+    reference_hash: str = ""
+    codec: str = ""
+    sample_rate: int = 0
+    channels: int = 0
     policy: Mapping[str, Any] = field(default_factory=dict)
+    tenant_policy: Mapping[str, Any] = field(default_factory=dict)
     generation_settings: Mapping[str, Any] = field(default_factory=dict)
     token_budget: int = 0
     timeout_ms: int = 0
@@ -219,11 +289,31 @@ class ProviderBatchRequest:
             if not value:
                 raise ValueError(f"{name} must not be empty")
             object.__setattr__(self, name, value)
-        for name in ("context_limit", "token_budget", "timeout_ms"):
+        for name in ("voice", "locale", "codec"):
+            object.__setattr__(self, name, str(getattr(self, name)).strip())
+        reference_hash = str(self.reference_hash).strip().lower()
+        if reference_hash and (
+            len(reference_hash) != 64
+            or any(character not in "0123456789abcdef" for character in reference_hash)
+        ):
+            raise ValueError("reference_hash must be an empty value or sha256 digest")
+        object.__setattr__(self, "reference_hash", reference_hash)
+        for name in (
+            "context_limit",
+            "sample_rate",
+            "channels",
+            "token_budget",
+            "timeout_ms",
+        ):
             _positive_integer(getattr(self, name), name, allow_zero=True)
         if isinstance(self.priority, bool) or not isinstance(self.priority, int):
             raise ValueError("priority must be an integer")
-        for name in ("policy", "generation_settings", "provenance"):
+        for name in (
+            "policy",
+            "tenant_policy",
+            "generation_settings",
+            "provenance",
+        ):
             value = getattr(self, name)
             if not isinstance(value, Mapping):
                 raise ValueError(f"{name} must be a mapping")
@@ -249,7 +339,14 @@ class ProviderBatchRequest:
             model=self.model,
             operation=self.operation,
             context_limit=self.context_limit,
+            voice=self.voice,
+            locale=self.locale,
+            reference_hash=self.reference_hash,
+            codec=self.codec,
+            sample_rate=self.sample_rate,
+            channels=self.channels,
             policy_digest=_digest(self.policy),
+            tenant_policy_digest=_digest(self.tenant_policy),
             generation_digest=_digest(self.generation_settings),
         )
 
@@ -1141,6 +1238,13 @@ class ProviderBatchScheduler:
     def _effective_size(
         self, provider_id: str, capacity: ProviderBatchCapacity
     ) -> int:
+        # The current remote Abby adapters expose one-request HTTP APIs.  Keep
+        # physical calls at one member until an adapter explicitly implements
+        # a real batch wire contract.  Identical logical subscribers can still
+        # share that member through single-flight.
+        if _requires_single_member_batch(provider_id):
+            self._adaptive_sizes[provider_id] = 1
+            return 1
         adaptive = self._adaptive_sizes.setdefault(
             provider_id, self.config.max_batch_size
         )
@@ -1582,7 +1686,12 @@ class ProviderBatchScheduler:
             current = self._adaptive_sizes.get(
                 key.provider_id, self.config.max_batch_size
             )
-            if dispatch_error is not None or duration > self.config.target_batch_latency_ms:
+            if _requires_single_member_batch(key.provider_id):
+                current = 1
+            elif (
+                dispatch_error is not None
+                or duration > self.config.target_batch_latency_ms
+            ):
                 current = max(self.config.min_batch_size, current // 2)
             elif len(groups) >= current and current < self.config.max_batch_size:
                 current += 1

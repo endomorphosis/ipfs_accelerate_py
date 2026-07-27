@@ -85,10 +85,10 @@ it's passed with the `text_target` keyword argument.
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## PLBartConfig
 

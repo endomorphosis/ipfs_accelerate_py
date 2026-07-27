@@ -37,17 +37,17 @@ The original code can be found [here](https://github.com/princeton-nlp/DinkyTrai
 
 ## Usage tips
 
-- The implementation is the same as [Roberta](roberta) except instead of using _Add and Norm_ it does _Norm and Add_. _Add_ and _Norm_ refers to the Addition and LayerNormalization as described in [Attention Is All You Need](https://arxiv.org/abs/1706.03762).
+- The implementation is the same as [Roberta](roberta.md) except instead of using _Add and Norm_ it does _Norm and Add_. _Add_ and _Norm_ refers to the Addition and LayerNormalization as described in [Attention Is All You Need](https://arxiv.org/abs/1706.03762).
 - This is identical to using the `--encoder-normalize-before` flag in [fairseq](https://fairseq.readthedocs.io/).
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## RobertaPreLayerNormConfig
 

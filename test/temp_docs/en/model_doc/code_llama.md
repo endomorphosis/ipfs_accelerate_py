@@ -112,7 +112,7 @@ The LLaMA tokenizer is a BPE model based on [sentencepiece](https://github.com/g
 
 <Tip>
 
-Code Llama has the same architecture as the `Llama2` models, refer to [Llama2's documentation page](llama2) for the API reference.
+Code Llama has the same architecture as the `Llama2` models, refer to [Llama2's documentation page](llama2.md) for the API reference.
 Find Code Llama tokenizer reference below. 
 </Tip>
 

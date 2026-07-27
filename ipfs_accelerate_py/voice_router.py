@@ -17,7 +17,9 @@ Environment variables:
 - `IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER`: enable backend manager provider
 - `IPFS_ACCELERATE_PY_TTS_MODEL`: HF model name for TTS (default: suno/bark-small)
 - `IPFS_ACCELERATE_PY_STT_MODEL`: HF model name for STT (default: openai/whisper-base)
-- `IPFS_ACCELERATE_PY_VOICE_DEVICE`: device for local adapters (cpu/cuda)
+- `IPFS_ACCELERATE_PY_TTS_DEVICE`: device for local TTS (falls back to VOICE_DEVICE)
+- `IPFS_ACCELERATE_PY_STT_DEVICE`: device for local STT (falls back to VOICE_DEVICE)
+- `IPFS_ACCELERATE_PY_VOICE_DEVICE`: shared device fallback for local adapters (cpu/cuda)
 - `IPFS_ACCELERATE_PY_TTS_OUTPUT_FORMAT`: audio output format hint (wav/mp3)
 - `IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS`: ordered Abby IndexTTS HTTP URLs
 - `IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL`: Abby Whisper HTTP model base URL
@@ -82,6 +84,12 @@ from .model_catalog import (
     redact_secrets,
 )
 from .router_deps import RouterDeps, get_default_router_deps
+from .voice_audio_resolver import (
+    PrecomputedAudioResolution,
+    PrecomputedVoiceAudioResolver,
+    SynthesisIdentity,
+    spoken_text_sha256 as precomputed_spoken_text_sha256,
+)
 from .voice_templates import (
     buildVoiceGraphRagPromptParts,
     normalize_spoken_text,
@@ -2676,8 +2684,9 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
             )
             device_str = (
                 device
+                or os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE")
                 or os.getenv("IPFS_ACCELERATE_PY_VOICE_DEVICE")
-                or os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE", "cpu")
+                or "cpu"
             )
 
             cache_key = f"{model}::{device_str}"
@@ -2733,8 +2742,9 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
             )
             device_str = (
                 device
+                or os.getenv("IPFS_ACCELERATE_PY_STT_DEVICE")
                 or os.getenv("IPFS_ACCELERATE_PY_VOICE_DEVICE")
-                or os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE", "cpu")
+                or "cpu"
             )
 
             cache_key = f"{model}::{device_str}"
@@ -2784,6 +2794,61 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
     return _HuggingFaceVoiceProvider()
 
 
+def _await_from_sync(value: object) -> object:
+    """Resolve an awaitable without changing the synchronous voice API.
+
+    ``InferenceBackendManager.execute_task`` is async, while the legacy voice
+    entrypoints are intentionally synchronous.  A nested ``asyncio.run`` is
+    invalid when callers already have an event loop, so that case is isolated
+    in a short-lived worker thread with its own loop.
+    """
+    import asyncio
+    import inspect
+
+    if not inspect.isawaitable(value):
+        return value
+
+    async def _wait() -> object:
+        return await value
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_wait())
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(
+        max_workers=1,
+        thread_name_prefix="voice-backend-manager",
+    ) as executor:
+        return executor.submit(asyncio.run, _wait()).result()
+
+
+_BACKEND_RESULT_MISSING = object()
+
+
+def _backend_manager_result_value(
+    result: object,
+    *keys: str,
+) -> object:
+    """Read a backend value from canonical or recorder-wrapped results."""
+    if not isinstance(result, Mapping):
+        return result
+
+    for key in keys:
+        if key in result:
+            return result[key]
+
+    nested = result.get("result", _BACKEND_RESULT_MISSING)
+    if isinstance(nested, Mapping):
+        for key in keys:
+            if key in nested:
+                return nested[key]
+        return _BACKEND_RESULT_MISSING
+    return nested
+
+
 def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
     """Get provider backed by InferenceBackendManager for distributed inference."""
     if not _truthy(os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER")):
@@ -2801,6 +2866,8 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
             return None
 
         class _BackendManagerVoiceProvider:
+            provider_name = "backend_manager"
+
             def synthesize(
                 self,
                 text: str,
@@ -2813,31 +2880,41 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
             ) -> bytes:
                 import base64
 
-                backend = manager.select_backend_for_task(
-                    task="text-to-speech",
-                    model=model_name or os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL", ""),
-                    protocol="any",
-                )
-                if backend is None:
-                    raise RuntimeError("No available backend for text-to-speech task")
-
-                payload: Dict[str, object] = {"text": str(text), "device": device, **kwargs}
+                model = model_name or os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL", "")
+                payload: Dict[str, object] = {
+                    "text": str(text),
+                    "device": device,
+                    **kwargs,
+                }
                 if voice:
                     payload["voice"] = voice
                 if output_format:
                     payload["output_format"] = output_format
 
-                result = manager.execute_inference(
-                    backend_id=backend["id"],
+                result = _await_from_sync(manager.execute_task(
                     task="text-to-speech",
-                    payload=payload,
-                )
+                    model=model,
+                    inputs=[str(text)],
+                    parameters=payload,
+                ))
 
-                audio = result.get("audio")
+                audio = _backend_manager_result_value(
+                    result,
+                    "audio",
+                    "audio_bytes",
+                    "audio_b64",
+                )
                 if isinstance(audio, bytes):
                     return audio
+                if isinstance(audio, (bytearray, memoryview)):
+                    return bytes(audio)
                 if isinstance(audio, str):
-                    return base64.b64decode(audio)
+                    try:
+                        return base64.b64decode(audio, validate=True)
+                    except Exception as exc:
+                        raise RuntimeError(
+                            "Backend manager TTS provider returned invalid base64 audio"
+                        ) from exc
                 raise RuntimeError("Backend manager TTS provider did not return audio bytes")
 
             def transcribe(
@@ -2851,31 +2928,34 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
             ) -> str:
                 import base64
 
-                backend = manager.select_backend_for_task(
-                    task="automatic-speech-recognition",
-                    model=model_name or os.getenv("IPFS_ACCELERATE_PY_STT_MODEL", ""),
-                    protocol="any",
-                )
-                if backend is None:
-                    raise RuntimeError("No available backend for speech-to-text task")
-
                 if isinstance(audio, bytes):
                     audio_payload: object = base64.b64encode(audio).decode("ascii")
                 else:
                     audio_payload = audio
 
-                payload: Dict[str, object] = {"audio": audio_payload, "device": device, **kwargs}
+                model = model_name or os.getenv("IPFS_ACCELERATE_PY_STT_MODEL", "")
+                payload: Dict[str, object] = {
+                    "audio": audio_payload,
+                    "device": device,
+                    **kwargs,
+                }
                 if language:
                     payload["language"] = language
 
-                result = manager.execute_inference(
-                    backend_id=backend["id"],
+                result = _await_from_sync(manager.execute_task(
                     task="automatic-speech-recognition",
-                    payload=payload,
-                )
+                    model=model,
+                    inputs=[audio_payload],
+                    parameters=payload,
+                ))
 
-                text = result.get("text")
-                if text is not None:
+                text = _backend_manager_result_value(
+                    result,
+                    "text",
+                    "transcript",
+                    "transcription",
+                )
+                if text is not _BACKEND_RESULT_MISSING and text is not None:
                     return str(text)
                 raise RuntimeError("Backend manager STT provider did not return text")
 
@@ -2901,6 +2981,8 @@ def _provider_cache_key() -> tuple:
         os.getenv("IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_STT_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_STT_DEVICE", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_VOICE_DEVICE", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URL", "").strip(),
@@ -3399,6 +3481,61 @@ def _audio_format(audio: Optional[bytes], requested: Optional[str]) -> Optional[
     return "bin"
 
 
+def _synthesis_identity_from_request(request: VoiceTurnRequest) -> SynthesisIdentity:
+    """Derive the full synthesis identity used by the exact audio resolver."""
+
+    options = dict(request.tts_options or {})
+    provider = (
+        request.tts_provider
+        or str(options.get("provider") or "").strip().lower()
+        or "precomputed"
+    )
+    model = (
+        request.tts_model
+        or str(options.get("model") or options.get("model_name") or "").strip()
+        or "default"
+    )
+    voice = (
+        request.voice
+        or str(options.get("voice") or "").strip()
+        or "default"
+    )
+    locale = (
+        request.locale
+        or request.language
+        or str(options.get("locale") or options.get("language") or "").strip()
+        or "en-US"
+    )
+    codec = (
+        request.output_format
+        or str(options.get("codec") or options.get("output_format") or "").strip()
+        or "wav"
+    )
+    provider_version = str(
+        options.get("provider_version") or options.get("version") or "unspecified"
+    ).strip() or "unspecified"
+    sample_rate_hz = int(options.get("sample_rate_hz") or options.get("sample_rate") or 24_000)
+    channels = int(options.get("channels") or 1)
+    reference = options.get("reference_audio_sha256")
+    if reference is None and isinstance(options.get("reference_audio"), Mapping):
+        reference = options["reference_audio"].get("sha256")  # type: ignore[index]
+    generation_settings = options.get("generation_settings")
+    if not isinstance(generation_settings, Mapping):
+        generation_settings = {}
+    return SynthesisIdentity(
+        provider=provider,
+        model=model,
+        voice=voice,
+        provider_version=provider_version,
+        locale=locale,
+        codec=codec,
+        sample_rate_hz=sample_rate_hz,
+        channels=channels,
+        reference_audio_sha256=str(reference) if reference is not None else None,
+        generation_settings=dict(generation_settings),
+    )
+
+
 def process_voice_turn(
     request: VoiceTurnRequest,
     *,
@@ -3407,13 +3544,20 @@ def process_voice_turn(
     tts_provider: Optional[VoiceProvider] = None,
     stt_provider_instance: Optional[VoiceProvider] = None,
     tts_provider_instance: Optional[VoiceProvider] = None,
+    audio_resolver: Optional[PrecomputedVoiceAudioResolver] = None,
     deps: Optional[RouterDeps] = None,
 ) -> VoiceTurnResult:
-    """Run STT → grounded response-plan retrieval → rendering → TTS.
+    """Run STT → grounded response-plan retrieval → rendering → precomputed/TTS.
 
-    Runtime failures are returned as structured degraded receipts. Invalid
-    request contracts still raise immediately, keeping programmer errors
-    separate from provider availability.
+    Runtime resolution prefers an injected :class:`PrecomputedVoiceAudioResolver`
+    when the rendered spoken text and full synthesis identity match exactly.
+    Resolver misses fall through to live TTS or text-only output and never
+    serve a near or stale match. Runtime failures are returned as structured
+    degraded receipts. Invalid request contracts still raise immediately,
+    keeping programmer errors separate from provider availability.
+
+    Runtime caller audio and transcripts are neither cached into the public
+    release nor written into ordinary receipts.
     """
     if not isinstance(request, VoiceTurnRequest):
         raise TypeError("request must be a VoiceTurnRequest")
@@ -3621,74 +3765,155 @@ def process_voice_turn(
     output_audio: Optional[bytes] = None
     used_tts_provider: Optional[str] = None
     synthesis_failures = 0
-    for provider_name, provider_object, resolution_error in _provider_candidates(
-        primary_tts,
-        preferred=request.tts_provider,
-        fallbacks=request.tts_providers,
-        operation="synthesis",
-        deps=resolved_deps,
-    ):
+    precomputed_resolution: Optional[PrecomputedAudioResolution] = None
+
+    # Runtime resolution: exact precomputed audio before live TTS. Failure
+    # falls through to live TTS or text-only and never serves a near/stale match.
+    if audio_resolver is not None:
         started_at = time.perf_counter()
-        if resolution_error is not None or provider_object is None:
-            synthesis_failures += 1
-            traces.append(
-                VoiceStageTrace(
-                    "synthesis",
-                    "failed",
-                    _duration_ms(started_at),
-                    provider=provider_name,
-                    error=_safe_stage_error(
-                        resolution_error or RuntimeError("provider could not be resolved")
-                    ),
-                )
-            )
-            continue
         try:
-            raw_audio = provider_object.synthesize(
+            synthesis_identity = _synthesis_identity_from_request(request)
+            precomputed_resolution = audio_resolver.resolve(
                 response_text,
-                voice=request.voice,
-                model_name=request.tts_model,
-                device=request.device,
-                output_format=request.output_format,
-                **dict(request.tts_options),
+                synthesis_identity,
+                template_id=plan.template_id if plan is not None else None,
             )
-            if not isinstance(raw_audio, bytes) or not raw_audio:
-                _close_awaitable_result(raw_audio)
-                raise TypeError("synthesize returned no non-empty audio bytes")
-            output_audio = raw_audio
-            used_tts_provider = provider_name
-            traces.append(
-                VoiceStageTrace(
-                    "synthesis",
-                    "succeeded",
-                    _duration_ms(started_at),
-                    provider=provider_name,
-                    details={
-                        "audio_size_bytes": len(raw_audio),
-                        **_provider_receipt_details(provider_object),
-                    },
+            if precomputed_resolution.hit:
+                output_audio = precomputed_resolution.audio
+                used_tts_provider = "precomputed"
+                traces.append(
+                    VoiceStageTrace(
+                        "synthesis",
+                        "succeeded",
+                        _duration_ms(started_at),
+                        provider="precomputed",
+                        details={
+                            "audio_size_bytes": len(output_audio or b""),
+                            "precomputed": True,
+                            "runtime_resolution": True,
+                            "resolver_reason": precomputed_resolution.reason,
+                            "spoken_text_sha256": precomputed_spoken_text_sha256(
+                                response_text
+                            ),
+                            "synthesis_identity": synthesis_identity.to_dict(),
+                            **dict(precomputed_resolution.details),
+                        },
+                    )
                 )
-            )
-            provider_receipt = getattr(provider_object, "last_receipt", None)
-            if synthesis_failures or bool(
-                getattr(provider_receipt, "degraded", False)
-            ):
-                fallback_reasons.append("tts_provider_fallback")
-            break
+            else:
+                # Deterministic resolver miss reason is retained on the stage
+                # trace. Live TTS may still complete without degrading GraphRAG
+                # provenance; if live TTS is also unavailable the final status
+                # becomes text_only and the miss remains auditable.
+                traces.append(
+                    VoiceStageTrace(
+                        "synthesis",
+                        "skipped",
+                        _duration_ms(started_at),
+                        provider="precomputed",
+                        details={
+                            "precomputed": False,
+                            "runtime_resolution": True,
+                            "resolver_reason": precomputed_resolution.reason,
+                            "spoken_text_sha256": precomputed_spoken_text_sha256(
+                                response_text
+                            ),
+                            "synthesis_identity": synthesis_identity.to_dict(),
+                            "live_tts_fallback": True,
+                            **dict(precomputed_resolution.details),
+                        },
+                    )
+                )
         except Exception as error:
-            synthesis_failures += 1
             traces.append(
                 VoiceStageTrace(
                     "synthesis",
                     "failed",
                     _duration_ms(started_at),
-                    provider=provider_name,
+                    provider="precomputed",
                     error=_safe_stage_error(
                         error, sensitive_values=(response_text,)
                     ),
-                    details=_provider_receipt_details(provider_object),
+                    details={
+                        "runtime_resolution": True,
+                        "precomputed": False,
+                        "live_tts_fallback": True,
+                        "resolver_reason": "precomputed_audio_resolver_failed",
+                    },
                 )
             )
+
+    if output_audio is None:
+        for provider_name, provider_object, resolution_error in _provider_candidates(
+            primary_tts,
+            preferred=request.tts_provider,
+            fallbacks=request.tts_providers,
+            operation="synthesis",
+            deps=resolved_deps,
+        ):
+            started_at = time.perf_counter()
+            if resolution_error is not None or provider_object is None:
+                synthesis_failures += 1
+                traces.append(
+                    VoiceStageTrace(
+                        "synthesis",
+                        "failed",
+                        _duration_ms(started_at),
+                        provider=provider_name,
+                        error=_safe_stage_error(
+                            resolution_error
+                            or RuntimeError("provider could not be resolved")
+                        ),
+                    )
+                )
+                continue
+            try:
+                raw_audio = provider_object.synthesize(
+                    response_text,
+                    voice=request.voice,
+                    model_name=request.tts_model,
+                    device=request.device,
+                    output_format=request.output_format,
+                    **dict(request.tts_options),
+                )
+                if not isinstance(raw_audio, bytes) or not raw_audio:
+                    _close_awaitable_result(raw_audio)
+                    raise TypeError("synthesize returned no non-empty audio bytes")
+                output_audio = raw_audio
+                used_tts_provider = provider_name
+                traces.append(
+                    VoiceStageTrace(
+                        "synthesis",
+                        "succeeded",
+                        _duration_ms(started_at),
+                        provider=provider_name,
+                        details={
+                            "audio_size_bytes": len(raw_audio),
+                            "precomputed": False,
+                            **_provider_receipt_details(provider_object),
+                        },
+                    )
+                )
+                provider_receipt = getattr(provider_object, "last_receipt", None)
+                if synthesis_failures or bool(
+                    getattr(provider_receipt, "degraded", False)
+                ):
+                    fallback_reasons.append("tts_provider_fallback")
+                break
+            except Exception as error:
+                synthesis_failures += 1
+                traces.append(
+                    VoiceStageTrace(
+                        "synthesis",
+                        "failed",
+                        _duration_ms(started_at),
+                        provider=provider_name,
+                        error=_safe_stage_error(
+                            error, sensitive_values=(response_text,)
+                        ),
+                        details=_provider_receipt_details(provider_object),
+                    )
+                )
     if output_audio is None:
         fallback_reasons.append("tts_failed")
 
@@ -3720,6 +3945,11 @@ def process_voice_turn(
             "intent": plan.intent if plan is not None else None,
             "template_confidence": plan.confidence if plan is not None else None,
             "fallback_reasons": fallback_tuple,
+            "precomputed_audio": (
+                precomputed_resolution.to_dict()
+                if precomputed_resolution is not None
+                else None
+            ),
         },
     )
     return VoiceTurnResult(
@@ -4026,6 +4256,10 @@ __all__ = [
     "VoiceTurnResult",
     "voice_turn_cache_key",
     "process_voice_turn",
+    # Exact precomputed audio runtime resolution (G019)
+    "PrecomputedAudioResolution",
+    "PrecomputedVoiceAudioResolver",
+    "SynthesisIdentity",
     # Backward-compat TTS aliases (formerly in tts_router)
     "TTSProvider",
     "get_tts_provider",

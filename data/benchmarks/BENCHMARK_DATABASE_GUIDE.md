@@ -1037,8 +1037,8 @@ The reports include:
 For more information, refer to the following resources:
 
 - [DuckDB Documentation](https://duckdb.org/docs/)
-- [Benchmark DB API Documentation](./API_DOCUMENTATION.md)
-- [Testing Framework Documentation](./TESTING_FRAMEWORK_README.md)
+- [Benchmark DB API Documentation](../../test/API_DOCUMENTATION.md)
+- [Testing Framework Documentation](../../test/docs/TEST_FRAMEWORK_GUIDE.md)
 
 For specific help with the incremental benchmark runner:
 

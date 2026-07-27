@@ -1597,6 +1597,11 @@ def _canonical_dependency_waves(
         for alias, owners in alias_owners.items()
         if len(owners) == 1
     }
+    task_cids_by_goal: dict[str, set[str]] = {}
+    for record in records:
+        cid = identity_by_record.get(id(record))
+        if cid and record.goal_id:
+            task_cids_by_goal.setdefault(record.goal_id, set()).add(cid)
     ambiguous_aliases = {
         alias for alias, owners in alias_owners.items() if len(owners) != 1
     }
@@ -1615,6 +1620,15 @@ def _canonical_dependency_waves(
                 continue
             prerequisite = aliases.get(reference)
             if prerequisite is None:
+                goal_prerequisites = task_cids_by_goal.get(reference, set())
+                if goal_prerequisites:
+                    if cid in goal_prerequisites:
+                        diagnostics.setdefault(cid, []).append(
+                            f"self_dependency:{reference}"
+                        )
+                        continue
+                    dependencies[cid].update(goal_prerequisites)
+                    continue
                 diagnostics.setdefault(cid, []).append(
                     f"unresolved_dependency:{reference}"
                 )
@@ -2532,6 +2546,7 @@ def update_bundle_index_with_todo_vectors(
             record = by_task.get(str(task.get("task_id") or ""))
             if record is None:
                 continue
+            task["status"] = record.status
             task["merge_key"] = record.merge_key
             task["merge_family"] = record.merge_family
             task["merge_role"] = record.merge_role
@@ -2557,6 +2572,8 @@ def update_bundle_index_with_todo_vectors(
             task["todo_bundle_context_keys"] = context_keys_by_task.get(record.task_id, [])[:5]
             task["todo_execution_packet_keys"] = packet_keys_by_task.get(record.task_id, [])[:5]
             task["related_task_ids"] = record.related_task_ids
+            task["depends_on"] = record.dependency_task_cids
+            task["dependency_task_ids"] = record.dependency_task_cids
             task["dependency_task_cids"] = record.dependency_task_cids
             task_identity = record.task_cid or record.task_id
             task["dependency_depth"] = dependency_waves.get(task_identity, 0)

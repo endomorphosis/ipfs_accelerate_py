@@ -237,8 +237,8 @@ For Distributed Testing Framework documentation, see these resources:
 - [DISTRIBUTED_TESTING_COMPLETION.md](DISTRIBUTED_TESTING_COMPLETION.md): Summary of the completed Distributed Testing Framework
 
 For High Availability Clustering documentation:
-- [HARDWARE_FAULT_TOLERANCE_GUIDE.md](HARDWARE_FAULT_TOLERANCE_GUIDE.md): Detailed guide on fault tolerance mechanisms
-- [README_AUTO_RECOVERY.md](README_AUTO_RECOVERY.md): User guide for the Auto Recovery System
+- [HARDWARE_FAULT_TOLERANCE_GUIDE.md](duckdb_api/distributed_testing/HARDWARE_FAULT_TOLERANCE_GUIDE.md): Detailed guide on fault tolerance mechanisms
+- [README_AUTO_RECOVERY.md](distributed_testing/README_AUTO_RECOVERY.md): User guide for the Auto Recovery System
 
 For Real-Time Performance Metrics and Monitoring:
 - [REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md](REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md): Comprehensive documentation for the performance dashboard
@@ -252,7 +252,7 @@ For ML-based Anomaly Detection and Prometheus/Grafana Integration:
 For Test Codebase Refactoring Documentation:
 - [COMPREHENSIVE_TEST_REFACTORING_PLAN.md](COMPREHENSIVE_TEST_REFACTORING_PLAN.md): Complete refactoring strategy with timeline and implementation plan
 - [README_TEST_REFACTORING_IMPLEMENTATION.md](README_TEST_REFACTORING_IMPLEMENTATION.md): Detailed implementation plan for Phase 1 of the refactoring
-- [REFACTORED_TEST_MIGRATION_GUIDE.md](REFACTORED_TEST_MIGRATION_GUIDE.md): Guide for migrating tests to the refactored structure
+- [MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md): Guide for migrating tests to the refactored structure
 - [TEST_REFACTORING_SUMMARY.md](TEST_REFACTORING_SUMMARY.md): Summary of the completed test refactoring analysis and implementation
 
 ## Model Skillset Generation

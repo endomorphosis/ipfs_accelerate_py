@@ -359,7 +359,7 @@ Now that the database implementation is complete, future enhancements could incl
 
 Comprehensive documentation has been created for the database system:
 
-1. **[Benchmark Database Guide](BENCHMARK_DATABASE_GUIDE.md)**: Complete guide to the database system
+1. **[Benchmark Database Guide](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)**: Complete guide to the database system
 2. **[Database Migration Guide](DATABASE_MIGRATION_GUIDE.md)**: Guide for migrating from JSON to the database
 3. **API Documentation**: Generated from code comments
 4. **Schema Documentation**: Generated from the schema definition
@@ -403,7 +403,7 @@ The following scripts have been archived as they're replaced by the new database
 2. `benchmark_query.py` → Replaced by `duckdb_api/core/benchmark_db_query.py`
 3. `test_model_benchmarks.py` → Replaced by integrated tests
 
-For detailed information on migration status, see [DATABASE_MIGRATION_STATUS.md](DATABASE_MIGRATION_STATUS.md).
+For detailed information on migration status, see the [Database Migration Guide](DATABASE_MIGRATION_GUIDE.md#database-storage-transition-complete).
 
 ## Conclusion
 

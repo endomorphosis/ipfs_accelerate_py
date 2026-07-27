@@ -168,10 +168,10 @@ If you're migrating from the old test structure, see the [Migration Guide](MIGRA
 
 ## Contributing
 
-See the [Contributing Guide](CONTRIBUTING.md) for guidelines on contributing to the test framework.
+See the [Contributing Guide](../../CONTRIBUTING.md) for guidelines on contributing to the test framework.
 
 ## Additional Documentation
 
 * [Template System Guide](TEMPLATE_SYSTEM_GUIDE.md): Detailed information on the template-based test generation system
 * [Migration Guide](MIGRATION_GUIDE.md): Instructions for migrating from the old test structure
-* [CI/CD Integration](CICD_INTEGRATION.md): Information on integrating with CI/CD pipelines
+* [CI/CD Integration](CICD_INTEGRATION_GUIDE.md): Information on integrating with CI/CD pipelines

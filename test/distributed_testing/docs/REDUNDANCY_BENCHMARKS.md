@@ -107,7 +107,9 @@ All benchmarks were run in a controlled environment with the following specifica
 
 #### Latency Scaling
 
-![Latency Scaling Graph](../images/latency_scaling.png)
+The latency scaling measurements are summarized in the operation-latency
+table above. Write latency increases as the cluster grows, while query
+latency remains nearly constant.
 
 **Observations**:
 - Write operation latency increases linearly with cluster size
@@ -115,7 +117,9 @@ All benchmarks were run in a controlled environment with the following specifica
 
 #### Throughput Scaling
 
-![Throughput Scaling Graph](../images/throughput_scaling.png)
+The throughput scaling measurements are summarized in the operation-
+throughput table above. Write throughput decreases modestly as nodes are
+added, while read throughput benefits from the additional capacity.
 
 **Observations**:
 - Write throughput decreases with each additional node, following a predictable curve
@@ -255,4 +259,5 @@ python -m distributed_testing.examples.benchmark.benchmark_redundancy \
   --runs 3
 ```
 
-For more detailed benchmarks, see the [Benchmark Guide](BENCHMARK_GUIDE.md).
+For the coordinator configuration and deployment context behind these
+benchmarks, see the [Coordinator Redundancy Guide](COORDINATOR_REDUNDANCY.md).

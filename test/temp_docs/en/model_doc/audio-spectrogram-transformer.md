@@ -24,7 +24,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The Audio Spectrogram Transformer model was proposed in [AST: Audio Spectrogram Transformer](https://arxiv.org/abs/2104.01778) by Yuan Gong, Yu-An Chung, James Glass.
-The Audio Spectrogram Transformer applies a [Vision Transformer](vit) to audio, by turning audio into an image (spectrogram). The model obtains state-of-the-art results
+The Audio Spectrogram Transformer applies a [Vision Transformer](vit.md) to audio, by turning audio into an image (spectrogram). The model obtains state-of-the-art results
 for audio classification.
 
 The abstract from the paper is the following:
@@ -84,7 +84,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 - A notebook illustrating inference with AST for audio classification can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/AST).
 - [`ASTForAudioClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/audio-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/audio_classification.ipynb).
-- See also: [Audio classification](../tasks/audio_classification).
+- See also: [Audio classification](../tasks/audio_classification.md).
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 

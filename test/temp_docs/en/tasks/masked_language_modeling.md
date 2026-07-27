@@ -211,7 +211,7 @@ Use the end-of-sequence token as the padding token and specify `mlm_probability`
 <pt>
 <Tip>
 
-If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the basic tutorial [here](../training#train-with-pytorch-trainer)!
+If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the basic tutorial [here](../training.md#trainer)!
 
 </Tip>
 
@@ -270,7 +270,7 @@ Then share your model to the Hub with the [`~transformers.Trainer.push_to_hub`] 
 <tf>
 <Tip>
 
-If you aren't familiar with finetuning a model with Keras, take a look at the basic tutorial [here](../training#train-a-tensorflow-model-with-keras)!
+If you aren't familiar with finetuning a model with Keras, take a look at the basic tutorial [here](../training.md#tensorflow)!
 
 </Tip>
 To finetune a model in TensorFlow, start by setting up an optimizer function, learning rate schedule, and some training hyperparameters:

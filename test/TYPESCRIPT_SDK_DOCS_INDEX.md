@@ -32,8 +32,8 @@ This document provides an index of all documentation related to the IPFS Acceler
 
 - [**API_BACKEND_CONVERSION_SUMMARY.md**](API_BACKEND_CONVERSION_SUMMARY.md) - Summary of the API backend conversion from Python to TypeScript
 - [**README_API_CONVERTER_TESTING.md**](README_API_CONVERTER_TESTING.md) - Documentation for the API backend converter testing infrastructure
-- [**API_BACKEND_ARCHITECTURE.md**](API_BACKEND_ARCHITECTURE.md) - Documentation for the API backend architecture
-- [**API_BACKEND_USAGE_GUIDE.md**](API_BACKEND_USAGE_GUIDE.md) - Guide for using the API backends
+- [**API_BACKEND_ARCHITECTURE.md**](ipfs_accelerate_js/docs/api_backends/API_BACKEND_INTERFACE_REFERENCE.md) - Documentation for the API backend architecture
+- [**API_BACKEND_USAGE_GUIDE.md**](ipfs_accelerate_js/docs/api_backends/README.md) - Guide for using the API backends
 
 #### Specific API Backends
 
@@ -109,9 +109,9 @@ The following comprehensive documentation has been completed:
 - **[HARDWARE_ABSTRACTION_CLIP_GUIDE.md](HARDWARE_ABSTRACTION_CLIP_GUIDE.md)** - Documentation for the hardware-abstracted CLIP implementation
 - **[WEBGPU_TENSOR_SHARING_GUIDE.md](WEBGPU_TENSOR_SHARING_GUIDE.md)** - Documentation for WebGPU tensor sharing
 - **[WEBGPU_MATRIX_OPERATIONS_GUIDE.md](WEBGPU_MATRIX_OPERATIONS_GUIDE.md)** - Documentation for WebGPU matrix operations
-- **[OPERATION_FUSION_GUIDE.md](OPERATION_FUSION_GUIDE.md)** - Documentation for operation fusion
+- **[OPERATION_FUSION_GUIDE.md](ipfs_accelerate_js/docs/OPERATION_FUSION_GUIDE.md)** - Documentation for operation fusion
 - **[NPM_PACKAGE_GUIDE.md](NPM_PACKAGE_GUIDE.md)** - Guide for using the published NPM package
-- **[API_REFERENCE.md](API_REFERENCE.md)** - Comprehensive API reference for all SDK components
+- **[API_REFERENCE.md](ipfs_accelerate_js/docs/api/README.md)** - Comprehensive API reference for all SDK components
 
 ## Upcoming Documentation Updates
 

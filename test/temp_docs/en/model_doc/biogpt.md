@@ -84,7 +84,7 @@ we saw the following speedups during inference.
 
 ## Resources
 
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## BioGptConfig
 

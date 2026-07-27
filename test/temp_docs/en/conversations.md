@@ -43,11 +43,11 @@ For a full list of options, run the command below.
 transformers-cli chat -h
 ```
 
-The chat is implemented on top of the [AutoClass](./model_doc/auto), using tooling from [text generation](./llm_tutorial) and [chat](./chat_templating).
+The chat is implemented on top of the [AutoClass](./model_doc/auto.md), using tooling from [text generation](./llm_tutorial.md) and [chat](./chat_templating.md).
 
 ## TextGenerationPipeline
 
-[`TextGenerationPipeline`] is a high-level text generation class with a "chat mode". Chat mode is enabled when a conversational model is detected and the chat prompt is [properly formatted](./llm_tutorial#wrong-prompt-format).
+[`TextGenerationPipeline`] is a high-level text generation class with a "chat mode". Chat mode is enabled when a conversational model is detected and the chat prompt is [properly formatted](./llm_tutorial.md#wrong-prompt-format).
 
 To start, build a chat history with the following two roles.
 
@@ -61,7 +61,7 @@ chat = [
 ]
 ```
 
-Create the [`TextGenerationPipeline`] and pass `chat` to it. For large models, setting [device_map="auto"](./models#big-model-inference) helps load the model quicker and automatically places it on the fastest device available. Changing the data type to [torch.bfloat16](./models#model-data-type) also helps save memory.
+Create the [`TextGenerationPipeline`] and pass `chat` to it. For large models, setting [device_map="auto"](./models.md#big-model-inference) helps load the model quicker and automatically places it on the fastest device available. Changing the data type to [torch.bfloat16](./models.md#model-data-type) also helps save memory.
 
 ```py
 import torch
@@ -125,7 +125,7 @@ But, hey, that's what makes art, art, right? (laughs)
 Transformers load models in full precision by default, and for a 8B model, this requires ~32GB of memory! Reduce memory usage by loading a model in half-precision or bfloat16 (only uses ~2 bytes per parameter). You can even quantize the model to a lower precision like 8-bit or 4-bit with [bitsandbytes](https://hf.co/docs/bitsandbytes/index).
 
 > [!TIP]
-> Refer to the [Quantization](./quantization/overview) docs for more information about the different quantization backends available.
+> Refer to the [Quantization](./quantization/overview.md) docs for more information about the different quantization backends available.
 
 Create a [`BitsAndBytesConfig`] with your desired quantization settings and pass it to the pipelines `model_kwargs` parameter. The example below quantizes a model to 8-bits.
 
@@ -148,7 +148,7 @@ The number of generated tokens/sec is proportional to the total memory bandwidth
 
 The easiest solution for improving generation speed is to either quantize a model or use hardware with higher memory bandwidth.
 
-You can also try techniques like [speculative decoding](./generation_strategies#speculative-decoding), where a smaller model generates candidate tokens that are verified by the larger model. If the candidate tokens are correct, the larger model can generate more than one token per `forward` pass. This significantly alleviates the bandwidth bottleneck and improves generation speed.
+You can also try techniques like [speculative decoding](./generation_strategies.md#speculative-decoding), where a smaller model generates candidate tokens that are verified by the larger model. If the candidate tokens are correct, the larger model can generate more than one token per `forward` pass. This significantly alleviates the bandwidth bottleneck and improves generation speed.
 
 > [!TIP]
-> Parameters may not be active for every generated token in MoE models such as [Mixtral](./model_doc/mixtral), [Qwen2MoE](./model_doc/qwen2_moe.md), and [DBRX](./model_doc/dbrx). As a result, MoE models generally have much lower memory bandwidth requirements and can be faster than a regular LLM of the same size. However, techniques like speculative decoding are ineffective with MoE models because parameters become activated with each new speculated token.
+> Parameters may not be active for every generated token in MoE models such as [Mixtral](./model_doc/mixtral.md), [Qwen2MoE](./model_doc/qwen2_moe.md), and [DBRX](./model_doc/dbrx.md). As a result, MoE models generally have much lower memory bandwidth requirements and can be faster than a regular LLM of the same size. However, techniques like speculative decoding are ineffective with MoE models because parameters become activated with each new speculated token.

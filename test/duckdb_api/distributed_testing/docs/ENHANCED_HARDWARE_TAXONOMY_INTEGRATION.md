@@ -10,7 +10,18 @@ The integration between these components enables more sophisticated hardware sel
 
 The integration is implemented through a new component called the `HardwareTaxonomyIntegrator` which acts as a bridge between the Enhanced Hardware Taxonomy and the Heterogeneous Scheduler. This design minimizes changes to both existing systems while providing a clean interface for integration.
 
-![Architecture Diagram](../diagrams/taxonomy_integration_architecture.png)
+```mermaid
+flowchart LR
+    HW[Worker hardware] --> EHT[Enhanced Hardware Taxonomy]
+    EHT --> HTI[HardwareTaxonomyIntegrator]
+    WP[Workload profile] --> HTI
+    HTI --> WS[Enhanced worker state]
+    HTI --> EP[Enhanced workload profile]
+    WS --> HS[Heterogeneous Scheduler]
+    EP --> HS
+    HS --> MATCH[Capability-aware affinity matching]
+    MATCH --> TASK[Scheduled task]
+```
 
 ### Key Components
 
@@ -150,6 +161,6 @@ The integration is fully implemented and ready for use. It includes:
 
 ## Related Documentation
 
-- [Enhanced Hardware Taxonomy Implementation](ENHANCED_HARDWARE_TAXONOMY_IMPLEMENTATION.md)
-- [Heterogeneous Hardware Guide](HETEROGENEOUS_HARDWARE_GUIDE.md)
-- [Distributed Testing Framework Overview](DISTRIBUTED_TESTING_DESIGN.md)
+- [Enhanced Hardware Taxonomy Implementation](../../../distributed_testing/docs/ENHANCED_HARDWARE_TAXONOMY_IMPLEMENTATION.md)
+- [Heterogeneous Hardware Guide](../HETEROGENEOUS_HARDWARE_GUIDE.md)
+- [Distributed Testing Framework Overview](../DISTRIBUTED_TESTING_DESIGN.md)

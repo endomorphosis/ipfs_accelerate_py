@@ -66,7 +66,7 @@ This model was contributed by [dqnguyen](https://huggingface.co/dqnguyen). The o
 
 <Tip> 
 
-This implementation is the same as BERT, except for tokenization method. Refer to [BERT documentation](bert) for 
+This implementation is the same as BERT, except for tokenization method. Refer to [BERT documentation](bert.md) for
 API reference information.  
 
 </Tip>

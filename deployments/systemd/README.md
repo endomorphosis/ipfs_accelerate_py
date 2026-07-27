@@ -266,7 +266,7 @@ sudo ufw allow 5353/udp
 
 ## VPS Relay Notes
 
-- The relay unit is [deployments/systemd/ipfs-accelerate-relay.service](deployments/systemd/ipfs-accelerate-relay.service).
+- The relay unit is [deployments/systemd/ipfs-accelerate-relay.service](ipfs-accelerate-relay.service).
 - It runs the libp2p TaskQueue service primarily as a libp2p host with Circuit Relay v2 enabled in **HOP** mode.
 - Remote tools/cache RPC are disabled by default on the relay (`IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=0`, `IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=0`).
 - Ensure TCP `9102` is reachable from the internet (security group / firewall).

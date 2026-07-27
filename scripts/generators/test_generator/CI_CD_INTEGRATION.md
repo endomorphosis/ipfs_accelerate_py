@@ -13,7 +13,7 @@ sudo usermod -aG docker <runner-user>
 sudo systemctl restart actions-runner
 ```
 
-For complete setup instructions including hardware-specific configurations, see the [Self-Hosted Runner Setup Guide](../../docs/SELF_HOSTED_RUNNER_SETUP.md).
+For complete setup instructions including hardware-specific configurations, see the [Self-Hosted Runner Setup Guide](../../../docs/guides/github/SELF_HOSTED_RUNNER_SETUP.md).
 
 ## Implementation Details
 

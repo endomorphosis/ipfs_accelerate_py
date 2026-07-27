@@ -16,7 +16,7 @@ rendered properly in your Markdown viewer.
 # Adding a new model to Transformers
 
 > [!TIP]
-> Try adding new models with a more [modular](./modular_transformers) approach first. This makes it significantly easier to contribute a model to Transformers!
+> Try adding new models with a more [modular](./modular_transformers.md) approach first. This makes it significantly easier to contribute a model to Transformers!
 
 Many of the models in Transformers are contributed by developers and researchers. As an open-source first project, we're invested in empowering the community to actively and independently add more models.
 
@@ -37,7 +37,7 @@ This guide will walk you through adding an example BrandNewLlama PyTorch model t
 Transformers is an opinionated library with its own unique philosophy and design choices. These choices help us sustainably scale and maintain Transformers.
 
 > [!TIP]
-> Learn more about our design principles on the [Philosophy](./philosophy) doc.
+> Learn more about our design principles on the [Philosophy](./philosophy.md) doc.
 
 Some of these design choices are:
 
@@ -118,7 +118,7 @@ cd transformers
 git remote add upstream https://github.com/huggingface/transformers.git
 ```
 
-Create a virtual environment and perform an [editable install](./installation#editable-install) of the library with the "dev" or development dependencies.
+Create a virtual environment and perform an [editable install](./installation.md#editable-install) of the library with the "dev" or development dependencies.
 
 ```bash
 python -m venv .env
@@ -547,7 +547,7 @@ When both implementations have the same `input_ids`, add a tokenizer test file. 
 > Fast image processors use the [torchvision](https://pytorch.org/vision/stable/index.html) library and can perform image processing on the GPU, significantly improving processing speed.
 > We recommend adding a fast image processor ([`BaseImageProcessorFast`]) in addition to the "slow" image processor ([`BaseImageProcessor`]) to provide users with the best performance. Feel free to tag [@yonigozlan](https://github.com/yonigozlan) for help adding a [`BaseImageProcessorFast`].
 
-While this example doesn't include an image processor, you may need to implement one if your model requires image inputs. The image processor is responsible for converting images into a format suitable for your model. Before implementing a new one, check whether an existing image processor in the Transformers library can be reused, as many models share similar image processing techniques. Note that you can also use [modular](./modular_transformers) for image processors to reuse existing components.
+While this example doesn't include an image processor, you may need to implement one if your model requires image inputs. The image processor is responsible for converting images into a format suitable for your model. Before implementing a new one, check whether an existing image processor in the Transformers library can be reused, as many models share similar image processing techniques. Note that you can also use [modular](./modular_transformers.md) for image processors to reuse existing components.
 
 If you do need to implement a new image processor, refer to an existing image processor to understand the expected structure. Slow image processors ([`BaseImageProcessor`]) and fast image processors ([`BaseImageProcessorFast`]) are designed differently, so make sure you follow the correct structure based on the processor type you're implementing.
 
@@ -634,7 +634,7 @@ Use the [`~PreTrainedModel.push_to_hub`] method to upload the model.
 brand_new_bert.push_to_hub("brand_new_llama")
 ```
 
-Refer to the [Sharing](./model_sharing) guide for more information about uploading models to the Hub.
+Refer to the [Sharing](./model_sharing.md) guide for more information about uploading models to the Hub.
 
 ## Merge your model
 
@@ -660,6 +660,6 @@ There are four timelines for model additions depending on the model contributor 
 
   This is a good opportunity if you're interested in contributing a model to Transformers. Take a look at open issues tagged with ["New model"](https://github.com/huggingface/transformers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+model%22). Feel free to give the most requested models a try first to multiply the impact of your contribution. We'll be there to help you each step of the way!
 
-- **Hub-first release**: Transformers [remote-code](./models#custom-models) feature allows Transformers-based projects to be shared directly on the Hub. This is a good option if you don't have the bandwidth to add a model directly to Transformers.
+- **Hub-first release**: Transformers [remote-code](./models.md#custom-models) feature allows Transformers-based projects to be shared directly on the Hub. This is a good option if you don't have the bandwidth to add a model directly to Transformers.
 
   If a model ends up being very popular, then it's very likely that we'll integrate it in Transformers ourselves to enable better support (documentation, maintenance, optimization, etc.) for it. A Hub-first release is the most frictionless way to add a model.

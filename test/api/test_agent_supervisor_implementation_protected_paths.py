@@ -1,17 +1,25 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import time
 from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor import checkout_lock as checkout_lock_module
+from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+    serialized_lock_update,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    core as core_module,
     implementation_daemon as implementation_daemon_module,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     generated_protected_board_commit_subject,
@@ -44,16 +52,41 @@ def _daemon(
     tmp_path: Path,
     *,
     protected_paths: tuple[str, ...] = (POLICY_PATH,),
+    state_path: Path | None = None,
 ) -> PortalImplementationDaemon:
     return PortalImplementationDaemon(
         todo_path=tmp_path / "tasks.todo.md",
-        state_path=tmp_path / "state" / "task-state.json",
+        state_path=state_path or tmp_path / "state" / "task-state.json",
         strategy_path=tmp_path / "state" / "strategy.json",
         events_path=tmp_path / "state" / "events.jsonl",
         repo_root=tmp_path,
         implement=True,
         implementation_command="implementation-command-that-must-not-run",
         implementation_protected_paths=protected_paths,
+    )
+
+
+def _supervisor(
+    tmp_path: Path,
+    *,
+    state_path: Path | None = None,
+) -> PortalImplementationSupervisor:
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.todo.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-protected-path",
+            POLICY_PATH,
+        ]
+    )
+    return PortalImplementationSupervisor(
+        supervisor_config_from_args(
+            args,
+            repo_root=tmp_path,
+            state_path=state_path,
+        )
     )
 
 
@@ -475,7 +508,7 @@ def test_validation_mutation_fails_before_shared_checkout_completion(
     monkeypatch.setattr(
         daemon,
         "_validate_implementation_patch",
-        lambda *_args, **_kwargs: {},
+        lambda *_args, **_kwargs: {"accepted": True},
     )
 
     def validation(*_args, **_kwargs):
@@ -574,6 +607,130 @@ def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
     assert result["reason"] == "implementation_protected_path_mutated"
     assert merge_calls == []
     assert protected.read_text(encoding="utf-8") == "after\n"
+
+
+def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon.worktree_root = tmp_path / "worktrees"
+    workspace = daemon.worktree_root / "attempt"
+    workspace_protected = workspace / POLICY_PATH
+    workspace_protected.parent.mkdir(parents=True)
+    workspace_protected.write_text("unchanged\n", encoding="utf-8")
+    daemon._require_implementation_protected_snapshot(
+        task=_task(outputs=["src/example.py"]),
+        attempt=1,
+        workspace_path=workspace,
+    )
+    active_path = (
+        tmp_path
+        / "state"
+        / "implementation-protected-path-active.json"
+    )
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    assert set(active["snapshot"]) == {"shared_checkout", "workspace"}
+    for scope in active["snapshot"].values():
+        for identity in scope["paths"].values():
+            identity["device"] += 1
+    active_path.write_text(
+        json.dumps(active, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is False
+    assert result["reason"] == "crash_reconciliation_device_renumbered"
+    assert not active_path.exists()
+    assert not (
+        tmp_path
+        / "state"
+        / "implementation-protected-path-incident.json"
+    ).exists()
+
+
+def test_crash_snapshot_reconciliation_rejects_device_and_inode_changes(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon._require_implementation_protected_snapshot(
+        task=_task(outputs=["src/example.py"]),
+        attempt=1,
+        workspace_path=tmp_path,
+    )
+    active_path = (
+        tmp_path
+        / "state"
+        / "implementation-protected-path-active.json"
+    )
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    for scope in active["snapshot"].values():
+        for identity in scope["paths"].values():
+            identity["device"] += 1
+            identity["inode"] += 1
+    active_path.write_text(
+        json.dumps(active, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is True
+    assert result["reason"] == "implementation_protected_path_mutated"
+    assert result["incident"]["mutations"][0]["change"] == "identity_changed"
+
+
+def test_live_protected_path_fence_rejects_device_renumbering(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    before = daemon._implementation_protected_path_snapshot(tmp_path)
+    for scope in before.values():
+        for identity in scope["paths"].values():
+            identity["device"] += 1
+
+    violation = daemon._implementation_protected_path_violation(
+        task=_task(),
+        attempt=1,
+        workspace_path=tmp_path,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert violation["mutations"][0]["change"] == "identity_changed"
+
+
+def test_live_protected_path_fence_rejects_same_content_replacement(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    before = daemon._implementation_protected_path_snapshot(tmp_path)
+    replacement = protected.with_suffix(".replacement")
+    replacement.write_text("unchanged\n", encoding="utf-8")
+    os.replace(replacement, protected)
+
+    violation = daemon._implementation_protected_path_violation(
+        task=_task(),
+        attempt=1,
+        workspace_path=tmp_path,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert violation["mutations"][0]["change"] == "identity_changed"
 
 
 def test_crash_reconciliation_accepts_missing_ephemeral_workspace_when_shared_is_unchanged(
@@ -1135,19 +1292,7 @@ def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    args = parse_implementation_supervisor_args(
-        [
-            "--todo-path",
-            str(tmp_path / "tasks.todo.md"),
-            "--state-dir",
-            str(tmp_path / "state"),
-            "--implementation-protected-path",
-            POLICY_PATH,
-        ]
-    )
-    supervisor = PortalImplementationSupervisor(
-        supervisor_config_from_args(args, repo_root=tmp_path)
-    )
+    supervisor = _supervisor(tmp_path)
     active_path = (
         tmp_path
         / "state"
@@ -1167,6 +1312,450 @@ def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
 
     assert result["maintenance_blocked"] is True
     assert result["reason"] == "implementation_protected_path_attempt_active"
+    assert not (tmp_path / "state" / "implementation.lock").exists()
+
+
+def test_supervisor_live_daemon_lock_blocks_before_maintenance_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    lock_path = tmp_path / "state" / "implementation.lock"
+    lock_path.parent.mkdir(parents=True)
+    daemon_metadata = {
+        "kind": "implementation",
+        "lease_role": "implementation_attempt",
+        "pid": os.getpid(),
+        "owner_script": Path(sys.argv[0]).name,
+        "repo_root": str(tmp_path.resolve()),
+        "state_dir": str(lock_path.parent.resolve()),
+        "task_id": "EX-001",
+        "started_at": "2026-07-25T00:00:00+00:00",
+    }
+    lock_path.write_text(
+        json.dumps(daemon_metadata, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance_under_lease",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("maintenance must not begin while the daemon owns the lease")
+        ),
+    )
+    phases: list[str] = []
+
+    result = supervisor._run_once_with_maintenance(
+        phases.append,
+        include_refill=False,
+    )
+
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "implementation_protected_path_attempt_active"
+    assert result["protected_path_guard"]["lock_owner_pid"] == os.getpid()
+    assert result["protected_path_guard"]["lock_owner_task_id"] == "EX-001"
+    assert phases == []
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == daemon_metadata
+
+
+def test_supervisor_maintenance_lease_is_visible_and_removed_on_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    lock_path = tmp_path / "state" / "implementation.lock"
+    observed: dict[str, object] = {}
+
+    def maintenance_body(_update_phase, *, include_refill: bool):
+        observed.update(json.loads(lock_path.read_text(encoding="utf-8")))
+        assert include_refill is False
+        assert _daemon(tmp_path)._implementation_lock_owner_is_active(observed)
+        return {"stuck": False, "completed_count": 0}
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance_under_lease",
+        maintenance_body,
+    )
+
+    result = supervisor._run_once_with_maintenance(
+        lambda _phase: None,
+        include_refill=False,
+    )
+
+    assert result == {"stuck": False, "completed_count": 0}
+    assert observed["kind"] == "implementation"
+    assert observed["lease_role"] == "supervisor_maintenance"
+    assert observed["pid"] == os.getpid()
+    assert observed["lease_id"]
+    assert not lock_path.exists()
+
+
+def test_supervisor_maintenance_lease_is_removed_on_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    lock_path = tmp_path / "state" / "implementation.lock"
+
+    def failing_maintenance(_update_phase, *, include_refill: bool):
+        assert include_refill is False
+        assert json.loads(lock_path.read_text(encoding="utf-8"))[
+            "lease_role"
+        ] == "supervisor_maintenance"
+        raise RuntimeError("maintenance failed")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance_under_lease",
+        failing_maintenance,
+    )
+
+    with pytest.raises(RuntimeError, match="maintenance failed"):
+        supervisor._run_once_with_maintenance(
+            lambda _phase: None,
+            include_refill=False,
+        )
+
+    assert not lock_path.exists()
+
+
+def test_supervisor_maintenance_lease_uses_effective_state_path_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    effective_state_path = tmp_path / "effective-state" / "task-state.json"
+    supervisor = _supervisor(tmp_path, state_path=effective_state_path)
+    effective_lock_path = effective_state_path.parent / "implementation.lock"
+    configured_lock_path = tmp_path / "state" / "implementation.lock"
+
+    def maintenance_body(_update_phase, *, include_refill: bool):
+        assert include_refill is False
+        metadata = json.loads(effective_lock_path.read_text(encoding="utf-8"))
+        assert metadata["state_path"] == str(effective_state_path.resolve())
+        assert _daemon(
+            tmp_path,
+            state_path=effective_state_path,
+        )._implementation_lock_owner_is_active(metadata)
+        assert not configured_lock_path.exists()
+        return {"stuck": False}
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance_under_lease",
+        maintenance_body,
+    )
+
+    result = supervisor._run_once_with_maintenance(
+        lambda _phase: None,
+        include_refill=False,
+    )
+
+    assert result == {"stuck": False}
+    assert not effective_lock_path.exists()
+    assert not configured_lock_path.exists()
+
+
+def test_supervisor_does_not_unlink_lock_replaced_while_update_is_serialized(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    lock_path = tmp_path / "state" / "implementation.lock"
+    lock_path.parent.mkdir(parents=True)
+    lock_path.write_text("{not-json\n", encoding="utf-8")
+    replacement = {
+        "kind": "implementation",
+        "lease_role": "implementation_attempt",
+        "pid": os.getpid(),
+        "owner_script": "",
+        "repo_root": str(tmp_path.resolve()),
+        "state_dir": str(lock_path.parent.resolve()),
+        "task_id": "EX-REPLACEMENT",
+        "started_at": "2026-07-25T00:00:00+00:00",
+    }
+    completed = threading.Event()
+    result: dict[str, object] = {}
+
+    def acquire() -> None:
+        result["value"] = supervisor._acquire_implementation_maintenance_lease()
+        completed.set()
+
+    with serialized_lock_update(lock_path):
+        worker = threading.Thread(target=acquire)
+        worker.start()
+        assert not completed.wait(timeout=0.05)
+        lock_path.unlink()
+        lock_path.write_text(
+            json.dumps(replacement, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    worker.join(timeout=2)
+
+    assert completed.is_set()
+    lease, guard = result["value"]
+    assert lease is None
+    assert guard["reason"] == "implementation_protected_path_attempt_active"
+    assert guard["lock_owner_task_id"] == "EX-REPLACEMENT"
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
+
+
+def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    implementation_lock_path = tmp_path / "state" / "implementation.lock"
+    update_guard_path = (
+        tmp_path / "state" / ".implementation.lock.update.lock"
+    )
+    generic_lock_path = tmp_path / "state" / "merge-repair.lock"
+    implementation_lock_path.parent.mkdir(parents=True)
+    for path in (
+        implementation_lock_path,
+        update_guard_path,
+        generic_lock_path,
+    ):
+        path.write_text("stale\n", encoding="utf-8")
+        os.utime(path, (1, 1))
+
+    result = daemon._cleanup_stale_locks(max_age_seconds=1)
+
+    assert implementation_lock_path.exists()
+    assert update_guard_path.exists()
+    assert not generic_lock_path.exists()
+    managed = {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "managed_by_implementation_lease_protocol"
+    }
+    assert managed == {
+        str(implementation_lock_path),
+        str(update_guard_path),
+    }
+
+
+def test_runtime_lock_owner_accepts_python_module_entrypoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "implementation.lock"
+    lock_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation",
+                "pid": os.getpid(),
+                "owner_script": "implementation_daemon.py",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "process_args",
+        lambda _pid: (
+            "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_daemon"
+        ),
+    )
+
+    assert supervisor_runtime.runtime_lock_owner_is_alive(lock_path)
+
+
+def test_runtime_repair_serializes_implementation_lock_replacement(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    lock_path = state_dir / "implementation.lock"
+    lock_path.write_text("{not-json\n", encoding="utf-8")
+    replacement = {
+        "kind": "implementation",
+        "pid": os.getpid(),
+        "owner_script": "",
+        "state_dir": str(state_dir.resolve()),
+        "task_id": "EX-RUNTIME-REPLACEMENT",
+    }
+    completed = threading.Event()
+    result: dict[str, object] = {}
+
+    def repair() -> None:
+        result["value"] = supervisor_runtime.repair_supervisor_runtime(
+            state_dir,
+            "agent",
+        )
+        completed.set()
+
+    with serialized_lock_update(lock_path):
+        worker = threading.Thread(target=repair)
+        worker.start()
+        assert not completed.wait(timeout=0.05)
+        lock_path.unlink()
+        lock_path.write_text(
+            json.dumps(replacement, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    worker.join(timeout=2)
+
+    assert completed.is_set()
+    assert str(lock_path) not in result["value"]["removed"]
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
+
+
+def test_serialized_lock_update_has_windows_backend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[int, int]] = []
+
+    class FakeMsvcrt:
+        LK_NBLCK = 1
+        LK_UNLCK = 2
+
+        @staticmethod
+        def locking(_fd: int, mode: int, size: int) -> None:
+            calls.append((mode, size))
+
+    monkeypatch.setattr(checkout_lock_module, "fcntl", None)
+    monkeypatch.setattr(checkout_lock_module, "msvcrt", FakeMsvcrt)
+    lock_path = tmp_path / "state" / "implementation.lock"
+
+    with serialized_lock_update(lock_path):
+        assert calls == [(FakeMsvcrt.LK_NBLCK, 1)]
+
+    assert calls == [
+        (FakeMsvcrt.LK_NBLCK, 1),
+        (FakeMsvcrt.LK_UNLCK, 1),
+    ]
+
+
+def test_windows_pid_probe_never_calls_os_kill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[int] = []
+    monkeypatch.setattr(core_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        core_module,
+        "_windows_pid_alive",
+        lambda pid: observed.append(pid) or True,
+    )
+    monkeypatch.setattr(
+        core_module.os,
+        "kill",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("Windows PID probes must not call os.kill")
+        ),
+    )
+
+    assert core_module.pid_alive(1234)
+    assert observed == [1234]
+
+
+def test_windows_process_args_uses_powershell_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[tuple[str, ...]] = []
+    monkeypatch.setattr(core_module.sys, "platform", "win32")
+
+    def run(command, **_kwargs):
+        commands.append(tuple(command))
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="python -m package.implementation_daemon\n",
+        )
+
+    monkeypatch.setattr(core_module.subprocess, "run", run)
+    assert (
+        core_module.process_args(1234)
+        == "python -m package.implementation_daemon"
+    )
+    assert commands[0][0] == "powershell.exe"
+
+    monkeypatch.setattr(
+        core_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            FileNotFoundError("powershell unavailable")
+        ),
+    )
+    assert core_module.process_args(1234) == ""
+
+
+def test_empty_process_command_line_keeps_live_lock_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "implementation.lock"
+    lock_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation",
+                "pid": os.getpid(),
+                "owner_script": "implementation_daemon.py",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(supervisor_runtime, "process_args", lambda _pid: "")
+
+    assert supervisor_runtime.runtime_lock_owner_is_alive(lock_path)
+
+
+def test_daemon_implementation_lock_publication_failure_cleans_owned_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    lock_path = tmp_path / "state" / "implementation.lock"
+    metadata = daemon._build_implementation_lock_metadata(
+        _task(),
+        1,
+        "2026-07-25T00:00:00+00:00",
+    )
+
+    def fail_publication(lock_fd: int, _metadata) -> None:
+        os.close(lock_fd)
+        raise OSError("simulated publication failure")
+
+    monkeypatch.setattr(daemon, "_write_lock_metadata", fail_publication)
+
+    with pytest.raises(OSError, match="simulated publication failure"):
+        daemon._try_acquire_implementation_lock(lock_path, metadata)
+
+    assert not lock_path.exists()
+
+
+def test_daemon_implementation_lock_release_preserves_replacement(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    lock_path = tmp_path / "state" / "implementation.lock"
+    metadata = daemon._build_implementation_lock_metadata(
+        _task(),
+        1,
+        "2026-07-25T00:00:00+00:00",
+    )
+    acquired, reason, existing = daemon._try_acquire_implementation_lock(
+        lock_path,
+        metadata,
+    )
+    assert acquired is True
+    assert reason == "acquired"
+    assert existing is None
+
+    replacement = {
+        **metadata,
+        "lease_id": "replacement-lease",
+        "task_id": "EX-REPLACEMENT",
+    }
+    with serialized_lock_update(lock_path):
+        lock_path.unlink()
+        lock_path.write_text(
+            json.dumps(replacement, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    assert daemon._release_implementation_lock(lock_path, metadata) is False
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
 
 
 def test_ephemeral_timeout_mutation_is_not_validated_committed_or_enqueued(

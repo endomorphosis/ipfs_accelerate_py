@@ -28,7 +28,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The [`VisionTextDualEncoderModel`] can be used to initialize a vision-text dual encoder model with
-any pretrained vision autoencoding model as the vision encoder (*e.g.* [ViT](vit), [BEiT](beit), [DeiT](deit)) and any pretrained text autoencoding model as the text encoder (*e.g.* [RoBERTa](roberta), [BERT](bert)). Two projection layers are added on top of both the vision and text encoder to project the output embeddings
+any pretrained vision autoencoding model as the vision encoder (*e.g.* [ViT](./vit.md), [BEiT](./beit.md), [DeiT](./deit.md)) and any pretrained text autoencoding model as the text encoder (*e.g.* [RoBERTa](./roberta.md), [BERT](./bert.md)). Two projection layers are added on top of both the vision and text encoder to project the output embeddings
 to a shared latent space. The projection layers are randomly initialized so the model should be fine-tuned on a
 downstream task. This model can be used to align the vision-text embeddings using CLIP like contrastive image-text
 training and then can be used for zero-shot vision tasks such image-classification or retrieval.

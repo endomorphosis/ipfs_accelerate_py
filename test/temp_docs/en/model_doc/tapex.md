@@ -68,7 +68,7 @@ and to achieve new state-of-the-art results on various downstream tasks.*
 ### Usage: inference
 
 Below, we illustrate how to use TAPEX for table question answering. As one can see, one can directly plug in the weights of TAPEX into a BART model.
-We use the [Auto API](auto), which will automatically instantiate the appropriate tokenizer ([`TapexTokenizer`]) and model ([`BartForConditionalGeneration`]) for us,
+We use the [Auto API](./auto.md), which will automatically instantiate the appropriate tokenizer ([`TapexTokenizer`]) and model ([`BartForConditionalGeneration`]) for us,
 based on the configuration file of the checkpoint on the hub.
 
 ```python
@@ -118,7 +118,7 @@ and multiple questions, or a batch of a single query and multiple tables. Let's 
 
 In case one wants to do table verification (i.e. the task of determining whether a given sentence is supported or refuted by the contents
 of a table), one can instantiate a [`BartForSequenceClassification`] model. TAPEX has checkpoints on the hub fine-tuned on TabFact, an important
-benchmark for table fact checking (it achieves 84% accuracy). The code example below again leverages the [Auto API](auto).
+benchmark for table fact checking (it achieves 84% accuracy). The code example below again leverages the [Auto API](./auto.md).
 
 ```python
 >>> from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -144,7 +144,7 @@ Refused
 
 <Tip> 
 
-TAPEX architecture is the same as BART, except for tokenization. Refer to [BART documentation](bart) for information on 
+TAPEX architecture is the same as BART, except for tokenization. Refer to [BART documentation](./bart.md) for information on
 configuration classes and their parameters. TAPEX-specific tokenizer is documented below.  
 
 </Tip>

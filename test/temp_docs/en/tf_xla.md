@@ -34,7 +34,7 @@ model.compile(jit_compile=True)
 
 XLA can be used to accelerate any arbitrary [tf.function](https://www.tensorflow.org/api_docs/python/tf/function).
 
-Models with a TensorFlow implementation like [GPT2](./model_doc/gpt2), [T5](./model_doc/t5), [OPT](./model_doc/opt), and [Whisper](./model_doc/whisper) are XLA compatible. The speed up depends on a model, but in general, TensorFlow models in Transformers get a ~100x speed up.
+Models with a TensorFlow implementation like [GPT2](./model_doc/gpt2.md), [T5](./model_doc/t5.md), [OPT](./model_doc/opt.md), and [Whisper](./model_doc/whisper.md) are XLA compatible. The speed up depends on a model, but in general, TensorFlow models in Transformers get a ~100x speed up.
 
 ### Functions
 

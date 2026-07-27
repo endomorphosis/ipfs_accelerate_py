@@ -66,10 +66,10 @@ This model was contributed by [patrickvonplaten](https://huggingface.co/patrickv
 
 - [A notebook showing how to evaluate LED](https://colab.research.google.com/drive/12INTTR6n64TzS4RrXZxMSXfrOd9Xzamo?usp=sharing).
 - [A notebook showing how to fine-tune LED](https://colab.research.google.com/drive/12LjJazBl7Gam0XBPy_y0CTOJZeZ34c2v?usp=sharing).
-- [Text classification task guide](../tasks/sequence_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## LEDConfig
 

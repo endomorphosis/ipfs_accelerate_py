@@ -393,6 +393,6 @@ trainer.train()
 The distributed training configuration system provides powerful tools for optimizing training performance across different hardware platforms. By leveraging these tools, you can achieve optimal performance for training large models, even with memory-constrained environments.
 
 For more information, refer to:
-- [Hardware Benchmarking Guide](./HARDWARE_BENCHMARKING_GUIDE.md)
+- [Hardware Benchmarking Guide](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)
 - [Model Compression Guide](./MODEL_COMPRESSION_GUIDE.md)
 - [Performance Optimization Plan](./PERFORMANCE_OPTIMIZATION_PLAN.md)

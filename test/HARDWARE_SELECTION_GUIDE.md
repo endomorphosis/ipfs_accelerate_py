@@ -6,7 +6,7 @@ The Hardware Selection System is a key component of the IPFS Accelerate Python F
 
 > **March 2025 Update**: This guide includes information about the latest enhancements to the hardware selection system, including improved reliability, robust fallback mechanisms, and the new Enhanced Hardware Benchmark Runner.
 
-> **QNN Integration Update (March 2025)**: Full QNN (Qualcomm Neural Networks)/Hexagon DSP support has been integrated into the hardware selection and benchmarking system. All templates have been updated to support QNN hardware acceleration. See the [QNN Integration Guide](QNN_INTEGRATION_GUIDE.md) for details.
+> **QNN Integration Update (March 2025)**: Full QNN (Qualcomm Neural Networks)/Hexagon DSP support has been integrated into the hardware selection and benchmarking system. All templates have been updated to support QNN hardware acceleration. See the [Qualcomm Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md) for details.
 
 ## Key Features
 
@@ -538,11 +538,11 @@ These enhancements ensure that the system can operate reliably in diverse comput
 ---
 
 For more information, see related documentation:
-- [Phase 16 Improvements](PHASE16_IMPROVEMENTS.md) - Details about the recent reliability enhancements
+- [Phase 16 Completion Summary](PHASE16_COMPLETION_SUMMARY.md) - Details about the recent reliability enhancements
 - [Hardware Model Predictor Guide](HARDWARE_MODEL_PREDICTOR_GUIDE.md) - Unified hardware selection and prediction system
-- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md) - Guide to benchmarking models on different hardware
+- [Hardware Benchmarking Guide](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md) - Guide to benchmarking models on different hardware
 - [Web Platform Audio Testing Guide](WEB_PLATFORM_AUDIO_TESTING_GUIDE.md) - Specialized audio model testing for web platforms
 - [Training Benchmark System](HARDWARE_MODEL_INTEGRATION_GUIDE.md) - Guide to training benchmarks
-- [Phase 16 Implementation Summary](PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md) - Complete summary of Phase 16 implementation
+- [Phase 16 Readme](PHASE16_README.md) - Complete summary of Phase 16 implementation
 
 *Last updated: March 5, 2025*

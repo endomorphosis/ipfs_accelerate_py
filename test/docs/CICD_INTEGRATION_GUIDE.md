@@ -34,7 +34,7 @@ After adding the user to the docker group, restart the runner service:
 sudo systemctl restart actions-runner
 ```
 
-For comprehensive setup instructions including hardware-specific configurations (CUDA, ROCm, OpenVINO), see the [Self-Hosted Runner Setup Guide](../../docs/SELF_HOSTED_RUNNER_SETUP.md).
+For comprehensive setup instructions including hardware-specific configurations (CUDA, ROCm, OpenVINO), see the [Self-Hosted Runner Setup Guide](../../docs/guides/github/SELF_HOSTED_RUNNER_SETUP.md).
 
 ## Workflows
 

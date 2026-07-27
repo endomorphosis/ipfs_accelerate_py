@@ -59,6 +59,6 @@ The original checkpoints can be found [here](https://github.com/google-research/
 
 <Tip>
 
-Refer to [T5's documentation page](t5) for all API reference, code examples and notebooks. For more details regarding training and evaluation of the FLAN-T5, refer to the model card.
+Refer to [T5's documentation page](t5.md) for all API reference, code examples and notebooks. For more details regarding training and evaluation of the FLAN-T5, refer to the model card.
 
 </Tip>

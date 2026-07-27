@@ -320,4 +320,4 @@ When contributing to the SDK:
 
 6. **Backward Compatibility**: Maintain backward compatibility within the same major version.
 
-For more details, see the [Contributing Guide](CONTRIBUTING.md).
+For more details, see the [Contributing Guide](../../CONTRIBUTING.md).

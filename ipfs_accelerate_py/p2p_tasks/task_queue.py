@@ -3,6 +3,11 @@
 This is a lightweight task delegation mechanism used by both ipfs_datasets_py and
 ipfs_accelerate_py. Schema is stable and backwards compatible.
 
+Voice-job reliability (ABBY-VOICE-G016) depends on persisted attempt/backoff/lease
+state and owner heartbeats: claim ownership is recorded in DuckDB as ``attempt``,
+``max_attempts``, ``next_attempt_at``, ``lease_until``, and ``heartbeat_at`` so a
+worker crash recovers without duplicate provider execution.
+
 Environment:
 - IPFS_ACCELERATE_PY_TASK_QUEUE_PATH (preferred)
 - IPFS_DATASETS_PY_TASK_QUEUE_PATH (compat)
@@ -29,6 +34,57 @@ class QueuedTask:
     created_at: float
     status: str
     assigned_worker: Optional[str] = None
+    priority: int = 5
+    attempt: int = 0
+    max_attempts: int = 3
+    next_attempt_at: float = 0.0
+    lease_until: Optional[float] = None
+    heartbeat_at: Optional[float] = None
+
+
+_TASK_SELECT_COLUMNS = (
+    "task_id, task_type, model_name, payload_json, status, assigned_worker, "
+    "created_at, updated_at, result_json, error, priority, attempt, max_attempts, "
+    "next_attempt_at, lease_until, heartbeat_at, idempotency_key"
+)
+
+
+def _priority(value: Any) -> int:
+    """Normalize public queue priorities to the existing 1..10 contract."""
+
+    try:
+        return max(1, min(10, int(value)))
+    except (TypeError, ValueError):
+        return 5
+
+
+def _positive_attempts(value: Any) -> int:
+    try:
+        return max(1, min(1000, int(value)))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _queued_task_from_row(row: Any) -> QueuedTask:
+    try:
+        payload = json.loads(row[3])
+    except Exception:
+        payload = {"raw": row[3]}
+    return QueuedTask(
+        task_id=str(row[0]),
+        task_type=str(row[1]),
+        model_name=str(row[2]),
+        payload=payload if isinstance(payload, dict) else {"payload": payload},
+        created_at=float(row[6]),
+        status=str(row[4]),
+        assigned_worker=str(row[5]) if row[5] else None,
+        priority=int(row[10] if row[10] is not None else 5),
+        attempt=int(row[11] if row[11] is not None else 0),
+        max_attempts=int(row[12] if row[12] is not None else 3),
+        next_attempt_at=float(row[13] if row[13] is not None else 0.0),
+        lease_until=float(row[14]) if row[14] is not None else None,
+        heartbeat_at=float(row[15]) if row[15] is not None else None,
+    )
 
 
 def default_queue_path() -> str:
@@ -42,16 +98,19 @@ def default_queue_path() -> str:
 
 
 class TaskQueue:
-    """DuckDB-backed task queue.
+    """DuckDB-backed task queue with persisted attempt/backoff/lease state.
 
     Concurrency model:
     - multiple workers may poll concurrently
     - claiming uses an atomic UPDATE guarded by a transaction
+    - owner heartbeats renew ``lease_until`` only for the assigned worker
+    - expired-lease recovery requeues or fails without double-claiming
     """
 
-    def __init__(self, path: Optional[str] = None):
+    def __init__(self, path: Optional[str] = None, *, default_lease_seconds: float = 300.0):
         self.path = path or default_queue_path()
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.default_lease_seconds = max(1.0, float(default_lease_seconds))
 
         # DuckDB connection management:
         # - In practice, p2p stream handlers may invoke TaskQueue concurrently.
@@ -138,11 +197,79 @@ class TaskQueue:
                             created_at DOUBLE NOT NULL,
                             updated_at DOUBLE NOT NULL,
                             result_json VARCHAR,
-                            error VARCHAR
+                            error VARCHAR,
+                            priority INTEGER DEFAULT 5,
+                            attempt INTEGER DEFAULT 0,
+                            max_attempts INTEGER DEFAULT 3,
+                            next_attempt_at DOUBLE DEFAULT 0,
+                            lease_until DOUBLE,
+                            heartbeat_at DOUBLE,
+                            idempotency_key VARCHAR
                         )
                         """
                     )
+                    existing_columns = {
+                        str(row[1])
+                        for row in conn.execute("PRAGMA table_info('tasks')").fetchall()
+                        if len(row) > 1
+                    }
+                    had_priority_column = "priority" in existing_columns
+                    # ADD COLUMN IF NOT EXISTS keeps databases created by earlier
+                    # releases readable without rebuilding or copying task rows.
+                    migrations = (
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 5",
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attempt INTEGER DEFAULT 0",
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS max_attempts INTEGER DEFAULT 3",
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS next_attempt_at DOUBLE DEFAULT 0",
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS lease_until DOUBLE",
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS heartbeat_at DOUBLE",
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR",
+                    )
+                    for statement in migrations:
+                        conn.execute(statement)
+                    if had_priority_column:
+                        conn.execute(
+                            "UPDATE tasks SET priority=5 WHERE priority IS NULL"
+                        )
+                    else:
+                        # Older queues carried priority only in payload JSON.
+                        # Preserve that ordering/cap behavior during migration.
+                        conn.execute(
+                            """
+                            UPDATE tasks
+                            SET priority=greatest(
+                                1,
+                                least(
+                                    10,
+                                    coalesce(
+                                        TRY_CAST(
+                                            json_extract_string(payload_json, '$.priority')
+                                            AS INTEGER
+                                        ),
+                                        5
+                                    )
+                                )
+                            )
+                            """
+                        )
+                    conn.execute(
+                        "UPDATE tasks SET attempt=0 WHERE attempt IS NULL"
+                    )
+                    conn.execute(
+                        "UPDATE tasks SET max_attempts=3 WHERE max_attempts IS NULL"
+                    )
+                    conn.execute(
+                        "UPDATE tasks SET next_attempt_at=0 WHERE next_attempt_at IS NULL"
+                    )
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_tasks_claim "
+                        "ON tasks(status, priority, next_attempt_at, created_at)"
+                    )
+                    conn.execute(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency "
+                        "ON tasks(idempotency_key)"
+                    )
                     return
                 except Exception as exc:
                     last_exc = exc
@@ -168,6 +295,160 @@ class TaskQueue:
         if last_exc is not None:
             raise last_exc
 
+    def _submit_with_outcome(
+        self,
+        *,
+        task_type: str,
+        model_name: str,
+        payload: Dict[str, Any],
+        task_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        priority: Optional[int] = None,
+        max_attempts: Optional[int] = None,
+        next_attempt_at: Optional[float] = None,
+    ) -> tuple[str, bool]:
+        """Submit work and report whether an identical task already existed.
+
+        ``idempotency_key`` provides atomic submit-once behavior across process
+        restarts. Reusing a key with different work is rejected instead of
+        silently aliasing two provider operations. The boolean result is true
+        when the returned task was replayed rather than inserted by this call.
+        """
+
+        if not isinstance(payload, dict):
+            raise TypeError("payload must be a dict")
+        tid = task_id or uuid.uuid4().hex
+        now = time.time()
+        payload_json = json.dumps(payload, sort_keys=True)
+        identity = str(idempotency_key or payload.get("idempotency_key") or "").strip() or None
+        task_priority = _priority(priority if priority is not None else payload.get("priority", 5))
+        attempts_limit = _positive_attempts(
+            max_attempts if max_attempts is not None else payload.get("max_attempts", 3)
+        )
+        try:
+            eligible_at = float(
+                next_attempt_at
+                if next_attempt_at is not None
+                else payload.get("next_attempt_at", 0.0)
+            )
+        except (TypeError, ValueError):
+            eligible_at = 0.0
+        eligible_at = max(0.0, eligible_at)
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            conn.execute("BEGIN TRANSACTION")
+            try:
+                existing = None
+                if identity is not None:
+                    existing = conn.execute(
+                        "SELECT task_id, task_type, model_name, payload_json "
+                        "FROM tasks WHERE idempotency_key=?",
+                        (identity,),
+                    ).fetchone()
+                if existing is None and task_id:
+                    existing = conn.execute(
+                        "SELECT task_id, task_type, model_name, payload_json "
+                        "FROM tasks WHERE task_id=?",
+                        (tid,),
+                    ).fetchone()
+                if existing is not None:
+                    same_work = (
+                        str(existing[1]) == str(task_type)
+                        and str(existing[2]) == str(model_name)
+                        and str(existing[3]) == payload_json
+                    )
+                    if not same_work:
+                        raise ValueError(
+                            "idempotency key or task_id already identifies different work"
+                        )
+                    conn.execute("COMMIT")
+                    return str(existing[0]), True
+
+                conn.execute(
+                    """
+                    INSERT INTO tasks(
+                        task_id,
+                        task_type,
+                        model_name,
+                        payload_json,
+                        status,
+                        assigned_worker,
+                        created_at,
+                        updated_at,
+                        priority,
+                        attempt,
+                        max_attempts,
+                        next_attempt_at,
+                        lease_until,
+                        heartbeat_at,
+                        idempotency_key
+                    )
+                    VALUES(?, ?, ?, ?, 'queued', NULL, ?, ?, ?, 0, ?, ?, NULL, NULL, ?)
+                    """,
+                    (
+                        tid,
+                        str(task_type),
+                        str(model_name),
+                        payload_json,
+                        now,
+                        now,
+                        task_priority,
+                        attempts_limit,
+                        eligible_at,
+                        identity,
+                    ),
+                )
+                conn.execute("COMMIT")
+            except Exception as exc:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                low = str(exc).lower()
+                duplicate_or_race = (
+                    "duplicate key" in low
+                    or "unique constraint" in low
+                    or "conflict on tuple" in low
+                    or "transactioncontext" in low
+                    or ("transaction" in low and "conflict" in low)
+                )
+                if duplicate_or_race and (identity is not None or task_id):
+                    # A second process may have committed the same identity
+                    # after our initial read. Observe that winner and apply the
+                    # same exact-work check as the uncontended path.
+                    for retry_index in range(8):
+                        try:
+                            if identity is not None:
+                                existing = conn.execute(
+                                    "SELECT task_id, task_type, model_name, payload_json "
+                                    "FROM tasks WHERE idempotency_key=?",
+                                    (identity,),
+                                ).fetchone()
+                            else:
+                                existing = conn.execute(
+                                    "SELECT task_id, task_type, model_name, payload_json "
+                                    "FROM tasks WHERE task_id=?",
+                                    (tid,),
+                                ).fetchone()
+                            if existing is not None:
+                                if (
+                                    str(existing[1]) == str(task_type)
+                                    and str(existing[2]) == str(model_name)
+                                    and str(existing[3]) == payload_json
+                                ):
+                                    return str(existing[0]), True
+                                raise ValueError(
+                                    "idempotency key or task_id already identifies different work"
+                                ) from exc
+                        except ValueError:
+                            raise
+                        except Exception:
+                            pass
+                        time.sleep(0.002 * (retry_index + 1))
+                raise
+        return tid, False
+
     def submit(
         self,
         *,
@@ -175,30 +456,80 @@ class TaskQueue:
         model_name: str,
         payload: Dict[str, Any],
         task_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        priority: Optional[int] = None,
+        max_attempts: Optional[int] = None,
+        next_attempt_at: Optional[float] = None,
     ) -> str:
-        tid = task_id or uuid.uuid4().hex
-        now = time.time()
-        payload_json = json.dumps(payload, sort_keys=True)
+        """Submit work, returning the existing task for an identical identity.
 
-        with self._conn_lock:
-            conn = self._get_conn()
-            conn.execute(
-                """
-                INSERT INTO tasks(
-                    task_id,
-                    task_type,
-                    model_name,
-                    payload_json,
-                    status,
-                    assigned_worker,
-                    created_at,
-                    updated_at
-                )
-                VALUES(?, ?, ?, ?, 'queued', NULL, ?, ?)
-                """,
-                (tid, str(task_type), str(model_name), payload_json, now, now),
-            )
-        return tid
+        Existing callers retain the historical string return value. Consumers
+        that need to distinguish a new insert from an exact replay can use
+        :meth:`submit_with_outcome`.
+        """
+
+        submitted_id, _ = self._submit_with_outcome(
+            task_type=task_type,
+            model_name=model_name,
+            payload=payload,
+            task_id=task_id,
+            idempotency_key=idempotency_key,
+            priority=priority,
+            max_attempts=max_attempts,
+            next_attempt_at=next_attempt_at,
+        )
+        return submitted_id
+
+    def submit_with_outcome(
+        self,
+        *,
+        task_type: str,
+        model_name: str,
+        payload: Dict[str, Any],
+        task_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        priority: Optional[int] = None,
+        max_attempts: Optional[int] = None,
+        next_attempt_at: Optional[float] = None,
+    ) -> tuple[str, bool]:
+        """Atomically return ``(task_id, replayed)`` for a submission."""
+
+        return self._submit_with_outcome(
+            task_type=task_type,
+            model_name=model_name,
+            payload=payload,
+            task_id=task_id,
+            idempotency_key=idempotency_key,
+            priority=priority,
+            max_attempts=max_attempts,
+            next_attempt_at=next_attempt_at,
+        )
+
+    def submit_once(
+        self,
+        *,
+        idempotency_key: str,
+        task_type: str,
+        model_name: str,
+        payload: Dict[str, Any],
+        priority: Optional[int] = None,
+        max_attempts: Optional[int] = None,
+        next_attempt_at: Optional[float] = None,
+    ) -> str:
+        """Explicit submit-once convenience API."""
+
+        identity = str(idempotency_key or "").strip()
+        if not identity:
+            raise ValueError("idempotency_key is required")
+        return self.submit(
+            task_type=task_type,
+            model_name=model_name,
+            payload=payload,
+            idempotency_key=identity,
+            priority=priority,
+            max_attempts=max_attempts,
+            next_attempt_at=next_attempt_at,
+        )
 
     def get(self, task_id: str) -> Optional[Dict[str, Any]]:
         if not task_id:
@@ -209,7 +540,10 @@ class TaskQueue:
         with self._conn_lock:
             conn = self._connect()
             try:
-                row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+                row = conn.execute(
+                    f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks WHERE task_id = ?",
+                    (task_id,),
+                ).fetchone()
             finally:
                 try:
                     conn.close()
@@ -229,6 +563,13 @@ class TaskQueue:
             updated_at,
             result_json,
             error,
+            priority,
+            attempt,
+            max_attempts,
+            next_attempt_at,
+            lease_until,
+            heartbeat_at,
+            idempotency_key,
         ) = row
 
         result: Any = None
@@ -248,6 +589,13 @@ class TaskQueue:
             "updated_at": updated_at,
             "result": result,
             "error": error,
+            "priority": int(priority),
+            "attempt": int(attempt),
+            "max_attempts": int(max_attempts),
+            "next_attempt_at": float(next_attempt_at),
+            "lease_until": float(lease_until) if lease_until is not None else None,
+            "heartbeat_at": float(heartbeat_at) if heartbeat_at is not None else None,
+            "idempotency_key": str(idempotency_key) if idempotency_key else None,
         }
 
     def list(
@@ -275,7 +623,7 @@ class TaskQueue:
                 placeholders = ",".join(["?"] * len(types))
                 rows = conn.execute(
                     (
-                        "SELECT * FROM tasks WHERE status=? "
+                        f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks WHERE status=? "
                         f"AND task_type IN ({placeholders}) "
                         "ORDER BY created_at ASC LIMIT ?"
                     ),
@@ -283,18 +631,20 @@ class TaskQueue:
                 ).fetchall()
             elif status_norm:
                 rows = conn.execute(
-                    "SELECT * FROM tasks WHERE status=? ORDER BY created_at ASC LIMIT ?",
+                    f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks "
+                    "WHERE status=? ORDER BY created_at ASC LIMIT ?",
                     (status_norm, lim),
                 ).fetchall()
             elif types:
                 placeholders = ",".join(["?"] * len(types))
                 rows = conn.execute(
-                    f"SELECT * FROM tasks WHERE task_type IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
+                    f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks "
+                    f"WHERE task_type IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
                     (*types, lim),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM tasks ORDER BY created_at ASC LIMIT ?",
+                    f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks ORDER BY created_at ASC LIMIT ?",
                     (lim,),
                 ).fetchall()
 
@@ -311,6 +661,13 @@ class TaskQueue:
                 updated_at,
                 result_json,
                 error,
+                priority,
+                attempt,
+                max_attempts,
+                next_attempt_at,
+                lease_until,
+                heartbeat_at,
+                idempotency_key,
             ) = row
 
             try:
@@ -337,6 +694,13 @@ class TaskQueue:
                     "updated_at": float(updated_at),
                     "result": result,
                     "error": str(error) if error else None,
+                    "priority": int(priority),
+                    "attempt": int(attempt),
+                    "max_attempts": int(max_attempts),
+                    "next_attempt_at": float(next_attempt_at),
+                    "lease_until": float(lease_until) if lease_until is not None else None,
+                    "heartbeat_at": float(heartbeat_at) if heartbeat_at is not None else None,
+                    "idempotency_key": str(idempotency_key) if idempotency_key else None,
                 }
             )
         return out
@@ -401,6 +765,159 @@ class TaskQueue:
         counts = self.counts_by_task_type(status=status, task_types=task_types)
         return int(sum(int(v) for v in counts.values()))
 
+    @staticmethod
+    def _recover_expired_in_transaction(conn: Any, now: float, limit: int) -> int:
+        rows = conn.execute(
+            """
+            SELECT task_id, attempt, max_attempts
+            FROM tasks
+            WHERE status='running' AND lease_until IS NOT NULL AND lease_until <= ?
+            ORDER BY lease_until ASC, created_at ASC
+            LIMIT ?
+            """,
+            (float(now), int(limit)),
+        ).fetchall()
+        retry_ids = [str(row[0]) for row in rows if int(row[1] or 0) < int(row[2] or 3)]
+        exhausted_ids = [str(row[0]) for row in rows if int(row[1] or 0) >= int(row[2] or 3)]
+
+        if retry_ids:
+            placeholders = ",".join("?" for _ in retry_ids)
+            conn.execute(
+                (
+                    "UPDATE tasks SET status='queued', assigned_worker=NULL, "
+                    "lease_until=NULL, heartbeat_at=NULL, updated_at=? "
+                    f"WHERE task_id IN ({placeholders}) AND status='running' "
+                    "AND lease_until IS NOT NULL AND lease_until <= ?"
+                ),
+                tuple([float(now), *retry_ids, float(now)]),
+            )
+        if exhausted_ids:
+            placeholders = ",".join("?" for _ in exhausted_ids)
+            conn.execute(
+                (
+                    "UPDATE tasks SET status='failed', assigned_worker=NULL, "
+                    "lease_until=NULL, heartbeat_at=NULL, updated_at=?, "
+                    "error=CASE "
+                    "WHEN error IS NULL OR error='' "
+                    "THEN 'claim lease expired after maximum attempts' "
+                    "ELSE error || '; claim lease expired after maximum attempts' END "
+                    f"WHERE task_id IN ({placeholders}) AND status='running' "
+                    "AND lease_until IS NOT NULL AND lease_until <= ?"
+                ),
+                tuple([float(now), *exhausted_ids, float(now)]),
+            )
+        return len(retry_ids) + len(exhausted_ids)
+
+    def recover_expired_leases(
+        self,
+        *,
+        now: Optional[float] = None,
+        limit: int = 1000,
+    ) -> int:
+        """Requeue expired claims, terminally failing exhausted tasks.
+
+        Recovery is one DuckDB transaction, so two recovery loops cannot both
+        assign the same expired claim. Attempts are incremented only by claims,
+        not by the recovery scan.
+        """
+
+        recovered_at = time.time() if now is None else float(now)
+        bounded_limit = max(1, min(int(limit or 1000), 10000))
+        with self._conn_lock:
+            conn = self._get_conn()
+            conn.execute("BEGIN TRANSACTION")
+            try:
+                count = self._recover_expired_in_transaction(
+                    conn, recovered_at, bounded_limit
+                )
+                conn.execute("COMMIT")
+                return count
+            except Exception:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
+
+    def heartbeat(
+        self,
+        *,
+        task_id: str,
+        worker_id: str,
+        lease_seconds: Optional[float] = None,
+        now: Optional[float] = None,
+    ) -> bool:
+        """Renew owner heartbeats for a running claim only when the worker owns it."""
+
+        tid = str(task_id or "").strip()
+        wid = str(worker_id or "").strip()
+        if not tid or not wid:
+            return False
+        heartbeat_at = time.time() if now is None else float(now)
+        duration = self.default_lease_seconds if lease_seconds is None else max(
+            1.0, float(lease_seconds)
+        )
+        with self._conn_lock:
+            conn = self._get_conn()
+            row = conn.execute(
+                """
+                UPDATE tasks
+                SET heartbeat_at=?, lease_until=?, updated_at=?
+                WHERE task_id=? AND status='running' AND assigned_worker=?
+                RETURNING task_id
+                """,
+                (
+                    heartbeat_at,
+                    heartbeat_at + duration,
+                    heartbeat_at,
+                    tid,
+                    wid,
+                ),
+            ).fetchone()
+        return row is not None
+
+    def retry(
+        self,
+        *,
+        task_id: str,
+        worker_id: str,
+        delay_seconds: float = 0.0,
+        error: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> bool:
+        """Release owned retryable work into persisted attempt/backoff/lease state."""
+
+        tid = str(task_id or "").strip()
+        wid = str(worker_id or "").strip()
+        if not tid or not wid:
+            return False
+        retry_at = time.time() if now is None else float(now)
+        retry_at += max(0.0, float(delay_seconds))
+        with self._conn_lock:
+            conn = self._get_conn()
+            row = conn.execute(
+                """
+                UPDATE tasks
+                SET status=CASE WHEN attempt < max_attempts THEN 'queued' ELSE 'failed' END,
+                    assigned_worker=NULL,
+                    next_attempt_at=?,
+                    lease_until=NULL,
+                    heartbeat_at=NULL,
+                    updated_at=?,
+                    error=?
+                WHERE task_id=? AND status='running' AND assigned_worker=?
+                RETURNING task_id
+                """,
+                (
+                    retry_at,
+                    time.time() if now is None else float(now),
+                    str(error) if error else None,
+                    tid,
+                    wid,
+                ),
+            ).fetchone()
+        return row is not None
+
     def claim_next(
         self,
         *,
@@ -408,6 +925,7 @@ class TaskQueue:
         supported_task_types: Optional[Iterable[str]] = None,
         session_id: str | None = None,
         max_priority: Optional[int] = None,
+        lease_seconds: Optional[float] = None,
     ) -> Optional[QueuedTask]:
         """Claim the next queued task for ``worker_id``.
 
@@ -422,6 +940,8 @@ class TaskQueue:
                 eligible.  Use this to implement trust-tiered queue access: lower
                 the cap for baseline (untrusted) peers so that high-priority tasks
                 are reserved for trusted peers.  ``None`` (default) means no cap.
+            lease_seconds: Claim lifetime. The owner must call :meth:`heartbeat`
+                before this deadline for long-running work.
         """
         if not worker_id:
             raise ValueError("worker_id is required")
@@ -429,6 +949,9 @@ class TaskQueue:
         task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
         session = str(session_id or "").strip()
         now = time.time()
+        lease_duration = self.default_lease_seconds if lease_seconds is None else max(
+            1.0, float(lease_seconds)
+        )
 
         required_expr = (
             "coalesce("
@@ -440,9 +963,7 @@ class TaskQueue:
 
         sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
 
-        priority_expr = (
-            "coalesce(TRY_CAST(json_extract_string(payload_json, '$.priority') AS INTEGER), 5)"
-        )
+        priority_expr = "coalesce(priority, 5)"
 
         def _is_transient_conflict(exc: Exception) -> bool:
             msg = str(exc or "")
@@ -458,9 +979,14 @@ class TaskQueue:
             conn = self._connect()
             try:
                 conn.execute("BEGIN TRANSACTION")
+                self._recover_expired_in_transaction(conn, now, 1000)
 
-                where: list[str] = ["status='queued'"]
-                params: list[object] = []
+                where: list[str] = [
+                    "status='queued'",
+                    "coalesce(next_attempt_at, 0) <= ?",
+                    "coalesce(attempt, 0) < coalesce(max_attempts, 3)",
+                ]
+                params: list[object] = [now]
 
                 if task_types:
                     placeholders = ",".join(["?"] * len(task_types))
@@ -483,7 +1009,8 @@ class TaskQueue:
 
                 where_sql = " AND ".join(where)
                 row = conn.execute(
-                    f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT 1",
+                    f"SELECT task_id FROM tasks WHERE {where_sql} "
+                    f"ORDER BY {priority_expr} DESC, created_at ASC, task_id ASC LIMIT 1",
                     tuple(params),
                 ).fetchone()
 
@@ -493,20 +1020,35 @@ class TaskQueue:
 
                 task_id = str(row[0])
 
-                # Re-check sticky+session guards at update time to avoid races.
+                # Re-check every eligibility guard at update time to avoid races.
                 update_sql = (
-                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=?, "
+                    f"attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
                     f"WHERE task_id=? AND status='queued' "
+                    f"AND coalesce(next_attempt_at, 0) <= ? "
+                    f"AND coalesce(attempt, 0) < coalesce(max_attempts, 3) "
                     f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
                 )
-                update_params: list[object] = [str(worker_id), now, task_id, str(worker_id)]
+                update_params: list[object] = [
+                    str(worker_id),
+                    now,
+                    now,
+                    now + lease_duration,
+                    task_id,
+                    now,
+                    str(worker_id),
+                ]
                 if session:
                     update_sql += f" AND ({required_expr} IS NULL OR {required_expr} = ?)"
                     update_params.append(str(session))
+                if max_priority is not None:
+                    update_sql += f" AND ({priority_expr} <= ?)"
+                    update_params.append(cap)
                 conn.execute(update_sql, tuple(update_params))
 
                 row2 = conn.execute(
-                    "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
+                    f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks "
+                    "WHERE task_id=? AND status='running' AND assigned_worker=?",
                     (task_id, str(worker_id)),
                 ).fetchone()
                 conn.execute("COMMIT")
@@ -532,20 +1074,7 @@ class TaskQueue:
         if row2 is None:
             return None
 
-        try:
-            payload = json.loads(row2[3])
-        except Exception:
-            payload = {"raw": row2[3]}
-
-        return QueuedTask(
-            task_id=str(row2[0]),
-            task_type=str(row2[1]),
-            model_name=str(row2[2]),
-            payload=payload if isinstance(payload, dict) else {"payload": payload},
-            created_at=float(row2[6]),
-            status=str(row2[4]),
-            assigned_worker=str(row2[5]) if row2[5] else None,
-        )
+        return _queued_task_from_row(row2)
 
     def claim_next_many(
         self,
@@ -556,6 +1085,7 @@ class TaskQueue:
         same_task_type: bool = True,
         session_id: str | None = None,
         max_priority: Optional[int] = None,
+        lease_seconds: Optional[float] = None,
     ) -> list[QueuedTask]:
         """Atomically claim up to `max_tasks` queued tasks.
 
@@ -569,6 +1099,7 @@ class TaskQueue:
                 payload JSON (1-10).  When set, only tasks with payload priority
                 at most this value are eligible.  Use together with
                 ``PeerTrustLevel`` to gate high-priority tasks for trusted peers.
+            lease_seconds: Shared claim lifetime for every member.
         """
 
         if not worker_id:
@@ -583,6 +1114,9 @@ class TaskQueue:
         task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
         session = str(session_id or "").strip()
         now = time.time()
+        lease_duration = self.default_lease_seconds if lease_seconds is None else max(
+            1.0, float(lease_seconds)
+        )
 
         required_expr = (
             "coalesce("
@@ -594,9 +1128,7 @@ class TaskQueue:
 
         sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
 
-        priority_expr = (
-            "coalesce(TRY_CAST(json_extract_string(payload_json, '$.priority') AS INTEGER), 5)"
-        )
+        priority_expr = "coalesce(priority, 5)"
 
         def _is_transient_conflict(exc: Exception) -> bool:
             msg = str(exc or "")
@@ -612,13 +1144,18 @@ class TaskQueue:
             conn = self._connect()
             try:
                 conn.execute("BEGIN TRANSACTION")
+                self._recover_expired_in_transaction(conn, now, 1000)
 
                 # Pick the oldest queued task (optionally filtered by supported types)
                 # to establish the batch's task_type.
                 picked_type: str | None = None
                 if same_task_type:
-                    where0: list[str] = ["status='queued'"]
-                    params0: list[object] = []
+                    where0: list[str] = [
+                        "status='queued'",
+                        "coalesce(next_attempt_at, 0) <= ?",
+                        "coalesce(attempt, 0) < coalesce(max_attempts, 3)",
+                    ]
+                    params0: list[object] = [now]
                     if task_types:
                         placeholders = ",".join(["?"] * len(task_types))
                         where0.append(f"task_type IN ({placeholders})")
@@ -635,7 +1172,8 @@ class TaskQueue:
                         params0.append(cap)
                     where0_sql = " AND ".join(where0)
                     row0 = conn.execute(
-                        f"SELECT task_type FROM tasks WHERE {where0_sql} ORDER BY created_at ASC LIMIT 1",
+                        f"SELECT task_type FROM tasks WHERE {where0_sql} "
+                        f"ORDER BY {priority_expr} DESC, created_at ASC, task_id ASC LIMIT 1",
                         tuple(params0),
                     ).fetchone()
                     if row0 is None:
@@ -644,8 +1182,12 @@ class TaskQueue:
                     picked_type = str(row0[0])
 
                 # Select task_ids to claim.
-                params: list[object] = []
-                where = ["status='queued'"]
+                params: list[object] = [now]
+                where = [
+                    "status='queued'",
+                    "coalesce(next_attempt_at, 0) <= ?",
+                    "coalesce(attempt, 0) < coalesce(max_attempts, 3)",
+                ]
                 if task_types:
                     placeholders = ",".join(["?"] * len(task_types))
                     where.append(f"task_type IN ({placeholders})")
@@ -668,7 +1210,7 @@ class TaskQueue:
                 rows = conn.execute(
                     (
                         f"SELECT task_id FROM tasks WHERE {where_sql} "
-                        "ORDER BY created_at ASC "
+                        f"ORDER BY {priority_expr} DESC, created_at ASC, task_id ASC "
                         f"LIMIT {int(limit)}"
                     ),
                     tuple(params),
@@ -683,31 +1225,63 @@ class TaskQueue:
                     # NOTE: this is best-effort; it prevents accidental claims even
                     # if the initial SELECT raced with another session.
                     sql = (
-                        "UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                        "UPDATE tasks SET status='running', assigned_worker=?, updated_at=?, "
+                        "attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
                         f"WHERE task_id IN ({id_placeholders}) AND status='queued' "
+                        "AND coalesce(next_attempt_at, 0) <= ? "
+                        "AND coalesce(attempt, 0) < coalesce(max_attempts, 3) "
                         f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?) "
                         f"AND ({required_expr} IS NULL OR {required_expr} = ?)"
                     )
+                    update_params: list[object] = [
+                        str(worker_id),
+                        now,
+                        now,
+                        now + lease_duration,
+                        *ids,
+                        now,
+                        str(worker_id),
+                        str(session),
+                    ]
+                    if max_priority is not None:
+                        sql += f" AND ({priority_expr} <= ?)"
+                        update_params.append(cap)
                     conn.execute(
                         sql,
-                        tuple([str(worker_id), now] + ids + [str(worker_id), str(session)]),
+                        tuple(update_params),
                     )
                 else:
                     sql = (
-                        "UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                        "UPDATE tasks SET status='running', assigned_worker=?, updated_at=?, "
+                        "attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
                         f"WHERE task_id IN ({id_placeholders}) AND status='queued' "
+                        "AND coalesce(next_attempt_at, 0) <= ? "
+                        "AND coalesce(attempt, 0) < coalesce(max_attempts, 3) "
                         f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
                     )
+                    update_params = [
+                        str(worker_id),
+                        now,
+                        now,
+                        now + lease_duration,
+                        *ids,
+                        now,
+                        str(worker_id),
+                    ]
+                    if max_priority is not None:
+                        sql += f" AND ({priority_expr} <= ?)"
+                        update_params.append(cap)
                     conn.execute(
                         sql,
-                        tuple([str(worker_id), now] + ids + [str(worker_id)]),
+                        tuple(update_params),
                     )
 
                 rows2 = conn.execute(
                     (
-                        f"SELECT * FROM tasks WHERE task_id IN ({id_placeholders}) "
+                        f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks "
+                        f"WHERE task_id IN ({id_placeholders}) "
                         "AND status='running' AND assigned_worker=? "
-                        "ORDER BY created_at ASC"
+                        "ORDER BY priority DESC, created_at ASC, task_id ASC"
                     ),
                     tuple(ids + [str(worker_id)]),
                 ).fetchall()
@@ -731,22 +1305,7 @@ class TaskQueue:
 
         out: list[QueuedTask] = []
         for row2 in rows2 or []:
-            try:
-                payload = json.loads(row2[3])
-            except Exception:
-                payload = {"raw": row2[3]}
-
-            out.append(
-                QueuedTask(
-                    task_id=str(row2[0]),
-                    task_type=str(row2[1]),
-                    model_name=str(row2[2]),
-                    payload=payload if isinstance(payload, dict) else {"payload": payload},
-                    created_at=float(row2[6]),
-                    status=str(row2[4]),
-                    assigned_worker=str(row2[5]) if row2[5] else None,
-                )
-            )
+            out.append(_queued_task_from_row(row2))
         return out
 
     def claim(
@@ -755,6 +1314,7 @@ class TaskQueue:
         task_id: str,
         worker_id: str,
         session_id: str | None = None,
+        lease_seconds: Optional[float] = None,
     ) -> Optional[QueuedTask]:
         """Atomically claim a specific queued task by id."""
 
@@ -764,6 +1324,9 @@ class TaskQueue:
             raise ValueError("worker_id is required")
 
         now = time.time()
+        lease_duration = self.default_lease_seconds if lease_seconds is None else max(
+            1.0, float(lease_seconds)
+        )
         session = str(session_id or "").strip()
         required_expr = (
             "coalesce("
@@ -776,30 +1339,57 @@ class TaskQueue:
         conn = self._connect()
         try:
             conn.execute("BEGIN TRANSACTION")
+            self._recover_expired_in_transaction(conn, now, 1000)
             if session:
                 conn.execute(
                     f"""
                     UPDATE tasks
-                    SET status='running', assigned_worker=?, updated_at=?
+                    SET status='running', assigned_worker=?, updated_at=?,
+                        attempt=coalesce(attempt, 0)+1,
+                        heartbeat_at=?, lease_until=?
                     WHERE task_id=? AND status='queued'
+                      AND coalesce(next_attempt_at, 0) <= ?
+                      AND coalesce(attempt, 0) < coalesce(max_attempts, 3)
                       AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)
                       AND ({required_expr} IS NULL OR {required_expr} = ?)
                     """,
-                    (str(worker_id), now, str(task_id), str(worker_id), str(session)),
+                    (
+                        str(worker_id),
+                        now,
+                        now,
+                        now + lease_duration,
+                        str(task_id),
+                        now,
+                        str(worker_id),
+                        str(session),
+                    ),
                 )
             else:
                 conn.execute(
                     f"""
                     UPDATE tasks
-                    SET status='running', assigned_worker=?, updated_at=?
+                    SET status='running', assigned_worker=?, updated_at=?,
+                        attempt=coalesce(attempt, 0)+1,
+                        heartbeat_at=?, lease_until=?
                     WHERE task_id=? AND status='queued'
+                      AND coalesce(next_attempt_at, 0) <= ?
+                      AND coalesce(attempt, 0) < coalesce(max_attempts, 3)
                       AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)
                     """.strip(),
-                    (str(worker_id), now, str(task_id), str(worker_id)),
+                    (
+                        str(worker_id),
+                        now,
+                        now,
+                        now + lease_duration,
+                        str(task_id),
+                        now,
+                        str(worker_id),
+                    ),
                 )
 
             row = conn.execute(
-                "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
+                f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks "
+                "WHERE task_id=? AND status='running' AND assigned_worker=?",
                 (str(task_id), str(worker_id)),
             ).fetchone()
             conn.execute("COMMIT")
@@ -818,20 +1408,7 @@ class TaskQueue:
         if row is None:
             return None
 
-        try:
-            payload = json.loads(row[3])
-        except Exception:
-            payload = {"raw": row[3]}
-
-        return QueuedTask(
-            task_id=str(row[0]),
-            task_type=str(row[1]),
-            model_name=str(row[2]),
-            payload=payload if isinstance(payload, dict) else {"payload": payload},
-            created_at=float(row[6]),
-            status=str(row[4]),
-            assigned_worker=str(row[5]) if row[5] else None,
-        )
+        return _queued_task_from_row(row)
 
     def complete(
         self,
@@ -840,6 +1417,7 @@ class TaskQueue:
         status: str,
         result: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
+        worker_id: Optional[str] = None,
     ) -> bool:
         if not task_id:
             return False
@@ -886,15 +1464,43 @@ class TaskQueue:
 
                 result_json = json.dumps(merged, sort_keys=True) if merged else None
 
-                conn.execute(
-                    """
-                    UPDATE tasks
-                    SET status=?, updated_at=?, result_json=?, error=?
-                    WHERE task_id=?
-                    """,
-                    (status_norm, now, result_json, str(error) if error else None, str(task_id)),
-                )
-                return True
+                owner = str(worker_id or "").strip()
+                if owner:
+                    updated = conn.execute(
+                        """
+                        UPDATE tasks
+                        SET status=?, updated_at=?, result_json=?,
+                            error=?, lease_until=NULL, heartbeat_at=NULL
+                        WHERE task_id=? AND status='running' AND assigned_worker=?
+                        RETURNING task_id
+                        """,
+                        (
+                            status_norm,
+                            now,
+                            result_json,
+                            str(error) if error else None,
+                            str(task_id),
+                            owner,
+                        ),
+                    ).fetchone()
+                else:
+                    updated = conn.execute(
+                        """
+                        UPDATE tasks
+                        SET status=?, updated_at=?, result_json=?,
+                            error=?, lease_until=NULL, heartbeat_at=NULL
+                        WHERE task_id=?
+                        RETURNING task_id
+                        """,
+                        (
+                            status_norm,
+                            now,
+                            result_json,
+                            str(error) if error else None,
+                            str(task_id),
+                        ),
+                    ).fetchone()
+                return updated is not None
             except Exception as exc:
                 msg = str(exc).lower()
                 if (
@@ -955,7 +1561,8 @@ class TaskQueue:
 
                 conn.execute(
                     (
-                        "UPDATE tasks SET status='cancelled', result_json=?, updated_at=? "
+                        "UPDATE tasks SET status='cancelled', assigned_worker=NULL, "
+                        "lease_until=NULL, heartbeat_at=NULL, result_json=?, updated_at=? "
                         "WHERE task_id=? AND status='queued'"
                     ),
                     (json.dumps(result_obj, sort_keys=True), now, str(task_id)),
@@ -1095,15 +1702,17 @@ class TaskQueue:
 
                 result_json = json.dumps(merged, sort_keys=True) if merged else None
 
-                conn.execute(
+                updated = conn.execute(
                     """
                     UPDATE tasks
-                    SET status='queued', assigned_worker=NULL, updated_at=?, result_json=?
+                    SET status='queued', assigned_worker=NULL, updated_at=?, result_json=?,
+                        next_attempt_at=?, lease_until=NULL, heartbeat_at=NULL
                     WHERE task_id=? AND status='running' AND assigned_worker=?
+                    RETURNING task_id
                     """,
-                    (float(now), result_json, tid, wid),
-                )
-                return True
+                    (float(now), result_json, float(now), tid, wid),
+                ).fetchone()
+                return updated is not None
             except Exception:
                 return False
 

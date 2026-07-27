@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+import errno
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised only on non-POSIX hosts
+    fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - exercised only on non-Windows hosts
+    msvcrt = None  # type: ignore[assignment]
 
 
 DEFAULT_CHECKOUT_MUTATION_LOCK_NAME = "implementation-main-merge.lock"
@@ -23,6 +36,62 @@ def generated_protected_board_commit_subject(subject: str) -> str:
     if normalized.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER):
         return normalized
     return f"{normalized} {GENERATED_PROTECTED_BOARD_COMMIT_MARKER}".strip()
+
+
+@contextmanager
+def serialized_lock_update(lock_path: Path) -> Iterator[None]:
+    """Serialize create/inspect/replace operations for one durable lock path.
+
+    The durable JSON lock remains the long-lived ownership record.  This
+    adjacent advisory guard is held only while that record is inspected or
+    replaced, closing the stale-owner check/unlink race between the supervisor
+    and its managed implementation daemon.
+    """
+
+    if fcntl is None and msvcrt is None:
+        raise RuntimeError(
+            "durable lock replacement requires an advisory file-lock backend"
+        )
+    guard_path = lock_path.with_name(f".{lock_path.name}.update.lock")
+    guard_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_CREAT | os.O_RDWR
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(guard_path, flags, 0o600)
+    locked = False
+    try:
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        else:
+            assert msvcrt is not None
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b"\0")
+            while True:
+                os.lseek(fd, 0, os.SEEK_SET)
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as exc:
+                    if exc.errno not in {
+                        errno.EACCES,
+                        errno.EAGAIN,
+                        errno.EDEADLK,
+                    }:
+                        raise
+                    time.sleep(0.05)
+        locked = True
+        yield
+    finally:
+        try:
+            if locked:
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                else:
+                    assert msvcrt is not None
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        finally:
+            os.close(fd)
 
 
 def git_common_dir(repo_root: Path) -> Path:

@@ -313,7 +313,7 @@ function estimateMemorySaved(sharedTensor) {
 
 ## Further Resources
 
-- [SharedTensor API Reference](./api/shared_tensor.md)
-- [Multimodal Examples](../examples/multimodal/)
-- [Performance Optimization Guide](./optimization_guide.md)
-- [Memory Management Best Practices](./memory_management.md)
+- [SharedTensor API Reference](./api/README.md#sharedtensor-api)
+- [Multimodal Examples](../examples/browser/multimodal/)
+- [Performance Optimization Guide](./OPERATION_FUSION_GUIDE.md#performance-optimization)
+- [Memory Management Best Practices](../../HARDWARE_ABSTRACTION_VIT_GUIDE.md#memory-management)

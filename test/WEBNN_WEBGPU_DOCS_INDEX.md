@@ -34,11 +34,11 @@ Last updated: 2025-03-13 14:30:00
 
 The following documentation has been archived and replaced with the comprehensive real implementation testing guides above:
 
-- [WEBGPU WEBNN QUANTIZATION SUMMARY](archived_md_files/WEBGPU_WEBNN_QUANTIZATION_SUMMARY_20250307_012440.md): Archived on 2025-03-07
-- [WEBNN WEBGPU QUANTIZATION README](archived_md_files/WEBNN_WEBGPU_QUANTIZATION_README_20250307_012440.md): Archived on 2025-03-07
-- [WEB PLATFORM INTEGRATION GUIDE UPDATED](archived_md_files/WEB_PLATFORM_INTEGRATION_GUIDE_UPDATED_20250307_012440.md): Archived on 2025-03-07
-- [WEB PLATFORM OPTIMIZATION GUIDE JUNE2025](archived_md_files/WEB_PLATFORM_OPTIMIZATION_GUIDE_JUNE2025_20250307_012440.md): Archived on 2025-03-07
-- [WEB PLATFORM SUPPORT COMPLETED](archived_md_files/WEB_PLATFORM_SUPPORT_COMPLETED_20250307_012440.md): Archived on 2025-03-07
+- [WEBGPU WEBNN QUANTIZATION SUMMARY](WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md): Archived on 2025-03-07; see the maintained quantization guides above
+- [WEBNN WEBGPU QUANTIZATION README](WEBNN_WEBGPU_QUANTIZATION_README.md): Archived on 2025-03-07; see the maintained quantization guides above
+- [WEB PLATFORM INTEGRATION GUIDE UPDATED](WEB_PLATFORM_INTEGRATION_GUIDE.md): Archived on 2025-03-07; see the maintained integration guide
+- [WEB PLATFORM OPTIMIZATION GUIDE JUNE2025](WEB_PLATFORM_OPTIMIZATION_GUIDE_JUNE2025.md): Archived on 2025-03-07; see the maintained WebNN/WebGPU guides above
+- [WEB PLATFORM SUPPORT COMPLETED](README_WEB_PLATFORM_SUPPORT.md): Archived on 2025-03-07; see the maintained web platform support guide
 
 ## Implementation Status
 

@@ -992,11 +992,9 @@ print(f"Memory reduction: {config['memory_reduction']}%")
 - [WebGPU 4-bit Model Coverage Test Framework](test_webgpu_4bit_model_coverage.py) - NEW comprehensive testing framework for all 13 model classes
 - [Firefox Audio Compute Shader Optimizations](fixed_web_platform/webgpu_audio_compute_shaders.py) - NEW Firefox-specific optimizations for audio models
 - [Web Platform Integration Guide](WEB_PLATFORM_INTEGRATION_GUIDE.md)
-- [Web Platform Implementation Plan](WEB_PLATFORM_IMPLEMENTATION_PLAN.md)
-- [Web Platform Implementation Next Steps](WEB_PLATFORM_IMPLEMENTATION_NEXT_STEPS.md)
 - [Hardware Selection Guide](HARDWARE_SELECTION_GUIDE.md)
 - [WebGPU Compute Shader Documentation](WEB_PLATFORM_SHADER_PRECOMPILATION.md)
-- [Memory Optimization Guide](HARDWARE_BENCHMARKING_GUIDE.md)
+- [Memory Optimization Guide](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)
 - [Cross-Platform Compatibility Matrix](WEB_PLATFORM_MODEL_COMPATIBILITY.md)
 
 ## References

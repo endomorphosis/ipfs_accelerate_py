@@ -25,7 +25,7 @@ text, the positions of words (bounding boxes), and the image itself.
 
 This guide illustrates how to:
 
-- Fine-tune [LayoutLMv2](../model_doc/layoutlmv2) on the [DocVQA dataset](https://huggingface.co/datasets/nielsr/docvqa_1200_examples_donut).
+- Fine-tune [LayoutLMv2](../model_doc/layoutlmv2.md) on the [DocVQA dataset](https://huggingface.co/datasets/nielsr/docvqa_1200_examples_donut).
 - Use your fine-tuned model for inference.
 
 <Tip>
@@ -135,7 +135,7 @@ At this point let's also remove the OCR features from this dataset. These are a 
 model. They would still require some processing if we wanted to use them, as they do not match the input requirements
 of the model we use in this guide. Instead, we can use the [`LayoutLMv2Processor`] on the original data for both OCR and
 tokenization. This way we'll get the inputs that match model's expected input. If you want to process images manually,
-check out the [`LayoutLMv2` model documentation](../model_doc/layoutlmv2) to learn what input format the model expects.
+check out the [`LayoutLMv2` model documentation](../model_doc/layoutlmv2.md) to learn what input format the model expects.
 
 ```py
 >>> updated_dataset = updated_dataset.remove_columns("words")

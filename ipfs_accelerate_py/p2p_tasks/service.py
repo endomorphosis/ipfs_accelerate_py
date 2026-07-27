@@ -64,6 +64,7 @@ from .mcp_p2p_client import MCPP2PClient
 from .peer_trust import PeerTrustLevel, baseline_max_claim_priority, resolve_peer_trust_level, trust_tiers_enabled
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
+from .task_types import VOICE_TASK_TYPES, normalize_task_types
 
 
 _SERVICE_STATE_LOCK = threading.RLock()
@@ -198,6 +199,27 @@ def _env_int(*, primary: str, compat: str, default: int) -> int:
         return int(str(raw).strip())
     except Exception:
         return int(default)
+
+
+def _supported_task_types_env(accelerate_instance: object | None = None) -> list[str]:
+    """Mirror the executable worker capabilities for service status output."""
+
+    try:
+        # Import lazily so transport-only service users do not pay worker
+        # initialization cost and worker/service remain safe to import alone.
+        from .worker import _compute_supported_task_types
+
+        return _compute_supported_task_types(
+            supported_task_types=None,
+            accelerate_instance=accelerate_instance,
+        )
+    except Exception:
+        # Voice execution is provider-lazy and therefore remains a valid
+        # baseline even when optional inference dependencies are unavailable.
+        return normalize_task_types(
+            ["text-generation", *VOICE_TASK_TYPES],
+            expand_aliases=True,
+        )
 
 
 def _default_announce_file() -> str:
@@ -1467,9 +1489,9 @@ async def serve_task_queue(
                 if supported is None:
                     supported = msg.get("task_types")
                 if isinstance(supported, str):
-                    supported_list = [p.strip() for p in supported.split(",") if p.strip()]
+                    supported_list = normalize_task_types(supported.split(","), expand_aliases=True)
                 elif isinstance(supported, (list, tuple, set)):
-                    supported_list = [str(t).strip() for t in supported if str(t).strip()]
+                    supported_list = normalize_task_types(supported, expand_aliases=True)
                 else:
                     supported_list = []
 
@@ -1555,9 +1577,9 @@ async def serve_task_queue(
                 if supported is None:
                     supported = msg.get("task_types")
                 if isinstance(supported, str):
-                    supported_list = [p.strip() for p in supported.split(",") if p.strip()]
+                    supported_list = normalize_task_types(supported.split(","), expand_aliases=True)
                 elif isinstance(supported, (list, tuple, set)):
-                    supported_list = [str(t).strip() for t in supported if str(t).strip()]
+                    supported_list = normalize_task_types(supported, expand_aliases=True)
                 else:
                     supported_list = []
 
@@ -1835,26 +1857,6 @@ async def serve_task_queue(
                         except Exception:
                             return False
 
-                    def _supported_task_types_env() -> list[str]:
-                        raw = (
-                            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES")
-                            or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES")
-                            or ""
-                        )
-                        parts = [p.strip() for p in str(raw).split(",") if p.strip()]
-                        if parts:
-                            return parts
-                        base = ["text-generation"]
-                        if _docker_enabled_env():
-                            base.extend(
-                                [
-                                    "docker.execute",
-                                    "docker.execute_docker_container",
-                                    "docker.github",
-                                ]
-                            )
-                        return base
-
                     now = time.time()
                     peer_rows: list[dict[str, Any]] = []
                     worker_rows: list[dict[str, Any]] = []
@@ -1883,9 +1885,9 @@ async def serve_task_queue(
                         wid = str(info.get("worker_id") or "").strip()
                         supported = info.get("supported_task_types")
                         if isinstance(supported, str):
-                            supported_list = [p.strip() for p in supported.split(",") if p.strip()]
+                            supported_list = normalize_task_types(supported.split(","), expand_aliases=True)
                         elif isinstance(supported, (list, tuple, set)):
-                            supported_list = [str(t).strip() for t in supported if str(t).strip()]
+                            supported_list = normalize_task_types(supported, expand_aliases=True)
                         else:
                             supported_list = []
 
@@ -1923,7 +1925,7 @@ async def serve_task_queue(
                         "IPFS_ACCELERATE_PY_TASK_WORKER",
                         "IPFS_DATASETS_PY_TASK_WORKER",
                     )
-                    local_supported = _supported_task_types_env()
+                    local_supported = _supported_task_types_env(accelerate_instance)
                     local_docker_enabled = _docker_enabled_env()
                     resp["local_worker"] = {
                         "enabled": bool(local_worker_enabled),

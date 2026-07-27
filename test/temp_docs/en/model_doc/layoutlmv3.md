@@ -19,7 +19,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The LayoutLMv3 model was proposed in [LayoutLMv3: Pre-training for Document AI with Unified Text and Image Masking](https://arxiv.org/abs/2204.08387) by Yupan Huang, Tengchao Lv, Lei Cui, Yutong Lu, Furu Wei.
-LayoutLMv3 simplifies [LayoutLMv2](layoutlmv2) by using patch embeddings (as in [ViT](vit)) instead of leveraging a CNN backbone, and pre-trains the model on 3 objectives: masked language modeling (MLM), masked image modeling (MIM)
+LayoutLMv3 simplifies [LayoutLMv2](layoutlmv2.md) by using patch embeddings (as in [ViT](vit.md)) instead of leveraging a CNN backbone, and pre-trains the model on 3 objectives: masked language modeling (MLM), masked image modeling (MIM)
 and word-patch alignment (WPA).
 
 The abstract from the paper is the following:
@@ -35,11 +35,11 @@ This model was contributed by [nielsr](https://huggingface.co/nielsr). The Tenso
 
 ## Usage tips
 
-- In terms of data processing, LayoutLMv3 is identical to its predecessor [LayoutLMv2](layoutlmv2), except that:
+- In terms of data processing, LayoutLMv3 is identical to its predecessor [LayoutLMv2](layoutlmv2.md), except that:
     - images need to be resized and normalized with channels in regular RGB format. LayoutLMv2 on the other hand normalizes the images internally and expects the channels in BGR format.
     - text is tokenized using byte-pair encoding (BPE), as opposed to WordPiece.
   Due to these differences in data preprocessing, one can use [`LayoutLMv3Processor`] which internally combines a [`LayoutLMv3ImageProcessor`] (for the image modality) and a [`LayoutLMv3Tokenizer`]/[`LayoutLMv3TokenizerFast`] (for the text modality) to prepare all data for the model.
-- Regarding usage of [`LayoutLMv3Processor`], we refer to the [usage guide](layoutlmv2#usage-layoutlmv2processor) of its predecessor.
+- Regarding usage of [`LayoutLMv3Processor`], we refer to the [usage guide](layoutlmv2.md#usage-layoutlmv2processor) of its predecessor.
 
 ## Resources
 
@@ -57,22 +57,22 @@ LayoutLMv3 is nearly identical to LayoutLMv2, so we've also included LayoutLMv2 
 <PipelineTag pipeline="text-classification"/>
 
 - [`LayoutLMv2ForSequenceClassification`] is supported by this [notebook](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/RVL-CDIP/Fine_tuning_LayoutLMv2ForSequenceClassification_on_RVL_CDIP.ipynb).
-- [Text classification task guide](../tasks/sequence_classification)
+- [Text classification task guide](../tasks/sequence_classification.md)
 
 <PipelineTag pipeline="token-classification"/>
 
 - [`LayoutLMv3ForTokenClassification`] is supported by this [example script](https://github.com/huggingface/transformers-research-projects/tree/main/layoutlmv3) and [notebook](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv3/Fine_tune_LayoutLMv3_on_FUNSD_(HuggingFace_Trainer).ipynb).
 - A [notebook](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/FUNSD/Inference_with_LayoutLMv2ForTokenClassification.ipynb) for how to perform inference with [`LayoutLMv2ForTokenClassification`] and a [notebook](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/FUNSD/True_inference_with_LayoutLMv2ForTokenClassification_%2B_Gradio_demo.ipynb) for how to perform inference when no labels are available with [`LayoutLMv2ForTokenClassification`].
 - A [notebook](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/FUNSD/Fine_tuning_LayoutLMv2ForTokenClassification_on_FUNSD_using_HuggingFace_Trainer.ipynb) for how to finetune [`LayoutLMv2ForTokenClassification`] with the 🤗 Trainer.
-- [Token classification task guide](../tasks/token_classification)
+- [Token classification task guide](../tasks/token_classification.md)
 
 <PipelineTag pipeline="question-answering"/>
 
 - [`LayoutLMv2ForQuestionAnswering`] is supported by this [notebook](https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/LayoutLMv2/DocVQA/Fine_tuning_LayoutLMv2ForQuestionAnswering_on_DocVQA.ipynb).
-- [Question answering task guide](../tasks/question_answering)
+- [Question answering task guide](../tasks/question_answering.md)
 
 **Document question answering**
-- [Document question answering task guide](../tasks/document_question_answering)
+- [Document question answering task guide](../tasks/document_question_answering.md)
 
 ## LayoutLMv3Config
 

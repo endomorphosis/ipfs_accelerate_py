@@ -527,6 +527,3 @@ For optimal results, use the browser and quantization settings recommended for y
 
 - [WebGPU WebNN Quantization Summary](WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md)
 - [WebNN WebGPU Implementation Guide](WEBNN_WEBGPU_GUIDE.md)
-- [Run shell script for testing all browsers](run_webnn_webgpu_quantization.sh)
-- [Simplified test script](test_webnn_webgpu_simplified.py)
-- [Comprehensive test script](webnn_webgpu_quantization_test.py)

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
+from ..checkout_lock import serialized_lock_update
 from ..event_log import unique_backup_path
 from ..wrapper_utils import with_exclusive_flag_default
 from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
@@ -240,8 +241,11 @@ def runtime_lock_owner_is_alive(path: Path) -> bool:
     if not pid_alive(pid):
         return False
     owner_script = str(metadata.get("owner_script") or "")
-    if owner_script and owner_script not in process_args(pid):
-        return False
+    command_line = process_args(pid)
+    if owner_script and command_line and owner_script not in command_line:
+        owner_module_stem = Path(owner_script).stem
+        if not owner_module_stem or owner_module_stem not in command_line:
+            return False
     return True
 
 
@@ -271,9 +275,17 @@ def repair_supervisor_runtime(
             repairs["removed"].append(str(path))
 
     lock_path = paths["implementation_lock"]
-    if lock_path.exists() and not runtime_lock_owner_is_alive(lock_path):
-        if remove_runtime_marker(lock_path):
-            repairs["removed"].append(str(lock_path))
+    try:
+        with serialized_lock_update(lock_path):
+            if lock_path.exists() and not runtime_lock_owner_is_alive(lock_path):
+                if remove_runtime_marker(lock_path):
+                    repairs["removed"].append(str(lock_path))
+    except (OSError, RuntimeError) as exc:
+        # Runtime repair is a recovery convenience, never authority to mutate
+        # a lease whose ownership could not be inspected atomically.
+        repairs["implementation_lock_repair_error"] = (
+            f"{type(exc).__name__}: {exc}"
+        )
 
     status_path = paths["supervisor_status"]
     status = read_json(status_path)

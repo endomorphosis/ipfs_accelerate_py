@@ -28,8 +28,8 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The [`VisionEncoderDecoderModel`] can be used to initialize an image-to-text model with any
-pretrained Transformer-based vision model as the encoder (*e.g.* [ViT](vit), [BEiT](beit), [DeiT](deit), [Swin](swin))
-and any pretrained language model as the decoder (*e.g.* [RoBERTa](roberta), [GPT2](gpt2), [BERT](bert), [DistilBERT](distilbert)).
+pretrained Transformer-based vision model as the encoder (*e.g.* [ViT](vit.md), [BEiT](beit.md), [DeiT](deit.md), [Swin](swin.md))
+and any pretrained language model as the decoder (*e.g.* [RoBERTa](roberta.md), [GPT2](gpt2.md), [BERT](bert.md), [DistilBERT](distilbert.md)).
 
 The effectiveness of initializing image-to-text-sequence models with pretrained checkpoints has been shown in (for
 example) [TrOCR: Transformer-based Optical Character Recognition with Pre-trained Models](https://arxiv.org/abs/2109.10282) by Minghao Li, Tengchao Lv, Lei Cui, Yijuan Lu, Dinei Florencio, Cha Zhang,
@@ -39,7 +39,7 @@ After such a [`VisionEncoderDecoderModel`] has been trained/fine-tuned, it can b
 for more information).
 
 An example application is image captioning, in which the encoder is used to encode the image, after which an autoregressive language model generates
-the caption. Another example is optical character recognition. Refer to [TrOCR](trocr), which is an instance of [`VisionEncoderDecoderModel`].
+the caption. Another example is optical character recognition. Refer to [TrOCR](trocr.md), which is an instance of [`VisionEncoderDecoderModel`].
 
 ## Randomly initializing `VisionEncoderDecoderModel` from model configurations.
 
@@ -58,7 +58,7 @@ and the default [`BertForCausalLM`] configuration for the decoder.
 
 ## Initialising `VisionEncoderDecoderModel` from a pretrained encoder and a pretrained decoder.
 
-[`VisionEncoderDecoderModel`] can be initialized from a pretrained encoder checkpoint and a pretrained decoder checkpoint. Note that any pretrained Transformer-based vision model, *e.g.* [Swin](swin), can serve as the encoder and both pretrained auto-encoding models, *e.g.* BERT, pretrained causal language models, *e.g.* GPT2, as well as the pretrained decoder part of sequence-to-sequence models, *e.g.* decoder of BART, can be used as the decoder.
+[`VisionEncoderDecoderModel`] can be initialized from a pretrained encoder checkpoint and a pretrained decoder checkpoint. Note that any pretrained Transformer-based vision model, *e.g.* [Swin](swin.md), can serve as the encoder and both pretrained auto-encoding models, *e.g.* BERT, pretrained causal language models, *e.g.* GPT2, as well as the pretrained decoder part of sequence-to-sequence models, *e.g.* decoder of BART, can be used as the decoder.
 Depending on which architecture you choose as the decoder, the cross-attention layers might be randomly initialized.
 Initializing [`VisionEncoderDecoderModel`] from a pretrained encoder and decoder checkpoint requires the model to be fine-tuned on a downstream task, as has been shown in [the *Warm-starting-encoder-decoder blog post*](https://huggingface.co/blog/warm-starting-encoder-decoder).
 To do so, the `VisionEncoderDecoderModel` class provides a [`VisionEncoderDecoderModel.from_encoder_decoder_pretrained`] method.

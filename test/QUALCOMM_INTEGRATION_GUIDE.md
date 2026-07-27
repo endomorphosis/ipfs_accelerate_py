@@ -292,8 +292,8 @@ The mock mode provides realistic simulated power metrics based on typical Snapdr
 - [Qualcomm AI Engine Documentation](https://developer.qualcomm.com/software/ai-engine-direct-sdk)
 - [Qualcomm Neural Processing SDK](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk)
 - [Hexagon DSP SDK](https://developer.qualcomm.com/software/hexagon-dsp-sdk)
-- [DuckDB Database Guide](BENCHMARK_DATABASE_GUIDE.md)
-- [Power Efficiency Analysis Guide](HARDWARE_BENCHMARKING_GUIDE.md)
+- [DuckDB Database Guide](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
+- [Power Efficiency Analysis Guide](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)
 
 ## Future Work
 

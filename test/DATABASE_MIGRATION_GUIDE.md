@@ -130,7 +130,7 @@ python test/test_ipfs_migration.py --migrate
 python test/test_ipfs_migration.py --validate
 ```
 
-See [DATA_MIGRATION_README.md](DATA_MIGRATION_README.md) for complete documentation on the IPFS migration tool.
+See [DUCKDB_MIGRATION_GUIDE.md](DUCKDB_MIGRATION_GUIDE.md) for complete documentation on the database migration process.
 
 ### 3. Querying the Database
 
@@ -200,7 +200,7 @@ python test/scripts/benchmark_db_fix.py --fix-timestamps --db ./benchmark_db.duc
 python test/scripts/benchmark_db_fix.py --fix-web-platform --db ./benchmark_db.duckdb
 ```
 
-For full documentation on database maintenance, see [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md).
+For full documentation on database maintenance, see [BENCHMARK_DATABASE_GUIDE.md](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md).
 
 ## Database Schema
 
@@ -289,7 +289,7 @@ As of March 5, 2025, all benchmark tools have been fully migrated to use the Duc
 
 > **Important Update (March 6, 2025)**: The transition phase is complete. JSON file generation has been deprecated and disabled by default (DEPRECATE_JSON_OUTPUT=1). All tools now use the database for storage and retrieval. The archived JSON files remain available for reference but are no longer actively used.
 >
-> **Critical Implementation Note**: For backward compatibility, benchmark results can still be written to the `benchmark_results` directory when explicitly needed, but files should be overwritten each time (not creating new directories) and cleaned up from the repository after successful runs. However, the preferred approach is to write directly to the DuckDB database. Any code that still writes JSON files should be updated to use the database API where possible. See the "Writing Results to Database Instead of JSON Files" section in [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) for implementation details.
+> **Critical Implementation Note**: For backward compatibility, benchmark results can still be written to the `benchmark_results` directory when explicitly needed, but files should be overwritten each time (not creating new directories) and cleaned up from the repository after successful runs. However, the preferred approach is to write directly to the DuckDB database. Any code that still writes JSON files should be updated to use the database API where possible. See the "Writing Results to Database Instead of JSON Files" section in [BENCHMARK_DATABASE_GUIDE.md](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md) for implementation details.
 
 Example of database-only storage (current implementation):
 
@@ -430,6 +430,6 @@ The migration is on schedule with all major milestones completed in March 2025:
 
 For more information, refer to:
 
-- [Benchmark Database Guide](BENCHMARK_DATABASE_GUIDE.md)
+- [Benchmark Database Guide](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
 - [DuckDB Documentation](https://duckdb.org/docs/)
 - [Parquet Format Specification](https://parquet.apache.org/docs/)

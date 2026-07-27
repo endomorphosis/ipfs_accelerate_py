@@ -20,7 +20,7 @@ rendered properly in your Markdown viewer.
 
 Text-to-speech (TTS) is the task of creating natural-sounding speech from text, where the speech can be generated in multiple
 languages and for multiple speakers. Several text-to-speech models are currently available in 🤗 Transformers, such as
-[Bark](../model_doc/bark), [MMS](../model_doc/mms), [VITS](../model_doc/vits) and [SpeechT5](../model_doc/speecht5).
+[Bark](../model_doc/bark.md), [MMS](../model_doc/mms.md), [VITS](../model_doc/vits.md) and [SpeechT5](../model_doc/speecht5.md).
 
 You can easily generate audio using the `"text-to-audio"` pipeline (or its alias - `"text-to-speech"`). Some models, like Bark,
 can also be conditioned to generate non-verbal communications such as laughing, sighing and crying, or even add music.
@@ -45,11 +45,11 @@ For more examples on what Bark and other pretrained TTS models can do, refer to 
 [Audio course](https://huggingface.co/learn/audio-course/chapter6/pre-trained_models).
 
 If you are looking to fine-tune a TTS model, the only text-to-speech models currently available in 🤗 Transformers
-are [SpeechT5](model_doc/speecht5) and [FastSpeech2Conformer](model_doc/fastspeech2_conformer), though more will be added in the future. SpeechT5 is pre-trained on a combination of speech-to-text and text-to-speech data, allowing it to learn a unified space of hidden representations shared by both text and speech. This means that the same pre-trained model can be fine-tuned for different tasks. Furthermore, SpeechT5 supports multiple speakers through x-vector speaker embeddings.
+are [SpeechT5](../model_doc/speecht5.md) and [FastSpeech2Conformer](../model_doc/fastspeech2_conformer.md), though more will be added in the future. SpeechT5 is pre-trained on a combination of speech-to-text and text-to-speech data, allowing it to learn a unified space of hidden representations shared by both text and speech. This means that the same pre-trained model can be fine-tuned for different tasks. Furthermore, SpeechT5 supports multiple speakers through x-vector speaker embeddings.
 
 The remainder of this guide illustrates how to:
 
-1. Fine-tune [SpeechT5](../model_doc/speecht5) that was originally trained on English speech on the Dutch (`nl`) language subset of the [VoxPopuli](https://huggingface.co/datasets/facebook/voxpopuli) dataset.
+1. Fine-tune [SpeechT5](../model_doc/speecht5.md) that was originally trained on English speech on the Dutch (`nl`) language subset of the [VoxPopuli](https://huggingface.co/datasets/facebook/voxpopuli) dataset.
 2. Use your refined model for inference in one of two ways: using a pipeline or directly.
 
 Before you begin, make sure you have all the necessary libraries installed:

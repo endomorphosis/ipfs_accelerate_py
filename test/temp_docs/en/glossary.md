@@ -89,7 +89,7 @@ See [causal language modeling](#causal-language-modeling) and [decoder models](#
 
 ### backbone
 
-The backbone is the network (embeddings and layers) that outputs the raw hidden states or features. It is usually connected to a [head](#head) which accepts the features as its input to make a prediction. For example, [`ViTModel`] is a backbone without a specific head on top. Other models can also use [`VitModel`] as a backbone such as [DPT](model_doc/dpt).
+The backbone is the network (embeddings and layers) that outputs the raw hidden states or features. It is usually connected to a [head](#head) which accepts the features as its input to make a prediction. For example, [`ViTModel`] is a backbone without a specific head on top. Other models can also use [`VitModel`] as a backbone such as [DPT](model_doc/dpt.md).
 
 ## C
 
@@ -117,7 +117,7 @@ A type of layer in a neural network where the input matrix is multiplied element
 Parallelism technique for training on multiple GPUs where the same setup is replicated multiple times, with each instance 
 receiving a distinct data slice. The processing is done in parallel and all setups are synchronized at the end of each training step.
 
-Learn more about how DataParallel works [here](perf_train_gpu_many#dataparallel-vs-distributeddataparallel).
+Learn more about how DataParallel works [here](perf_train_gpu_many.md#dataparallel-vs-distributeddataparallel).
 
 ### decoder input IDs
 
@@ -348,7 +348,7 @@ For more details, see [Pipelines for inference](https://huggingface.co/docs/tran
 
 Parallelism technique in which the model is split up vertically (layer-level) across multiple GPUs, so that only one or 
 several layers of the model are placed on a single GPU. Each GPU processes in parallel different stages of the pipeline 
-and working on a small chunk of the batch. Learn more about how PipelineParallel works [here](perf_train_gpu_many#from-naive-model-parallelism-to-pipeline-parallelism).
+and working on a small chunk of the batch. Learn more about how PipelineParallel works [here](perf_train_gpu_many.md#from-naive-model-parallelism-to-pipeline-parallelism).
 
 ### pixel values
 
@@ -418,7 +418,7 @@ An example of a semi-supervised learning approach is "self-training", in which a
 ### sequence-to-sequence (seq2seq)
 
 Models that generate a new sequence from an input, like translation models, or summarization models (such as
-[Bart](model_doc/bart) or [T5](model_doc/t5)).
+[Bart](model_doc/bart.md) or [T5](model_doc/t5.md)).
 
 ### Sharded DDP
 
@@ -440,7 +440,7 @@ Parallelism technique for training on multiple GPUs in which each tensor is spli
 having the whole tensor reside on a single GPU, each shard of the tensor resides on its designated GPU. Shards gets 
 processed separately and in parallel on different GPUs and the results are synced at the end of the processing step. 
 This is what is sometimes called horizontal parallelism, as the splitting happens on horizontal level.
-Learn more about Tensor Parallelism [here](perf_train_gpu_many#tensor-parallelism).
+Learn more about Tensor Parallelism [here](perf_train_gpu_many.md#tensor-parallelism).
 
 ### token
 
@@ -519,4 +519,4 @@ A form of model training in which data provided to the model is not labeled. Uns
 Parallelism technique which performs sharding of the tensors somewhat similar to [TensorParallel](#tensor-parallelism-tp), 
 except the whole tensor gets reconstructed in time for a forward or backward computation, therefore the model doesn't need 
 to be modified. This method also supports various offloading techniques to compensate for limited GPU memory. 
-Learn more about ZeRO [here](perf_train_gpu_many#zero-data-parallelism).
+Learn more about ZeRO [here](perf_train_gpu_many.md#zero-data-parallelism).

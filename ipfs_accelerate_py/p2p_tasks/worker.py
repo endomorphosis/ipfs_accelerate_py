@@ -24,6 +24,12 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import importlib
 import importlib.util
 from .task_queue import QueuedTask, TaskQueue
+from .task_types import (
+    VOICE_TASK_TYPES,
+    canonical_task_type,
+    normalize_task_types,
+    task_type_aliases,
+)
 
 
 def _transformers_spec_origin() -> str:
@@ -2206,28 +2212,9 @@ def _compute_supported_task_types(
     supported_task_types: Optional[list[str]],
     accelerate_instance: object | None,
 ) -> list[str]:
-    alias_groups: list[set[str]] = [
-        {"embedding", "embeddings", "text-embedding", "text_embedding", "text_embeddings"},
-        {"text2text-generation", "text2text_generation", "text2text"},
-        {"text-classification", "text_classification"},
-        {"hf.pipeline", "hf_pipeline"},
-        {"llm.generate", "llm_generate"},
-        {"multimodal-generation", "multimodal_generation", "vision-generation", "vision_generation"},
-        {"tool.call", "tool"},
-    ]
-
-    def _expand_aliases(values: list[str]) -> list[str]:
-        base = [str(x).strip() for x in (values or []) if str(x).strip()]
-        out = set(base)
-        for group in alias_groups:
-            if out.intersection(group):
-                out.update(group)
-        return [x for x in base if x in out] + [x for x in sorted(out) if x not in set(base)]
-
     # If explicitly provided, respect it.
     if isinstance(supported_task_types, list) and supported_task_types:
-        out = [str(x).strip() for x in supported_task_types if str(x).strip()]
-        return _expand_aliases(out)
+        return normalize_task_types(supported_task_types, expand_aliases=True)
 
     # Default: include handler aliases we can run locally.
     # NOTE: text-generation requires either an accelerate instance (preferred)
@@ -2265,6 +2252,9 @@ def _compute_supported_task_types(
         base_defaults.extend(["llm.generate", "llm_generate"])
     if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_MULTIMODAL", "1")):
         base_defaults.extend(["multimodal-generation", "multimodal_generation", "vision-generation", "vision_generation"])
+    # Voice handlers are always executable: providers and optional HTTP clients
+    # are resolved lazily by voice_jobs.executor when a claimed job runs.
+    base_defaults.extend(VOICE_TASK_TYPES)
     out = _supported_task_types_from_env(base_defaults)
 
     # Add tool.call only when we can actually execute it, and only when the
@@ -2273,18 +2263,7 @@ def _compute_supported_task_types(
     if (not _task_types_overridden_via_env()) and _accelerate_supports_tool_call(accelerate_instance):
         out.extend(["tool.call", "tool"])
 
-    out = _expand_aliases(out)
-
-    # Deduplicate while keeping order.
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for t in out:
-        tt = str(t or "").strip()
-        if not tt or tt in seen:
-            continue
-        seen.add(tt)
-        deduped.append(tt)
-    return deduped
+    return normalize_task_types(out, expand_aliases=True)
 
 
 def _worker_mesh_enabled() -> bool:
@@ -2965,12 +2944,7 @@ def _mesh_safe_task_types(supported: list[str]) -> list[str]:
     this worker is configured to support.
     """
 
-    out: list[str] = []
-    for t in list(supported or []):
-        tt = str(t or "").strip()
-        if tt:
-            out.append(tt)
-    return out
+    return normalize_task_types(supported, expand_aliases=True)
 
 
 def _start_mesh_discovery_thread(
@@ -3388,13 +3362,19 @@ def run_worker(
     handlers["vision-generation"] = _run_multimodal_generation
     handlers["vision_generation"] = _run_multimodal_generation
 
-    def _canonical_task_type(task_type: str) -> str:
-        t = str(task_type or "").strip().lower().replace("_", "-")
-        if t in {"generation"}:
-            return "text-generation"
-        if t in {"embeddings", "text-embedding"}:
-            return "embedding"
-        return t
+    def _run_voice_job(task_dict: Dict[str, Any]) -> Dict[str, Any]:
+        # Keep optional provider dependencies out of worker startup.  The
+        # executor owns contract validation, provider selection, and receipts.
+        from ipfs_accelerate_py.voice_jobs.executor import execute_task
+
+        result = execute_task(task_dict)
+        if not isinstance(result, dict):
+            raise TypeError("voice job executor must return a dict")
+        return result
+
+    for voice_task_type in VOICE_TASK_TYPES:
+        for alias in task_type_aliases(voice_task_type):
+            handlers[alias] = _run_voice_job
 
     _backend_manager_tasks = {
         "text-generation",
@@ -3559,7 +3539,7 @@ def run_worker(
         if not isinstance(payload, dict):
             return None
 
-        task_type = _canonical_task_type(str(task_dict.get("task_type") or ""))
+        task_type = canonical_task_type(task_dict.get("task_type"))
         if task_type not in _backend_manager_tasks:
             return None
 
@@ -3631,7 +3611,7 @@ def run_worker(
                 _emit_backend_routing_failure(task_payload, "backend_manager_routing_required", required=True)
             raise RuntimeError("backend_manager_routing_required")
 
-        ttype = str(task_payload.get("task_type") or "").strip().lower()
+        ttype = canonical_task_type(task_payload.get("task_type"))
         handler = handlers.get(ttype)
         if handler is None:
             raise RuntimeError(f"Unsupported task_type: {task_payload.get('task_type')}")

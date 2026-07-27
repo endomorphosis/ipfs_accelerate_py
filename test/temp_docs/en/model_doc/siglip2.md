@@ -51,7 +51,7 @@ checkpoints at four sizes (ViT-B/86M, L/303M, So400m/400M, and g/1B).*
 
 ## Usage tips
 
-- Usage of SigLIP2 is similar to [SigLIP](siglip) and [CLIP](clip). The main difference from CLIP is the training loss, which does not require a global view of all the pairwise similarities of images and texts within a batch. One needs to apply the sigmoid activation function to the logits, rather than the softmax.
+- Usage of SigLIP2 is similar to [SigLIP](siglip.md) and [CLIP](clip.md). The main difference from CLIP is the training loss, which does not require a global view of all the pairwise similarities of images and texts within a batch. One needs to apply the sigmoid activation function to the logits, rather than the softmax.
 - Training is supported but does not use `torch.distributed` utilities which may limit the scalability of batch size. However, DDP and FDSP works on single-node multi-gpu setup.
 - When using the standalone [`GemmaTokenizerFast`] make sure to pass `padding="max_length"` and `max_length=64` as that's how the model was trained.
 - Model was trained with *lowercased* text, make sure you make the same preprocessing for your text labels.
@@ -181,7 +181,7 @@ After resizing, the image is split into a sequence of patches, and a mask with p
 
 A list of official Hugging Face and community (indicated by 🌎) resources to help you get started with SigLIP2.
 
-- [Zero-shot image classification task guide](../tasks/zero_shot_image_classification)
+- [Zero-shot image classification task guide](../tasks/zero_shot_image_classification.md)
 - Demo notebook for SigLIP2 can be found [here](https://github.com/qubvel/transformers-notebooks/tree/master/notebooks/SigLIP2_inference.ipynb). 🌎
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.

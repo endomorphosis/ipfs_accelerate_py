@@ -328,5 +328,5 @@ The integration is fully documented and operational, with unified interfaces for
 - [Web Platform Testing Guide](./WEB_PLATFORM_TESTING_GUIDE.md)
 - [Web Platform Integration Guide](./web_platform_integration_guide.md)
 - [Web Platform Integration README](./WEB_PLATFORM_INTEGRATION_README.md)
-- [BENCHMARK_DATABASE_GUIDE.md](./BENCHMARK_DATABASE_GUIDE.md)
+- [BENCHMARK_DATABASE_GUIDE.md](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
 - [PHASE16_DATABASE_IMPLEMENTATION.md](./PHASE16_DATABASE_IMPLEMENTATION.md)

@@ -14,10 +14,6 @@ The Real-time Monitoring Dashboard provides a comprehensive and interactive inte
 - **Auto-refresh**: Configurable refresh intervals with real-time updates of all metrics
 - **Interactive UI**: Search, filter, and drill down into specific information
 
-## Screenshots
-
-![Monitoring Dashboard Overview](../images/monitoring_dashboard_overview.png)
-
 ## Accessing the Dashboard
 
 The Real-time Monitoring Dashboard is integrated with the existing Web Dashboard and can be accessed at:

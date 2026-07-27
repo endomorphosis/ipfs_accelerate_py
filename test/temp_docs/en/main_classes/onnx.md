@@ -19,7 +19,7 @@ rendered properly in your Markdown viewer.
 🤗 Transformers provides a `transformers.onnx` package that enables you to
 convert model checkpoints to an ONNX graph by leveraging configuration objects.
 
-See the [guide](../serialization) on exporting 🤗 Transformers models for more
+See the [guide](../serialization.md) on exporting 🤗 Transformers models for more
 details.
 
 ## ONNX Configurations

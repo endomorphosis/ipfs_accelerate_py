@@ -124,7 +124,7 @@ The resources provided in the following sections consist of a list of official H
 - [`TFAlbertForSequenceClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/text-classification).
 
 - [`FlaxAlbertForSequenceClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/text-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/text_classification_flax.ipynb).
-- Check the [Text classification task guide](../tasks/sequence_classification) on how to use the model.
+- Check the [Text classification task guide](../tasks/sequence_classification.md) on how to use the model.
 
 
 <PipelineTag pipeline="token-classification"/>
@@ -139,7 +139,7 @@ The resources provided in the following sections consist of a list of official H
 
 - [`FlaxAlbertForTokenClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/token-classification).
 - [Token classification](https://huggingface.co/course/chapter7/2?fw=pt) chapter of the 🤗 Hugging Face Course.
-- Check the [Token classification task guide](../tasks/token_classification) on how to use the model.
+- Check the [Token classification task guide](../tasks/token_classification.md) on how to use the model.
 
 <PipelineTag pipeline="fill-mask"/>
 
@@ -147,7 +147,7 @@ The resources provided in the following sections consist of a list of official H
 - [`TFAlbertForMaskedLM`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/language-modeling#run_mlmpy) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/language_modeling-tf.ipynb).
 - [`FlaxAlbertForMaskedLM`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/language-modeling#masked-language-modeling) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/masked_language_modeling_flax.ipynb).
 - [Masked language modeling](https://huggingface.co/course/chapter7/3?fw=pt) chapter of the 🤗 Hugging Face Course.
-- Check the [Masked language modeling task guide](../tasks/masked_language_modeling) on how to use the model.
+- Check the [Masked language modeling task guide](../tasks/masked_language_modeling.md) on how to use the model.
 
 <PipelineTag pipeline="question-answering"/>
 
@@ -155,14 +155,14 @@ The resources provided in the following sections consist of a list of official H
 - [`TFAlbertForQuestionAnswering`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/question-answering) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/question_answering-tf.ipynb).
 - [`FlaxAlbertForQuestionAnswering`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/question-answering).
 - [Question answering](https://huggingface.co/course/chapter7/7?fw=pt) chapter of the 🤗 Hugging Face Course.
-- Check the [Question answering task guide](../tasks/question_answering) on how to use the model.
+- Check the [Question answering task guide](../tasks/question_answering.md) on how to use the model.
 
 **Multiple choice**
 
 - [`AlbertForMultipleChoice`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/multiple-choice) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/multiple_choice.ipynb).
 - [`TFAlbertForMultipleChoice`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/multiple-choice) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/multiple_choice-tf.ipynb).
 
-- Check the  [Multiple choice task guide](../tasks/multiple_choice) on how to use the model.
+- Check the  [Multiple choice task guide](../tasks/multiple_choice.md) on how to use the model.
 
 
 ## AlbertConfig

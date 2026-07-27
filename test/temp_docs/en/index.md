@@ -23,14 +23,14 @@ Explore the [Hugging Face Hub](https://huggingface.com) today to find a model an
 
 Transformers provides everything you need for inference or training with state-of-the-art pretrained models. Some of the main features include:
 
-- [Pipeline](./pipeline_tutorial): Simple and optimized inference class for many machine learning tasks like text generation, image segmentation, automatic speech recognition, document question answering, and more.
-- [Trainer](./trainer): A comprehensive trainer that supports features such as mixed precision, torch.compile, and FlashAttention for training and distributed training for PyTorch models.
-- [generate](./llm_tutorial): Fast text generation with large language models (LLMs) and vision language models (VLMs), including support for streaming and multiple decoding strategies.
+- [Pipeline](./pipeline_tutorial.md): Simple and optimized inference class for many machine learning tasks like text generation, image segmentation, automatic speech recognition, document question answering, and more.
+- [Trainer](./trainer.md): A comprehensive trainer that supports features such as mixed precision, torch.compile, and FlashAttention for training and distributed training for PyTorch models.
+- [generate](./llm_tutorial.md): Fast text generation with large language models (LLMs) and vision language models (VLMs), including support for streaming and multiple decoding strategies.
 
 ## Design
 
 > [!TIP]
-> Read our [Philosophy](./philosophy) to learn more about Transformers' design principles.
+> Read our [Philosophy](./philosophy.md) to learn more about Transformers' design principles.
 
 Transformers is designed for developers and machine learning engineers and researchers. Its main design principles are:
 

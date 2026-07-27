@@ -103,10 +103,10 @@ sequences to the same length):
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## CanineConfig
 

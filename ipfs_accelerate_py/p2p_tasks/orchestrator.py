@@ -9,6 +9,11 @@ This module implements the "server owns orchestration" model:
 
 Workers remain thin executors: they only run local queue tasks and (optionally)
 complete remote tasks when executing a proxy payload.
+
+For ABBY-VOICE-G016 audio mesh claims, an already leased remote voice task is
+released when the selected peer fails capability matching so recovery returns
+to the queue without waiting for lease expiry. Queue-level owner heartbeats and
+persisted attempt/backoff/lease state remain owned by TaskQueue.
 """
 
 from __future__ import annotations
@@ -487,9 +492,10 @@ class TaskOrchestrator:
         if max_tasks <= 0:
             return []
         try:
-            from ipfs_accelerate_py.p2p_tasks.client import claim_many_sync
+            from ipfs_accelerate_py.p2p_tasks.client import claim_many_sync, release_task_sync
         except Exception:
             return []
+        from ipfs_accelerate_py.p2p_tasks.task_types import VOICE_TASK_TYPES, canonical_task_type
 
         supported = self._compute_supported_task_types()
         if not supported:
@@ -536,8 +542,45 @@ class TaskOrchestrator:
             except Exception:
                 continue
             for t in list(tasks or []):
-                if isinstance(t, dict):
-                    out.append((rq, t))
+                if not isinstance(t, dict):
+                    continue
+
+                task_type = canonical_task_type(t.get("task_type"))
+                if task_type in VOICE_TASK_TYPES:
+                    payload = t.get("payload")
+                    request = payload if isinstance(payload, dict) else {}
+                    matcher = getattr(registry, "matches_task_requirements", None)
+                    try:
+                        compatible = bool(
+                            callable(matcher)
+                            and matcher(
+                                peer_id=str(getattr(rq, "peer_id", "") or ""),
+                                task_type=task_type,
+                                model_name=str(t.get("model_name") or ""),
+                                payload=request,
+                            )
+                        )
+                    except Exception:
+                        compatible = False
+                    if not compatible:
+                        # This task is already leased remotely. Release it
+                        # explicitly so a suitable peer can claim it without
+                        # waiting for lease expiry.
+                        remote_task_id = str(t.get("task_id") or "").strip()
+                        if remote_task_id:
+                            try:
+                                release_task_sync(
+                                    remote=rq,
+                                    task_id=remote_task_id,
+                                    worker_id=str(self._cfg.orchestrator_id),
+                                    reason="audio_capability_mismatch",
+                                )
+                            except Exception:
+                                # A failed release remains protected by the
+                                # remote queue's claim lease.
+                                pass
+                        continue
+                out.append((rq, t))
         return out
 
     def _submit_proxy_tasks(self, *, claimed: list[tuple[object, dict[str, Any]]]) -> int:
@@ -587,6 +630,7 @@ class TaskOrchestrator:
                     "peer_id": pid,
                     "multiaddr": ma,
                     "task_id": remote_task_id,
+                    "worker_id": str(self._cfg.orchestrator_id),
                 },
             )
 

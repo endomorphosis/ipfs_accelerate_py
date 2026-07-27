@@ -16,15 +16,15 @@ rendered properly in your Markdown viewer.
 
 # Multimodal templates
 
-Multimodal model chat templates expect a similar [template](./chat_templating) as text-only models. It needs `messages` that includes a dictionary of the `role` and `content`.
+Multimodal model chat templates expect a similar [template](./chat_templating.md) as text-only models. It needs `messages` that includes a dictionary of the `role` and `content`.
 
-Multimodal templates are included in the [Processor](./processors) class and requires an additional `type` key for specifying whether the included content is an image, video, or text.
+Multimodal templates are included in the [Processor](./processors.md) class and requires an additional `type` key for specifying whether the included content is an image, video, or text.
 
 This guide will show you how to format chat templates for multimodal models as well as some best practices for configuring the template
 
 ## ImageTextToTextPipeline
 
-[`ImageTextToTextPipeline`] is a high-level image and text generation class with a “chat mode”. Chat mode is enabled when a conversational model is detected and the chat prompt is [properly formatted](./llm_tutorial#wrong-prompt-format).
+[`ImageTextToTextPipeline`] is a high-level image and text generation class with a “chat mode”. Chat mode is enabled when a conversational model is detected and the chat prompt is [properly formatted](./llm_tutorial.md#wrong-prompt-format).
 
 Start by building a chat history with the following two roles.
 
@@ -47,7 +47,7 @@ messages = [
 ]
 ```
 
-Create a [`ImageTextToTextPipeline`] and pass the chat to it. For large models, setting [device_map=“auto”](./models#big-model-inference) helps load the model quicker and automatically places it on the fastest device available. Changing the data type to [torch.bfloat16](./models#model-data-type) also helps save memory.
+Create a [`ImageTextToTextPipeline`] and pass the chat to it. For large models, setting [device_map=“auto”](./models.md#big-model-inference) helps load the model quicker and automatically places it on the fastest device available. Changing the data type to [torch.bfloat16](./models.md#model-data-type) also helps save memory.
 
 > [!TIP]
 > The [`ImageTextToTextPipeline`] accepts chats in the OpenAI format to make inference easier and more accessible. 
@@ -70,7 +70,7 @@ pipeline(text=messages, max_new_tokens=50, return_full_text=False)
 
 ## Image inputs
 
-For multimodal models that accept images like [LLaVA](./model_doc/llava), include the following in `content` as shown below.
+For multimodal models that accept images like [LLaVA](./model_doc/llava.md), include the following in `content` as shown below.
 
 - The content `"type"` can be an `"image"` or `"text"`.
 - For images, it can be a link to the image (`"url"`), a file path (`"path"`), or `"base64"`. Images are automatically loaded, processed, and prepared into pixel values as inputs to the model.
@@ -247,7 +247,7 @@ print(processed_chat.keys())
 
 ## Template configuration
 
-You can create a custom chat template with [Jinja](https://jinja.palletsprojects.com/en/3.1.x/templates/) and set it with [`~ProcessorMixin.apply_chat_template`]. Refer to the [Template writing](./chat_templating_writing) guide for more details.
+You can create a custom chat template with [Jinja](https://jinja.palletsprojects.com/en/3.1.x/templates/) and set it with [`~ProcessorMixin.apply_chat_template`]. Refer to the [Template writing](./chat_templating_writing.md) guide for more details.
 
 For example, to enable a template to handle a *list of content* from multiple modalities while still supporting plain strings for text-only inference, specify how to handle the `content['type']` if it is an image or text as shown below in the Llama 3.2 Vision Instruct [template](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct/blob/main/chat_template.json).
 

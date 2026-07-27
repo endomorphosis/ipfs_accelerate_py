@@ -461,6 +461,6 @@ deployment = PowerEfficientDeployment(...)
 The Power-Efficient Model Deployment pipeline provides a comprehensive solution for deploying machine learning models on power-constrained devices. By following the guidelines in this document, you can optimize your models for power efficiency while maintaining good performance.
 
 For more information, see:
-- [Mobile Thermal Monitoring Guide](MOBILE_THERMAL_MONITORING_GUIDE.md)
-- [Qualcomm AI Engine Integration Guide](QUALCOMM_AI_ENGINE_GUIDE.md)
-- [Database Integration Guide](DATABASE_INTEGRATION_GUIDE.md)
+- [Mobile and Edge Device Support Guide](MOBILE_EDGE_SUPPORT_GUIDE.md)
+- [Qualcomm AI Engine Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md)
+- [Phase 16 Database Implementation](PHASE16_DATABASE_IMPLEMENTATION.md)

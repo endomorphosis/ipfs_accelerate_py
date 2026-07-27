@@ -32,8 +32,12 @@ VALIDATION_PATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PATH"
 VALIDATION_PYTHON_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
+VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
+)
 _CHILD_PYTHON_ENV = "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
 _NEUTRAL_HOME = "/nonexistent/ipfs-accelerate-validation"
+_NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
 HERMETIC_VALIDATION_RUNTIME_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/hermetic-validation-runtime@1"
 )
@@ -700,7 +704,10 @@ def build_validation_environment(
             "HOME": _NEUTRAL_HOME,
             "NO_COLOR": "1",
             "NPM_CONFIG_GLOBALCONFIG": "/dev/null",
-            "NPM_CONFIG_USERCONFIG": "/dev/null",
+            # npm rejects loading one path in two config scopes.  A child of
+            # /dev/null is both distinct from the global config and guaranteed
+            # to remain unavailable, so neither scope can import host settings.
+            "NPM_CONFIG_USERCONFIG": _NPM_DISABLED_USER_CONFIG,
             "PAGER": "cat",
             "PATH": validation_executable_path(source),
             "PIP_CONFIG_FILE": "/dev/null",
@@ -717,6 +724,12 @@ def build_validation_environment(
     npm_cache = _approved_directory(source, VALIDATION_NPM_CACHE_ENV)
     if npm_cache is not None:
         result["NPM_CONFIG_CACHE"] = npm_cache
+    playwright_browsers = _approved_directory(
+        source,
+        VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+    )
+    if playwright_browsers is not None:
+        result["PLAYWRIGHT_BROWSERS_PATH"] = playwright_browsers
     python_path = _runtime_python_path_entries(source)
     if python_path:
         result["PYTHONPATH"] = os.pathsep.join(python_path)

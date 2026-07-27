@@ -35,7 +35,7 @@ To use agents in Transformers, make sure you have the extra `agents` dependencie
 !pip install transformers[agents]
 ```
 
-Create an agent instance (refer to the [Agents](./main_classes/agent#agents) API for supported agents in Transformers) and a list of tools available for it to use, then [`~ReactAgent.run`] the agent on your task. The example below demonstrates how a ReAct agent reasons through a task.
+Create an agent instance (refer to the [Agents](./main_classes/agent.md#agents) API for supported agents in Transformers) and a list of tools available for it to use, then [`~ReactAgent.run`] the agent on your task. The example below demonstrates how a ReAct agent reasons through a task.
 
 ```py
 from transformers import ReactCodeAgent
@@ -73,7 +73,7 @@ This guide will walk you through in more detail how to initialize an agent.
 
 An agent uses a LLM to plan and execute a task; it is the engine that powers the agent. To choose and build your own LLM engine, you need a method that:
 
-1. the input uses the [chat template](./chat_templating) format, `List[Dict[str, str]]`, and it returns a string
+1. the input uses the [chat template](./chat_templating.md) format, `List[Dict[str, str]]`, and it returns a string
 2. the LLM stops generating outputs when it encounters the sequences in `stop_sequences`
 
 ```py
@@ -137,7 +137,7 @@ agent.run("Why doesn't he know many people in New York?", audio="https://hugging
 
 A system prompt describes how an agent should behave, a description of the available tools, and the expected output format.
 
-Tools are defined by the `<<tool_descriptions>>` token which is dynamically replaced during runtime with the actual tool. The tool description is derived from the tool name, description, inputs, output type, and a Jinja2 template. Refer to the [Tools](./tools) guide for more information about how to describe tools.
+Tools are defined by the `<<tool_descriptions>>` token which is dynamically replaced during runtime with the actual tool. The tool description is derived from the tool name, description, inputs, output type, and a Jinja2 template. Refer to the [Tools](./tools.md) guide for more information about how to describe tools.
 
 The example below is the system prompt for [`ReactCodeAgent`].
 

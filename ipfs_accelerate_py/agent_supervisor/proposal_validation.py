@@ -26,7 +26,6 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .code_proof_obligations import CandidateDiffEntry, DiffChangeKind
 
-
 NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID = (
     "314133036252270790078901745919131980427"
 )
@@ -2762,6 +2761,32 @@ _SECRET_PLACEHOLDER_RE = re.compile(
     r"""dummy|fake[_-]?secret"""
     r""")"""
 )
+
+
+def _introduces_secret_content(
+    before_source: str | None,
+    after_source: str | None,
+) -> bool:
+    """Return whether a candidate adds or changes secret-like content.
+
+    Candidate entries contain the complete before and after source. Scanning
+    only the latter rejects unrelated edits whenever a file already contains
+    a secret-like environment lookup. Compare match populations so unchanged
+    pre-existing content does not acquire new secret-mutation authority.
+    """
+
+    before_matches = Counter(
+        match.group(0) for match in _SECRET_CONTENT_RE.finditer(before_source or "")
+    )
+    after_matches = Counter(
+        match.group(0) for match in _SECRET_CONTENT_RE.finditer(after_source or "")
+    )
+    return any(
+        count > before_matches.get(value, 0)
+        for value, count in after_matches.items()
+    )
+
+
 _TEST_SKIP_RE = re.compile(
     r"(?im)(?:pytest[.]mark[.](?:skip|xfail)|unittest[.]skip|"
     r"\bskipTest\s*\(|\bassert\s+True\b)"
@@ -2872,35 +2897,61 @@ def _metadata_size(metadata: Mapping[str, Any]) -> int:
 def _command_is_allowed(
     command: Sequence[str], prefixes: Sequence[Sequence[str]]
 ) -> bool:
-    if any(_SHELL_META_RE.search(part) for part in command):
-        return False
-    executable = (
-        command[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
-        if command
-        else ""
-    )
-    executable = executable.removesuffix(".exe")
-    if executable in {
-        "bash",
-        "cmd",
-        "dash",
-        "fish",
-        "ksh",
-        "powershell",
-        "pwsh",
-        "sh",
-        "zsh",
-    }:
-        return False
-    if (
-        len(command) >= 2
-        and executable in {"node", "perl", "python", "python3", "ruby"}
-        and command[1] in {"-c", "-e", "--eval"}
-    ):
+    """Return whether argv is allowed under the reviewed command prefixes.
+
+    Task boards store validation as shell text and may include reviewed ``&&``
+    compound commands. Exact full-command allowlist hits may use that separator,
+    but every clause must still satisfy the normal executable and eval guards.
+    Prefix matches and all other shell metacharacters remain forbidden.
+    """
+
+    command_t = tuple(str(part) for part in command)
+    prefixes_t = tuple(tuple(str(part) for part in prefix) for prefix in prefixes)
+
+    def clause_is_safe(clause: tuple[str, ...]) -> bool:
+        if not clause or any(_SHELL_META_RE.search(part) for part in clause):
+            return False
+        executable = (
+            clause[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
+        )
+        executable = executable.removesuffix(".exe")
+        if executable in {
+            "bash",
+            "cmd",
+            "dash",
+            "fish",
+            "ksh",
+            "powershell",
+            "pwsh",
+            "sh",
+            "zsh",
+        }:
+            return False
+        if (
+            len(clause) >= 2
+            and executable in {"node", "perl", "python", "python3", "ruby"}
+            and clause[1] in {"-c", "-e", "--eval"}
+        ):
+            return False
+        return True
+
+    if command_t in prefixes_t and "&&" in command_t:
+        clauses: list[tuple[str, ...]] = []
+        start = 0
+        for index, part in enumerate(command_t):
+            if part == "&&":
+                clauses.append(command_t[start:index])
+                start = index + 1
+            elif _SHELL_META_RE.search(part):
+                return False
+        clauses.append(command_t[start:])
+        return all(clause_is_safe(clause) for clause in clauses)
+
+    if not clause_is_safe(command_t):
         return False
     return any(
-        len(command) >= len(prefix) and tuple(command[: len(prefix)]) == tuple(prefix)
-        for prefix in prefixes
+        len(command_t) >= len(prefix) and command_t[: len(prefix)] == prefix
+        for prefix in prefixes_t
     )
 
 

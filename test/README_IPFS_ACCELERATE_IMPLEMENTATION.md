@@ -133,7 +133,7 @@ The implementation demonstrates excellent performance:
 - **Efficient Operations**: Basic operations execute in negligible time
 - **Good Parallelism**: The package handles parallel loading well (100% success rate)
 
-For detailed performance metrics, see the [Benchmark Report](IPFS_ACCELERATION_BENCHMARK_REPORT.md).
+For detailed performance metrics, see the [IPFS Acceleration Testing Guide](IPFS_ACCELERATION_TESTING.md).
 
 ## Usage Examples
 
@@ -197,6 +197,5 @@ Future improvements could include:
 ## Documentation
 
 For more information, see:
-- [IPFS Accelerate Summary](IPFS_ACCELERATE_SUMMARY.md)
 - [IPFS Accelerate Integration Guide](IPFS_ACCELERATE_INTEGRATION_GUIDE.md)
-- [IPFS Acceleration Benchmark Report](IPFS_ACCELERATION_BENCHMARK_REPORT.md)
+- [IPFS Acceleration Testing Guide](IPFS_ACCELERATION_TESTING.md)

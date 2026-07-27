@@ -687,16 +687,16 @@ python duckdb_api/test_comprehensive_hardware_coverage.py --update-benchmarks --
 
 ## Further Resources
 
-- [HF_COMPREHENSIVE_TESTING_GUIDE.md](HF_COMPREHENSIVE_TESTING_GUIDE.md): Details on comprehensive HuggingFace model testing
-- [ResourcePool Guide](RESOURCE_POOL_GUIDE.md): Details on the ResourcePool for model caching
-- [Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md): Information on the hardware detection system
-- [Model Family Classifier Guide](MODEL_FAMILY_CLASSIFIER_GUIDE.md): Details on model family classification
-- [Model Compression Guide](MODEL_COMPRESSION_GUIDE.md): Guide to model compression techniques
-- [Hardware Platform Test Guide](HARDWARE_PLATFORM_TEST_GUIDE.md): Guide to hardware platform testing
-- [Hardware Model Validation Guide](HARDWARE_MODEL_VALIDATION_GUIDE.md): Guide to model validation
-- [Hardware Model Integration Guide](HARDWARE_MODEL_INTEGRATION_GUIDE.md): Guide to hardware-model integration
+- [HF_COMPREHENSIVE_TESTING_GUIDE.md](../../test/HF_COMPREHENSIVE_TESTING_GUIDE.md): Details on comprehensive HuggingFace model testing
+- [ResourcePool Guide](../../test/RESOURCE_POOL_GUIDE.md): Details on the ResourcePool for model caching
+- [Hardware Detection Guide](../../test/HARDWARE_DETECTION_GUIDE.md): Information on the hardware detection system
+- [Model Family Classifier Guide](../../test/MODEL_FAMILY_CLASSIFIER_GUIDE.md): Details on model family classification
+- [Model Compression Guide](../../test/MODEL_COMPRESSION_GUIDE.md): Guide to model compression techniques
+- [Hardware Platform Test Guide](../../test/HARDWARE_PLATFORM_TEST_GUIDE.md): Guide to hardware platform testing
+- [Hardware Model Validation Guide](../../test/HARDWARE_MODEL_VALIDATION_GUIDE.md): Guide to model validation
+- [Hardware Model Integration Guide](../../test/HARDWARE_MODEL_INTEGRATION_GUIDE.md): Guide to hardware-model integration
 - [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md): Guide to the benchmark database system
-- [CROSS_PLATFORM_TEST_COVERAGE.md](CROSS_PLATFORM_TEST_COVERAGE.md): Cross-platform test coverage status
+- [CROSS_PLATFORM_TEST_COVERAGE.md](../../test/CROSS_PLATFORM_TEST_COVERAGE.md): Cross-platform test coverage status
 
 ---
 

@@ -235,7 +235,7 @@ For more information, see the following documentation:
 
 - [HARDWARE_AWARE_SCHEDULER_GUIDE.md](../HARDWARE_AWARE_SCHEDULER_GUIDE.md) - Comprehensive guide for the hardware-aware scheduler
 - [HARDWARE_WORKLOAD_MANAGEMENT_GUIDE.md](../HARDWARE_WORKLOAD_MANAGEMENT_GUIDE.md) - Detailed guide for workload management
-- [FAULT_TOLERANCE_GUIDE.md](../../duckdb_api/distributed_testing/docs/FAULT_TOLERANCE_GUIDE.md) - Guide for fault tolerance mechanisms
-- [THERMAL_MANAGEMENT_GUIDE.md](../../duckdb_api/distributed_testing/docs/THERMAL_MANAGEMENT_GUIDE.md) - Guide for thermal management
-- [PERFORMANCE_TRACKING_GUIDE.md](../../duckdb_api/distributed_testing/docs/PERFORMANCE_TRACKING_GUIDE.md) - Guide for performance tracking
+- [HARDWARE_FAULT_TOLERANCE_GUIDE.md](../../duckdb_api/distributed_testing/HARDWARE_FAULT_TOLERANCE_GUIDE.md) - Guide for hardware-aware fault tolerance mechanisms
+- [HARDWARE_WORKLOAD_MANAGEMENT_GUIDE.md](../HARDWARE_WORKLOAD_MANAGEMENT_GUIDE.md) - Guide for thermal-aware workload management
+- [PERFORMANCE_TREND_ANALYSIS.md](../docs/PERFORMANCE_TREND_ANALYSIS.md) - Guide for performance tracking and analysis
 - [VISUALIZATION_GUIDE.md](../../duckdb_api/distributed_testing/docs/VISUALIZATION_GUIDE.md) - Guide for visualization features

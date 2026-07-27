@@ -320,7 +320,7 @@ Potential improvements:
 - [FILESYSTEM_OPERATIONS_AUDIT.md](../../development_history/FILESYSTEM_OPERATIONS_AUDIT.md) - Comprehensive audit of filesystem operations
 - [INTEGRATION_STATUS.md](../../development_history/INTEGRATION_STATUS.md) - Overall integration status
 - [IPFS_KIT_INTEGRATION.md](../../architecture/IPFS_KIT_INTEGRATION.md) - IPFS Kit integration guide
-- [common/storage_wrapper.py](../ipfs_accelerate_py/common/storage_wrapper.py) - Storage wrapper implementation
+- [common/storage_wrapper.py](../../../ipfs_accelerate_py/common/storage_wrapper.py) - Storage wrapper implementation
 
 ## Conclusion
 

@@ -220,7 +220,7 @@ Use the end-of-sequence token as the padding token and set `mlm=False`. This wil
 <pt>
 <Tip>
 
-If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the [basic tutorial](../training#train-with-pytorch-trainer)!
+If you aren't familiar with finetuning a model with the [`Trainer`], take a look at the [basic tutorial](../training.md#trainer)!
 
 </Tip>
 
@@ -278,7 +278,7 @@ Then share your model to the Hub with the [`~transformers.Trainer.push_to_hub`] 
 <tf>
 <Tip>
 
-If you aren't familiar with finetuning a model with Keras, take a look at the [basic tutorial](../training#train-a-tensorflow-model-with-keras)!
+If you aren't familiar with finetuning a model with Keras, take a look at the [basic tutorial](../training.md#tensorflow)!
 
 </Tip>
 To finetune a model in TensorFlow, start by setting up an optimizer function, learning rate schedule, and some training hyperparameters:
@@ -384,7 +384,7 @@ Tokenize the text and return the `input_ids` as PyTorch tensors:
 ```
 
 Use the [`~generation.GenerationMixin.generate`] method to generate text.
-For more details about the different text generation strategies and parameters for controlling generation, check out the [Text generation strategies](../generation_strategies) page.
+For more details about the different text generation strategies and parameters for controlling generation, check out the [Text generation strategies](../generation_strategies.md) page.
 
 ```py
 >>> from transformers import AutoModelForCausalLM
@@ -410,7 +410,7 @@ Tokenize the text and return the `input_ids` as TensorFlow tensors:
 >>> inputs = tokenizer(prompt, return_tensors="tf").input_ids
 ```
 
-Use the [`~transformers.generation_tf_utils.TFGenerationMixin.generate`] method to create the summarization. For more details about the different text generation strategies and parameters for controlling generation, check out the [Text generation strategies](../generation_strategies) page.
+Use the [`~transformers.generation_tf_utils.TFGenerationMixin.generate`] method to create the summarization. For more details about the different text generation strategies and parameters for controlling generation, check out the [Text generation strategies](../generation_strategies.md) page.
 
 ```py
 >>> from transformers import TFAutoModelForCausalLM

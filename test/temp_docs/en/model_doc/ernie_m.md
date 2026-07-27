@@ -49,10 +49,12 @@ This model was contributed by [Susnato Dhar](https://huggingface.co/susnato). Th
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Multiple choice task guide](../tasks/multiple_choice)
+The following task guides are maintained in this repository:
+
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## ErnieMConfig
 

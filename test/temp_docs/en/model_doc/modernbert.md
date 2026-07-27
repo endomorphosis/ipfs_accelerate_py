@@ -58,7 +58,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 <PipelineTag pipeline="fill-mask"/>
 
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
 
 
 ## ModernBertConfig

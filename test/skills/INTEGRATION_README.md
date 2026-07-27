@@ -176,7 +176,7 @@ See [HF_TEST_TROUBLESHOOTING_GUIDE.md](HF_TEST_TROUBLESHOOTING_GUIDE.md) for com
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute to the test framework.
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) for how to contribute to the test framework.
 
 ## License
 

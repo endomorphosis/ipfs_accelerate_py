@@ -72,10 +72,10 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 <PipelineTag pipeline="image-classification"/>
 
 - [`MobileViTForImageClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/image-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/image_classification.ipynb).
-- See also: [Image classification task guide](../tasks/image_classification)
+- See also: [Image classification task guide](../tasks/image_classification.md)
 
 **Semantic segmentation**
-- [Semantic segmentation task guide](../tasks/semantic_segmentation)
+- [Semantic segmentation task guide](../tasks/semantic_segmentation.md)
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 

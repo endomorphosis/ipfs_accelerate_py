@@ -58,7 +58,7 @@ The original code can be found [here](https://github.com/pytorch/fairseq/tree/ma
 
 <Tip>
 
-Wav2Vec2Phoneme's architecture is based on the Wav2Vec2 model, for API reference, check out [`Wav2Vec2`](wav2vec2)'s documentation page 
+Wav2Vec2Phoneme's architecture is based on the Wav2Vec2 model, for API reference, check out [`Wav2Vec2`](./wav2vec2.md)'s documentation page
 except for the tokenizer.
 
 </Tip>

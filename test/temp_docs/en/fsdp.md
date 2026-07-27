@@ -16,9 +16,9 @@ rendered properly in your Markdown viewer.
 
 # FullyShardedDataParallel
 
-[Fully Sharded Data Parallel (FSDP)](https://pytorch.org/blog/introducing-pytorch-fully-sharded-data-parallel-api/) is a [parallelism](./perf_train_gpu_many) method that combines the advantages of data and model parallelism for distributed training.
+[Fully Sharded Data Parallel (FSDP)](https://pytorch.org/blog/introducing-pytorch-fully-sharded-data-parallel-api/) is a [parallelism](./perf_train_gpu_many.md) method that combines the advantages of data and model parallelism for distributed training.
 
-Unlike [DistributedDataParallel (DDP)](./perf_train_gpu_many#distributeddataparallel), FSDP saves more memory because it doesn't replicate a model on each GPU. It shards the models parameters, gradients and optimizer states across GPUs. Each model shard processes a portion of the data and the results are synchronized to speed up training.
+Unlike [DistributedDataParallel (DDP)](./perf_train_gpu_many.md#distributeddataparallel), FSDP saves more memory because it doesn't replicate a model on each GPU. It shards the models parameters, gradients and optimizer states across GPUs. Each model shard processes a portion of the data and the results are synchronized to speed up training.
 
 This guide covers how to set up training a model with FSDP and [Accelerate](https://hf.co/docs/accelerate/index), a library for managing distributed training.
 

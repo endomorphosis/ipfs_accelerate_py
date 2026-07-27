@@ -27,7 +27,23 @@ The Cross-Model Tensor Sharing system consists of several core components:
 3. **TensorSharingManager**: Manages the lifecycle of shared tensors
 4. **TensorSharingIntegration**: Integrates with storage and WebNN backend
 
-![Architecture Diagram](tensor_sharing_architecture.png)
+```mermaid
+flowchart LR
+    Models[Multiple Models]
+    Integration[TensorSharingIntegration]
+    Manager[TensorSharingManager]
+    Tensor[SharedTensor]
+    Views[SharedTensorView\nzero-copy views]
+    Storage[(Persistent Storage)]
+    Backend[WebNN / WebGPU Backend]
+
+    Models --> Integration
+    Integration --> Manager
+    Manager --> Tensor
+    Tensor --> Views
+    Manager <--> Storage
+    Integration --> Backend
+```
 
 ## Installation
 

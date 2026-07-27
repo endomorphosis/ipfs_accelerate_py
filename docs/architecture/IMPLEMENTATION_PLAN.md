@@ -429,7 +429,7 @@ The platform provides **immediate Fortune 500 enterprise deployment capability**
 ### **Enterprise Support Channels**
 - **Enterprise Support**: [enterprise@ipfs-accelerate.com](mailto:enterprise@ipfs-accelerate.com)
 - **GitHub Issues**: [GitHub Repository Issues](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
-- **Documentation**: [Complete Documentation Portal](docs/)
+- **Documentation**: [Complete Documentation Portal](../)
 - **Community**: [Developer Community Forum](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
 
 ### **Contribution Guidelines**

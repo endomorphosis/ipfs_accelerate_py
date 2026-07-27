@@ -56,7 +56,7 @@ This model was contributed by [nielsr](https://huggingface.co/nielsr). The origi
   on both printed (e.g. the [SROIE dataset](https://paperswithcode.com/dataset/sroie) and handwritten (e.g. the [IAM
   Handwriting dataset](https://fki.tic.heia-fr.ch/databases/iam-handwriting-database>) text recognition tasks. For more
   information, see the [official models](https://huggingface.co/models?other=trocr>).
-- TrOCR is always used within the [VisionEncoderDecoder](vision-encoder-decoder) framework.
+- TrOCR is always used within the [VisionEncoderDecoder](vision-encoder-decoder.md) framework.
 
 ## Resources
 

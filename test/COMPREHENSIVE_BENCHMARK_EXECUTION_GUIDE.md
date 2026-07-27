@@ -406,7 +406,7 @@ For more information, see the project roadmap in NEXT_STEPS.md or contact the de
 ---
 
 **Related Documentation:**
-- [Benchmark Timing Guide](BENCHMARK_TIMING_GUIDE.md)
-- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md)
-- [Database Integration Guide](BENCHMARK_DATABASE_GUIDE.md)
+- [Benchmark Timing Guide](../data/benchmarks/BENCHMARK_TIMING_GUIDE.md)
+- [Hardware Benchmarking Guide](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)
+- [Database Integration Guide](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
 - [Next Steps](NEXT_STEPS.md)

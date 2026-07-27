@@ -3721,17 +3721,33 @@ def dependency_guardrail_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
     """Return todo-board records that can keep tasks from becoming ready."""
 
     task_ids = {str(task.task_id) for task in tasks}
+    task_ids_by_goal: dict[str, set[str]] = {}
+    for task in tasks:
+        metadata = getattr(task, "metadata", {})
+        if not isinstance(metadata, Mapping):
+            continue
+        for goal_id in split_csv(str(metadata.get("goal id") or "")):
+            task_ids_by_goal.setdefault(goal_id, set()).add(str(task.task_id))
     open_task_ids = {
         str(task.task_id)
         for task in tasks
         if str(task.status).lower() not in {"completed", "blocked"}
     }
     dependency_graph = {
-        str(task.task_id): [
-            str(dep)
-            for dep in task.depends_on
-            if str(dep).strip() and str(dep) in open_task_ids
-        ]
+        str(task.task_id): sorted(
+            {
+                dependency_task_id
+                for dep in task.depends_on
+                if str(dep).strip()
+                for dependency_task_id in (
+                    [str(dep)]
+                    if str(dep) in open_task_ids
+                    else []
+                    if str(dep) in task_ids
+                    else task_ids_by_goal.get(str(dep), set()) & open_task_ids
+                )
+            }
+        )
         for task in tasks
         if str(task.task_id) in open_task_ids
     }
@@ -3758,7 +3774,11 @@ def dependency_guardrail_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
         if str(task.status).lower() in {"completed", "blocked"}:
             continue
         dependencies = [str(dep) for dep in task.depends_on if str(dep).strip()]
-        missing = sorted(dep for dep in dependencies if dep not in task_ids)
+        missing = sorted(
+            dep
+            for dep in dependencies
+            if dep not in task_ids and dep not in task_ids_by_goal
+        )
         self_references = sorted(dep for dep in dependencies if dep == task.task_id)
         dependency_cycle = reachable_cycle(task.task_id)
         if not missing and not self_references and not dependency_cycle:

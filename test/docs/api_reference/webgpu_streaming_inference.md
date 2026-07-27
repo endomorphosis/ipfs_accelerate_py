@@ -436,6 +436,6 @@ Error:
 ## Related Documentation
 
 - [Unified Framework API](../unified_framework_api.md)
-- [WebGPU Streaming Documentation](../WEBGPU_STREAMING_DOCUMENTATION.md)
+- [WebGPU Streaming Documentation](../../WEBGPU_STREAMING_DOCUMENTATION.md)
 - [WebSocket Protocol Specification](../websocket_protocol_spec.md)
 - [Model-Specific Optimization Guides](../model_specific_optimizations/)

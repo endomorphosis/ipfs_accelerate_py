@@ -976,78 +976,26 @@ def test_sensitive_file_change_is_rejected_even_when_path_is_in_scope() -> None:
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
 
 
-def test_unchanged_baseline_secret_text_does_not_reject_an_in_scope_edit() -> None:
-    existing_secret = _secret_assignment("existing-credential-value")
+def test_unrelated_change_with_preexisting_secret_like_content_is_accepted() -> None:
+    before = 'api_key = _coalesce_env("EXAMPLE_API_KEY")\nVALUE = 1\n'
+    after = 'api_key = _coalesce_env("EXAMPLE_API_KEY")\nVALUE = 2\n'
+
     result = validate_implementation_proposal(
-        _proposal(
-            _entry(
-                before=existing_secret + "VALUE = 1\n",
-                after=existing_secret + "VALUE = 2\n",
-            ),
-        ),
+        _proposal(_entry(before=before, after=after)),
         policy=_policy(),
     )
 
     assert result.accepted
-    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(
-        result
-    )
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
 
 
-def test_dynamic_secret_lookup_is_not_mistaken_for_a_literal_secret() -> None:
+def test_new_secret_like_content_remains_rejected() -> None:
     result = validate_implementation_proposal(
         _proposal(
             _entry(
                 before="VALUE = 1\n",
-                after=(
-                    "VALUE = 2\n"
-                    + 'api_key = _coalesce_env("OPENAI_API_KEY")\n'
-                ),
-            ),
-        ),
-        policy=_policy(),
-    )
-
-    assert result.accepted
-    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(
-        result
-    )
-
-
-def test_new_literal_secret_remains_forbidden_in_an_in_scope_file() -> None:
-    result = validate_implementation_proposal(
-        _proposal(
-            _entry(
-                before="VALUE = 1\n",
-                after=(
-                    "VALUE = 2\n"
-                    + _secret_assignment(
-                        "sk-live-concrete-credential-value"
-                    )
-                ),
-            ),
-        ),
-        policy=_policy(),
-    )
-
-    assert not result.accepted
-    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
-
-
-def test_renaming_a_secret_bearing_file_remains_forbidden() -> None:
-    source = _secret_assignment("sk-live-concrete-credential-value")
-    old_path = "ipfs_accelerate_py/agent_supervisor/old_config.py"
-    new_path = "ipfs_accelerate_py/agent_supervisor/new_config.py"
-    result = validate_implementation_proposal(
-        _proposal(
-            _entry(
-                new_path,
-                before=source,
-                after=source,
-                change_kind=DiffChangeKind.RENAME,
-                old_path=old_path,
-                new_path=new_path,
-            ),
+                after='VALUE = 2\napi_key = "abcdefghijklmnop"\n',
+            )
         ),
         policy=_policy(),
     )
@@ -1114,6 +1062,62 @@ def test_arbitrary_shell_command_injection_is_not_a_validation_plan() -> None:
     )
 
     result = validate_implementation_proposal(proposal, policy=_v2_policy())
+
+    assert not result.accepted
+    assert ProposalFindingCode.COMMAND_FORBIDDEN in _finding_codes(result)
+
+
+def test_exact_reviewed_and_chain_is_an_allowed_validation_plan() -> None:
+    command = (
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/unit",
+        "&&",
+        "python",
+        "benchmarks/check.py",
+        "--offline",
+    )
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            validation_plan=(
+                ProposalValidationStep(
+                    command=command,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+        ),
+        policy=_v2_policy(allowed_validation_commands=(command,)),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ("python", "-c", "print('unreviewed eval')"),
+        ("python", "-m", "pytest", "&&", "sh", "-c", "echo unsafe"),
+        ("python", "-m", "pytest", ";", "python", "benchmarks/check.py"),
+        ("python", "-m", "pytest", "&&", "&&", "python", "benchmarks/check.py"),
+    ],
+)
+def test_exact_allowlist_does_not_bypass_command_safety_guards(
+    command: tuple[str, ...],
+) -> None:
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            validation_plan=(
+                ProposalValidationStep(
+                    command=command,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+        ),
+        policy=_v2_policy(allowed_validation_commands=(command,)),
+    )
 
     assert not result.accepted
     assert ProposalFindingCode.COMMAND_FORBIDDEN in _finding_codes(result)

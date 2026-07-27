@@ -2529,6 +2529,65 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert submitted[0]["payload"]["bundle_key"] == "objective/ops/root"
 
 
+def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").rstrip()
+        + """
+
+- Goal id: VAIOS-G000
+""",
+        encoding="utf-8",
+    )
+    finding = ObjectiveFinding(
+        fingerprint="dependent-goal-gap",
+        goal_id="VAIOS-G001",
+        title="Dependent objective",
+        summary="Implement dependent objective",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["dependent proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src"],
+        validation="true",
+        dependencies=["VAIOS-G000"],
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert len(records) == 1
+    assert records[0].depends_on == ("ACCEL-001",)
+    assert records[0].finding.dependencies == ["ACCEL-001"]
+    generated = todo_path.read_text(encoding="utf-8")
+    assert "- Depends on: ACCEL-001" in generated
+    assert "- Depends on: VAIOS-G000" not in generated
+    index = json.loads(
+        (bundle_dir / "index.json").read_text(encoding="utf-8")
+    )
+    indexed_task = next(
+        task
+        for bundle in index["bundles"].values()
+        for task in bundle["tasks"]
+        if task["task_id"] == "ACCEL-002"
+    )
+    assert indexed_task["depends_on"] == ["ACCEL-001"]
+    assert indexed_task["dependency_task_ids"] == ["ACCEL-001"]
+
+
 def test_manual_review_finding_without_edit_targets_is_visible_but_not_executable(
     tmp_path,
 ):
@@ -3255,6 +3314,36 @@ def test_task_dependency_dag_does_not_require_an_abstract_parent_goal_task():
     assert graph.repair_evidence == []
     assert graph.invalid_task_cids == []
     assert graph.schedule[0].claimable is True
+
+
+def test_task_dependency_dag_resolves_explicit_goal_dependency_to_all_goal_tasks():
+    graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "TASK-A1",
+                "task_cid": "cid-a1",
+                "goal_id": "G0",
+            },
+            {
+                "task_id": "TASK-A2",
+                "task_cid": "cid-a2",
+                "goal_id": "G0",
+            },
+            {
+                "task_id": "TASK-B",
+                "task_cid": "cid-b",
+                "goal_id": "G1",
+                "depends_on": ["G0"],
+            },
+        ]
+    )
+
+    goal_edges = [edge for edge in graph.edges if edge.target_task_cid == "cid-b"]
+    assert {edge.source_task_cid for edge in goal_edges} == {"cid-a1", "cid-a2"}
+    assert {edge.provenance["resolution"] for edge in goal_edges} == {"goal_id"}
+    assert graph.repair_evidence == []
+    scheduled = {item.task_cid: item for item in graph.schedule}
+    assert scheduled["cid-b"].blocking_task_cids == ["cid-a1", "cid-a2"]
 
 
 def test_bundle_payload_admits_only_the_dependency_closed_ready_member_slice(tmp_path):

@@ -37,10 +37,10 @@ This toolkit aims to achieve:
 
 See the detailed guides for each component:
 
-- [Integrated Skillset Generator Guide](INTEGRATED_SKILLSET_GENERATOR_GUIDE.md) - Using the implementation generator
+- [Integrated Skillset Generator Guide](../scripts/generators/INTEGRATED_SKILLSET_GENERATOR_GUIDE.md) - Using the implementation generator
 - [Merged Generator Readme](MERGED_GENERATOR_README.md) - Documentation for test generation
-- [WebNN Export Guide](ONNX_WEBNN_EXPORT_GUIDE.md) - Guide to web deployment with WebNN
-- [WebGPU/transformers.js Guide](WEBGPU_TRANSFORMERS_JS_GUIDE.md) - Guide to web deployment with WebGPU
+- [WebNN Export Guide](sample_tests/ONNX_WEBNN_EXPORT_GUIDE.md) - Guide to web deployment with WebNN
+- [WebGPU/transformers.js Guide](WEBNN_WEBGPU_GUIDE.md) - Guide to web deployment with WebGPU
 
 ## Quick Start Example
 

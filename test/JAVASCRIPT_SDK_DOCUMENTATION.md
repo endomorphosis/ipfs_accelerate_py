@@ -358,11 +358,11 @@ For more details on the conversion process, see:
 
 ## Contributing
 
-Contributions to the IPFS Accelerate JavaScript SDK are welcome. Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) guide for details on how to contribute.
+Contributions to the IPFS Accelerate JavaScript SDK are welcome. Please refer to the [CONTRIBUTING.md](../CONTRIBUTING.md) guide for details on how to contribute.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
 
 ## Acknowledgments
 

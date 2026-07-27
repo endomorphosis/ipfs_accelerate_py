@@ -65,7 +65,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - [`TFXLMRobertaForSequenceClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/text-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/text_classification-tf.ipynb).
 - [`FlaxXLMRobertaForSequenceClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/text-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/text_classification_flax.ipynb).
 - [Text classification](https://huggingface.co/docs/transformers/tasks/sequence_classification) chapter of the 🤗 Hugging Face Task Guides.
-- [Text classification task guide](../tasks/sequence_classification)
+- [Text classification task guide](../tasks/sequence_classification.md)
 
 <PipelineTag pipeline="token-classification"/>
 
@@ -73,13 +73,13 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - [`TFXLMRobertaForTokenClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/token-classification) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/token_classification-tf.ipynb).
 - [`FlaxXLMRobertaForTokenClassification`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/token-classification).
 - [Token classification](https://huggingface.co/course/chapter7/2?fw=pt) chapter of the 🤗 Hugging Face Course.
-- [Token classification task guide](../tasks/token_classification)
+- [Token classification task guide](../tasks/token_classification.md)
 
 <PipelineTag pipeline="text-generation"/>
 
 - [`XLMRobertaForCausalLM`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/language-modeling) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/language_modeling.ipynb).
 - [Causal language modeling](https://huggingface.co/docs/transformers/tasks/language_modeling) chapter of the 🤗 Hugging Face Task Guides.
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 <PipelineTag pipeline="fill-mask"/>
 
@@ -87,7 +87,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - [`TFXLMRobertaForMaskedLM`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/language-modeling#run_mlmpy) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/language_modeling-tf.ipynb).
 - [`FlaxXLMRobertaForMaskedLM`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/language-modeling#masked-language-modeling) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/masked_language_modeling_flax.ipynb).
 - [Masked language modeling](https://huggingface.co/course/chapter7/3?fw=pt) chapter of the 🤗 Hugging Face Course.
-- [Masked language modeling](../tasks/masked_language_modeling)
+- [Masked language modeling](../tasks/masked_language_modeling.md)
 
 <PipelineTag pipeline="question-answering"/>
 
@@ -95,13 +95,13 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - [`TFXLMRobertaForQuestionAnswering`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/question-answering) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/question_answering-tf.ipynb).
 - [`FlaxXLMRobertaForQuestionAnswering`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/flax/question-answering).
 - [Question answering](https://huggingface.co/course/chapter7/7?fw=pt) chapter of the 🤗 Hugging Face Course.
-- [Question answering task guide](../tasks/question_answering)
+- [Question answering task guide](../tasks/question_answering.md)
 
 **Multiple choice**
 
 - [`XLMRobertaForMultipleChoice`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/pytorch/multiple-choice) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/multiple_choice.ipynb).
 - [`TFXLMRobertaForMultipleChoice`] is supported by this [example script](https://github.com/huggingface/transformers/tree/main/examples/tensorflow/multiple-choice) and [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/multiple_choice-tf.ipynb).
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 🚀 Deploy
 
@@ -109,7 +109,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 <Tip> 
 
-This implementation is the same as RoBERTa. Refer to the [documentation of RoBERTa](roberta) for usage examples as well as the information relative to the inputs and outputs.
+This implementation is the same as RoBERTa. Refer to the [documentation of RoBERTa](roberta.md) for usage examples as well as the information relative to the inputs and outputs.
 </Tip>
 
 ## XLMRobertaConfig

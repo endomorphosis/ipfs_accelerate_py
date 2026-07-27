@@ -576,7 +576,7 @@ The performance optimization plan provides concrete implementation examples and 
 
 ## Error Handling
 
-For detailed information on error handling in the VLLM API, please refer to the comprehensive [API Error Documentation](../API_ERROR_DOCUMENTATION.md), which covers:
+For detailed information on error handling in the VLLM API, please refer to the comprehensive [Unified Error Handling Framework](../docs/UNIFIED_ERROR_HANDLING_FRAMEWORK.md), which covers:
 
 1. Connection errors
 2. Authentication errors
@@ -594,6 +594,6 @@ When implementing new features in the VLLM backend:
 2. Update the `test_vllm_unified.py` for performance testing
 3. Document new features in this README
 4. Follow the optimization guidelines in the Performance Optimization Plan
-5. Implement proper error handling as per the API Error Documentation
+5. Implement proper error handling as per the Unified Error Handling Framework
 
 The test suite is designed to gracefully handle missing features, so it will not fail if a feature is not yet implemented.

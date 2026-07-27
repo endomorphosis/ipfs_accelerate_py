@@ -103,9 +103,9 @@ Here is a step-by-step guide to transcribing an audio sample using a pre-trained
 ```
 
 Whisper is compatible with the following optimisations for both short and long-form generation:
-- [PyTorch Scaled Dot Product Attention (SDPA)](../perf_infer_gpu_one#pytorch-scaled-dot-product-attention): flash attention and memory-efficient attention kernels. Enabled by default for `torch>=2.1.1`.
-- [Flash Attention 2](../perf_infer_gpu_one#flashattention-2): improved implementation of flash attention through better parallelism and work partitioning. 
-- [torch.compile](../llm_optims#static-kv-cache-and-torchcompile): JIT-compile the forward pass to dispatch to efficient fused kernels.
+- [PyTorch Scaled Dot Product Attention (SDPA)](../perf_infer_gpu_one.md#pytorch-scaled-dot-product-attention): flash attention and memory-efficient attention kernels. Enabled by default for `torch>=2.1.1`.
+- [Flash Attention 2](../perf_infer_gpu_one.md#flashattention-2): improved implementation of flash attention through better parallelism and work partitioning.
+- [torch.compile](../llm_optims.md#static-kv-cache-and-torchcompile): JIT-compile the forward pass to dispatch to efficient fused kernels.
 
 As an example, the following codesnippet enables SDPA and `torch.compile` for up to 5x faster inference:
 

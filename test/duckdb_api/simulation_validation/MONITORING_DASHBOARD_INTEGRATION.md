@@ -559,9 +559,9 @@ Error creating dashboard panel: No validation results found in database
 
 ## Additional Resources
 
-- [MONITORING_DASHBOARD_INTEGRATION_SUMMARY.md](../MONITORING_DASHBOARD_INTEGRATION_SUMMARY.md): Summary of the dashboard integration
-- [DASHBOARD_INTEGRATION_COMPLETION.md](../DASHBOARD_INTEGRATION_COMPLETION.md): Completion report for the dashboard integration
-- [SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md](../SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md): Implementation details for the Simulation Accuracy and Validation Framework
-- [demo_monitoring_dashboard.py](../demo_monitoring_dashboard.py): Demo script for the dashboard integration
-- [test_basic_dashboard_integration.py](../test_basic_dashboard_integration.py): Basic test script for the dashboard integration
-- [install_dashboard_integration_deps.sh](../install_dashboard_integration_deps.sh): Script to install dependencies
+- [MONITORING_DASHBOARD_INTEGRATION_SUMMARY.md](../../MONITORING_DASHBOARD_INTEGRATION_SUMMARY.md): Summary of the dashboard integration
+- [DASHBOARD_INTEGRATION_COMPLETION.md](../../DASHBOARD_INTEGRATION_COMPLETION.md): Completion report for the dashboard integration
+- [SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md](../../SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md): Implementation details for the Simulation Accuracy and Validation Framework
+- [demo_monitoring_dashboard.py](../../demo_monitoring_dashboard.py): Demo script for the dashboard integration
+- [test_basic_dashboard_integration.py](../../test_basic_dashboard_integration.py): Basic test script for the dashboard integration
+- [install_dashboard_integration_deps.sh](../../install_dashboard_integration_deps.sh): Script to install dependencies

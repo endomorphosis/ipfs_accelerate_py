@@ -112,12 +112,12 @@ For lightweight tuning, *i.e.*, fixing the model and only tuning prompts, you ca
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
-- [Translation task guide](../tasks/translation)
-- [Summarization task guide](../tasks/summarization)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
+- [Translation task guide](../tasks/translation.md)
+- [Summarization task guide](../tasks/summarization.md)
 
 ## MvpConfig
 

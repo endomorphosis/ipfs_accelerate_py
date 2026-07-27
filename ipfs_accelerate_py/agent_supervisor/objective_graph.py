@@ -7253,6 +7253,31 @@ def materialize_task_dependency_dag(
                 configured_kind = str(dependency_kinds.get(reference) or "goal").strip().lower().replace("-", "_")
                 kind = configured_kind if configured_kind in DEPENDENCY_EDGE_KINDS else "goal"
                 if source is None:
+                    goal_sources = goals.get(reference, [])
+                    if goal_sources:
+                        for goal_source in goal_sources:
+                            if goal_source == target:
+                                add_repair(
+                                    "self_dependency",
+                                    target,
+                                    reference,
+                                    f"{field_name} resolves goal {reference} to the task itself",
+                                    {
+                                        "edge_kind": kind,
+                                        "field": field_name,
+                                        "resolution": "goal_id",
+                                    },
+                                )
+                                continue
+                            add_edge(
+                                goal_source,
+                                target,
+                                kind,
+                                field_name=field_name,
+                                value=reference,
+                                resolution="goal_id",
+                            )
+                        continue
                     add_repair(
                         "missing_dependency",
                         target,
@@ -9033,6 +9058,40 @@ def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX
     ]
 
 
+def _objective_goal_task_ids_from_todo(
+    todo_text: str,
+    *,
+    task_prefix: str = DEFAULT_TASK_PREFIX,
+) -> dict[str, list[str]]:
+    """Return board task IDs grouped by their objective ``Goal id``.
+
+    Objective-heap dependencies are expressed as stable goal IDs, while the
+    implementation daemon executes a task DAG.  Keeping this projection at
+    materialization time prevents generated ``Depends on`` fields from
+    containing unresolved goal references.
+    """
+
+    prefix = normalize_task_id_prefix(task_prefix)
+    header = re.compile(
+        rf"^##\s+(?P<task_id>{re.escape(prefix)}\d+)(?=\s|$)"
+    )
+    task_ids_by_goal: dict[str, list[str]] = {}
+    current_task_id = ""
+    for line in todo_text.splitlines():
+        if line.startswith("## "):
+            match = header.match(line)
+            current_task_id = match.group("task_id") if match is not None else ""
+            continue
+        if not current_task_id or not line.casefold().startswith("- goal id:"):
+            continue
+        _label, raw_goal_ids = line.split(":", 1)
+        for goal_id in split_terms(raw_goal_ids):
+            task_ids = task_ids_by_goal.setdefault(goal_id, [])
+            if current_task_id not in task_ids:
+                task_ids.append(current_task_id)
+    return task_ids_by_goal
+
+
 def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
     """Return canonical task identities already materialized on a board."""
 
@@ -10026,6 +10085,13 @@ def generate_objective_todos(
         objective_goals_by_id = {
             goal.goal_id: goal for goal in objective_goals
         }
+        task_ids_by_goal = _objective_goal_task_ids_from_todo(
+            todo_text,
+            task_prefix=task_prefix,
+        )
+        materialized_task_ids = set(
+            task_ids_from_todo(todo_text, task_prefix=task_prefix)
+        )
 
         def finding_obligation_segments(
             finding: ObjectiveFinding,
@@ -10126,6 +10192,21 @@ def generate_objective_todos(
             shard_relative = repo_relative_path(
                 repo_root, bundle_path(bundle_dir, finding.bundle_key)
             )
+            projected_dependencies: list[str] = []
+            for dependency in _unique_strings(
+                [*depends_on, *finding.dependencies]
+            ):
+                if dependency in materialized_task_ids:
+                    projected_dependencies.append(dependency)
+                else:
+                    projected_dependencies.extend(
+                        task_ids_by_goal.get(dependency) or [dependency]
+                    )
+            projected_dependencies = _unique_strings(projected_dependencies)
+            projected_finding = replace(
+                finding,
+                dependencies=projected_dependencies,
+            )
             discovery_path = write_discovery(
                 discovery_dir=discovery_dir,
                 task_id=task_id,
@@ -10133,22 +10214,21 @@ def generate_objective_todos(
             )
             task_block = render_task_block(
                 task_id=task_id,
-                finding=finding,
+                finding=projected_finding,
                 discovery_path=discovery_path,
-                depends_on=depends_on,
                 bundle_shard=shard_relative,
                 discovery_output_path=discovery_output_path,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
+            materialized_task_ids.add(task_id)
+            task_ids_by_goal.setdefault(finding.goal_id, []).append(task_id)
             records.append(
                 ObjectiveTaskRecord(
                     task_id=task_id,
                     task_block=task_block,
-                    finding=finding,
+                    finding=projected_finding,
                     discovery_path=discovery_path,
-                    depends_on=tuple(
-                        _unique_strings([*depends_on, *finding.dependencies])
-                    ),
+                    depends_on=tuple(projected_dependencies),
                 )
             )
 

@@ -25,7 +25,7 @@ rendered properly in your Markdown viewer.
 
 ## Overview
 
-Flan-UL2 is an encoder decoder model based on the T5 architecture. It uses the same configuration as the [UL2](ul2) model released earlier last year. 
+Flan-UL2 is an encoder decoder model based on the T5 architecture. It uses the same configuration as the [UL2](./ul2.md) model released earlier last year.
 It was fine tuned using the "Flan" prompt tuning and dataset collection. Similar to `Flan-T5`,  one can directly use FLAN-UL2 weights without finetuning the model:
 
 According to the original blog here are the notable improvements:
@@ -56,6 +56,6 @@ The model is pretty heavy (~40GB in half precision) so if you just want to run t
 
 <Tip>
 
-Refer to [T5's documentation page](t5) for API reference, tips, code examples and notebooks. 
+Refer to [T5's documentation page](./t5.md) for API reference, tips, code examples and notebooks.
 
 </Tip>

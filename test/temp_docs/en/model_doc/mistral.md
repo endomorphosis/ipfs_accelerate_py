@@ -96,11 +96,11 @@ The instruction tuned model can be used as follows:
 "Mayonnaise can be made as follows: (...)"
 ```
 
-As can be seen, the instruction-tuned model requires a [chat template](../chat_templating) to be applied to make sure the inputs are prepared in the right format.
+As can be seen, the instruction-tuned model requires a [chat template](../chat_templating.md) to be applied to make sure the inputs are prepared in the right format.
 
 ## Speeding up Mistral by using Flash Attention
 
-The code snippets above showcase inference without any optimization tricks. However, one can drastically speed up the model by leveraging [Flash Attention](../perf_train_gpu_one#flash-attention-2), which is a faster implementation of the attention mechanism used inside the model.
+The code snippets above showcase inference without any optimization tricks. However, one can drastically speed up the model by leveraging [Flash Attention](../perf_train_gpu_one.md#flash-attention-2), which is a faster implementation of the attention mechanism used inside the model.
 
 First, make sure to install the latest version of Flash Attention 2 to include the sliding window attention feature.
 
@@ -146,9 +146,9 @@ The Flash Attention-2 model uses also a more memory efficient cache slicing mech
 
 ## Shrinking down Mistral using quantization
 
-As the Mistral model has 7 billion parameters, that would require about 14GB of GPU RAM in half precision (float16), since each parameter is stored in 2 bytes. However, one can shrink down the size of the model using [quantization](../quantization.md). If the model is quantized to 4 bits (or half a byte per parameter),that requires only about 3.5GB of RAM.
+As the Mistral model has 7 billion parameters, that would require about 14GB of GPU RAM in half precision (float16), since each parameter is stored in 2 bytes. However, one can shrink down the size of the model using [quantization](../quantization/overview.md). If the model is quantized to 4 bits (or half a byte per parameter),that requires only about 3.5GB of RAM.
 
-Quantizing a model is as simple as passing a `quantization_config` to the model. Below, we'll leverage the BitsAndyBytes quantization (but refer to [this page](../quantization.md) for other quantization methods):
+Quantizing a model is as simple as passing a `quantization_config` to the model. Below, we'll leverage the BitsAndyBytes quantization (but refer to [this page](../quantization/overview.md) for other quantization methods):
 
 ```python
 >>> import torch
@@ -191,7 +191,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 - A demo notebook to perform supervised fine-tuning (SFT) of Mistral-7B can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Mistral/Supervised_fine_tuning_(SFT)_of_an_LLM_using_Hugging_Face_tooling.ipynb). 🌎
 - A [blog post](https://www.philschmid.de/fine-tune-llms-in-2024-with-trl) on how to fine-tune LLMs in 2024 using Hugging Face tooling. 🌎
 - The [Alignment Handbook](https://github.com/huggingface/alignment-handbook) by Hugging Face includes scripts and recipes to perform supervised fine-tuning (SFT) and direct preference optimization with Mistral-7B. This includes scripts for full fine-tuning, QLoRa on a single GPU as well as multi-GPU fine-tuning.
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## MistralConfig
 

@@ -23,7 +23,7 @@ rendered properly in your Markdown viewer.
 ## Overview
 
 The Deformable DETR model was proposed in [Deformable DETR: Deformable Transformers for End-to-End Object Detection](https://arxiv.org/abs/2010.04159) by Xizhou Zhu, Weijie Su, Lewei Lu, Bin Li, Xiaogang Wang, Jifeng Dai.
-Deformable DETR mitigates the slow convergence issues and limited feature spatial resolution of the original [DETR](detr) by leveraging a new deformable attention module which only attends to a small set of key sampling points around a reference.
+Deformable DETR mitigates the slow convergence issues and limited feature spatial resolution of the original [DETR](./detr.md) by leveraging a new deformable attention module which only attends to a small set of key sampling points around a reference.
 
 The abstract from the paper is the following:
 
@@ -38,7 +38,7 @@ This model was contributed by [nielsr](https://huggingface.co/nielsr). The origi
 
 ## Usage tips
 
-- Training Deformable DETR is equivalent to training the original [DETR](detr) model. See the [resources](#resources) section below for demo notebooks.
+- Training Deformable DETR is equivalent to training the original [DETR](detr.md) model. See the [resources](#resources) section below for demo notebooks.
 
 ## Resources
 
@@ -48,7 +48,7 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 
 - Demo notebooks regarding inference + fine-tuning on a custom dataset for [`DeformableDetrForObjectDetection`] can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/Deformable-DETR).
 - Scripts for finetuning [`DeformableDetrForObjectDetection`] with [`Trainer`] or [Accelerate](https://huggingface.co/docs/accelerate/index) can be found [here](https://github.com/huggingface/transformers/tree/main/examples/pytorch/object-detection).
-- See also: [Object detection task guide](../tasks/object_detection).
+- See also: [Object detection task guide](../tasks/object_detection.md).
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.
 

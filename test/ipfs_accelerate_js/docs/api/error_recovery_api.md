@@ -452,6 +452,6 @@ For more information on browser-specific optimizations, see the [Browser Optimiz
 ## See Also
 
 - [Error Recovery Guide](../ERROR_RECOVERY_GUIDE.md) - Overview and getting started guide
-- [Performance Tracking API](./performance_tracking_api.md) - API for tracking hardware operation performance
-- [Hardware Abstraction Layer API](./hal_api.md) - API for hardware abstraction layer
+- [Hardware Acceleration Guide](../HARDWARE_ACCELERATION_GUIDE.md) - Performance considerations and hardware operation guidance
+- [Hardware Abstraction Layer](../hardware/HAL.md) - API for the hardware abstraction layer
 - [Example Code](../../examples/error_recovery_example.ts) - Complete example of error recovery system

@@ -417,6 +417,6 @@ The Monitoring Dashboard Integration with enhanced regression detection provides
 
 For further information, see:
 - [ADVANCED_VISUALIZATION_GUIDE.md](ADVANCED_VISUALIZATION_GUIDE.md) - Comprehensive guide to the visualization system
-- [MONITORING_DASHBOARD_GUIDE.md](duckdb_api/distributed_testing/docs/MONITORING_DASHBOARD_GUIDE.md) - Guide for the monitoring dashboard
+- [MONITORING_DASHBOARD_GUIDE.md](duckdb_api/distributed_testing/MONITORING_DASHBOARD_GUIDE.md) - Guide for the monitoring dashboard
 - [PERFORMANCE_DASHBOARD_SPECIFICATION.md](PERFORMANCE_DASHBOARD_SPECIFICATION.md) - Technical specification for the performance dashboard
 - [VISUALIZATION_DASHBOARD_README.md](VISUALIZATION_DASHBOARD_README.md) - README for the enhanced visualization dashboard

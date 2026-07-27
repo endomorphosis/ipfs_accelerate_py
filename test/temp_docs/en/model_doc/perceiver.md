@@ -99,9 +99,9 @@ Perceiver does **not** work with `torch.nn.DataParallel` due to a bug in PyTorch
 is implemented in the library. Note that the models available in the library only showcase some examples of what you can do
 with the Perceiver. There are many more use cases, including question answering, named-entity recognition, object detection,
 audio classification, video classification, etc.
-- [Text classification task guide](../tasks/sequence_classification)
-- [Masked language modeling task guide](../tasks/masked_language_modeling)
-- [Image classification task guide](../tasks/image_classification)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Masked language modeling task guide](../tasks/masked_language_modeling.md)
+- [Image classification task guide](../tasks/image_classification.md)
 
 ## Perceiver specific outputs
 

@@ -56,11 +56,11 @@ This model was contributed by [thomwolf](https://huggingface.co/thomwolf). The o
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Token classification task guide](../tasks/token_classification)
-- [Question answering task guide](../tasks/question_answering)
-- [Causal language modeling task guide](../tasks/language_modeling)
-- [Multiple choice task guide](../tasks/multiple_choice)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Token classification task guide](../tasks/token_classification.md)
+- [Question answering task guide](../tasks/question_answering.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
+- [Multiple choice task guide](../tasks/multiple_choice.md)
 
 ## XLNetConfig
 
@@ -161,4 +161,4 @@ This model was contributed by [thomwolf](https://huggingface.co/thomwolf). The o
 [API documentation placeholder]
 
 </tf>
-</frameworkcontent>
+</frameworkcontent>

@@ -277,4 +277,4 @@ npm run start:examples
 
 ## License
 
-This package is licensed under the [MIT License](LICENSE).
+This package is licensed under the [MIT License](../../LICENSE).

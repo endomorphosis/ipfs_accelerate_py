@@ -52,14 +52,14 @@ This model was contributed by [keskarnitishr](https://huggingface.co/keskarnitis
   observed in the *run_generation.py* example script.
 - The PyTorch models can take the `past_key_values` as input, which is the previously computed key/value attention pairs.
   TensorFlow models accepts `past` as input. Using the `past_key_values` value prevents the model from re-computing
-  pre-computed values in the context of text generation. See the [`forward`](model_doc/ctrl#transformers.CTRLModel.forward)
+  pre-computed values in the context of text generation. See the `forward` method
   method for more information on the usage of this argument.
 
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## CTRLConfig
 

@@ -26,7 +26,7 @@ After making this change, restart the runner service to apply the changes:
 sudo systemctl restart actions-runner
 ```
 
-For comprehensive setup instructions, see [Self-Hosted Runner Setup Guide](../docs/SELF_HOSTED_RUNNER_SETUP.md).
+For comprehensive setup instructions, see [Self-Hosted Runner Setup Guide](../../docs/guides/github/SELF_HOSTED_RUNNER_SETUP.md).
 
 ## GitHub Actions Workflow
 
@@ -213,6 +213,6 @@ With the addition of the hardware model predictor integration, the system now pr
 As of March 2, 2025, this component has been fully implemented and integrated with the benchmark database system and hardware selection framework, completing Phase 16 of the project's advanced hardware benchmarking and database consolidation efforts.
 
 For more information, see:
-- [Hardware Model Predictor Guide](HARDWARE_MODEL_PREDICTOR_GUIDE.md)
-- [Hardware Selection Guide](HARDWARE_SELECTION_GUIDE.md)
-- [Phase 16 Implementation Update](PHASE16_IMPLEMENTATION_UPDATE.md)
+- [Hardware Model Predictor Guide](../../test/HARDWARE_MODEL_PREDICTOR_GUIDE.md)
+- [Hardware Selection Guide](../../test/HARDWARE_SELECTION_GUIDE.md)
+- [Phase 16 Completion Summary](../../test/PHASE16_COMPLETION_SUMMARY.md)

@@ -116,6 +116,6 @@ The MPS support is implemented in several key components:
 ## Further Reading
 
 For more information about hardware support and benchmarks:
-- [HARDWARE_IMPLEMENTATION_SUMMARY.md](HARDWARE_IMPLEMENTATION_SUMMARY.md)
+- [HARDWARE_IMPLEMENTATION_SUMMARY.md](../scripts/generators/skill_generator/HARDWARE_IMPLEMENTATION_SUMMARY.md)
 - [CROSS_PLATFORM_TEST_COVERAGE.md](CROSS_PLATFORM_TEST_COVERAGE.md)
-- [HARDWARE_BENCHMARKING_GUIDE.md](HARDWARE_BENCHMARKING_GUIDE.md)
+- [HARDWARE_BENCHMARKING_GUIDE.md](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE.md)

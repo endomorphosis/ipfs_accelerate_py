@@ -99,8 +99,8 @@ Note that for GPT-Neo it is not possible to train / run on very long context as 
 
 ## Resources
 
-- [Text classification task guide](../tasks/sequence_classification)
-- [Causal language modeling task guide](../tasks/language_modeling)
+- [Text classification task guide](../tasks/sequence_classification.md)
+- [Causal language modeling task guide](../tasks/language_modeling.md)
 
 ## GPTNeoConfig
 

@@ -253,8 +253,8 @@ const result = await backend.matmul(input, weights, {
 See the following examples for practical usage:
 
 - [Quantized Operations Example](../examples/quantized_operations_example.ts)
-- [BERT Browser Optimization](../examples/browser_optimized_bert_example.ts)
-- [ViT Browser Optimization](../examples/browser_optimized_vit_example.ts)
+- [BERT Browser Optimization](../examples/browser/models/bert_browser_optimized_example.ts)
+- [ViT Browser Optimization](../examples/browser/models/vit_browser_optimized_example.ts)
 
 ## Integration Testing
 

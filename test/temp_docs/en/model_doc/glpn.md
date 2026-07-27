@@ -30,7 +30,7 @@ breaking changes to fix it in the future. If you see something strange, file a [
 ## Overview
 
 The GLPN model was proposed in [Global-Local Path Networks for Monocular Depth Estimation with Vertical CutDepth](https://arxiv.org/abs/2201.07436)  by Doyeon Kim, Woonghyun Ga, Pyungwhan Ahn, Donggyu Joo, Sehwan Chun, Junmo Kim.
-GLPN combines [SegFormer](segformer)'s hierarchical mix-Transformer with a lightweight decoder for monocular depth estimation. The proposed decoder shows better performance than the previously proposed decoders, with considerably
+GLPN combines [SegFormer](segformer.md)'s hierarchical mix-Transformer with a lightweight decoder for monocular depth estimation. The proposed decoder shows better performance than the previously proposed decoders, with considerably
 less computational complexity.
 
 The abstract from the paper is the following:
@@ -49,7 +49,7 @@ This model was contributed by [nielsr](https://huggingface.co/nielsr). The origi
 A list of official Hugging Face and community (indicated by 🌎) resources to help you get started with GLPN.
 
 - Demo notebooks for [`GLPNForDepthEstimation`] can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/tree/master/GLPN).
-- [Monocular depth estimation task guide](../tasks/monocular_depth_estimation)
+- [Monocular depth estimation task guide](../tasks/monocular_depth_estimation.md)
 
 ## GLPNConfig
 

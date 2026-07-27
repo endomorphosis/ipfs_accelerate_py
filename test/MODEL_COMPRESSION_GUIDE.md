@@ -472,7 +472,7 @@ python model_compression.py --model bert-base-uncased --methods quantization:dyn
 - [ResourcePool Guide](RESOURCE_POOL_GUIDE.md): Details on the ResourcePool for model caching
 - [Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md): Information on the hardware detection system
 - [Model Family Classifier Guide](MODEL_FAMILY_CLASSIFIER_GUIDE.md): Details on model family classification
-- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md): Guide to performance benchmarking
+- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_README.md): Guide to performance benchmarking
 - [Hardware Platform Test Guide](HARDWARE_PLATFORM_TEST_GUIDE.md): Guide to hardware platform testing
 - [Hardware Model Validation Guide](HARDWARE_MODEL_VALIDATION_GUIDE.md): Guide to model validation
 

@@ -228,4 +228,4 @@ The implementation has been successfully completed and verified, with all compon
 For more information, refer to the following resources:
 - [Web Platform Integration Guide](WEB_PLATFORM_INTEGRATION_GUIDE.md)
 - [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRECOMPILATION.md)
-- [Browser-Specific Optimizations](BROWSER_SPECIFIC_OPTIMIZATIONS.md)
+- [Browser-Specific Optimizations](browser_specific_optimizations.md)

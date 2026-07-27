@@ -59,7 +59,7 @@ and the self-improvement plan for the rollout roadmap and acceptance evidence.
 - [Supervisor self-improvement objective heap](architecture/agent_supervisor_self_improvement.objectives.md)
 - [Supervisor self-improvement task board](architecture/agent_supervisor_self_improvement.todo.md)
 - [Objective graph implementation notes](agent_supervisor_objective_graph.md)
-- [Completed supervisor task records](architecture/)
+- [Architecture documentation](architecture/overview.md)
 
 ## Feature areas
 

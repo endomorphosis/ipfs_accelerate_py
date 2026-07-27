@@ -268,14 +268,14 @@ Match your local environment to CI:
 - [VSCode Tasks Documentation](https://code.visualstudio.com/docs/editor/tasks)
 - [Python in VSCode](https://code.visualstudio.com/docs/python/python-tutorial)
 - [Debugging in VSCode](https://code.visualstudio.com/docs/editor/debugging)
-- [docs/AUTOMATION_README.md](../docs/AUTOMATION_README.md) - Complete automation guide
+- [docs/features/automation/AUTOMATION_README.md](../docs/features/automation/AUTOMATION_README.md) - Complete automation guide
 
 ## Support
 
 **Questions or issues?**
 - Create an issue with the `vscode` label
-- Check [docs/AUTOMATION_README.md](../docs/AUTOMATION_README.md) for more details
-- Refer to [QUICKSTART_VSCODE_INTEGRATION.md](../QUICKSTART_VSCODE_INTEGRATION.md)
+- Check [docs/features/automation/AUTOMATION_README.md](../docs/features/automation/AUTOMATION_README.md) for more details
+- Refer to [docs/guides/QUICKSTART_VSCODE_INTEGRATION.md](../docs/guides/QUICKSTART_VSCODE_INTEGRATION.md)
 
 ---
 

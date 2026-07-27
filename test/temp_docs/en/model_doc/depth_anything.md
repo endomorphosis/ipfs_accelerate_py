@@ -22,11 +22,11 @@ rendered properly in your Markdown viewer.
 
 ## Overview
 
-The Depth Anything model was proposed in [Depth Anything: Unleashing the Power of Large-Scale Unlabeled Data](https://arxiv.org/abs/2401.10891) by Lihe Yang, Bingyi Kang, Zilong Huang, Xiaogang Xu, Jiashi Feng, Hengshuang Zhao. Depth Anything is based on the [DPT](dpt) architecture, trained on ~62 million images, obtaining state-of-the-art results for both relative and absolute depth estimation.
+The Depth Anything model was proposed in [Depth Anything: Unleashing the Power of Large-Scale Unlabeled Data](https://arxiv.org/abs/2401.10891) by Lihe Yang, Bingyi Kang, Zilong Huang, Xiaogang Xu, Jiashi Feng, Hengshuang Zhao. Depth Anything is based on the [DPT](dpt.md) architecture, trained on ~62 million images, obtaining state-of-the-art results for both relative and absolute depth estimation.
 
 <Tip>
 
-[Depth Anything V2](depth_anything_v2) was released in June 2024. It uses the same architecture as Depth Anything and therefore it is compatible with all code examples and existing workflows. However, it leverages synthetic data and a larger capacity teacher model to achieve much finer and robust depth predictions.
+[Depth Anything V2](depth_anything_v2.md) was released in June 2024. It uses the same architecture as Depth Anything and therefore it is compatible with all code examples and existing workflows. However, it leverages synthetic data and a larger capacity teacher model to achieve much finer and robust depth predictions.
 
 </Tip>
 
@@ -105,7 +105,7 @@ If you want to do the pre- and postprocessing yourself, here's how to do that:
 
 A list of official Hugging Face and community (indicated by 🌎) resources to help you get started with Depth Anything.
 
-- [Monocular depth estimation task guide](../tasks/monocular_depth_estimation)
+- [Monocular depth estimation task guide](../tasks/monocular_depth_estimation.md)
 - A notebook showcasing inference with [`DepthAnythingForDepthEstimation`] can be found [here](https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Depth%20Anything/Predicting_depth_in_an_image_with_Depth_Anything.ipynb). 🌎
 
 If you're interested in submitting a resource to be included here, please feel free to open a Pull Request and we'll review it! The resource should ideally demonstrate something new instead of duplicating an existing resource.

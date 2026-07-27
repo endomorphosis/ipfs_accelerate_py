@@ -21,6 +21,7 @@ from ..checkout_lock import (
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
+    serialized_lock_update,
 )
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from ..implementation_supervisor_runner import (
@@ -703,12 +704,13 @@ class PortalImplementationSupervisor:
     def _implementation_protected_maintenance_guard(self) -> dict[str, Any]:
         """Block supervisor mutations while an agent fence is active/latched."""
 
+        implementation_state_dir = self.config.state_path.parent
         active_path = (
-            self.config.state_dir
+            implementation_state_dir
             / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
         )
         incident_path = (
-            self.config.state_dir
+            implementation_state_dir
             / IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME
         )
         active_exists = active_path.exists()
@@ -1124,7 +1126,254 @@ class PortalImplementationSupervisor:
         self._record_event("autonomous_unstall_result", result)
         return result
 
+    def _implementation_maintenance_lock_path(self) -> Path:
+        return self.config.state_path.parent / "implementation.lock"
+
+    def _implementation_maintenance_lease_metadata(self) -> dict[str, Any]:
+        lease_seed = (
+            f"{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:{id(self)}"
+        )
+        owner_script = Path(sys.argv[0]).name
+        owner_stem = Path(owner_script).stem
+        command_line = process_command_line(os.getpid())
+        if owner_script not in command_line and (
+            not owner_stem or owner_stem not in command_line
+        ):
+            # ``python -m`` entrypoints may expose only the requested module
+            # name in procfs while ``sys.argv[0]`` points at ``__main__.py``.
+            # An empty marker deliberately falls back to the existing
+            # implementation-lock PID check instead of making a live
+            # supervisor lease look stale to the managed daemon.
+            owner_script = ""
+        return {
+            "kind": "implementation",
+            "lease_role": "supervisor_maintenance",
+            "lease_id": sha1(lease_seed.encode("utf-8")).hexdigest(),
+            "pid": os.getpid(),
+            "owner_script": owner_script,
+            "repo_root": str(self.config.repo_root.resolve()),
+            "state_dir": str(self.config.state_path.parent.resolve()),
+            "state_path": str(self.config.state_path.resolve()),
+            "started_at": utc_now(),
+        }
+
+    def _implementation_lease_owner_is_active(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        kind = str(metadata.get("kind") or "")
+        if kind and kind != "implementation":
+            return False
+        state_dir = str(metadata.get("state_dir") or "")
+        if state_dir:
+            try:
+                if (
+                    Path(state_dir).resolve()
+                    != self.config.state_path.parent.resolve()
+                ):
+                    return False
+            except OSError:
+                return False
+        try:
+            pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            return False
+        # A live PID in this state directory is sufficient to fail closed.
+        # ``owner_script`` remains useful diagnostics, but a wrapper command or
+        # unreadable procfs entry must never let maintenance steal a daemon's
+        # active implementation lease.
+        return process_is_running(pid)
+
+    def _publish_implementation_maintenance_lease(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Atomically publish a complete lease without an empty-file window."""
+
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lease_id = str(metadata.get("lease_id") or "")
+        temporary_path = lock_path.with_name(
+            f".{lock_path.name}.{lease_id}.tmp"
+        )
+        data = (
+            json.dumps(dict(metadata), indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        fd: int | None = None
+        try:
+            fd = os.open(
+                temporary_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+            )
+            with os.fdopen(fd, "wb") as stream:
+                fd = None
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(temporary_path, lock_path)
+            except FileExistsError:
+                return False
+            return True
+        finally:
+            if fd is not None:
+                os.close(fd)
+            temporary_path.unlink(missing_ok=True)
+
+    def _acquire_implementation_maintenance_lease(
+        self,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        lock_path = self._implementation_maintenance_lock_path()
+        metadata = self._implementation_maintenance_lease_metadata()
+        try:
+            with serialized_lock_update(lock_path):
+                return self._acquire_implementation_maintenance_lease_serialized(
+                    lock_path,
+                    metadata,
+                )
+        except (OSError, RuntimeError) as exc:
+            return None, {
+                "blocked": True,
+                "reason": "implementation_maintenance_lease_coordination_failed",
+                "lock_path": str(lock_path),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    def _acquire_implementation_maintenance_lease_serialized(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        """Acquire the durable lease while its update guard is held."""
+
+        for _ in range(2):
+            if self._publish_implementation_maintenance_lease(
+                lock_path,
+                metadata,
+            ):
+                return metadata, {
+                    "blocked": False,
+                    "reason": "implementation_maintenance_lease_acquired",
+                    "lock_path": str(lock_path),
+                    "lease_id": str(metadata["lease_id"]),
+                }
+            existing = load_json_dict(lock_path)
+            if existing is None:
+                try:
+                    lock_path.unlink()
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    return None, {
+                        "blocked": True,
+                        "reason": "implementation_maintenance_lease_cleanup_failed",
+                        "lock_path": str(lock_path),
+                    }
+                continue
+            if self._implementation_lease_owner_is_active(existing):
+                return None, {
+                    "blocked": True,
+                    "reason": "implementation_protected_path_attempt_active",
+                    "lock_path": str(lock_path),
+                    "lock_owner_pid": int(existing.get("pid") or 0),
+                    "lock_owner_task_id": str(existing.get("task_id") or ""),
+                    "lock_owner_lease_role": str(
+                        existing.get("lease_role") or "implementation_attempt"
+                    ),
+                }
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return None, {
+                    "blocked": True,
+                    "reason": "implementation_maintenance_lease_cleanup_failed",
+                    "lock_path": str(lock_path),
+                }
+        return None, {
+            "blocked": True,
+            "reason": "implementation_maintenance_lease_unavailable",
+            "lock_path": str(lock_path),
+        }
+
+    def _release_implementation_maintenance_lease(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> None:
+        lock_path = self._implementation_maintenance_lock_path()
+        try:
+            with serialized_lock_update(lock_path):
+                self._release_implementation_maintenance_lease_serialized(
+                    lock_path,
+                    metadata,
+                )
+        except (OSError, RuntimeError):
+            logger.warning(
+                "Failed to coordinate release of supervisor implementation "
+                "lease %s",
+                lock_path,
+                exc_info=True,
+            )
+
+    def _release_implementation_maintenance_lease_serialized(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> None:
+        existing = load_json_dict(lock_path)
+        if existing is None:
+            return
+        if str(existing.get("lease_id") or "") != str(
+            metadata.get("lease_id") or ""
+        ):
+            logger.warning(
+                "Refusing to remove implementation lease no longer owned by "
+                "this supervisor pass: %s",
+                lock_path,
+            )
+            return
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            return
+        except OSError:
+            logger.warning(
+                "Failed to remove supervisor implementation lease %s",
+                lock_path,
+                exc_info=True,
+            )
+
     def _run_once_with_maintenance(
+        self,
+        update_maintenance_phase,
+        *,
+        include_refill: bool = True,
+    ) -> dict[str, Any]:
+        if not self.config.implementation_protected_paths:
+            return self._run_once_with_maintenance_under_lease(
+                update_maintenance_phase,
+                include_refill=include_refill,
+            )
+        lease, lease_guard = self._acquire_implementation_maintenance_lease()
+        if lease is None:
+            return {
+                "stuck": False,
+                "maintenance_blocked": True,
+                "reason": str(lease_guard.get("reason") or ""),
+                "protected_path_guard": lease_guard,
+            }
+        try:
+            update_maintenance_phase("implementation_maintenance_lease")
+            return self._run_once_with_maintenance_under_lease(
+                update_maintenance_phase,
+                include_refill=include_refill,
+            )
+        finally:
+            self._release_implementation_maintenance_lease(lease)
+
+    def _run_once_with_maintenance_under_lease(
         self,
         update_maintenance_phase,
         *,
@@ -1692,6 +1941,19 @@ class PortalImplementationSupervisor:
         state = PortalTaskState.load(self.config.state_path)
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if state.active_task_id and not stuck:
+            return SupervisorLoopDecision.keep_running()
+        if (
+            not stuck
+            and (
+                state.selectable_ready_count > 0
+                or bool(state.selectable_ready_task_ids)
+            )
+        ):
+            # Give the managed daemon first claim on runnable work.  Without
+            # this handoff, the watchdog can win the brief gap after one task
+            # finishes, hold the global implementation lease for a long
+            # objective-refill scan, and make the daemon skip ready tasks for
+            # the duration of that scan.
             return SupervisorLoopDecision.keep_running()
 
         self._last_supervisor_maintenance_at = now_monotonic
@@ -4743,7 +5005,7 @@ class PortalImplementationSupervisor:
 
         protected_path_guard = self._implementation_protected_maintenance_guard()
         if protected_path_guard.get("blocked", False):
-            raise CompletionArtifactRefreshError(
+            raise ObjectiveCompletionArtifactRefreshError(
                 "completion-artifact refresh blocked by active or latched "
                 "implementation protected-path fence"
             )

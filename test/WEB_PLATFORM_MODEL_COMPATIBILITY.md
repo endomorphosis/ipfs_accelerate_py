@@ -580,4 +580,4 @@ The August 2025 enhancements represent a major advancement in web-based machine 
 
 4. **Accessibility**: These advancements make advanced AI models accessible directly in web browsers without requiring server infrastructure.
 
-For the latest implementation details and best practices, consult the [Web Platform Integration Guide](WEB_PLATFORM_INTEGRATION_GUIDE.md), [Web Platform Implementation Plan](WEB_PLATFORM_IMPLEMENTATION_PLAN.md), and [WebGPU 4-bit Inference README](WEBGPU_4BIT_INFERENCE_README.md).
+For the latest implementation details and best practices, consult the [Web Platform Integration Guide](WEB_PLATFORM_INTEGRATION_GUIDE.md), [Web Platform Implementation Progress Report](WEB_PLATFORM_IMPLEMENTATION_PROGRESS.md), and [WebGPU 4-bit Inference README](WEBGPU_4BIT_INFERENCE_README.md).

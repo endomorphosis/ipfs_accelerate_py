@@ -198,7 +198,7 @@ tokenizer.batch_decode(out, skip_special_tokens=True)[0]
 
 ## Speed optimized caches
 
-The default [`DynamicCache`] prevents you from taking advantage of just-in-time (JIT) optimizations because the cache size isn't fixed. JIT optimizations enable you to maximize latency at the expense of memory usage. All of the following cache types are compatible with JIT optimizations like [torch.compile](./llm_optims#static-kv-cache-and-torchcompile) to accelerate generation.
+The default [`DynamicCache`] prevents you from taking advantage of just-in-time (JIT) optimizations because the cache size isn't fixed. JIT optimizations enable you to maximize latency at the expense of memory usage. All of the following cache types are compatible with JIT optimizations like [torch.compile](./llm_optims.md#static-kv-cache-and-torchcompile) to accelerate generation.
 
 ### Static cache
 
@@ -241,7 +241,7 @@ Cache offloading requires a CUDA GPU.
 
 ### Sliding window cache
 
-[`SlidingWindowCache`] implements a sliding window over the previous kv pairs, and only keeps the last `sliding_window` tokens. This cache type is designed to only work with models that support *sliding window attention*, such as [Mistral](./model_doc/mistral). Older kv states are discarded and replaced by new kv states.
+[`SlidingWindowCache`] implements a sliding window over the previous kv pairs, and only keeps the last `sliding_window` tokens. This cache type is designed to only work with models that support *sliding window attention*, such as [Mistral](./model_doc/mistral.md). Older kv states are discarded and replaced by new kv states.
 
 Enable [`SlidingWindowCache`] by configuring `cache_implementation="sliding_window"` in [`~GenerationMixin.generate`].
 
@@ -259,7 +259,7 @@ tokenizer.batch_decode(out, skip_special_tokens=True)[0]
 
 ## Model caches
 
-Some model types, like encoder-decoder models or [Gemma2](./model_doc/gemma2) and [Mamba](./model_doc/mamba), have dedicated cache classes.
+Some model types, like encoder-decoder models or [Gemma2](./model_doc/gemma2.md) and [Mamba](./model_doc/mamba.md), have dedicated cache classes.
 
 ### Encoder-decoder cache
 
@@ -268,21 +268,21 @@ Some model types, like encoder-decoder models or [Gemma2](./model_doc/gemma2) an
 This cache type doesn't require any setup. It can be used when calling [`~GenerationMixin.generate`] or a models `forward` method.
 
 > [!TIP]
-> The [`EncoderDecoderCache`] currently only supports [Whisper](./model_doc/whisper).
+> The [`EncoderDecoderCache`] currently only supports [Whisper](./model_doc/whisper.md).
 
 ### Model-specific caches
 
 Some models have a unique way of storing past kv pairs or states that is not compatible with any other cache classes.
 
-[Gemma2](./model_doc/gemma2) requires [`HybridCache`], which uses a combination of [`SlidingWindowCache`] for sliding window attention and [`StaticCache`] for global attention under the hood.
+[Gemma2](./model_doc/gemma2.md) requires [`HybridCache`], which uses a combination of [`SlidingWindowCache`] for sliding window attention and [`StaticCache`] for global attention under the hood.
 
-[Mamba](./model_doc/mamba) requires [`MambaCache`] because the model doesn't have an attention mechanism or kv states.
+[Mamba](./model_doc/mamba.md) requires [`MambaCache`] because the model doesn't have an attention mechanism or kv states.
 
 ## Iterative generation
 
 A cache can also work in iterative generation settings where there is back-and-forth interaction with a model (chatbots). Like regular generation, iterative generation with a cache allows a model to efficiently handle ongoing conversations without recomputing the entire context at each step.
 
-For iterative generation with a cache, start by initializing an empty cache class and then you can feed in your new prompts. Keep track of dialogue history with a [chat template](./chat_templating).
+For iterative generation with a cache, start by initializing an empty cache class and then you can feed in your new prompts. Keep track of dialogue history with a [chat template](./chat_templating.md).
 
 If you're using [`SinkCache`], the inputs need to be truncated to the maximum length because [`SinkCache`] can generate text that exceeds its maximum window size. However, the first input shouldn't exceed the maximum cache length.
 
