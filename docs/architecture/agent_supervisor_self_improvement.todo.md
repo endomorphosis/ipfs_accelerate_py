@@ -4420,7 +4420,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-154 Implement fenced start, stop, and restart lifecycle orchestration
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-lifecycle-recovery
 - Depends on: ASI-118, ASI-150
