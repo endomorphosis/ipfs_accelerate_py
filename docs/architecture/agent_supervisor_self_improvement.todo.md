@@ -4352,7 +4352,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-150 Extend the shared control catalog with workflow, restart, and rescue operations
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-control-surfaces
 - Depends on: ASI-116, ASI-142
