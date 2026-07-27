@@ -4403,7 +4403,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-153 Expose exact prompt workflow and rescue parity through lazy MCP tools
 
-- Status: pending
+- Status: completed
 - Priority: P1
 - Track: prompt-control-surfaces
 - Depends on: ASI-151
