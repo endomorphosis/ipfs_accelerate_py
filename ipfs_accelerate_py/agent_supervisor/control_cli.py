@@ -76,15 +76,20 @@ COMMAND_OPERATIONS: dict[str, Operation] = {
     "refine": Operation.OBJECTIVE_REFINE,
     "reconcile": Operation.OBJECTIVE_RECONCILE,
     "refill": Operation.BACKLOG_REFILL,
+    "workflow-preview": Operation.WORKFLOW_PREVIEW,
+    "workflow-create": Operation.WORKFLOW_MATERIALIZE,
     "start": Operation.START,
     "pause": Operation.PAUSE,
     "resume": Operation.RESUME,
     "drain": Operation.DRAIN,
     "stop": Operation.STOP,
+    "restart": Operation.RESTART,
     "retry": Operation.RETRY,
     "cancel": Operation.CANCEL,
     "quarantine": Operation.QUARANTINE,
     "validation-replay": Operation.VALIDATION_REPLAY,
+    "rescue-preview": Operation.RESCUE_PREVIEW,
+    "rescue": Operation.RESCUE,
 }
 
 _IDENTITY_ARGUMENTS = (

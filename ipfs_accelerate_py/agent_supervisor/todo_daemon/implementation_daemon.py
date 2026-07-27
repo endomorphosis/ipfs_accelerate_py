@@ -167,15 +167,33 @@ MAX_MERGE_PROOF_METADATA_ITEMS = 256
 MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
-IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(r"(?:^|[\s/])(codex|copilot)(?:\s|$)")
+IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
+    r"(?:^|[\s/])(codex|copilot|goose)(?:\s|$)"
+)
 PROVIDER_CAPACITY_BACKOFF_ENV = "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS"
 DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS = 300.0
 PROVIDER_CAPACITY_LOG_TAIL_BYTES = 128 * 1024
 PROVIDER_CAPACITY_PATTERNS = (
     ("codex", re.compile(r"you(?:'|\u2019)?ve hit your usage limit", re.IGNORECASE)),
     ("copilot", re.compile(r"you(?:'|\u2019)?ve reached your additional usage limit", re.IGNORECASE)),
+    (
+        "meta_spark",
+        re.compile(
+            r"(?:meta ai http (?:401|403|429)|insufficient_quota|quota[_ ]exceeded|"
+            r"rate[_ ]?limit(?:ed|s|_exceeded)?|model is currently overloaded)",
+            re.IGNORECASE,
+        ),
+    ),
+    ("goose", re.compile(r"(?:goose.*(?:rate limit|quota|usage limit)|provider.*exhausted)", re.IGNORECASE)),
     ("provider", re.compile(r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded)", re.IGNORECASE)),
 )
+IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+_GOOSE_BIN_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_BIN"
+_GOOSE_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MODEL"
+_GOOSE_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TURNS"
+_GOOSE_MAX_TOKENS_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TOKENS"
+_META_SPARK_HOST_ENV = "IPFS_ACCELERATE_AGENT_META_SPARK_HOST"
+_META_SPARK_BASE_PATH_ENV = "IPFS_ACCELERATE_AGENT_META_SPARK_BASE_PATH"
 SHARED_WORKTREE_PATHS = (
     "wallet_interface/ui/node_modules",
     "mobile/node_modules",
@@ -562,6 +580,112 @@ GENERATED_ADD_ADD_CONFLICT_PREFIXES = (
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _resolve_meta_spark_api_key() -> str:
+    """Resolve the Meta Muse Spark credential without logging its value."""
+
+    try:
+        from ...common.meta_model_api import resolve_meta_model_api_key
+
+        return str(resolve_meta_model_api_key() or "").strip()
+    except Exception:
+        return ""
+
+
+def _goose_binary() -> str | None:
+    try:
+        from ...llm_router import find_goose_cli
+
+        found = find_goose_cli()
+        if found:
+            return found
+    except Exception:
+        pass
+    configured = os.environ.get(_GOOSE_BIN_ENV, "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    return shutil.which("goose")
+
+
+def _goose_meta_spark_available() -> bool:
+    """True when llm_router's goose_cli provider can be constructed."""
+
+    try:
+        from ...llm_router import get_llm_provider
+
+        return get_llm_provider("goose_cli") is not None and bool(
+            _resolve_meta_spark_api_key()
+            or os.environ.get("OPENAI_API_KEY", "").strip()
+        )
+    except Exception:
+        return bool(_goose_binary() and _resolve_meta_spark_api_key())
+
+
+def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
+    """Build a goose agent command through llm_router's goose_cli surface.
+
+    The implementation daemon keeps a thin process entry
+    (:mod:`meta_spark_goose_runner`) only so secrets stay out of argv/logs and
+    worktree isolation cannot break ``python -m`` imports.  Command policy and
+    Meta Spark backend selection live in :mod:`llm_router` next to codex/copilot.
+    """
+
+    if not _goose_binary():
+        raise RuntimeError("goose CLI is not installed")
+    if not (
+        _resolve_meta_spark_api_key()
+        or os.environ.get("OPENAI_API_KEY", "").strip()
+    ):
+        raise RuntimeError(
+            "Meta Spark / OpenAI-compatible credential is unavailable; store "
+            "meta_ai_api_key or set MODEL_API_KEY / META_AI_API_KEY / OPENAI_API_KEY"
+        )
+
+    model = (
+        os.environ.get(_GOOSE_MODEL_ENV, "").strip()
+        or os.environ.get("GOOSE_MODEL", "").strip()
+        or os.environ.get("ipfs_accelerate_py_META_AI_MODEL", "").strip()
+        or "muse-spark-1.1"
+    )
+    max_turns = os.environ.get(_GOOSE_MAX_TURNS_ENV, "40").strip() or "40"
+    max_tokens = os.environ.get(_GOOSE_MAX_TOKENS_ENV, "4096").strip() or "4096"
+    host = (
+        os.environ.get(_META_SPARK_HOST_ENV, "").strip()
+        or os.environ.get("OPENAI_HOST", "").strip()
+        or "https://api.meta.ai"
+    )
+    base_path = (
+        os.environ.get(_META_SPARK_BASE_PATH_ENV, "").strip()
+        or os.environ.get("OPENAI_BASE_PATH", "").strip()
+        or "v1/chat/completions"
+    )
+    goose = _goose_binary() or "goose"
+    runner_path = (
+        Path(__file__).resolve().parents[1] / "meta_spark_goose_runner.py"
+    )
+    if not runner_path.is_file():
+        raise RuntimeError(f"meta_spark_goose_runner missing at {runner_path}")
+    return [
+        sys.executable,
+        str(runner_path),
+        "--workspace",
+        str(workspace_path.resolve()),
+        "--goose-bin",
+        goose,
+        "--model",
+        model,
+        "--host",
+        host,
+        "--base-path",
+        base_path,
+        "--max-turns",
+        max_turns,
+        "--max-tokens",
+        max_tokens,
+    ]
 
 
 def _copilot_has_auth() -> bool:
@@ -5229,20 +5353,60 @@ class PortalImplementationDaemon:
         classified["evidence"] = evidence[-4:]
         return classified
 
+    def _current_implementation_provider_labels(self) -> set[str]:
+        """Return coarse provider labels for the active implementation runner."""
+
+        provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "auto"
+        )
+        if provider in {
+            "goose",
+            "goose_meta",
+            "goose-meta",
+            "meta",
+            "meta_spark",
+            "meta-spark",
+            "muse",
+            "muse-spark",
+            "spark",
+        }:
+            return {"goose", "meta_spark", "meta", "provider"}
+        if provider in {"codex", "copilot", "openai"}:
+            return {"codex", "copilot", "provider"}
+        labels: set[str] = set()
+        if _goose_meta_spark_available():
+            labels.update({"goose", "meta_spark", "meta", "provider"})
+        if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
+            labels.update({"codex", "copilot", "provider"})
+        return labels or {"provider"}
+
     def _active_provider_capacity_backoff(self) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
+        current_labels = self._current_implementation_provider_labels()
         for event in reversed(self._iter_events()):
             event_type = str(event.get("type") or "")
             if event_type == "implementation_provider_exhausted":
                 retry_at = parse_timestamp(str(event.get("retry_at") or ""))
-                if retry_at is not None and retry_at > now:
-                    return {
-                        "active": True,
-                        "retry_at": retry_at.isoformat(),
-                        "retry_after_seconds": max(0.0, (retry_at - now).total_seconds()),
-                        "providers": list(event.get("providers") or []),
-                    }
-                return {}
+                if retry_at is None or retry_at <= now:
+                    return {}
+                exhausted = {
+                    str(item).strip().lower()
+                    for item in list(event.get("providers") or [])
+                    if str(item).strip()
+                }
+                # A codex quota latch must not block goose+Meta Spark (and vice
+                # versa). Only honor backoff when the exhausted providers
+                # overlap the runner we would actually launch.
+                if exhausted and not (exhausted & current_labels):
+                    continue
+                return {
+                    "active": True,
+                    "retry_at": retry_at.isoformat(),
+                    "retry_after_seconds": max(
+                        0.0, (retry_at - now).total_seconds()
+                    ),
+                    "providers": list(event.get("providers") or []),
+                }
             if event_type == "implementation_finished" and int(event.get("returncode") or 0) == 0:
                 return {}
         return {}
@@ -17406,6 +17570,46 @@ class PortalImplementationDaemon:
         env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
         if env_command:
             return shlex.split(env_command)
+
+        provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            or "auto"
+        )
+        goose_meta_ready = _goose_meta_spark_available()
+        prefer_goose_meta = provider in {
+            "auto",
+            "goose",
+            "goose_meta",
+            "goose-meta",
+            "meta",
+            "meta_spark",
+            "meta-spark",
+            "muse",
+            "muse-spark",
+            "spark",
+        }
+        force_goose_meta = provider in {
+            "goose",
+            "goose_meta",
+            "goose-meta",
+            "meta",
+            "meta_spark",
+            "meta-spark",
+            "muse",
+            "muse-spark",
+            "spark",
+        }
+        force_codex = provider in {"codex", "copilot", "openai"}
+
+        if force_goose_meta or (prefer_goose_meta and goose_meta_ready and not force_codex):
+            if not goose_meta_ready:
+                raise RuntimeError(
+                    "Implementation provider "
+                    f"{provider!r} requires goose CLI and a Meta Spark key "
+                    "(meta_ai_api_key / MODEL_API_KEY)"
+                )
+            return _goose_meta_spark_command(workspace_path=workspace_path)
+
         codex = shutil.which("codex")
         copilot = shutil.which("copilot")
         if copilot and _copilot_has_auth():
@@ -17437,8 +17641,11 @@ class PortalImplementationDaemon:
                 cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
             cmd.append("-")
             return cmd
+        if goose_meta_ready:
+            return _goose_meta_spark_command(workspace_path=workspace_path)
         raise RuntimeError(
-            "No implementation command configured. Install codex or copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
+            "No implementation command configured. Install goose (with Meta Spark "
+            "credentials), codex, or copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
         )
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:

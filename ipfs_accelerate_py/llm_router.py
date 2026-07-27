@@ -49,10 +49,19 @@ Additional optional providers (opt-in by selecting provider):
     - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
     - `ipfs_accelerate_py_XAI_MODEL` (default model, e.g. grok-3)
     - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
-- `meta_ai`: Meta AI / Meta Spark (Llama API, OpenAI-compatible)
-    - `META_AI_API_KEY` or `ipfs_accelerate_py_META_AI_API_KEY`
-    - `ipfs_accelerate_py_META_AI_MODEL` (default model, e.g. meta-llama/Llama-3.3-70B-Instruct)
-    - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.llamameta.net/v1)
+- `meta_ai`: Meta Model API / Muse Spark (OpenAI-compatible)
+    - encrypted credential `meta_ai_api_key`, `MODEL_API_KEY`,
+      `META_AI_API_KEY`, or `ipfs_accelerate_py_META_AI_API_KEY`
+    - `ipfs_accelerate_py_META_AI_MODEL` (default: muse-spark-1.1)
+    - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.meta.ai/v1)
+- `goose_cli`: Block/AAIF Goose CLI via `goose run`
+    - chat-only by default (`GOOSE_MODE=chat`, no tools/extensions/session)
+    - default backend is Meta Muse Spark through OpenAI-compatible env
+      (`OPENAI_HOST=https://api.meta.ai`, package Meta API key)
+    - `ipfs_accelerate_py_GOOSE_CLI_MODEL` / `GOOSE_MODEL` (default: muse-spark-1.1)
+    - `ipfs_accelerate_py_GOOSE_BIN` or `goose` on PATH
+    - pass `agent=True` / `side_effecting=True` only for explicitly authorized
+      tool-using agent runs (developer extension, auto mode)
 - `llama_cpp`: local llama.cpp OpenAI-compatible server
     - `IPFS_ACCELERATE_LLAMA_CPP_BASE_URL` (default from host/port: http://127.0.0.1:8080/v1)
     - `IPFS_ACCELERATE_LLAMA_CPP_MODEL` (chat-completions model id; defaults to Leanstral NVFP4 ref)
@@ -105,6 +114,13 @@ from typing import (
     runtime_checkable,
 )
 
+from .common.meta_model_api import (
+    META_MODEL_API_BASE_URL,
+    META_MODEL_API_DEFAULT_MODEL,
+    meta_model_api_key_fingerprint,
+    normalize_meta_model_name,
+    resolve_meta_model_api_key,
+)
 from .model_catalog import (
     CapabilityDescriptor,
     CatalogSnapshot,
@@ -176,10 +192,24 @@ _PROVIDER_ALIASES = {
     "llamacpp_native": "llama_cpp_native",
     "llama.cpp_native": "llama_cpp_native",
     "native_llama_cpp": "llama_cpp_native",
+    "goose": "goose_cli",
+    "goose-cli": "goose_cli",
+    "block_goose": "goose_cli",
+    "block-goose": "goose_cli",
+    "aaif_goose": "goose_cli",
+}
+_GOOSE_CLI_PROVIDER_ALIASES = {
+    "goose_cli",
+    "goose",
+    "goose-cli",
+    "block_goose",
+    "block-goose",
+    "aaif_goose",
 }
 _UNPINNED_OPTIONAL_PROVIDER_ORDER = [
     "codex_cli",
     "copilot_cli",
+    "goose_cli",
     "openai",
     "hf_inference_api",
     "openrouter",
@@ -194,6 +224,7 @@ _UNPINNED_OPTIONAL_PROVIDER_ORDER = [
 _LLM_GENERATE_PROVIDER_FORWARD_KEYS = (
     "max_new_tokens",
     "max_tokens",
+    "max_completion_tokens",
     "temperature",
     "top_p",
     "stop",
@@ -1530,15 +1561,15 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
             or "grok-3"
         ).strip()
     if pk in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
-        return (
+        return normalize_meta_model_name(
             _coalesce_env(
                 "ipfs_accelerate_py_META_AI_MODEL",
                 "IPFS_ACCELERATE_PY_META_AI_MODEL",
                 "IPFS_DATASETS_PY_META_AI_MODEL",
             )
             or _generic_llm_model_env()
-            or "meta-llama/Llama-3.3-70B-Instruct"
-        ).strip()
+            or META_MODEL_API_DEFAULT_MODEL
+        )
     if pk in {"hf", "huggingface", "local_hf"}:
         return (_generic_llm_model_env() or "gpt2").strip()
 
@@ -3606,6 +3637,255 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
     return _CodexCLIProvider()
 
 
+def find_goose_cli() -> Optional[str]:
+    """Locate the goose CLI binary without starting a process."""
+
+    configured = _coalesce_env(
+        "ipfs_accelerate_py_GOOSE_BIN",
+        "IPFS_ACCELERATE_PY_GOOSE_BIN",
+        "IPFS_ACCELERATE_AGENT_GOOSE_BIN",
+        "GOOSE_BIN",
+    )
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    return shutil.which("goose")
+
+
+def _goose_default_model() -> str:
+    return (
+        _coalesce_env(
+            "ipfs_accelerate_py_GOOSE_CLI_MODEL",
+            "IPFS_ACCELERATE_PY_GOOSE_CLI_MODEL",
+            "GOOSE_MODEL",
+            "ipfs_accelerate_py_META_AI_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+        )
+        or META_MODEL_API_DEFAULT_MODEL
+    )
+
+
+def _goose_openai_compatible_backend_env(
+    base_env: Optional[Mapping[str, str]] = None,
+) -> dict[str, str]:
+    """Build env so goose can talk to Meta Muse Spark (or an override host).
+
+    Goose's OpenAI-compatible transport is the same family of boundary as
+    ``meta_ai`` / ``xai`` HTTP providers: host + bearer key + model id.
+    """
+
+    env = dict(base_env or os.environ)
+    # Prefer an explicit OPENAI_API_KEY when the operator already set one.
+    if not str(env.get("OPENAI_API_KEY") or "").strip():
+        meta_key = resolve_meta_model_api_key()
+        if meta_key:
+            env["OPENAI_API_KEY"] = meta_key
+    host = (
+        _coalesce_env(
+            "ipfs_accelerate_py_GOOSE_OPENAI_HOST",
+            "IPFS_ACCELERATE_AGENT_META_SPARK_HOST",
+            "OPENAI_HOST",
+        )
+        or "https://api.meta.ai"
+    )
+    base_path = (
+        _coalesce_env(
+            "ipfs_accelerate_py_GOOSE_OPENAI_BASE_PATH",
+            "IPFS_ACCELERATE_AGENT_META_SPARK_BASE_PATH",
+            "OPENAI_BASE_PATH",
+        )
+        or "v1/chat/completions"
+    )
+    env.setdefault("OPENAI_HOST", host)
+    env.setdefault("OPENAI_BASE_PATH", base_path)
+    env.setdefault("GOOSE_PROVIDER", env.get("GOOSE_PROVIDER") or "openai")
+    env.setdefault("GOOSE_DISABLE_KEYRING", env.get("GOOSE_DISABLE_KEYRING") or "1")
+    local_bin = str(Path.home() / ".local" / "bin")
+    path = env.get("PATH", "")
+    if local_bin not in path.split(os.pathsep):
+        env["PATH"] = local_bin + os.pathsep + path
+    return env
+
+
+def build_goose_cli_command(
+    *,
+    mode: str = "chat",
+    workspace: Optional[str | Path] = None,
+    model_name: Optional[str] = None,
+    max_turns: Optional[int] = None,
+    with_developer: bool = False,
+    goose_bin: Optional[str] = None,
+) -> list[str]:
+    """Return argv for a goose CLI invocation (prompt is always stdin via ``-i -``).
+
+    ``mode="chat"`` is the safe llm_router default: no tools, no session, no
+    default profile extensions. ``mode="agent"`` is for explicitly authorized
+    side-effecting runs (e.g. the agent supervisor implementation daemon).
+    """
+
+    binary = (goose_bin or find_goose_cli() or "").strip()
+    if not binary:
+        raise LLMRouterError("goose CLI not found on PATH")
+    normalized = str(mode or "chat").strip().lower()
+    if normalized not in {"chat", "agent"}:
+        raise LLMRouterError(f"unsupported goose mode: {mode!r}")
+
+    if max_turns is None:
+        if normalized == "chat":
+            max_turns = int(
+                _coalesce_env("ipfs_accelerate_py_GOOSE_CLI_MAX_TURNS", "2") or "2"
+            )
+        else:
+            max_turns = int(
+                _coalesce_env(
+                    "ipfs_accelerate_py_GOOSE_AGENT_MAX_TURNS",
+                    "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TURNS",
+                    "40",
+                )
+                or "40"
+            )
+    max_turns = max(1, int(max_turns))
+
+    cmd: list[str] = [
+        binary,
+        "run",
+        "--no-session",
+        "--quiet",
+        "--max-turns",
+        str(max_turns),
+    ]
+    if normalized == "chat":
+        cmd.append("--no-profile")
+    if normalized == "agent" or with_developer:
+        cmd.extend(["--with-builtin", "developer"])
+    # Instruction body is supplied by the caller on stdin.
+    cmd.extend(["-i", "-"])
+    if workspace is not None:
+        # Goose itself does not take -C; callers must set cwd. Keep the
+        # workspace argument out of argv so it cannot be mistaken for a
+        # prompt path.
+        _ = Path(workspace)
+    _ = model_name  # model is carried via GOOSE_MODEL in the environment
+    return cmd
+
+
+def build_goose_cli_env(
+    *,
+    mode: str = "chat",
+    model_name: Optional[str] = None,
+    max_tokens: Optional[int] = None,
+    base_env: Optional[Mapping[str, str]] = None,
+) -> dict[str, str]:
+    """Environment for goose CLI runs, defaulting backend to Meta Muse Spark."""
+
+    env = _goose_openai_compatible_backend_env(base_env)
+    normalized = str(mode or "chat").strip().lower()
+    env["GOOSE_MODE"] = "chat" if normalized == "chat" else (env.get("GOOSE_MODE") or "auto")
+    model = (model_name or "").strip() or _goose_default_model()
+    env["GOOSE_MODEL"] = normalize_meta_model_name(model) if "spark" in model.lower() or model.startswith("muse-") else model
+    if max_tokens is None:
+        max_tokens = int(
+            _coalesce_env(
+                "ipfs_accelerate_py_GOOSE_MAX_TOKENS",
+                "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TOKENS",
+                "4096",
+            )
+            or "4096"
+        )
+    env["GOOSE_MAX_TOKENS"] = str(max(64, int(max_tokens)))
+    if not str(env.get("OPENAI_API_KEY") or "").strip():
+        raise LLMRouterError(
+            "goose_cli requires OPENAI_API_KEY or a Meta Spark credential "
+            "(meta_ai_api_key / MODEL_API_KEY / META_AI_API_KEY)"
+        )
+    return env
+
+
+def _get_goose_cli_provider() -> Optional[LLMProvider]:
+    """Return the Goose CLI provider when the binary is present.
+
+    Ordinary ``generate`` is chat-only and never enables tools/extensions.
+    Pass ``agent=True`` (or ``side_effecting=True``) plus an explicit
+    ``workspace`` only for authorized agent runs.
+    """
+
+    if not find_goose_cli():
+        return None
+
+    class _GooseCLIProvider:
+        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            agent = bool(
+                kwargs.pop("agent", False)
+                or kwargs.pop("side_effecting", False)
+                or kwargs.pop("with_tools", False)
+            )
+            workspace = kwargs.pop("workspace", None) or kwargs.pop("cwd", None)
+            with_developer = bool(kwargs.pop("with_developer", agent))
+            max_turns = kwargs.pop("max_turns", None)
+            max_tokens = kwargs.pop("max_tokens", None) or kwargs.pop(
+                "max_completion_tokens", None
+            )
+            timeout = float(kwargs.pop("timeout", 300 if agent else 180))
+            mode = "agent" if agent else "chat"
+            if agent and not workspace:
+                raise LLMRouterError(
+                    "goose_cli agent mode requires an explicit workspace/cwd"
+                )
+
+            try:
+                cmd = build_goose_cli_command(
+                    mode=mode,
+                    workspace=workspace if workspace is not None else None,
+                    model_name=model_name,
+                    max_turns=int(max_turns) if max_turns is not None else None,
+                    with_developer=with_developer and agent,
+                )
+                env = build_goose_cli_env(
+                    mode=mode,
+                    model_name=model_name,
+                    max_tokens=int(max_tokens) if max_tokens is not None else None,
+                )
+            except LLMRouterError:
+                raise
+            except Exception as exc:
+                raise LLMRouterError(f"goose_cli configuration failed: {exc}") from exc
+
+            cwd = str(Path(workspace).expanduser().resolve()) if workspace else None
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    input=str(prompt),
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=timeout,
+                    env=env,
+                    cwd=cwd,
+                )
+            except FileNotFoundError as exc:
+                raise LLMRouterError("goose CLI not found on PATH") from exc
+            except subprocess.TimeoutExpired as exc:
+                raise LLMRouterError(
+                    f"goose_cli timed out after {timeout}s"
+                ) from exc
+
+            text_out = (proc.stdout or "").strip()
+            if proc.returncode == 0 and text_out:
+                return text_out
+            err = (proc.stderr or "").strip() or (proc.stdout or "").strip()
+            lowered = err.lower()
+            if "usage limit" in lowered or "rate limit" in lowered or "quota" in lowered:
+                raise LLMRouterError(f"goose_cli capacity/quota error: {err[:500]}")
+            if "api key" in lowered or "authentication" in lowered or "unauthorized" in lowered:
+                raise LLMRouterError(f"goose_cli authentication failed: {err[:500]}")
+            if proc.returncode != 0:
+                raise LLMRouterError(err or f"goose run failed with exit {proc.returncode}")
+            return text_out
+
+    return _GooseCLIProvider()
+
+
 def _get_copilot_cli_provider() -> Optional[LLMProvider]:
     # Default to the official Copilot CLI via npx. We run it in "interactive"
     # mode with an auto-executed prompt (`-i`) so this works in non-interactive
@@ -4536,12 +4816,16 @@ def _get_xai_provider() -> Optional[LLMProvider]:
 
 
 def _get_meta_ai_provider() -> Optional[LLMProvider]:
-    """Return a Meta AI provider if META_AI_API_KEY (or equivalent) is set."""
-    api_key = _coalesce_env("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")
+    """Return the Meta Model API provider when a credential is available."""
+
+    api_key = resolve_meta_model_api_key()
     if not api_key:
         return None
 
-    base_url = os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "https://api.llamameta.net/v1").rstrip("/")
+    base_url = os.getenv(
+        "ipfs_accelerate_py_META_AI_BASE_URL",
+        META_MODEL_API_BASE_URL,
+    ).rstrip("/")
 
     def _request(payload: dict, *, timeout: float) -> dict:
         import urllib.request
@@ -4587,14 +4871,21 @@ def _get_meta_ai_provider() -> Optional[LLMProvider]:
                 model_name
                 or os.getenv("ipfs_accelerate_py_META_AI_MODEL")
                 or os.getenv("ipfs_accelerate_py_LLM_MODEL")
-                or "meta-llama/Llama-3.3-70B-Instruct"
+                or META_MODEL_API_DEFAULT_MODEL
             )
-            max_tokens = kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))
+            model = normalize_meta_model_name(model)
+            default_max = int(
+                os.getenv("ipfs_accelerate_py_META_AI_MAX_COMPLETION_TOKENS", "1024")
+            )
+            max_completion_tokens = kwargs.get(
+                "max_completion_tokens",
+                kwargs.get("max_tokens", kwargs.get("max_new_tokens", default_max)),
+            )
             temperature = kwargs.get("temperature", 0.2)
             payload: dict = {
                 "model": model,
                 "messages": list(messages),
-                "max_tokens": int(max_tokens),
+                "max_completion_tokens": int(max_completion_tokens),
                 "temperature": float(temperature),
             }
             if "logprobs" in kwargs:
@@ -4609,6 +4900,20 @@ def _get_meta_ai_provider() -> Optional[LLMProvider]:
             return _request(payload, timeout=timeout)
 
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            if (
+                "max_completion_tokens" not in kwargs
+                and "max_tokens" not in kwargs
+                and "max_new_tokens" not in kwargs
+            ):
+                kwargs = {
+                    **dict(kwargs),
+                    "max_completion_tokens": int(
+                        os.getenv(
+                            "ipfs_accelerate_py_META_AI_MAX_COMPLETION_TOKENS",
+                            "1024",
+                        )
+                    ),
+                }
             data = self.chat_completions(
                 [{"role": "user", "content": prompt}],
                 model_name=model_name,
@@ -4617,14 +4922,21 @@ def _get_meta_ai_provider() -> Optional[LLMProvider]:
             choices = data.get("choices")
             if isinstance(choices, list) and choices:
                 msg = choices[0].get("message") if isinstance(choices[0], dict) else None
-                if isinstance(msg, dict) and isinstance(msg.get("content"), str):
-                    return msg["content"].strip()
+                if isinstance(msg, dict):
+                    content = msg.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
                 text = choices[0].get("text") if isinstance(choices[0], dict) else None
-                if isinstance(text, str):
+                if isinstance(text, str) and text.strip():
                     return text.strip()
+                raise RuntimeError(
+                    "Meta AI response missing content "
+                    f"(finish_reason={choices[0].get('finish_reason') if isinstance(choices[0], dict) else None})"
+                )
             raise RuntimeError("Meta AI response missing choices")
 
     return _MetaAIProvider()
+
 
 
 def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
@@ -4851,8 +5163,7 @@ def _provider_cache_key() -> tuple:
         os.getenv("IPFS_DATASETS_PY_XAI_API_KEY", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "").strip(),
-        os.getenv("META_AI_API_KEY", "").strip(),
-        os.getenv("ipfs_accelerate_py_META_AI_API_KEY", "").strip(),
+        meta_model_api_key_fingerprint(),
         os.getenv("ipfs_accelerate_py_META_AI_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "").strip(),
         os.getenv("IPFS_ACCELERATE_LLAMA_CPP_BASE_URL", "").strip(),
@@ -5152,6 +5463,8 @@ def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optio
         return _get_llama_cpp_native_provider(auto_install=auto_install)
     if key in {"codex", "codex_cli"}:
         return _get_codex_cli_provider()
+    if key in _GOOSE_CLI_PROVIDER_ALIASES:
+        return _get_goose_cli_provider()
     if key in {"copilot_cli"}:
         return _get_copilot_cli_provider()
     if key in {"copilot_sdk"}:
@@ -5475,6 +5788,26 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
         tools="supported",
     ),
     _LLMProviderSpec(
+        name="goose_cli",
+        aliases=("goose", "goose-cli", "block_goose", "block-goose", "aaif_goose"),
+        description=(
+            "Block/AAIF Goose CLI provider. Ordinary generation is chat-only; "
+            "default model backend is Meta Muse Spark via OpenAI-compatible env."
+        ),
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_GOOSE_CLI_MODEL",
+            "IPFS_ACCELERATE_PY_GOOSE_CLI_MODEL",
+            "GOOSE_MODEL",
+            "ipfs_accelerate_py_META_AI_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+        ),
+        default_model=META_MODEL_API_DEFAULT_MODEL,
+        tools="supported",
+    ),
+    _LLMProviderSpec(
         name="copilot_cli",
         aliases=("copilot",),
         description="GitHub Copilot CLI text generation provider.",
@@ -5587,7 +5920,7 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
     _LLMProviderSpec(
         name="meta_ai",
         aliases=("meta", "meta-ai", "meta_llama", "meta_spark", "spark"),
-        description="Meta AI OpenAI-compatible chat API.",
+        description="Meta Model API / Muse Spark OpenAI-compatible chat API.",
         locality="remote",
         device="provider-managed",
         authorization="required",
@@ -5597,7 +5930,7 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
             "IPFS_DATASETS_PY_META_AI_MODEL",
             "ipfs_accelerate_py_LLM_MODEL",
         ),
-        default_model="meta-llama/Llama-3.3-70B-Instruct",
+        default_model=META_MODEL_API_DEFAULT_MODEL,
         chat=True,
     ),
     _LLMProviderSpec(
@@ -5675,7 +6008,10 @@ def _llm_model_facts(model_name: str) -> Tuple[Optional[int], Optional[str]]:
 
 
 def _effective_llm_spec_model(spec: _LLMProviderSpec) -> Optional[str]:
-    return _coalesce_env(*spec.model_env) or spec.default_model
+    model_name = _coalesce_env(*spec.model_env) or spec.default_model
+    if spec.name == "meta_ai":
+        return normalize_meta_model_name(model_name)
+    return model_name
 
 
 def _llm_env_has_value(*names: str) -> bool:
@@ -5720,10 +6056,16 @@ def _llm_provider_authorized(name: str) -> Optional[bool]:
             "IPFS_DATASETS_PY_XAI_API_KEY",
         )
     if name == "meta_ai":
-        return _llm_env_has_value(
+        if _llm_env_has_value(
+            "MODEL_API_KEY",
             "META_AI_API_KEY",
             "ipfs_accelerate_py_META_AI_API_KEY",
-        )
+        ):
+            return True
+        # The runtime can also use the encrypted credentials manager.
+        # Discovery must not inspect it, so absence from the environment is
+        # unknown rather than proof that authorization is unavailable.
+        return None
     if name == "mistral_vibe" and _llm_env_has_value(
         "MISTRAL_API_KEY",
         "IPFS_ACCELERATE_MISTRAL_API_KEY",
@@ -5736,6 +6078,7 @@ def _llm_provider_authorized(name: str) -> Optional[bool]:
         "codex_cli",
         "copilot_cli",
         "copilot_sdk",
+        "goose_cli",
         "gemini_cli",
         "gemini_py",
         "claude_code",
@@ -6259,6 +6602,7 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         "meta_ai",
         "codex_cli",
         "copilot_cli",
+        "goose_cli",
         "gemini_cli",
         "claude_code",
         "mistral_vibe",
