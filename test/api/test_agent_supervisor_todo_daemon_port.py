@@ -7392,6 +7392,62 @@ def test_bundle_runtime_taskboard_rejects_source_digest_change_after_planning(
     assert not lane.runtime_todo_path.exists()
 
 
+def test_bundle_runtime_taskboard_preserves_atomic_semicolon_validations(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shard_path = repo / "atomic.todo.md"
+    validation_commands = [
+        "python -m pytest tests/test_compile.py",
+        "python -m pytest tests/test_manifest.py",
+        "python -m pytest tests/test_roundtrip.py",
+    ]
+    shard_path.write_text(
+        """# Reviewed bundle input
+
+## ACCEL-001 Validate one implementation atomically
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: benchmark
+- Validation: """
+        + "; ".join(validation_commands)
+        + "\n",
+        encoding="utf-8",
+    )
+    index_path = repo / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "objective/benchmark/atomic-validation": {
+                        "shard_path": "atomic.todo.md",
+                        "tasks": [{"task_id": "ACCEL-001"}],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    lane = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "runtime",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="## ACCEL-",
+    )[0]
+
+    materialize_bundle_lane_taskboard(lane, repo_root=repo)
+
+    assert lane.runtime_todo_path is not None
+    assert lane.runtime_todo_path.read_bytes() == shard_path.read_bytes()
+    [runtime_task] = parse_task_file(lane.runtime_todo_path, "## ACCEL-")
+    assert runtime_task.validation == validation_commands
+
+
 def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

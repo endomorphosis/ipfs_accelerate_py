@@ -16,6 +16,9 @@ from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supe
 from ipfs_accelerate_py.agent_supervisor.artifact_store import query_artifact
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_lanes
+from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+    materialize_bundle_lane_taskboard,
+)
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
 from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
@@ -368,6 +371,128 @@ def test_dependency_blocked_candidate_does_not_consume_admission_capacity(
         if item["bundle_key"].endswith("t-1")
     )
     assert decision["reason"] == "snapshot_not_ready"
+
+
+def test_stale_runtime_input_binding_blocks_before_claim_and_backfills_capacity(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1", "T-2")
+    bundle_dir = repo / "bundles"
+    bundle_dir.mkdir()
+    stale_source = bundle_dir / "t-1.todo.md"
+    stale_source.write_text(
+        "## T-1 Original reviewed task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    (bundle_dir / "t-2.todo.md").write_text(
+        "## T-2 Independent task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher, max_lanes=1)
+    original_lane = next(
+        lane for lane in scheduler._plan() if lane.task_ids == ["T-1"]
+    )
+    original_binding = materialize_bundle_lane_taskboard(
+        original_lane,
+        repo_root=repo,
+    )
+    assert original_lane.runtime_todo_path is not None
+    original_runtime_bytes = original_lane.runtime_todo_path.read_bytes()
+
+    stale_source.write_text(
+        "## T-1 Newly reviewed replacement task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    manifest = scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-2"]]
+    stale_decision = next(
+        decision
+        for decision in manifest["scheduler_decisions"]
+        if decision["bundle_key"] == "objective/test/t-1"
+    )
+    assert stale_decision["decision"] == "deferred"
+    assert stale_decision["reason"] == "stale_input_binding"
+    assert (
+        stale_decision["bound_source_todo_sha256"]
+        == original_binding["source_todo_sha256"]
+    )
+    assert stale_decision["planned_source_todo_sha256"] != (
+        stale_decision["bound_source_todo_sha256"]
+    )
+    stale_task = next(
+        task
+        for task in manifest["tasks"]
+        if task["bundle_key"] == "objective/test/t-1"
+    )
+    assert stale_task["state"] == "blocked"
+    assert stale_task["blocked_reason"] == "stale_input_binding"
+    assert stale_task["stale_input_binding"]["reason"] == "stale_input_binding"
+    assert manifest["resource_schedule"]["admitted_count"] == 1
+    assert original_lane.runtime_todo_path.read_bytes() == original_runtime_bytes
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        accepted = {
+            task["bundle_key"]
+            for task in coordinator.list_tasks()
+            if task["state"] == "accepted"
+        }
+    assert accepted == {"objective/test/t-2"}
+
+
+def test_static_launcher_reports_stale_input_binding_before_registration(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    source = repo / "bundles" / "t-1.todo.md"
+    source.parent.mkdir()
+    source.write_text(
+        "## T-1 Original reviewed task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    original_lane = scheduler._plan()[0]
+    materialize_bundle_lane_taskboard(original_lane, repo_root=repo)
+    assert original_lane.runtime_todo_path is not None
+    runtime_bytes = original_lane.runtime_todo_path.read_bytes()
+    source.write_text(
+        "## T-1 Replacement reviewed task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    replacement_lane = scheduler._plan()[0]
+
+    def unexpected_registration(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("stale input reached coordination registration")
+
+    monkeypatch.setattr(
+        LeaseCoordinator,
+        "register_bundle",
+        unexpected_registration,
+    )
+    [result] = launch_bundle_lanes(
+        [replacement_lane],
+        repo_root=repo,
+        coordination_path=repo / "static-coordination.sqlite3",
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "stale_input_binding"
+    assert result["code"] == "G_STALE_INPUT_BINDING"
+    assert (
+        result["bound_source_todo_sha256"]
+        == original_lane.source_todo_sha256
+    )
+    assert (
+        result["planned_source_todo_sha256"]
+        == replacement_lane.source_todo_sha256
+    )
+    assert original_lane.runtime_todo_path.read_bytes() == runtime_bytes
 
 
 def test_live_lease_claimability_overrides_stale_planner_hint(

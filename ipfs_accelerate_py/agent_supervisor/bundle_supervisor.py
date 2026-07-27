@@ -711,6 +711,48 @@ def bundle_taskboard_input_binding_path(lane: BundleLaneSpec) -> Path:
     return lane.state_dir / f"{lane.state_prefix}_taskboard_input.json"
 
 
+def stale_bundle_lane_input_binding(
+    lane: BundleLaneSpec,
+    *,
+    repo_root: Path,
+) -> dict[str, str] | None:
+    """Diagnose a planned lane whose immutable runtime input is from an older plan.
+
+    Runtime taskboards are deliberately mutable after materialization because
+    the implementation daemon records task status there.  Their accompanying
+    input binding is immutable, however.  If a later plan points the same lane
+    state directory at different source bytes, launching it would only fail
+    inside :func:`materialize_bundle_lane_taskboard` after a coordination lease
+    and resource reservation had already been acquired.
+
+    This read-only preflight recognizes that one actionable mismatch without
+    rewriting either the binding or the runtime taskboard.  Other malformed
+    binding conditions continue through the existing fail-closed materializer.
+    """
+
+    planned_digest = str(lane.source_todo_sha256 or "").strip().lower()
+    if len(planned_digest) != 64:
+        return None
+    binding_path = bundle_taskboard_input_binding_path(lane)
+    try:
+        existing_binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(existing_binding, dict):
+        return None
+    bound_digest = str(
+        existing_binding.get("source_todo_sha256") or ""
+    ).strip().lower()
+    if not bound_digest or bound_digest == planned_digest:
+        return None
+    return {
+        "reason": "stale_input_binding",
+        "binding_path": repo_relative_path(repo_root, binding_path),
+        "bound_source_todo_sha256": bound_digest,
+        "planned_source_todo_sha256": planned_digest,
+    }
+
+
 def _write_bytes_atomically(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -3012,6 +3054,13 @@ def launch_bundle_lanes(
         id(lane): _lane_launch_policy_error(lane)
         for lane in lanes
     }
+    stale_input_bindings = {
+        id(lane): stale_bundle_lane_input_binding(
+            lane,
+            repo_root=repo_root,
+        )
+        for lane in lanes
+    }
     if lanes and all(policy_errors[id(lane)] for lane in lanes):
         return [
             {
@@ -3036,6 +3085,21 @@ def launch_bundle_lanes(
                         "accepted": False,
                         "error": policy_error,
                         "code": "G_EXECUTION_POLICY_DENIED",
+                    }
+                )
+                continue
+            stale_input_binding = stale_input_bindings[id(lane)]
+            if stale_input_binding is not None:
+                results.append(
+                    {
+                        "bundle_key": lane.bundle_key,
+                        "accepted": False,
+                        "error": (
+                            "immutable runtime taskboard input is bound to a "
+                            "different planned source digest"
+                        ),
+                        "code": "G_STALE_INPUT_BINDING",
+                        **stale_input_binding,
                     }
                 )
                 continue
@@ -4722,6 +4786,29 @@ class DynamicBundleScheduler:
                     task_cids=current_task_cids,
                     include_claimability=True,
                 )
+                ready_input_binding_task_cids = {
+                    str(item.get("task_cid") or "")
+                    for item in decision_projection
+                    if self._projection_state(item) == "ready"
+                }
+                stale_input_bindings = {
+                    lane.task_cid: diagnosis
+                    for lane in registered
+                    if lane.task_cid in ready_input_binding_task_cids
+                    if (
+                        diagnosis := stale_bundle_lane_input_binding(
+                            lane,
+                            repo_root=self.repo_root,
+                        )
+                    )
+                }
+                for item in decision_projection:
+                    task_cid = str(item.get("task_cid") or "")
+                    diagnosis = stale_input_bindings.get(task_cid)
+                    if diagnosis is not None:
+                        item["state"] = "blocked"
+                        item["blocked_reason"] = "stale_input_binding"
+                        item["stale_input_binding"] = dict(diagnosis)
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
                 registered_by_task_cid = {
                     lane.task_cid: lane for lane in registered
@@ -4838,6 +4925,16 @@ class DynamicBundleScheduler:
                         })
                         continue
                     if lane.task_cid in reconciled:
+                        continue
+                    stale_input_binding = stale_input_bindings.get(lane.task_cid)
+                    if stale_input_binding is not None:
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            **stale_input_binding,
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     scope_owner = running_by_bundle_key.get(lane.bundle_key)
                     if scope_owner is not None:
@@ -5064,6 +5161,16 @@ class DynamicBundleScheduler:
                     task_cids=current_task_cids,
                     include_claimability=True,
                 )
+                for item in projection:
+                    task_cid = str(item.get("task_cid") or "")
+                    diagnosis = stale_input_bindings.get(task_cid)
+                    if (
+                        diagnosis is not None
+                        and self._projection_state(item) == "ready"
+                    ):
+                        item["state"] = "blocked"
+                        item["blocked_reason"] = "stale_input_binding"
+                        item["stale_input_binding"] = dict(diagnosis)
                 current_snapshot = self._build_scheduler_snapshot(registered, projection)
                 if (
                     self._cycle % COORDINATION_COMPACTION_INTERVAL_CYCLES == 0
