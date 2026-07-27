@@ -702,3 +702,25 @@ do not delete protected headers or rewrite completed history.
 - Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery, docs/architecture/agent_supervisor_module_refactor.todo.md
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-018-reconciliation-ab8321a605f5.md
 - Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-018-reconciliation-ab8321a605f5.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## ASREF-019 Resolve implementation retry-budget failure for ASREF-003
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASREF-001
+- Outputs: ipfs_accelerate_py/agent_supervisor/core/README.md, ipfs_accelerate_py/agent_supervisor/core/__init__.py, ipfs_accelerate_py/agent_supervisor/core, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-019-asref-003-implementation-retry-budget.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-003. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-019-asref-003-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-003 from strategy blocked_tasks.
+
+## ASREF-020 Resolve implementation retry-budget failure for ASREF-006
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASREF-001
+- Outputs: .gitignore, docs/NESTED_PACKAGES.md, docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-020-asref-006-implementation-retry-budget.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-006. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-020-asref-006-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-006 from strategy blocked_tasks.
