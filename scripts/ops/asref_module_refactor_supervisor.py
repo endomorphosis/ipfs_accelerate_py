@@ -257,6 +257,10 @@ def launch(args: argparse.Namespace) -> int:
     if not report["ok"] and not args.force:
         return 2
 
+    provider = str(getattr(args, "implementation_provider", "") or "").strip()
+    if provider:
+        os.environ["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"] = provider
+
     runtime_root = _runtime_root(args.namespace)
     runtime_root.mkdir(parents=True, exist_ok=True)
     (runtime_root / "master").mkdir(parents=True, exist_ok=True)
@@ -359,6 +363,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "--foreground",
             action="store_true",
             help="Do not detach the multi-supervisor master",
+        )
+        p.add_argument(
+            "--implementation-provider",
+            default=os.environ.get(
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", ""
+            ),
+            help=(
+                "Set IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER for child "
+                "daemons (e.g. grok, goose, codex, auto)"
+            ),
         )
     return parser
 

@@ -168,7 +168,7 @@ MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
-    r"(?:^|[\s/])(codex|copilot|goose)(?:\s|$)"
+    r"(?:^|[\s/])(codex|copilot|goose|grok)(?:\s|$)"
 )
 PROVIDER_CAPACITY_BACKOFF_ENV = "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS"
 DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS = 300.0
@@ -185,6 +185,14 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
     ("goose", re.compile(r"(?:goose.*(?:rate limit|quota|usage limit)|provider.*exhausted)", re.IGNORECASE)),
+    (
+        "grok",
+        re.compile(
+            r"(?:grok.*(?:rate limit|quota|usage limit)|xai.*(?:429|rate.?limit)|"
+            r"resource.?exhausted|too many requests)",
+            re.IGNORECASE,
+        ),
+    ),
     ("provider", re.compile(r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded)", re.IGNORECASE)),
 )
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
@@ -194,6 +202,9 @@ _GOOSE_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TURNS"
 _GOOSE_MAX_TOKENS_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TOKENS"
 _META_SPARK_HOST_ENV = "IPFS_ACCELERATE_AGENT_META_SPARK_HOST"
 _META_SPARK_BASE_PATH_ENV = "IPFS_ACCELERATE_AGENT_META_SPARK_BASE_PATH"
+_GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
+_GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
+_GROK_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS"
 SHARED_WORKTREE_PATHS = (
     "wallet_interface/ui/node_modules",
     "mobile/node_modules",
@@ -685,6 +696,87 @@ def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
         max_turns,
         "--max-tokens",
         max_tokens,
+    ]
+
+
+def _grok_binary() -> str | None:
+    try:
+        from ...llm_router import find_grok_cli
+
+        found = find_grok_cli()
+        if found:
+            return found
+    except Exception:
+        pass
+    configured = os.environ.get(_GROK_BIN_ENV, "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+        found = shutil.which(configured)
+        if found:
+            return found
+    return shutil.which("grok")
+
+
+def _grok_cli_available() -> bool:
+    """True when llm_router's grok_cli provider can be constructed."""
+
+    try:
+        from ...llm_router import get_llm_provider
+
+        return get_llm_provider("grok_cli") is not None
+    except Exception:
+        if not _grok_binary():
+            return False
+        try:
+            from ...llm_router import _grok_cli_auth_available
+
+            return bool(_grok_cli_auth_available())
+        except Exception:
+            auth = Path.home() / ".grok" / "auth.json"
+            return auth.is_file() or bool(os.environ.get("XAI_API_KEY", "").strip())
+
+
+def _grok_cli_command(*, workspace_path: Path) -> list[str]:
+    """Build a Grok CLI agent command through llm_router.grok_cli.
+
+    Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
+    materializes it to ``--prompt-file`` because the CLI does not take ``-``.
+    """
+
+    if not _grok_binary():
+        raise RuntimeError("grok CLI is not installed")
+    if not _grok_cli_available():
+        raise RuntimeError(
+            "Grok CLI is not authenticated. Run 'grok login' or set XAI_API_KEY"
+        )
+
+    model = (
+        os.environ.get(_GROK_MODEL_ENV, "").strip()
+        or os.environ.get("GROK_CLI_MODEL", "").strip()
+        or os.environ.get("GROK_MODEL", "").strip()
+        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
+        or "grok-4.5"
+    )
+    max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "40").strip() or "40"
+    grok = _grok_binary() or "grok"
+    runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
+    if not runner_path.is_file():
+        raise RuntimeError(f"grok_cli_runner missing at {runner_path}")
+    return [
+        sys.executable,
+        str(runner_path),
+        "--workspace",
+        str(workspace_path.resolve()),
+        "--grok-bin",
+        grok,
+        "--model",
+        model,
+        "--max-turns",
+        max_turns,
+        "--mode",
+        "agent",
     ]
 
 
@@ -5371,11 +5463,23 @@ class PortalImplementationDaemon:
             "spark",
         }:
             return {"goose", "meta_spark", "meta", "provider"}
+        if provider in {
+            "grok",
+            "grok_cli",
+            "grok-cli",
+            "xai_cli",
+            "xai-cli",
+            "grok_build",
+            "grok-build",
+        }:
+            return {"grok", "xai", "provider"}
         if provider in {"codex", "copilot", "openai"}:
             return {"codex", "copilot", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
+        if _grok_cli_available():
+            labels.update({"grok", "xai", "provider"})
         if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
@@ -17576,6 +17680,18 @@ class PortalImplementationDaemon:
             or "auto"
         )
         goose_meta_ready = _goose_meta_spark_available()
+        grok_ready = _grok_cli_available()
+        force_grok = provider in {
+            "grok",
+            "grok_cli",
+            "grok-cli",
+            "xai_cli",
+            "xai-cli",
+            "grok_build",
+            "grok-build",
+            "grok_build_cli",
+            "grok-build-cli",
+        }
         prefer_goose_meta = provider in {
             "auto",
             "goose",
@@ -17601,7 +17717,18 @@ class PortalImplementationDaemon:
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
-        if force_goose_meta or (prefer_goose_meta and goose_meta_ready and not force_codex):
+        if force_grok:
+            if not grok_ready:
+                raise RuntimeError(
+                    "Implementation provider "
+                    f"{provider!r} requires the grok CLI and auth "
+                    "(grok login / XAI_API_KEY)"
+                )
+            return _grok_cli_command(workspace_path=workspace_path)
+
+        if force_goose_meta or (
+            prefer_goose_meta and goose_meta_ready and not force_codex and not force_grok
+        ):
             if not goose_meta_ready:
                 raise RuntimeError(
                     "Implementation provider "
@@ -17641,11 +17768,14 @@ class PortalImplementationDaemon:
                 cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
             cmd.append("-")
             return cmd
+        if grok_ready:
+            return _grok_cli_command(workspace_path=workspace_path)
         if goose_meta_ready:
             return _goose_meta_spark_command(workspace_path=workspace_path)
         raise RuntimeError(
-            "No implementation command configured. Install goose (with Meta Spark "
-            "credentials), codex, or copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
+            "No implementation command configured. Install grok (authenticated), "
+            "goose (with Meta Spark credentials), codex, or copilot, or set "
+            "IMPLEMENTATION_DAEMON_COMMAND / IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER."
         )
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:

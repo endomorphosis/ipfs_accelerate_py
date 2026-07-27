@@ -3802,6 +3802,145 @@ def build_goose_cli_env(
     return env
 
 
+def find_grok_cli() -> Optional[str]:
+    """Locate the official Grok CLI binary without starting a process."""
+
+    configured = _coalesce_env(
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_AGENT_GROK_BIN",
+        "GROK_CLI_CMD",
+        "GROK_BIN",
+    )
+    if configured:
+        # Allow either a bare command name or an absolute path.
+        parts = shlex.split(configured)
+        if parts:
+            path = Path(parts[0]).expanduser()
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+            found = shutil.which(parts[0])
+            if found:
+                return found
+    return shutil.which("grok")
+
+
+def _grok_default_model() -> str:
+    return (
+        _coalesce_env(
+            "ipfs_accelerate_py_GROK_CLI_MODEL",
+            "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL",
+            "GROK_CLI_MODEL",
+            "GROK_MODEL",
+            "ipfs_accelerate_py_XAI_MODEL",
+        )
+        or "grok-4.5"
+    )
+
+
+def build_grok_cli_command(
+    *,
+    mode: str = "chat",
+    workspace: Optional[str | Path] = None,
+    model_name: Optional[str] = None,
+    max_turns: Optional[int] = None,
+    grok_bin: Optional[str] = None,
+    prompt_file: Optional[str | Path] = None,
+    always_approve: Optional[bool] = None,
+) -> list[str]:
+    """Return argv for a Grok CLI invocation.
+
+    ``mode="chat"`` is the safe llm_router default (JSON single-shot style
+    flags, no tool approvals). ``mode="agent"`` is for authorized side-effecting
+    runs (implementation daemon): enables ``--always-approve`` and higher turn
+    budgets. Callers that supply the prompt on stdin should either pass
+    ``prompt_file`` after materializing stdin, or use
+    :mod:`ipfs_accelerate_py.agent_supervisor.grok_cli_runner`.
+    """
+
+    binary = (grok_bin or find_grok_cli() or "").strip()
+    if not binary:
+        raise LLMRouterError("grok CLI not found on PATH")
+    normalized = str(mode or "chat").strip().lower()
+    if normalized not in {"chat", "agent"}:
+        raise LLMRouterError(f"unsupported grok mode: {mode!r}")
+
+    if max_turns is None:
+        if normalized == "chat":
+            max_turns = int(
+                _coalesce_env(
+                    "ipfs_accelerate_py_GROK_CLI_MAX_TURNS",
+                    "IPFS_ACCELERATE_PY_GROK_CLI_MAX_TURNS",
+                    "1",
+                )
+                or "1"
+            )
+        else:
+            max_turns = int(
+                _coalesce_env(
+                    "ipfs_accelerate_py_GROK_AGENT_MAX_TURNS",
+                    "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS",
+                    "40",
+                )
+                or "40"
+            )
+    max_turns = max(1, int(max_turns))
+
+    model = (model_name or "").strip() or _grok_default_model()
+    cmd: list[str] = [binary, "--model", model, "--max-turns", str(max_turns)]
+    if workspace is not None:
+        cmd.extend(["--cwd", str(Path(workspace).expanduser().resolve())])
+
+    approve = (
+        bool(always_approve)
+        if always_approve is not None
+        else normalized == "agent"
+    )
+    if approve:
+        cmd.append("--always-approve")
+
+    if normalized == "chat":
+        # Match the generate() provider defaults for headless JSON text.
+        cmd.extend(
+            [
+                "--output-format",
+                "json",
+                "--no-plan",
+                "--no-subagents",
+                "--disable-web-search",
+                "--no-memory",
+                "--verbatim",
+            ]
+        )
+
+    if prompt_file is not None:
+        cmd.extend(["--prompt-file", str(Path(prompt_file).expanduser())])
+    return cmd
+
+
+def build_grok_cli_env(
+    *,
+    base_env: Optional[Mapping[str, str]] = None,
+) -> dict[str, str]:
+    """Environment for Grok CLI runs (propagates alternate XAI key names)."""
+
+    env = dict(base_env or os.environ)
+    if not str(env.get("XAI_API_KEY") or "").strip():
+        alternate = _coalesce_env(
+            "ipfs_accelerate_py_XAI_API_KEY",
+            "IPFS_ACCELERATE_PY_XAI_API_KEY",
+            "IPFS_DATASETS_PY_XAI_API_KEY",
+        )
+        if alternate:
+            env["XAI_API_KEY"] = alternate
+    local_bin = str(Path.home() / ".local" / "bin")
+    path = env.get("PATH", "")
+    if local_bin not in path.split(os.pathsep):
+        env["PATH"] = local_bin + os.pathsep + path
+    return env
+
+
 def _get_goose_cli_provider() -> Optional[LLMProvider]:
     """Return the Goose CLI provider when the binary is present.
 
