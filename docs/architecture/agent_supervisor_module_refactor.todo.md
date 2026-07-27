@@ -51,7 +51,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-002 Seed multi-lane launch recipe for Grok 4.6
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -266,7 +266,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-009 Close objective gap: Branch bootstrap inventory and frozen move map
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -689,7 +689,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-018 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
