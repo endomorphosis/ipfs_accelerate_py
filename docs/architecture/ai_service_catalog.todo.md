@@ -458,7 +458,7 @@ Program invariants:
 
 ## AICAT-018 Harden federated catalog signatures, authorization, and input policy
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
