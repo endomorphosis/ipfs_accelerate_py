@@ -31,6 +31,9 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
+    MutationRecoveryAction,
+    MutationTransactionPhase,
+    PartialMutationError,
     SupervisorControlService,
 )
 from ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools import (
@@ -457,3 +460,116 @@ async def test_idempotency_conflict_is_identical_across_surfaces(
     mcp_record = await _mcp_record(service, conflicting)
     assert cli_record == conflict.to_record()
     assert mcp_record == conflict.to_record()
+
+
+@pytest.mark.asyncio
+async def test_partial_saga_is_identical_across_surfaces(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Partial multi-step mutation yields the same durable conflict on every surface."""
+
+    repository_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repository_root.mkdir()
+    state_root.mkdir()
+    operation = Operation.WORKFLOW_MATERIALIZE
+    write_effect = ExpectedEffect(
+        effect_id="workflow_materialize:write",
+        kind=EffectKind.WRITE_STATE,
+        resource="supervisor:workflow_materialize",
+        paths=("plans/generated.todo.md",),
+    )
+    start_effect = ExpectedEffect(
+        effect_id="workflow_materialize:start",
+        kind=EffectKind.LIFECYCLE_TRANSITION,
+        resource="supervisor:workflow_materialize",
+        paths=("receipts/workflow_materialize.json",),
+    )
+    binding = _binding(repository_root, state_root)
+    request = OperationRequest(
+        operation=operation,
+        **binding,
+        parameters=_parameters(operation, repository_root),
+        expected_effects=(write_effect, start_effect),
+        idempotency=IdempotencyKey(
+            key="materialize:partial-saga",
+            operation=operation,
+            caller=binding["caller"],
+            repository_id=binding["repository_id"],
+            objective_id=binding["objective_id"],
+        ),
+        authorization=AuthorizationDecision(
+            verdict=AuthorizationVerdict.PERMIT,
+            operation=operation,
+            granted_authority=OperationAuthority.MUTATION,
+            **binding,
+            lease_id="lease:prompt",
+            fencing_epoch=9,
+            authorized_effect_ids=(
+                write_effect.effect_id,
+                start_effect.effect_id,
+            ),
+            evaluated_at_ms=100,
+            expires_at_ms=10_000,
+        ),
+        lease_id="lease:prompt",
+        fencing_epoch=9,
+        dry_run=False,
+    )
+    calls = 0
+
+    def partial_handler(_request: OperationRequest) -> BackendResponse:
+        nonlocal calls
+        calls += 1
+        raise PartialMutationError(
+            "workflow materialize start step failed after write",
+            applied_effect_ids=(write_effect.effect_id,),
+            recovery=MutationRecoveryAction.COMPENSATE,
+        )
+
+    service = SupervisorControlService(
+        repository_allowlist=(repository_root,),
+        state_allowlist=(state_root,),
+        handlers={operation: partial_handler},
+        authorization_validator=lambda _request: True,
+        lease_validator=lambda _request: True,
+        state_store=InMemoryControlStateStore(),
+        clock_ms=lambda: 4_000,
+    )
+
+    python_result = service.execute(request)
+    assert python_result.status is OperationStatus.CONFLICT
+    assert python_result.error
+    assert python_result.error.code is ErrorCode.CONFLICT
+    assert python_result.data["transaction"]["recovery_action"] == "compensate"
+    assert python_result.data["transaction"]["phase"] == (
+        MutationTransactionPhase.COMPENSATION_REQUIRED.value
+    )
+    assert python_result.data["transaction"]["applied_effect_ids"] == (
+        write_effect.effect_id,
+    )
+    applied_by_id = {
+        effect.effect_id: effect.applied for effect in python_result.effects
+    }
+    assert applied_by_id == {
+        write_effect.effect_id: True,
+        start_effect.effect_id: False,
+    }
+
+    # Exact replay must reuse the durable partial receipt without re-dispatch.
+    replay = service.execute(request)
+    assert replay.to_record() == python_result.to_record()
+    assert calls == 1
+
+    cli_record = _cli_record(
+        service,
+        request,
+        capsys,
+        expected_exit=AGENT_CLI_EXIT_CONFLICT,
+    )
+    mcp_record = await _mcp_record(service, request)
+    assert cli_record == python_result.to_record()
+    assert mcp_record == python_result.to_record()
+    assert calls == 1
+
