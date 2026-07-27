@@ -4541,3 +4541,25 @@ planner, and refill behavior defaults to shadow mode.
 - Outputs: ipfs_accelerate_py/agent_supervisor/markdown_task_source.py, ipfs_accelerate_py/agent_supervisor/taskboard_store.py, test/api/test_agent_supervisor_markdown_task_source.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
 - Validation: python -m pytest test/api/test_agent_supervisor_markdown_task_source.py test/api/test_agent_supervisor_taskboard_store.py -q
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASI-146. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-161-asi-146-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASI-146 from strategy blocked_tasks. The declared validation target paths (test/api/test_agent_supervisor_markdown_task_source.py, test/api/test_agent_supervisor_taskboard_store.py) are bounded diagnostic and repair scope: change them only when evidence proves inherited validation debt, and do not weaken correct assertions or policy.
+
+## ASI-162 Resolve implementation retry-budget failure for ASI-152
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASI-151
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_cli.py, scripts/ops/agent_supervisor/prompt_workflow.py, test/api/test_agent_supervisor_prompt_cli.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-162-asi-152-implementation-retry-budget.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASI-152. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-162-asi-152-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASI-152 from strategy blocked_tasks.
+
+## ASI-163 Resolve implementation retry-budget failure for ASI-153
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASI-151
+- Outputs: ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/test_agent_supervisor_prompt_mcp.py, test/api/test_agent_supervisor_prompt_control_conformance.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-163-asi-153-implementation-retry-budget.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASI-153. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-163-asi-153-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASI-153 from strategy blocked_tasks.
