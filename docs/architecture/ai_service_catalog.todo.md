@@ -83,7 +83,7 @@ Program invariants:
 
 ## AICAT-003 Publish LLM router provider and model descriptors
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
