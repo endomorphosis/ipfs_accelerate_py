@@ -22,6 +22,8 @@ if str(_PACKAGE_ROOT) not in sys.path:
 
 
 DEFAULT_GROK_MODEL = "grok-4.5"
+# Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
+DEFAULT_GROK_MAX_TURNS = 4_294_967_295
 
 
 def _resolve_grok_bin(configured: str = "") -> str:
