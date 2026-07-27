@@ -101,6 +101,62 @@ def _agent_supervisor_reload(module):  # type: ignore[no-untyped-def]
 _importlib.reload = _agent_supervisor_reload  # type: ignore[assignment]
 
 
+def _load_landed_module(stem: str):
+    """Load a domain-packaged module and alias it under the historical package path.
+
+    Landed modules live under domain packages (no flat file). Callers that still
+    use ``import ipfs_accelerate_py.agent_supervisor.<stem>`` or
+    ``from ipfs_accelerate_py.agent_supervisor import <stem>`` resolve through
+    this map to the owner package. This is package-root public resolution, not a
+    flat re-export stub file.
+    """
+
+    owner = AGENT_SUPERVISOR_LANDED_MODULE_OWNERS.get(stem)
+    if owner is None:
+        raise KeyError(stem)
+    alias_name = f"{__name__}.{stem}"
+    real_name = f"{__name__}.{owner}.{stem}"
+    existing = _sys.modules.get(alias_name)
+    if existing is not None:
+        return existing
+    module = _importlib.import_module(real_name)
+    _sys.modules[alias_name] = module
+    return module
+
+
+class _LandedModuleAliasFinder:
+    """Resolve retired flat submodule names to domain package modules."""
+
+    def find_spec(self, fullname, path, target=None):  # type: ignore[no-untyped-def]
+        prefix = f"{__name__}."
+        if not fullname.startswith(prefix):
+            return None
+        rest = fullname[len(prefix) :]
+        if not rest or "." in rest:
+            return None
+        if rest not in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+            return None
+        if fullname in _sys.modules:
+            return _importlib.util.find_spec(fullname)
+        try:
+            module = _load_landed_module(rest)
+        except Exception:
+            return None
+
+        class _AliasLoader:
+            def create_module(self, spec):  # type: ignore[no-untyped-def]
+                return module
+
+            def exec_module(self, module_):  # type: ignore[no-untyped-def]
+                return None
+
+        return _importlib.util.spec_from_loader(fullname, _AliasLoader())
+
+
+if not any(isinstance(f, _LandedModuleAliasFinder) for f in _sys.meta_path):
+    _sys.meta_path.insert(0, _LandedModuleAliasFinder())
+
+
 # These two modules define the reviewed, transport-neutral public control API.
 # They are deliberately provider-free: importing the package exposes the same
 # contracts and service used by Python, CLI, and MCP without loading optional
@@ -3223,6 +3279,11 @@ _LAZY_PROVIDER_EXPORT_ALIASES = {
 
 
 def __getattr__(name: str):
+    # Domain-packaged modules that previously lived as flat submodules.
+    if name in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+        module = _load_landed_module(name)
+        globals()[name] = module
+        return module
     v2_owner = AGENT_SUPERVISOR_V2_EXPORT_MODULES.get(name)
     if v2_owner is not None:
         from importlib import import_module
@@ -3235,7 +3296,11 @@ def __getattr__(name: str):
         if name in export_names:
             from importlib import import_module
 
-            module = import_module(f".{module_name}", __name__)
+            # Prefer domain owner when the historical flat module has landed.
+            if module_name in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+                module = _load_landed_module(module_name)
+            else:
+                module = import_module(f".{module_name}", __name__)
             value = getattr(module, name)
             globals()[name] = value
             return value
@@ -3243,7 +3308,10 @@ def __getattr__(name: str):
         if name in export_names:
             from importlib import import_module
 
-            module = import_module(f".{module_name}", __name__)
+            if module_name in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+                module = _load_landed_module(module_name)
+            else:
+                module = import_module(f".{module_name}", __name__)
             value = getattr(module, _LAZY_PROVIDER_EXPORT_ALIASES.get(name, name))
             globals()[name] = value
             return value
@@ -3833,6 +3901,8 @@ def __getattr__(name: str):
         "build_repo_implementation_multi_supervisor_launcher",
         "ConfiguredMultiSupervisorLauncher",
         "ConfiguredMultiSupervisorCliRunner",
+        # Historical public name used by objective-gap / launch docs.
+        "MultiSupervisorRunner",
         "ImplementationSupervisorNamespaceTrackSpec",
         "ImplementationSupervisorTrackConfig",
         "implementation_supervisor_compact_track_spec",
@@ -3856,6 +3926,8 @@ def __getattr__(name: str):
             return multi_supervisor_runner.parse_implementation_track_spec
         if name == "common_supervisor_args_from_parsed_args":
             return multi_supervisor_runner.common_args_from_parsed_args
+        if name == "MultiSupervisorRunner":
+            return multi_supervisor_runner.ConfiguredMultiSupervisorCliRunner
         return getattr(multi_supervisor_runner, name)
     if name in {
         "build_supervisor_runtime_operations",
