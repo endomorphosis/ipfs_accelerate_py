@@ -622,6 +622,39 @@ def test_crash_reconciliation_rejects_missing_ephemeral_workspace_when_shared_ch
     assert daemon._implementation_protected_incident_path().exists()
 
 
+def test_ephemeral_snapshot_rejects_checkout_without_git_identity(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+    workspace.mkdir()
+
+    with pytest.raises(
+        RuntimeError,
+        match="cannot establish protected-path identity",
+    ):
+        daemon._require_implementation_protected_snapshot(
+            task=_task(outputs=["src/example.py"]),
+            attempt=1,
+            workspace_path=workspace,
+        )
+
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["type"] == (
+        "implementation_protected_path_snapshot_failed"
+    )
+    assert events[-1]["errors"][-1]["identity"]["error"] == (
+        "ephemeral workspace has no stable Git HEAD"
+    )
+
+
 def test_ephemeral_fence_accepts_concurrent_daemon_owned_completion_commit(
     tmp_path: Path,
 ) -> None:
@@ -884,6 +917,58 @@ def test_operator_clearance_can_approve_wholly_disposed_ephemeral_workspace(
     assert proof["protected_deleted_paths"] == [POLICY_PATH]
 
 
+def test_operator_clearance_accepts_disposed_exact_baseline_mirror(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._implementation_protected_path_snapshot(workspace)
+    before["workspace"].pop("git_head")
+    before["workspace"]["paths"][POLICY_PATH] = {"state": "missing"}
+    daemon._persist_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        snapshot=before,
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"workspace"}
+    assert violation["mutations"][0]["change"] == "created"
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    result = daemon.clear_implementation_protected_path_incident(
+        operator_note=(
+            "Reviewed an invalid checkout which only mirrored the exact "
+            "protected baseline."
+        ),
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True
+    assert result["reason"] == (
+        "operator_approved_mirrored_ephemeral_workspace"
+    )
+    assert result["mirrored_ephemeral_workspace_approved"] is True
+    assert result["disposed_ephemeral_workspace_approved"] is False
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    proof = receipt["mirrored_ephemeral_workspace_proof"]
+    assert proof["workspace_absent"] is True
+    assert proof["workspace_unregistered"] is True
+    assert proof["mirrored_protected_paths"] == [POLICY_PATH]
+
+
 def test_disposed_workspace_approval_rejects_selective_protected_deletion(
     tmp_path: Path,
 ) -> None:
@@ -940,6 +1025,56 @@ def test_disposed_workspace_approval_rejects_selective_protected_deletion(
     assert result["cleared"] is False
     assert result["reason"] == "disposed_ephemeral_workspace_proof_failed"
     assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("before\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(tmp_path),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "content_changed",
+                }
+            ],
+        }
+    )
+    wake = {"kind": "policy"}
+    acknowledged: list[object] = []
+    daemon._pending_runtime_wake_events = [wake]
+    daemon._runtime_wake_coordinator = SimpleNamespace(
+        acknowledge=acknowledged.append,
+    )
+
+    first = daemon.run_once()
+    event_count = sum(
+        json.loads(line)["type"]
+        == "implementation_protected_path_incident_blocked"
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    )
+    second = daemon.run_once()
+
+    assert first["blocked"] is True
+    assert first["delta_checkpoint"]["changed"] is True
+    assert acknowledged == [wake]
+    assert second["blocked"] is True
+    assert second["unchanged"] is True
+    assert event_count == 1
+    assert sum(
+        json.loads(line)["type"]
+        == "implementation_protected_path_incident_blocked"
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ) == 1
 
 
 def test_supervisor_commits_generated_updates_to_protected_todo_board(
@@ -1056,10 +1191,23 @@ def test_ephemeral_timeout_mutation_is_not_validated_committed_or_enqueued(
     calls: list[str] = []
 
     def seed(worktree_path: Path, _branch: str, *, task=None) -> str:
+        worktree_path.mkdir(parents=True)
+        _git(worktree_path, "init")
         worktree_protected = worktree_path / POLICY_PATH
         worktree_protected.parent.mkdir(parents=True)
         worktree_protected.write_text("before\n", encoding="utf-8")
-        return "baseline"
+        _git(worktree_path, "add", POLICY_PATH)
+        _git(
+            worktree_path,
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            "baseline",
+        )
+        return _git(worktree_path, "rev-parse", "HEAD")
 
     def timeout_agent(*_args, **kwargs):
         (Path(kwargs["cwd"]) / POLICY_PATH).write_text(

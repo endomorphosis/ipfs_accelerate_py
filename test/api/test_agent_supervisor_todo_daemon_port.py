@@ -128,6 +128,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoTaskState,
     TodoImplementationDaemon,
+    implied_validation_test_output_paths,
     normalize_implementation_protected_paths,
     parse_task_file,
     parse_args as parse_implementation_daemon_args,
@@ -12204,6 +12205,59 @@ def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
     prompt_rules = result.capsule.authority["generic_prompt_policy"]
     assert any("inherited validation debt" in rule for rule in prompt_rules)
     assert any("never weaken assertions" in rule for rule in prompt_rules)
+
+
+def test_missing_explicit_validation_test_is_an_implied_output(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    existing_test = repo / "test" / "test_existing.py"
+    existing_test.parent.mkdir()
+    existing_test.write_text("def test_existing():\n    assert True\n", encoding="utf-8")
+    task = PortalTask(
+        task_id="ACCEL-003",
+        title="Implement a compatibility projection",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="quality",
+        outputs=["src/projection.py", "test/test_projection.py"],
+        validation=[
+            "python -m pytest test/test_existing.py "
+            "test/test_missing_compatibility.py /tmp/test_escape.py -q"
+        ],
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    assert implied_validation_test_output_paths(
+        task,
+        repo_root=repo,
+    ) == ("test/test_missing_compatibility.py",)
+
+    result = daemon._compile_implementation_context(task, attempt=1)
+    edit_policy = result.capsule.authority["edit_policy"]
+
+    assert edit_policy["mode"] == (
+        "task_outputs_with_implied_validation_tests"
+    )
+    assert edit_policy["allowed_paths"] == (
+        "src/projection.py",
+        "test/test_projection.py",
+        "test/test_missing_compatibility.py",
+    )
+    assert result.capsule.scope["implied_validation_output_paths"] == (
+        "test/test_missing_compatibility.py",
+    )
+    assert any(
+        "implied task output" in rule
+        for rule in result.capsule.authority["generic_prompt_policy"]
+    )
 
 
 def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_path):

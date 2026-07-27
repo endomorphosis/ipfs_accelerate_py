@@ -831,6 +831,53 @@ def retry_budget_repair_validation_paths(task: Any) -> tuple[str, ...]:
     return tuple(paths)
 
 
+def implied_validation_test_output_paths(
+    task: Any,
+    *,
+    repo_root: Path,
+) -> tuple[str, ...]:
+    """Return absent explicit test targets implied by a task's validation.
+
+    A task contract which invokes an explicit test file must either inherit
+    that file from the baseline or permit the implementation to create it.
+    Treating an absent target as read-only guarantees a late pytest usage
+    error and wastes the task's retry budget. Only safe repository-relative
+    Python test paths are inferred here; broad commands and production paths
+    remain outside the implementation authority.
+    """
+
+    declared_outputs = {
+        normalize_retry_validation_path(path)
+        for path in getattr(task, "outputs", ()) or ()
+    }
+    protected_aliases: set[str] = set()
+    paths: list[str] = []
+    for command in getattr(task, "validation", ()) or ():
+        protected_aliases.update(unsafe_validation_path_aliases(str(command)))
+        for raw_path in infer_validation_impact_paths(str(command)):
+            normalized = normalize_retry_validation_path(raw_path)
+            if (
+                not normalized
+                or normalized in protected_aliases
+                or normalized in declared_outputs
+                or (repo_root / normalized).exists()
+            ):
+                continue
+            candidate = PurePosixPath(normalized)
+            test_named = (
+                candidate.name.startswith("test_")
+                or any(part in {"test", "tests"} for part in candidate.parts)
+            )
+            if (
+                candidate.suffix not in {".py", ".pyi"}
+                or not test_named
+            ):
+                continue
+            if normalized not in paths:
+                paths.append(normalized)
+    return tuple(paths)
+
+
 def write_text_atomic(path: Path, content: str, *, encoding: str = "utf-8") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_dir():
@@ -2658,22 +2705,33 @@ class PortalImplementationDaemon:
             if isinstance(item, Mapping)
         }
         disposed_workspace_proof: dict[str, Any] = {}
+        mirrored_workspace_proof: dict[str, Any] = {}
         if mutation_scopes != {"shared_checkout"}:
-            if (
-                not approve_disposed_ephemeral_workspace
-                or mutation_scopes != {"shared_checkout", "workspace"}
-            ):
+            if not approve_disposed_ephemeral_workspace:
                 return denied(
                     "implementation_workspace_mutation_requires_manual_recovery",
                     mutation_scopes=sorted(mutation_scopes),
                 )
-            disposed_workspace_proof = (
-                self._disposed_ephemeral_workspace_clearance_proof(
-                    active=active,
-                    mutations=mutations,
+            if mutation_scopes == {"shared_checkout", "workspace"}:
+                disposed_workspace_proof = (
+                    self._disposed_ephemeral_workspace_clearance_proof(
+                        active=active,
+                        mutations=mutations,
+                    )
                 )
-            )
-            if not disposed_workspace_proof:
+            elif mutation_scopes == {"workspace"}:
+                mirrored_workspace_proof = (
+                    self._mirrored_ephemeral_workspace_clearance_proof(
+                        active=active,
+                        mutations=mutations,
+                    )
+                )
+            else:
+                return denied(
+                    "implementation_workspace_mutation_requires_manual_recovery",
+                    mutation_scopes=sorted(mutation_scopes),
+                )
+            if not disposed_workspace_proof and not mirrored_workspace_proof:
                 return denied(
                     "disposed_ephemeral_workspace_proof_failed",
                     mutation_scopes=sorted(mutation_scopes),
@@ -2700,22 +2758,30 @@ class PortalImplementationDaemon:
             return denied("shared_checkout_baseline_missing")
         before_head = str(before_shared.get("git_head") or "")
         after_head = self._implementation_protected_git_head(self.repo_root)
-        if not before_head or not after_head or before_head == after_head:
+        if not before_head or not after_head:
             return denied(
                 "protected_path_history_unavailable",
                 before_head=before_head,
                 after_head=after_head,
             )
-        ancestry = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", before_head, after_head],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if ancestry.returncode != 0:
+        shared_head_unchanged = before_head == after_head
+        if not shared_head_unchanged:
+            ancestry = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", before_head, after_head],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if ancestry.returncode != 0:
+                return denied(
+                    "shared_checkout_history_rewritten",
+                    before_head=before_head,
+                    after_head=after_head,
+                )
+        elif not mirrored_workspace_proof:
             return denied(
-                "shared_checkout_history_rewritten",
+                "protected_path_history_unavailable",
                 before_head=before_head,
                 after_head=after_head,
             )
@@ -2773,45 +2839,46 @@ class PortalImplementationDaemon:
                 invalid_approved_commits=sorted(invalid_approvals),
             )
 
-        history = subprocess.run(
-            [
-                "git",
-                "log",
-                "--format=%H%x09%ae%x09%s",
-                f"{before_head}..{after_head}",
-                "--",
-                *protected_paths,
-            ],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if history.returncode != 0:
-            return denied("protected_path_history_query_failed")
         commits: list[dict[str, Any]] = []
         untrusted_commits: set[str] = set()
-        for line in history.stdout.splitlines():
-            parts = line.split("\t", 2)
-            if len(parts) != 3:
-                return denied("protected_path_history_malformed")
-            commit, author_email, subject = parts
-            trusted = self._trusted_protected_path_commit(
-                author_email,
-                subject,
+        if not shared_head_unchanged:
+            history = subprocess.run(
+                [
+                    "git",
+                    "log",
+                    "--format=%H%x09%ae%x09%s",
+                    f"{before_head}..{after_head}",
+                    "--",
+                    *protected_paths,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
             )
-            commits.append(
-                {
-                    "commit": commit,
-                    "author_email": author_email,
-                    "subject": subject,
-                    "trusted_generator": trusted,
-                }
-            )
-            if not trusted:
-                untrusted_commits.add(commit)
-        if not commits:
-            return denied("protected_path_history_empty")
+            if history.returncode != 0:
+                return denied("protected_path_history_query_failed")
+            for line in history.stdout.splitlines():
+                parts = line.split("\t", 2)
+                if len(parts) != 3:
+                    return denied("protected_path_history_malformed")
+                commit, author_email, subject = parts
+                trusted = self._trusted_protected_path_commit(
+                    author_email,
+                    subject,
+                )
+                commits.append(
+                    {
+                        "commit": commit,
+                        "author_email": author_email,
+                        "subject": subject,
+                        "trusted_generator": trusted,
+                    }
+                )
+                if not trusted:
+                    untrusted_commits.add(commit)
+            if not commits:
+                return denied("protected_path_history_empty")
         if resolved_approvals != untrusted_commits:
             return denied(
                 "operator_commit_approval_mismatch",
@@ -2832,6 +2899,8 @@ class PortalImplementationDaemon:
             "before_head": before_head,
             "after_head": after_head,
             "approved_commits": sorted(resolved_approvals),
+            "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
+            "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
         }
         clearance_id = "sha256:" + hashlib.sha256(
             canonical_json(clearance_basis).encode("utf-8")
@@ -2850,6 +2919,7 @@ class PortalImplementationDaemon:
             "approved_commits": sorted(resolved_approvals),
             "history": commits,
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
+            "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
         }
         receipt_path = (
             incident_path.parent
@@ -2870,7 +2940,11 @@ class PortalImplementationDaemon:
             stale_lock_cleared = True
         result = {
             "cleared": True,
-            "reason": "operator_approved_shared_checkout_commits",
+            "reason": (
+                "operator_approved_mirrored_ephemeral_workspace"
+                if mirrored_workspace_proof
+                else "operator_approved_shared_checkout_commits"
+            ),
             "clearance_id": clearance_id,
             "receipt_path": str(receipt_path),
             "task_id": receipt["task_id"],
@@ -2879,6 +2953,12 @@ class PortalImplementationDaemon:
             "disposed_ephemeral_workspace_approved": bool(
                 disposed_workspace_proof
             ),
+            "mirrored_ephemeral_workspace_approved": bool(
+                mirrored_workspace_proof
+            ),
+            "ephemeral_workspace_recovery_approved": bool(
+                disposed_workspace_proof or mirrored_workspace_proof
+            ),
             "stale_lock_cleared": stale_lock_cleared,
         }
         self._record_event(
@@ -2886,6 +2966,101 @@ class PortalImplementationDaemon:
             result,
         )
         return result
+
+    def _mirrored_ephemeral_workspace_clearance_proof(
+        self,
+        *,
+        active: Mapping[str, Any],
+        mutations: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Prove a vanished invalid checkout only mirrored protected inputs."""
+
+        if active.get("ephemeral_worktree") is not True:
+            return {}
+        workspace_value = str(active.get("workspace_path") or "")
+        try:
+            workspace = Path(workspace_value).resolve(strict=False)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace.relative_to(worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            return {}
+        if (
+            workspace == self.repo_root.resolve()
+            or workspace.exists()
+            or self._worktree_path_registered_in_repo(
+                self.repo_root,
+                workspace,
+            )
+        ):
+            return {}
+
+        snapshot = active.get("snapshot")
+        before_workspace = (
+            snapshot.get("workspace")
+            if isinstance(snapshot, Mapping)
+            else None
+        )
+        before_shared = (
+            snapshot.get("shared_checkout")
+            if isinstance(snapshot, Mapping)
+            else None
+        )
+        if not isinstance(before_workspace, Mapping) or not isinstance(
+            before_shared,
+            Mapping,
+        ):
+            return {}
+        if str(before_workspace.get("git_head") or ""):
+            return {}
+        workspace_paths = before_workspace.get("paths")
+        shared_paths = before_shared.get("paths")
+        if not isinstance(workspace_paths, Mapping) or not isinstance(
+            shared_paths,
+            Mapping,
+        ):
+            return {}
+
+        mirrored_paths: list[str] = []
+        identity_keys = ("state", "kind", "size", "sha256", "symlink_target")
+        for mutation in mutations:
+            if (
+                str(mutation.get("scope") or "") != "workspace"
+                or str(mutation.get("change") or "") != "created"
+            ):
+                return {}
+            path = str(mutation.get("path") or "")
+            before = mutation.get("before")
+            after = mutation.get("after")
+            baseline = shared_paths.get(path)
+            workspace_baseline = workspace_paths.get(path)
+            if (
+                not path
+                or not isinstance(before, Mapping)
+                or before.get("state") != "missing"
+                or not isinstance(workspace_baseline, Mapping)
+                or workspace_baseline.get("state") != "missing"
+                or not isinstance(after, Mapping)
+                or not isinstance(baseline, Mapping)
+                or baseline.get("state") != "present"
+            ):
+                return {}
+            if any(after.get(key) != baseline.get(key) for key in identity_keys):
+                return {}
+            mirrored_paths.append(path)
+        if not mirrored_paths:
+            return {}
+        return {
+            "schema": "mirrored-ephemeral-workspace-proof-v1",
+            "workspace_path": str(workspace),
+            "workspace_absent": True,
+            "workspace_unregistered": True,
+            "workspace_git_head_missing_at_snapshot": True,
+            "mirrored_protected_paths": sorted(mirrored_paths),
+            "shared_baseline_git_head": str(
+                before_shared.get("git_head") or ""
+            ),
+            "content_identity_keys": list(identity_keys),
+        }
 
     def _disposed_ephemeral_workspace_clearance_proof(
         self,
@@ -3019,7 +3194,9 @@ class PortalImplementationDaemon:
             "tracked_path_count": len(tracked_paths),
             "deleted_path_count": len(deleted_paths),
             "remaining_path_count": len(tracked_paths - deleted_paths),
-            "deleted_fraction": round(deleted_fraction, 6),
+            "deleted_fraction": f"{deleted_fraction:.6f}",
+            "deleted_fraction_numerator": len(deleted_paths),
+            "deleted_fraction_denominator": len(tracked_paths),
             "protected_deleted_paths": sorted(workspace_mutation_paths),
             "index_unchanged": True,
             "untracked_path_count": 0,
@@ -3232,6 +3409,30 @@ class PortalImplementationDaemon:
             return {}
         snapshot = self._implementation_protected_path_snapshot(workspace_path)
         errors = self._implementation_protected_snapshot_errors(snapshot)
+        try:
+            ephemeral_workspace = (
+                workspace_path.resolve() != self.repo_root.resolve()
+            )
+        except (OSError, RuntimeError):
+            ephemeral_workspace = True
+        workspace_snapshot = snapshot.get("workspace")
+        if (
+            ephemeral_workspace
+            and (
+                not isinstance(workspace_snapshot, Mapping)
+                or not str(workspace_snapshot.get("git_head") or "")
+            )
+        ):
+            errors.append(
+                {
+                    "scope": "workspace",
+                    "path": "",
+                    "identity": {
+                        "state": "error",
+                        "error": "ephemeral workspace has no stable Git HEAD",
+                    },
+                }
+            )
         if not errors:
             self._persist_implementation_protected_snapshot(
                 task=task,
@@ -3248,7 +3449,6 @@ class PortalImplementationDaemon:
             "errors": errors,
             "shared_checkout_restored": False,
         }
-        self._latch_implementation_protected_incident(payload)
         self._record_event("implementation_protected_path_snapshot_failed", payload)
         raise RuntimeError(
             "cannot establish protected-path identity before agent execution"
@@ -3878,6 +4078,7 @@ class PortalImplementationDaemon:
     @staticmethod
     def _runtime_result_projection(result: Mapping[str, Any]) -> dict[str, Any]:
         keys = (
+            "blocked",
             "task_count",
             "completed_count",
             "ready_count",
@@ -4217,7 +4418,7 @@ class PortalImplementationDaemon:
             self._reconcile_implementation_protected_path_fence()
         )
         if protected_path_reconciliation.get("blocked", False):
-            return {
+            result = {
                 "blocked": True,
                 "reason": str(
                     protected_path_reconciliation.get("reason")
@@ -4229,7 +4430,27 @@ class PortalImplementationDaemon:
                 "event_log_repair": event_log_repair,
                 "state_file_repair": state_file_repair,
                 "protected_path_reconciliation": protected_path_reconciliation,
+                "unchanged": False,
+                "write_count": 0,
+                "projection_delta": {},
+                "implementation_result": None,
+                "merge_reconciliation": [],
+                "wake_kinds": sorted(wake_kinds),
+                "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
             }
+            final_source_digest, final_sources = self._runtime_source_head()
+            checkpoint_result = self._save_runtime_checkpoint(
+                source_digest=final_source_digest,
+                sources=final_sources,
+                result=result,
+                projection_delta={},
+            )
+            result["delta_checkpoint"] = checkpoint_result
+            result["write_count"] = int(checkpoint_result["write_count"])
+            self._runtime_last_source_digest = final_source_digest
+            self._runtime_last_result = self._runtime_result_projection(result)
+            self._acknowledge_runtime_events()
+            return result
         try:
             tasks = self._load_tasks()
         except (OSError, UnicodeDecodeError, TaskSourceError, ValueError) as exc:
@@ -16956,6 +17177,10 @@ class PortalImplementationDaemon:
             retry_budget_repair_source(task)
         )
         retry_validation_paths = retry_budget_repair_validation_paths(task)
+        implied_validation_paths = implied_validation_test_output_paths(
+            task,
+            repo_root=self.repo_root,
+        )
         rules = (
             "Read the relevant plan and nearby code before editing.",
             "Do not revert unrelated local changes.",
@@ -16978,6 +17203,11 @@ class PortalImplementationDaemon:
                 "For retry-budget repairs, use the persisted failure evidence and declared validation targets to distinguish a task-owned regression from inherited validation debt.",
                 "Validation targets are authorized repair scope, not required changes: preserve correct production policy and never weaken assertions merely to make the gate pass.",
             )
+        if implied_validation_paths:
+            rules = (
+                *rules,
+                "An explicit validation test target absent from the baseline is an implied task output. Add substantive regression coverage there; placeholders or weakened assertions will fail scope adjudication.",
+            )
         if (
             completion_scope is None
             and len(task.outputs) > 3
@@ -16999,6 +17229,11 @@ class PortalImplementationDaemon:
                     *base_allowed_edit_paths,
                     *(
                         retry_validation_paths
+                        if completion_scope is None
+                        else ()
+                    ),
+                    *(
+                        implied_validation_paths
                         if completion_scope is None
                         else ()
                     ),
@@ -17028,6 +17263,8 @@ class PortalImplementationDaemon:
                 if completion_scope is not None
                 else "retry_repair_validation_targets"
                 if retry_repair_source_id
+                else "task_outputs_with_implied_validation_tests"
+                if implied_validation_paths
                 else "task_output_exact"
             ),
             "allowed_paths": allowed_edit_paths,
@@ -17162,6 +17399,7 @@ class PortalImplementationDaemon:
                 "retry_repair_source_task_id": retry_repair_source_id,
                 "retry_repair_failure_kind": retry_repair_failure_kind,
                 "validation_target_paths": retry_validation_paths,
+                "implied_validation_output_paths": implied_validation_paths,
             },
             acceptance={
                 "criteria": task.acceptance or "none listed",
