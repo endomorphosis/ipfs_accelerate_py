@@ -58,7 +58,7 @@ Program invariants:
 
 ## AICAT-002 Implement the catalog registry, resolver, and snapshots
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
