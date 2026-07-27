@@ -22,6 +22,7 @@ VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
 _CHILD_PYTHON_ENV = "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
 _NEUTRAL_HOME = "/nonexistent/ipfs-accelerate-validation"
+_NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
 
 # These values affect deterministic/offline validation without carrying the
 # provider, wallet, registry, signing, or cloud credentials commonly present
@@ -373,7 +374,10 @@ def build_validation_environment(
             "HOME": _NEUTRAL_HOME,
             "NO_COLOR": "1",
             "NPM_CONFIG_GLOBALCONFIG": "/dev/null",
-            "NPM_CONFIG_USERCONFIG": "/dev/null",
+            # npm rejects loading one path in two config scopes.  A child of
+            # /dev/null is both distinct from the global config and guaranteed
+            # to remain unavailable, so neither scope can import host settings.
+            "NPM_CONFIG_USERCONFIG": _NPM_DISABLED_USER_CONFIG,
             "PAGER": "cat",
             "PATH": validation_executable_path(source),
             "PIP_CONFIG_FILE": "/dev/null",

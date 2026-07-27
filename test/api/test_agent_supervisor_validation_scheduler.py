@@ -103,6 +103,12 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     assert environment["PYTHONNOUSERSITE"] == "1"
     assert environment["NPM_CONFIG_CACHE"] == str(approved_npm_cache.resolve())
     assert environment["NPM_CONFIG_OFFLINE"] == "true"
+    assert environment["NPM_CONFIG_GLOBALCONFIG"] == "/dev/null"
+    assert environment["NPM_CONFIG_USERCONFIG"] == "/dev/null/npmrc"
+    assert (
+        environment["NPM_CONFIG_USERCONFIG"]
+        != environment["NPM_CONFIG_GLOBALCONFIG"]
+    )
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
     assert environment["PYTHONHASHSEED"] == "0"
     assert not {
