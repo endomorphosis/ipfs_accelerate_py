@@ -530,3 +530,14 @@ Program invariants:
 - Preconditions: Legacy projections, all modality MCP tools, MCP++ IDL and security, and observability are complete.
 - Effects: Add generated cross-surface drift checks, backward-compatibility fixtures, cold-import side-effect tests, environment-gated live smokes, architecture documentation, migration guidance, rollout gates, and rollback instructions.
 - Acceptance: Every declared router binding resolves or carries a typed non-routable reason; router, ModelManager, legacy, MCP, and MCP++ projections agree on canonical identities and revisions; default tests use fake providers and no network; imports and listing trigger no install, process, model load, credential read, or network request; compatibility fixtures cover public Python and MCP names; opt-in live smokes exercise one available provider for text, embeddings, multimodal, transcription, and synthesis without requiring every modality; documentation explains information versus invocation planes, schemas, operation taxonomy, lifecycle states, source precedence, extension boundaries, security, caching, metrics, migration, troubleshooting, rollout, rollback, and compatibility sunset policy.
+
+## AICAT-021 Resolve validation retry-budget failure for AICAT-005
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AICAT-001
+- Outputs: ipfs_accelerate_py/multimodal_router.py, test/test_multimodal_router_catalog_discovery.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery
+- Validation: python -m pytest test/test_multimodal_router_catalog_discovery.py test/test_multimodal_router.py -q
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in AICAT-005. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-021-aicat-005-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release AICAT-005 from strategy blocked_tasks.
