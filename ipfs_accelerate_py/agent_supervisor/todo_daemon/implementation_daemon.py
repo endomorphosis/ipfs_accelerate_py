@@ -5653,34 +5653,39 @@ class PortalImplementationDaemon:
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
 
-    def _active_provider_capacity_backoff(self) -> dict[str, Any]:
+    def _provider_capacity_backoff_schedule(self) -> dict[str, Any]:
+        """Return the latest invocation-bound provider retry schedule, if any.
+
+        Includes expired schedules (``active`` false) so ``run_once`` can wake
+        when a prior capacity latch becomes due without waiting on other events.
+        Provider labels isolate codex/goose/grok latches from each other.
+        """
+
         now = datetime.now(timezone.utc)
         current_labels = self._current_implementation_provider_labels()
         for event in reversed(self._iter_events()):
             event_type = str(event.get("type") or "")
             if event_type == "implementation_provider_exhausted":
                 retry_at = parse_timestamp(str(event.get("retry_at") or ""))
-                if retry_at is None or retry_at <= now:
+                if retry_at is None:
                     return {}
                 exhausted = {
                     str(item).strip().lower()
                     for item in list(event.get("providers") or [])
                     if str(item).strip()
                 }
-                # A codex quota latch must not block goose+Meta Spark (and vice
-                # versa). Only honor backoff when the exhausted providers
-                # overlap the runner we would actually launch.
+                # A codex quota latch must not block goose/grok (and vice versa).
                 if exhausted and not (exhausted & current_labels):
                     continue
                 return {
-                    "active": True,
+                    "active": retry_at > now,
                     "retry_at": retry_at.isoformat(),
                     "retry_after_seconds": max(
                         0.0, (retry_at - now).total_seconds()
                     ),
                     "providers": list(event.get("providers") or []),
                 }
-            if event_type == "implementation_finished" and int(event.get("returncode") or 0) == 0:
+            if event_type in {"implementation_started", "implementation_finished"}:
                 return {}
         return {}
 
