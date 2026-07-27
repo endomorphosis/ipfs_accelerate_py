@@ -76,7 +76,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-003 Create core package and move shared modules
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
