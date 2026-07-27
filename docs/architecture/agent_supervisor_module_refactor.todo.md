@@ -724,3 +724,14 @@ do not delete protected headers or rewrite completed history.
 - Outputs: .gitignore, docs/NESTED_PACKAGES.md, docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-020-asref-006-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-006. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-020-asref-006-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-006 from strategy blocked_tasks.
+
+## ASREF-021 Resolve implementation retry-budget failure for ASREF-011
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: 
+- Outputs: ipfs_accelerate_py/agent_supervisor/objectives, ipfs_accelerate_py/agent_supervisor/planning, ipfs_accelerate_py/agent_supervisor/validation, ipfs_accelerate_py/agent_supervisor/merge, ipfs_accelerate_py/agent_supervisor/rescue, ipfs_accelerate_py/agent_supervisor/runtime, ipfs_accelerate_py/agent_supervisor/self_improvement, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-021-asref-011-implementation-retry-budget.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-011. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-021-asref-011-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-011 from strategy blocked_tasks.
