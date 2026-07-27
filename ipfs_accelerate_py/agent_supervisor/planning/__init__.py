@@ -9,8 +9,10 @@ Modules owned by bundle ``asref/planning`` (see
 ``docs/architecture/asref/move_map.json``) move into this package via
 ``git mv`` without long-lived re-export stubs at the former flat paths.
 
-Until those modules land under this directory, import them from their
-current flat locations. After each move, callers must use::
+First-batch modules are dual-copied under this package (flat originals
+remain until ASREF-G090 cutover). Prefer package imports for landed
+modules; remaining owned stems still live at flat paths until child
+batches land. Import landed modules via::
 
     from ipfs_accelerate_py.agent_supervisor.planning.<module> import ...
 """
@@ -20,6 +22,7 @@ from __future__ import annotations
 from typing import Final
 
 __all__: Final[tuple[str, ...]] = (
+    "PLANNING_LANDED_MODULES",
     "PLANNING_PACKAGE_NAME",
     "PLANNING_OWNED_MODULES",
     "PLANNING_FORBIDDEN_DEPENDENTS",
@@ -44,6 +47,13 @@ PLANNING_OWNED_MODULES: Final[tuple[str, ...]] = (
     "proof_carrying_planner",
     "task_proposal_router",
     "task_quality",
+)
+
+# Dual-copied under this package in the current ASREF-011 batch.
+PLANNING_LANDED_MODULES: Final[tuple[str, ...]] = (
+    "plan_failure_memory",
+    "formal_planning_metrics",
+    "formal_planning_rollout",
 )
 
 # Packages that must not be imported by planning (DAG / cycle guard).

@@ -9,8 +9,10 @@ Modules owned by bundle ``asref/runtime`` (see
 ``docs/architecture/asref/move_map.json``) move into this package via
 ``git mv`` without long-lived re-export stubs at the former flat paths.
 
-Until those modules land under this directory, import them from their
-current flat locations. After each move, callers must use::
+First-batch modules are dual-copied under this package (flat originals
+remain until ASREF-G090 cutover). Prefer package imports for landed
+modules; remaining owned stems still live at flat paths until child
+batches land. Import landed modules via::
 
     from ipfs_accelerate_py.agent_supervisor.runtime.<module> import ...
 
@@ -24,6 +26,7 @@ from __future__ import annotations
 from typing import Final
 
 __all__: Final[tuple[str, ...]] = (
+    "RUNTIME_LANDED_MODULES",
     "RUNTIME_PACKAGE_NAME",
     "RUNTIME_OWNED_MODULES",
     "RUNTIME_FORBIDDEN_DEPENDENTS",
@@ -42,6 +45,11 @@ RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
     "runtime_cas",
     "runtime_temporal_monitor",
     "scheduler_metrics",
+)
+
+# Dual-copied under this package in the current ASREF-011 batch.
+RUNTIME_LANDED_MODULES: Final[tuple[str, ...]] = (
+    "multi_supervisor_runner",
 )
 
 # Packages that must not be imported by runtime (DAG / cycle guard).
