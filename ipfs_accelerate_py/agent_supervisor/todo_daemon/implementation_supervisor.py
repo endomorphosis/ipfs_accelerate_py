@@ -451,18 +451,41 @@ class PortalImplementationSupervisor:
             for item in payload["incidents"].values()
             if isinstance(item, Mapping)
         ]
-        incidents.sort(
-            key=lambda item: int(item.get("updated_at_ms") or 0),
-            reverse=True,
-        )
+        def updated_at_ms(item: Mapping[str, Any]) -> int:
+            value = item.get("updated_at_ms")
+            return (
+                value
+                if isinstance(value, int) and not isinstance(value, bool)
+                else 0
+            )
+
+        incidents.sort(key=updated_at_ms, reverse=True)
         latest = dict(incidents[0]) if incidents else {}
-        return {
+        result = {
             "schema": AUTONOMOUS_UNSTALL_STATE_SCHEMA,
             "state_path": str(path),
             "incident_count": len(incidents),
             "latest": latest,
             "completion_authority": False,
         }
+        runtime = payload.get("rescue_runtime")
+        if isinstance(runtime, Mapping):
+            result["rescue_runtime"] = {
+                key: runtime[key]
+                for key in (
+                    "circuit_open",
+                    "consecutive_failures",
+                    "executions",
+                    "last_provider_call_ms",
+                    "provider_calls",
+                    "reason",
+                )
+                if key in runtime
+            }
+        repair = payload.get("state_repair")
+        if isinstance(repair, Mapping):
+            result["state_repair"] = dict(repair)
+        return result
 
     def _supervisor_status_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
@@ -723,14 +746,57 @@ class PortalImplementationSupervisor:
         normalized_targets = {
             str(item).strip() for item in target_ids if str(item).strip()
         }
+        strategy = self._load_strategy()
+        existing_quarantine = next(
+            (
+                dict(item)
+                for item in strategy.get(
+                    "autonomous_unstall_quarantines", ()
+                )
+                if isinstance(item, Mapping)
+                and item.get("incident_cid") == incident_cid
+            ),
+            None,
+        )
+        explicit_task_targets = {
+            item.removeprefix("task:")
+            for item in normalized_targets
+            if item.startswith("task:")
+        }
+        lane_scoped = any(
+            item == "lane:implementation"
+            or item.startswith("lane:implementation:")
+            for item in normalized_targets
+        )
         exact_task = active_task_id if (
             active_task_id
             and (
                 active_task_id in normalized_targets
-                or not any(item.startswith("task:") for item in normalized_targets)
+                or active_task_id in explicit_task_targets
+                or lane_scoped
+                or (
+                    existing_quarantine is not None
+                    and existing_quarantine.get("task_id") == active_task_id
+                )
             )
         ) else ""
-        strategy = self._load_strategy()
+        if existing_quarantine is not None and not exact_task:
+            return {
+                "scope": "task",
+                "task_id": str(existing_quarantine.get("task_id") or ""),
+                "target_ids": list(
+                    existing_quarantine.get("target_ids") or ()
+                ),
+                "incident_cid": incident_cid,
+                "reason": str(existing_quarantine.get("reason") or reason),
+                "attempt_recovery": {
+                    "consumed": False,
+                    "reason": "incident_already_quarantined",
+                },
+                "deduplicated": True,
+                "independent_work_preserved": True,
+                "completion_authority": False,
+            }
         blocked_tasks = [
             str(item)
             for item in strategy.get("blocked_tasks", ())
@@ -744,15 +810,18 @@ class PortalImplementationSupervisor:
             if isinstance(item, Mapping)
             and item.get("incident_cid") != incident_cid
         ]
-        quarantines.append(
-            {
-                "incident_cid": incident_cid,
-                "target_ids": sorted(normalized_targets),
-                "task_id": exact_task,
-                "reason": reason,
-                "quarantined_at": utc_now(),
-            }
-        )
+        if existing_quarantine is not None:
+            quarantines.append(existing_quarantine)
+        else:
+            quarantines.append(
+                {
+                    "incident_cid": incident_cid,
+                    "target_ids": sorted(normalized_targets),
+                    "task_id": exact_task,
+                    "reason": reason,
+                    "quarantined_at": utc_now(),
+                }
+            )
         strategy.update(
             {
                 "blocked_tasks": blocked_tasks,
@@ -798,6 +867,7 @@ class PortalImplementationSupervisor:
             "incident_cid": incident_cid,
             "reason": reason,
             "attempt_recovery": attempt_recovery,
+            "deduplicated": existing_quarantine is not None,
             "independent_work_preserved": True,
             "completion_authority": False,
         }
@@ -873,33 +943,54 @@ class PortalImplementationSupervisor:
             "state_prefix": self.config.state_prefix,
             "state_dir": str(self.config.state_dir.resolve()),
         }
-        roots = {
-            "repository_root_cid": str(
-                strategy.get("repository_root_cid")
-                or prompt_workflow_cid(
-                    {
-                        "implementation-supervisor-repository": str(
-                            self.config.repo_root.resolve()
-                        )
-                    }
-                )
-            ),
-            "policy_root": str(
-                strategy.get("policy_root")
-                or prompt_workflow_cid(
-                    {
-                        "autonomous-unstall-policy": policy_mapping
-                        or {"deterministic_only": True}
-                    }
-                )
-            ),
-            "run_cid": str(
-                strategy.get("run_cid")
-                or prompt_workflow_cid(
-                    {"implementation-supervisor-run": identity}
-                )
-            ),
-        }
+        def current_roots(
+            current_strategy: Mapping[str, Any],
+        ) -> dict[str, str]:
+            current_policy = current_strategy.get(
+                "autonomous_unstall_policy"
+            )
+            current_policy_mapping = (
+                dict(current_policy)
+                if isinstance(current_policy, Mapping)
+                else {}
+            )
+            return {
+                "repository_root_cid": str(
+                    current_strategy.get("repository_root_cid")
+                    or prompt_workflow_cid(
+                        {
+                            "implementation-supervisor-repository": str(
+                                self.config.repo_root.resolve()
+                            )
+                        }
+                    )
+                ),
+                "policy_root": str(
+                    current_strategy.get("policy_root")
+                    or prompt_workflow_cid(
+                        {
+                            "autonomous-unstall-policy": (
+                                current_policy_mapping
+                                or {"deterministic_only": True}
+                            )
+                        }
+                    )
+                ),
+                "run_cid": str(
+                    current_strategy.get("run_cid")
+                    or prompt_workflow_cid(
+                        {"implementation-supervisor-run": identity}
+                    )
+                ),
+            }
+
+        roots = current_roots(strategy)
+
+        def probe_roots() -> Mapping[str, str]:
+            current = load_json_dict(self.config.strategy_path)
+            if not isinstance(current, Mapping):
+                return {}
+            return current_roots(current)
         action_details: dict[str, Any] = {}
 
         def health() -> Mapping[str, Any]:
@@ -1013,7 +1104,7 @@ class PortalImplementationSupervisor:
                 RescueOperation.QUARANTINE: quarantine,
             },
             health_probe=health,
-            root_probe=lambda: roots,
+            root_probe=probe_roots,
             quarantine_scope=self._quarantine_autonomous_unstall_scope,
             event_publisher=lambda event_type, payload: self._record_event(
                 event_type, dict(payload)

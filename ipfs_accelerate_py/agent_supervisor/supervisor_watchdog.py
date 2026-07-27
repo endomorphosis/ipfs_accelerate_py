@@ -106,6 +106,17 @@ _AUTONOMOUS_UNSTALL_EVIDENCE_SLOTS: Final[frozenset[str]] = frozenset(
         "disk",
     }
 )
+_AUTONOMOUS_UNSTALL_PHASES: Final[frozenset[str]] = frozenset(
+    {
+        "deterministic_recovery",
+        "quarantined",
+        "recovered",
+        "rescue_executing",
+        "rescue_previewed",
+        "rescue_previewing",
+    }
+)
+_AUTONOMOUS_UNSTALL_MAX_STATE_BYTES: Final[int] = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -271,7 +282,10 @@ class AutonomousUnstallCoordinator:
 
     def _load_state(self) -> dict[str, Any]:
         try:
-            payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+            raw = self.state_path.read_bytes()
+            if len(raw) > _AUTONOMOUS_UNSTALL_MAX_STATE_BYTES:
+                raise ValueError("autonomous unstall state exceeds byte bound")
+            payload = json.loads(raw)
         except FileNotFoundError:
             return {
                 "schema": AUTONOMOUS_UNSTALL_STATE_SCHEMA,
@@ -279,7 +293,12 @@ class AutonomousUnstallCoordinator:
                 "rescue_runtime": {},
                 "updated_at_ms": 0,
             }
-        except (OSError, json.JSONDecodeError) as exc:
+        except (
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
             return self._corrupt_state_fallback(exc)
         if (
             not isinstance(payload, dict)
@@ -295,6 +314,76 @@ class AutonomousUnstallCoordinator:
             return self._corrupt_state_fallback(
                 ValueError("invalid autonomous unstall rescue runtime")
             )
+        try:
+            for incident_cid, entry in payload["incidents"].items():
+                target_ids = entry.get("target_ids") if isinstance(
+                    entry, Mapping
+                ) else None
+                if (
+                    not isinstance(incident_cid, str)
+                    or not incident_cid.strip()
+                    or not isinstance(entry, Mapping)
+                    or (
+                        entry.get("incident_cid")
+                        and entry.get("incident_cid") != incident_cid
+                    )
+                    or str(entry.get("phase") or "")
+                    not in _AUTONOMOUS_UNSTALL_PHASES
+                    or not isinstance(target_ids, list)
+                    or any(
+                        not isinstance(item, str) or not item.strip()
+                        for item in target_ids
+                    )
+                ):
+                    raise ValueError(
+                        "invalid autonomous unstall incident entry"
+                    )
+                for key in ("created_at_ms", "updated_at_ms"):
+                    if key not in entry:
+                        continue
+                    value = entry[key]
+                    if (
+                        isinstance(value, bool)
+                        or not isinstance(value, int)
+                        or value < 0
+                    ):
+                        raise ValueError(
+                            "invalid autonomous unstall incident timestamp"
+                        )
+            runtime = payload["rescue_runtime"]
+            for key in (
+                "provider_calls",
+                "executions",
+                "consecutive_failures",
+                "last_provider_call_ms",
+            ):
+                if key not in runtime:
+                    continue
+                value = runtime[key]
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value < 0
+                ):
+                    raise ValueError(
+                        f"invalid autonomous unstall runtime {key}"
+                    )
+            if (
+                "circuit_open" in runtime
+                and not isinstance(runtime["circuit_open"], bool)
+            ):
+                raise ValueError(
+                    "invalid autonomous unstall runtime circuit_open"
+                )
+            if (
+                "reason" in runtime
+                and not isinstance(runtime["reason"], str)
+            ):
+                raise ValueError(
+                    "invalid autonomous unstall runtime reason"
+                )
+        except (TypeError, ValueError) as exc:
+            return self._corrupt_state_fallback(exc)
         return payload
 
     def _corrupt_state_fallback(self, exc: BaseException) -> dict[str, Any]:
@@ -383,12 +472,38 @@ class AutonomousUnstallCoordinator:
 
     @staticmethod
     def _healthy(value: Mapping[str, Any]) -> bool:
-        # Process liveness alone is never sufficient.
+        """Require consistent semantic health, never mere process liveness."""
+
+        if value.get("work_complete") is True:
+            return False
+        if "healthy" in value and value.get("healthy") is not True:
+            return False
+        if any(
+            value.get(key) is True
+            for key in (
+                "failed",
+                "heartbeat_stale",
+                "stale",
+                "state_inconsistent",
+                "unexpected_effect",
+            )
+        ):
+            return False
+        status = str(value.get("status") or value.get("state") or "").lower()
+        if status in {
+            "blocked",
+            "degraded",
+            "failed",
+            "stale",
+            "stopped",
+            "unhealthy",
+        }:
+            return False
+        # pid_alive/alive without one of these semantic signals is not health.
         return bool(
             value.get("healthy") is True
-            or str(value.get("status") or value.get("state") or "").lower()
-            in {"healthy", "ok", "recovered"}
-        ) and value.get("work_complete") is not True
+            or status in {"healthy", "ok", "recovered"}
+        )
 
     def _health(self) -> dict[str, Any]:
         if self.health_probe is None:
@@ -412,17 +527,41 @@ class AutonomousUnstallCoordinator:
         **values: Any,
     ) -> dict[str, Any]:
         now_ms = self.clock_ms()
+        previous = state["incidents"].get(incident_cid)
+        previous_created_at = (
+            previous.get("created_at_ms")
+            if isinstance(previous, Mapping)
+            else None
+        )
         entry = {
             "incident_cid": incident_cid,
             "phase": phase,
             "reason": reason,
             "target_ids": list(targets),
+            "created_at_ms": (
+                previous_created_at
+                if isinstance(previous_created_at, int)
+                and not isinstance(previous_created_at, bool)
+                and previous_created_at >= 0
+                else now_ms
+            ),
             "updated_at_ms": now_ms,
             "independent_work_preserved": True,
             "completion_authority": False,
             "work_complete": False,
             **values,
         }
+        if isinstance(previous, Mapping):
+            for key in (
+                "incident_kind",
+                "operating_policy",
+                "reason_codes",
+            ):
+                if key not in entry and key in previous:
+                    entry[key] = previous[key]
+        state_repair = state.get("state_repair")
+        if isinstance(state_repair, Mapping):
+            entry.setdefault("state_repair", dict(state_repair))
         state["incidents"][incident_cid] = entry
         self._store_state(state)
         self._publish("autonomous_unstall_" + phase, entry)
@@ -464,7 +603,7 @@ class AutonomousUnstallCoordinator:
         *,
         deduplicated: bool,
     ) -> dict[str, Any]:
-        return {
+        result = {
             "schema": AUTONOMOUS_UNSTALL_RESULT_SCHEMA,
             "incident_cid": diagnosis.incident_cid,
             "incident_kind": diagnosis.kind.value,
@@ -480,6 +619,11 @@ class AutonomousUnstallCoordinator:
             "deterministic": dict(entry.get("deterministic") or {}),
             "rescue": dict(entry.get("rescue") or {}),
         }
+        for key in ("health", "operating_policy", "state_repair"):
+            value = entry.get(key)
+            if isinstance(value, Mapping):
+                result[key] = dict(value)
+        return result
 
     def _wrapped_handlers(
         self,
@@ -1606,39 +1750,72 @@ class SupervisorWatchdog:
 
             handlers[RescueOperation.RESTART_LANE] = restart
 
-        roots = {
-            "repository": str(self.repo_root),
-            "manifest": str(self.manifest_path),
-            "tree": str(manifest.get("tree_id") or ""),
-        }
+        def current_roots(
+            current_manifest: Mapping[str, Any],
+        ) -> dict[str, str]:
+            if not current_manifest:
+                return {}
+            current_lanes = current_manifest.get("lanes")
+            if not isinstance(current_lanes, Sequence):
+                return {}
+            current_lane = next(
+                (
+                    item
+                    for item in current_lanes
+                    if isinstance(item, Mapping)
+                    and str(item.get("bundle_key") or "") == bundle_key
+                ),
+                None,
+            )
+            if current_lane is None:
+                return {}
+            identity = {
+                "repository": str(self.repo_root.resolve()),
+                "manifest": str(self.manifest_path.resolve()),
+                "tree": str(current_manifest.get("tree_id") or ""),
+                "bundle_key": bundle_key,
+                "state_dir": str(current_lane.get("state_dir") or ""),
+                "state_prefix": str(current_lane.get("state_prefix") or ""),
+            }
+            return {
+                "repository_root_cid": str(
+                    current_manifest.get("repository_root_cid")
+                    or prompt_workflow_cid(
+                        {"watchdog-repository": identity}
+                    )
+                ),
+                "policy_root": str(
+                    current_manifest.get("policy_root")
+                    or prompt_workflow_cid(
+                        {
+                            "watchdog-policy": (
+                                policy.operating_policy_id
+                                or "deterministic-only"
+                            )
+                        }
+                    )
+                ),
+                "run_cid": str(
+                    current_manifest.get("run_cid")
+                    or prompt_workflow_cid(
+                        {"watchdog-lane-run": identity}
+                    )
+                ),
+            }
+
+        roots = current_roots(manifest)
         coordinator = self.autonomous_unstall_factory(
             state_dir=state_dir / "autonomous-unstall",
             repository_root=self.repo_root,
-            repository_root_cid=str(
-                manifest.get("repository_root_cid")
-                or prompt_workflow_cid({"watchdog-repository": roots})
-            ),
-            policy_root=str(
-                manifest.get("policy_root")
-                or prompt_workflow_cid(
-                    {
-                        "watchdog-policy": policy.operating_policy_id
-                        or "deterministic-only"
-                    }
-                )
-            ),
-            run_cid=str(
-                manifest.get("run_cid")
-                or prompt_workflow_cid(
-                    {
-                        "watchdog-manifest": str(self.manifest_path),
-                        "bundle_key": bundle_key,
-                    }
-                )
-            ),
+            repository_root_cid=roots["repository_root_cid"],
+            policy_root=roots["policy_root"],
+            run_cid=roots["run_cid"],
             policy=policy,
             recovery_handlers=handlers,
             health_probe=current_health,
+            root_probe=lambda: current_roots(
+                read_lane_manifest(self.manifest_path)
+            ),
             quarantine_scope=lambda targets, incident, reason: {
                 "target_ids": list(targets),
                 "incident_cid": incident,

@@ -25,6 +25,13 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_watchdog import (
     SupervisorWatchdog,
 )
 from ipfs_accelerate_py.agent_supervisor import supervisor_watchdog as watchdog_module
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTaskState,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
+)
 
 
 NOW = 10_000
@@ -44,6 +51,7 @@ def _coordinator(
     request_factory: Any = None,
     orchestrator: Any = None,
     execution_factory: Any = None,
+    root_probe: Any = None,
     quarantines: list[dict[str, Any]] | None = None,
     events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> AutonomousUnstallCoordinator:
@@ -69,11 +77,14 @@ def _coordinator(
         policy=policy or AutonomousUnstallPolicy(cooldown_ms=0),
         recovery_handlers=handlers,
         health_probe=lambda: dict(current_health),
-        root_probe=lambda: {
-            "repository_root_cid": _cid("repository"),
-            "policy_root": _cid("policy"),
-            "run_cid": _cid("run"),
-        },
+        root_probe=root_probe
+        or (
+            lambda: {
+                "repository_root_cid": _cid("repository"),
+                "policy_root": _cid("policy"),
+                "run_cid": _cid("run"),
+            }
+        ),
         quarantine_scope=quarantine,
         event_publisher=lambda kind, payload: event_records.append(
             (kind, dict(payload))
@@ -580,6 +591,154 @@ def test_model_or_liveness_completion_claim_cannot_mark_work_complete(
     assert result["quarantined"]
     assert result["completion_authority"] is False
     assert result["work_complete"] is False
+
+
+def test_contradictory_health_claim_cannot_override_explicit_failure(
+    tmp_path: Path,
+) -> None:
+    health = {
+        "healthy": False,
+        "status": "healthy",
+        "pid_alive": True,
+        "work_complete": False,
+    }
+
+    def claimed(context):
+        return {
+            "succeeded": True,
+            "observed_effects": context.action.expected_effects,
+        }
+
+    result = _coordinator(
+        tmp_path,
+        health=health,
+        handlers={RescueOperation.RETRY: claimed},
+    ).unstall(evidence={"process": {"lane_id": "lane-1", "alive": False}})
+
+    assert not result["recovered"]
+    assert result["quarantined"]
+
+
+def test_root_drift_after_action_fails_closed_before_a_second_effect(
+    tmp_path: Path,
+) -> None:
+    health = {"healthy": False}
+    roots = {
+        "repository_root_cid": _cid("repository"),
+        "policy_root": _cid("policy"),
+        "run_cid": _cid("run"),
+    }
+    calls = 0
+
+    def recover(context):
+        nonlocal calls
+        calls += 1
+        roots["run_cid"] = _cid("changed-run")
+        health["healthy"] = True
+        return {
+            "succeeded": True,
+            "observed_effects": context.action.expected_effects,
+        }
+
+    result = _coordinator(
+        tmp_path,
+        health=health,
+        handlers={RescueOperation.RETRY: recover},
+        root_probe=lambda: dict(roots),
+    ).unstall(evidence={"heartbeat": {"lane_id": "lane-1", "stale": True}})
+
+    assert result["quarantined"]
+    assert result["reason"] == "semantic_root_drift_after_deterministic_recovery"
+    assert calls == 1
+
+
+def test_corrupt_runtime_state_is_quarantined_and_repair_is_visible(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state" / "autonomous-unstall-state.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema": AUTONOMOUS_UNSTALL_STATE_SCHEMA,
+                "incidents": {},
+                "rescue_runtime": {"provider_calls": "many"},
+                "updated_at_ms": NOW,
+            }
+        ),
+        encoding="utf-8",
+    )
+    health = {"healthy": False}
+
+    def repair(context):
+        health["healthy"] = True
+        return {
+            "succeeded": True,
+            "observed_effects": context.action.expected_effects,
+        }
+
+    result = _coordinator(
+        tmp_path,
+        health=health,
+        handlers={RescueOperation.REPAIR_ORPHANED_LOCK: repair},
+    ).unstall(evidence={"lock": {"lock_id": "l1", "orphaned": True}})
+
+    assert result["recovered"]
+    assert (
+        result["state_repair"]["reason"]
+        == "corrupt_coordination_state_quarantined"
+    )
+    assert list((tmp_path / "state").glob("*.corrupt-*"))
+
+
+def test_implementation_quarantine_is_scope_exact_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    config = PortalSupervisorConfig(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        repo_root=tmp_path,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    PortalTaskState(
+        active_task_id="TASK-1",
+        active_attempt=1,
+        implementation_in_progress=True,
+        ready_count=2,
+    ).save(config.state_path)
+
+    unrelated = supervisor._quarantine_autonomous_unstall_scope(
+        ("TASK-2",),
+        _cid("unrelated-incident"),
+        "unrelated_failure",
+    )
+    assert unrelated["task_id"] == ""
+    assert PortalTaskState.load(config.state_path).active_task_id == "TASK-1"
+
+    first = supervisor._quarantine_autonomous_unstall_scope(
+        ("lane:implementation",),
+        _cid("active-incident"),
+        "active_lane_failure",
+    )
+    duplicate = supervisor._quarantine_autonomous_unstall_scope(
+        ("lane:implementation",),
+        _cid("active-incident"),
+        "active_lane_failure",
+    )
+    strategy = json.loads(config.strategy_path.read_text(encoding="utf-8"))
+
+    assert first["task_id"] == "TASK-1"
+    assert duplicate["deduplicated"]
+    assert strategy["blocked_tasks"] == ["TASK-1"]
+    assert sum(
+        item["incident_cid"] == _cid("active-incident")
+        for item in strategy["autonomous_unstall_quarantines"]
+    ) == 1
+    assert PortalTaskState.load(config.state_path).active_task_id == ""
 
 
 def test_rescue_policy_cannot_be_implicit() -> None:
