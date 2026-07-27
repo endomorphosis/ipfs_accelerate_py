@@ -2376,13 +2376,16 @@ class PortalImplementationSupervisor:
 
     @staticmethod
     def _git_status_short(repo_root: Path) -> list[str]:
-        result = subprocess.run(
-            ["git", "status", "--short"],
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "status", "--short"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return []
         if result.returncode != 0:
             return []
         return [line.rstrip() for line in result.stdout.splitlines() if line.strip()]
@@ -3833,6 +3836,60 @@ class PortalImplementationSupervisor:
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
 
+        lock_path = self._repo_merge_lock_path()
+        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(
+            lock_path
+        )
+        if lock_fd is None:
+            result: dict[str, Any] = {
+                "attempted": True,
+                "removed_count": 0,
+                "skipped_count": 0,
+                "reason": f"checkout_mutation_{lock_reason}",
+                "lock_path": str(lock_path),
+            }
+            if existing_lock:
+                result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
+                result["lock_owner_task_id"] = str(
+                    existing_lock.get("task_id") or ""
+                )
+                result["lock_owner_branch"] = str(
+                    existing_lock.get("branch") or ""
+                )
+            self._record_event("merged_worktree_cleanup_deferred", result)
+            return result
+
+        self._write_checkout_lock_metadata(
+            lock_fd,
+            checkout_lock_metadata(
+                kind="merge",
+                repo_root=self.config.repo_root,
+                task_id=self._active_task_id_for_lock(),
+                branch="supervisor-worktree-cleanup",
+                extra={
+                    "operation": "cleanup_backlogged_worktrees",
+                    "state_dir": str(self.config.state_dir.resolve()),
+                    "state_path": str(self.config.state_path.resolve()),
+                    "started_at": utc_now(),
+                },
+            ),
+        )
+        try:
+            return self._cleanup_backlogged_worktrees_locked()
+        finally:
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.warning(
+                    "Failed to remove worktree cleanup lock %s",
+                    lock_path,
+                )
+
+    def _cleanup_backlogged_worktrees_locked(self) -> dict[str, Any]:
+        """Clean merged worktrees while holding the checkout mutation lock."""
+
         worktree_root = self.config.worktree_root
         if worktree_root is None:
             return {"attempted": False, "reason": "worktree_root_not_configured"}
@@ -3870,6 +3927,14 @@ class PortalImplementationSupervisor:
                 path_resolved = path.resolve()
                 path_resolved.relative_to(root_resolved)
             except (OSError, ValueError):
+                continue
+            if not path_resolved.exists():
+                skipped.append(
+                    {
+                        "path": str(path),
+                        "reason": "worktree_removed_concurrently",
+                    }
+                )
                 continue
             active_skip = self._active_worktree_skip_detail(
                 path_resolved,
@@ -3923,6 +3988,15 @@ class PortalImplementationSupervisor:
                 )
                 continue
             dirty = self._git_status_short(path) if path.exists() else []
+            if not path.exists():
+                skipped.append(
+                    {
+                        "path": str(path),
+                        "branch": branch,
+                        "reason": "worktree_removed_concurrently",
+                    }
+                )
+                continue
             dirty_redundancy: dict[str, Any] = {}
             if dirty:
                 redundant_dirty = self._redundant_dirty_worktree_status(path, dirty, target_ref)
@@ -4109,13 +4183,16 @@ class PortalImplementationSupervisor:
 
     @staticmethod
     def _git_output(cwd: Path, args: list[str], *, max_chars: int = 4000) -> str:
-        result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["git", *args],
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return ""
         if result.returncode != 0:
             return ""
         return result.stdout[-max_chars:].strip()

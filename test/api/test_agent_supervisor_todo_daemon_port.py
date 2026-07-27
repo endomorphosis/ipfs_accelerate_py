@@ -15014,6 +15014,111 @@ def test_implementation_supervisor_cleans_merged_backlogged_worktrees(tmp_path):
     assert branch_exists.returncode != 0
 
 
+def test_implementation_supervisor_defers_worktree_cleanup_behind_checkout_lock(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_try_acquire_checkout_lock",
+        lambda _path: (
+            None,
+            "lock_exists",
+            {
+                "pid": 1234,
+                "task_id": "ACCEL-PEER",
+                "branch": "implementation/peer",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_worktree_records",
+        lambda _repo: pytest.fail("cleanup scanned worktrees without owning the checkout lock"),
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["attempted"] is True
+    assert result["removed_count"] == 0
+    assert result["reason"] == "checkout_mutation_lock_exists"
+    assert result["lock_owner_task_id"] == "ACCEL-PEER"
+
+
+def test_implementation_supervisor_tolerates_worktree_removed_during_cleanup(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "removed-by-peer"
+    worktree_path.mkdir(parents=True)
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_worktree_records",
+        lambda _repo: [
+            {
+                "worktree": str(worktree_path),
+                "branch": "refs/heads/implementation/removed-by-peer",
+                "HEAD": "abc123",
+            }
+        ],
+    )
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_git_ref_is_ancestor",
+        lambda _repo, _ancestor, _descendant: True,
+    )
+
+    def remove_then_report_dirty(_path: Path) -> list[str]:
+        worktree_path.rmdir()
+        return [" M feature.py"]
+
+    monkeypatch.setattr(supervisor, "_git_status_short", remove_then_report_dirty)
+    monkeypatch.setattr(
+        supervisor,
+        "_dirty_worktree_evidence",
+        lambda _path, _dirty: pytest.fail("missing worktree was inspected"),
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 0
+    assert result["skipped_reason_counts"]["worktree_removed_concurrently"] == 1
+
+
 def test_implementation_supervisor_keeps_peer_lane_active_worktree(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
