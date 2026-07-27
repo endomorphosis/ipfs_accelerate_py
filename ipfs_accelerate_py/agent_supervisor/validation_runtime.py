@@ -20,6 +20,9 @@ VALIDATION_PATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PATH"
 VALIDATION_PYTHON_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
+VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
+)
 _CHILD_PYTHON_ENV = "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
 _NEUTRAL_HOME = "/nonexistent/ipfs-accelerate-validation"
 _NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
@@ -394,6 +397,12 @@ def build_validation_environment(
     npm_cache = _approved_directory(source, VALIDATION_NPM_CACHE_ENV)
     if npm_cache is not None:
         result["NPM_CONFIG_CACHE"] = npm_cache
+    playwright_browsers = _approved_directory(
+        source,
+        VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+    )
+    if playwright_browsers is not None:
+        result["PLAYWRIGHT_BROWSERS_PATH"] = playwright_browsers
     python_path = _runtime_python_path_entries(source)
     if python_path:
         result["PYTHONPATH"] = os.pathsep.join(python_path)

@@ -26,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.validation_commands import (
 from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
     VALIDATION_NPM_CACHE_ENV,
     VALIDATION_PATH_ENV,
+    VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     VALIDATION_PYTHON_ENV,
     VALIDATION_PYTHONPATH_ENV,
     ValidationRuntimeError,
@@ -79,6 +80,8 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     trusted_bin = Path("/usr/bin").resolve()
     approved_npm_cache = tmp_path / "approved-npm-cache"
     approved_npm_cache.mkdir()
+    approved_playwright_browsers = tmp_path / "approved-playwright-browsers"
+    approved_playwright_browsers.mkdir()
     source = {
         "AWS_SECRET_ACCESS_KEY": "secret",
         "BASH_ENV": str(tmp_path / "bash-env"),
@@ -93,6 +96,9 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
         "RUSTUP_HOME": str(tmp_path / "rustup-home"),
         VALIDATION_NPM_CACHE_ENV: str(approved_npm_cache),
         VALIDATION_PATH_ENV: str(trusted_bin),
+        VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV: str(
+            approved_playwright_browsers
+        ),
     }
 
     environment = build_validation_environment(source)
@@ -103,6 +109,9 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     assert environment["PYTHONNOUSERSITE"] == "1"
     assert environment["NPM_CONFIG_CACHE"] == str(approved_npm_cache.resolve())
     assert environment["NPM_CONFIG_OFFLINE"] == "true"
+    assert environment["PLAYWRIGHT_BROWSERS_PATH"] == str(
+        approved_playwright_browsers.resolve()
+    )
     assert environment["NPM_CONFIG_GLOBALCONFIG"] == "/dev/null"
     assert environment["NPM_CONFIG_USERCONFIG"] == "/dev/null/npmrc"
     assert (
@@ -121,6 +130,7 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
         "RUSTUP_HOME",
         VALIDATION_NPM_CACHE_ENV,
         VALIDATION_PATH_ENV,
+        VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     } & set(environment)
     shell_command = validation_shell_command("test -f artifact")
     assert shell_command[:4] == ["/bin/bash", "--noprofile", "--norc", "-c"]
