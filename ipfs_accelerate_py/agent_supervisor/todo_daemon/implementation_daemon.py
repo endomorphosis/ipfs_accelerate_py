@@ -3434,6 +3434,18 @@ class PortalImplementationDaemon:
             for task in tasks
             if self._canonical_ref(task) in completed_cids
         )
+        protected_path_conflicts_by_task = {
+            task.task_id: task_implementation_protected_path_conflicts(
+                task,
+                self.implementation_protected_paths,
+            )
+            for task in tasks
+        }
+        protected_path_conflicts_by_task = {
+            task_id: conflicts
+            for task_id, conflicts in protected_path_conflicts_by_task.items()
+            if conflicts
+        }
         dependency_satisfied_task_ids = completed_set | self.assumed_completed_task_ids
         dependency_reopen_candidates = [
             task.task_id
@@ -3463,6 +3475,12 @@ class PortalImplementationDaemon:
                 resolved_statuses[task.task_id] = "completed"
                 if task.task_id not in previous_completed:
                     newly_completed.append(task.task_id)
+                continue
+            if task.task_id in protected_path_conflicts_by_task:
+                # This is a board/configuration error, not transient provider
+                # backpressure.  Quarantine it before selection so a malformed
+                # task cannot create a tight skip/retry loop.
+                resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in strategy.get("blocked_tasks", []) or (
                 task.status == "blocked"
@@ -3738,6 +3756,12 @@ class PortalImplementationDaemon:
                     "attempt_limited_task_ids": [
                         item["task_id"] for item in attempt_limited_tasks
                     ],
+                    "protected_path_conflicts": {
+                        task_id: list(conflicts)
+                        for task_id, conflicts in sorted(
+                            protected_path_conflicts_by_task.items()
+                        )
+                    },
                     "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
                     "shared_completed_task_ids": sorted(shared_completed_task_ids),
                     "projection_delta_keys": sorted(projection_delta),
@@ -3758,6 +3782,12 @@ class PortalImplementationDaemon:
             "attempt_limited_task_ids": [
                 item["task_id"] for item in attempt_limited_tasks
             ],
+            "protected_path_conflicts": {
+                task_id: list(conflicts)
+                for task_id, conflicts in sorted(
+                    protected_path_conflicts_by_task.items()
+                )
+            },
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),

@@ -9551,8 +9551,16 @@ def render_task_block(
         if manual_review_required
         else ""
     )
-    outputs = [discovery_output_path, finding.objective_path]
-    outputs.extend(str(item) for item in finding.outputs if str(item).strip())
+    # Discovery receipts and the objective heap are control-plane inputs.  If
+    # they are rendered as implementation outputs, protected-path enforcement
+    # correctly rejects every generated task and the supervisor can retry the
+    # impossible work indefinitely.  Keep only the finding's authorized edit
+    # surface in Outputs; expose discovery material separately as evidence.
+    outputs = [
+        str(item)
+        for item in (finding.outputs or finding.predicted_files)
+        if str(item).strip()
+    ]
     unique_outputs = list(dict.fromkeys(outputs))
     missing = ", ".join(finding.missing_evidence)
     refinement = finding.refinement or "Refine the objective heap if the gap needs smaller child goals."
@@ -9625,6 +9633,8 @@ def render_task_block(
 - Depends on: {", ".join(dependency_ids)}
 - Outputs: {", ".join(unique_outputs)}
 - Validation: {finding.validation}
+- Evidence inputs: {discovery_output_path}
+- Discovery evidence: {discovery_path}
 - Bundle: {finding.bundle_key}
 - Bundle shard: {bundle_shard}
 - Bundle strategy: {finding.bundle_strategy}

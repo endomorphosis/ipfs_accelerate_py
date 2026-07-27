@@ -2486,6 +2486,14 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## ACCEL-002 Close objective gap" in todo_text
     assert "- Bundle: objective/ops/root" in todo_text
+    generated_block = todo_text.split("## ACCEL-002 ", 1)[1]
+    outputs_line = next(
+        line for line in generated_block.splitlines() if line.startswith("- Outputs:")
+    )
+    assert "objective-heap.md" not in outputs_line
+    assert "data/agent_supervisor/discovery" not in outputs_line
+    assert "- Evidence inputs: data/agent_supervisor/discovery" in generated_block
+    assert "- Discovery evidence:" in generated_block
 
     shard = bundle_dir / "objective-ops-root.todo.md"
     assert shard.exists()

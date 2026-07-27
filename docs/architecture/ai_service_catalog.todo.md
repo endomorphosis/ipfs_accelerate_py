@@ -21,6 +21,15 @@ Program invariants:
 - Existing APIs remain available through tested compatibility projections.
 - Concurrent work must preserve user changes and re-read the latest merge
   target before modifying shared router or registry files.
+- Production launches must pass
+  `python scripts/ops/ai_service_catalog_supervisor.py preflight`. The initial
+  baseline uses six lanes in a fresh runtime namespace with objective refill
+  disabled; low-backlog refill may be enabled only after the seeded graph is
+  nearly drained.
+- The task board and objective heap are tracked, operator-protected
+  control-plane inputs. Refill-generated implementation tasks may cite their
+  discovery receipts, but must never claim the receipts, board, or heap as
+  editable outputs.
 
 ## AICAT-001 Define versioned catalog schemas and stable identities
 

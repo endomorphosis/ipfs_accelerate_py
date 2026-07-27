@@ -11906,6 +11906,69 @@ def test_task_declaring_operator_protected_file_is_skipped_before_launch(tmp_pat
     }
 
 
+def test_run_once_quarantines_declared_protected_task_before_selection(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    policy_path = "implementation_plan/policies/approval.json"
+    policy = repo / policy_path
+    policy.parent.mkdir(parents=True)
+    policy.write_text("{}\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Agent Todos
+
+## ACCEL-001 Rewrite approval policy
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: docs
+- Depends on:
+- Outputs: {policy_path}
+- Validation: true
+- Acceptance: Rewrite the protected policy.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md", policy_path)
+    _git(repo, "commit", "-m", "seed protected task")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_protected_paths=[policy_path],
+    )
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        lambda *_args, **_kwargs: pytest.fail(
+            "protected task reached implementation launch"
+        ),
+    )
+
+    result = daemon.run_once()
+
+    assert result["blocked_count"] == 1
+    assert result["ready_count"] == 0
+    assert result["active_task_id"] == ""
+    assert result["protected_path_conflicts"] == {
+        "ACCEL-001": [policy_path]
+    }
+
+
 def test_supervisor_protected_paths_reach_managed_daemon_command(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
