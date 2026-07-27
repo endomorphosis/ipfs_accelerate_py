@@ -134,7 +134,7 @@ def inspect_board(
         and task.task_id not in blocked_task_ids
         and all(dependency in completed_task_ids for dependency in task.depends_on)
     ]
-    ready_by_lane = {
+    nominal_ready_by_lane = {
         str(index): sorted(
             task.task_id
             for task in ready_tasks
@@ -146,6 +146,15 @@ def inspect_board(
             == index
         )
         for index in range(lanes)
+    }
+    all_ready_task_ids = sorted(task.task_id for task in ready_tasks)
+    fallback_ready_by_lane = {
+        lane: ([] if task_ids else list(all_ready_task_ids))
+        for lane, task_ids in nominal_ready_by_lane.items()
+    }
+    scheduler_candidate_ready_by_lane = {
+        lane: (list(task_ids) if task_ids else list(all_ready_task_ids))
+        for lane, task_ids in nominal_ready_by_lane.items()
     }
     protected_conflicts = {
         task.task_id: list(conflicts)
@@ -185,8 +194,10 @@ def inspect_board(
         errors.append("objective heap contains no goals")
     if (
         completed_task_ids == {"AICAT-001"}
-        and set(ready_by_lane) != {
-            lane for lane, task_ids_for_lane in ready_by_lane.items() if task_ids_for_lane
+        and set(nominal_ready_by_lane) != {
+            lane
+            for lane, task_ids_for_lane in nominal_ready_by_lane.items()
+            if task_ids_for_lane
         }
     ):
         errors.append("initial ready wave does not cover every configured lane")
@@ -203,8 +214,13 @@ def inspect_board(
         "goal_count": len(goals),
         "completed_task_ids": sorted(completed_task_ids),
         "open_task_count": open_task_count,
-        "ready_task_ids": sorted(task.task_id for task in ready_tasks),
-        "ready_by_lane": ready_by_lane,
+        "ready_task_ids": all_ready_task_ids,
+        "ready_by_lane": nominal_ready_by_lane,
+        "fallback_ready_by_lane": fallback_ready_by_lane,
+        "scheduler_candidate_ready_by_lane": scheduler_candidate_ready_by_lane,
+        "lane_assignment_policy": (
+            "numeric_suffix_modulo_with_global_unclaimed_ready_fallback"
+        ),
         "duplicate_task_ids": duplicate_task_ids,
         "missing_baseline_task_ids": missing_baseline_task_ids,
         "unknown_dependencies": unknown_dependencies,
