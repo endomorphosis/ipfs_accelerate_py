@@ -716,6 +716,96 @@ def test_ephemeral_fence_rejects_untrusted_shared_checkout_commit(
     assert daemon._implementation_protected_incident_path().exists()
 
 
+def test_operator_clearance_requires_exact_untrusted_commit_and_writes_receipt(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("reviewed operator update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Operator",
+        "-c",
+        "user.email=operator@example.invalid",
+        "commit",
+        "-m",
+        "update protected policy",
+    )
+    operator_commit = _git(repo, "rev-parse", "HEAD")
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+
+    denied = daemon.clear_implementation_protected_path_incident(
+        operator_note="Reviewed concurrent policy update.",
+    )
+    assert denied["cleared"] is False
+    assert denied["reason"] == "operator_commit_approval_mismatch"
+    assert denied["missing_approved_commits"] == [operator_commit]
+    assert daemon._implementation_protected_incident_path().exists()
+
+    cleared = daemon.clear_implementation_protected_path_incident(
+        approved_commits=[operator_commit[:12]],
+        operator_note="Reviewed concurrent policy update.",
+    )
+    assert cleared["cleared"] is True
+    assert cleared["approved_commits"] == [operator_commit]
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    receipt = json.loads(
+        Path(cleared["receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["schema"] == "implementation-protected-path-clearance-v1"
+    assert receipt["operator_note"] == "Reviewed concurrent policy update."
+    assert receipt["history"][0]["trusted_generator"] is False
+
+
+def test_operator_clearance_rejects_workspace_protected_path_mutation(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    (workspace / POLICY_PATH).write_text(
+        "implementation mutation\n",
+        encoding="utf-8",
+    )
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert "workspace" in {
+        item["scope"] for item in violation["mutations"]
+    }
+
+    result = daemon.clear_implementation_protected_path_incident(
+        operator_note="This must remain blocked.",
+    )
+    assert result["cleared"] is False
+    assert result["reason"] == (
+        "implementation_workspace_mutation_requires_manual_recovery"
+    )
+    assert daemon._implementation_protected_incident_path().exists()
+
+
 def test_supervisor_commits_generated_updates_to_protected_todo_board(
     tmp_path: Path,
 ) -> None:

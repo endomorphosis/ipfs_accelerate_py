@@ -2141,6 +2141,26 @@ class PortalImplementationDaemon:
             return ""
         return result.stdout.strip()
 
+    @staticmethod
+    def _trusted_protected_path_commit(
+        author_email: str,
+        subject: str,
+    ) -> bool:
+        """Return whether a protected-board commit has a trusted generator identity."""
+
+        daemon_owned = (
+            author_email == "implementation-daemon@example.invalid"
+            and (
+                subject.endswith(": mark todo completed")
+                or subject.endswith(": update generated submodule pointer")
+            )
+        )
+        generated_board_update = (
+            author_email == BACKLOG_REFINERY_AUTHOR_EMAIL
+            and subject.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER)
+        )
+        return daemon_owned or generated_board_update
+
     def _authorized_concurrent_protected_path_update(
         self,
         *,
@@ -2228,18 +2248,7 @@ class PortalImplementationDaemon:
             if len(parts) != 3:
                 return {}
             commit, author_email, subject = parts
-            daemon_owned = (
-                author_email == "implementation-daemon@example.invalid"
-                and (
-                    subject.endswith(": mark todo completed")
-                    or subject.endswith(": update generated submodule pointer")
-                )
-            )
-            generated_board_update = (
-                author_email == BACKLOG_REFINERY_AUTHOR_EMAIL
-                and subject.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER)
-            )
-            if not daemon_owned and not generated_board_update:
+            if not self._trusted_protected_path_commit(author_email, subject):
                 return {}
             commits.append(
                 {
@@ -2337,6 +2346,286 @@ class PortalImplementationDaemon:
         }
         write_json_atomic(self._implementation_protected_incident_path(), incident)
         return incident
+
+    def clear_implementation_protected_path_incident(
+        self,
+        *,
+        approved_commits: Sequence[str] = (),
+        operator_note: str,
+    ) -> dict[str, Any]:
+        """Clear a reviewed shared-checkout incident and persist its proof.
+
+        Automatic reconciliation remains fail closed for commits that do not
+        carry a trusted daemon identity. This operator path requires the exact
+        untrusted commits in the protected-path history, while independently
+        proving that the implementation workspace did not mutate a protected
+        file and that no implementation process still owns the lane.
+        """
+
+        incident_path = self._implementation_protected_incident_path()
+        active_path = self._implementation_protected_active_snapshot_path()
+
+        def denied(reason: str, **detail: Any) -> dict[str, Any]:
+            result = {
+                "cleared": False,
+                "reason": reason,
+                "incident_path": str(incident_path),
+                **detail,
+            }
+            self._record_event(
+                "implementation_protected_path_clearance_denied",
+                result,
+            )
+            return result
+
+        incident = load_json_dict(incident_path)
+        if incident is None:
+            return {
+                "cleared": False,
+                "already_clear": not incident_path.exists(),
+                "reason": (
+                    "no_incident"
+                    if not incident_path.exists()
+                    else "incident_malformed"
+                ),
+                "incident_path": str(incident_path),
+            }
+        note = operator_note.strip()
+        if not note:
+            return denied("operator_note_required")
+        if (
+            incident.get("schema") != "implementation-protected-path-incident-v1"
+            or incident.get("requires_operator_clearance") is not True
+        ):
+            return denied("incident_not_clearable")
+
+        mutations = incident.get("mutations")
+        if not isinstance(mutations, list) or not mutations:
+            return denied("incident_mutations_missing")
+        mutation_scopes = {
+            str(item.get("scope") or "")
+            for item in mutations
+            if isinstance(item, Mapping)
+        }
+        if mutation_scopes != {"shared_checkout"}:
+            return denied(
+                "implementation_workspace_mutation_requires_manual_recovery",
+                mutation_scopes=sorted(mutation_scopes),
+            )
+
+        active = load_json_dict(active_path)
+        if active is None:
+            return denied("active_snapshot_missing_or_malformed")
+        for field_name in ("task_id", "attempt", "workspace_path"):
+            if active.get(field_name) != incident.get(field_name):
+                return denied(
+                    "incident_active_snapshot_mismatch",
+                    mismatched_field=field_name,
+                )
+
+        lock_path = self._implementation_lock_path()
+        lock = load_json_dict(lock_path)
+        if lock is not None and self._implementation_lock_owner_is_active(lock):
+            return denied(
+                "implementation_still_active",
+                owner_pid=lock.get("pid"),
+                task_id=lock.get("task_id"),
+            )
+        if lock_path.exists() and lock is None:
+            return denied("implementation_lock_malformed")
+
+        snapshot = active.get("snapshot")
+        before_shared = (
+            snapshot.get("shared_checkout")
+            if isinstance(snapshot, Mapping)
+            else None
+        )
+        if not isinstance(before_shared, Mapping):
+            return denied("shared_checkout_baseline_missing")
+        before_head = str(before_shared.get("git_head") or "")
+        after_head = self._implementation_protected_git_head(self.repo_root)
+        if not before_head or not after_head or before_head == after_head:
+            return denied(
+                "protected_path_history_unavailable",
+                before_head=before_head,
+                after_head=after_head,
+            )
+        ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", before_head, after_head],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if ancestry.returncode != 0:
+            return denied(
+                "shared_checkout_history_rewritten",
+                before_head=before_head,
+                after_head=after_head,
+            )
+
+        protected_paths = sorted(
+            {
+                str(item.get("path") or "")
+                for item in mutations
+                if isinstance(item, Mapping) and str(item.get("path") or "")
+            }
+        )
+        if not protected_paths:
+            return denied("protected_paths_missing")
+        status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                *protected_paths,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0 or status.stdout.strip():
+            return denied(
+                "protected_paths_dirty",
+                protected_paths=protected_paths,
+                status=status.stdout.strip(),
+            )
+
+        resolved_approvals: set[str] = set()
+        invalid_approvals: list[str] = []
+        for raw_commit in approved_commits:
+            value = str(raw_commit).strip()
+            if not value:
+                continue
+            resolved = subprocess.run(
+                ["git", "rev-parse", "--verify", f"{value}^{{commit}}"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if resolved.returncode != 0:
+                invalid_approvals.append(value)
+            else:
+                resolved_approvals.add(resolved.stdout.strip())
+        if invalid_approvals:
+            return denied(
+                "approved_commit_invalid",
+                invalid_approved_commits=sorted(invalid_approvals),
+            )
+
+        history = subprocess.run(
+            [
+                "git",
+                "log",
+                "--format=%H%x09%ae%x09%s",
+                f"{before_head}..{after_head}",
+                "--",
+                *protected_paths,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if history.returncode != 0:
+            return denied("protected_path_history_query_failed")
+        commits: list[dict[str, Any]] = []
+        untrusted_commits: set[str] = set()
+        for line in history.stdout.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) != 3:
+                return denied("protected_path_history_malformed")
+            commit, author_email, subject = parts
+            trusted = self._trusted_protected_path_commit(
+                author_email,
+                subject,
+            )
+            commits.append(
+                {
+                    "commit": commit,
+                    "author_email": author_email,
+                    "subject": subject,
+                    "trusted_generator": trusted,
+                }
+            )
+            if not trusted:
+                untrusted_commits.add(commit)
+        if not commits:
+            return denied("protected_path_history_empty")
+        if resolved_approvals != untrusted_commits:
+            return denied(
+                "operator_commit_approval_mismatch",
+                required_approved_commits=sorted(untrusted_commits),
+                supplied_approved_commits=sorted(resolved_approvals),
+                missing_approved_commits=sorted(
+                    untrusted_commits - resolved_approvals
+                ),
+                unexpected_approved_commits=sorted(
+                    resolved_approvals - untrusted_commits
+                ),
+            )
+        if self._implementation_protected_git_head(self.repo_root) != after_head:
+            return denied("shared_checkout_changed_during_clearance")
+
+        clearance_basis = {
+            "incident": incident,
+            "before_head": before_head,
+            "after_head": after_head,
+            "approved_commits": sorted(resolved_approvals),
+        }
+        clearance_id = "sha256:" + hashlib.sha256(
+            canonical_json(clearance_basis).encode("utf-8")
+        ).hexdigest()
+        receipt = {
+            "schema": "implementation-protected-path-clearance-v1",
+            "clearance_id": clearance_id,
+            "cleared_at": utc_now(),
+            "operator_note": note,
+            "task_id": str(incident.get("task_id") or ""),
+            "attempt": incident.get("attempt"),
+            "incident": incident,
+            "before_head": before_head,
+            "after_head": after_head,
+            "protected_paths": protected_paths,
+            "approved_commits": sorted(resolved_approvals),
+            "history": commits,
+        }
+        receipt_path = (
+            incident_path.parent
+            / (
+                "implementation-protected-path-clearance-"
+                f"{clearance_id.removeprefix('sha256:')[:16]}.json"
+            )
+        )
+        write_json_atomic(receipt_path, receipt)
+        incident_path.unlink()
+        try:
+            active_path.unlink()
+        except FileNotFoundError:
+            pass
+        stale_lock_cleared = False
+        if lock_path.exists():
+            lock_path.unlink()
+            stale_lock_cleared = True
+        result = {
+            "cleared": True,
+            "reason": "operator_approved_shared_checkout_commits",
+            "clearance_id": clearance_id,
+            "receipt_path": str(receipt_path),
+            "task_id": receipt["task_id"],
+            "attempt": receipt["attempt"],
+            "approved_commits": receipt["approved_commits"],
+            "stale_lock_cleared": stale_lock_cleared,
+        }
+        self._record_event(
+            "implementation_protected_path_incident_cleared",
+            result,
+        )
+        return result
 
     @staticmethod
     def _implementation_protected_snapshot_errors(
@@ -16920,6 +17209,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--clear-protected-path-incident",
+        action="store_true",
+        help=(
+            "Perform one proof-checked operator clearance of the lane's "
+            "latched protected-path incident, print its receipt, and exit."
+        ),
+    )
+    parser.add_argument(
+        "--approve-protected-path-commit",
+        action="append",
+        default=[],
+        help=(
+            "Exact commit approved as the operator-authored cause of a "
+            "shared-checkout protected-path incident. May be repeated."
+        ),
+    )
+    parser.add_argument(
+        "--operator-clearance-note",
+        default="",
+        help="Required audit note for --clear-protected-path-incident.",
+    )
+    parser.add_argument(
         "--llm-merge-resolver-command",
         default=default_llm_merge_resolver_command(),
         help=(
@@ -17195,6 +17506,15 @@ def main(argv: list[str] | None = None) -> None:
         maintenance_interval_seconds=args.maintenance_interval_seconds,
     )
     try:
+        if args.clear_protected_path_incident:
+            result = daemon.clear_implementation_protected_path_incident(
+                approved_commits=args.approve_protected_path_commit,
+                operator_note=args.operator_clearance_note,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            if not result.get("cleared") and not result.get("already_clear"):
+                raise SystemExit(2)
+            return
         while True:
             result = daemon.run_once()
             logger.info("Portal implementation daemon pass complete: %s", result)
