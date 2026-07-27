@@ -757,7 +757,7 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or os.environ.get("GROK_MODEL", "").strip()
         or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or "grok-4.6"
+        or "grok-4.5"
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
     # still enforces implementation_timeout as the hard wall-clock limit.

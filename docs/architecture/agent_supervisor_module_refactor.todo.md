@@ -705,7 +705,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-019 Resolve implementation retry-budget failure for ASREF-003
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -713,10 +713,10 @@ do not delete protected headers or rewrite completed history.
 - Outputs: ipfs_accelerate_py/agent_supervisor/core/README.md, ipfs_accelerate_py/agent_supervisor/core/__init__.py, ipfs_accelerate_py/agent_supervisor/core, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-019-asref-003-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-003. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-019-asref-003-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-003 from strategy blocked_tasks.
-
+- Operator note (2026-07-27T17:14:11.357411+00:00): Attempt budgets for source + this repair were reset after fixing invalid default model grok-4.6 -> grok-4.5; repair treated complete.
 ## ASREF-020 Resolve implementation retry-budget failure for ASREF-006
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -724,10 +724,10 @@ do not delete protected headers or rewrite completed history.
 - Outputs: .gitignore, docs/NESTED_PACKAGES.md, docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-020-asref-006-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-006. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-020-asref-006-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-006 from strategy blocked_tasks.
-
+- Operator note (2026-07-27T17:14:11.357411+00:00): Attempt budgets for source + this repair were reset after fixing invalid default model grok-4.6 -> grok-4.5; repair treated complete.
 ## ASREF-021 Resolve implementation retry-budget failure for ASREF-011
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -735,3 +735,4 @@ do not delete protected headers or rewrite completed history.
 - Outputs: ipfs_accelerate_py/agent_supervisor/objectives, ipfs_accelerate_py/agent_supervisor/planning, ipfs_accelerate_py/agent_supervisor/validation, ipfs_accelerate_py/agent_supervisor/merge, ipfs_accelerate_py/agent_supervisor/rescue, ipfs_accelerate_py/agent_supervisor/runtime, ipfs_accelerate_py/agent_supervisor/self_improvement, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-021-asref-011-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-011. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-021-asref-011-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-011 from strategy blocked_tasks.
+- Operator note (2026-07-27T17:14:11.357411+00:00): Attempt budgets for source + this repair were reset after fixing invalid default model grok-4.6 -> grok-4.5; repair treated complete.

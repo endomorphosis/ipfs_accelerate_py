@@ -185,7 +185,7 @@ def _common_args(
         "--max-restarts",
         "50",
         "--max-task-attempts",
-        "3",
+        "5",
         "--daemon-interval",
         "20",
         "--implementation-timeout",
