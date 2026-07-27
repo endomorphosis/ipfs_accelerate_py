@@ -20,11 +20,15 @@ Environment variables:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import logging
 import os
 import signal
+import tempfile
+import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Final, Mapping, Sequence
@@ -32,6 +36,22 @@ from typing import Any, Callable, Final, Mapping, Sequence
 from .control_plane import (
     LIFECYCLE_STATUS_SCHEMA,
     SupervisorLifecycleState,
+)
+from .prompt_workflow import RecordStatus, RescueOperation, prompt_workflow_cid
+from .recovery_diagnostics import (
+    RecoveryDiagnosticError,
+    RecoveryDiagnosis,
+    diagnose_supervisor_incident,
+)
+from .rescue_planner import (
+    RescuePlanner,
+    RescuePlanningRequest,
+)
+from .supervisor_recovery import (
+    ProgrammaticRecoveryController,
+    ProgrammaticRecoveryPolicy,
+    ProgrammaticRecoveryResult,
+    RecoveryActionObservation,
 )
 from .scheduler_metrics import scheduler_snapshot, scheduler_state_events
 
@@ -61,6 +81,913 @@ _STATE_ALIASES: Final[dict[str, str]] = {
     "shutdown": "stopped",
     "shutdown_complete": "stopped",
 }
+AUTONOMOUS_UNSTALL_STATE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomous-unstall-state@1"
+)
+AUTONOMOUS_UNSTALL_RESULT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomous-unstall-result@1"
+)
+_AUTONOMOUS_UNSTALL_EVIDENCE_SLOTS: Final[frozenset[str]] = frozenset(
+    {
+        "status",
+        "health",
+        "process",
+        "heartbeat",
+        "event",
+        "lease",
+        "lock",
+        "task",
+        "attempt",
+        "task_source",
+        "worktree",
+        "merge",
+        "provider",
+        "validation",
+        "disk",
+    }
+)
+
+
+@dataclass(frozen=True)
+class AutonomousUnstallPolicy:
+    """Explicit operating policy for one bounded autonomous unstall lane.
+
+    Deterministic recovery is enabled independently from model rescue.  A
+    provider cannot be called unless both rescue preview and provider access
+    are explicitly enabled under a non-empty policy identity.  Execution has
+    a separate opt-in and still passes through ``RescueOrchestrator``.
+    """
+
+    enabled: bool = True
+    rescue_preview_enabled: bool = False
+    rescue_execution_enabled: bool = False
+    allow_provider_calls: bool = False
+    operating_policy_id: str = ""
+    max_incidents: int = 128
+    max_provider_calls: int = 4
+    max_rescue_executions: int = 4
+    circuit_breaker_failures: int = 2
+    deterministic_max_attempts_per_action: int = 2
+    deterministic_max_total_attempts: int = 8
+    deterministic_max_actions: int = 8
+    cooldown_ms: int = 30_000
+    deadline_ms: int = 120_000
+
+    def __post_init__(self) -> None:
+        for name in (
+            "enabled",
+            "rescue_preview_enabled",
+            "rescue_execution_enabled",
+            "allow_provider_calls",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be boolean")
+        for name in (
+            "max_incidents",
+            "max_provider_calls",
+            "max_rescue_executions",
+            "circuit_breaker_failures",
+            "deterministic_max_attempts_per_action",
+            "deterministic_max_total_attempts",
+            "deterministic_max_actions",
+            "deadline_ms",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if (
+            isinstance(self.cooldown_ms, bool)
+            or not isinstance(self.cooldown_ms, int)
+            or self.cooldown_ms < 0
+        ):
+            raise ValueError("cooldown_ms must be a nonnegative integer")
+        if self.rescue_execution_enabled and not self.rescue_preview_enabled:
+            raise ValueError("rescue execution requires rescue preview")
+        if self.allow_provider_calls and not self.rescue_preview_enabled:
+            raise ValueError("provider access requires rescue preview")
+        if (
+            self.rescue_preview_enabled
+            or self.rescue_execution_enabled
+            or self.allow_provider_calls
+        ) and not self.operating_policy_id.strip():
+            raise ValueError(
+                "rescue requires an explicit operating_policy_id"
+            )
+
+    @property
+    def deterministic_policy(self) -> ProgrammaticRecoveryPolicy:
+        return ProgrammaticRecoveryPolicy(
+            max_attempts_per_action=self.deterministic_max_attempts_per_action,
+            max_total_attempts=self.deterministic_max_total_attempts,
+            max_actions=self.deterministic_max_actions,
+            cooldown_ms=self.cooldown_ms,
+            deadline_ms=self.deadline_ms,
+        )
+
+
+class AutonomousUnstallCoordinator:
+    """Compose semantic diagnosis, deterministic recovery, and optional rescue.
+
+    The coordinator owns only the affected incident scope.  Its durable state
+    is written before every effectful phase so a restart during recovery is
+    visible and fails closed.  The supplied action handlers and orchestrator
+    remain the only effect authorities.
+    """
+
+    def __init__(
+        self,
+        *,
+        state_dir: Path | str,
+        repository_root: Path | str,
+        repository_root_cid: str,
+        policy_root: str,
+        run_cid: str,
+        policy: AutonomousUnstallPolicy | None = None,
+        recovery_handlers: Mapping[
+            RescueOperation | str, Callable[[Any], Any]
+        ]
+        | None = None,
+        health_probe: Callable[[], Mapping[str, Any]] | None = None,
+        root_probe: Callable[[], Mapping[str, str]] | None = None,
+        quarantine_scope: Callable[
+            [Sequence[str], str, str], Mapping[str, Any] | None
+        ]
+        | None = None,
+        event_publisher: Callable[[str, Mapping[str, Any]], Any] | None = None,
+        rescue_planner: RescuePlanner | None = None,
+        rescue_request_factory: Callable[
+            [RecoveryDiagnosis, Any, Mapping[str, str]], RescuePlanningRequest
+        ]
+        | None = None,
+        rescue_orchestrator: Any = None,
+        rescue_execution_request_factory: Callable[
+            [RecoveryDiagnosis, Any, Any, Mapping[str, str]], Any
+        ]
+        | None = None,
+        clock_ms: Callable[[], int] | None = None,
+    ) -> None:
+        self.state_dir = Path(state_dir)
+        self.repository_root = Path(repository_root).resolve()
+        self.repository_root_cid = str(repository_root_cid).strip()
+        self.policy_root = str(policy_root).strip()
+        self.run_cid = str(run_cid).strip()
+        if not all(
+            (self.repository_root_cid, self.policy_root, self.run_cid)
+        ):
+            raise ValueError("current repository, policy, and run roots are required")
+        self.policy = policy or AutonomousUnstallPolicy()
+        self.recovery_handlers = dict(recovery_handlers or {})
+        self.health_probe = health_probe
+        self.root_probe = root_probe
+        self.quarantine_scope = quarantine_scope
+        self.event_publisher = event_publisher
+        self.rescue_planner = rescue_planner
+        self.rescue_request_factory = rescue_request_factory
+        self.rescue_orchestrator = rescue_orchestrator
+        self.rescue_execution_request_factory = (
+            rescue_execution_request_factory
+        )
+        self.clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
+        self.state_path = self.state_dir / "autonomous-unstall-state.json"
+        self.recovery_state_dir = self.state_dir / "autonomous-unstall-recovery"
+        self._lock = threading.RLock()
+
+    def _roots(self) -> dict[str, str]:
+        roots = {
+            "repository_root_cid": self.repository_root_cid,
+            "policy_root": self.policy_root,
+            "run_cid": self.run_cid,
+        }
+        if self.root_probe is not None:
+            observed = self.root_probe()
+            if not isinstance(observed, Mapping):
+                raise ValueError("root_probe must return a mapping")
+            for key in tuple(roots):
+                value = str(observed.get(key) or "").strip()
+                if not value:
+                    raise ValueError(f"root_probe omitted {key}")
+                roots[key] = value
+        return roots
+
+    def _load_state(self) -> dict[str, Any]:
+        try:
+            payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {
+                "schema": AUTONOMOUS_UNSTALL_STATE_SCHEMA,
+                "incidents": {},
+                "rescue_runtime": {},
+                "updated_at_ms": 0,
+            }
+        except (OSError, json.JSONDecodeError) as exc:
+            return self._corrupt_state_fallback(exc)
+        if (
+            not isinstance(payload, dict)
+            or payload.get("schema") != AUTONOMOUS_UNSTALL_STATE_SCHEMA
+            or not isinstance(payload.get("incidents"), dict)
+        ):
+            return self._corrupt_state_fallback(
+                ValueError("unsupported autonomous unstall state")
+            )
+        if "rescue_runtime" not in payload:
+            payload["rescue_runtime"] = {}
+        elif not isinstance(payload.get("rescue_runtime"), dict):
+            return self._corrupt_state_fallback(
+                ValueError("invalid autonomous unstall rescue runtime")
+            )
+        return payload
+
+    def _corrupt_state_fallback(self, exc: BaseException) -> dict[str, Any]:
+        """Preserve corrupt bytes and fail closed for uncertain rescue history."""
+
+        backup = self.state_path.with_name(
+            f"{self.state_path.name}.corrupt-{self.clock_ms()}"
+        )
+        try:
+            os.replace(self.state_path, backup)
+        except OSError:
+            pass
+        return {
+            "schema": AUTONOMOUS_UNSTALL_STATE_SCHEMA,
+            "incidents": {},
+            "rescue_runtime": {
+                "circuit_open": True,
+                "reason": "corrupt_coordination_state",
+            },
+            "updated_at_ms": self.clock_ms(),
+            "state_repair": {
+                "reason": "corrupt_coordination_state_quarantined",
+                "backup_path": str(backup),
+                "error_type": type(exc).__name__,
+            },
+        }
+
+    def _store_state(self, state: Mapping[str, Any]) -> None:
+        payload = dict(state)
+        payload["schema"] = AUTONOMOUS_UNSTALL_STATE_SCHEMA
+        payload["updated_at_ms"] = self.clock_ms()
+        incidents = payload.get("incidents")
+        if not isinstance(incidents, dict):
+            raise ValueError("autonomous unstall incidents must be a mapping")
+        if len(incidents) > self.policy.max_incidents:
+            ordered = sorted(
+                incidents.items(),
+                key=lambda item: int(
+                    item[1].get("updated_at_ms", 0)
+                    if isinstance(item[1], Mapping)
+                    else 0
+                ),
+                reverse=True,
+            )
+            payload["incidents"] = dict(ordered[: self.policy.max_incidents])
+        encoded = (
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+            + b"\n"
+        )
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{self.state_path.name}.", dir=self.state_path.parent
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.state_path)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+    def _publish(self, event_type: str, payload: Mapping[str, Any]) -> None:
+        if self.event_publisher is None:
+            return
+        try:
+            self.event_publisher(event_type, dict(payload))
+        except Exception as exc:
+            # Durable state is the authoritative control projection.  A
+            # transient publisher outage must not replay an already-started
+            # effect or break the finite recovery pass.
+            logger.warning(
+                "Autonomous unstall event publisher failed for %s: %s",
+                event_type,
+                type(exc).__name__,
+            )
+
+    @staticmethod
+    def _healthy(value: Mapping[str, Any]) -> bool:
+        # Process liveness alone is never sufficient.
+        return bool(
+            value.get("healthy") is True
+            or str(value.get("status") or value.get("state") or "").lower()
+            in {"healthy", "ok", "recovered"}
+        ) and value.get("work_complete") is not True
+
+    def _health(self) -> dict[str, Any]:
+        if self.health_probe is None:
+            return {"healthy": False, "reason": "health_probe_unavailable"}
+        raw = self.health_probe()
+        if not isinstance(raw, Mapping):
+            return {"healthy": False, "reason": "invalid_health_probe"}
+        result = dict(raw)
+        result["healthy"] = self._healthy(result)
+        result["completion_authority"] = False
+        return result
+
+    def _record(
+        self,
+        state: dict[str, Any],
+        incident_cid: str,
+        *,
+        phase: str,
+        reason: str,
+        targets: Sequence[str],
+        **values: Any,
+    ) -> dict[str, Any]:
+        now_ms = self.clock_ms()
+        entry = {
+            "incident_cid": incident_cid,
+            "phase": phase,
+            "reason": reason,
+            "target_ids": list(targets),
+            "updated_at_ms": now_ms,
+            "independent_work_preserved": True,
+            "completion_authority": False,
+            "work_complete": False,
+            **values,
+        }
+        state["incidents"][incident_cid] = entry
+        self._store_state(state)
+        self._publish("autonomous_unstall_" + phase, entry)
+        return entry
+
+    def _quarantine(
+        self,
+        state: dict[str, Any],
+        diagnosis: RecoveryDiagnosis,
+        reason: str,
+        *,
+        deterministic: Mapping[str, Any] | None = None,
+        rescue: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        effect: Mapping[str, Any] = {}
+        if self.quarantine_scope is not None:
+            raw = self.quarantine_scope(
+                diagnosis.target_ids, diagnosis.incident_cid, reason
+            )
+            if isinstance(raw, Mapping):
+                effect = dict(raw)
+        entry = self._record(
+            state,
+            diagnosis.incident_cid,
+            phase="quarantined",
+            reason=reason,
+            targets=diagnosis.target_ids,
+            quarantined=True,
+            quarantine_effect=effect,
+            deterministic=dict(deterministic or {}),
+            rescue=dict(rescue or {}),
+        )
+        return self._result(diagnosis, entry, deduplicated=False)
+
+    @staticmethod
+    def _result(
+        diagnosis: RecoveryDiagnosis,
+        entry: Mapping[str, Any],
+        *,
+        deduplicated: bool,
+    ) -> dict[str, Any]:
+        return {
+            "schema": AUTONOMOUS_UNSTALL_RESULT_SCHEMA,
+            "incident_cid": diagnosis.incident_cid,
+            "incident_kind": diagnosis.kind.value,
+            "target_ids": list(diagnosis.target_ids),
+            "status": str(entry.get("phase") or ""),
+            "reason": str(entry.get("reason") or ""),
+            "recovered": entry.get("phase") == "recovered",
+            "quarantined": bool(entry.get("quarantined")),
+            "deduplicated": deduplicated,
+            "independent_work_preserved": True,
+            "completion_authority": False,
+            "work_complete": False,
+            "deterministic": dict(entry.get("deterministic") or {}),
+            "rescue": dict(entry.get("rescue") or {}),
+        }
+
+    def _wrapped_handlers(
+        self,
+        initial_roots: Mapping[str, str],
+        handlers: Mapping[RescueOperation | str, Callable[[Any], Any]],
+    ) -> dict[RescueOperation | str, Callable[[Any], Any]]:
+        wrapped: dict[RescueOperation | str, Callable[[Any], Any]] = {}
+
+        for operation, handler in handlers.items():
+            def invoke(
+                context: Any,
+                *,
+                selected: Callable[[Any], Any] = handler,
+            ) -> Any:
+                if self._roots() != dict(initial_roots):
+                    return RecoveryActionObservation(
+                        succeeded=False,
+                        post_action_health={
+                            "healthy": False,
+                            "reason": "semantic_root_drift_before_action",
+                        },
+                        reason="semantic_root_drift_before_action",
+                    )
+                raw = selected(context)
+                if self._roots() != dict(initial_roots):
+                    return RecoveryActionObservation(
+                        succeeded=False,
+                        post_action_health={
+                            "healthy": False,
+                            "reason": "semantic_root_drift_after_action",
+                        },
+                        reason="semantic_root_drift_after_action",
+                        partial=True,
+                    )
+                # The controller verifies exact observed effects separately.
+                if isinstance(raw, Mapping):
+                    checked = dict(raw)
+                    checked["post_action_health"] = self._health()
+                    return checked
+                return raw
+
+            wrapped[operation] = invoke
+        return wrapped
+
+    def _unstall_locked(
+        self,
+        *,
+        evidence: Mapping[str, Any],
+        prior_actions: Sequence[Mapping[str, Any]] = (),
+        recovery_handlers: Mapping[
+            RescueOperation | str, Callable[[Any], Any]
+        ]
+        | None = None,
+    ) -> dict[str, Any]:
+        """Run one finite incident-bound recovery pass."""
+
+        if not self.policy.enabled:
+            return {
+                "schema": AUTONOMOUS_UNSTALL_RESULT_SCHEMA,
+                "status": "disabled",
+                "reason": "autonomous_unstall_disabled",
+                "recovered": False,
+                "quarantined": False,
+                "deduplicated": False,
+                "independent_work_preserved": True,
+                "completion_authority": False,
+                "work_complete": False,
+            }
+        unknown = set(evidence).difference(_AUTONOMOUS_UNSTALL_EVIDENCE_SLOTS)
+        if unknown:
+            raise RecoveryDiagnosticError(
+                "unknown autonomous unstall evidence slots: "
+                + ", ".join(sorted(unknown))
+            )
+        with self._lock:
+            roots = self._roots()
+            diagnosis = diagnose_supervisor_incident(
+                repository_root=str(self.repository_root),
+                state_root=str(self.state_dir.resolve()),
+                repository_root_cid=roots["repository_root_cid"],
+                policy_root=roots["policy_root"],
+                run_cid=roots["run_cid"],
+                prior_actions=prior_actions,
+                observed_at_ms=self.clock_ms(),
+                **dict(evidence),
+            )
+            state = self._load_state()
+            existing = state["incidents"].get(diagnosis.incident_cid)
+            if isinstance(existing, Mapping):
+                phase = str(existing.get("phase") or "")
+                if phase == "rescue_executing":
+                    return self._quarantine(
+                        state,
+                        diagnosis,
+                        "restart_during_rescue_uncertain_effects",
+                        deterministic=existing.get("deterministic"),
+                        rescue=existing.get("rescue"),
+                    )
+                if phase == "rescue_previewing":
+                    return self._quarantine(
+                        state,
+                        diagnosis,
+                        "restart_during_rescue_preview_provider_call_suppressed",
+                        deterministic=existing.get("deterministic"),
+                        rescue=existing.get("rescue"),
+                    )
+                if phase in {
+                    "recovered",
+                    "quarantined",
+                    "rescue_previewed",
+                }:
+                    return self._result(
+                        diagnosis, existing, deduplicated=True
+                    )
+
+            self._record(
+                state,
+                diagnosis.incident_cid,
+                phase="deterministic_recovery",
+                reason="semantic_incident_detected",
+                targets=diagnosis.target_ids,
+                incident_kind=diagnosis.kind.value,
+                reason_codes=list(diagnosis.reason_codes),
+                operating_policy={
+                    "operating_policy_id": self.policy.operating_policy_id,
+                    "rescue_preview_enabled": (
+                        self.policy.rescue_preview_enabled
+                    ),
+                    "rescue_execution_enabled": (
+                        self.policy.rescue_execution_enabled
+                    ),
+                    "allow_provider_calls": self.policy.allow_provider_calls,
+                    "cooldown_ms": self.policy.cooldown_ms,
+                    "deadline_ms": self.policy.deadline_ms,
+                    "max_total_attempts": (
+                        self.policy.deterministic_max_total_attempts
+                    ),
+                    "max_actions": self.policy.deterministic_max_actions,
+                    "max_provider_calls": self.policy.max_provider_calls,
+                    "max_rescue_executions": (
+                        self.policy.max_rescue_executions
+                    ),
+                    "circuit_breaker_failures": (
+                        self.policy.circuit_breaker_failures
+                    ),
+                },
+            )
+            handlers = {
+                **self.recovery_handlers,
+                **dict(recovery_handlers or {}),
+            }
+            controller = ProgrammaticRecoveryController(
+                self.recovery_state_dir,
+                handlers=self._wrapped_handlers(roots, handlers),
+                health_check=lambda _context, _observation: self._health(),
+                policy=self.policy.deterministic_policy,
+                clock_ms=self.clock_ms,
+            )
+            deterministic_result: ProgrammaticRecoveryResult = (
+                controller.recover(diagnosis)
+            )
+            deterministic = {
+                "terminal_cid": deterministic_result.terminal_cid,
+                "recovered": deterministic_result.recovered,
+                "quarantined": deterministic_result.quarantined,
+                "deduplicated": deterministic_result.deduplicated,
+                "attempt_count": len(deterministic_result.attempts),
+                "attempts": [
+                    item.to_record() for item in deterministic_result.attempts
+                ],
+                "exhaustion_receipt_cid": (
+                    ""
+                    if deterministic_result.exhaustion_receipt is None
+                    else deterministic_result.exhaustion_receipt.receipt_cid
+                ),
+            }
+            if self._roots() != roots:
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "semantic_root_drift_after_deterministic_recovery",
+                    deterministic=deterministic,
+                )
+            health = self._health()
+            if deterministic_result.recovered and self._healthy(health):
+                entry = self._record(
+                    state,
+                    diagnosis.incident_cid,
+                    phase="recovered",
+                    reason="deterministic_health_restored",
+                    targets=diagnosis.target_ids,
+                    deterministic=deterministic,
+                    health=health,
+                    quarantined=False,
+                )
+                return self._result(
+                    diagnosis, entry, deduplicated=deterministic_result.deduplicated
+                )
+            if (
+                deterministic_result.receipt is not None
+                and deterministic_result.receipt.quarantined
+            ):
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "deterministic_scope_quarantined",
+                    deterministic=deterministic,
+                )
+            exhaustion = deterministic_result.exhaustion_receipt
+            if exhaustion is None:
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "deterministic_terminal_receipt_missing",
+                    deterministic=deterministic,
+                )
+
+            rescue_allowed = bool(
+                self.policy.rescue_preview_enabled
+                and self.policy.allow_provider_calls
+                and self.policy.operating_policy_id
+                and exhaustion.status is RecordStatus.QUARANTINED
+                and not exhaustion.circuit_open
+            )
+            if not rescue_allowed:
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "rescue_not_permitted_after_deterministic_exhaustion",
+                    deterministic=deterministic,
+                )
+            if (
+                self.rescue_planner is None
+                or self.rescue_request_factory is None
+            ):
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "rescue_preview_adapter_unavailable",
+                    deterministic=deterministic,
+                )
+
+            runtime = state.setdefault("rescue_runtime", {})
+            provider_calls = int(runtime.get("provider_calls") or 0)
+            executions = int(runtime.get("executions") or 0)
+            failures = int(runtime.get("consecutive_failures") or 0)
+            last_provider_call_ms = int(
+                runtime.get("last_provider_call_ms") or 0
+            )
+            if runtime.get("circuit_open") is True:
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "persistent_rescue_circuit_open",
+                    deterministic=deterministic,
+                )
+            if provider_calls >= self.policy.max_provider_calls:
+                runtime["circuit_open"] = True
+                runtime["reason"] = "provider_call_budget_exhausted"
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "persistent_provider_call_budget_exhausted",
+                    deterministic=deterministic,
+                )
+            now_ms = self.clock_ms()
+            if (
+                last_provider_call_ms
+                and now_ms
+                < last_provider_call_ms + self.policy.cooldown_ms
+            ):
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "persistent_rescue_cooldown_active",
+                    deterministic=deterministic,
+                )
+            # Reserve the non-renewable provider-call slot before invocation.
+            # A crash cannot make an uncertain call replayable.
+            runtime.update(
+                {
+                    "provider_calls": provider_calls + 1,
+                    "executions": executions,
+                    "consecutive_failures": failures,
+                    "last_provider_call_ms": now_ms,
+                    "circuit_open": False,
+                }
+            )
+            self._record(
+                state,
+                diagnosis.incident_cid,
+                phase="rescue_previewing",
+                reason="current_deterministic_exhaustion_qualified",
+                targets=diagnosis.target_ids,
+                deterministic=deterministic,
+                exhaustion_receipt_cid=exhaustion.receipt_cid,
+            )
+            try:
+                planning_request = self.rescue_request_factory(
+                    diagnosis, exhaustion, roots
+                )
+            except Exception as exc:
+                failures += 1
+                runtime["consecutive_failures"] = failures
+                if failures >= self.policy.circuit_breaker_failures:
+                    runtime["circuit_open"] = True
+                    runtime["reason"] = "preview_adapter_failure_threshold"
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "rescue_preview_adapter_failed",
+                    deterministic=deterministic,
+                    rescue={
+                        "provider_invoked": False,
+                        "executed": False,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+            try:
+                planning = self.rescue_planner.plan(planning_request)
+            except Exception as exc:
+                # The provider may already have received the request.  Its
+                # pre-reserved slot is deliberately not refunded or replayed.
+                failures += 1
+                runtime["consecutive_failures"] = failures
+                if failures >= self.policy.circuit_breaker_failures:
+                    runtime["circuit_open"] = True
+                    runtime["reason"] = "planner_exception_threshold"
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "rescue_planner_failed",
+                    deterministic=deterministic,
+                    rescue={
+                        "provider_invoked": True,
+                        "provider_effect_uncertain": True,
+                        "executed": False,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+            if planning.proposed:
+                runtime["consecutive_failures"] = 0
+            else:
+                failures += 1
+                runtime["consecutive_failures"] = failures
+                if failures >= self.policy.circuit_breaker_failures:
+                    runtime["circuit_open"] = True
+                    runtime["reason"] = "planner_failure_threshold"
+            rescue = {
+                "planning": planning.to_dict(),
+                "provider_invoked": planning.provider_invoked,
+                "executed": False,
+            }
+            if self._roots() != roots:
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "semantic_root_drift_after_rescue_preview",
+                    deterministic=deterministic,
+                    rescue=rescue,
+                )
+            if not planning.proposed:
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    str(planning.reason_code or "rescue_no_plan"),
+                    deterministic=deterministic,
+                    rescue=rescue,
+                )
+            if not self.policy.rescue_execution_enabled:
+                entry = self._record(
+                    state,
+                    diagnosis.incident_cid,
+                    phase="rescue_previewed",
+                    reason="rescue_execution_not_permitted",
+                    targets=diagnosis.target_ids,
+                    deterministic=deterministic,
+                    rescue=rescue,
+                    quarantined=True,
+                )
+                return self._result(diagnosis, entry, deduplicated=False)
+            if (
+                self.rescue_orchestrator is None
+                or self.rescue_execution_request_factory is None
+            ):
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "rescue_execution_adapter_unavailable",
+                    deterministic=deterministic,
+                    rescue=rescue,
+                )
+            if executions >= self.policy.max_rescue_executions:
+                runtime["circuit_open"] = True
+                runtime["reason"] = "rescue_execution_budget_exhausted"
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "persistent_rescue_execution_budget_exhausted",
+                    deterministic=deterministic,
+                    rescue=rescue,
+                )
+
+            runtime["executions"] = executions + 1
+            self._record(
+                state,
+                diagnosis.incident_cid,
+                phase="rescue_executing",
+                reason="explicit_operating_policy_permits_execution",
+                targets=diagnosis.target_ids,
+                deterministic=deterministic,
+                rescue=rescue,
+            )
+            try:
+                execution_request = (
+                    self.rescue_execution_request_factory(
+                        diagnosis, exhaustion, planning.plan, roots
+                    )
+                )
+            except Exception as exc:
+                runtime["consecutive_failures"] = failures + 1
+                rescue["execution_request_created"] = False
+                rescue["error_type"] = type(exc).__name__
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "rescue_execution_adapter_failed",
+                    deterministic=deterministic,
+                    rescue=rescue,
+                )
+            try:
+                execution = self.rescue_orchestrator.execute(
+                    execution_request
+                )
+            except Exception as exc:
+                # The orchestrator may have crossed an effect boundary before
+                # failing.  Persist uncertainty and quarantine; never retry it.
+                runtime["consecutive_failures"] = failures + 1
+                runtime["circuit_open"] = True
+                runtime["reason"] = "rescue_execution_effect_uncertain"
+                rescue["execution_started"] = True
+                rescue["execution_effect_uncertain"] = True
+                rescue["error_type"] = type(exc).__name__
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "rescue_execution_failed_with_uncertain_effects",
+                    deterministic=deterministic,
+                    rescue=rescue,
+                )
+            rescue["executed"] = True
+            rescue["execution"] = dict(execution.to_dict())
+            if self._roots() != roots:
+                return self._quarantine(
+                    state,
+                    diagnosis,
+                    "semantic_root_drift_after_rescue_execution",
+                    deterministic=deterministic,
+                    rescue=rescue,
+                )
+            health = self._health()
+            if bool(execution.recovered) and self._healthy(health):
+                entry = self._record(
+                    state,
+                    diagnosis.incident_cid,
+                    phase="recovered",
+                    reason="rescue_health_restored",
+                    targets=diagnosis.target_ids,
+                    deterministic=deterministic,
+                    rescue=rescue,
+                    health=health,
+                    quarantined=False,
+                )
+                return self._result(diagnosis, entry, deduplicated=False)
+            return self._quarantine(
+                state,
+                diagnosis,
+                "rescue_stopped_without_verified_health",
+                deterministic=deterministic,
+                rescue=rescue,
+            )
+
+    def unstall(
+        self,
+        *,
+        evidence: Mapping[str, Any],
+        prior_actions: Sequence[Mapping[str, Any]] = (),
+        recovery_handlers: Mapping[
+            RescueOperation | str, Callable[[Any], Any]
+        ]
+        | None = None,
+    ) -> dict[str, Any]:
+        """Serialize durable incident/provider state across processes."""
+
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.state_dir / ".autonomous-unstall.lock"
+        with lock_path.open("a+b") as stream:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            try:
+                return self._unstall_locked(
+                    evidence=evidence,
+                    prior_actions=prior_actions,
+                    recovery_handlers=recovery_handlers,
+                )
+            finally:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+    recover = unstall
 
 
 def utc_now() -> str:
@@ -553,6 +1480,23 @@ class SupervisorWatchdog:
             [Mapping[str, Any]], Mapping[str, Any]
         ]
         | None = None,
+        autonomous_unstall_policy: AutonomousUnstallPolicy | None = None,
+        autonomous_unstall_factory: Callable[..., AutonomousUnstallCoordinator]
+        | None = None,
+        control_event_publisher: Callable[
+            [str, Mapping[str, Any]], Any
+        ]
+        | None = None,
+        rescue_planner: RescuePlanner | None = None,
+        rescue_request_factory: Callable[
+            [RecoveryDiagnosis, Any, Mapping[str, str]], RescuePlanningRequest
+        ]
+        | None = None,
+        rescue_orchestrator: Any = None,
+        rescue_execution_request_factory: Callable[
+            [RecoveryDiagnosis, Any, Any, Mapping[str, str]], Any
+        ]
+        | None = None,
     ) -> None:
         self.manifest_path = manifest_path
         self.repo_root = repo_root
@@ -563,10 +1507,186 @@ class SupervisorWatchdog:
             manifest_path.parent / "logs" / "aggregated"
         )
         self.lifecycle_restart = lifecycle_restart
+        self.autonomous_unstall_policy = autonomous_unstall_policy
+        self.autonomous_unstall_factory = (
+            autonomous_unstall_factory or AutonomousUnstallCoordinator
+        )
+        self.control_event_publisher = control_event_publisher
+        self.rescue_planner = rescue_planner
+        self.rescue_request_factory = rescue_request_factory
+        self.rescue_orchestrator = rescue_orchestrator
+        self.rescue_execution_request_factory = (
+            rescue_execution_request_factory
+        )
         self._consecutive_restart_counts: dict[str, int] = {}
         self._recent_restarts: dict[str, tuple[int, float]] = {}
         self._generation = 0
         self._running = True
+
+    @staticmethod
+    def _manifest_unstall_policy(
+        manifest: Mapping[str, Any],
+    ) -> AutonomousUnstallPolicy | None:
+        raw = manifest.get("autonomous_unstall_policy")
+        if not isinstance(raw, Mapping):
+            return None
+        allowed = {
+            item.name
+            for item in AutonomousUnstallPolicy.__dataclass_fields__.values()
+        }
+        values = {key: value for key, value in raw.items() if key in allowed}
+        return AutonomousUnstallPolicy(**values)
+
+    def _watchdog_unstall(
+        self,
+        *,
+        manifest: Mapping[str, Any],
+        lane: Mapping[str, Any],
+        lane_started: Mapping[str, Any],
+        bundle_key: str,
+        state_dir: Path,
+        state_prefix: str,
+        pid_check: Mapping[str, Any],
+        heartbeat_check: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        policy = (
+            self.autonomous_unstall_policy
+            or self._manifest_unstall_policy(manifest)
+        )
+        if policy is None or not policy.enabled:
+            return None
+        restart_info = dict(lane_started or lane)
+        restart_info.setdefault("pid_path", str(pid_check.get("pid_path") or ""))
+
+        def current_health() -> Mapping[str, Any]:
+            current_pid = check_lane_pid(state_dir, state_prefix)
+            current_heartbeat = check_lane_heartbeat(
+                state_dir,
+                state_prefix,
+                timeout_seconds=self.lane_timeout,
+            )
+            healthy = bool(
+                current_pid.get("alive")
+                and not current_heartbeat.get("stale")
+                and not current_heartbeat.get("state_inconsistent")
+            )
+            return {
+                "healthy": healthy,
+                "state": "healthy" if healthy else "degraded",
+                "pid_alive": bool(current_pid.get("alive")),
+                "heartbeat_stale": bool(current_heartbeat.get("stale")),
+                "work_complete": False,
+            }
+
+        handlers: dict[RescueOperation, Callable[[Any], Any]] = {}
+        if self.lifecycle_restart is not None:
+            def restart(context: Any) -> Mapping[str, Any]:
+                result = restart_lane(
+                    restart_info,
+                    repo_root=self.repo_root,
+                    lifecycle_transition=self.lifecycle_restart,
+                )
+                if not result.get("restarted"):
+                    return {
+                        "succeeded": False,
+                        "observed_effects": (),
+                        "reason": str(result.get("reason") or "restart_failed"),
+                    }
+                new_pid = result.get("new_pid")
+                if isinstance(new_pid, int):
+                    self._recent_restarts[bundle_key] = (
+                        new_pid,
+                        time.monotonic(),
+                    )
+                return {
+                    "succeeded": True,
+                    "observed_effects": context.action.expected_effects,
+                    "reason": "fenced_lane_restart_committed",
+                }
+
+            handlers[RescueOperation.RESTART_LANE] = restart
+
+        roots = {
+            "repository": str(self.repo_root),
+            "manifest": str(self.manifest_path),
+            "tree": str(manifest.get("tree_id") or ""),
+        }
+        coordinator = self.autonomous_unstall_factory(
+            state_dir=state_dir / "autonomous-unstall",
+            repository_root=self.repo_root,
+            repository_root_cid=str(
+                manifest.get("repository_root_cid")
+                or prompt_workflow_cid({"watchdog-repository": roots})
+            ),
+            policy_root=str(
+                manifest.get("policy_root")
+                or prompt_workflow_cid(
+                    {
+                        "watchdog-policy": policy.operating_policy_id
+                        or "deterministic-only"
+                    }
+                )
+            ),
+            run_cid=str(
+                manifest.get("run_cid")
+                or prompt_workflow_cid(
+                    {
+                        "watchdog-manifest": str(self.manifest_path),
+                        "bundle_key": bundle_key,
+                    }
+                )
+            ),
+            policy=policy,
+            recovery_handlers=handlers,
+            health_probe=current_health,
+            quarantine_scope=lambda targets, incident, reason: {
+                "target_ids": list(targets),
+                "incident_cid": incident,
+                "reason": reason,
+                "scope": "lane",
+            },
+            event_publisher=self.control_event_publisher,
+            rescue_planner=self.rescue_planner,
+            rescue_request_factory=self.rescue_request_factory,
+            rescue_orchestrator=self.rescue_orchestrator,
+            rescue_execution_request_factory=(
+                self.rescue_execution_request_factory
+            ),
+        )
+        return coordinator.unstall(
+            evidence={
+                "status": {
+                    "lane_id": bundle_key,
+                    "state": heartbeat_check.get("state") or "degraded",
+                    "state_inconsistent": bool(
+                        heartbeat_check.get("state_inconsistent")
+                    ),
+                },
+                "health": {
+                    "lane_id": bundle_key,
+                    "healthy": False,
+                    "reason": (
+                        heartbeat_check.get("state_reason")
+                        or heartbeat_check.get("reason")
+                        or pid_check.get("reason")
+                        or "lane_unhealthy"
+                    ),
+                },
+                "process": {
+                    "lane_id": bundle_key,
+                    "alive": bool(pid_check.get("alive")),
+                    "failed": not bool(pid_check.get("alive")),
+                    "pid": pid_check.get("pid"),
+                },
+                "heartbeat": {
+                    "lane_id": bundle_key,
+                    "stale": bool(heartbeat_check.get("stale")),
+                    "age_ms": int(
+                        float(heartbeat_check.get("age_seconds") or 0) * 1000
+                    ),
+                },
+            }
+        )
 
     def run(self) -> dict[str, Any]:
         """Run the watchdog loop indefinitely."""
@@ -769,6 +1889,61 @@ class SupervisorWatchdog:
             )
 
             if needs_restart:
+                unstall_result = self._watchdog_unstall(
+                    manifest=manifest,
+                    lane=lane,
+                    lane_started=lane_started,
+                    bundle_key=str(bundle_key),
+                    state_dir=state_dir,
+                    state_prefix=str(state_prefix),
+                    pid_check=pid_check,
+                    heartbeat_check=heartbeat_check,
+                )
+                if unstall_result is not None:
+                    report["autonomous_unstall"] = unstall_result
+                    if unstall_result.get("recovered"):
+                        report["action"] = "autonomous_unstall_recovered"
+                        report["reason"] = str(
+                            unstall_result.get("reason") or ""
+                        )
+                        refreshed_pid = check_lane_pid(state_dir, state_prefix)
+                        refreshed_heartbeat = check_lane_heartbeat(
+                            state_dir,
+                            state_prefix,
+                            timeout_seconds=self.lane_timeout,
+                        )
+                        report["pid_check"] = refreshed_pid
+                        report["heartbeat_check"] = refreshed_heartbeat
+                        report["status"] = lifecycle_status_projection(
+                            pid_check=refreshed_pid,
+                            heartbeat_check=refreshed_heartbeat,
+                            target_id=str(bundle_key),
+                        )
+                        reports.append(report)
+                        restarts += int(
+                            any(
+                                item.get("operation") == "restart_lane"
+                                and item.get("outcome") == "succeeded"
+                                for item in unstall_result.get(
+                                    "deterministic", {}
+                                ).get("attempts", ())
+                                if isinstance(item, Mapping)
+                            )
+                        )
+                        continue
+                    if unstall_result.get("quarantined"):
+                        report["action"] = "autonomous_unstall_quarantined"
+                        report["reason"] = str(
+                            unstall_result.get("reason") or ""
+                        )
+                        report["status"] = lifecycle_status_projection(
+                            pid_check=pid_check,
+                            heartbeat_check=heartbeat_check,
+                            state="blocked",
+                            target_id=str(bundle_key),
+                        )
+                        reports.append(report)
+                        continue
                 if dynamic_authority:
                     # The persistent scheduler owns the fenced lease and is
                     # the only process allowed to replace its leased wrapper.

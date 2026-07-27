@@ -35,6 +35,13 @@ from ..scan_receipts import (
     build_scan_result,
     scan_identity,
 )
+from ..prompt_workflow import RescueOperation, prompt_workflow_cid
+from ..rescue_planner import RescuePlanner, RescuePlannerPolicy, RescuePlanningRequest
+from ..supervisor_watchdog import (
+    AUTONOMOUS_UNSTALL_STATE_SCHEMA,
+    AutonomousUnstallCoordinator,
+    AutonomousUnstallPolicy,
+)
 from .core import ManagedDaemonSpec, terminate_pid_tree
 from .implementation_daemon import (
     DEFAULT_TRACKS,
@@ -393,6 +400,10 @@ class PortalImplementationSupervisor:
     shared_supervisor_loop_class = SupervisorLoop
     shared_supervisor_loop_config_class = SupervisorLoopConfig
     shared_managed_daemon_spec_class = ManagedDaemonSpec
+    autonomous_unstall_coordinator_class = AutonomousUnstallCoordinator
+    autonomous_unstall_rescue_planner_factory: Any = None
+    autonomous_unstall_rescue_orchestrator: Any = None
+    autonomous_unstall_rescue_execution_request_factory: Any = None
 
     def __init__(self, config: PortalSupervisorConfig) -> None:
         self.config = config
@@ -401,6 +412,57 @@ class PortalImplementationSupervisor:
         self._last_supervisor_maintenance_at: float = 0.0
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
+
+    def _autonomous_unstall_state_path(self) -> Path:
+        return (
+            self.config.state_dir
+            / f"{self.config.state_prefix}_autonomous_unstall"
+            / "autonomous-unstall-state.json"
+        )
+
+    @staticmethod
+    def _autonomous_unstall_policy(
+        strategy: Mapping[str, Any],
+    ) -> AutonomousUnstallPolicy:
+        raw = strategy.get("autonomous_unstall_policy")
+        if not isinstance(raw, Mapping):
+            # Deterministic repair is the production default.  Provider access
+            # and rescue execution remain off until an identified operating
+            # policy explicitly enables them.
+            return AutonomousUnstallPolicy()
+        allowed = set(AutonomousUnstallPolicy.__dataclass_fields__)
+        values = {key: value for key, value in raw.items() if key in allowed}
+        return AutonomousUnstallPolicy(**values)
+
+    def _autonomous_unstall_status(self) -> dict[str, Any]:
+        path = self._autonomous_unstall_state_path()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        if (
+            not isinstance(payload, dict)
+            or payload.get("schema") != AUTONOMOUS_UNSTALL_STATE_SCHEMA
+            or not isinstance(payload.get("incidents"), dict)
+        ):
+            return {}
+        incidents = [
+            item
+            for item in payload["incidents"].values()
+            if isinstance(item, Mapping)
+        ]
+        incidents.sort(
+            key=lambda item: int(item.get("updated_at_ms") or 0),
+            reverse=True,
+        )
+        latest = dict(incidents[0]) if incidents else {}
+        return {
+            "schema": AUTONOMOUS_UNSTALL_STATE_SCHEMA,
+            "state_path": str(path),
+            "incident_count": len(incidents),
+            "latest": latest,
+            "completion_authority": False,
+        }
 
     def _supervisor_status_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
@@ -456,6 +518,11 @@ class PortalImplementationSupervisor:
         for key in PROOF_ROLLOUT_PROJECTION_FIELDS:
             fields.pop(key, None)
         fields.update(projected)
+        autonomous_unstall = self._autonomous_unstall_status()
+        if autonomous_unstall:
+            fields["autonomous_unstall"] = autonomous_unstall
+        else:
+            fields.pop("autonomous_unstall", None)
 
     def _write_supervisor_maintenance_status(
         self,
@@ -535,6 +602,18 @@ class PortalImplementationSupervisor:
         for key in PROOF_ROLLOUT_PROJECTION_FIELDS:
             payload.pop(key, None)
         payload.update(rollout_fields)
+        autonomous_unstall = self._autonomous_unstall_status()
+        if autonomous_unstall:
+            payload["autonomous_unstall"] = autonomous_unstall
+            latest_unstall = autonomous_unstall.get("latest")
+            if isinstance(latest_unstall, Mapping):
+                phase = str(latest_unstall.get("phase") or "")
+                if phase in {"quarantined", "rescue_previewed"}:
+                    reasons = list(payload.get("backpressure_reasons") or ())
+                    if "autonomous_unstall_quarantine" not in reasons:
+                        reasons.append("autonomous_unstall_quarantine")
+                    payload["backpressure"] = True
+                    payload["backpressure_reasons"] = reasons[:256]
         write_json_atomic(status_path, payload)
 
     def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
@@ -631,6 +710,329 @@ class PortalImplementationSupervisor:
         )
         return payload
 
+    def _quarantine_autonomous_unstall_scope(
+        self,
+        target_ids: Sequence[str],
+        incident_cid: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Fence only the affected task while leaving other ready work usable."""
+
+        state = PortalTaskState.load(self.config.state_path)
+        active_task_id = state.active_task_id.strip()
+        normalized_targets = {
+            str(item).strip() for item in target_ids if str(item).strip()
+        }
+        exact_task = active_task_id if (
+            active_task_id
+            and (
+                active_task_id in normalized_targets
+                or not any(item.startswith("task:") for item in normalized_targets)
+            )
+        ) else ""
+        strategy = self._load_strategy()
+        blocked_tasks = [
+            str(item)
+            for item in strategy.get("blocked_tasks", ())
+            if str(item).strip()
+        ]
+        if exact_task and exact_task not in blocked_tasks:
+            blocked_tasks.append(exact_task)
+        quarantines = [
+            dict(item)
+            for item in strategy.get("autonomous_unstall_quarantines", ())
+            if isinstance(item, Mapping)
+            and item.get("incident_cid") != incident_cid
+        ]
+        quarantines.append(
+            {
+                "incident_cid": incident_cid,
+                "target_ids": sorted(normalized_targets),
+                "task_id": exact_task,
+                "reason": reason,
+                "quarantined_at": utc_now(),
+            }
+        )
+        strategy.update(
+            {
+                "blocked_tasks": blocked_tasks,
+                "autonomous_unstall_quarantines": quarantines[-128:],
+                "last_rewrite_at": utc_now(),
+                "last_rewrite_reason": (
+                    f"autonomous unstall quarantine: {reason}"
+                ),
+            }
+        )
+        write_json_atomic(self.config.strategy_path, strategy)
+
+        attempt_recovery: dict[str, Any] = {
+            "consumed": False,
+            "reason": "no_exact_active_task",
+        }
+        if exact_task:
+            if state.implementation_in_progress:
+                attempt_recovery = consume_stale_active_attempt(state)
+            state.active_task_id = ""
+            state.active_task_key = ""
+            state.active_task_cid = ""
+            state.active_task_title = ""
+            state.active_task_track = ""
+            state.active_task_started_at = ""
+            state.active_attempt = 0
+            state.active_phase = ""
+            state.active_phase_started_at = ""
+            state.active_phase_detail = ""
+            state.active_log_path = ""
+            state.active_worktree_path = ""
+            state.active_branch = ""
+            state.implementation_in_progress = False
+            state.recommended_task_id = ""
+            state.recommended_actions = []
+            state.heartbeat_at = utc_now()
+            state.last_progress_at = state.heartbeat_at
+            state.save(self.config.state_path)
+        result = {
+            "scope": "task",
+            "task_id": exact_task,
+            "target_ids": sorted(normalized_targets),
+            "incident_cid": incident_cid,
+            "reason": reason,
+            "attempt_recovery": attempt_recovery,
+            "independent_work_preserved": True,
+            "completion_authority": False,
+        }
+        self._record_event("autonomous_unstall_scope_quarantined", result)
+        return result
+
+    @staticmethod
+    def _autonomous_unstall_evidence(
+        state: PortalTaskState,
+        reason: str,
+    ) -> dict[str, Any]:
+        target = state.active_task_id or "lane:implementation"
+        common = {"task_id": target, "lane_id": "lane:implementation"}
+        lowered = reason.lower()
+        if "merge" in lowered:
+            return {
+                "task": {**common, "failed": True},
+                "merge": {
+                    **common,
+                    "status": "failed",
+                    "reason": reason[:1000],
+                },
+            }
+        if "validation" in lowered:
+            return {
+                "task": {**common, "failed": True},
+                "validation": {
+                    **common,
+                    "status": "failed",
+                    "reason": reason[:1000],
+                },
+            }
+        if "dirty" in lowered and "worktree" in lowered:
+            return {
+                "worktree": {
+                    **common,
+                    "dirty": True,
+                    "worktree_id": state.active_worktree_path or target,
+                }
+            }
+        if "attempt" in lowered and (
+            "consumed" in lowered or "stale" in lowered
+        ):
+            return {
+                "attempt": {
+                    **common,
+                    "attempt_id": f"{target}:{state.active_attempt}",
+                    "consumed": True,
+                }
+            }
+        return {
+            "task": {**common, "failed": True},
+            "heartbeat": {
+                **common,
+                "stale": True,
+                "reason": reason[:1000],
+            },
+        }
+
+    def _run_autonomous_unstall(
+        self,
+        state: PortalTaskState,
+        reason: str,
+    ) -> dict[str, Any]:
+        strategy = self._load_strategy()
+        affected_task_id = state.active_task_id.strip()
+        policy = self._autonomous_unstall_policy(strategy)
+        policy_config = strategy.get("autonomous_unstall_policy")
+        policy_mapping = (
+            dict(policy_config) if isinstance(policy_config, Mapping) else {}
+        )
+        identity = {
+            "state_prefix": self.config.state_prefix,
+            "state_dir": str(self.config.state_dir.resolve()),
+        }
+        roots = {
+            "repository_root_cid": str(
+                strategy.get("repository_root_cid")
+                or prompt_workflow_cid(
+                    {
+                        "implementation-supervisor-repository": str(
+                            self.config.repo_root.resolve()
+                        )
+                    }
+                )
+            ),
+            "policy_root": str(
+                strategy.get("policy_root")
+                or prompt_workflow_cid(
+                    {
+                        "autonomous-unstall-policy": policy_mapping
+                        or {"deterministic_only": True}
+                    }
+                )
+            ),
+            "run_cid": str(
+                strategy.get("run_cid")
+                or prompt_workflow_cid(
+                    {"implementation-supervisor-run": identity}
+                )
+            ),
+        }
+        action_details: dict[str, Any] = {}
+
+        def health() -> Mapping[str, Any]:
+            current = PortalTaskState.load(self.config.state_path)
+            isolated = bool(
+                affected_task_id
+                and current.active_task_id != affected_task_id
+                and not current.implementation_in_progress
+            )
+            return {
+                "healthy": isolated,
+                "status": "healthy" if isolated else "degraded",
+                "affected_task_isolated": isolated,
+                "active_task_id": current.active_task_id,
+                "ready_count": current.ready_count,
+                "work_complete": False,
+                "completion_authority": False,
+            }
+
+        def retry(context: Any) -> Mapping[str, Any]:
+            self.rewrite_strategy(state, reason)
+            repair = self.repair_blocked_progress_state(
+                state, reason, now_ts=time.time()
+            )
+            action_details["state_repair"] = dict(repair)
+            return {
+                "succeeded": bool(repair.get("repaired")),
+                "observed_effects": (
+                    context.action.expected_effects
+                    if repair.get("repaired")
+                    else ()
+                ),
+                "reason": str(
+                    repair.get("reason") or "task_retry_not_applied"
+                ),
+            }
+
+        def quarantine(context: Any) -> Mapping[str, Any]:
+            result = self._quarantine_autonomous_unstall_scope(
+                context.incident.target_ids,
+                context.incident.incident_cid,
+                "deterministic_recovery_selected_quarantine",
+            )
+            action_details["state_repair"] = {
+                "repaired": True,
+                "reason": "affected_scope_quarantined",
+                "quarantined": True,
+                "active_task_id": affected_task_id,
+                **dict(result),
+            }
+            return {
+                "succeeded": True,
+                "observed_effects": context.action.expected_effects,
+                "reason": str(result.get("reason") or "scope_quarantined"),
+            }
+
+        planner = None
+        planner_factory = self.autonomous_unstall_rescue_planner_factory
+        if (
+            policy.rescue_preview_enabled
+            and policy.allow_provider_calls
+        ):
+            if callable(planner_factory):
+                planner = planner_factory(policy_mapping)
+            else:
+                provider = str(policy_mapping.get("provider") or "llm_router")
+                model = str(
+                    policy_mapping.get("model")
+                    or RescuePlannerPolicy().model
+                )
+                planner = RescuePlanner(
+                    RescuePlannerPolicy.permit(
+                        provider=provider,
+                        model=model,
+                        cooldown_ms=max(policy.cooldown_ms, 1),
+                    )
+                )
+
+        def rescue_request(
+            diagnosis: Any,
+            exhaustion: Any,
+            current_roots: Mapping[str, str],
+        ) -> RescuePlanningRequest:
+            return RescuePlanningRequest(
+                incident=diagnosis.incident,
+                exhaustion_receipt=exhaustion,
+                diagnostics={
+                    "incident_kind": diagnosis.kind.value,
+                    "reason_codes": list(diagnosis.reason_codes),
+                    "health": dict(diagnosis.health),
+                },
+                evidence_redacted=True,
+                current_repository_root_cid=current_roots[
+                    "repository_root_cid"
+                ],
+                current_run_cid=current_roots["run_cid"],
+                current_policy_root=current_roots["policy_root"],
+                evidence_reference_cids=diagnosis.incident.evidence_cids,
+                now_ms=int(time.time() * 1000),
+            )
+
+        coordinator = self.autonomous_unstall_coordinator_class(
+            state_dir=self._autonomous_unstall_state_path().parent,
+            repository_root=self.config.repo_root,
+            repository_root_cid=roots["repository_root_cid"],
+            policy_root=roots["policy_root"],
+            run_cid=roots["run_cid"],
+            policy=policy,
+            recovery_handlers={
+                RescueOperation.RETRY: retry,
+                RescueOperation.QUARANTINE: quarantine,
+            },
+            health_probe=health,
+            root_probe=lambda: roots,
+            quarantine_scope=self._quarantine_autonomous_unstall_scope,
+            event_publisher=lambda event_type, payload: self._record_event(
+                event_type, dict(payload)
+            ),
+            rescue_planner=planner,
+            rescue_request_factory=rescue_request if planner is not None else None,
+            rescue_orchestrator=self.autonomous_unstall_rescue_orchestrator,
+            rescue_execution_request_factory=(
+                self.autonomous_unstall_rescue_execution_request_factory
+            ),
+        )
+        result = coordinator.unstall(
+            evidence=self._autonomous_unstall_evidence(state, reason)
+        )
+        if "state_repair" in action_details:
+            result["state_repair"] = action_details["state_repair"]
+        self._record_event("autonomous_unstall_result", result)
+        return result
+
     def _run_once_with_maintenance(
         self,
         update_maintenance_phase,
@@ -683,15 +1085,83 @@ class PortalImplementationSupervisor:
         stuck, reason = self.is_stuck(state, now_ts=now_ts)
         if stuck:
             update_maintenance_phase("stuck_recovery")
+            try:
+                autonomous_unstall = self._run_autonomous_unstall(
+                    state, reason
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Bounded autonomous unstall failed closed",
+                    exc_info=True,
+                )
+                quarantine = self._quarantine_autonomous_unstall_scope(
+                    (state.active_task_id or "lane:implementation",),
+                    prompt_workflow_cid(
+                        {
+                            "autonomous-unstall-failure": type(exc).__name__,
+                            "reason": reason,
+                            "task_id": state.active_task_id,
+                        }
+                    ),
+                    f"autonomous_unstall_internal_error:{type(exc).__name__}",
+                )
+                autonomous_unstall = {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "autonomous-unstall-result@1"
+                    ),
+                    "status": "quarantined",
+                    "reason": "autonomous_unstall_internal_error",
+                    "recovered": False,
+                    "quarantined": True,
+                    "quarantine": quarantine,
+                    "independent_work_preserved": True,
+                    "completion_authority": False,
+                    "work_complete": False,
+                }
+                self._record_event(
+                    "autonomous_unstall_failed_closed",
+                    {
+                        **autonomous_unstall,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:1000],
+                    },
+                )
             retry_budget_findings = self.record_retry_budget_guardrails()
             dependency_findings = self.record_dependency_guardrails()
-            strategy = self.rewrite_strategy(state, reason)
-            state_repair = self.repair_blocked_progress_state(state, reason, now_ts=now_ts)
+            if autonomous_unstall.get("status") == "disabled":
+                strategy = self.rewrite_strategy(state, reason)
+                state_repair = self.repair_blocked_progress_state(
+                    state, reason, now_ts=now_ts
+                )
+            else:
+                strategy = self._load_strategy()
+                projected_repair = autonomous_unstall.get("state_repair")
+                state_repair = (
+                    dict(projected_repair)
+                    if isinstance(projected_repair, Mapping)
+                    else {
+                        "repaired": bool(
+                            autonomous_unstall.get("recovered")
+                            or autonomous_unstall.get("quarantined")
+                        ),
+                        "reason": str(
+                            autonomous_unstall.get("reason")
+                            or autonomous_unstall.get("status")
+                            or "autonomous_unstall_terminal"
+                        ),
+                        "quarantined": bool(
+                            autonomous_unstall.get("quarantined")
+                        ),
+                    }
+                )
+                state_repair["completion_authority"] = False
             update_maintenance_phase("post_stuck_generated_dirty_repair")
             post_stuck_generated_dirty_repair = self.repair_generated_dirty_checkouts()
             return {
                 "stuck": True,
                 "reason": reason,
+                "autonomous_unstall": autonomous_unstall,
                 "retry_budget_count": len(retry_budget_findings),
                 "dependency_guardrail_count": len(dependency_findings),
                 "reconciliation_guardrail_count": len(reconciliation_findings),
@@ -1048,6 +1518,11 @@ class PortalImplementationSupervisor:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
         proof_rollout_status_fields = self._proof_rollout_status_fields()
+        autonomous_unstall_status = self._autonomous_unstall_status()
+        if autonomous_unstall_status:
+            proof_rollout_status_fields["autonomous_unstall"] = (
+                autonomous_unstall_status
+            )
         # The managed daemon blocks while an implementation command is active,
         # so its task-state heartbeat may legitimately remain unchanged for the
         # full command timeout. Let the implementation-aware watchdog below
