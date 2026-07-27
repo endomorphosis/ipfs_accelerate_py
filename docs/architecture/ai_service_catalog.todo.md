@@ -158,7 +158,7 @@ Program invariants:
 
 ## AICAT-006 Publish voice router provider and model descriptors
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
