@@ -27,6 +27,9 @@ from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
+from ipfs_accelerate_py.agent_supervisor.merge_queue import (
+    MERGE_TARGET_BINDING_SCHEMA,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -1899,6 +1902,9 @@ def test_merge_callback_rejects_candidate_commit_touching_protected_path(
     )
     request = SimpleNamespace(
         metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
             "baseline_ref": baseline,
             "implementation_commit": candidate,
             "implementation_protected_paths": [POLICY_PATH],

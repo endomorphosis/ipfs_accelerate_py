@@ -51,7 +51,10 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     record_reconciliation_guardrail_findings,
 )
 from ipfs_accelerate_py.agent_supervisor import merge_resolver
-from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor.merge_queue import (
+    MERGE_TARGET_BINDING_SCHEMA,
+    MergeQueue,
+)
 from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     ConfiguredMergeResolverRunner,
     MergeResolverNamespaceSpec,
@@ -4778,6 +4781,9 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
         priority="P0",
         attempt=2,
         metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
             "task": {
                 "task_id": "REF-040",
                 "title": "Recover merge handoff",
@@ -4866,6 +4872,9 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
         priority="P0",
         attempt=1,
         metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
             "task": {
                 "task_id": "REF-041",
                 "title": "Accept resolver merge",
@@ -4944,6 +4953,9 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
         priority="P0",
         attempt=1,
         metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
             "changed_submodule_paths": ["libs/child"],
             "task": {
                 "task_id": "REF-042",
@@ -6669,7 +6681,8 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
         "-c",
     ]
     assert captured["args"][0][4].endswith(
-        f"readonly -f python python3 pytest; {task.validation[0]}"
+        "readonly -f _ipfs_accelerate_validation_python "
+        f"python python3 pytest; {task.validation[0]}"
     )
     assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
     assert captured["kwargs"]["timeout"] == 1
@@ -10531,6 +10544,7 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
 
 def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
+    repo.mkdir()
     worktree_path = repo / "worktrees" / "accel-999-attempt-1"
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -10562,6 +10576,7 @@ def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(
 
 def test_implementation_daemon_recognizes_shared_checkout_runner_without_worktree_path(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
+    repo.mkdir()
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=repo / "state" / "task_state.json",
@@ -13303,7 +13318,7 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
             max_input_tokens=2_000,
             reserved_output_tokens=300,
             reserved_tool_tokens=100,
-            max_items=32,
+            max_items=64,
         ),
         implementation_context_tokenizer=lambda text: max(
             1, len(text.encode("utf-8")) // 16
