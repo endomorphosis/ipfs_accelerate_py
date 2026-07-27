@@ -43,14 +43,38 @@ import os
 import hashlib
 import logging
 import math
+import re
 import threading
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Callable, Dict, Iterable, List, Optional, Protocol, Sequence, runtime_checkable
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    runtime_checkable,
+)
 
+from .model_catalog import (
+    CapabilityDescriptor,
+    CatalogSnapshot,
+    LifecycleState,
+    Modality,
+    ModelDescriptor,
+    Operation,
+    OperationalState,
+    ProviderDescriptor,
+    Provenance,
+    RouterBinding,
+)
 from .router_deps import RouterDeps, get_default_router_deps
 
 logger = logging.getLogger(__name__)
@@ -312,18 +336,109 @@ ProviderFactory = Callable[[], EmbeddingsProvider]
 class ProviderInfo:
     name: str
     factory: ProviderFactory
+    descriptor: Optional[ProviderDescriptor] = None
+    models: Tuple[ModelDescriptor, ...] = ()
 
 
 _PROVIDER_REGISTRY: Dict[str, ProviderInfo] = {}
+_PROVIDER_REGISTRY_LOCK = threading.RLock()
 
 
-def register_embeddings_provider(name: str, factory: ProviderFactory) -> None:
-    """Register a custom embeddings provider."""
+def _registered_provider_descriptor(
+    name: str,
+    descriptor: ProviderDescriptor | Mapping[str, object] | None,
+) -> ProviderDescriptor:
+    if descriptor is None:
+        return ProviderDescriptor(
+            name=name,
+            description="Dynamically registered embeddings provider.",
+            capabilities=(_embedding_capability(),),
+            lifecycle=LifecycleState.DECLARED,
+            state=OperationalState(
+                known=True,
+                configured=True,
+                authorized=None,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+            provenance=(Provenance(source="embeddings_router.registry"),),
+            labels={
+                "access_requirement": "unknown",
+                "batching": "supported",
+                "device": "unknown",
+                "input_types": "text",
+                "locality": "unknown",
+                "normalization": "unknown",
+            },
+        )
+    if isinstance(descriptor, ProviderDescriptor):
+        resolved = descriptor
+    elif isinstance(descriptor, Mapping):
+        values = dict(descriptor)
+        values.setdefault("name", name)
+        resolved = ProviderDescriptor(**values)
+    else:
+        raise TypeError("descriptor must be a ProviderDescriptor, mapping, or None")
+    if resolved.name != name:
+        raise ValueError("Provider descriptor name must match the registered name")
+    return resolved
+
+
+def _registered_model_descriptors(
+    provider: ProviderDescriptor,
+    models: Sequence[ModelDescriptor | Mapping[str, object]],
+) -> Tuple[ModelDescriptor, ...]:
+    if isinstance(models, (str, bytes, Mapping)):
+        raise TypeError("models must be a sequence of model descriptors")
+    output: list[ModelDescriptor] = []
+    for model in models:
+        if isinstance(model, ModelDescriptor):
+            resolved = model
+        elif isinstance(model, Mapping):
+            values = dict(model)
+            values.setdefault("provider_id", provider.provider_id)
+            resolved = ModelDescriptor(**values)
+        else:
+            raise TypeError("models must contain ModelDescriptor records or mappings")
+        if resolved.provider_id != provider.provider_id:
+            raise ValueError("Model descriptor provider_id does not match provider")
+        output.append(resolved)
+    identities = [model.model_id for model in output]
+    if len(identities) != len(set(identities)):
+        raise ValueError("models contain duplicate identities")
+    return tuple(sorted(output, key=lambda model: (model.name, model.model_id or "")))
+
+
+def register_embeddings_provider(
+    name: str,
+    factory: ProviderFactory,
+    *,
+    descriptor: ProviderDescriptor | Mapping[str, object] | None = None,
+    models: Sequence[ModelDescriptor | Mapping[str, object]] = (),
+) -> None:
+    """Register a custom provider and optional side-effect-free catalog metadata.
+
+    ``factory`` is retained without being called by discovery.  When metadata
+    is omitted the provider is still discoverable, while provider-specific
+    facts such as device, authorization, normalization, and model names remain
+    explicitly unknown.
+    """
 
     if not name or not name.strip():
         raise ValueError("Provider name must be non-empty")
+    if not callable(factory):
+        raise TypeError("Provider factory must be callable")
     normalized = name.strip().lower()
-    _PROVIDER_REGISTRY[normalized] = ProviderInfo(name=normalized, factory=factory)
+    provider_descriptor = _registered_provider_descriptor(normalized, descriptor)
+    model_descriptors = _registered_model_descriptors(provider_descriptor, models)
+    with _PROVIDER_REGISTRY_LOCK:
+        _PROVIDER_REGISTRY[normalized] = ProviderInfo(
+            name=normalized,
+            factory=factory,
+            descriptor=provider_descriptor,
+            models=model_descriptors,
+        )
 
 
 def _provider_name(
@@ -394,6 +509,622 @@ def _coalesce_env(*names: str) -> str:
         if value is not None and str(value).strip():
             return str(value).strip()
     return ""
+
+
+@dataclass(frozen=True)
+class _EmbeddingProviderSpec:
+    name: str
+    aliases: Tuple[str, ...]
+    description: str
+    locality: str
+    device: str
+    authorization: str
+    normalization: str
+    model_env: Tuple[str, ...] = ()
+    default_model: Optional[str] = None
+
+
+_BUILTIN_PROVIDER_SPECS: Tuple[_EmbeddingProviderSpec, ...] = (
+    _EmbeddingProviderSpec(
+        name="openrouter",
+        aliases=(),
+        description="OpenRouter OpenAI-compatible embeddings API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        normalization="model-dependent",
+        model_env=(
+            "IPFS_ACCELERATE_PY_OPENROUTER_EMBEDDINGS_MODEL",
+            "IPFS_DATASETS_PY_OPENROUTER_EMBEDDINGS_MODEL",
+            "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+            "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+        ),
+        default_model="text-embedding-3-small",
+    ),
+    _EmbeddingProviderSpec(
+        name="hf_inference_api",
+        aliases=("hf_api", "hf_inference", "huggingface_inference"),
+        description="Hugging Face hosted inference embeddings API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        normalization="optional",
+        model_env=(
+            "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_MODEL",
+            "IPFS_DATASETS_PY_HF_EMBEDDINGS_MODEL",
+            "IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL",
+            "IPFS_DATASETS_PY_HF_INFERENCE_MODEL",
+            "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+            "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+        ),
+        default_model="sentence-transformers/all-MiniLM-L6-v2",
+    ),
+    _EmbeddingProviderSpec(
+        name="xai",
+        aliases=("grok", "xai_grok"),
+        description="xAI OpenAI-compatible embeddings API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        normalization="unknown",
+        model_env=(
+            "ipfs_accelerate_py_XAI_EMBEDDINGS_MODEL",
+            "ipfs_accelerate_py_EMBEDDINGS_MODEL",
+        ),
+        default_model="v1",
+    ),
+    _EmbeddingProviderSpec(
+        name="meta_ai",
+        aliases=("meta", "meta-ai", "meta_llama", "meta_spark", "spark"),
+        description="Meta AI OpenAI-compatible embeddings API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        normalization="unknown",
+        model_env=(
+            "ipfs_accelerate_py_META_AI_EMBEDDINGS_MODEL",
+            "ipfs_accelerate_py_EMBEDDINGS_MODEL",
+        ),
+        default_model="meta-llama/Llama-3.3-70B-Instruct",
+    ),
+    _EmbeddingProviderSpec(
+        name="gemini_cli",
+        aliases=("gemini",),
+        description="Gemini CLI embeddings integration.",
+        locality="remote",
+        device="provider-managed",
+        authorization="unknown",
+        normalization="unknown",
+        model_env=("IPFS_ACCELERATE_PY_GEMINI_EMBEDDINGS_MODEL",),
+        default_model="embedding-001",
+    ),
+    _EmbeddingProviderSpec(
+        name="huggingface",
+        aliases=("hf", "local_hf"),
+        description="Local sentence-transformers or transformers embeddings.",
+        locality="local",
+        device="cpu,cuda",
+        authorization="none",
+        normalization="optional",
+        model_env=(
+            "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+            "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+        ),
+        default_model="sentence-transformers/all-MiniLM-L6-v2",
+    ),
+    _EmbeddingProviderSpec(
+        name="adapter",
+        aliases=("local", "local_adapter"),
+        description="Dependency-injectable local transformers embeddings adapter.",
+        locality="local",
+        device="cpu,cuda",
+        authorization="none",
+        normalization="none",
+        model_env=(
+            "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+            "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+        ),
+        default_model="sentence-transformers/all-MiniLM-L6-v2",
+    ),
+    _EmbeddingProviderSpec(
+        name="accelerate",
+        aliases=(),
+        description="Distributed ipfs_accelerate_py embeddings provider.",
+        locality="distributed",
+        device="runtime-selected",
+        authorization="unknown",
+        normalization="unknown",
+        model_env=(
+            "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+            "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+        ),
+    ),
+    _EmbeddingProviderSpec(
+        name="backend_manager",
+        aliases=(),
+        description="Multiplexed inference backend manager embeddings provider.",
+        locality="distributed",
+        device="runtime-selected",
+        authorization="unknown",
+        normalization="unknown",
+        model_env=("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",),
+    ),
+)
+_BUILTIN_PROVIDER_SPEC_BY_NAME = {
+    spec.name: spec for spec in _BUILTIN_PROVIDER_SPECS
+}
+
+
+def _embedding_capability(
+    *,
+    embedding_dimensions: Optional[int] = None,
+    max_context_tokens: Optional[int] = None,
+    max_batch_size: Optional[int] = None,
+) -> CapabilityDescriptor:
+    return CapabilityDescriptor(
+        operations=(Operation.EMBEDDING_GENERATE, Operation.BATCH),
+        input_modalities=(Modality.TEXT,),
+        output_modalities=(Modality.EMBEDDING,),
+        max_context_tokens=max_context_tokens,
+        max_batch_size=max_batch_size,
+        embedding_dimensions=embedding_dimensions,
+    )
+
+
+def _model_facts(model_name: str) -> Tuple[Optional[int], Optional[int], str]:
+    """Return only stable, built-in model facts; all other facts stay unknown."""
+
+    normalized = str(model_name or "").strip().casefold()
+    if normalized == "text-embedding-3-small":
+        return 1536, 8191, "unit"
+    if normalized == "sentence-transformers/all-minilm-l6-v2":
+        return 384, 256, "optional"
+    if normalized == "embedding-001":
+        return 768, 2048, "unknown"
+    return None, None, "unknown"
+
+
+def _catalog_model_name(value: object) -> str:
+    """Normalize an invocation model override into the shared name grammar."""
+
+    normalized = str(value or "").strip().casefold()
+    normalized = re.sub(r"[^a-z0-9._/-]+", "-", normalized)
+    normalized = re.sub(r"/{2,}", "/", normalized)
+    normalized = re.sub(r"\.{2,}", ".", normalized)
+    normalized = normalized.strip("._/-")
+    if not normalized:
+        normalized = "default"
+    return normalized[:128].rstrip("._/-") or "default"
+
+
+def _model_architecture(model_name: str) -> Optional[str]:
+    normalized = str(model_name or "").casefold()
+    if normalized.startswith("sentence-transformers/") or normalized.startswith(
+        "meta-llama/"
+    ):
+        return "transformer"
+    return None
+
+
+def _effective_spec_model(spec: _EmbeddingProviderSpec) -> Optional[str]:
+    return _coalesce_env(*spec.model_env) or spec.default_model
+
+
+def _env_has_value(*names: str) -> bool:
+    return bool(_coalesce_env(*names))
+
+
+def _remote_provider_authorized(name: str) -> Optional[bool]:
+    if name == "openrouter":
+        return _env_has_value(
+            "IPFS_ACCELERATE_PY_OPENROUTER_API_KEY",
+            "IPFS_DATASETS_PY_OPENROUTER_API_KEY",
+            "OPENROUTER_API_KEY",
+        )
+    if name == "hf_inference_api":
+        # Do not call _resolve_hf_api_token here: its fallback imports
+        # huggingface_hub and reads its credential store, which discovery
+        # deliberately avoids. With no environment token authorization is
+        # therefore unknown rather than false.
+        if _env_has_value(
+            "IPFS_ACCELERATE_PY_HF_API_TOKEN",
+            "IPFS_DATASETS_PY_HF_API_TOKEN",
+            "HUGGINGFACEHUB_API_TOKEN",
+            "HUGGINGFACE_API_TOKEN",
+            "HF_TOKEN",
+        ):
+            return True
+        return None
+    if name == "xai":
+        return _env_has_value("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")
+    if name == "meta_ai":
+        return _env_has_value(
+            "META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY"
+        )
+    return None
+
+
+def _builtin_provider_state(
+    spec: _EmbeddingProviderSpec,
+) -> Tuple[LifecycleState, OperationalState]:
+    authorized = _remote_provider_authorized(spec.name)
+    if authorized is not None:
+        return (
+            LifecycleState.CONFIGURED if authorized else LifecycleState.DECLARED,
+            OperationalState(
+                known=True,
+                configured=authorized,
+                authorized=authorized,
+                reachable=None,
+                healthy=None,
+                routable=authorized,
+            ),
+        )
+    if spec.authorization == "none":
+        return (
+            LifecycleState.DECLARED,
+            OperationalState(
+                known=True,
+                configured=None,
+                authorized=True,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+        )
+    if spec.name == "backend_manager":
+        enabled = _truthy(os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER"))
+        return (
+            LifecycleState.CONFIGURED if enabled else LifecycleState.DECLARED,
+            OperationalState(
+                known=True,
+                configured=enabled,
+                authorized=None,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+        )
+    if spec.name == "accelerate":
+        enabled = _coalesce_env(
+            "IPFS_ACCELERATE_PY_ENABLE_IPFS_ACCELERATE",
+            "IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE",
+        )
+        configured = None if not enabled else _truthy(enabled)
+        return (
+            LifecycleState.CONFIGURED
+            if configured is True
+            else LifecycleState.DECLARED,
+            OperationalState(
+                known=True,
+                configured=configured,
+                authorized=None,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+        )
+    return (
+        LifecycleState.DECLARED,
+        OperationalState(
+            known=True,
+            configured=None,
+            authorized=None,
+            reachable=None,
+            healthy=None,
+            routable=None,
+        ),
+    )
+
+
+def _builtin_provider_descriptor(
+    spec: _EmbeddingProviderSpec,
+) -> ProviderDescriptor:
+    model_name = _effective_spec_model(spec)
+    dimensions, context_tokens, _ = _model_facts(model_name or "")
+    lifecycle, state = _builtin_provider_state(spec)
+    return ProviderDescriptor(
+        name=spec.name,
+        aliases=spec.aliases,
+        description=spec.description,
+        capabilities=(
+            _embedding_capability(
+                embedding_dimensions=dimensions,
+                max_context_tokens=context_tokens,
+            ),
+        ),
+        lifecycle=lifecycle,
+        state=state,
+        provenance=(Provenance(source="embeddings_router.static"),),
+        labels={
+            "access_requirement": spec.authorization,
+            "batching": "supported",
+            "device": spec.device,
+            "input_types": "text",
+            "locality": spec.locality,
+            "normalization": spec.normalization,
+        },
+    )
+
+
+def _provider_descriptors_by_name() -> Dict[str, ProviderDescriptor]:
+    descriptors = {
+        spec.name: _builtin_provider_descriptor(spec)
+        for spec in _BUILTIN_PROVIDER_SPECS
+    }
+    with _PROVIDER_REGISTRY_LOCK:
+        registered = tuple(_PROVIDER_REGISTRY.values())
+    for info in registered:
+        # Registration has precedence over a built-in with the same public
+        # name, matching provider invocation.
+        descriptors[info.name] = info.descriptor or _registered_provider_descriptor(
+            info.name,
+            None,
+        )
+    return descriptors
+
+
+def list_providers() -> List[ProviderDescriptor]:
+    """List provider descriptors without resolving or constructing providers."""
+
+    return [
+        descriptor
+        for _, descriptor in sorted(_provider_descriptors_by_name().items())
+    ]
+
+
+def _canonical_provider_name(name: str) -> str:
+    requested = str(name or "").strip().lower()
+    if not requested:
+        raise ValueError("Embeddings provider name must be non-empty")
+    descriptors = _provider_descriptors_by_name()
+    if requested in descriptors:
+        return requested
+    matches = sorted(
+        descriptor.name
+        for descriptor in descriptors.values()
+        if requested in descriptor.aliases
+    )
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Ambiguous embeddings provider alias {name!r}: {', '.join(matches)}"
+        )
+    raise ValueError(f"Unknown embeddings provider: {name}")
+
+
+def get_provider_descriptor(name: str) -> ProviderDescriptor:
+    """Return the descriptor for a provider canonical name or alias."""
+
+    canonical = _canonical_provider_name(name)
+    return _provider_descriptors_by_name()[canonical]
+
+
+def _model_descriptor(
+    provider: ProviderDescriptor,
+    model_name: str,
+    *,
+    normalization: Optional[str] = None,
+) -> ModelDescriptor:
+    dimensions, context_tokens, known_normalization = _model_facts(model_name)
+    normalized = normalization or known_normalization
+    return ModelDescriptor(
+        provider_id=provider.provider_id,
+        name=_catalog_model_name(model_name),
+        architecture=_model_architecture(model_name),
+        capabilities=(
+            _embedding_capability(
+                embedding_dimensions=dimensions,
+                max_context_tokens=context_tokens,
+            ),
+        ),
+        lifecycle=provider.lifecycle,
+        state=provider.state,
+        provenance=(Provenance(source="embeddings_router.static"),),
+        labels={
+            "access_requirement": dict(provider.labels).get(
+                "access_requirement", "unknown"
+            ),
+            "batching": "supported",
+            "device": dict(provider.labels).get("device", "unknown"),
+            "input_types": "text",
+            "locality": dict(provider.labels).get("locality", "unknown"),
+            "normalization": normalized,
+            "invocation_model": model_name,
+        },
+    )
+
+
+def _models_for_provider(provider_name: str) -> Tuple[ModelDescriptor, ...]:
+    descriptors = _provider_descriptors_by_name()
+    provider = descriptors[provider_name]
+    with _PROVIDER_REGISTRY_LOCK:
+        registered = _PROVIDER_REGISTRY.get(provider_name)
+    if registered is not None:
+        return registered.models
+    spec = _BUILTIN_PROVIDER_SPEC_BY_NAME[provider_name]
+    model_name = _effective_spec_model(spec)
+    if not model_name:
+        return ()
+    normalization = "none" if spec.normalization == "none" else None
+    return (
+        _model_descriptor(
+            provider,
+            model_name,
+            normalization=normalization,
+        ),
+    )
+
+
+def list_models(provider: Optional[str] = None) -> List[ModelDescriptor]:
+    """List statically known or registered model descriptors."""
+
+    if provider is not None:
+        provider_names = (_canonical_provider_name(provider),)
+    else:
+        provider_names = tuple(sorted(_provider_descriptors_by_name()))
+    models = [
+        model
+        for provider_name in provider_names
+        for model in _models_for_provider(provider_name)
+    ]
+    return sorted(
+        models,
+        key=lambda model: (model.provider_id, model.name, model.model_id or ""),
+    )
+
+
+def _module_available(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except Exception:
+        return False
+
+
+def _select_discovery_provider(
+    provider: Optional[str],
+    *,
+    deps: Optional[RouterDeps],
+) -> str:
+    if provider:
+        return _canonical_provider_name(provider)
+
+    preferred = _coalesce_env(
+        "IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER",
+        "IPFS_DATASETS_PY_EMBEDDINGS_PROVIDER",
+    )
+    if preferred:
+        try:
+            return _canonical_provider_name(preferred)
+        except ValueError:
+            # Invocation currently falls through when its environment override
+            # is unknown, so discovery does the same.
+            pass
+
+    resolved_deps = deps or get_default_router_deps()
+    managers = getattr(resolved_deps, "accelerate_managers", {})
+    if isinstance(managers, Mapping) and managers.get("embeddings_router") is not None:
+        return "accelerate"
+    if (
+        _truthy(os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER"))
+        and getattr(resolved_deps, "backend_manager", None) is not None
+    ):
+        return "backend_manager"
+
+    for name in ("openrouter", "hf_inference_api", "xai", "meta_ai"):
+        if _remote_provider_authorized(name):
+            return name
+    if _module_available(
+        "ipfs_accelerate_py.cli_integrations.gemini_cli_integration"
+    ):
+        return "gemini_cli"
+    if _module_available("transformers"):
+        return "huggingface"
+    raise RuntimeError(
+        "No embeddings provider is statically resolvable for the requested constraints"
+    )
+
+
+def resolve_model(
+    model_name: Optional[str] = None,
+    *,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    device: Optional[str] = None,
+    deps: Optional[RouterDeps] = None,
+    **constraints: object,
+) -> ModelDescriptor:
+    """Resolve an embedding model using the router's explicit selection rules.
+
+    Resolution is metadata-only.  It never calls a provider factory.  Unknown
+    model overrides remain valid because embedding generation forwards them to
+    the selected provider; their dimension and token limits remain ``None``.
+    """
+
+    _ = device  # Providers receive this hint but current selection ignores it.
+    if model is not None:
+        if model_name is not None and str(model_name) != str(model):
+            raise ValueError("model and model_name specify different values")
+        model_name = str(model)
+    operation = constraints.pop("operation", Operation.EMBEDDING_GENERATE)
+    if constraints:
+        unknown = ", ".join(sorted(str(key) for key in constraints))
+        raise TypeError(f"Unknown embedding resolution constraints: {unknown}")
+    operation_value = (
+        operation.value if isinstance(operation, Operation) else str(operation)
+    )
+    if operation_value not in {
+        Operation.EMBEDDING_GENERATE.value,
+        Operation.BATCH.value,
+    }:
+        raise ValueError(
+            f"Embeddings router does not support operation {operation_value!r}"
+        )
+
+    provider_name = _select_discovery_provider(provider, deps=deps)
+    provider_descriptor = get_provider_descriptor(provider_name)
+    known_models = _models_for_provider(provider_name)
+    requested_model = str(model_name or "").strip()
+    if not requested_model:
+        if not known_models:
+            raise ValueError(
+                f"Embeddings provider {provider_name!r} has no known default model; "
+                "specify model_name explicitly"
+            )
+        return known_models[0]
+
+    requested_key = requested_model.casefold()
+    for descriptor in known_models:
+        labels = dict(descriptor.labels)
+        router_name = labels.get(
+            "invocation_model",
+            labels.get("router_model_name", descriptor.name),
+        )
+        if requested_key in {
+            descriptor.name.casefold(),
+            str(router_name).casefold(),
+            *(alias.casefold() for alias in descriptor.aliases),
+        }:
+            return descriptor
+    return _model_descriptor(provider_descriptor, requested_model)
+
+
+def get_catalog_snapshot() -> CatalogSnapshot:
+    """Project router discovery records into a deterministic catalog snapshot."""
+
+    providers = tuple(list_providers())
+    models = tuple(list_models())
+    provider_by_id = {provider.provider_id: provider for provider in providers}
+    bindings = tuple(
+        RouterBinding(
+            router="embeddings_router",
+            provider_id=model.provider_id,
+            model_id=model.model_id,
+            operations=(Operation.EMBEDDING_GENERATE, Operation.BATCH),
+            priority=index,
+            state=provider_by_id[model.provider_id].state,
+            provenance=(Provenance(source="embeddings_router.static"),),
+            labels={
+                "invocation_model": dict(model.labels).get(
+                    "invocation_model",
+                    dict(model.labels).get("router_model_name", model.name),
+                )
+            },
+        )
+        for index, model in enumerate(models)
+    )
+    return CatalogSnapshot(
+        providers=providers,
+        models=models,
+        bindings=bindings,
+    )
+
+
+def catalog_snapshot() -> CatalogSnapshot:
+    """Compatibility alias for catalog source adapters."""
+
+    return get_catalog_snapshot()
 
 
 def _resolve_hf_api_token() -> str:
@@ -557,12 +1288,12 @@ def _hf_embeddings_fallback_models(*, kwargs: dict[str, object]) -> list[str]:
 
 def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
     """Get OpenRouter embeddings provider."""
-    api_key = _coalesce_env(
+    credential = _coalesce_env(
         "IPFS_ACCELERATE_PY_OPENROUTER_API_KEY",
         "IPFS_DATASETS_PY_OPENROUTER_API_KEY",
         "OPENROUTER_API_KEY",
     )
-    if not api_key:
+    if not credential:
         return None
 
     base_url = (
@@ -599,7 +1330,7 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
             payload = {"model": model, "input": inputs}
 
             headers = {
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {credential}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             }
@@ -1391,7 +2122,12 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[Embedding
 def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) -> EmbeddingsProvider:
     if preferred:
         preferred_key = preferred.strip().lower()
-        info = _PROVIDER_REGISTRY.get(preferred_key)
+        try:
+            preferred_key = _canonical_provider_name(preferred_key)
+        except ValueError:
+            pass
+        with _PROVIDER_REGISTRY_LOCK:
+            info = _PROVIDER_REGISTRY.get(preferred_key)
         if info is not None:
             return info.factory()
         builtin = _builtin_provider_by_name(preferred_key, deps=deps)
@@ -1405,7 +2141,12 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         "IPFS_DATASETS_PY_EMBEDDINGS_PROVIDER",
     ).lower()
     if preferred_env:
-        info = _PROVIDER_REGISTRY.get(preferred_env)
+        try:
+            preferred_env = _canonical_provider_name(preferred_env)
+        except ValueError:
+            pass
+        with _PROVIDER_REGISTRY_LOCK:
+            info = _PROVIDER_REGISTRY.get(preferred_env)
         if info is not None:
             return info.factory()
         builtin = _builtin_provider_by_name(preferred_env, deps=deps)
