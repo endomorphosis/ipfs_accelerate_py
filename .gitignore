@@ -125,13 +125,36 @@ coverage.xml
 # (Uncomment the line below to exclude from version control if needed)
 # test/.performance_baselines.json
 
-# Ephemeral process / runtime junk (ASREF-006 root hygiene)
+# ---------------------------------------------------------------------------
+# Ephemeral process / runtime junk (ASREF-006 monorepo root hygiene)
+# Keep packaging and human surfaces at the root; do not version process state.
+# Files already tracked before these rules landed may still appear in history
+# until a follow-up `git rm --cached` (outside this task's path scope).
+# ---------------------------------------------------------------------------
 dashboard.out
 dashboard.pid
 err.txt
 *.pid
 nohup.out
+/*.out
+core
+core.*
+*.core
 .DS_Store
 Thumbs.db
 *.swp
 *~
+*.swo
+*.orig
+*.rej
+
+# Local/ephemeral data under data/ (WAL, ad-hoc DBs; keep intentional fixtures)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/**/*.duckdb.wal
+data/**/*.db.wal
+
+# Local state leftovers (state/* already ignored; explicit WAL/out patterns)
+state/**/*.wal
+state/**/*.out

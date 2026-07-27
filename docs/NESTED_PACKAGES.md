@@ -6,7 +6,16 @@ checkouts or sibling products, **not** disposable clutter.
 
 **Do not delete, force-reinit, or mass-rewrite these trees without ownership
 review.** Root-hygiene work (ASREF-006 / ASREF-G090) may document, ignore
-ephemera, or relocate *misplaced root plans/tests* only.
+ephemera, or relocate *misplaced root plans/tests* only. It must not move
+`agent_supervisor` packages into nested product trees or rewrite submodule
+history as part of package-layout moves.
+
+| Document role | Path |
+| --- | --- |
+| This inventory | `docs/NESTED_PACKAGES.md` |
+| Process-junk ignore rules | `.gitignore` (ASREF-006 section) |
+| MCP unification plan (canonical) | `docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md` |
+| Module refactor program plan | `docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md` |
 
 ## Ownership policy
 
@@ -17,6 +26,7 @@ ephemera, or relocate *misplaced root plans/tests* only.
 | Submodule pin changes | Require review; prefer recording intended branch in `.gitmodules` |
 | Empty checkout dirs | Common when submodules are not initialized; still reserved paths |
 | Docs vs products | Architecture and operator docs live under `docs/`; nested trees keep their own READMEs |
+| Import surface | Root hygiene and nested-package docs must not break `ipfs_accelerate_py.agent_supervisor` imports |
 
 ## Nested product trees (first-party / sibling)
 
@@ -29,6 +39,10 @@ ephemera, or relocate *misplaced root plans/tests* only.
 | `ipfs_model_manager_py/` | Model manager product tree | Git submodule (`endomorphosis/ipfs_model_manager_py`) |
 | `ipfs_transformers_py/` | Transformers + IPFS helpers | Git submodule (`endomorphosis/ipfs_transformers_py`) |
 | `mcpplusplus/` | MCP++ conformance artifacts at repo root | Planning/conformance docs; related to `ipfs_accelerate_py/mcplusplus` |
+
+Empty directories at the nested submodule paths are normal when
+`git submodule update --init` has not been run. Treat them as reserved product
+slots, not cleanup candidates.
 
 ## Git submodules (`.gitmodules`)
 
@@ -58,33 +72,58 @@ git submodule update --init ipfs_kit_py
 | Path | Role |
 | --- | --- |
 | `docs/` | Operator and architecture documentation (this file lives here) |
-| `test/` | Canonical test tree |
+| `test/` | Canonical test tree — prefer for all new tests |
 | `tests/` | Legacy or secondary test path; prefer `test/` for new work |
 | `scripts/`, `deployments/`, `install/`, `examples/`, `config/` | Operational and packaging support |
-| `data/`, `state/` | Local/runtime data; many entries are gitignored |
+| `data/` | Mixed fixtures and local runtime data; many entries gitignored |
+| `state/` | Local/runtime state; broadly gitignored via `state/*` |
 
-## Root hygiene related to nested trees
+## Root hygiene (ASREF-006)
 
-Ephemeral process files at the monorepo root (`dashboard.out`, `dashboard.pid`,
-`err.txt`, `*.pid`, `nohup.out`, OS junk) are ignored via `.gitignore`. They
-must not be treated as nested product artifacts.
+### Process junk (ignored, not nested products)
 
-Misplaced root plans that belong under architecture docs:
+Ephemeral process files at the monorepo root must not be treated as product
+artifacts. `.gitignore` excludes at least:
 
-| Legacy / root path | Canonical home |
+| Pattern / path | Why ignored |
 | --- | --- |
-| `MCP_SERVER_UNIFICATION_PLAN.md` | `docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md` |
+| `dashboard.out`, `dashboard.pid` | Dashboard process stdout / PID |
+| `err.txt` | Ad-hoc error capture |
+| `*.pid`, `nohup.out`, `/*.out` | Generic process / nohup residue |
+| `.DS_Store`, `Thumbs.db`, `*.swp`, `*~` | OS / editor junk |
+| `data/*.db`, `data/**/*.duckdb.wal` | Local DB / WAL noise under `data/` |
 
-Root one-off `test_*.py` files should move under `test/` in a hygiene or
-cutover task; nested product tests stay inside their own trees.
+**Note:** Paths that were committed before the ignore rules still appear in
+`git ls-files` until an operator (or a later cutover task with broader path
+scope) runs `git rm --cached` on them. Ignore rules prevent *new* tracking.
+
+### Misplaced root plans and one-offs
+
+| Legacy / root path | Canonical home or disposition |
+| --- | --- |
+| `MCP_SERVER_UNIFICATION_PLAN.md` | `docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md` (canonical) |
+| `SDK_PLAYGROUND_PREVIEW.html` | Prefer `docs/` or `docs/exports/` in a later hygiene/cutover step |
+| Root `test_*.py` (e.g. `test_dashboard_sdk.py`, `test_mcp_jsonrpc_conformance.py`) | Prefer `test/` in a hygiene or cutover task; not nested-product tests |
+
+ASREF-006 **documents** and **ignores** within its allowed path set; it does
+not delete nested checkouts, untrack every historical file, or move tests when
+those paths are outside the task edit scope.
+
+### What ASREF-006 must not do
+
+- Delete nested product checkouts or submodules without ownership review
+- Move `agent_supervisor` packages into nested product trees
+- Rewrite submodule history as part of package-layout moves
+- Break `ipfs_accelerate_py.agent_supervisor` import paths (no package moves in this task)
 
 ## Agent supervisor refactor boundary
 
 The agent-supervisor module refactor (`ASREF-*`) may:
 
 - document nested packages (this file);
-- ignore or remove root process junk;
-- relocate root-level plans into `docs/`.
+- ignore or remove root process junk via `.gitignore` (and later untrack steps);
+- relocate root-level plans into `docs/` (MCP unification plan lives under
+  `docs/architecture/`).
 
 It must **not**:
 
