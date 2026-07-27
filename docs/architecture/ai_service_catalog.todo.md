@@ -508,7 +508,7 @@ Program invariants:
 
 ## AICAT-020 Prove conformance, preserve compatibility, and document rollout
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
