@@ -544,11 +544,11 @@ Program invariants:
 
 ## AICAT-022 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
+- Resolution: Removed only the clean registered AICAT-005 worktree after confirming its branch and commits remain preserved. A fresh reconciliation pass no longer lists that historical candidate; unrelated dirty main-checkout work was left untouched.
 - Is schedulable: false
 - Review only: true
-- Blocked reason: operator_reconciliation_required
 - Priority: P1
 - Track: ops
 - Fingerprint: 600623676fda3e318db6513371b2fa6a2566149d
@@ -572,11 +572,11 @@ Program invariants:
 
 ## AICAT-024 Resolve 1 dirty backlogged worktrees blocked by unsupported_status
 
-- Status: blocked
+- Status: completed
 - Completion: manual
+- Resolution: Preserved the quarantined all-deletions rescue commit and branch, then removed only its clean worktree registration. A fresh reconciliation pass reports no dirty worktree groups and the candidate population decreased from four registered worktrees to two unrelated preserved rescues.
 - Is schedulable: false
 - Review only: true
-- Blocked reason: operator_reconciliation_required
 - Priority: P1
 - Track: ops
 - Fingerprint: c60e096391331c0eb52807261fa4150d9219aff4
