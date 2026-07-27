@@ -4318,7 +4318,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-148 Make implementation daemons consume Markdown or DuckDB through one task-source protocol
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-task-storage
 - Depends on: ASI-146, ASI-147
