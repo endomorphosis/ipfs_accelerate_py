@@ -526,6 +526,10 @@ def _wire_value(value: Any) -> Any:
 def _decode_json_object(payload: str, noun: str) -> Mapping[str, Any]:
     if not isinstance(payload, str):
         raise PromptWorkflowContractError(f"{noun} JSON must be text")
+    if len(payload.encode("utf-8")) > ABSOLUTE_MAX_CONTRACT_BYTES:
+        raise PromptWorkflowBoundsError(
+            f"{noun} JSON exceeds the serialized byte bound"
+        )
 
     def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -733,6 +737,7 @@ class PromptSource(_WorkflowContract):
             _integer(
                 self.byte_count,
                 "byte_count",
+                minimum=1,
                 maximum=ABSOLUTE_MAX_PROMPT_BYTES,
             ),
         )
@@ -2017,8 +2022,23 @@ class PromptGoalGraph(_WorkflowContract):
         referenced = {
             cid for goal in self.goals for cid in goal.evidence_cids
         } | {cid for task in self.tasks for cid in task.evidence_cids}
+        acceptance_referenced = {
+            cid
+            for goal in self.goals
+            for criterion in goal.acceptance
+            for cid in criterion.evidence_cids
+        } | {
+            cid
+            for task in self.tasks
+            for criterion in task.acceptance
+            for cid in criterion.evidence_cids
+        }
         if not referenced.issubset(evidence_cids):
             raise PromptGraphError("goal or task references unknown evidence CID")
+        if not acceptance_referenced.issubset(evidence_cids):
+            raise PromptGraphError(
+                "acceptance references unknown evidence CID"
+            )
         for name in ("unresolved_questions", "uncertainty_debt"):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
@@ -2444,10 +2464,15 @@ _FORBIDDEN_RESCUE_PARAMETER_KEYS = frozenset(
         "completion",
         "credential",
         "new_path",
+        "path",
+        "paths",
         "patch",
         "policy",
         "script",
         "shell",
+        "source_path",
+        "destination_path",
+        "output_path",
         "taskboard",
     }
 )
@@ -2501,7 +2526,14 @@ class RescueAction(_WorkflowContract):
             normalized = key.lower().replace("-", "_")
             if normalized in _FORBIDDEN_RESCUE_PARAMETER_KEYS or any(
                 marker in normalized
-                for marker in ("command", "shell", "patch", "credential", "policy")
+                for marker in (
+                    "command",
+                    "shell",
+                    "patch",
+                    "credential",
+                    "policy",
+                    "path",
+                )
             ):
                 raise RescuePlanError(
                     "rescue parameters contain a forbidden open-ended field"
@@ -2752,9 +2784,21 @@ class PromptWorkflowPreviewReceipt(_WorkflowContract):
             raise PromptWorkflowContractError(
                 "budget must be PromptWorkflowBudget"
             )
+        if len(self.admitted_goal_cids) > self.budget.max_goals:
+            raise PromptWorkflowBoundsError(
+                "admitted goals exceed the declared workflow budget"
+            )
+        if len(self.admitted_task_cids) > self.budget.max_tasks:
+            raise PromptWorkflowBoundsError(
+                "admitted tasks exceed the declared workflow budget"
+            )
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
+        if len(self.canonical_bytes()) > self.budget.max_serialized_bytes:
+            raise PromptWorkflowBoundsError(
+                "preview receipt exceeds max_serialized_bytes"
+            )
 
     @property
     def receipt_cid(self) -> str:
@@ -2828,11 +2872,58 @@ class PromptWorkflowResult(_WorkflowContract):
                 "run reference requires materialization reference"
             )
         if (
+            self.materialization is not None
+            and self.materialization.request_cid != self.request_cid
+        ):
+            raise PromptWorkflowIdentityError(
+                "materialization is bound to another workflow request"
+            )
+        if (
+            self.materialization is not None
+            and self.materialization.preview_receipt_cid
+            != self.preview_receipt_cid
+        ):
+            raise PromptWorkflowIdentityError(
+                "materialization is bound to another preview receipt"
+            )
+        if (
             self.run is not None
             and self.run.materialization_cid != self.materialization.materialization_cid
         ):
             raise PromptWorkflowIdentityError(
                 "run is bound to another materialization"
+            )
+        if (
+            self.run is not None
+            and self.run.plan_root_cid != self.materialization.plan_root_cid
+        ):
+            raise PromptWorkflowIdentityError(
+                "run is bound to another plan root"
+            )
+        if (
+            self.run is not None
+            and self.run.repository_root != self.materialization.repository_root
+        ):
+            raise PromptWorkflowIdentityError(
+                "run is bound to another repository root"
+            )
+        if self.outcome is WorkflowOutcome.PREVIEWED and (
+            self.materialization is not None or self.run is not None
+        ):
+            raise PromptWorkflowContractError(
+                "previewed outcome cannot include materialization or run"
+            )
+        if self.outcome is WorkflowOutcome.MATERIALIZED and (
+            self.materialization is None or self.run is not None
+        ):
+            raise PromptWorkflowContractError(
+                "materialized outcome requires only materialization"
+            )
+        if self.outcome is WorkflowOutcome.STARTED and (
+            self.materialization is None or self.run is None
+        ):
+            raise PromptWorkflowContractError(
+                "started outcome requires materialization and run"
             )
         object.__setattr__(
             self,
