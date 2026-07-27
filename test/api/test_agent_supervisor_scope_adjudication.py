@@ -37,6 +37,10 @@ def _entry(
     )
 
 
+def _secret_assignment(value: str) -> str:
+    return f'api_key = "{value}"\n'
+
+
 def _adjudicate(
     entries: tuple[CandidateDiffEntry, ...],
     *,
@@ -528,7 +532,8 @@ def test_daemon_examines_secret_finding_scope_without_overriding_policy(
     _git(repo, "commit", "-m", "baseline")
     baseline = _git(repo, "rev-parse", "HEAD")
     compiler_path.write_text(
-        'VALUE = 2\napi_key = "sk-live-concrete-credential-value"\n',
+        "VALUE = 2\n"
+        + _secret_assignment("sk-live-concrete-credential-value"),
         encoding="utf-8",
     )
     daemon = PortalImplementationDaemon(

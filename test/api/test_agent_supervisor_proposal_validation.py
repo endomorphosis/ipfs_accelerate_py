@@ -76,6 +76,10 @@ def _entry(
     return CandidateDiffEntry(**values)
 
 
+def _secret_assignment(value: str) -> str:
+    return f'api_key = "{value}"\n'
+
+
 def _proposal(
     *entries: CandidateDiffEntry,
     declared_paths: tuple[str, ...] | None = None,
@@ -973,7 +977,7 @@ def test_sensitive_file_change_is_rejected_even_when_path_is_in_scope() -> None:
 
 
 def test_unchanged_baseline_secret_text_does_not_reject_an_in_scope_edit() -> None:
-    existing_secret = 'api_key = "existing-credential-value"\n'
+    existing_secret = _secret_assignment("existing-credential-value")
     result = validate_implementation_proposal(
         _proposal(
             _entry(
@@ -997,7 +1001,7 @@ def test_dynamic_secret_lookup_is_not_mistaken_for_a_literal_secret() -> None:
                 before="VALUE = 1\n",
                 after=(
                     "VALUE = 2\n"
-                    'api_key = _coalesce_env("OPENAI_API_KEY")\n'
+                    + 'api_key = _coalesce_env("OPENAI_API_KEY")\n'
                 ),
             ),
         ),
@@ -1017,7 +1021,9 @@ def test_new_literal_secret_remains_forbidden_in_an_in_scope_file() -> None:
                 before="VALUE = 1\n",
                 after=(
                     "VALUE = 2\n"
-                    'api_key = "sk-live-concrete-credential-value"\n'
+                    + _secret_assignment(
+                        "sk-live-concrete-credential-value"
+                    )
                 ),
             ),
         ),
@@ -1029,7 +1035,7 @@ def test_new_literal_secret_remains_forbidden_in_an_in_scope_file() -> None:
 
 
 def test_renaming_a_secret_bearing_file_remains_forbidden() -> None:
-    source = 'api_key = "sk-live-concrete-credential-value"\n'
+    source = _secret_assignment("sk-live-concrete-credential-value")
     old_path = "ipfs_accelerate_py/agent_supervisor/old_config.py"
     new_path = "ipfs_accelerate_py/agent_supervisor/new_config.py"
     result = validate_implementation_proposal(
