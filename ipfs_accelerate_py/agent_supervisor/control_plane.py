@@ -38,9 +38,11 @@ from .control_contracts import (
     CONTROL_CATALOG_VERSION,
     CONTROL_CONTRACT_VERSION,
     DEFAULT_CONTROL_CATALOG,
+    DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS,
     MUTATION_OPERATIONS,
     PROPOSAL_OPERATIONS,
     READ_OPERATIONS,
+    AuthorityViolationError,
     AuthorizationBindingError,
     CapabilityDegradation,
     CapabilityReport,
@@ -1401,6 +1403,9 @@ def normalize_control_target(
         ),
         "artifact_id": parameters.get("artifact_id") or target_id,
         "validation_id": parameters.get("validation_id") or target_id,
+        "preview_ref": parameters.get("preview_ref") or target_id,
+        "incident_cid": parameters.get("incident_cid") or target_id,
+        "rescue_plan_cid": parameters.get("rescue_plan_cid") or target_id,
     }
     canonical: dict[str, str] = {}
     for selector in descriptor.target_descriptor.required_selectors:
@@ -3337,6 +3342,51 @@ class SupervisorLifecycleBackend:
 OperationHandler = Callable[[OperationRequest], Union[BackendResponse, Mapping[str, Any], Any]]
 
 
+class WorkflowPreviewHandler(Protocol):
+    """Side-effect-free adapter for one bound workflow proposal."""
+
+    def __call__(
+        self, request: OperationRequest
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
+        ...
+
+
+class WorkflowMaterializeHandler(Protocol):
+    """Authorized adapter invoked inside the shared mutation transaction."""
+
+    def __call__(
+        self, request: OperationRequest
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
+        ...
+
+
+class RestartHandler(Protocol):
+    """Fenced lifecycle-restart adapter; implementations are registered lazily."""
+
+    def __call__(
+        self, request: OperationRequest
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
+        ...
+
+
+class RescuePreviewHandler(Protocol):
+    """Side-effect-free adapter for current incident-bound rescue proposals."""
+
+    def __call__(
+        self, request: OperationRequest
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
+        ...
+
+
+class RescueHandler(Protocol):
+    """Authorized incident-bound rescue adapter for one bounded plan."""
+
+    def __call__(
+        self, request: OperationRequest
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
+        ...
+
+
 class LeaseFenceValidator(Protocol):
     """Checks authoritative current lease state before mutation dispatch."""
 
@@ -3900,6 +3950,10 @@ class RepositorySupervisorBackend:
                 raise TypeError(f"handler for {operation.value} must be callable")
             normalized[operation] = handler
         self._handlers = MappingProxyType(normalized)
+        # Registration is inert: providers and processes remain the
+        # responsibility of a handler at explicit execution time.
+        self.optional_providers_loaded = False
+        self.processes_started = False
 
     @property
     def registered_operations(self) -> tuple[Operation, ...]:
@@ -4793,6 +4847,12 @@ class SupervisorControlService:
             raise ControlContractError(
                 "backend cannot apply effects while reporting no change"
             )
+        if response.applied_effect_ids and (
+            request.operation not in MUTATION_OPERATIONS or request.dry_run
+        ):
+            raise AuthorityViolationError(
+                "proposal and dry-run handlers cannot claim applied effects"
+            )
         canonical_data = _canonical_json_value(response.data)
         return BackendResponse(
             data=redact_control_data(canonical_data),
@@ -5077,7 +5137,11 @@ class SupervisorControlService:
             # exceed the result's proposal-only authority.
             effects=(
                 ()
-                if request.dry_run and request.operation in MUTATION_OPERATIONS
+                if (
+                    request.dry_run
+                    and request.operation in MUTATION_OPERATIONS
+                )
+                or request.operation in DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS
                 else self._claims(request, applied, receipt.receipt_id)
             ),
             preview=preview,
@@ -5531,6 +5595,14 @@ class SupervisorControlService:
     def plan(self, request: OperationRequest) -> OperationResult:
         return self._operation(Operation.PLAN, request)
 
+    def workflow_preview(self, request: OperationRequest) -> OperationResult:
+        return self._operation(Operation.WORKFLOW_PREVIEW, request)
+
+    def workflow_materialize(
+        self, request: OperationRequest
+    ) -> OperationResult:
+        return self._operation(Operation.WORKFLOW_MATERIALIZE, request)
+
     def start(self, request: OperationRequest) -> OperationResult:
         return self._operation(Operation.START, request)
 
@@ -5546,6 +5618,9 @@ class SupervisorControlService:
     def stop(self, request: OperationRequest) -> OperationResult:
         return self._operation(Operation.STOP, request)
 
+    def restart(self, request: OperationRequest) -> OperationResult:
+        return self._operation(Operation.RESTART, request)
+
     def retry(self, request: OperationRequest) -> OperationResult:
         return self._operation(Operation.RETRY, request)
 
@@ -5559,6 +5634,12 @@ class SupervisorControlService:
         return self._operation(Operation.VALIDATION_REPLAY, request)
 
     replay_validation = validation_replay
+
+    def rescue_preview(self, request: OperationRequest) -> OperationResult:
+        return self._operation(Operation.RESCUE_PREVIEW, request)
+
+    def rescue(self, request: OperationRequest) -> OperationResult:
+        return self._operation(Operation.RESCUE, request)
 
     def lifecycle(
         self,
@@ -5783,6 +5864,16 @@ class SupervisorClient:
     ) -> OperationResult:
         return self._read(Operation.PLAN, parameters, **values)
 
+    def workflow_preview(
+        self, parameters: Union[Mapping[str, Any], None] = None, **values: Any
+    ) -> OperationResult:
+        return self._read(Operation.WORKFLOW_PREVIEW, parameters, **values)
+
+    def rescue_preview(
+        self, parameters: Union[Mapping[str, Any], None] = None, **values: Any
+    ) -> OperationResult:
+        return self._read(Operation.RESCUE_PREVIEW, parameters, **values)
+
     def objective_refine(self, request: OperationRequest) -> OperationResult:
         return self._authorized(Operation.OBJECTIVE_REFINE, request)
 
@@ -5797,6 +5888,11 @@ class SupervisorClient:
         return self._authorized(Operation.BACKLOG_REFILL, request)
 
     refill = backlog_refill
+
+    def workflow_materialize(
+        self, request: OperationRequest
+    ) -> OperationResult:
+        return self._authorized(Operation.WORKFLOW_MATERIALIZE, request)
 
     def start(self, request: OperationRequest) -> OperationResult:
         return self._authorized(Operation.START, request)
@@ -5813,6 +5909,9 @@ class SupervisorClient:
     def stop(self, request: OperationRequest) -> OperationResult:
         return self._authorized(Operation.STOP, request)
 
+    def restart(self, request: OperationRequest) -> OperationResult:
+        return self._authorized(Operation.RESTART, request)
+
     def retry(self, request: OperationRequest) -> OperationResult:
         return self._authorized(Operation.RETRY, request)
 
@@ -5826,6 +5925,9 @@ class SupervisorClient:
         return self._authorized(Operation.VALIDATION_REPLAY, request)
 
     replay_validation = validation_replay
+
+    def rescue(self, request: OperationRequest) -> OperationResult:
+        return self._authorized(Operation.RESCUE, request)
 
     def lifecycle(
         self,
@@ -5892,6 +5994,9 @@ __all__ = [
     "PythonSupervisorBackend",
     "ReadOnlySupervisorClient",
     "RepositorySupervisorBackend",
+    "RescueHandler",
+    "RescuePreviewHandler",
+    "RestartHandler",
     "StaleLeaseError",
     "StaleTreeError",
     "SupervisorClient",
@@ -5904,6 +6009,8 @@ __all__ = [
     "TargetNotAllowedError",
     "TargetIdentityValidator",
     "TransactionConflictError",
+    "WorkflowMaterializeHandler",
+    "WorkflowPreviewHandler",
     "capture_control_discovery_runtime_state",
     "control_operation_behavior_id",
     "control_service_publication",

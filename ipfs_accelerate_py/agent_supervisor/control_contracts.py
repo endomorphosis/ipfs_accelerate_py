@@ -422,20 +422,25 @@ class Operation(str, Enum):
 
     OBJECTIVE_PREVIEW = "objective_preview"
     PLAN = "plan"
+    WORKFLOW_PREVIEW = "workflow_preview"
+    RESCUE_PREVIEW = "rescue_preview"
 
     OBJECTIVE_REFINE = "objective_refine"
     OBJECTIVE_RECONCILE = "objective_reconcile"
     BACKLOG_REFILL = "backlog_refill"
     REFILL = "backlog_refill"
+    WORKFLOW_MATERIALIZE = "workflow_materialize"
     START = "start"
     PAUSE = "pause"
     RESUME = "resume"
     DRAIN = "drain"
     STOP = "stop"
+    RESTART = "restart"
     RETRY = "retry"
     CANCEL = "cancel"
     QUARANTINE = "quarantine"
     VALIDATION_REPLAY = "validation_replay"
+    RESCUE = "rescue"
 
     @property
     def authority(self) -> OperationAuthority:
@@ -463,10 +468,27 @@ READ_OPERATIONS: Final[frozenset[Operation]] = frozenset(
     }
 )
 PROPOSAL_OPERATIONS: Final[frozenset[Operation]] = frozenset(
-    {Operation.OBJECTIVE_PREVIEW, Operation.PLAN}
+    {
+        Operation.OBJECTIVE_PREVIEW,
+        Operation.PLAN,
+        Operation.WORKFLOW_PREVIEW,
+        Operation.RESCUE_PREVIEW,
+    }
 )
 MUTATION_OPERATIONS: Final[frozenset[Operation]] = frozenset(
     set(Operation).difference(READ_OPERATIONS).difference(PROPOSAL_OPERATIONS)
+)
+PROMPT_CONTROL_OPERATIONS: Final[frozenset[Operation]] = frozenset(
+    {
+        Operation.WORKFLOW_PREVIEW,
+        Operation.WORKFLOW_MATERIALIZE,
+        Operation.RESTART,
+        Operation.RESCUE_PREVIEW,
+        Operation.RESCUE,
+    }
+)
+DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS: Final[frozenset[Operation]] = frozenset(
+    {Operation.WORKFLOW_PREVIEW, Operation.RESCUE_PREVIEW}
 )
 OPERATION_AUTHORITIES: Final[Mapping[Operation, OperationAuthority]] = (
     MappingProxyType(
@@ -552,6 +574,7 @@ class LifecycleAction(str, Enum):
     RESUME = "resume"
     DRAIN = "drain"
     STOP = "stop"
+    RESTART = "restart"
     RETRY = "retry"
     CANCEL = "cancel"
     QUARANTINE = "quarantine"
@@ -722,6 +745,295 @@ _PATH_KEYS: Final[frozenset[str]] = frozenset(
         "worktree_paths",
     }
 )
+
+
+_PROMPT_CONTROL_PARAMETER_FIELDS: Final[
+    Mapping[Operation, frozenset[str]]
+] = MappingProxyType(
+    {
+        Operation.WORKFLOW_PREVIEW: frozenset(
+            {
+                "target",
+                "repository_id",
+                "tree_id",
+                "directory",
+                "prompt_source",
+                "output_mode",
+                "markdown_path",
+                "duckdb_path",
+                "request_root",
+                "scan_root",
+                "catalog_root",
+            }
+        ),
+        Operation.WORKFLOW_MATERIALIZE: frozenset(
+            {
+                "target",
+                "repository_id",
+                "tree_id",
+                "preview_ref",
+                "preview_root",
+                "preview_repository_id",
+                "preview_tree_id",
+                "preview_objective_id",
+                "preview_objective_revision",
+                "preview_policy_id",
+                "preview_policy_revision",
+                "catalog_root",
+                "output_mode",
+                "markdown_path",
+                "duckdb_path",
+                "expected_revision",
+            }
+        ),
+        Operation.RESTART: frozenset(
+            {
+                "target",
+                "repository_id",
+                "target_id",
+                "run_id",
+                "configuration_root",
+                "expected_revision",
+                "deadline_ms",
+                "health_window_ms",
+                "reason",
+            }
+        ),
+        Operation.RESCUE_PREVIEW: frozenset(
+            {
+                "target",
+                "repository_id",
+                "tree_id",
+                "incident_cid",
+                "incident_root",
+                "incident_repository_id",
+                "incident_tree_id",
+                "incident_objective_id",
+                "incident_objective_revision",
+                "incident_policy_id",
+                "incident_policy_revision",
+                "exhaustion_receipt_cid",
+                "allow_llm_fallback",
+                "max_actions",
+                "deadline_ms",
+            }
+        ),
+        Operation.RESCUE: frozenset(
+            {
+                "target",
+                "repository_id",
+                "tree_id",
+                "incident_cid",
+                "incident_root",
+                "incident_repository_id",
+                "incident_tree_id",
+                "incident_objective_id",
+                "incident_objective_revision",
+                "incident_policy_id",
+                "incident_policy_revision",
+                "rescue_plan_cid",
+                "rescue_plan_root",
+                "rescue_plan_incident_cid",
+                "rescue_plan_tree_id",
+                "action_index",
+                "expected_revision",
+                "deadline_ms",
+            }
+        ),
+    }
+)
+
+_PROMPT_SOURCE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"kind", "content_cid", "artifact_ref", "inline_text"}
+)
+
+
+def _validate_prompt_control_parameters(
+    operation: Operation,
+    parameters: Mapping[str, Any],
+    *,
+    repository_root: str,
+    repository_id: str,
+    tree_id: str,
+    objective_id: str,
+    objective_revision: str,
+    policy_id: str,
+    policy_revision: str,
+) -> None:
+    """Validate the closed, transport-neutral parameter shapes for ASI-150."""
+
+    allowed = _PROMPT_CONTROL_PARAMETER_FIELDS.get(operation)
+    if allowed is None:
+        return
+    unknown = set(parameters).difference(allowed)
+    if unknown:
+        raise ControlContractError(
+            f"{operation.value} parameters contain unsupported fields: "
+            + ", ".join(sorted(unknown))
+        )
+    target = parameters.get("target")
+    if target is not None and not isinstance(target, Mapping):
+        raise ControlContractError("target must be an object")
+
+    if operation is Operation.WORKFLOW_PREVIEW:
+        missing = {
+            name
+            for name in ("directory", "prompt_source")
+            if name not in parameters
+        }
+        if missing:
+            raise ControlContractError(
+                "workflow_preview requires parameters: "
+                + ", ".join(sorted(missing))
+            )
+        directory = parameters.get("directory")
+        if directory is not None:
+            selected_directory = _text(directory, "directory").replace(
+                "\\", "/"
+            )
+            if selected_directory.startswith("/"):
+                normalized_directory = _absolute_root(
+                    selected_directory, "directory"
+                )
+                try:
+                    PurePosixPath(normalized_directory).relative_to(
+                        PurePosixPath(repository_root)
+                    )
+                except ValueError as exc:
+                    raise PathEscapeError(
+                        "directory lies outside repository_root"
+                    ) from exc
+            else:
+                _relative_path(selected_directory, "directory")
+        source = parameters.get("prompt_source")
+        if source is not None:
+            if not isinstance(source, Mapping):
+                raise ControlContractError("prompt_source must be an object")
+            if set(source).difference(_PROMPT_SOURCE_FIELDS):
+                raise ControlContractError(
+                    "prompt_source contains unsupported fields"
+                )
+        output_mode = parameters.get("output_mode")
+        if output_mode not in (None, "markdown", "duckdb", "both"):
+            raise ControlContractError(
+                "output_mode must be markdown, duckdb, or both"
+            )
+
+    if operation is Operation.WORKFLOW_MATERIALIZE:
+        required_preview_fields = {
+            "preview_ref",
+            "preview_root",
+            "preview_repository_id",
+            "preview_tree_id",
+            "preview_objective_id",
+            "preview_objective_revision",
+            "preview_policy_id",
+            "preview_policy_revision",
+        }
+        missing = {
+            name
+            for name in required_preview_fields
+            if not parameters.get(name)
+        }
+        if missing:
+            raise ControlContractError(
+                "workflow_materialize requires preview bindings: "
+                + ", ".join(sorted(missing))
+            )
+        output_mode = parameters.get("output_mode")
+        if output_mode not in (None, "markdown", "duckdb", "both"):
+            raise ControlContractError(
+                "output_mode must be markdown, duckdb, or both"
+            )
+
+    if operation in {Operation.RESCUE_PREVIEW, Operation.RESCUE}:
+        required_incident_fields = {
+            "incident_cid",
+            "incident_root",
+            "incident_repository_id",
+            "incident_tree_id",
+            "incident_objective_id",
+            "incident_objective_revision",
+            "incident_policy_id",
+            "incident_policy_revision",
+        }
+        missing = {
+            name
+            for name in required_incident_fields
+            if not parameters.get(name)
+        }
+        if missing:
+            raise ControlContractError(
+                f"{operation.value} requires incident bindings: "
+                + ", ".join(sorted(missing))
+            )
+
+    if operation is Operation.RESCUE:
+        missing = {
+            name
+            for name in (
+                "rescue_plan_cid",
+                "rescue_plan_root",
+                "rescue_plan_incident_cid",
+                "rescue_plan_tree_id",
+            )
+            if not parameters.get(name)
+        }
+        if missing:
+            raise ControlContractError(
+                "rescue requires plan bindings: "
+                + ", ".join(sorted(missing))
+            )
+        plan_incident = parameters.get("rescue_plan_incident_cid")
+        if plan_incident not in (None, parameters.get("incident_cid")):
+            raise AuthorizationBindingError(
+                "rescue plan belongs to a different incident"
+            )
+        plan_tree = parameters.get("rescue_plan_tree_id")
+        if plan_tree not in (None, tree_id):
+            raise AuthorizationBindingError(
+                "rescue plan belongs to a different tree"
+            )
+
+    for name in (
+        "action_index",
+        "deadline_ms",
+        "expected_revision",
+        "health_window_ms",
+        "max_actions",
+    ):
+        if name in parameters:
+            _nonnegative(parameters[name], name)
+    if (
+        "max_actions" in parameters
+        and parameters["max_actions"] > 64
+    ):
+        raise ControlBoundsError("max_actions exceeds the catalog bound")
+    if "allow_llm_fallback" in parameters and not isinstance(
+        parameters["allow_llm_fallback"], bool
+    ):
+        raise ControlContractError("allow_llm_fallback must be a boolean")
+
+    binding_fields = {
+        "repository_id": repository_id,
+        "tree_id": tree_id,
+        "objective_id": objective_id,
+        "objective_revision": objective_revision,
+        "policy_id": policy_id,
+        "policy_revision": policy_revision,
+    }
+    prefixes: tuple[str, ...] = ()
+    if operation is Operation.WORKFLOW_MATERIALIZE:
+        prefixes = ("preview",)
+    elif operation in {Operation.RESCUE_PREVIEW, Operation.RESCUE}:
+        prefixes = ("incident",)
+    for prefix in prefixes:
+        for suffix, current in binding_fields.items():
+            supplied = parameters.get(f"{prefix}_{suffix}")
+            if supplied not in (None, current):
+                raise AuthorizationBindingError(
+                    f"{prefix} {suffix} does not match the current request"
+                )
 
 
 def _freeze_value(
@@ -1418,7 +1730,11 @@ class OperationRequest(_ControlCanonicalContract):
         # A dry-run mutation is allowed to *describe* mutation-shaped expected
         # effects.  Its result remains proposal-only and cannot claim any such
         # effect was applied.
-        maximum_authority = self.operation.authority
+        maximum_authority = (
+            OperationAuthority.MUTATION
+            if self.operation in DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS
+            else self.operation.authority
+        )
         for effect in effects:
             if not maximum_authority.allows(effect.authority):
                 raise AuthorityViolationError(
@@ -1454,6 +1770,17 @@ class OperationRequest(_ControlCanonicalContract):
             max_text_bytes=bounds.max_text_bytes,
         )
         object.__setattr__(self, "parameters", frozen_parameters)
+        _validate_prompt_control_parameters(
+            self.operation,
+            frozen_parameters,
+            repository_root=self.repository_root,
+            repository_id=self.repository_id,
+            tree_id=self.tree_id,
+            objective_id=self.objective_id,
+            objective_revision=self.objective_revision,
+            policy_id=self.policy_id,
+            policy_revision=self.policy_revision,
+        )
         if not isinstance(self.dry_run, bool):
             raise ControlContractError("dry_run must be a boolean")
         object.__setattr__(
@@ -2411,6 +2738,8 @@ class ControlTargetKind(str, Enum):
     CACHE = "cache"
     ARTIFACT = "artifact"
     VALIDATION = "validation"
+    WORKFLOW = "workflow"
+    INCIDENT = "incident"
 
 
 class ControlRoot(str, Enum):
@@ -2472,6 +2801,9 @@ class ControlTargetDescriptor(_ControlCanonicalContract):
                 "cache_namespace",
                 "artifact_id",
                 "validation_id",
+                "preview_ref",
+                "incident_cid",
+                "rescue_plan_cid",
             }
         )
         if not set(selectors).issubset(allowed_selector_names):
@@ -3809,6 +4141,26 @@ def _catalog_target(operation: Operation) -> ControlTargetDescriptor:
             ControlTargetKind.OBJECTIVE,
             ("repository_id", "objective_id"),
         ),
+        Operation.WORKFLOW_PREVIEW: (
+            ControlTargetKind.WORKFLOW,
+            ("repository_id", "tree_id"),
+        ),
+        Operation.WORKFLOW_MATERIALIZE: (
+            ControlTargetKind.WORKFLOW,
+            ("repository_id", "tree_id", "preview_ref"),
+        ),
+        Operation.RESTART: (
+            ControlTargetKind.SERVICE,
+            ("repository_id",),
+        ),
+        Operation.RESCUE_PREVIEW: (
+            ControlTargetKind.INCIDENT,
+            ("repository_id", "tree_id", "incident_cid"),
+        ),
+        Operation.RESCUE: (
+            ControlTargetKind.INCIDENT,
+            ("repository_id", "tree_id", "incident_cid"),
+        ),
         Operation.OBJECTIVE_REFINE: (
             ControlTargetKind.OBJECTIVE,
             ("repository_id", "objective_id"),
@@ -3889,11 +4241,16 @@ def _catalog_family(operation: Operation) -> str:
         Operation.OBJECTIVE_RECONCILE: "objective",
         Operation.BACKLOG_REFILL: "refill",
         Operation.PLAN: "plan",
+        Operation.WORKFLOW_PREVIEW: "plan",
+        Operation.WORKFLOW_MATERIALIZE: "plan",
+        Operation.RESCUE_PREVIEW: "retry",
+        Operation.RESCUE: "retry",
         Operation.RETRY: "retry",
         Operation.CANCEL: "cancel",
         Operation.QUARANTINE: "quarantine",
         Operation.ARTIFACT_QUERY: "artifact_query",
         Operation.VALIDATION_REPLAY: "validation_replay",
+        Operation.RESTART: "lifecycle",
     }
     if operation in {
         Operation.START,
@@ -3908,6 +4265,33 @@ def _catalog_family(operation: Operation) -> str:
 
 def _build_operation_catalog() -> OperationCatalog:
     query_bounds = ControlBounds()
+    operation_bounds: Mapping[Operation, ControlBounds] = MappingProxyType(
+        {
+            Operation.WORKFLOW_PREVIEW: ControlBounds(
+                max_items=512,
+                max_serialized_bytes=524_288,
+                max_depth=12,
+                max_text_bytes=65_536,
+                max_paths=256,
+                max_effects=64,
+                timeout_ms=120_000,
+            ),
+            Operation.WORKFLOW_MATERIALIZE: ControlBounds(
+                timeout_ms=120_000
+            ),
+            Operation.RESTART: ControlBounds(timeout_ms=120_000),
+            Operation.RESCUE_PREVIEW: ControlBounds(
+                max_items=512,
+                max_serialized_bytes=524_288,
+                max_depth=12,
+                max_text_bytes=65_536,
+                max_paths=256,
+                max_effects=64,
+                timeout_ms=120_000,
+            ),
+            Operation.RESCUE: ControlBounds(timeout_ms=120_000),
+        }
+    )
     cursor_operations = {
         Operation.GOALS,
         Operation.TASKS,
@@ -3982,8 +4366,11 @@ def _build_operation_catalog() -> OperationCatalog:
                 result_schema=operation_result_json_schema(operation),
                 authority=authority,
                 target_descriptor=_catalog_target(operation),
-                bounds=query_bounds,
+                bounds=operation_bounds.get(operation, query_bounds),
                 pagination=pagination,
+                # Proposal operations are already intrinsically preview-only.
+                # ``supports_dry_run`` is reserved for converting a mutation
+                # into a proposal without dispatching its handler.
                 supports_dry_run=mutation,
                 requires_idempotency=mutation,
                 requires_authorization=mutation,
@@ -7433,6 +7820,129 @@ def operation_request_json_schema(
         "maxLength": 65536,
         "pattern": "^/",
     }
+    parameter_schema: dict[str, Any] = {"type": "object"}
+    if selected in PROMPT_CONTROL_OPERATIONS:
+        allowed_parameters = _PROMPT_CONTROL_PARAMETER_FIELDS[selected]
+        integer_fields = {
+            "action_index",
+            "deadline_ms",
+            "expected_revision",
+            "health_window_ms",
+            "max_actions",
+        }
+        boolean_fields = {"allow_llm_fallback"}
+        path_fields = {"markdown_path", "duckdb_path"}
+        parameter_properties: dict[str, Any] = {
+            name: (
+                {"type": "integer", "minimum": 0}
+                if name in integer_fields
+                else (
+                    {"type": "boolean"}
+                    if name in boolean_fields
+                    else (
+                        {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 65536,
+                            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+",
+                        }
+                        if name in path_fields
+                        else {"type": "string", "minLength": 1}
+                    )
+                )
+            )
+            for name in sorted(
+                allowed_parameters.difference({"target", "prompt_source"})
+            )
+        }
+        target_fields = {
+            Operation.WORKFLOW_PREVIEW: ("repository_id", "tree_id"),
+            Operation.WORKFLOW_MATERIALIZE: (
+                "repository_id",
+                "tree_id",
+                "preview_ref",
+            ),
+            Operation.RESTART: ("repository_id",),
+            Operation.RESCUE_PREVIEW: (
+                "repository_id",
+                "tree_id",
+                "incident_cid",
+            ),
+            Operation.RESCUE: (
+                "repository_id",
+                "tree_id",
+                "incident_cid",
+            ),
+        }[selected]
+        parameter_properties["target"] = {
+            "type": "object",
+            "properties": {
+                name: {"type": "string", "minLength": 1}
+                for name in target_fields
+            },
+            "additionalProperties": False,
+        }
+        if "directory" in allowed_parameters:
+            parameter_properties["directory"] = {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$)).+",
+            }
+        if "prompt_source" in allowed_parameters:
+            parameter_properties["prompt_source"] = {
+                "type": "object",
+                "properties": {
+                    name: {"type": "string"}
+                    for name in sorted(_PROMPT_SOURCE_FIELDS)
+                },
+                "additionalProperties": False,
+            }
+        parameter_schema = {
+            "type": "object",
+            "properties": parameter_properties,
+            "required": {
+                Operation.WORKFLOW_PREVIEW: [
+                    "directory",
+                    "prompt_source",
+                ],
+                Operation.WORKFLOW_MATERIALIZE: [
+                    "preview_ref",
+                    "preview_root",
+                    "preview_repository_id",
+                    "preview_tree_id",
+                    "preview_objective_id",
+                    "preview_objective_revision",
+                    "preview_policy_id",
+                    "preview_policy_revision",
+                ],
+                Operation.RESCUE_PREVIEW: [
+                    "incident_cid",
+                    "incident_root",
+                    "incident_repository_id",
+                    "incident_tree_id",
+                    "incident_objective_id",
+                    "incident_objective_revision",
+                    "incident_policy_id",
+                    "incident_policy_revision",
+                ],
+                Operation.RESCUE: [
+                    "incident_cid",
+                    "incident_root",
+                    "incident_repository_id",
+                    "incident_tree_id",
+                    "incident_objective_id",
+                    "incident_objective_revision",
+                    "incident_policy_id",
+                    "incident_policy_revision",
+                    "rescue_plan_cid",
+                    "rescue_plan_root",
+                    "rescue_plan_incident_cid",
+                    "rescue_plan_tree_id",
+                ],
+            }.get(selected, []),
+            "additionalProperties": False,
+        }
     properties: dict[str, Any] = {
         "schema": {"const": OPERATION_REQUEST_SCHEMA},
         "schema_version": {"type": "integer", "const": CONTROL_CONTRACT_VERSION},
@@ -7464,7 +7974,7 @@ def operation_request_json_schema(
         "caller": string_id,
         "bounds": {"type": "object"},
         "expected_effects": {"type": "array", "maxItems": 64},
-        "parameters": {"type": "object"},
+        "parameters": parameter_schema,
         "dry_run": {"type": "boolean"},
         "idempotency": {"type": ["object", "null"]},
         "idempotency_key": {"type": "string"},
@@ -7742,8 +8252,10 @@ __all__ = [
     "OPERATION_RESULT_SCHEMA",
     "SCHEMA_VERSION",
     "PROPOSAL_OPERATIONS",
+    "PROMPT_CONTROL_OPERATIONS",
     "READ_OPERATIONS",
     "MUTATION_OPERATIONS",
+    "DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS",
     "Authority",
     "AuthorityLevel",
     "AuthorityViolationError",
