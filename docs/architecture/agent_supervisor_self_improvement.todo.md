@@ -4505,7 +4505,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-159 Gate prompt bootstrap and rescue with paired E2E, adversarial, chaos, rollout, and documentation
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-workflow-rollout
 - Depends on: ASI-149, ASI-152, ASI-153, ASI-158
