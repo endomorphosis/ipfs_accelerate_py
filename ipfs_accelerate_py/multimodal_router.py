@@ -456,6 +456,11 @@ _BUILTIN_PROVIDER_SPECS: Tuple[_MultimodalProviderSpec, ...] = (
 _BUILTIN_PROVIDER_SPEC_BY_NAME = {
     spec.name: spec for spec in _BUILTIN_PROVIDER_SPECS
 }
+_BUILTIN_PROVIDER_ALIAS_TO_NAME = {
+    alias: spec.name
+    for spec in _BUILTIN_PROVIDER_SPECS
+    for alias in spec.aliases
+}
 
 
 def _catalog_model_name(value: object) -> str:
@@ -625,6 +630,12 @@ def _canonical_provider_name(name: str) -> str:
     descriptors = _provider_descriptors_by_name()
     if requested in descriptors:
         return requested
+    # Preserve the invocation surface's established built-in alias precedence.
+    # A dynamic descriptor may publish the same alias, but generation has
+    # historically routed that spelling through ``_builtin_provider_by_name``.
+    builtin_name = _BUILTIN_PROVIDER_ALIAS_TO_NAME.get(requested)
+    if builtin_name is not None and builtin_name in descriptors:
+        return builtin_name
     matches = sorted(
         descriptor.name
         for descriptor in descriptors.values()
@@ -785,20 +796,28 @@ def _matches_catalog_constraints(
         ):
             return False
     if image_count is not None:
-        if isinstance(image_count, bool) or int(image_count) < 0:
+        if (
+            isinstance(image_count, bool)
+            or not isinstance(image_count, int)
+            or image_count < 0
+        ):
             raise ValueError("image_count must be a non-negative integer")
         maximum = labels.get("max_images")
-        if maximum and maximum.isdigit() and int(image_count) > int(maximum):
+        if maximum and maximum.isdigit() and image_count > int(maximum):
             return False
     if size_bytes is not None:
-        if isinstance(size_bytes, bool) or int(size_bytes) < 0:
+        if (
+            isinstance(size_bytes, bool)
+            or not isinstance(size_bytes, int)
+            or size_bytes < 0
+        ):
             raise ValueError("size_bytes must be a non-negative integer")
         known_limits = [
             capability.max_input_bytes
             for capability in capabilities
             if capability.max_input_bytes is not None
         ]
-        if known_limits and int(size_bytes) > max(known_limits):
+        if known_limits and size_bytes > max(known_limits):
             return False
     if locality is not None:
         actual = labels.get("locality")
@@ -957,14 +976,31 @@ def list_models(
         output_modality,
         field_name="output modality",
     )
+    provider_descriptors = _provider_descriptors_by_name()
     provider_names = (
         (_canonical_provider_name(provider),)
         if provider is not None
-        else tuple(sorted(_provider_descriptors_by_name()))
+        else tuple(sorted(provider_descriptors))
     )
     models = [
         model
         for provider_name in provider_names
+        if _matches_catalog_constraints(
+            provider_descriptors[provider_name],
+            operation=selected_operation,
+            input_modality=selected_input,
+            output_modality=selected_output,
+            media_type=media_type,
+            image_input_mode=image_input_mode,
+            image_count=image_count,
+            size_bytes=size_bytes,
+            streaming=streaming,
+            batching=batching,
+            locality=locality,
+            device=device,
+            authorized=authorized,
+            ready=ready,
+        )
         for model in _models_for_provider(provider_name)
     ]
     return sorted(
@@ -1120,18 +1156,54 @@ def resolve_model(
                 f"Multimodal provider {provider_name!r} has no known default "
                 "model; specify model_name explicitly"
             )
-        return known_models[0]
-    requested_key = requested_model.casefold()
-    for descriptor in known_models:
-        labels = dict(descriptor.labels)
-        invocation_name = labels.get("invocation_model", descriptor.name)
-        if requested_key in {
-            descriptor.name.casefold(),
-            str(invocation_name).casefold(),
-            *(alias.casefold() for alias in descriptor.aliases),
-        }:
-            return descriptor
-    return _model_descriptor(provider_descriptor, requested_model)
+        resolved_model = known_models[0]
+    else:
+        requested_key = requested_model.casefold()
+        resolved_model = next(
+            (
+                descriptor
+                for descriptor in known_models
+                if requested_key
+                in {
+                    descriptor.name.casefold(),
+                    str(
+                        dict(descriptor.labels).get(
+                            "invocation_model",
+                            descriptor.name,
+                        )
+                    ).casefold(),
+                    *(alias.casefold() for alias in descriptor.aliases),
+                }
+            ),
+            None,
+        )
+        if resolved_model is None:
+            resolved_model = _model_descriptor(
+                provider_descriptor,
+                requested_model,
+            )
+
+    if not _matches_catalog_constraints(
+        resolved_model,
+        operation=selected_operation,
+        input_modality=selected_input,
+        output_modality=selected_output,
+        media_type=media_type,
+        image_input_mode=image_input_mode,
+        image_count=image_count,
+        size_bytes=size_bytes,
+        streaming=streaming,
+        batching=batching,
+        locality=locality,
+        device=device,
+        authorized=authorized,
+        ready=ready,
+    ):
+        raise ValueError(
+            f"Multimodal model {resolved_model.name!r} is incompatible with "
+            "the requested constraints"
+        )
+    return resolved_model
 
 
 def get_catalog_snapshot() -> CatalogSnapshot:
@@ -1139,9 +1211,6 @@ def get_catalog_snapshot() -> CatalogSnapshot:
 
     providers = tuple(list_providers())
     models = tuple(list_models())
-    provider_by_id = {
-        provider.provider_id: provider for provider in providers
-    }
     bindings = tuple(
         RouterBinding(
             router="multimodal_router",
@@ -1158,7 +1227,7 @@ def get_catalog_snapshot() -> CatalogSnapshot:
                 )
             ),
             priority=index,
-            state=provider_by_id[model.provider_id].state,
+            state=model.state,
             provenance=_MULTIMODAL_CATALOG_PROVENANCE,
             labels={
                 "invocation_model": dict(model.labels).get(

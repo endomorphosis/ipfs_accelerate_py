@@ -334,6 +334,132 @@ def test_dynamic_alias_resolution_matches_existing_generation_selection(
     ]
 
 
+def test_dynamic_model_filters_apply_provider_and_model_constraints() -> None:
+    provider = ProviderDescriptor(
+        name="bounded_fixture",
+        aliases=("bounded_alias",),
+        capabilities=(
+            CapabilityDescriptor(
+                operations=(Operation.VISION_GENERATE,),
+                input_modalities=(Modality.IMAGE, Modality.TEXT),
+                output_modalities=(Modality.TEXT,),
+                media_types=("image/*", "text/plain"),
+                max_input_bytes=8192,
+            ),
+        ),
+        lifecycle=LifecycleState.READY,
+        state=OperationalState(
+            known=True,
+            configured=True,
+            authorized=True,
+            reachable=True,
+            healthy=True,
+            routable=True,
+        ),
+        labels={
+            "device": "cuda",
+            "locality": "local",
+        },
+    )
+    model = ModelDescriptor(
+        provider_id=provider.provider_id,
+        name="fixture/bounded-vision",
+        capabilities=(
+            CapabilityDescriptor(
+                operations=(Operation.VISION_GENERATE,),
+                input_modalities=(Modality.IMAGE, Modality.TEXT),
+                output_modalities=(Modality.TEXT,),
+                media_types=("image/*", "text/plain"),
+                max_input_bytes=4096,
+            ),
+        ),
+        lifecycle=LifecycleState.READY,
+        state=provider.state,
+        labels={"invocation_model": "fixture/bounded-vision"},
+    )
+    multimodal_router.register_multimodal_provider(
+        "bounded_fixture",
+        lambda: object(),
+        descriptor=provider,
+        models=(model,),
+    )
+
+    assert [
+        record.name
+        for record in multimodal_router.list_models(
+            "bounded_alias",
+            locality="local",
+            device="cuda",
+            size_bytes=4096,
+            ready=True,
+        )
+    ] == ["fixture/bounded-vision"]
+    assert (
+        multimodal_router.list_models(
+            "bounded_fixture",
+            locality="remote",
+        )
+        == []
+    )
+    assert (
+        multimodal_router.list_models(
+            "bounded_fixture",
+            device="cpu",
+        )
+        == []
+    )
+    assert (
+        multimodal_router.list_models(
+            "bounded_fixture",
+            size_bytes=4097,
+        )
+        == []
+    )
+    with pytest.raises(ValueError, match="model .* incompatible"):
+        multimodal_router.resolve_model(
+            "fixture/bounded-vision",
+            provider="bounded_fixture",
+            size_bytes=4097,
+        )
+
+
+def test_builtin_alias_precedence_is_deterministic_on_dynamic_collision() -> None:
+    collision = ProviderDescriptor(
+        name="alias_collision_fixture",
+        aliases=("gpt4o",),
+    )
+    multimodal_router.register_multimodal_provider(
+        collision.name,
+        lambda: object(),
+        descriptor=collision,
+    )
+
+    assert multimodal_router.get_provider_descriptor("gpt4o").name == "openai"
+    assert (
+        multimodal_router.get_provider_descriptor(
+            "alias_collision_fixture"
+        ).aliases
+        == ("gpt4o",)
+    )
+
+
+@pytest.mark.parametrize(
+    ("constraint", "value"),
+    (
+        ("image_count", 1.5),
+        ("image_count", True),
+        ("size_bytes", "1024"),
+        ("size_bytes", False),
+    ),
+)
+def test_numeric_constraints_reject_non_integer_values(
+    constraint: str,
+    value: object,
+) -> None:
+    with pytest.raises(ValueError, match="non-negative integer"):
+        multimodal_router.list_providers(**{constraint: value})
+
+
 def test_dynamic_registration_and_snapshot_order_are_deterministic() -> None:
     def factory() -> object:
         raise AssertionError("factory should not be called")
