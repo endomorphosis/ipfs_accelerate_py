@@ -23,6 +23,7 @@ architecture:
 | Counterexample-guided repair | `formal_replanner.py` (`REF-289`) | Typed, bounded repair rules produce content-addressed candidates and compact Codex packets. Retry, refinement, candidate, changed-record, and prompt budgets prevent unbounded replanning. |
 | Proof-carrying execution | `proof_carrying_planner.py` (`REF-293`) | Compile, verify, implement, scope-check, merge, monitor, and repair nodes run as a durable DAG with paired JSON/DuckDB state. The workflow is replayable and only completes when required assurance is present. |
 | Rollout measurement and gates | `formal_planning_metrics.py`, `formal_planning_rollout.py` (`REF-294`) | Cold/warm/parallel benchmark samples measure context reduction, defect detection, proof support, counterexample quality, cache reuse, queue latency, CPU, memory, and throughput before promotion. |
+| Prompt bootstrap and rescue gate | `prompt_workflow.py`, `prompt_workflow_benchmark.py`, `prompt_workflow_rollout.py` (`ASI-159` / `ASI-G470`) | Frozen prompt/repository fixtures prove Markdown/DuckDB/both and Python/CLI/script/MCP parity; adversarial and chaos populations reject scope/secret/identity/SQL/process/policy/authority/completion escapes; off/shadow/assist/automatic promotion requires a later fresh-root evaluation with immediate rollback. |
 
 ## Stable control surface and operating model
 
@@ -450,6 +451,30 @@ for Python, CLI-shaped, and MCP-shaped calls. All three support `off`,
 The benchmark and rollout modules publish
 `PROOF_DIRECTED_ROLLOUT_REQUIREMENT_ID` evidence, not a permit, mutation, or
 completion receipt.
+
+#### Prompt bootstrap and rescue rollout
+
+`prompt_workflow_benchmark.py` and `prompt_workflow_rollout.py` own the
+ASI-159 / ASI-G470 gate. One frozen prompt/repository population must produce
+identical admitted task CIDs, ready sets, accepted effects, and terminal
+outcomes across deterministic and model planning, Markdown/DuckDB/both
+projections, and Python/CLI/script/MCP surfaces. The adversarial population
+covers prompt and repository injection, path/symlink escape, secret leakage,
+forged CID, schema downgrade, SQL injection, PID reuse, process escape, policy
+weakening, authorization and permit forgery, completion forgery, mandatory
+evidence omission, stale preview, cross-repository replay, and shell rescue
+proposals. Chaos receipts inject crashes before and after every
+materialization, lifecycle, and rescue intent/effect/receipt boundary and
+require resume, compensate, or quarantine without escape.
+
+`PromptWorkflowRolloutMode` is `off`, `shadow`, `assist`, or `automatic`.
+Automatic requires an approving policy for
+`behavior:prompt-workflow-bootstrap-rescue@1` and a later distinct current-root
+evaluation; binding, safety, population, or metric regression returns only the
+affected behavior to `shadow`. `PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID`
+identifies the evidence. The report is never a mutation permit or completion
+receipt. A separate fresh-root evaluation is required before automatic
+promotion.
 
 ### Metrics, failure recovery, and self-refill epochs
 
@@ -1319,6 +1344,13 @@ many modules intentionally participate in more than one group.
 `context_compiler.py`, `ir_constraint_compiler.py`, `execution_permit.py`,
 `runtime_cas.py`, `decision_runtime.py`, `decision_runtime_benchmark.py`,
 `decision_runtime_rollout.py`.
+
+**Prompt bootstrap, task sources, lifecycle, and rescue:**
+`prompt_workflow.py`, `prompt_directory_scanner.py`, `prompt_goal_planner.py`,
+`prompt_plan_admission.py`, `task_source.py`, `markdown_task_source.py`,
+`duckdb_task_source.py`, `lifecycle_orchestrator.py`,
+`rescue_orchestrator.py`, `rescue_planner.py`, `recovery_diagnostics.py`,
+`prompt_workflow_benchmark.py`, `prompt_workflow_rollout.py`.
 
 **Proof scope, providers, and assurance:** `code_proof_obligations.py`,
 `proof_obligation_templates.py`, `proof_context.py`, `proof_scope_index.py`,
