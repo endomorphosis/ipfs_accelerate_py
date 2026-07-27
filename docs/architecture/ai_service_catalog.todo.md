@@ -208,7 +208,7 @@ Program invariants:
 
 ## AICAT-008 Assemble router and metadata sources into AIServiceCatalog
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
