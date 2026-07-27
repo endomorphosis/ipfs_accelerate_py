@@ -1638,7 +1638,14 @@ def test_manifest_references_full_planning_graphs_without_embedding_them(tmp_pat
         assert not _MANIFEST_GRAPH_FIELDS.intersection(bundle_payload)
         assert bundle_payload["planning_evidence_ref"]["bundle_key"] == "objective/test/t-1"
     assert len(json.dumps(index_payload)) > 65_000
-    assert len(json.dumps(manifest)) < 30_000
+    rendered_manifest = json.dumps(manifest)
+    # The live manifest has grown as authoritative scheduling, resource, and
+    # task-work-contract evidence was added. Its absolute size is therefore
+    # not the graph-compaction contract. Prove instead that none of the large
+    # source-only planning payloads leaked into any manifest projection.
+    assert "d" * 20_000 not in rendered_manifest
+    assert "c" * 10_000 not in rendered_manifest
+    assert "p" * 5_000 not in rendered_manifest
 
 
 def test_leased_lane_publishes_terminal_and_blocked_projection(tmp_path: Path) -> None:
