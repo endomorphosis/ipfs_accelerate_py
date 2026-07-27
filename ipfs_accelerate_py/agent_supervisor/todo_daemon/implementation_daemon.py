@@ -1382,7 +1382,15 @@ class PortalTaskState:
                     if isinstance(value, list)
                 },
                 task_identities={
-                    str(key): {str(item_key): str(item_value) for item_key, item_value in value.items()}
+                    str(key): {
+                        str(item_key): (
+                            int(item_value)
+                            if str(item_key) == "identity_version"
+                            and str(item_value).isdigit()
+                            else str(item_value)
+                        )
+                        for item_key, item_value in value.items()
+                    }
                     for key, value in (payload.get("task_identities") or {}).items()
                     if isinstance(value, dict)
                 },

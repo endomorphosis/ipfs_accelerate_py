@@ -511,3 +511,53 @@ def test_drained_board_ten_minute_logical_fixture_uses_under_two_percent_cpu_and
         for result in results
     )
     assert {path: _file_identity(path) for path in durable_paths} == before
+
+
+def test_idle_populated_board_does_not_rewrite_typed_task_identities(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text(
+        """# Stable board
+
+## TASK-001 Completed task
+
+- Status: completed
+- Outputs: src/completed.py
+- Acceptance: The completed output remains represented.
+
+## TASK-002 Operator-blocked task
+
+- Status: blocked
+- Outputs: src/blocked.py
+- Acceptance: An operator must explicitly release this task.
+""",
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=board,
+        state_path=tmp_path / "runtime" / "state.json",
+        strategy_path=tmp_path / "runtime" / "strategy.json",
+        events_path=tmp_path / "runtime" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        worktree_pool_enabled=False,
+        validation_cache_dir=tmp_path / "runtime" / "validation-cache",
+        merge_queue_dir=tmp_path / "runtime" / "merge-queue",
+    )
+
+    first = daemon.run_once()
+    durable_paths = (
+        daemon.state_path,
+        daemon.events_path,
+        daemon.runtime_checkpoint_path,
+    )
+    before = {path: _file_identity(path) for path in durable_paths}
+    second = daemon.run_once()
+
+    assert first["completed_count"] == 1
+    assert first["blocked_count"] == 1
+    assert second["unchanged"] is True
+    assert second["write_count"] == 0
+    assert second["projection_delta"] == {}
+    assert {path: _file_identity(path) for path in durable_paths} == before
