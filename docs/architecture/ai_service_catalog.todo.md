@@ -333,7 +333,7 @@ Program invariants:
 
 ## AICAT-013 Add MCP catalog query and resolution tools
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
