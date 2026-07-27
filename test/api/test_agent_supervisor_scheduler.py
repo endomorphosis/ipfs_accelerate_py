@@ -8,9 +8,12 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Barrier
 from typing import Any
+
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
 from ipfs_accelerate_py.agent_supervisor.artifact_store import query_artifact
@@ -116,13 +119,6 @@ class _FakeLauncher:
 class _StubbornFakeProcess(_FakeProcess):
     def terminate(self) -> None:
         self.terminate_calls += 1
-
-
-class _StubbornFakeLauncher(_FakeLauncher):
-    def __call__(self, lane: Any, grant: Any) -> _StubbornFakeProcess:
-        process = _StubbornFakeProcess(pid=10_000 + len(self.starts))
-        self.starts.append((lane, grant, process))
-        return process
 
 
 def _scheduler(
@@ -897,6 +893,66 @@ def test_two_scheduler_processes_with_same_did_do_not_share_one_grant(tmp_path: 
     assert peer_manifest["counts"]["blocked"] == 1
 
 
+def test_restarted_scheduler_reserves_capacity_for_same_claimant_untracked_lease(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1", "T-2")
+    owner_launcher = _FakeLauncher()
+    replacement_launcher = _FakeLauncher()
+    owner = _scheduler(
+        tmp_path,
+        index,
+        owner_launcher,
+        max_lanes=1,
+        manifest_name="owner.json",
+    )
+    replacement = _scheduler(
+        tmp_path,
+        index,
+        replacement_launcher,
+        max_lanes=1,
+        manifest_name="replacement.json",
+    )
+
+    owner.reconcile_once()
+    owner_lane, owner_grant, owner_process = owner_launcher.starts[0]
+    assert owner_lane.task_ids == ["T-1"]
+
+    held = replacement.reconcile_once()
+
+    assert replacement_launcher.starts == []
+    assert held["resource_schedule"]["host"]["active_workers"] == 1
+    assert held["resource_schedule"]["host"]["available_worker_capacity"] == 0
+    t2_decision = next(
+        item
+        for item in held["scheduler_decisions"]
+        if item["bundle_key"].endswith("t-2")
+    )
+    assert t2_decision["reason"] == "host_worker_capacity"
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        accepted = [
+            item
+            for item in coordinator.list_tasks()
+            if item["state"] == "accepted"
+        ]
+        assert [item["task_cid"] for item in accepted] == [owner_grant.task_cid]
+        coordinator.receipt(
+            owner_grant,
+            status="succeeded",
+            output={"reason": "predecessor wrapper fenced and completed"},
+        )
+    owner_process.finish(returncode=0)
+
+    released = replacement.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in replacement_launcher.starts] == [
+        ["T-2"]
+    ]
+    assert released["counts"]["active"] == 1
+
+
 def test_restarted_scheduler_defers_to_predecessor_wrapper_before_starting_dependent(
     tmp_path: Path,
 ) -> None:
@@ -1336,7 +1392,7 @@ def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path:
 
     initial = scheduler.reconcile_once()
     assert initial["counts"]["active"] == 1
-    lane = launcher.starts[0][0]
+    lane, grant, process = launcher.starts[0]
     lane.state_dir.mkdir(parents=True, exist_ok=True)
     (lane.state_dir / f"{lane.state_prefix}_task_state.json").write_text(
         json.dumps(
@@ -1352,21 +1408,29 @@ def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path:
         encoding="utf-8",
     )
 
-    stopping = scheduler.reconcile_once()
+    retained = scheduler.reconcile_once()
 
-    assert stopping["counts"]["active"] == 1
-    assert launcher.starts[0][2].terminate_calls == 1
-    assert launcher.starts[0][2].wait_calls == 0
-    assert launcher.starts[0][2].kill_calls == 0
-    assert stopping["lanes"][0]["state"] == "stopping"
+    assert retained["counts"]["active"] == 1
+    assert process.terminate_calls == 0
+    assert process.wait_calls == 0
+    assert process.kill_calls == 0
+    assert retained["lanes"][0]["state"] == "running"
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
-        assert coordinator.active_lease(launcher.starts[0][1].task_cid) is not None
+        assert coordinator.active_lease(grant.task_cid) is not None
+        assert coordinator.list_receipts(grant.task_cid) == []
+        coordinator.receipt(
+            grant,
+            status="failed",
+            failure_class="blocked",
+            output={"reason": "leased wrapper fenced terminal block"},
+        )
+    process.finish(returncode=leased_lane_module.FENCED_EXIT_CODE)
 
     settled = scheduler.reconcile_once()
 
     assert settled["counts"]["active"] == 0
-    assert launcher.starts[0][2].wait_calls == 1
-    assert launcher.starts[0][2].kill_calls == 0
+    assert process.wait_calls == 1
+    assert process.kill_calls == 0
     # The first release remains retryable; repeated state-aware admission
     # consumes the bounded attempt budget without spawning another worker.
     for _ in range(3):
@@ -1384,7 +1448,7 @@ def test_attempt_exhausted_idle_state_reaps_lane_but_ordinary_idle_persists(
     repo = tmp_path / "repo"
     index = repo / "index.json"
     _write_index(index, "T-1")
-    launcher = _StubbornFakeLauncher()
+    launcher = _FakeLauncher()
     scheduler = _scheduler(tmp_path, index, launcher)
 
     initial = scheduler.reconcile_once()
@@ -1423,11 +1487,11 @@ def test_attempt_exhausted_idle_state_reaps_lane_but_ordinary_idle_persists(
     idle_state["selection_idle_reason"] = TASK_ATTEMPT_LIMIT_IDLE_REASON
     state_path.write_text(json.dumps(idle_state), encoding="utf-8")
 
-    stopping = scheduler.reconcile_once()
+    retained = scheduler.reconcile_once()
 
-    assert stopping["counts"]["active"] == 1
-    assert stopping["reaped_task_cids"] == []
-    assert process.terminate_calls == 1
+    assert retained["counts"]["active"] == 1
+    assert retained["reaped_task_cids"] == []
+    assert process.terminate_calls == 0
     assert process.wait_calls == 0
     assert process.alive
     assert len(launcher.starts) == 1
@@ -1436,19 +1500,25 @@ def test_attempt_exhausted_idle_state_reaps_lane_but_ordinary_idle_persists(
         assert coordinator.active_lease(grant.task_cid) is not None
         assert coordinator.list_receipts(grant.task_cid) == []
 
-    still_stopping = scheduler.reconcile_once()
+    still_retained = scheduler.reconcile_once()
 
-    assert still_stopping["counts"]["active"] == 1
-    assert still_stopping["reaped_task_cids"] == []
-    assert process.terminate_calls == 1
+    assert still_retained["counts"]["active"] == 1
+    assert still_retained["reaped_task_cids"] == []
+    assert process.terminate_calls == 0
     assert process.wait_calls == 0
     assert process.alive
     assert scheduler.resource_scheduler.active_leases
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
         assert coordinator.active_lease(grant.task_cid) is not None
         assert coordinator.list_receipts(grant.task_cid) == []
+        coordinator.receipt(
+            grant,
+            status="failed",
+            failure_class="blocked",
+            output={"reason": "leased wrapper fenced attempt-exhausted slice"},
+        )
 
-    process.finish(returncode=-signal.SIGTERM)
+    process.finish(returncode=leased_lane_module.FENCED_EXIT_CODE)
     exhausted = scheduler.reconcile_once()
 
     assert exhausted["counts"]["active"] == 0
@@ -1654,19 +1724,28 @@ def test_transitively_blocked_waiting_tasks_release_an_idle_lane(tmp_path: Path)
         encoding="utf-8",
     )
 
-    stopping = scheduler.reconcile_once()
+    grant = launcher.starts[0][1]
+    process = launcher.starts[0][2]
+    retained = scheduler.reconcile_once()
 
-    assert stopping["counts"]["active"] == 1
-    assert launcher.starts[0][2].terminate_calls == 1
-    assert launcher.starts[0][2].wait_calls == 0
+    assert retained["counts"]["active"] == 1
+    assert process.terminate_calls == 0
+    assert process.wait_calls == 0
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
-        assert coordinator.active_lease(launcher.starts[0][1].task_cid) is not None
-        assert coordinator.list_receipts(launcher.starts[0][1].task_cid) == []
+        assert coordinator.active_lease(grant.task_cid) is not None
+        assert coordinator.list_receipts(grant.task_cid) == []
+        coordinator.receipt(
+            grant,
+            status="failed",
+            failure_class="blocked",
+            output={"reason": "leased wrapper fenced transitive block"},
+        )
+    process.finish(returncode=leased_lane_module.FENCED_EXIT_CODE)
 
     settled = scheduler.reconcile_once()
 
     assert settled["counts"]["active"] == 0
-    assert launcher.starts[0][2].wait_calls == 1
+    assert process.wait_calls == 1
     assert len(launcher.starts) == 1
 
 
@@ -1949,6 +2028,203 @@ def test_leased_lane_publishes_terminal_and_blocked_projection(tmp_path: Path) -
             eligible_task_cids=(blocked_grant.task_cid,),
             requested_lease_ms=5_000,
         ) is None
+
+
+@pytest.mark.parametrize("attempt_exhausted", [False, True])
+def test_untracked_leased_lane_self_fences_fresh_exact_blocked_slice(
+    monkeypatch,
+    tmp_path: Path,
+    attempt_exhausted: bool,
+) -> None:
+    coordination = tmp_path / "coordination.sqlite3"
+    phase_state = tmp_path / "phase-state.json"
+    events_path = tmp_path / "events.jsonl"
+    task_id = "T-ATTEMPT-LIMIT" if attempt_exhausted else "T-BLOCKED-SLICE"
+    task_cid = profile_g_cid({"member": task_id})
+    bundle = {
+        "bundle_key": f"objective/test/{task_id.lower()}",
+        "tasks": [
+            {
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+            }
+        ],
+        "execution_slice_task_ids": [task_id],
+        "execution_slice_task_cids": [task_cid],
+        "max_attempts": 1,
+    }
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(bundle)
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:restarted-wrapper.example",
+            requested_lease_ms=5_000,
+        )
+
+    status = "ready" if attempt_exhausted else "blocked"
+    idle_reason = (
+        TASK_ATTEMPT_LIMIT_IDLE_REASON
+        if attempt_exhausted
+        else ""
+    )
+    ready_count = int(attempt_exhausted)
+    blocked_count = int(not attempt_exhausted)
+
+    def write_projection(canonical_task_cid: str) -> None:
+        phase_state.write_text(
+            json.dumps(
+                {
+                    "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                    "active_task_id": "",
+                    "implementation_in_progress": False,
+                    "completed_task_ids": [],
+                    "completed_count": 0,
+                    "ready_count": ready_count,
+                    "waiting_count": 0,
+                    "blocked_count": blocked_count,
+                    "selectable_ready_count": 0,
+                    "selection_idle_reason": idle_reason,
+                    "task_statuses": {task_id: status},
+                    "task_identities": {
+                        task_id: {
+                            "canonical_task_cid": canonical_task_cid,
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def append_pass(canonical_task_cid: str) -> None:
+        append_jsonl_event(
+            events_path,
+            "daemon_pass",
+            {
+                "active_task_id": "",
+                "completed_count": 0,
+                "ready_count": ready_count,
+                "waiting_count": 0,
+                "blocked_count": blocked_count,
+                "selectable_ready_count": 0,
+                "selection_idle_reason": idle_reason,
+                "attempt_limited_task_ids": (
+                    [task_id] if attempt_exhausted else []
+                ),
+                "execution_slice_task_statuses": {task_id: status},
+                "execution_slice_task_cids_by_id": {
+                    task_id: canonical_task_cid,
+                },
+            },
+        )
+
+    class Process:
+        pid = 43_210
+        returncode: int | None = None
+        poll_calls = 0
+        tree_fenced = False
+
+        def poll(self):
+            self.poll_calls += 1
+            if self.poll_calls == 2:
+                wrong_cid = profile_g_cid({"wrong-member": task_id})
+                write_projection(wrong_cid)
+                append_pass(wrong_cid)
+            elif self.poll_calls == 3:
+                # Exact state without its later fsynced daemon pass remains
+                # non-authoritative.
+                write_projection(task_cid)
+            elif self.poll_calls == 4:
+                append_pass(task_cid)
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+
+    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
+        assert candidate is process
+        assert fence_descendants is True
+        candidate.tree_fenced = True
+        candidate.returncode = -signal.SIGTERM
+
+    monkeypatch.setattr(
+        leased_lane_module.subprocess,
+        "Popen",
+        lambda _command, **_kwargs: process,
+    )
+    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        phase_state_path=phase_state,
+        completion_events_path=events_path,
+        expected_task_ids=(task_id,),
+        expected_task_cids_by_id={task_id: task_cid},
+    )
+
+    assert process.poll_calls >= 4
+    assert process.tree_fenced is True
+    assert result.disposition == "blocked"
+    assert result.exit_code == leased_lane_module.FENCED_EXIT_CODE
+    assert result.child_exit_code == -signal.SIGTERM
+    with LeaseCoordinator(coordination) as coordinator:
+        assert coordinator.active_lease(grant.task_cid) is None
+        receipts = coordinator.list_receipts(grant.task_cid)
+    assert len(receipts) == 1
+    assert receipts[0]["receipt"]["status"] == "failed"
+    assert receipts[0]["receipt"]["failure_class"] == "blocked"
+
+
+def test_exact_execution_slice_exit_zero_without_completion_evidence_fails(
+    tmp_path: Path,
+) -> None:
+    coordination = tmp_path / "coordination.sqlite3"
+    task_id = "T-NO-COMPLETION-EVIDENCE"
+    task_cid = profile_g_cid({"member": task_id})
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(
+            {
+                "bundle_key": "objective/test/no-completion-evidence",
+                "tasks": [
+                    {
+                        "task_id": task_id,
+                        "canonical_task_cid": task_cid,
+                    }
+                ],
+                "execution_slice_task_ids": [task_id],
+                "execution_slice_task_cids": [task_cid],
+            }
+        )
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:exact-slice-worker.example",
+            requested_lease_ms=5_000,
+        )
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        expected_task_ids=(task_id,),
+        expected_task_cids_by_id={task_id: task_cid},
+    )
+
+    assert result.successful is False
+    assert result.disposition == "failed"
+    assert result.exit_code == leased_lane_module.FENCED_EXIT_CODE
+    assert result.child_exit_code == 0
+    with LeaseCoordinator(coordination) as coordinator:
+        receipts = coordinator.list_receipts(grant.task_cid)
+    assert len(receipts) == 1
+    assert receipts[0]["receipt"]["status"] == "failed"
+    assert receipts[0]["receipt"]["failure_class"] == "retryable"
 
 
 def test_leased_lane_fails_retryably_when_child_runs_outside_execution_slice(

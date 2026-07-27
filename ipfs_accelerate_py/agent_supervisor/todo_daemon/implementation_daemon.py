@@ -5443,18 +5443,21 @@ class PortalImplementationDaemon:
                     "attempt_limited_task_ids": [
                         item["task_id"] for item in attempt_limited_tasks
                     ],
-                    "retry_budget_reset_task_ids": [
-                        item["source_task_id"] for item in retry_budget_resets
-                    ],
-                    "retry_budget_reset_deferred_task_ids": [
-                        item["source_task_id"]
-                        for item in retry_budget_reset_deferred
-                    ],
-                    "protected_path_conflicts": {
-                        task_id: list(conflicts)
-                        for task_id, conflicts in sorted(
-                            protected_path_conflicts_by_task.items()
+                    "execution_slice_task_statuses": {
+                        task.task_id: str(
+                            state.task_statuses.get(task.task_id) or ""
                         )
+                        for task in execution_tasks
+                    },
+                    "execution_slice_task_cids_by_id": {
+                        task.task_id: str(
+                            (
+                                state.task_identities.get(task.task_id)
+                                or {}
+                            ).get("canonical_task_cid")
+                            or ""
+                        )
+                        for task in execution_tasks
                     },
                     "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
                     "shared_completed_task_ids": sorted(shared_completed_task_ids),

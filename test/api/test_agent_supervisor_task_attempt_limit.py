@@ -118,6 +118,14 @@ def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
             "attempt_count": 1,
         }
     ]
+    daemon_pass = events[-1]
+    assert daemon_pass["type"] == "daemon_pass"
+    assert daemon_pass["execution_slice_task_statuses"] == {
+        "TASK-001": "ready",
+    }
+    assert daemon_pass["execution_slice_task_cids_by_id"] == {
+        "TASK-001": canonical_task_cid,
+    }
 
 
 def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(

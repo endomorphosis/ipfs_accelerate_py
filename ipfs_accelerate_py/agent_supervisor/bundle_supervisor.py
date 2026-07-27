@@ -1667,8 +1667,6 @@ class RunningBundleLane:
     started_at: str
     resource_lease: ResourceAdmissionLease | None = None
     resource_stage_started_at: str = ""
-    stop_requested_at: str = ""
-    stop_reason: str = ""
 
     def __post_init__(self) -> None:
         if not self.resource_stage_started_at:
@@ -1683,12 +1681,10 @@ class RunningBundleLane:
         payload = _lane_manifest_payload(self.spec, repo_root=repo_root)
         payload.update(
             {
-                "state": "stopping" if self.stop_requested_at else "running",
+                "state": "running",
                 "pid": self.pid,
                 "started_at": self.started_at,
                 "resource_stage_started_at": self.resource_stage_started_at,
-                "stop_requested_at": self.stop_requested_at,
-                "stop_reason": self.stop_reason,
                 "lease": self.grant.to_dict(),
                 "resource_lease": (
                     {
@@ -1711,12 +1707,10 @@ class RunningBundleLane:
         payload = _lane_database_payload(self.spec, repo_root=repo_root)
         payload.update(
             {
-                "state": "stopping" if self.stop_requested_at else "running",
+                "state": "running",
                 "pid": self.pid,
                 "started_at": self.started_at,
                 "resource_stage_started_at": self.resource_stage_started_at,
-                "stop_requested_at": self.stop_requested_at,
-                "stop_reason": self.stop_reason,
                 "lease": self.grant.to_dict(),
                 "resource_lease": (
                     self.resource_lease.to_dict()
@@ -3615,12 +3609,21 @@ class DynamicBundleScheduler:
     def running_count(self) -> int:
         return len(self._running)
 
-    def _sample_host_resources(self) -> HostResourceSnapshot | dict[str, Any]:
+    def _sample_host_resources(
+        self,
+        *,
+        active_workers: int | None = None,
+    ) -> HostResourceSnapshot | dict[str, Any]:
         source = self._host_resource_source
+        accounted_active_workers = (
+            len(self._running)
+            if active_workers is None
+            else max(0, int(active_workers))
+        )
         try:
             return source(
                 self.state_root,
-                active_workers=len(self._running),
+                active_workers=accounted_active_workers,
                 worker_limit=self.max_lanes,
                 active_phase="scheduler",
             )
@@ -3743,8 +3746,6 @@ class DynamicBundleScheduler:
 
         canonical_stages = set(ADAPTIVE_STAGES)
         for task_cid, running in list(self._running.items()):
-            if running.stop_requested_at:
-                continue
             lease = running.resource_lease
             if lease is None:
                 continue
@@ -4324,19 +4325,6 @@ class DynamicBundleScheduler:
         return {}
 
     @staticmethod
-    def _request_handle_termination(handle: Any) -> bool:
-        """Request cooperative wrapper shutdown without waiting or killing."""
-
-        terminate = getattr(handle, "terminate", None)
-        if not callable(terminate):
-            return False
-        try:
-            terminate()
-        except OSError:
-            return False
-        return True
-
-    @staticmethod
     def _reap_exited_handle(handle: Any) -> bool:
         """Collect an already-exited wrapper without sending it a signal."""
 
@@ -4385,22 +4373,11 @@ class DynamicBundleScheduler:
                 alive = bool(self._process_alive(running.handle))
             except (OSError, RuntimeError):
                 alive = False
-            disposition = self._disposition(running.spec) if alive else ""
             if alive:
-                if running.stop_requested_at:
-                    # A blocked wrapper owns the lease and resource slot until
-                    # its later, independently observed exit. Repeated signals
-                    # could interrupt the wrapper's descendant fence.
-                    continue
-                if disposition == "blocked":
-                    if self._request_handle_termination(running.handle):
-                        running.stop_requested_at = utc_now()
-                        running.stop_reason = disposition
-                    continue
-                # todo_status_updated reaches the mutable board before its
-                # fsynced member receipt is necessarily visible. Let a
-                # completed wrapper observe both, fence descendants, publish
-                # its receipt, and exit before releasing scheduler capacity.
+                # Mutable completed/blocked projections are deliberately
+                # non-authoritative. The leased wrapper binds exact durable
+                # evidence, fences descendants, publishes its receipt, and
+                # exits before scheduler capacity can be released.
                 continue
 
             # ``process_alive`` has independently observed wrapper exit. Reap
@@ -4779,6 +4756,14 @@ class DynamicBundleScheduler:
                     if self._projection_state(item) == "accepted"
                     and str(item.get("task_cid") or "")
                 }
+                accounted_worker_task_cids = set(self._running)
+                accounted_worker_task_cids.update(
+                    task_cid
+                    for task_cid, accepted in accepted_by_task_cid.items()
+                    if str(accepted.get("claimant_did") or "")
+                    == self.claimant_did
+                )
+                accounted_active_workers = len(accounted_worker_task_cids)
                 registered: list[BundleLaneSpec] = []
                 for lane in (item for item in discovered if item.queue_payload):
                     policy_error = _lane_launch_policy_error(lane)
@@ -4933,13 +4918,18 @@ class DynamicBundleScheduler:
                     )
                 ]
                 try:
-                    host_resources = self._sample_host_resources()
+                    host_resources = self._sample_host_resources(
+                        active_workers=accounted_active_workers,
+                    )
                 except Exception:
                     logger.exception("Host resource sampling failed; retaining configured bounds")
                     host_resources = HostResourceSnapshot(
-                        active_workers=len(self._running),
+                        active_workers=accounted_active_workers,
                         worker_limit=self.max_lanes,
-                        available_worker_capacity=max(0, self.max_lanes - len(self._running)),
+                        available_worker_capacity=max(
+                            0,
+                            self.max_lanes - accounted_active_workers,
+                        ),
                     )
                 try:
                     provider_capacities = self._provider_capacities(coordinator)
@@ -4962,7 +4952,7 @@ class DynamicBundleScheduler:
                     host=host_resources,
                     providers=provider_capacities,
                     path=self.state_root,
-                    active_workers=len(self._running),
+                    active_workers=accounted_active_workers,
                 )
                 confirmed_requirements: list[LaneResourceRequirements] = []
                 resource_cycle_decisions: list[AdmissionDecision] = []

@@ -944,10 +944,28 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
                         "time.sleep(60)"
                     ),
                     str(child_pid_paths[task_id]),
-                ]
-                if task_id == "RES-1"
-                else [sys.executable, "-c", "pass"]
-            )
+                    ]
+                    if task_id == "RES-1"
+                    else [
+                        sys.executable,
+                        "-c",
+                        (
+                            "import json,pathlib,sys;"
+                            "from datetime import datetime,timezone;"
+                            "pathlib.Path(sys.argv[1]).write_text(json.dumps({"
+                            "'heartbeat_at':datetime.now(timezone.utc).isoformat(),"
+                            "'active_task_id':'',"
+                            "'implementation_in_progress':False,"
+                            "'completed_task_ids':[sys.argv[2]],"
+                            "'task_identities':{sys.argv[2]:{"
+                            "'canonical_task_cid':sys.argv[3]}}"
+                            "}),encoding='utf-8')"
+                        ),
+                        str(self.phase_state_path),
+                        task_id,
+                        self.lane.expected_task_cids_by_id[task_id],
+                    ]
+                )
             try:
                 self.result = run_leased_lane_result(
                     coordination_path=repo / "coordination.sqlite3",

@@ -221,6 +221,14 @@ def _execution_slice_violation(
 _MEMBER_COMPLETION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
 )
+_TASK_ATTEMPT_LIMIT_IDLE_REASON = (
+    "all_selectable_ready_tasks_reached_max_task_attempts"
+)
+
+
+def _normalized_task_status(value: Any) -> str:
+    status = str(value or "").strip().lower()
+    return "completed" if status == "complete" else status
 
 
 def _expected_task_identity_map(
@@ -383,6 +391,202 @@ def _fresh_durable_member_completion_receipts(
         "completion_receipt_boundary": "durable_event_log",
         "completion_events_path": str(events_path),
         "completion_event_ids": sorted(event_ids),
+    }
+
+
+def _fresh_durable_terminal_blocked_pass(
+    events_path: Path,
+    state: Mapping[str, Any],
+    *,
+    expected_task_cids_by_id: Mapping[str, str],
+    expected_task_statuses: Mapping[str, str],
+    expected_attempt_limited_task_ids: frozenset[str],
+    started_at_ms: int,
+    heartbeat_at_ms: int,
+) -> dict[str, Any] | None:
+    """Bind terminal-blocked phase state to a later fsynced daemon pass."""
+
+    matched: dict[str, Any] | None = None
+    count_fields = (
+        "completed_count",
+        "ready_count",
+        "waiting_count",
+        "blocked_count",
+        "selectable_ready_count",
+    )
+    for source in event_log_sources((events_path,), include_rotated=True):
+        for event in read_jsonl_events(source):
+            if str(event.get("type") or "") != "daemon_pass":
+                continue
+            event_at_ms = _timestamp_ms(event.get("timestamp"))
+            if (
+                event_at_ms is None
+                or event_at_ms < int(started_at_ms)
+                or event_at_ms < int(heartbeat_at_ms)
+            ):
+                continue
+            if str(event.get("active_task_id") or "").strip():
+                continue
+            if any(
+                int(event.get(field) or 0) != int(state.get(field) or 0)
+                for field in count_fields
+            ):
+                continue
+            state_idle_reason = str(state.get("selection_idle_reason") or "")
+            if str(event.get("selection_idle_reason") or "") != state_idle_reason:
+                continue
+            event_task_cids = event.get("execution_slice_task_cids_by_id")
+            event_task_statuses = event.get("execution_slice_task_statuses")
+            if not isinstance(event_task_cids, Mapping) or not isinstance(
+                event_task_statuses,
+                Mapping,
+            ):
+                continue
+            if any(
+                str(event_task_cids.get(task_id) or "").strip() != task_cid
+                or _normalized_task_status(event_task_statuses.get(task_id))
+                != expected_task_statuses[task_id]
+                for task_id, task_cid in expected_task_cids_by_id.items()
+            ):
+                continue
+            limited_ids = frozenset(
+                str(task_id).strip()
+                for task_id in (event.get("attempt_limited_task_ids") or ())
+                if str(task_id).strip()
+            )
+            if not expected_attempt_limited_task_ids.issubset(limited_ids):
+                continue
+            matched = {
+                "terminal_evidence_boundary": "durable_daemon_pass",
+                "terminal_events_path": str(events_path),
+                "terminal_event_id": str(event.get("event_id") or ""),
+                "terminal_event_at_ms": event_at_ms,
+            }
+    return matched
+
+
+def _fresh_blocked_execution_slice(
+    state_path: Path | None,
+    expected_task_cids_by_id: Mapping[str, str],
+    *,
+    started_at_ms: int,
+    completion_events_path: Path | None = None,
+) -> dict[str, Any] | None:
+    """Return fresh exact evidence that a leased slice cannot make progress.
+
+    A terminal-blocked projection must bind every expected display ID to its
+    admitted canonical CID, show no active implementation, and report every
+    expected status as completed or blocked. Attempt-limited ready members are
+    treated as blocked only when the exact idle reason and zero selectable
+    capacity agree; bundle lanes additionally require a later fsynced
+    ``daemon_pass`` event before the wrapper may stop its child.
+    """
+
+    if state_path is None or not expected_task_cids_by_id:
+        return None
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    if state.get("implementation_in_progress") is not False:
+        return None
+    active_task_id = state.get("active_task_id")
+    if not isinstance(active_task_id, str) or active_task_id.strip():
+        return None
+    heartbeat_at = str(state.get("heartbeat_at") or "").strip()
+    heartbeat_at_ms = _timestamp_ms(heartbeat_at)
+    observed_at_ms = _now_ms()
+    if (
+        heartbeat_at_ms is None
+        or heartbeat_at_ms < int(started_at_ms)
+        or heartbeat_at_ms > observed_at_ms + 1_000
+    ):
+        return None
+    task_identities = state.get("task_identities")
+    task_statuses = state.get("task_statuses")
+    if not isinstance(task_identities, Mapping) or not isinstance(
+        task_statuses,
+        Mapping,
+    ):
+        return None
+
+    statuses: dict[str, str] = {}
+    for task_id, expected_task_cid in expected_task_cids_by_id.items():
+        identity = task_identities.get(task_id)
+        if not isinstance(identity, Mapping):
+            return None
+        if str(identity.get("canonical_task_cid") or "").strip() != expected_task_cid:
+            return None
+        raw_status = task_statuses.get(task_id)
+        if not isinstance(raw_status, str) or not raw_status.strip():
+            return None
+        statuses[task_id] = _normalized_task_status(raw_status)
+
+    projected_statuses = dict(statuses)
+    attempt_limited_ids: frozenset[str] = frozenset()
+    if str(state.get("selection_idle_reason") or "") == _TASK_ATTEMPT_LIMIT_IDLE_REASON:
+        selectable_ready_count = state.get("selectable_ready_count")
+        if (
+            isinstance(selectable_ready_count, bool)
+            or not isinstance(selectable_ready_count, int)
+            or selectable_ready_count != 0
+        ):
+            return None
+        attempt_limited_ids = frozenset(
+            task_id for task_id, status in statuses.items() if status == "ready"
+        )
+        if not attempt_limited_ids:
+            return None
+        statuses.update({task_id: "blocked" for task_id in attempt_limited_ids})
+
+    terminal_statuses = {"completed", "blocked", "on_hold"}
+    if (
+        any(status not in terminal_statuses for status in statuses.values())
+        or not any(status in {"blocked", "on_hold"} for status in statuses.values())
+    ):
+        return None
+
+    if completion_events_path is not None:
+        durable_evidence = _fresh_durable_terminal_blocked_pass(
+            completion_events_path,
+            state,
+            expected_task_cids_by_id=expected_task_cids_by_id,
+            expected_task_statuses=projected_statuses,
+            expected_attempt_limited_task_ids=attempt_limited_ids,
+            started_at_ms=started_at_ms,
+            heartbeat_at_ms=heartbeat_at_ms,
+        )
+        if durable_evidence is None:
+            return None
+    else:
+        durable_evidence = {
+            "terminal_evidence_boundary": "phase_state_identity_only",
+        }
+
+    blocked_task_ids = sorted(
+        task_id
+        for task_id, status in statuses.items()
+        if status in {"blocked", "on_hold"}
+    )
+    return {
+        "blocked_task_ids": blocked_task_ids,
+        "blocked_task_cids": sorted(
+            expected_task_cids_by_id[task_id]
+            for task_id in blocked_task_ids
+        ),
+        "execution_slice_task_statuses": dict(sorted(statuses.items())),
+        "attempt_limited_task_ids": sorted(attempt_limited_ids),
+        "terminal_reason": (
+            "task_attempt_limit"
+            if attempt_limited_ids
+            else "terminal_blocked_status"
+        ),
+        "phase_state_not_before_ms": int(started_at_ms),
+        "phase_state_heartbeat_at": heartbeat_at,
+        "phase_state_heartbeat_at_ms": heartbeat_at_ms,
+        **durable_evidence,
     }
 
 
@@ -731,6 +935,7 @@ def run_leased_lane_result(
         stopping_signal: int | None = None
         execution_scope_error = ""
         completed_execution_slice: dict[str, Any] | None = None
+        blocked_execution_slice: dict[str, Any] | None = None
         stop_event = threading.Event()
 
         def stop_child(signum: int, _frame: object) -> None:
@@ -788,6 +993,20 @@ def run_leased_lane_result(
                     )
                     _terminate_child(process, fence_descendants=True)
                     break
+                blocked_execution_slice = _fresh_blocked_execution_slice(
+                    phase_state_path,
+                    expected_task_identity_map,
+                    started_at_ms=phase_state_not_before_ms,
+                    completion_events_path=completion_events_path,
+                )
+                if blocked_execution_slice is not None:
+                    logger.info(
+                        "Stopping leased lane %s after fresh terminal block of %s",
+                        grant.task_cid,
+                        blocked_execution_slice["blocked_task_ids"],
+                    )
+                    _terminate_child(process, fence_descendants=True)
+                    break
                 try:
                     now = _now_ms()
                     if grant.lease_expires_at_ms - now <= renew_window_ms:
@@ -842,13 +1061,12 @@ def run_leased_lane_result(
                     )
 
             # A short-lived supervisor can publish its final phase state and
-            # then exit non-zero between polling iterations. Read once more
-            # before classifying that natural exit; exact canonical identities
-            # and durable receipts remain mandatory.
+            # exit between polling iterations. Read once more before
+            # classifying that natural exit; exact canonical identities and
+            # durable receipts remain mandatory.
             observed_exit_code = int(process.returncode or 0)
             if (
-                observed_exit_code != 0
-                and completed_execution_slice is None
+                completed_execution_slice is None
                 and stopping_signal is None
                 and not execution_scope_error
             ):
@@ -865,6 +1083,25 @@ def run_leased_lane_result(
                         observed_exit_code,
                     )
                     _terminate_child(process, fence_descendants=True)
+            if (
+                completed_execution_slice is None
+                and blocked_execution_slice is None
+                and stopping_signal is None
+                and not execution_scope_error
+            ):
+                blocked_execution_slice = _fresh_blocked_execution_slice(
+                    phase_state_path,
+                    expected_task_identity_map,
+                    started_at_ms=phase_state_not_before_ms,
+                    completion_events_path=completion_events_path,
+                )
+                if blocked_execution_slice is not None:
+                    logger.info(
+                        "Accepting final fresh terminal block of %s after child exit %s",
+                        blocked_execution_slice["blocked_task_ids"],
+                        observed_exit_code,
+                    )
+                    _terminate_child(process, fence_descendants=True)
 
             # Polling reaps only the immediate child.  Prove its dedicated
             # group and every captured detached descendant gone before any
@@ -876,17 +1113,45 @@ def run_leased_lane_result(
                 and stopping_signal is None
                 and not execution_scope_error
             )
-            completed_execution_output = dict(
-                completed_execution_slice or {}
+            blocked_by_state = (
+                blocked_execution_slice is not None
+                and not completed_by_state
+                and stopping_signal is None
+                and not execution_scope_error
             )
-            lane_exit_code = 0 if completed_by_state else child_exit_code
+            completed_execution_output = dict(completed_execution_slice or {})
+            blocked_execution_output = dict(blocked_execution_slice or {})
+            missing_completion_evidence = (
+                bool(expected_task_identity_map)
+                and child_exit_code == 0
+                and not completed_by_state
+                and not blocked_by_state
+                and stopping_signal is None
+                and not execution_scope_error
+            )
+            lane_exit_code = (
+                0
+                if completed_by_state
+                else FENCED_EXIT_CODE
+                if blocked_by_state or missing_completion_evidence
+                else child_exit_code
+            )
             if stopping_signal is not None:
                 receipt_status = "cancelled"
                 disposition: LaneDisposition = "cancelled"
             elif execution_scope_error:
                 receipt_status = "failed"
                 disposition = "failed"
-            elif completed_by_state or child_exit_code == 0:
+            elif completed_by_state:
+                receipt_status = "succeeded"
+                disposition = "completed"
+            elif blocked_by_state:
+                receipt_status = "failed"
+                disposition = "blocked"
+            elif missing_completion_evidence:
+                receipt_status = "failed"
+                disposition = "failed"
+            elif child_exit_code == 0:
                 receipt_status = "succeeded"
                 disposition = "completed"
             elif child_exit_code == FENCED_EXIT_CODE:
@@ -922,6 +1187,25 @@ def run_leased_lane_result(
                             **completed_execution_output,
                         }
                         if completed_by_state
+                        else {
+                            "exit_code": lane_exit_code,
+                            "child_exit_code": child_exit_code,
+                            "command": list(command),
+                            "reason": "terminal_blocked_execution_slice",
+                            **blocked_execution_output,
+                        }
+                        if blocked_by_state
+                        else {
+                            "exit_code": lane_exit_code,
+                            "child_exit_code": child_exit_code,
+                            "command": list(command),
+                            "reason": "missing_execution_slice_completion_evidence",
+                            "expected_task_ids": sorted(expected_task_identity_map),
+                            "expected_task_cids": sorted(
+                                expected_task_identity_map.values()
+                            ),
+                        }
+                        if missing_completion_evidence
                         else {"exit_code": child_exit_code, "command": list(command)}
                         if receipt_status == "succeeded"
                         else {
@@ -931,7 +1215,13 @@ def run_leased_lane_result(
                         if execution_scope_error
                         else None
                     ),
-                    failure_class="none" if receipt_status == "succeeded" else "retryable",
+                    failure_class=(
+                        "none"
+                        if receipt_status == "succeeded"
+                        else "blocked"
+                        if blocked_by_state
+                        else "retryable"
+                    ),
                     started_at_ms=started_at_ms,
                 )
             except LeaseError as exc:
