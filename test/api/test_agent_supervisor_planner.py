@@ -249,7 +249,12 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
         {
             "bundle_key": "bundle/blocked",
             "todo_path": "blocked.md",
-            "tasks": [{"task_id": "BLOCKED"}],
+            "tasks": [
+                {
+                    "task_id": "BLOCKED",
+                    "canonical_task_cid": "cid-member-blocked",
+                }
+            ],
             "claimable": False,
             "schedule_rank": 0,
             "blocking_task_cids": ["cid-parent"],
@@ -261,7 +266,12 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
         {
             "bundle_key": "bundle/second",
             "todo_path": "second.md",
-            "tasks": [{"task_id": "SECOND"}],
+            "tasks": [
+                {
+                    "task_id": "SECOND",
+                    "canonical_task_cid": "cid-member-second",
+                }
+            ],
             "claimable": True,
             "schedule_rank": 2,
             "critical_path_length": 2,
@@ -270,7 +280,12 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
         {
             "bundle_key": "bundle/critical",
             "todo_path": "critical.md",
-            "tasks": [{"task_id": "CRITICAL"}],
+            "tasks": [
+                {
+                    "task_id": "CRITICAL",
+                    "canonical_task_cid": "cid-member-critical",
+                }
+            ],
             "claimable": True,
             "schedule_rank": 1,
             "critical_path_length": 8,
@@ -317,13 +332,23 @@ def test_bundle_lane_planner_skips_explicitly_excluded_execution_units(
             {
                 "bundle_key": "bundle/included",
                 "todo_path": "included.md",
-                "tasks": [{"task_id": "INCLUDED"}],
+                "tasks": [
+                    {
+                        "task_id": "INCLUDED",
+                        "canonical_task_cid": "cid-member-included",
+                    }
+                ],
                 "profile_g": {"task_cid": "cid-included"},
             },
             {
                 "bundle_key": "bundle/excluded",
                 "todo_path": "excluded.md",
-                "tasks": [{"task_id": "EXCLUDED"}],
+                "tasks": [
+                    {
+                        "task_id": "EXCLUDED",
+                        "canonical_task_cid": "cid-member-excluded",
+                    }
+                ],
                 "profile_g": {"task_cid": "cid-excluded"},
             },
         ],
@@ -721,14 +746,19 @@ def test_truncated_graph_repairs_still_block_every_invalid_bundle(
 def _lane(tmp_path: Path, bundle: dict[str, object]) -> BundleLaneSpec:
     key = str(bundle["bundle_key"])
     task_id = str(bundle["tasks"][0]["task_id"])  # type: ignore[index]
+    member_task = dict(bundle["tasks"][0])  # type: ignore[index]
     payload = {
         **bundle,
+        "tasks": [member_task],
         "is_schedulable": True,
         "review_only": False,
         "execution_slice_task_ids": [task_id],
         "execution_slice_task_cids": [],
     }
     adapted = adapt_goal_bundle(payload, created_at_ms=1_783_872_000_000)
+    member_task_cid = str(adapted["canonical_task_cid"])
+    member_task["canonical_task_cid"] = member_task_cid
+    payload["execution_slice_task_cids"] = [member_task_cid]
     payload["profile_g"] = adapted
     todo_path = tmp_path / f"{key.replace('/', '-')}.md"
     todo_path.write_text(
@@ -747,6 +777,7 @@ def _lane(tmp_path: Path, bundle: dict[str, object]) -> BundleLaneSpec:
         conflict_policy="",
         command=["worker", key],
         log_path=tmp_path / "logs" / f"{key.replace('/', '-')}.log",
+        expected_task_cids_by_id={task_id: member_task_cid},
         runtime_todo_path=state_dir / "runtime.todo.md",
         source_todo_sha256=hashlib.sha256(todo_path.read_bytes()).hexdigest(),
         task_cid=str(adapted["task_cid"]),

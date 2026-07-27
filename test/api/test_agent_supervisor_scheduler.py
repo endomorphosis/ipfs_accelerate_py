@@ -19,7 +19,10 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     materialize_bundle_lane_taskboard,
 )
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
+from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+    LeaseCoordinator,
+    profile_g_cid,
+)
 from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
 from ipfs_accelerate_py.agent_supervisor.resource_scheduler import HostResourceSnapshot
@@ -1837,6 +1840,7 @@ def test_leased_lane_fails_retryably_when_child_runs_outside_execution_slice(
 ) -> None:
     coordination = tmp_path / "coordination.sqlite3"
     phase_state = tmp_path / "phase-state.json"
+    expected_task_cid = profile_g_cid({"member": "HSSL-BENCH-011"})
     phase_state.write_text(
         json.dumps(
             {
@@ -1869,6 +1873,13 @@ def test_leased_lane_fails_retryably_when_child_runs_outside_execution_slice(
             json.dumps(grant.to_dict()),
             "--expected-task-id",
             "HSSL-BENCH-011",
+            "--expected-task-identity-json",
+            json.dumps(
+                {
+                    "task_id": "HSSL-BENCH-011",
+                    "canonical_task_cid": expected_task_cid,
+                }
+            ),
             "--",
             sys.executable,
             "-c",
@@ -1876,6 +1887,9 @@ def test_leased_lane_fails_retryably_when_child_runs_outside_execution_slice(
         ]
     )
     assert parsed.expected_task_id == ["HSSL-BENCH-011"]
+    assert parsed.expected_task_identity_json == [
+        ("HSSL-BENCH-011", expected_task_cid)
+    ]
 
     class Process:
         pid = 4321
@@ -1894,12 +1908,17 @@ def test_leased_lane_fails_retryably_when_child_runs_outside_execution_slice(
 
     process = Process()
 
-    def stop_tree(candidate, *, timeout=5.0):
+    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
         assert candidate is process
+        assert fence_descendants is True
         candidate.tree_stopped = True
         candidate.returncode = -signal.SIGTERM
 
-    monkeypatch.setattr(leased_lane_module.subprocess, "Popen", lambda _command: process)
+    monkeypatch.setattr(
+        leased_lane_module.subprocess,
+        "Popen",
+        lambda _command, **_kwargs: process,
+    )
     monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
 
     result = run_leased_lane_result(
@@ -1910,6 +1929,9 @@ def test_leased_lane_fails_retryably_when_child_runs_outside_execution_slice(
         heartbeat_interval=0.01,
         phase_state_path=phase_state,
         expected_task_ids=("HSSL-BENCH-011",),
+        expected_task_cids_by_id={
+            "HSSL-BENCH-011": expected_task_cid,
+        },
     )
 
     assert process.tree_stopped is True

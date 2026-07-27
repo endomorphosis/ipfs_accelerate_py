@@ -457,6 +457,205 @@ def _process_relationship_snapshot() -> Dict[int, Tuple[int, int]]:
     return relationships
 
 
+def _process_identity_snapshot() -> Dict[int, Tuple[str, int, int, int, str]]:
+    """Return ``pid -> (state, ppid, pgrp, session, starttime)`` on Linux."""
+
+    processes: Dict[int, Tuple[str, int, int, int, str]] = {}
+    proc_root = Path("/proc")
+    try:
+        entries = tuple(proc_root.iterdir())
+    except OSError:
+        return processes
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text(encoding="utf-8")
+            closing_parenthesis = stat.rfind(")")
+            fields = stat[closing_parenthesis + 2 :].split()
+            processes[int(entry.name)] = (
+                fields[0],
+                int(fields[1]),
+                int(fields[2]),
+                int(fields[3]),
+                fields[19],
+            )
+        except (OSError, UnicodeError, ValueError, IndexError):
+            continue
+    return processes
+
+
+def _strictly_fence_pid_tree(
+    pid: int,
+    *,
+    grace_seconds: float,
+    owned_process_group_id: int | None,
+) -> bool:
+    """Freeze, rescan, kill, and prove one exact Linux process tree gone.
+
+    The implementation child owns a dedicated session/process group.  That
+    stable kernel grouping survives its leader's exit, while ``starttime``
+    protects every individually tracked PID from reuse.  SIGSTOP closes the
+    normal TERM-handler fork/respawn race before SIGKILL commits the fence.
+    This is userspace fencing, not a substitute for a cgroup boundary: a
+    descendant which escaped both ancestry and every captured group before the
+    first snapshot cannot be discovered retroactively.
+    """
+
+    if pid <= 1:
+        return False
+    own_group = int(owned_process_group_id or 0)
+    if own_group in {1, os.getpgrp()}:
+        own_group = 0
+    tracked: Dict[int, Tuple[str, int]] = {}
+    tracked_groups: set[int] = {own_group} if own_group > 1 else set()
+    initial_table = _process_identity_snapshot()
+    initial_root = initial_table.get(pid)
+    root_starttime = (
+        initial_root[4]
+        if initial_root is not None
+        and (not own_group or initial_root[2] == own_group)
+        else ""
+    )
+
+    def exact_live(
+        process_id: int,
+        starttime: str,
+        table: Dict[int, Tuple[str, int, int, int, str]],
+    ) -> bool:
+        current = table.get(process_id)
+        return bool(
+            current is not None
+            and current[0] != "Z"
+            and current[4] == starttime
+        )
+
+    def closure(
+        table: Dict[int, Tuple[str, int, int, int, str]],
+    ) -> set[int]:
+        selected = {
+            process_id
+            for process_id, (_state, _parent, process_group, _session, _start) in table.items()
+            if process_group in tracked_groups
+        }
+        root = table.get(pid)
+        if root is not None and root[4] == root_starttime:
+            selected.add(pid)
+        selected.update(
+            process_id
+            for process_id, (starttime, _depth) in tracked.items()
+            if exact_live(process_id, starttime, table)
+        )
+        changed = True
+        while changed:
+            changed = False
+            for process_id, (_state, parent, _group, _session, _start) in table.items():
+                if parent in selected and process_id not in selected:
+                    selected.add(process_id)
+                    changed = True
+        return selected
+
+    freeze_deadline = time.monotonic() + max(0.2, float(grace_seconds))
+    stable_scans = 0
+    while stable_scans < 2:
+        table = _process_identity_snapshot()
+        selected = closure(table)
+        new_member = False
+        for process_id in selected:
+            state, _parent, process_group, _session, starttime = table[process_id]
+            existing = tracked.get(process_id)
+            if existing is None or existing[0] != starttime:
+                tracked[process_id] = (starttime, 0)
+                new_member = True
+            if process_group == process_id and process_group not in {
+                0,
+                1,
+                os.getpgrp(),
+            }:
+                tracked_groups.add(process_group)
+
+        # Stop owned groups first, then every exact member. Repeating the scan
+        # catches children created in the interval before their parent stopped.
+        for process_group in sorted(tracked_groups):
+            try:
+                os.killpg(process_group, signal.SIGSTOP)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        for process_id, (starttime, _depth) in tuple(tracked.items()):
+            if not exact_live(process_id, starttime, table):
+                continue
+            try:
+                os.kill(process_id, signal.SIGSTOP)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+
+        time.sleep(0.01)
+        verification = _process_identity_snapshot()
+        verification_members = closure(verification)
+        all_stopped = all(
+            record[0] in {"T", "t", "Z"}
+            for process_id in verification_members
+            if (record := verification.get(process_id)) is not None
+        )
+        if not new_member and all_stopped and verification_members.issubset(tracked):
+            stable_scans += 1
+        else:
+            stable_scans = 0
+        if time.monotonic() >= freeze_deadline:
+            # SIGKILL below also prevents further execution. Do not spend an
+            # unbounded interval waiting for the stopped-state projection.
+            break
+
+    if not tracked and not tracked_groups:
+        return True
+
+    # Once frozen, TERM handlers must not run: they are precisely where a
+    # supervised process can fork a replacement after an ordinary snapshot.
+    while True:
+        table = _process_identity_snapshot()
+        for process_id in closure(table):
+            state, _parent, process_group, _session, starttime = table[process_id]
+            existing = tracked.get(process_id)
+            if existing is None or existing[0] != starttime:
+                tracked[process_id] = (starttime, 0)
+            if process_group == process_id and process_group not in {
+                0,
+                1,
+                os.getpgrp(),
+            }:
+                tracked_groups.add(process_group)
+
+        live_members = {
+            process_id
+            for process_id, (starttime, _depth) in tracked.items()
+            if exact_live(process_id, starttime, table)
+        }
+        live_group_members = {
+            process_id
+            for process_id, (state, _parent, process_group, _session, _start) in table.items()
+            if state != "Z" and process_group in tracked_groups
+        }
+        if not live_members and not live_group_members:
+            return True
+        for process_group in sorted(tracked_groups, reverse=True):
+            try:
+                os.killpg(process_group, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        for process_id in sorted(
+            live_members | live_group_members,
+            reverse=True,
+        ):
+            try:
+                os.kill(process_id, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        # A strict fence intentionally has no "release anyway" timeout. The
+        # caller must not advertise free capacity while an exact member can
+        # still execute.
+        time.sleep(0.02)
+
+
 def _snapshot_pid_tree(pid: int) -> List[Tuple[int, int, int]]:
     """Return ``(pid, process_group, depth)`` before any ancestor is stopped."""
 
@@ -561,7 +760,32 @@ def _terminate_owned_process_group(pid: int, *, grace_seconds: float) -> bool:
     return True
 
 
-def terminate_pid_tree(pid: int, *, grace_seconds: float) -> bool:
+def terminate_pid_tree(
+    pid: int,
+    *,
+    grace_seconds: float,
+    freeze_first: bool = False,
+    require_gone: bool = False,
+    owned_process_group_id: int | None = None,
+) -> bool:
+    """Terminate a process tree, optionally proving a fork-fenced tree gone.
+
+    The default retains the historical best-effort graceful behavior and
+    return contract.  ``freeze_first`` selects the leased-lane safety path:
+    descendants and owned groups are stopped before repeated discovery, killed
+    without running TERM handlers, and checked by PID start time.  With
+    ``require_gone`` the function returns only after no tracked process or
+    owned-group member can execute.
+    """
+
+    if freeze_first:
+        fenced = _strictly_fence_pid_tree(
+            pid,
+            grace_seconds=grace_seconds,
+            owned_process_group_id=owned_process_group_id,
+        )
+        return fenced if require_gone else bool(fenced)
+
     # Snapshot every descendant before signalling anything. Some implementation
     # runners create their own session/process group. Killing an ancestor group
     # first reparents those runners and makes a later parent/child walk lose

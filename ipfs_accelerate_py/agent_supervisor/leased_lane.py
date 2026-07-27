@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import signal
 import subprocess
 import threading
@@ -26,6 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from .event_log import event_log_sources, read_jsonl_events
 from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
 from .todo_daemon.core import terminate_pid_tree
 
@@ -216,26 +218,203 @@ def _execution_slice_violation(
     return active_task_id
 
 
-def _fresh_completed_execution_slice(
-    state_path: Path | None,
-    expected_task_ids: frozenset[str],
+_MEMBER_COMPLETION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
+)
+
+
+def _expected_task_identity_map(
+    expected_task_ids: Sequence[str],
+    expected_task_cids_by_id: Mapping[str, str] | None,
+) -> dict[str, str]:
+    """Normalize and validate one exact execution-slice identity projection."""
+
+    normalized_ids = tuple(
+        dict.fromkeys(
+            str(task_id).strip()
+            for task_id in expected_task_ids
+            if str(task_id).strip()
+        )
+    )
+    normalized_bindings = {
+        str(task_id).strip(): str(task_cid).strip()
+        for task_id, task_cid in (expected_task_cids_by_id or {}).items()
+        if str(task_id).strip() and str(task_cid).strip()
+    }
+    if normalized_ids and not normalized_bindings:
+        raise ValueError(
+            "expected_task_ids require exact expected_task_cids_by_id bindings"
+        )
+    if normalized_bindings and set(normalized_bindings) != set(normalized_ids):
+        raise ValueError(
+            "expected task display IDs and canonical CID bindings must match exactly"
+        )
+    return {
+        task_id: normalized_bindings[task_id]
+        for task_id in normalized_ids
+    }
+
+
+def _timestamp_ms(value: Any) -> int | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return int(parsed.timestamp() * 1000)
+
+
+def _validated_member_completion_receipts(
+    rows: Any,
+    expected_task_cids_by_id: Mapping[str, str],
+) -> list[dict[str, str]] | None:
+    """Validate exact successful member receipts without accepting ID aliases."""
+
+    if not isinstance(rows, list):
+        return None
+    expected = set(expected_task_cids_by_id.items())
+    matched: dict[tuple[str, str], dict[str, str]] = {}
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            continue
+        task_id = str(raw.get("task_id") or "").strip()
+        canonical_task_cid = str(raw.get("canonical_task_cid") or "").strip()
+        pair = (task_id, canonical_task_cid)
+        if pair not in expected:
+            continue
+        if str(raw.get("schema") or "") != _MEMBER_COMPLETION_RECEIPT_SCHEMA:
+            continue
+        if str(raw.get("status") or "").strip().lower() != "succeeded":
+            continue
+        matched[pair] = {
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+        }
+    if set(matched) != expected:
+        return None
+    return [matched[pair] for pair in sorted(matched)]
+
+
+def _fresh_durable_member_completion_receipts(
+    events_path: Path,
+    expected_task_cids_by_id: Mapping[str, str],
     *,
     started_at_ms: int,
 ) -> dict[str, Any] | None:
-    """Return fresh terminal evidence for a fully completed execution slice.
+    """Return fresh fsynced terminal member receipts from one daemon event log."""
+
+    matched: dict[tuple[str, str], dict[str, str]] = {}
+    event_ids: set[str] = set()
+    expected = set(expected_task_cids_by_id.items())
+    for source in event_log_sources((events_path,), include_rotated=True):
+        for event in read_jsonl_events(source):
+            event_at_ms = _timestamp_ms(event.get("timestamp"))
+            if event_at_ms is None or event_at_ms < int(started_at_ms):
+                continue
+            event_type = str(event.get("type") or "")
+            if event_type == "todo_status_updated":
+                completed_ids = {
+                    str(item)
+                    for key in ("updated_task_ids", "already_completed_task_ids")
+                    for item in (event.get(key) or ())
+                }
+                if not event.get("updated") and not completed_ids:
+                    continue
+                completion_payload: Mapping[str, Any] = event
+            elif event_type == "implementation_finished":
+                merge_result = event.get("merge_result")
+                if (
+                    event.get("returncode") != 0
+                    or not isinstance(merge_result, Mapping)
+                    or merge_result.get("merged") is not True
+                ):
+                    continue
+                candidate = event.get("todo_update_result")
+                completion_payload = (
+                    candidate if isinstance(candidate, Mapping) else {}
+                )
+            else:
+                continue
+            rows = completion_payload.get("completion_receipts")
+            if rows is None:
+                rows = completion_payload.get("member_completion_receipts")
+            validated = _validated_member_completion_receipts(
+                rows,
+                expected_task_cids_by_id,
+            )
+            if validated is None:
+                # A packet can complete only part of a multi-member slice. Add
+                # each exact successful row, then prove the union below.
+                validated = []
+                if isinstance(rows, list):
+                    for row in rows:
+                        single = _validated_member_completion_receipts(
+                            [row],
+                            {
+                                task_id: task_cid
+                                for task_id, task_cid in expected
+                                if isinstance(row, Mapping)
+                                and str(row.get("task_id") or "").strip() == task_id
+                                and str(
+                                    row.get("canonical_task_cid") or ""
+                                ).strip()
+                                == task_cid
+                            },
+                        )
+                        if single:
+                            validated.extend(single)
+            for receipt in validated:
+                pair = (
+                    receipt["task_id"],
+                    receipt["canonical_task_cid"],
+                )
+                matched[pair] = receipt
+                event_id = str(event.get("event_id") or "").strip()
+                if event_id:
+                    event_ids.add(event_id)
+    if set(matched) != expected:
+        return None
+    return {
+        "member_completion_receipts_validated": True,
+        "completion_receipt_boundary": "durable_event_log",
+        "completion_events_path": str(events_path),
+        "completion_event_ids": sorted(event_ids),
+    }
+
+
+def _fresh_completed_execution_slice(
+    state_path: Path | None,
+    expected_task_cids_by_id: Mapping[str, str],
+    *,
+    started_at_ms: int,
+    completion_events_path: Path | None = None,
+) -> dict[str, Any] | None:
+    """Return fresh, identity-bound evidence for a completed execution slice.
 
     Implementation supervisors are intentionally long-lived.  Completing the
     final leased task therefore does not imply that their process exits.  The
     wrapper may stop that process only when one atomic phase-state projection
     proves all leased members complete and proves that no implementation is
-    still active.
+    still active.  Every display ID must resolve to the exact canonical CID
+    admitted by the bundle planner.
 
     A task-state file can survive an earlier lease.  Completion is consequently
     authoritative only when its heartbeat was written after this wrapper began;
     missing, malformed, naive, or older timestamps fail closed.
+
+    Bundle lanes also supply their daemon's append-only event-log path.  In
+    that mode, the state projection is necessary but insufficient: fresh,
+    fsynced ``member_completion_receipt@1`` records must prove every exact
+    ID/CID member succeeded.  The optional path preserves an identity-only
+    boundary for direct in-process integrations whose architecture exposes no
+    durable member receipt source.
     """
 
-    if state_path is None or not expected_task_ids:
+    if state_path is None or not expected_task_cids_by_id:
         return None
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -255,8 +434,21 @@ def _fresh_completed_execution_slice(
         task_id.strip()
         for task_id in completed_value
     }
+    expected_task_ids = frozenset(expected_task_cids_by_id)
     if not expected_task_ids.issubset(completed_task_ids):
         return None
+    task_identities = state.get("task_identities")
+    if not isinstance(task_identities, Mapping):
+        return None
+    for task_id, expected_task_cid in expected_task_cids_by_id.items():
+        identity = task_identities.get(task_id)
+        if not isinstance(identity, Mapping):
+            return None
+        if (
+            str(identity.get("canonical_task_cid") or "").strip()
+            != expected_task_cid
+        ):
+            return None
     if state.get("implementation_in_progress") is not False:
         return None
     active_task_id = state.get("active_task_id")
@@ -268,33 +460,92 @@ def _fresh_completed_execution_slice(
     heartbeat_at = heartbeat_value.strip()
     if not heartbeat_at:
         return None
-    try:
-        heartbeat = datetime.fromisoformat(heartbeat_at.replace("Z", "+00:00"))
-    except ValueError:
+    heartbeat_at_ms = _timestamp_ms(heartbeat_at)
+    if heartbeat_at_ms is None:
         return None
-    if heartbeat.tzinfo is None:
-        return None
-    heartbeat_at_ms = int(heartbeat.timestamp() * 1000)
     observed_at_ms = _now_ms()
     if (
         heartbeat_at_ms < int(started_at_ms)
         or heartbeat_at_ms > observed_at_ms + 1_000
     ):
         return None
+    receipt_evidence: dict[str, Any]
+    if completion_events_path is not None:
+        durable_evidence = _fresh_durable_member_completion_receipts(
+            completion_events_path,
+            expected_task_cids_by_id,
+            started_at_ms=started_at_ms,
+        )
+        if durable_evidence is None:
+            return None
+        receipt_evidence = durable_evidence
+    else:
+        embedded_key = next(
+            (
+                key
+                for key in (
+                    "completion_receipts",
+                    "member_completion_receipts",
+                )
+                if key in state
+            ),
+            "",
+        )
+        if embedded_key:
+            embedded = _validated_member_completion_receipts(
+                state.get(embedded_key),
+                expected_task_cids_by_id,
+            )
+            if embedded is None:
+                return None
+            receipt_evidence = {
+                "member_completion_receipts_validated": True,
+                "completion_receipt_boundary": "phase_state_embedded",
+            }
+        else:
+            receipt_evidence = {
+                "member_completion_receipts_validated": False,
+                "completion_receipt_boundary": "phase_state_identity_only",
+            }
     return {
         "completed_task_ids": sorted(expected_task_ids),
+        "completed_task_cids": sorted(expected_task_cids_by_id.values()),
         "phase_state_not_before_ms": int(started_at_ms),
         "phase_state_heartbeat_at": heartbeat_at,
         "phase_state_heartbeat_at_ms": heartbeat_at_ms,
+        **receipt_evidence,
     }
 
 
-def _terminate_child(process: subprocess.Popen[Any], *, timeout: float = 5.0) -> None:
-    """Terminate a child and do not return while it can still execute work."""
+def _terminate_child(
+    process: subprocess.Popen[Any],
+    *,
+    timeout: float = 5.0,
+    fence_descendants: bool = False,
+) -> None:
+    """Terminate a child, optionally proving its dedicated process tree gone.
 
-    if process.poll() is not None:
+    Completion uses ``fence_descendants`` because capacity is published only
+    after the stopped/rescanned tree and its owned process group have no live
+    members.  The ordinary compatibility path retains graceful termination.
+    """
+
+    if fence_descendants:
+        fenced = terminate_pid_tree(
+            process.pid,
+            grace_seconds=timeout,
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=(process.pid if os.name == "posix" else None),
+        )
+        if not fenced:
+            raise RuntimeError(
+                f"could not prove process tree {process.pid} fully fenced"
+            )
+    elif process.poll() is not None:
         return
-    terminate_pid_tree(process.pid, grace_seconds=timeout)
+    else:
+        terminate_pid_tree(process.pid, grace_seconds=timeout)
     try:
         process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -342,15 +593,20 @@ def run_leased_lane_result(
     resource_sampler: Callable[..., Any] | None = None,
     phase_state_path: Path | None = None,
     expected_task_ids: Sequence[str] = (),
+    expected_task_cids_by_id: Mapping[str, str] | None = None,
+    completion_events_path: Path | None = None,
 ) -> LeasedLaneResult:
-    """Run ``command`` and return its fenced, terminal lease disposition.
+    """Run ``command`` and return its fenced, identity-bound disposition.
 
     Successful children produce a successful receipt (which completes the
     task).  Non-zero children produce a retryable failed receipt, signals
     produce a cancelled receipt, and both cases release the task for another
     worker.  Exit code 75 is treated as a blocked/retryable child convention.
     If renewal or heartbeat proves the grant stale, the child is synchronously
-    stopped and no stale receipt is manufactured.
+    stopped and no stale receipt is manufactured.  Supplying execution-slice
+    display IDs requires an exact canonical-CID binding.  Bundle callers also
+    supply ``completion_events_path`` so phase completion requires durable
+    member receipts; callers with no execution slice retain child-exit mode.
     """
 
     if not command:
@@ -361,11 +617,11 @@ def run_leased_lane_result(
         raise ValueError("lease_ms must be positive")
 
     started_at_ms = _now_ms()
-    expected_task_id_set = frozenset(
-        str(task_id).strip()
-        for task_id in expected_task_ids
-        if str(task_id).strip()
+    expected_task_identity_map = _expected_task_identity_map(
+        expected_task_ids,
+        expected_task_cids_by_id,
     )
+    expected_task_id_set = frozenset(expected_task_identity_map)
     with LeaseCoordinator(coordination_path) as coordinator:
         try:
             grant = coordinator.validate(grant)
@@ -415,7 +671,10 @@ def run_leased_lane_result(
 
         phase_state_not_before_ms = _now_ms()
         try:
-            process = subprocess.Popen(list(command))
+            process = subprocess.Popen(
+                list(command),
+                start_new_session=(os.name == "posix"),
+            )
         except Exception as exc:
             logger.error("Could not start leased lane %s: %s", grant.task_cid, exc)
             try:
@@ -498,7 +757,7 @@ def run_leased_lane_result(
                 delay = min(max(0.05, float(heartbeat_interval)), max(0.05, until_renewal))
                 stop_event.wait(delay)
                 if stopping_signal is not None:
-                    _terminate_child(process)
+                    _terminate_child(process, fence_descendants=True)
                     break
                 if process.poll() is not None:
                     break
@@ -513,12 +772,13 @@ def run_leased_lane_result(
                         f"execution slice {sorted(expected_task_id_set)!r}"
                     )
                     logger.error("Fencing daemon lane: %s", execution_scope_error)
-                    _terminate_child(process)
+                    _terminate_child(process, fence_descendants=True)
                     break
                 completed_execution_slice = _fresh_completed_execution_slice(
                     phase_state_path,
-                    expected_task_id_set,
+                    expected_task_identity_map,
                     started_at_ms=phase_state_not_before_ms,
+                    completion_events_path=completion_events_path,
                 )
                 if completed_execution_slice is not None:
                     logger.info(
@@ -526,7 +786,7 @@ def run_leased_lane_result(
                         grant.task_cid,
                         completed_execution_slice["completed_task_ids"],
                     )
-                    _terminate_child(process)
+                    _terminate_child(process, fence_descendants=True)
                     break
                 try:
                     now = _now_ms()
@@ -546,7 +806,7 @@ def run_leased_lane_result(
                     )
                 except LeaseError as exc:
                     logger.error("Fencing daemon lane after lease loss: %s", exc)
-                    _terminate_child(process)
+                    _terminate_child(process, fence_descendants=True)
                     return LeasedLaneResult(
                         task_cid=grant.task_cid,
                         claim_cid=grant.claim_cid,
@@ -565,7 +825,7 @@ def run_leased_lane_result(
                     # best-effort release then makes recovery immediate when
                     # the store failure was transient.
                     logger.exception("Fencing daemon lane after coordination failure")
-                    _terminate_child(process)
+                    _terminate_child(process, fence_descendants=True)
                     released = _release_after_bookkeeping_failure(coordinator, grant)
                     return LeasedLaneResult(
                         task_cid=grant.task_cid,
@@ -581,10 +841,35 @@ def run_leased_lane_result(
                         error=f"coordination failure: {exc}",
                     )
 
-            # A signal handler asks politely first; enforce the process fence
-            # here in case the child ignored or delayed termination.
-            if stopping_signal is not None:
-                _terminate_child(process)
+            # A short-lived supervisor can publish its final phase state and
+            # then exit non-zero between polling iterations. Read once more
+            # before classifying that natural exit; exact canonical identities
+            # and durable receipts remain mandatory.
+            observed_exit_code = int(process.returncode or 0)
+            if (
+                observed_exit_code != 0
+                and completed_execution_slice is None
+                and stopping_signal is None
+                and not execution_scope_error
+            ):
+                completed_execution_slice = _fresh_completed_execution_slice(
+                    phase_state_path,
+                    expected_task_identity_map,
+                    started_at_ms=phase_state_not_before_ms,
+                    completion_events_path=completion_events_path,
+                )
+                if completed_execution_slice is not None:
+                    logger.info(
+                        "Accepting final fresh completion of %s after child exit %s",
+                        completed_execution_slice["completed_task_ids"],
+                        observed_exit_code,
+                    )
+                    _terminate_child(process, fence_descendants=True)
+
+            # Polling reaps only the immediate child.  Prove its dedicated
+            # group and every captured detached descendant gone before any
+            # terminal path advertises zero occupancy.
+            _terminate_child(process, fence_descendants=True)
             child_exit_code = int(process.returncode or 0)
             completed_by_state = (
                 completed_execution_slice is not None
@@ -715,8 +1000,14 @@ def run_leased_lane(
     resource_sampler: Callable[..., Any] | None = None,
     phase_state_path: Path | None = None,
     expected_task_ids: Sequence[str] = (),
+    expected_task_cids_by_id: Mapping[str, str] | None = None,
+    completion_events_path: Path | None = None,
 ) -> int:
-    """Compatibility wrapper returning the guarded command's lane exit code."""
+    """Compatibility wrapper returning the guarded command's lane exit code.
+
+    Legacy callers may omit execution-slice arguments entirely.  Once a slice
+    is supplied, both display IDs and canonical CIDs are required.
+    """
 
     return run_leased_lane_result(
         coordination_path=coordination_path,
@@ -730,7 +1021,27 @@ def run_leased_lane(
         resource_sampler=resource_sampler,
         phase_state_path=phase_state_path,
         expected_task_ids=expected_task_ids,
+        expected_task_cids_by_id=expected_task_cids_by_id,
+        completion_events_path=completion_events_path,
     ).exit_code
+
+
+def _parse_expected_task_identity_json(value: str) -> tuple[str, str]:
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            "expected task identity must be valid JSON"
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise argparse.ArgumentTypeError("expected task identity must be an object")
+    task_id = str(payload.get("task_id") or "").strip()
+    canonical_task_cid = str(payload.get("canonical_task_cid") or "").strip()
+    if not task_id or not canonical_task_cid:
+        raise argparse.ArgumentTypeError(
+            "expected task identity requires task_id and canonical_task_cid"
+        )
+    return task_id, canonical_task_cid
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -743,16 +1054,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resource-class", default="")
     parser.add_argument("--provider-id", default="")
     parser.add_argument("--phase-state-path", type=Path, default=None)
+    parser.add_argument("--completion-events-path", type=Path, default=None)
     parser.add_argument("--expected-task-id", action="append", default=[])
+    parser.add_argument(
+        "--expected-task-identity-json",
+        action="append",
+        type=_parse_expected_task_identity_json,
+        default=[],
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     command = list(args.command)
     if command and command[0] == "--":
         command = command[1:]
+    expected_task_cids_by_id: dict[str, str] = {}
+    for task_id, canonical_task_cid in args.expected_task_identity_json:
+        previous = expected_task_cids_by_id.get(task_id)
+        if previous is not None and previous != canonical_task_cid:
+            parser.error(
+                f"conflicting canonical task CIDs supplied for {task_id!r}"
+            )
+        expected_task_cids_by_id[task_id] = canonical_task_cid
     grant = LeaseGrant(**json.loads(args.grant_json))
     return run_leased_lane(
         coordination_path=args.coordination_path,
@@ -765,6 +1092,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         provider_id=args.provider_id,
         phase_state_path=args.phase_state_path,
         expected_task_ids=args.expected_task_id,
+        expected_task_cids_by_id=expected_task_cids_by_id,
+        completion_events_path=args.completion_events_path,
     )
 
 

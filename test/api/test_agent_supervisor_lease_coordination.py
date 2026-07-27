@@ -769,6 +769,8 @@ def test_bundle_launcher_propagates_only_the_leased_execution_slice(
 """,
         encoding="utf-8",
     )
+    prerequisite_cid = profile_g_cid({"member": "HSSL-BENCH-001"})
+    leased_cid = profile_g_cid({"member": "HSSL-BENCH-011"})
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: [
@@ -778,10 +780,17 @@ def test_bundle_launcher_propagates_only_the_leased_execution_slice(
                 "is_schedulable": True,
                 "review_only": False,
                 "tasks": [
-                    {"task_id": "HSSL-BENCH-001"},
-                    {"task_id": "HSSL-BENCH-011"},
+                    {
+                        "task_id": "HSSL-BENCH-001",
+                        "canonical_task_cid": prerequisite_cid,
+                    },
+                    {
+                        "task_id": "HSSL-BENCH-011",
+                        "canonical_task_cid": leased_cid,
+                    },
                 ],
                 "execution_slice_task_ids": ["HSSL-BENCH-011"],
+                "execution_slice_task_cids": [leased_cid],
             }
         ],
     )
@@ -825,6 +834,20 @@ def test_bundle_launcher_propagates_only_the_leased_execution_slice(
         for index, value in enumerate(wrapper_command)
         if value == "--expected-task-id"
     ] == ["HSSL-BENCH-011"]
+    identity_values = [
+        json.loads(wrapper_command[index + 1])
+        for index, value in enumerate(wrapper_command)
+        if value == "--expected-task-identity-json"
+    ]
+    assert identity_values == [
+        {
+            "task_id": "HSSL-BENCH-011",
+            "canonical_task_cid": leased_cid,
+        }
+    ]
+    assert wrapper_command[
+        wrapper_command.index("--completion-events-path") + 1
+    ].endswith("_events.jsonl")
     assert [
         supervisor_command[index + 1]
         for index, value in enumerate(supervisor_command)

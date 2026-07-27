@@ -14,7 +14,11 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
+from ipfs_accelerate_py.agent_supervisor.event_log import append_jsonl_event
+from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+    LeaseCoordinator,
+    profile_g_cid,
+)
 from ipfs_accelerate_py.agent_supervisor.leased_lane import (
     LeasedLaneResult,
     run_leased_lane_result,
@@ -34,6 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
     resource_class_for_work_kind,
     sample_host_resources,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 
 
 def _host(**overrides: object) -> HostResourceSnapshot:
@@ -613,14 +618,23 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
 ) -> None:
     path = tmp_path / "coordination.sqlite3"
     phase_state = tmp_path / "phase-state.json"
+    events_path = tmp_path / "events.jsonl"
     child_pid_path = tmp_path / "child.pid"
+    task_cids_by_id = {
+        task_id: profile_g_cid({"member": task_id})
+        for task_id in ("RES-LONG-1", "RES-LONG-1B")
+    }
     first_bundle = {
         "bundle_key": "objective/resources/long-lived-first",
         "tasks": [
-            {"task_id": "RES-LONG-1"},
-            {"task_id": "RES-LONG-1B"},
+            {
+                "task_id": task_id,
+                "canonical_task_cid": task_cids_by_id[task_id],
+            }
+            for task_id in task_cids_by_id
         ],
         "execution_slice_task_ids": ["RES-LONG-1", "RES-LONG-1B"],
+        "execution_slice_task_cids": list(task_cids_by_id.values()),
     }
     with LeaseCoordinator(path) as coordinator:
         first = coordinator.register_bundle(first_bundle)
@@ -645,6 +659,10 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
             "active_task_id": "",
             "implementation_in_progress": False,
             "completed_task_ids": ["RES-LONG-1", "RES-LONG-1B"],
+            "task_identities": {
+                task_id: {"canonical_task_cid": task_cid}
+                for task_id, task_cid in task_cids_by_id.items()
+            },
         }
     )
     outcome: list[LeasedLaneResult] = []
@@ -672,6 +690,8 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
                     provider_id="provider-a",
                     phase_state_path=phase_state,
                     expected_task_ids=("RES-LONG-1", "RES-LONG-1B"),
+                    expected_task_cids_by_id=task_cids_by_id,
+                    completion_events_path=events_path,
                 )
             )
         except BaseException as exc:  # pragma: no cover - surfaced below
@@ -695,6 +715,10 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
                 "active_task_id": "RES-LONG-1",
                 "implementation_in_progress": True,
                 "completed_task_ids": [],
+                "task_identities": {
+                    task_id: {"canonical_task_cid": task_cid}
+                    for task_id, task_cid in task_cids_by_id.items()
+                },
             }
         )
         deadline = time.monotonic() + 5
@@ -718,6 +742,10 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
                 "active_task_id": "",
                 "implementation_in_progress": False,
                 "completed_task_ids": ["RES-LONG-1"],
+                "task_identities": {
+                    task_id: {"canonical_task_cid": task_cid}
+                    for task_id, task_cid in task_cids_by_id.items()
+                },
             }
         )
         time.sleep(0.15)
@@ -730,7 +758,82 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
                 "active_task_id": "",
                 "implementation_in_progress": False,
                 "completed_task_ids": ["RES-LONG-1", "RES-LONG-1B"],
+                "task_identities": {
+                    "RES-LONG-1": {
+                        "canonical_task_cid": task_cids_by_id["RES-LONG-1"],
+                    },
+                    "RES-LONG-1B": {
+                        "canonical_task_cid": profile_g_cid(
+                            {"wrong-member": "RES-LONG-1B"}
+                        ),
+                    },
+                },
             }
+        )
+        time.sleep(0.15)
+        assert lane_thread.is_alive()
+
+        write_phase_state(
+            {
+                "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "completed_task_ids": ["RES-LONG-1", "RES-LONG-1B"],
+                "task_identities": {
+                    task_id: {"canonical_task_cid": task_cid}
+                    for task_id, task_cid in task_cids_by_id.items()
+                },
+            }
+        )
+        # Exact phase state alone is not durable completion authority for a
+        # bundle lane whose member event-log path is supplied.
+        time.sleep(0.15)
+        assert lane_thread.is_alive()
+        append_jsonl_event(
+            events_path,
+            "todo_status_updated",
+            {
+                "updated": True,
+                "updated_task_ids": list(task_cids_by_id),
+                "completion_receipts": [
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "member_completion_receipt@1"
+                        ),
+                        "task_id": task_id,
+                        "canonical_task_cid": (
+                            profile_g_cid({"wrong-receipt-member": task_id})
+                            if task_id == "RES-LONG-1B"
+                            else task_cid
+                        ),
+                        "status": "succeeded",
+                    }
+                    for task_id, task_cid in task_cids_by_id.items()
+                ],
+            },
+        )
+        time.sleep(0.15)
+        assert lane_thread.is_alive()
+        append_jsonl_event(
+            events_path,
+            "todo_status_updated",
+            {
+                "updated": True,
+                "updated_task_ids": list(task_cids_by_id),
+                "completion_receipts": [
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "member_completion_receipt@1"
+                        ),
+                        "task_id": task_id,
+                        "canonical_task_cid": task_cid,
+                        "status": "succeeded",
+                    }
+                    for task_id, task_cid in task_cids_by_id.items()
+                ],
+            },
         )
         lane_thread.join(10)
     finally:
@@ -766,6 +869,33 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
     assert receipts[0]["receipt"]["status"] == "succeeded"
     assert receipts[0]["receipt"]["failure_class"] == "none"
     assert receipts[0]["receipt"]["output_cid"]
+
+
+def test_leased_lane_rejects_display_only_execution_slice_identity(
+    tmp_path: Path,
+) -> None:
+    coordination_path = tmp_path / "coordination.sqlite3"
+    with LeaseCoordinator(coordination_path) as coordinator:
+        task = coordinator.register_bundle(
+            {
+                "bundle_key": "objective/resources/unbound-slice",
+                "tasks": [{"task_id": "RES-UNBOUND"}],
+            }
+        )
+        grant = coordinator.claim(
+            task["task_cid"],
+            "did:web:unbound-worker.example",
+        )
+
+    with pytest.raises(ValueError, match="exact expected_task_cids_by_id"):
+        run_leased_lane_result(
+            coordination_path=coordination_path,
+            grant=grant,
+            command=(sys.executable, "-c", "pass"),
+            lease_ms=60_000,
+            heartbeat_interval=0.02,
+            expected_task_ids=("RES-UNBOUND",),
+        )
 
 
 def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
@@ -830,6 +960,7 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
                     provider_id=self.lane.llm_provider,
                     phase_state_path=self.phase_state_path,
                     expected_task_ids=tuple(self.lane.task_ids),
+                    expected_task_cids_by_id=self.lane.expected_task_cids_by_id,
                 )
             except BaseException as exc:  # pragma: no cover - surfaced by wait
                 self.error = exc
@@ -917,6 +1048,15 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
                     "active_task_id": "",
                     "implementation_in_progress": False,
                     "completed_task_ids": ["RES-1"],
+                    "task_identities": {
+                        "RES-1": {
+                            "canonical_task_cid": (
+                                first_process.lane.expected_task_cids_by_id[
+                                    "RES-1"
+                                ]
+                            ),
+                        },
+                    },
                 },
                 sort_keys=True,
             ),
@@ -968,6 +1108,231 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
                 process.kill()
                 process.thread.join(5)
         scheduler.stop(grace_seconds=0)
+
+
+def test_leased_lane_rechecks_exact_completion_after_natural_nonzero_exit(
+    tmp_path: Path,
+) -> None:
+    coordination_path = tmp_path / "coordination.sqlite3"
+    phase_state_path = tmp_path / "phase-state.json"
+    task_id = "RES-FINAL-EXIT"
+    task_cid = profile_g_cid({"member": task_id})
+    bundle = {
+        "bundle_key": "objective/resources/final-exit",
+        "tasks": [
+            {
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+            }
+        ],
+        "execution_slice_task_ids": [task_id],
+        "execution_slice_task_cids": [task_cid],
+    }
+    with LeaseCoordinator(coordination_path) as coordinator:
+        task = coordinator.register_bundle(bundle)
+        grant = coordinator.claim(
+            task["task_cid"],
+            "did:web:final-state-worker.example",
+            requested_lease_ms=60_000,
+        )
+
+    child_script = """
+import json
+import pathlib
+import sys
+from datetime import datetime, timezone
+
+path = pathlib.Path(sys.argv[1])
+task_id = sys.argv[2]
+task_cid = sys.argv[3]
+path.write_text(json.dumps({
+    "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+    "active_task_id": "",
+    "implementation_in_progress": False,
+    "completed_task_ids": [task_id],
+    "task_identities": {
+        task_id: {"canonical_task_cid": task_cid},
+    },
+}), encoding="utf-8")
+raise SystemExit(42)
+"""
+    result = run_leased_lane_result(
+        coordination_path=coordination_path,
+        grant=grant,
+        command=(
+            sys.executable,
+            "-c",
+            child_script,
+            str(phase_state_path),
+            task_id,
+            task_cid,
+        ),
+        lease_ms=60_000,
+        heartbeat_interval=0.2,
+        phase_state_path=phase_state_path,
+        expected_task_ids=(task_id,),
+        expected_task_cids_by_id={task_id: task_cid},
+    )
+
+    assert result.successful
+    assert result.disposition == "completed"
+    assert result.exit_code == 0
+    assert result.child_exit_code == 42
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc").is_dir(),
+    reason="late-fork process fencing regression requires Linux /proc",
+)
+def test_completion_fence_prevents_term_handler_respawn_before_capacity_release(
+    tmp_path: Path,
+) -> None:
+    coordination_path = tmp_path / "coordination.sqlite3"
+    phase_state_path = tmp_path / "phase-state.json"
+    root_pid_path = tmp_path / "root.pid"
+    worker_pid_path = tmp_path / "worker.pid"
+    replacement_pid_path = tmp_path / "replacement.pid"
+    task_id = "RES-RESPAWN"
+    task_cid = profile_g_cid({"member": task_id})
+    with LeaseCoordinator(coordination_path) as coordinator:
+        task = coordinator.register_bundle(
+            {
+                "bundle_key": "objective/resources/respawn",
+                "tasks": [
+                    {
+                        "task_id": task_id,
+                        "canonical_task_cid": task_cid,
+                    }
+                ],
+                "execution_slice_task_ids": [task_id],
+                "execution_slice_task_cids": [task_cid],
+            }
+        )
+        grant = coordinator.claim(
+            task["task_cid"],
+            "did:web:respawn-worker.example",
+            requested_lease_ms=60_000,
+        )
+
+    worker_script = """
+import os
+import pathlib
+import signal
+import subprocess
+import sys
+import time
+
+ready_path = pathlib.Path(sys.argv[1])
+replacement_path = pathlib.Path(sys.argv[2])
+def respawn(_signum, _frame):
+    replacement = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True,
+    )
+    replacement_path.write_text(str(replacement.pid), encoding="utf-8")
+    raise SystemExit(0)
+signal.signal(signal.SIGTERM, respawn)
+ready_path.write_text(str(os.getpid()), encoding="utf-8")
+time.sleep(60)
+"""
+    root_script = """
+import os
+import pathlib
+import subprocess
+import sys
+import time
+
+root_path = pathlib.Path(sys.argv[1])
+root_path.write_text(str(os.getpid()), encoding="utf-8")
+subprocess.Popen(
+    [sys.executable, "-c", sys.argv[4], sys.argv[2], sys.argv[3]],
+    start_new_session=True,
+)
+time.sleep(60)
+"""
+    outcomes: list[LeasedLaneResult] = []
+    errors: list[BaseException] = []
+    idle_liveness: list[tuple[bool, bool]] = []
+
+    def sample_resources(**kwargs: object) -> dict[str, object]:
+        if kwargs.get("active_workers") == 0:
+            idle_liveness.append(
+                (
+                    pid_alive(int(root_pid_path.read_text(encoding="utf-8"))),
+                    pid_alive(int(worker_pid_path.read_text(encoding="utf-8"))),
+                )
+            )
+        return {}
+
+    def execute() -> None:
+        try:
+            outcomes.append(
+                run_leased_lane_result(
+                    coordination_path=coordination_path,
+                    grant=grant,
+                    command=(
+                        sys.executable,
+                        "-c",
+                        root_script,
+                        str(root_pid_path),
+                        str(worker_pid_path),
+                        str(replacement_pid_path),
+                        worker_script,
+                    ),
+                    lease_ms=60_000,
+                    heartbeat_interval=0.02,
+                    resource_sampler=sample_resources,
+                    phase_state_path=phase_state_path,
+                    expected_task_ids=(task_id,),
+                    expected_task_cids_by_id={task_id: task_cid},
+                )
+            )
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            errors.append(exc)
+
+    lane_thread = threading.Thread(target=execute, daemon=True)
+    lane_thread.start()
+    deadline = time.monotonic() + 5
+    while (
+        (not root_pid_path.exists() or not worker_pid_path.exists())
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.01)
+    assert root_pid_path.exists()
+    assert worker_pid_path.exists()
+
+    try:
+        phase_state_path.write_text(
+            json.dumps(
+                {
+                    "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                    "active_task_id": "",
+                    "implementation_in_progress": False,
+                    "completed_task_ids": [task_id],
+                    "task_identities": {
+                        task_id: {"canonical_task_cid": task_cid},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        lane_thread.join(10)
+    finally:
+        for pid_path in (replacement_pid_path, worker_pid_path, root_pid_path):
+            if not pid_path.exists():
+                continue
+            try:
+                process_id = int(pid_path.read_text(encoding="utf-8"))
+                if pid_alive(process_id):
+                    os.kill(process_id, signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+        lane_thread.join(5)
+
+    assert errors == []
+    assert len(outcomes) == 1 and outcomes[0].successful
+    assert replacement_pid_path.exists() is False
+    assert idle_liveness == [(False, False)]
 
 
 def test_goal_runtime_work_kinds_have_four_distinct_resource_classes() -> None:
