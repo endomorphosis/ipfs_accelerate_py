@@ -58,6 +58,7 @@ from types import MappingProxyType
 from typing import (
     Callable,
     Dict,
+    Iterable,
     Mapping,
     Optional,
     Protocol,
@@ -67,6 +68,19 @@ from typing import (
     runtime_checkable,
 )
 
+from .model_catalog import (
+    CapabilityDescriptor,
+    CatalogSnapshot,
+    LifecycleState,
+    Modality,
+    ModelDescriptor,
+    Operation,
+    OperationalState,
+    ProviderDescriptor,
+    Provenance,
+    RouterBinding,
+    redact_secrets,
+)
 from .router_deps import RouterDeps, get_default_router_deps
 from .voice_templates import (
     buildVoiceGraphRagPromptParts,
@@ -416,6 +430,968 @@ _BUILTIN_PROVIDER_ALIASES: Mapping[str, str] = {
     "local_hf": "huggingface",
     "accelerate": "backend_manager",
 }
+
+
+_AUDIO_MIME_TYPES: Mapping[str, str] = {
+    "aac": "audio/aac",
+    "flac": "audio/flac",
+    "m4a": "audio/mp4",
+    "mp3": "audio/mpeg",
+    "mp4": "audio/mp4",
+    "mpeg": "audio/mpeg",
+    "mpga": "audio/mpeg",
+    "ogg": "audio/ogg",
+    "opus": "audio/ogg",
+    "pcm": "audio/l16",
+    "wav": "audio/wav",
+    "wave": "audio/wav",
+    "webm": "audio/webm",
+}
+
+_VOICE_CATALOG_PROVENANCE = (Provenance(source="voice_router"),)
+
+
+@dataclass(frozen=True)
+class _VoiceCatalogMetadata:
+    display_name: str
+    description: str
+    locality: str
+    device: str
+    access_type: str
+    transcription_media_types: Tuple[str, ...] = ()
+    synthesis_media_types: Tuple[str, ...] = ()
+    languages: str = "provider-defined"
+    voices: str = "provider-defined"
+    default_voice: Optional[str] = None
+    default_transcription_model: Optional[str] = None
+    default_synthesis_model: Optional[str] = None
+    max_input_bytes: Optional[int] = None
+    max_output_bytes: Optional[int] = None
+    max_duration_seconds: Optional[int] = None
+    sample_rates_hz: Tuple[int, ...] = ()
+
+
+_BUILTIN_VOICE_CATALOG: Mapping[str, _VoiceCatalogMetadata] = {
+    "abby_indextts": _VoiceCatalogMetadata(
+        display_name="Abby IndexTTS",
+        description="Remote Abby IndexTTS speech synthesis.",
+        locality="remote",
+        device="remote",
+        access_type="optional-token",
+        synthesis_media_types=(
+            "audio/flac",
+            "audio/mpeg",
+            "audio/ogg",
+            "audio/wav",
+        ),
+        voices="provider-defined",
+        default_synthesis_model="Publicus/IndexTTS-2-Demo",
+    ),
+    "abby_whisper": _VoiceCatalogMetadata(
+        display_name="Abby Whisper",
+        description="Remote Hugging Face Whisper speech transcription.",
+        locality="remote",
+        device="remote",
+        access_type="optional-token",
+        transcription_media_types=(
+            "audio/flac",
+            "audio/mp4",
+            "audio/mpeg",
+            "audio/ogg",
+            "audio/wav",
+            "audio/webm",
+        ),
+        languages="multilingual",
+        default_transcription_model="openai/whisper-large-v3-turbo",
+    ),
+    "openai": _VoiceCatalogMetadata(
+        display_name="OpenAI Voice",
+        description="OpenAI speech synthesis and audio transcription APIs.",
+        locality="remote",
+        device="remote",
+        access_type="api-key",
+        transcription_media_types=(
+            "audio/mp4",
+            "audio/mpeg",
+            "audio/wav",
+            "audio/webm",
+        ),
+        synthesis_media_types=(
+            "audio/aac",
+            "audio/flac",
+            "audio/l16",
+            "audio/mpeg",
+            "audio/ogg",
+            "audio/wav",
+        ),
+        languages="multilingual",
+        voices="provider-defined",
+        default_voice="alloy",
+        default_transcription_model="whisper-1",
+        default_synthesis_model="tts-1",
+    ),
+    "elevenlabs": _VoiceCatalogMetadata(
+        display_name="ElevenLabs",
+        description="ElevenLabs speech synthesis API.",
+        locality="remote",
+        device="remote",
+        access_type="api-key",
+        synthesis_media_types=("audio/mpeg",),
+        languages="model-defined",
+        voices="provider-defined",
+        default_voice="Rachel",
+        default_synthesis_model="eleven_monolingual_v1",
+    ),
+    "assemblyai": _VoiceCatalogMetadata(
+        display_name="AssemblyAI",
+        description="AssemblyAI speech transcription API.",
+        locality="remote",
+        device="remote",
+        access_type="api-key",
+        transcription_media_types=("audio/*",),
+        languages="provider-defined",
+        default_transcription_model="default",
+    ),
+    "huggingface": _VoiceCatalogMetadata(
+        display_name="Hugging Face Voice",
+        description="Local transformers pipelines for speech synthesis and transcription.",
+        locality="local",
+        device="cpu,cuda",
+        access_type="none",
+        transcription_media_types=(
+            "audio/flac",
+            "audio/mp4",
+            "audio/mpeg",
+            "audio/ogg",
+            "audio/wav",
+            "audio/webm",
+        ),
+        synthesis_media_types=("audio/wav",),
+        languages="model-defined",
+        voices="model-defined",
+        default_transcription_model="openai/whisper-base",
+        default_synthesis_model="suno/bark-small",
+    ),
+    "backend_manager": _VoiceCatalogMetadata(
+        display_name="Inference Backend Manager",
+        description="Distributed voice inference selected by InferenceBackendManager.",
+        locality="distributed",
+        device="provider-defined",
+        access_type="backend-policy",
+        transcription_media_types=("audio/*",),
+        synthesis_media_types=("audio/*",),
+        languages="provider-defined",
+        voices="provider-defined",
+        default_transcription_model="default-stt",
+        default_synthesis_model="default-tts",
+    ),
+}
+
+
+def _catalog_name(value: object, *, fallback: str = "default") -> str:
+    """Return a bounded canonical catalog name for router-owned hints."""
+    raw_value = str(value or "").strip()
+    if redact_secrets(raw_value) != raw_value:
+        return fallback
+    normalized = raw_value.casefold()
+    normalized = re.sub(r"[^a-z0-9._/-]+", "-", normalized)
+    normalized = re.sub(r"/{2,}", "/", normalized)
+    normalized = re.sub(r"\.{2,}", ".", normalized)
+    normalized = normalized.strip("._/-")
+    if not normalized:
+        normalized = fallback
+    return normalized[:128].rstrip("._/-") or fallback
+
+
+def _canonical_operation(operation: Optional[Union[str, Operation]]) -> Optional[Operation]:
+    if operation is None:
+        return None
+    if isinstance(operation, Operation):
+        if operation in {Operation.AUDIO_TRANSCRIBE, Operation.AUDIO_SYNTHESIZE}:
+            return operation
+        raise ValueError(f"Unsupported voice operation: {operation.value}")
+    normalized = str(operation or "").strip().casefold().replace("-", "_")
+    if normalized in {
+        "audio.transcribe",
+        "transcribe",
+        "transcription",
+        "speech_to_text",
+        "stt",
+    }:
+        return Operation.AUDIO_TRANSCRIBE
+    if normalized in {
+        "audio.synthesize",
+        "synthesize",
+        "synthesis",
+        "text_to_speech",
+        "tts",
+    }:
+        return Operation.AUDIO_SYNTHESIZE
+    raise ValueError(f"Unsupported voice operation: {operation}")
+
+
+def _mime_types(formats: Iterable[str]) -> Tuple[str, ...]:
+    result = set()
+    for value in formats:
+        normalized = str(value or "").strip().casefold()
+        if "/" in normalized:
+            result.add(normalized)
+        elif normalized.lstrip(".") in _AUDIO_MIME_TYPES:
+            result.add(_AUDIO_MIME_TYPES[normalized.lstrip(".")])
+    return tuple(sorted(result))
+
+
+def _provider_aliases(name: str) -> Tuple[str, ...]:
+    # A dynamically registered canonical name wins over a built-in alias in
+    # the invocation resolver, so discovery must expose the same precedence.
+    return tuple(
+        sorted(
+            alias
+            for alias, canonical in _BUILTIN_PROVIDER_ALIASES.items()
+            if canonical == name and alias not in _PROVIDER_REGISTRY
+        )
+    )
+
+
+def _provider_catalog_metadata(name: str) -> _VoiceCatalogMetadata:
+    metadata = _BUILTIN_VOICE_CATALOG.get(name)
+    if metadata is not None:
+        return metadata
+    capabilities = _PROVIDER_REGISTRY[name].capabilities
+    media_types = _mime_types(capabilities.audio_formats)
+    return _VoiceCatalogMetadata(
+        display_name=name.replace("_", " ").replace("-", " ").title(),
+        description="Dynamically registered voice provider.",
+        locality="unknown",
+        device="provider-defined",
+        access_type="provider-defined",
+        transcription_media_types=media_types,
+        synthesis_media_types=media_types,
+        default_transcription_model="default",
+        default_synthesis_model="default",
+    )
+
+
+def _provider_configuration(name: str) -> Tuple[Optional[bool], Optional[bool]]:
+    """Return static configured/authorized facts without constructing clients."""
+    if name in _PROVIDER_REGISTRY:
+        return True, None
+    if name == "openai":
+        configured = bool(
+            _coalesce_env("IPFS_ACCELERATE_PY_OPENAI_API_KEY", "OPENAI_API_KEY")
+        )
+        return configured, configured
+    if name == "elevenlabs":
+        configured = bool(
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY"
+            )
+        )
+        return configured, configured
+    if name == "assemblyai":
+        configured = bool(
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "ASSEMBLYAI_API_KEY"
+            )
+        )
+        return configured, configured
+    if name == "abby_indextts":
+        configured = bool(
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS",
+                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URL",
+                "WALLET_INDEXTTS_SPACE_URL",
+                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_FALLBACK_URL",
+                "WALLET_INDEXTTS_FALLBACK_SPACE_URL",
+            )
+        )
+        authorized = (
+            True
+            if _coalesce_env(
+                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TOKEN", "HF_TOKEN"
+            )
+            else None
+        )
+        return configured, authorized
+    if name == "abby_whisper":
+        # The adapter has a public default base URL even when no override is set.
+        authorized = (
+            True
+            if _coalesce_env(
+                "IPFS_ACCELERATE_PY_ABBY_WHISPER_TOKEN",
+                "WALLET_HF_WHISPER_TOKEN",
+                "HF_TOKEN",
+            )
+            else None
+        )
+        return True, authorized
+    if name == "huggingface":
+        # Package and model availability intentionally remain unknown: checking
+        # either here would violate the side-effect-free discovery contract.
+        return None, True
+    if name == "backend_manager":
+        return _truthy(os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER")), None
+    return None, None
+
+
+def _provider_state(name: str) -> OperationalState:
+    configured, authorized = _provider_configuration(name)
+    if name in _PROVIDER_REGISTRY:
+        routable: Optional[bool] = True
+    elif name in {"openai", "elevenlabs", "assemblyai", "abby_indextts"}:
+        routable = configured
+    elif name == "abby_whisper":
+        routable = True
+    else:
+        routable = None
+    return OperationalState(
+        known=True,
+        configured=configured,
+        authorized=authorized,
+        reachable=None,
+        healthy=None,
+        routable=routable,
+    )
+
+
+def _provider_capability_descriptors(
+    name: str,
+) -> Tuple[CapabilityDescriptor, ...]:
+    capabilities = get_voice_provider_capabilities(name)
+    metadata = _provider_catalog_metadata(name)
+    records = []
+    if capabilities.transcription:
+        operations = [Operation.AUDIO_TRANSCRIBE]
+        if capabilities.streaming:
+            operations.append(Operation.STREAM)
+        records.append(
+            CapabilityDescriptor(
+                operations=tuple(operations),
+                input_modalities=(Modality.AUDIO,),
+                output_modalities=(Modality.TEXT,),
+                media_types=metadata.transcription_media_types
+                or _mime_types(capabilities.audio_formats),
+                max_input_bytes=metadata.max_input_bytes,
+            )
+        )
+    if capabilities.synthesis:
+        operations = [Operation.AUDIO_SYNTHESIZE]
+        if capabilities.streaming:
+            operations.append(Operation.STREAM)
+        records.append(
+            CapabilityDescriptor(
+                operations=tuple(operations),
+                input_modalities=(Modality.TEXT,),
+                output_modalities=(Modality.AUDIO,),
+                media_types=metadata.synthesis_media_types
+                or _mime_types(capabilities.audio_formats),
+                max_output_bytes=metadata.max_output_bytes,
+            )
+        )
+    return tuple(records)
+
+
+def _provider_descriptor(name: str) -> ProviderDescriptor:
+    metadata = _provider_catalog_metadata(name)
+    capabilities = get_voice_provider_capabilities(name)
+    state = _provider_state(name)
+    if name in _PROVIDER_REGISTRY:
+        readiness = "registered-unverified"
+    elif state.configured is True:
+        readiness = "configured-unverified"
+    elif state.configured is False:
+        readiness = "not-configured"
+    else:
+        readiness = "unknown"
+    labels = {
+        "router": "voice_router",
+        "locality": metadata.locality,
+        "device": metadata.device,
+        "access_type": metadata.access_type,
+        "readiness": readiness,
+        "streaming": str(capabilities.streaming).lower(),
+        "batching": "false",
+        "audio.languages": metadata.languages,
+        "audio.voices": metadata.voices,
+    }
+    if metadata.default_voice:
+        labels["audio.default_voice"] = metadata.default_voice
+    if metadata.sample_rates_hz:
+        labels["audio.sample_rates_hz"] = ",".join(
+            str(value) for value in metadata.sample_rates_hz
+        )
+    if metadata.max_duration_seconds:
+        labels["audio.max_duration_seconds"] = str(
+            metadata.max_duration_seconds
+        )
+    lifecycle = (
+        LifecycleState.CONFIGURED
+        if state.configured is True
+        else LifecycleState.DECLARED
+    )
+    return ProviderDescriptor(
+        name=name,
+        display_name=metadata.display_name,
+        aliases=_provider_aliases(name),
+        description=metadata.description,
+        capabilities=_provider_capability_descriptors(name),
+        lifecycle=lifecycle,
+        state=state,
+        provenance=_VOICE_CATALOG_PROVENANCE,
+        labels=labels,
+    )
+
+
+def _catalog_provider_names() -> Tuple[str, ...]:
+    # Registry entries replace same-named built-ins, exactly as invocation does.
+    return tuple(
+        sorted(set(_BUILTIN_PROVIDER_CAPABILITIES) | set(_PROVIDER_REGISTRY))
+    )
+
+
+def _model_names_for_provider(
+    name: str, operation: Optional[Operation] = None
+) -> Tuple[Tuple[str, Operation], ...]:
+    metadata = _provider_catalog_metadata(name)
+    capabilities = get_voice_provider_capabilities(name)
+    records = []
+    if capabilities.transcription and operation in (None, Operation.AUDIO_TRANSCRIBE):
+        default = metadata.default_transcription_model or "default"
+        if name == "abby_whisper":
+            default = (
+                os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_MODEL")
+                or os.getenv("WALLET_HF_WHISPER_MODEL_NAME")
+                or default
+            )
+        elif name == "openai":
+            default = (
+                os.getenv("IPFS_ACCELERATE_PY_OPENAI_STT_MODEL")
+                or os.getenv("IPFS_ACCELERATE_PY_STT_MODEL")
+                or default
+            )
+        elif name == "huggingface":
+            default = os.getenv("IPFS_ACCELERATE_PY_STT_MODEL") or default
+        elif name == "backend_manager":
+            default = os.getenv("IPFS_ACCELERATE_PY_STT_MODEL") or default
+        records.append((_catalog_name(default, fallback="default-stt"), Operation.AUDIO_TRANSCRIBE))
+    if capabilities.synthesis and operation in (None, Operation.AUDIO_SYNTHESIZE):
+        default = metadata.default_synthesis_model or "default"
+        if name == "abby_indextts":
+            default = (
+                os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_MODEL")
+                or os.getenv("WALLET_INDEXTTS_MODEL_NAME")
+                or default
+            )
+        elif name == "openai":
+            default = (
+                os.getenv("IPFS_ACCELERATE_PY_OPENAI_TTS_MODEL")
+                or os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL")
+                or default
+            )
+        elif name == "elevenlabs":
+            default = (
+                os.getenv("IPFS_ACCELERATE_PY_ELEVENLABS_MODEL_ID")
+                or os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL")
+                or default
+            )
+        elif name in {"huggingface", "backend_manager"}:
+            default = os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL") or default
+        records.append((_catalog_name(default, fallback="default-tts"), Operation.AUDIO_SYNTHESIZE))
+    return tuple(records)
+
+
+def _model_descriptors_for_provider(
+    provider_descriptor: ProviderDescriptor,
+    operation: Optional[Operation] = None,
+) -> Tuple[ModelDescriptor, ...]:
+    metadata = _provider_catalog_metadata(provider_descriptor.name)
+    grouped: Dict[str, list[Operation]] = {}
+    for model_name, model_operation in _model_names_for_provider(
+        provider_descriptor.name, operation
+    ):
+        grouped.setdefault(model_name, []).append(model_operation)
+    records = []
+    for model_name, model_operations in grouped.items():
+        capability_records = tuple(
+            capability
+            for capability in provider_descriptor.capabilities
+            if any(
+                model_operation in capability.operations
+                for model_operation in model_operations
+            )
+        )
+        labels = {
+            "router": "voice_router",
+            "locality": metadata.locality,
+            "device": metadata.device,
+            "streaming": str(
+                Operation.STREAM
+                in {
+                    item
+                    for capability in capability_records
+                    for item in capability.operations
+                }
+            ).lower(),
+            "batching": "false",
+            "audio.languages": metadata.languages,
+            "audio.voices": metadata.voices,
+            "audio.operations": ",".join(
+                sorted(item.value for item in set(model_operations))
+            ),
+        }
+        if metadata.default_voice:
+            labels["audio.default_voice"] = metadata.default_voice
+        if metadata.sample_rates_hz:
+            labels["audio.sample_rates_hz"] = ",".join(
+                str(value) for value in metadata.sample_rates_hz
+            )
+        if metadata.max_duration_seconds:
+            labels["audio.max_duration_seconds"] = str(
+                metadata.max_duration_seconds
+            )
+        records.append(
+            ModelDescriptor(
+                provider_id=provider_descriptor.provider_id,
+                name=model_name,
+                display_name=model_name,
+                description=f"Voice router model hint for {provider_descriptor.name}.",
+                capabilities=capability_records,
+                lifecycle=provider_descriptor.lifecycle,
+                state=provider_descriptor.state,
+                provenance=_VOICE_CATALOG_PROVENANCE,
+                labels=labels,
+            )
+        )
+    return tuple(sorted(records, key=lambda record: record.name))
+
+
+def _descriptor_operations(
+    descriptor: Union[ProviderDescriptor, ModelDescriptor]
+) -> frozenset[Operation]:
+    return frozenset(
+        operation
+        for capability in descriptor.capabilities
+        for operation in capability.operations
+    )
+
+
+def _label(descriptor: Union[ProviderDescriptor, ModelDescriptor], name: str) -> Optional[str]:
+    return dict(descriptor.labels).get(name)
+
+
+def _matches_catalog_constraints(
+    descriptor: Union[ProviderDescriptor, ModelDescriptor],
+    *,
+    operation: Optional[Operation],
+    language: Optional[str],
+    voice: Optional[str],
+    media_type: Optional[str],
+    sample_rate_hz: Optional[int],
+    duration_seconds: Optional[float],
+    size_bytes: Optional[int],
+    streaming: Optional[bool],
+    batching: Optional[bool],
+    locality: Optional[str],
+    device: Optional[str],
+    authorized: Optional[bool],
+    ready: Optional[bool],
+) -> bool:
+    operations = _descriptor_operations(descriptor)
+    if operation is not None and operation not in operations:
+        return False
+    if streaming is True and Operation.STREAM not in operations:
+        return False
+    if batching is True and Operation.BATCH not in operations:
+        return False
+    if locality is not None:
+        actual = _label(descriptor, "locality")
+        if actual not in (None, "unknown") and actual != str(locality).casefold():
+            return False
+    if device is not None:
+        actual_devices = {
+            item.strip().casefold()
+            for item in (_label(descriptor, "device") or "").split(",")
+            if item.strip()
+        }
+        requested_device = str(device).strip().casefold()
+        if actual_devices and "provider-defined" not in actual_devices and requested_device not in actual_devices:
+            return False
+    if language is not None:
+        languages = (_label(descriptor, "audio.languages") or "").casefold()
+        requested_language = str(language).strip().casefold()
+        known_open = {"multilingual", "provider-defined", "model-defined", ""}
+        if languages not in known_open and requested_language not in {
+            item.strip() for item in languages.split(",")
+        }:
+            return False
+    if voice is not None:
+        voices = (_label(descriptor, "audio.voices") or "").casefold()
+        requested_voice = str(voice).strip().casefold()
+        known_open = {"provider-defined", "model-defined", ""}
+        if voices not in known_open and requested_voice not in {
+            item.strip() for item in voices.split(",")
+        }:
+            return False
+    if media_type is not None:
+        requested_media = _mime_types((media_type,))
+        if not requested_media:
+            return False
+        known_media = {
+            item
+            for capability in descriptor.capabilities
+            for item in capability.media_types
+        }
+        if known_media and "audio/*" not in known_media and requested_media[0] not in known_media:
+            return False
+    if sample_rate_hz is not None:
+        known_rates = {
+            int(item)
+            for item in (_label(descriptor, "audio.sample_rates_hz") or "").split(",")
+            if item.strip().isdigit()
+        }
+        if known_rates and int(sample_rate_hz) not in known_rates:
+            return False
+    if duration_seconds is not None:
+        maximum = _label(descriptor, "audio.max_duration_seconds")
+        if maximum is not None and float(duration_seconds) > float(maximum):
+            return False
+    if size_bytes is not None:
+        relevant_capabilities = (
+            descriptor.capabilities
+            if operation is None
+            else tuple(
+                capability
+                for capability in descriptor.capabilities
+                if operation in capability.operations
+            )
+        )
+        known_limits = [
+            limit
+            for capability in relevant_capabilities
+            for limit in (capability.max_input_bytes, capability.max_output_bytes)
+            if limit is not None
+        ]
+        if known_limits and int(size_bytes) > max(known_limits):
+            return False
+    if authorized is not None and descriptor.state.authorized is not authorized:
+        return False
+    if ready is not None and descriptor.state.routable is not ready:
+        return False
+    return True
+
+
+def list_providers(
+    *,
+    operation: Optional[Union[str, Operation]] = None,
+    language: Optional[str] = None,
+    voice: Optional[str] = None,
+    media_type: Optional[str] = None,
+    sample_rate_hz: Optional[int] = None,
+    duration_seconds: Optional[float] = None,
+    size_bytes: Optional[int] = None,
+    streaming: Optional[bool] = None,
+    batching: Optional[bool] = None,
+    locality: Optional[str] = None,
+    device: Optional[str] = None,
+    authorized: Optional[bool] = None,
+    ready: Optional[bool] = None,
+) -> Tuple[ProviderDescriptor, ...]:
+    """List canonical voice providers without resolving or constructing one."""
+    selected_operation = _canonical_operation(operation)
+    records = tuple(
+        _provider_descriptor(name) for name in _catalog_provider_names()
+    )
+    return tuple(
+        record
+        for record in records
+        if _matches_catalog_constraints(
+            record,
+            operation=selected_operation,
+            language=language,
+            voice=voice,
+            media_type=media_type,
+            sample_rate_hz=sample_rate_hz,
+            duration_seconds=duration_seconds,
+            size_bytes=size_bytes,
+            streaming=streaming,
+            batching=batching,
+            locality=locality,
+            device=device,
+            authorized=authorized,
+            ready=ready,
+        )
+    )
+
+
+def get_provider_descriptor(name: str) -> ProviderDescriptor:
+    """Return one provider descriptor, honoring invocation alias precedence."""
+    normalized = str(name or "").strip().casefold()
+    if not normalized:
+        raise ValueError("Provider name must be non-empty")
+    if normalized in _PROVIDER_REGISTRY:
+        canonical = normalized
+    else:
+        canonical = _BUILTIN_PROVIDER_ALIASES.get(normalized, normalized)
+    if canonical not in _PROVIDER_REGISTRY and canonical not in _BUILTIN_PROVIDER_CAPABILITIES:
+        raise ValueError(f"Unknown voice provider: {name}")
+    return _provider_descriptor(canonical)
+
+
+def list_models(
+    provider: Optional[str] = None,
+    *,
+    operation: Optional[Union[str, Operation]] = None,
+    language: Optional[str] = None,
+    voice: Optional[str] = None,
+    media_type: Optional[str] = None,
+    sample_rate_hz: Optional[int] = None,
+    duration_seconds: Optional[float] = None,
+    size_bytes: Optional[int] = None,
+    streaming: Optional[bool] = None,
+    batching: Optional[bool] = None,
+    locality: Optional[str] = None,
+    device: Optional[str] = None,
+    authorized: Optional[bool] = None,
+    ready: Optional[bool] = None,
+) -> Tuple[ModelDescriptor, ...]:
+    """List configured model hints projected from provider defaults."""
+    selected_operation = _canonical_operation(operation)
+    providers = (
+        (get_provider_descriptor(provider),)
+        if provider is not None
+        else list_providers()
+    )
+    records = tuple(
+        model
+        for provider_record in providers
+        for model in _model_descriptors_for_provider(
+            provider_record, selected_operation
+        )
+    )
+    return tuple(
+        sorted(
+            (
+                record
+                for record in records
+                if _matches_catalog_constraints(
+                    record,
+                    operation=selected_operation,
+                    language=language,
+                    voice=voice,
+                    media_type=media_type,
+                    sample_rate_hz=sample_rate_hz,
+                    duration_seconds=duration_seconds,
+                    size_bytes=size_bytes,
+                    streaming=streaming,
+                    batching=batching,
+                    locality=locality,
+                    device=device,
+                    authorized=authorized,
+                    ready=ready,
+                )
+            ),
+            key=lambda record: (record.provider_id, record.name),
+        )
+    )
+
+
+def resolve_model(
+    model: Optional[str] = None,
+    *,
+    model_name: Optional[str] = None,
+    provider: Optional[str] = None,
+    operation: Optional[Union[str, Operation]] = None,
+    language: Optional[str] = None,
+    voice: Optional[str] = None,
+    media_type: Optional[str] = None,
+    sample_rate_hz: Optional[int] = None,
+    duration_seconds: Optional[float] = None,
+    size_bytes: Optional[int] = None,
+    streaming: Optional[bool] = None,
+    batching: Optional[bool] = None,
+    locality: Optional[str] = None,
+    device: Optional[str] = None,
+    authorized: Optional[bool] = None,
+    ready: Optional[bool] = None,
+) -> ModelDescriptor:
+    """Resolve an invocation-compatible model/provider pair.
+
+    Explicit provider names use the same dynamic-registration and alias
+    precedence as :func:`get_voice_provider`. An explicit model override is
+    accepted for a compatible explicit provider because the invocation API
+    forwards such overrides to the provider.
+    """
+    if model is not None and model_name is not None and model != model_name:
+        raise ValueError("model and model_name must agree when both are provided")
+    requested_model = model if model is not None else model_name
+    selected_operation = _canonical_operation(operation)
+    candidates = list_models(
+        provider,
+        operation=selected_operation,
+        language=language,
+        voice=voice,
+        media_type=media_type,
+        sample_rate_hz=sample_rate_hz,
+        duration_seconds=duration_seconds,
+        size_bytes=size_bytes,
+        streaming=streaming,
+        batching=batching,
+        locality=locality,
+        device=device,
+        authorized=authorized,
+        ready=ready,
+    )
+    if requested_model is not None:
+        canonical_model = _catalog_name(requested_model)
+        matches = tuple(
+            candidate
+            for candidate in candidates
+            if canonical_model == candidate.name
+            or canonical_model in candidate.aliases
+        )
+        if matches:
+            candidates = matches
+        elif provider is not None:
+            provider_record = get_provider_descriptor(provider)
+            if not _matches_catalog_constraints(
+                provider_record,
+                operation=selected_operation,
+                language=language,
+                voice=voice,
+                media_type=media_type,
+                sample_rate_hz=sample_rate_hz,
+                duration_seconds=duration_seconds,
+                size_bytes=size_bytes,
+                streaming=streaming,
+                batching=batching,
+                locality=locality,
+                device=device,
+                authorized=authorized,
+                ready=ready,
+            ):
+                candidates = ()
+            else:
+                capability_records = tuple(
+                    capability
+                    for capability in provider_record.capabilities
+                    if selected_operation is None
+                    or selected_operation in capability.operations
+                )
+                return ModelDescriptor(
+                    provider_id=provider_record.provider_id,
+                    name=canonical_model,
+                    display_name=canonical_model,
+                    description=(
+                        f"Explicit voice model override for {provider_record.name}."
+                    ),
+                    capabilities=capability_records,
+                    lifecycle=provider_record.lifecycle,
+                    state=provider_record.state,
+                    provenance=_VOICE_CATALOG_PROVENANCE,
+                    labels={
+                        **dict(provider_record.labels),
+                        "explicit_override": "true",
+                    },
+                )
+        else:
+            candidates = matches
+    if not candidates:
+        detail = f" model {requested_model!r}" if requested_model is not None else ""
+        raise ValueError(f"No compatible voice{detail} provider was found")
+
+    if provider is None:
+        statically_viable = tuple(
+            candidate
+            for candidate in candidates
+            if candidate.state.routable is not False
+        )
+        if statically_viable:
+            candidates = statically_viable
+
+    preferred_name = os.getenv("IPFS_ACCELERATE_PY_VOICE_PROVIDER", "").strip()
+    if preferred_name:
+        try:
+            preferred_id = get_provider_descriptor(preferred_name).provider_id
+        except ValueError:
+            preferred_id = None
+        if preferred_id is not None:
+            preferred = tuple(
+                candidate
+                for candidate in candidates
+                if candidate.provider_id == preferred_id
+            )
+            if preferred:
+                return preferred[0]
+
+    operation_order = {
+        Operation.AUDIO_TRANSCRIBE: (
+            "openai",
+            "assemblyai",
+            "huggingface",
+            "backend_manager",
+            "abby_whisper",
+        ),
+        Operation.AUDIO_SYNTHESIZE: (
+            "backend_manager",
+            "openai",
+            "elevenlabs",
+            "huggingface",
+            "abby_indextts",
+        ),
+    }
+    provider_by_id = {
+        descriptor.provider_id: descriptor.name for descriptor in list_providers()
+    }
+    order = operation_order.get(selected_operation, ())
+    rank = {name: index for index, name in enumerate(order)}
+    return min(
+        candidates,
+        key=lambda candidate: (
+            rank.get(provider_by_id.get(candidate.provider_id, ""), len(rank)),
+            provider_by_id.get(candidate.provider_id, ""),
+            candidate.name,
+        ),
+    )
+
+
+def get_catalog_snapshot() -> CatalogSnapshot:
+    """Project the current voice router registry into one immutable snapshot."""
+    providers = list_providers()
+    models = tuple(
+        model
+        for provider in providers
+        for model in _model_descriptors_for_provider(provider)
+    )
+    bindings = tuple(
+        RouterBinding(
+            router="voice_router",
+            provider_id=model.provider_id,
+            model_id=model.model_id,
+            operations=tuple(
+                operation
+                for operation in _descriptor_operations(model)
+                if operation not in {Operation.BATCH, Operation.STREAM}
+            )
+            + tuple(
+                operation
+                for operation in (Operation.BATCH, Operation.STREAM)
+                if operation in _descriptor_operations(model)
+            ),
+            state=model.state,
+            provenance=_VOICE_CATALOG_PROVENANCE,
+            labels={"source": "router"},
+        )
+        for model in models
+    )
+    return CatalogSnapshot(
+        providers=providers,
+        models=models,
+        bindings=bindings,
+    )
+
+
+# Common source-adapter spelling retained alongside the explicit getter.
+catalog_snapshot = get_catalog_snapshot
 
 
 def get_voice_provider_capabilities(name: str) -> VoiceProviderCapabilities:
@@ -1313,8 +2289,10 @@ class GraphRAGVoiceTemplateProvider:
 
 def _get_openai_provider() -> Optional[VoiceProvider]:
     """Get OpenAI voice provider (TTS via /audio/speech + STT via /audio/transcriptions)."""
-    api_key = _coalesce_env("IPFS_ACCELERATE_PY_OPENAI_API_KEY", "OPENAI_API_KEY")
-    if not api_key:
+    credential_value = _coalesce_env(
+        "IPFS_ACCELERATE_PY_OPENAI_API_KEY", "OPENAI_API_KEY"
+    )
+    if not credential_value:
         return None
 
     base_url = os.getenv("IPFS_ACCELERATE_PY_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
@@ -1362,7 +2340,7 @@ def _get_openai_provider() -> Optional[VoiceProvider]:
                 data=json.dumps(payload).encode("utf-8"),
                 method="POST",
                 headers={
-                    "Authorization": "Bearer " + api_key,
+                    "Authorization": "Bearer " + credential_value,
                     "Content-Type": "application/json",
                 },
             )
@@ -1440,7 +2418,7 @@ def _get_openai_provider() -> Optional[VoiceProvider]:
                 data=body,
                 method="POST",
                 headers={
-                    "Authorization": "Bearer " + api_key,
+                    "Authorization": "Bearer " + credential_value,
                     "Content-Type": f"multipart/form-data; boundary={boundary}",
                 },
             )
@@ -1465,8 +2443,10 @@ def _get_openai_provider() -> Optional[VoiceProvider]:
 
 def _get_elevenlabs_provider() -> Optional[VoiceProvider]:
     """Get ElevenLabs voice provider (TTS only)."""
-    api_key = _coalesce_env("IPFS_ACCELERATE_PY_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY")
-    if not api_key:
+    credential_value = _coalesce_env(
+        "IPFS_ACCELERATE_PY_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY"
+    )
+    if not credential_value:
         return None
 
     class _ElevenLabsVoiceProvider:
@@ -1508,7 +2488,7 @@ def _get_elevenlabs_provider() -> Optional[VoiceProvider]:
                 data=json.dumps(payload).encode("utf-8"),
                 method="POST",
                 headers={
-                    "xi-api-key": api_key,
+                    "xi-api-key": credential_value,
                     "Content-Type": "application/json",
                     "Accept": "audio/mpeg",
                 },
@@ -1539,8 +2519,10 @@ def _get_elevenlabs_provider() -> Optional[VoiceProvider]:
 
 def _get_assemblyai_provider() -> Optional[VoiceProvider]:
     """Get AssemblyAI voice provider (STT only)."""
-    api_key = _coalesce_env("IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "ASSEMBLYAI_API_KEY")
-    if not api_key:
+    credential_value = _coalesce_env(
+        "IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "ASSEMBLYAI_API_KEY"
+    )
+    if not credential_value:
         return None
 
     class _AssemblyAIVoiceProvider:
@@ -1583,7 +2565,7 @@ def _get_assemblyai_provider() -> Optional[VoiceProvider]:
                         data=audio_bytes,
                         method="POST",
                         headers={
-                            "authorization": api_key,
+                            "authorization": credential_value,
                             "content-type": "application/octet-stream",
                         },
                     )
@@ -1599,7 +2581,7 @@ def _get_assemblyai_provider() -> Optional[VoiceProvider]:
                     data=audio,
                     method="POST",
                     headers={
-                        "authorization": api_key,
+                        "authorization": credential_value,
                         "content-type": "application/octet-stream",
                     },
                 )
@@ -1620,7 +2602,7 @@ def _get_assemblyai_provider() -> Optional[VoiceProvider]:
                 data=json.dumps(transcript_payload).encode("utf-8"),
                 method="POST",
                 headers={
-                    "authorization": api_key,
+                    "authorization": credential_value,
                     "content-type": "application/json",
                 },
             )
@@ -1642,7 +2624,7 @@ def _get_assemblyai_provider() -> Optional[VoiceProvider]:
                 poll_req = urllib.request.Request(
                     f"{base_url}/transcript/{transcript_id}",
                     method="GET",
-                    headers={"authorization": api_key},
+                    headers={"authorization": credential_value},
                 )
                 try:
                     with urllib.request.urlopen(poll_req, timeout=30) as resp:
@@ -3020,6 +4002,12 @@ __all__ = [
     "register_voice_provider",
     "get_voice_provider_capabilities",
     "get_voice_provider",
+    "list_providers",
+    "get_provider_descriptor",
+    "list_models",
+    "resolve_model",
+    "get_catalog_snapshot",
+    "catalog_snapshot",
     "text_to_speech",
     "speech_to_text",
     "clear_voice_router_caches",
