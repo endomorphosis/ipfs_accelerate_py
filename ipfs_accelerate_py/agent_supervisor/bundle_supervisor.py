@@ -47,6 +47,7 @@ from .objective_graph import (
     utc_now,
 )
 from .event_log import event_log_sources, read_jsonl_events
+from .implementation_timeout import effective_implementation_hard_timeout
 from .scheduler_metrics import (
     SchedulerSnapshot,
     scheduler_snapshot,
@@ -1865,54 +1866,24 @@ def _execution_slice_implementation_max_timeout(
     enforced by ``PortalImplementationDaemon``.
     """
 
-    if (
-        isinstance(default_timeout, bool)
-        or not isinstance(default_timeout, (int, float))
-        or not math.isfinite(float(default_timeout))
-        or float(default_timeout) <= 0
-    ):
-        raise ValueError("implementation_timeout must be finite and positive")
-
+    baseline = effective_implementation_hard_timeout(
+        {},
+        configured_timeout=default_timeout,
+    ).seconds
     effective: list[float] = []
     tasks = _execution_slice_members(
         payload,
         _mapping_list(payload.get("tasks")),
     )
     for task in tasks:
-        value: Any = None
-        field_name = ""
-        for key in (
-            "implementation_max_timeout_seconds",
-            "implementation_maximum_timeout_seconds",
-            "implementation_timeout_seconds",
-            "implementation_timeout",
-        ):
-            candidate = task.get(key)
-            if candidate not in (None, ""):
-                value = candidate
-                field_name = key
-                break
-        if value in (None, ""):
-            effective.append(float(default_timeout))
-            continue
-        try:
-            timeout = float(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"{task.get('task_id') or '<unknown task>'}: {field_name} "
-                "must be a finite positive number"
-            ) from exc
-        if (
-            isinstance(value, bool)
-            or not math.isfinite(timeout)
-            or timeout <= 0
-        ):
-            raise ValueError(
-                f"{task.get('task_id') or '<unknown task>'}: {field_name} "
-                "must be a finite positive number"
-            )
-        effective.append(timeout)
-    return max(effective, default=float(default_timeout))
+        effective.append(
+            effective_implementation_hard_timeout(
+                task,
+                configured_timeout=default_timeout,
+                task_id=str(task.get("task_id") or "<unknown task>"),
+            ).seconds
+        )
+    return max(effective, default=baseline)
 
 
 _TERMINAL_CONFLICT_TASK_STATUSES = frozenset(

@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .. import implementation_timeout as _implementation_timeout
 from ..context_compiler import (
     ContextCompilationReceipt,
     ContextCompileResult,
@@ -37,6 +38,11 @@ from ..context_compiler import (
 )
 from ..context_contracts import ContextBudget, ContextCapsule
 from ..formal_verification_contracts import canonical_json, content_identity
+from ..implementation_timeout import (
+    DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
+    effective_implementation_hard_timeout,
+    implementation_timeout_metadata_value,
+)
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
@@ -121,8 +127,11 @@ DEFAULT_TRACKS = [
     "ops",
 ]
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
-DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER = 4.0
+# Compatibility re-export for callers that historically imported the policy
+# constant from implementation_daemon.
+DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER = (
+    _implementation_timeout.DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER
+)
 IMPLEMENTATION_CHECKPOINT_DIR_ENV = (
     "IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR"
 )
@@ -18612,27 +18621,7 @@ class PortalImplementationDaemon:
         task: PortalTask,
         *keys: str,
     ) -> float | None:
-        metadata = {
-            str(key).strip().lower().replace("_", " "): value
-            for key, value in task.metadata.items()
-        }
-        for key in keys:
-            normalized_key = key.strip().lower().replace("_", " ")
-            raw_value = metadata.get(normalized_key)
-            if raw_value in (None, ""):
-                continue
-            try:
-                value = float(str(raw_value).strip())
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"{normalized_key} must be a finite positive number"
-                ) from exc
-            if not math.isfinite(value) or value <= 0:
-                raise ValueError(
-                    f"{normalized_key} must be a finite positive number"
-                )
-            return value
-        return None
+        return implementation_timeout_metadata_value(task.metadata, *keys)
 
     def _implementation_timeout_policy(
         self,
@@ -18650,47 +18639,17 @@ class PortalImplementationDaemon:
         """
 
         configured = float(self.implementation_timeout)
-        task_timeout = self._task_timeout_metadata(
-            task,
-            "implementation timeout seconds",
-            "implementation timeout",
-        )
         progress_timeout = self._task_timeout_metadata(
             task,
             "implementation progress timeout seconds",
             "implementation idle timeout seconds",
         )
-        explicit_max = self._task_timeout_metadata(
-            task,
-            "implementation max timeout seconds",
-            "implementation maximum timeout seconds",
+        resolved_hard_timeout = effective_implementation_hard_timeout(
+            task.metadata,
+            configured_timeout=configured,
+            task_id=task.task_id,
         )
-        normalized_metadata = {
-            str(key).strip().lower().replace("_", " "): value
-            for key, value in task.metadata.items()
-        }
-        requires_provider = (
-            str(normalized_metadata.get("requires provider", ""))
-            .strip()
-            .lower()
-            in {"1", "true", "yes", "required"}
-        )
-
-        if explicit_max is not None:
-            hard_timeout = explicit_max
-            source = "task_metadata"
-        elif task_timeout is not None:
-            hard_timeout = task_timeout
-            source = "task_metadata"
-        elif requires_provider:
-            hard_timeout = (
-                configured
-                * DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER
-            )
-            source = "provider_task_progress"
-        else:
-            hard_timeout = configured
-            source = "configured_absolute"
+        hard_timeout = resolved_hard_timeout.seconds
 
         idle_timeout = (
             progress_timeout
@@ -18710,7 +18669,7 @@ class PortalImplementationDaemon:
             progress_timeout_seconds=float(idle_timeout),
             max_timeout_seconds=float(hard_timeout),
             progress_aware=progress_aware,
-            source=source,
+            source=resolved_hard_timeout.source,
         )
 
     def _implementation_checkpoint_dir(self, task: PortalTask) -> Path:

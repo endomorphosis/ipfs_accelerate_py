@@ -9,6 +9,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     BundleLaneSpec,
+    _execution_slice_implementation_max_timeout,
     launch_bundle_lanes,
     plan_bundle_lanes,
 )
@@ -22,6 +23,10 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     build_bundle_task_payloads,
     critical_path_schedule,
     materialize_task_dependency_dag,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon,
+    PortalTask,
 )
 
 
@@ -409,6 +414,149 @@ def test_bundle_lane_planner_preserves_task_specific_implementation_timeout(
         == "7200.0"
     )
     assert "--implementation-max-timeout" not in ordinary.command
+
+
+def test_bundle_lane_planner_mirrors_provider_default_hard_timeout(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    provider_board = tmp_path / "provider.todo.md"
+    ordinary_board = tmp_path / "ordinary.todo.md"
+    provider_board.write_text(
+        "## SRT-018 Provider task\n\n"
+        "- Status: todo\n"
+        "- Requires provider: true\n",
+        encoding="utf-8",
+    )
+    ordinary_board.write_text(
+        "## SRT-019 Ordinary task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "semantic-roundtrip/canonical-validation": {
+                        "shard_path": provider_board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-018",
+                                "canonical_task_cid": "cid-srt-018",
+                                "canonical_task_key": "task/v1/srt-018",
+                                "requires_provider": True,
+                            }
+                        ],
+                    },
+                    "semantic-roundtrip/handoff": {
+                        "shard_path": ordinary_board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-019",
+                                "canonical_task_cid": "cid-srt-019",
+                                "canonical_task_key": "task/v1/srt-019",
+                            }
+                        ],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        implementation_timeout=1800,
+        optimize_bundles=False,
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+    provider = by_key["semantic-roundtrip/canonical-validation"]
+    ordinary = by_key["semantic-roundtrip/handoff"]
+
+    daemon = PortalImplementationDaemon(
+        todo_path=provider_board,
+        state_path=tmp_path / "daemon-state.json",
+        strategy_path=tmp_path / "daemon-strategy.json",
+        events_path=tmp_path / "daemon-events.jsonl",
+        repo_root=tmp_path,
+        implementation_timeout=1800,
+    )
+    provider_policy = daemon._implementation_timeout_policy(
+        PortalTask(
+            task_id="SRT-018",
+            title="Provider task",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="benchmark",
+            metadata={"requires provider": "true"},
+        )
+    )
+    ordinary_policy = daemon._implementation_timeout_policy(
+        PortalTask(
+            task_id="SRT-019",
+            title="Ordinary task",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="benchmark",
+        )
+    )
+
+    assert provider.queue_payload["tasks"][0]["requires_provider"] is True
+    assert provider_policy.max_timeout_seconds == 7200
+    assert provider.implementation_max_timeout == (
+        provider_policy.max_timeout_seconds
+    )
+    assert (
+        provider.command[
+            provider.command.index("--implementation-max-timeout") + 1
+        ]
+        == "7200.0"
+    )
+    assert ordinary.implementation_max_timeout == (
+        ordinary_policy.max_timeout_seconds
+    )
+    assert ordinary.implementation_max_timeout == 1800
+    assert "--implementation-max-timeout" not in ordinary.command
+
+
+def test_execution_slice_timeout_excludes_unselected_members() -> None:
+    payload = {
+        "execution_slice_task_ids": ["SRT-018"],
+        "execution_slice_task_cids": [],
+        "tasks": [
+            {
+                "task_id": "SRT-018",
+                "requires_provider": True,
+            },
+            {
+                "task_id": "SRT-026",
+                "requires_provider": True,
+                "implementation_timeout_seconds": "14400",
+                "implementation_max_timeout_seconds": "21600",
+            },
+        ],
+    }
+
+    assert (
+        _execution_slice_implementation_max_timeout(
+            payload,
+            default_timeout=1800,
+        )
+        == 7200
+    )
+    payload["execution_slice_task_ids"] = ["SRT-026"]
+    assert (
+        _execution_slice_implementation_max_timeout(
+            payload,
+            default_timeout=1800,
+        )
+        == 21600
+    )
 
 
 def test_bundle_lane_planner_rejects_invalid_task_specific_timeout(

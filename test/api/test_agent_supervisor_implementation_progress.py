@@ -80,6 +80,7 @@ def test_provider_task_gets_bounded_progress_aware_timeout(tmp_path: Path) -> No
         _task(
             metadata={
                 "requires provider": "true",
+                "implementation timeout seconds": "3600",
                 "implementation progress timeout seconds": "300",
                 "implementation max timeout seconds": "5400",
             }
