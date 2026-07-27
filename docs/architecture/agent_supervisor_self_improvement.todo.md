@@ -4213,3 +4213,309 @@ planner, and refill behavior defaults to shadow mode.
 - Outputs: ipfs_accelerate_py/agent_supervisor/decision_runtime.py, ipfs_accelerate_py/agent_supervisor/task_proposal_router.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, test/api/test_agent_supervisor_decision_runtime_e2e.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-26-asi-141-asi-137-retry-budget.md
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASI-137. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-26-asi-141-asi-137-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASI-137 from strategy blocked_tasks.
+
+## ASI-142 Define canonical prompt-workflow, graph, projection, run, and rescue contracts
+
+- Status: completed
+- Priority: P0
+- Track: prompt-workflow-contracts
+- Depends on: ASI-124
+- Goal id: ASI-G410
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_workflow.py, test/api/test_agent_supervisor_prompt_workflow_contracts.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_workflow_contracts.py test/api/test_agent_supervisor_decision_contracts.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/prompt-contracts
+- Parallel lane: prompt-workflow-contracts
+- Resource class: cpu-small
+- Predicted files: ipfs_accelerate_py/agent_supervisor/prompt_workflow.py, test/api/test_agent_supervisor_prompt_workflow_contracts.py
+- Conflict policy: Add provider-free immutable contracts only; do not edit `llm_router.py`, control adapters, storage backends, lifecycle code, package exports, or live daemons.
+- Acceptance: Define strict versioned `PromptSource`, `PromptWorkflowRequest`, `DirectoryScanReceipt`, `PromptGoalGraph`, goal/task/evidence records, materialization/run references, `SupervisorIncident`, `ProgrammaticRecoveryExhaustionReceipt`, `RescuePlan`, and workflow result/receipt contracts. Bind canonical request identities to resolved repository/directory/output roots, prompt CID and redacted metadata, scan/planning/output policies, budgets, caller, and pinned IR/program/policy roots; bind immutable task CIDs to exact goal, dependencies, scope, outputs, validation, acceptance, and policy while excluding mutable status/timestamps. Enforce canonical serialization, unknown-field rejection, count/byte/depth bounds, unambiguous prompt source, no inline secrets in receipts, closed rescue operations, and stable IDs under order/status/timestamp variation. Importing the module must load no provider, DuckDB, model, graph, or supervisor process.
+
+## ASI-143 Build a bounded content-addressed prompt directory scanner
+
+- Status: pending
+- Priority: P0
+- Track: prompt-workflow-contracts
+- Depends on: ASI-142
+- Goal id: ASI-G410
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_directory_scanner.py, test/api/test_agent_supervisor_prompt_directory_scanner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_directory_scanner.py test/api/test_agent_supervisor_program_behavior.py test/api/test_agent_supervisor_analysis_pipeline.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/prompt-contracts
+- Parallel lane: prompt-directory-scan
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/prompt_directory_scanner.py, test/api/test_agent_supervisor_prompt_directory_scanner.py
+- Conflict policy: Compose `program_behavior`, AST, analysis, and objective evidence through adapters; do not duplicate scanners or modify provider/router internals.
+- Acceptance: Resolve the requested directory beneath an explicit repository allowlist; bind tracked, staged, modified, deleted, and policy-admitted untracked bytes to the current worktree root; return bounded language/build/interface/symbol/test/document/policy summaries and content-addressed evidence handles; and record exact include/exclude/redaction/truncation reasons, budgets, scanner/index/configuration roots, and stability checks. Exclude `.git`, supervisor state/worktrees, secrets/key material, caches, generated/vendor trees, and large binaries by default. Reject symlink/nested-repository/output-path escape, unstable root changes, secret leakage, unbounded source/log bodies, and approximate evidence promoted to authority. Equivalent scans must be stable; relevant dirty changes must invalidate the scan; unavailable optional analysis must degrade explicitly and lazily.
+
+## ASI-144 Generate a strict goal/subgoal/task graph through llm_router with deterministic fallback
+
+- Status: pending
+- Priority: P0
+- Track: prompt-goal-planning
+- Depends on: ASI-103, ASI-104, ASI-142, ASI-143
+- Goal id: ASI-G420
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py, test/api/test_agent_supervisor_prompt_goal_planner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_goal_planner.py test/api/test_agent_supervisor_task_proposal_router.py test/api/test_agent_supervisor_and_or_planner.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/planning
+- Parallel lane: prompt-goal-generation
+- Resource class: provider-llm
+- Predicted files: ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py, test/api/test_agent_supervisor_prompt_goal_planner.py
+- Conflict policy: Reuse the existing bounded `todo_daemon.llm`/task-proposal `llm_router` adapter and goal grammar; do not edit dirty router/provider files or create another routing layer.
+- Acceptance: Compile only the immutable request core, bounded scan/evidence handles, schemas, capabilities, budgets, and pinned constraint summaries into the provider request. Parse strict JSON into one bounded root goal, subgoals, tasks, dependencies, acceptance, outputs, validations, predicted files, resources, risks, assumptions, uncertainty, and evidence trace links. Reject prose wrappers, unknown fields, duplicate keys, cycles, orphan nodes, invalid paths, arbitrary shell/code/policy/authority/completion instructions, missing validation/acceptance, or over-budget output. Emit a complete provider/fallback/parse receipt without raw prompts or model transcripts. Use a deterministic planner on policy-disabled, unavailable, malformed, timeout, or over-budget model paths, and prove schema-equivalent stable output plus bounded input under 10x irrelevant repository growth.
+
+## ASI-145 Admit prompt-generated plans through quality, formal, IR, proof, and validation gates
+
+- Status: pending
+- Priority: P0
+- Track: prompt-goal-planning
+- Depends on: ASI-135, ASI-144
+- Goal id: ASI-G420
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_plan_admission.py, ipfs_accelerate_py/agent_supervisor/formal_plan_compiler.py, test/api/test_agent_supervisor_prompt_plan_admission.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_plan_admission.py test/api/test_agent_supervisor_formal_plan_compiler.py test/api/test_agent_supervisor_ir_constraint_compiler.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/planning
+- Parallel lane: prompt-plan-admission
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/prompt_plan_admission.py, ipfs_accelerate_py/agent_supervisor/formal_plan_compiler.py, test/api/test_agent_supervisor_prompt_plan_admission.py
+- Conflict policy: Extend the existing formal and IR admission boundary through an adapter; do not let a model score compensate for a hard-domain failure or create a second compiler.
+- Acceptance: Canonicalize and lint the complete graph; prove connectivity, acyclicity, stable topology, acceptance coverage, task granularity, conflict/resource feasibility, output/validation policy, and evidence traceability; compile it through `FormalPlanCompiler`; and independently require IntentIR conformance, LegalIR applicability/obligations/prohibitions/conflicts, SecurityIR authorization/state, declared program effects, proof obligations, and validation requirements for every exact action/effect. Unknown or contradictory mandatory state, stale roots, unbound paths, shell-bearing validation, hidden effects, and any hard-domain rejection fail closed with exact reasons/counterexamples. Assign final task/plan CIDs only after admission and prove candidate order and irrelevant corpus growth do not change the accepted result.
+
+## ASI-146 Add a canonical Markdown task-source projection
+
+- Status: pending
+- Priority: P0
+- Track: prompt-task-storage
+- Depends on: ASI-145
+- Goal id: ASI-G430
+- Outputs: ipfs_accelerate_py/agent_supervisor/markdown_task_source.py, ipfs_accelerate_py/agent_supervisor/taskboard_store.py, test/api/test_agent_supervisor_markdown_task_source.py
+- Validation: python -m pytest test/api/test_agent_supervisor_markdown_task_source.py test/api/test_agent_supervisor_taskboard_store.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/task-storage
+- Parallel lane: markdown-task-source
+- Resource class: io-artifact
+- Predicted files: ipfs_accelerate_py/agent_supervisor/markdown_task_source.py, ipfs_accelerate_py/agent_supervisor/taskboard_store.py, test/api/test_agent_supervisor_markdown_task_source.py
+- Conflict policy: Preserve the current Markdown grammar, locks, CAS, journal, events, and recovery; add an adapter/projection without changing DuckDB or daemon code.
+- Acceptance: Project every admitted goal/task/dependency/acceptance/output/validation/resource/conflict field into byte-stable supervisor-compatible Markdown with task CID, plan root, schema, and revision metadata, while excluding mutable status from the task CID. Provide bounded snapshot/query/readiness/CAS/event/watch/integrity behavior over `TaskboardStore`; make identical replay a no-op; reject duplicate aliases/CIDs, cycles, stale revision, partial render, path escape, and task-population drift; and recover an interrupted materialization through the existing journal without duplicate task acceptance.
+
+## ASI-147 Add a transactional DuckDB task-source projection
+
+- Status: pending
+- Priority: P0
+- Track: prompt-task-storage
+- Depends on: ASI-145
+- Goal id: ASI-G430
+- Outputs: ipfs_accelerate_py/agent_supervisor/duckdb_task_source.py, test/api/test_agent_supervisor_duckdb_task_source.py
+- Validation: python -m pytest test/api/test_agent_supervisor_duckdb_task_source.py test/api/test_agent_supervisor_formal_plan_compiler.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/task-storage
+- Parallel lane: duckdb-task-source
+- Resource class: io-artifact
+- Predicted files: ipfs_accelerate_py/agent_supervisor/duckdb_task_source.py, test/api/test_agent_supervisor_duckdb_task_source.py
+- Conflict policy: Add a standalone lazy DuckDB backend using existing connection/lock patterns; do not edit the Markdown backend, daemon, package exports, or install/load external DuckDB extensions.
+- Acceptance: Implement a versioned schema for workflow metadata, artifacts, goals, tasks, dependencies, outputs, validations, acceptance, events, and materialization receipts plus lossless `formal_plan_input_records`/metadata tables or views. Provide bounded snapshot/query/readiness/CAS/event/watch/integrity methods with one fenced writer, monotonic revisions/cursors, transactional updates, atomic initial installation, crash recovery, schema migration preview/rollback, canonical JSON, and application-checked key/edge integrity. Reject SQL identifier/value injection, external extension/network loading, corrupt/partial state, concurrent stale writers, foreign roots, and status-dependent task identities. Independently recompile the database to the original formal plan and degrade lazily when DuckDB is unavailable.
+
+## ASI-148 Make implementation daemons consume Markdown or DuckDB through one task-source protocol
+
+- Status: pending
+- Priority: P0
+- Track: prompt-task-storage
+- Depends on: ASI-146, ASI-147
+- Goal id: ASI-G430
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_source.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_task_source_e2e.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_source_e2e.py test/api/test_agent_supervisor_event_driven_runtime.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/task-storage
+- Parallel lane: direct-task-source
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/task_source.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_task_source_e2e.py
+- Conflict policy: This is the sole daemon task-source integration lane; retain the current Markdown default and event-driven behavior while replacing format-specific reads/writes with the minimal common protocol.
+- Acceptance: Define `TaskSource` snapshot, bounded query, get, ready-set, CAS status, append-event, watch, and integrity semantics; adapt the daemon to accept a configured Markdown or DuckDB source directly; preserve dependency/status parsing, event-driven wakeup, leases/fences, attempts, completions, and current task prefix behavior; and expose source/root/schema identities in checkpoints and receipts. The same canonical fixture must yield the same ready ordering, claims, retries, completions, and terminal graph from either backend. Source changes, corruption, foreign roots, stale cursors/revisions, unsupported schemas, and mid-run backend swaps fail closed or use only an explicit verified fallback; DuckDB mode may not depend on generating/downloading a full Markdown board.
+
+## ASI-149 Prove dual-projection equivalence, migration, and replay safety
+
+- Status: pending
+- Priority: P0
+- Track: prompt-task-storage
+- Depends on: ASI-148
+- Goal id: ASI-G430
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_source.py, test/api/test_agent_supervisor_task_source_parity.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_source_parity.py test/api/test_agent_supervisor_task_source_e2e.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/task-storage
+- Parallel lane: task-source-parity
+- Resource class: io-artifact
+- Predicted files: ipfs_accelerate_py/agent_supervisor/task_source.py, test/api/test_agent_supervisor_task_source_parity.py
+- Conflict policy: Integrate only after both backends and direct loading land; do not weaken either backend's independent integrity or transaction checks.
+- Acceptance: Add `DualTaskSource` shadow/migration behavior that compares exact plan root, task/goal CIDs, aliases, immutable records, dependencies, ready sets, revisions, events, and terminal outcomes; applies a status mutation as one fenced logical transaction or records a recoverable partial result; and rebuilds either projection only from a verified canonical snapshot. Prove Markdown -> canonical -> DuckDB -> canonical and the reverse are identity-preserving; status changes do not alter task CIDs; identical replay performs zero duplicate claims/effects; crash/concurrent writer/corrupt projection/migration interruption deterministically resumes, rolls back, or quarantines; and parity disagreement prevents automatic promotion.
+
+## ASI-150 Extend the shared control catalog with workflow, restart, and rescue operations
+
+- Status: pending
+- Priority: P0
+- Track: prompt-control-surfaces
+- Depends on: ASI-116, ASI-142
+- Goal id: ASI-G440
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, test/api/test_agent_supervisor_prompt_control_catalog.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_control_catalog.py test/api/test_agent_supervisor_control_catalog.py test/api/test_agent_supervisor_control_transactions.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/control
+- Parallel lane: prompt-control-catalog
+- Resource class: cpu-small
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, test/api/test_agent_supervisor_prompt_control_catalog.py
+- Conflict policy: Extend the one closed catalog/service only; do not implement CLI/MCP parsing, provider calls, process effects, or rescue execution in this task.
+- Acceptance: Add exact catalog entries and shared request/result schemas for proposal `workflow_preview`/`rescue_preview` and mutation `workflow_materialize`/`restart`/`rescue`, preserving complete enum/catalog coverage. Define bounds, authority class, target kind, repository/state allowlists, dry-run, expected effects, idempotency, lease/fence, cursor, error, and receipt semantics; ensure preview operations cannot mutate and mutations cannot bypass the existing authorization/CAS/recovery/decision-runtime boundary; and provide handler interfaces without eager providers or side effects. Reject unknown operations/fields, arbitrary directory authority, stale preview/incident roots, cross-target replay, missing mutation authority, and transport-specific overrides.
+
+## ASI-151 Build the canonical Python prompt-to-supervisor workflow service
+
+- Status: pending
+- Priority: P0
+- Track: prompt-control-surfaces
+- Depends on: ASI-145, ASI-148, ASI-150
+- Goal id: ASI-G440
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_workflow.py, test/api/test_agent_supervisor_prompt_workflow_service.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_workflow_service.py test/api/test_agent_supervisor_prompt_control_catalog.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/control
+- Parallel lane: prompt-python-service
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/prompt_workflow.py, test/api/test_agent_supervisor_prompt_workflow_service.py
+- Conflict policy: Compose scanner, planner, admission, task source, and shared control service; do not put policy in adapters or collapse preview/materialize/start authority boundaries.
+- Acceptance: Implement `PromptSupervisorService.preview` and `materialize` plus a receipt-linked `bootstrap` convenience saga that composes preview, materialize, and existing start while preserving separate authorization, idempotency, rollback, and resume boundaries. Bind every step to current request/scan/plan/IR/program/policy/catalog roots; store bounded artifact references rather than prompt/source/model bodies; expose admitted/rejected branches, expected/observed effects, partial saga continuation, event cursors, and exact task-source identity; and make exact replay reuse receipts without provider calls or duplicate writes/processes. Stale roots, changed output mode/path, missing authority, projection failure, partial start, and unavailable optional capabilities must produce deterministic resumable or fail-closed results.
+
+## ASI-152 Expose prompt workflow and lifecycle rescue through CLI and Python entry points
+
+- Status: pending
+- Priority: P1
+- Track: prompt-control-surfaces
+- Depends on: ASI-151
+- Goal id: ASI-G440
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_cli.py, scripts/ops/agent_supervisor/prompt_workflow.py, test/api/test_agent_supervisor_prompt_cli.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_cli.py test/api/test_agent_supervisor_control_conformance_v2.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/control
+- Parallel lane: prompt-cli
+- Resource class: cpu-small
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control_cli.py, scripts/ops/agent_supervisor/prompt_workflow.py, test/api/test_agent_supervisor_prompt_cli.py
+- Conflict policy: Keep CLI/module/script as thin parsers/renderers over the catalog and Python service; preserve the user's existing untracked supervisor entry script and do not add provider/policy/process logic.
+- Acceptance: Add `workflow-preview`, `workflow-create`, `restart`, `rescue-preview`, and `rescue` commands plus `python -m ipfs_accelerate_py.agent_supervisor.prompt_workflow` and a thin ops wrapper. Accept exactly one inline/file/stdin prompt source; recommend file/stdin so sensitive prompts avoid process listings; support Markdown/DuckDB/both output, dry-run/materialize/start, allowlisted roots, model/fallback budgets, JSON and concise human output, event cursors, and stable error exit codes. Prove canonical equivalence with direct Python requests/results/effects, no raw prompt/secret logging, resumable partial bootstrap, no shell interpolation/path escape, no mutation without normal authority, and side-effect-free `--help`, import, and discovery.
+
+## ASI-153 Expose exact prompt workflow and rescue parity through lazy MCP tools
+
+- Status: pending
+- Priority: P1
+- Track: prompt-control-surfaces
+- Depends on: ASI-151
+- Goal id: ASI-G440
+- Outputs: ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/test_agent_supervisor_prompt_mcp.py, test/api/test_agent_supervisor_prompt_control_conformance.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_mcp.py test/api/test_agent_supervisor_prompt_control_conformance.py test/api/test_agent_supervisor_native_mcp_discovery.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/control
+- Parallel lane: prompt-mcp
+- Resource class: cpu-small
+- Predicted files: ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/test_agent_supervisor_prompt_mcp.py, test/api/test_agent_supervisor_prompt_control_conformance.py
+- Conflict policy: Generate/adapt tools from the shared catalog only; MCP descriptions, caller paths, or model tool selection must never become authorization.
+- Acceptance: Lazily expose `agent_supervisor_workflow_preview`, `workflow_materialize`, `restart`, `rescue_preview`, and `rescue` with the exact catalog schemas, bounds, authority, targets, errors, cursors, receipts, and expected effects. Require server-configured repository/state allowlists and deny arbitrary caller-provided directories without matching authority. Prove Python/CLI/MCP canonical fixture equivalence for success, rejection, dry-run, idempotent replay, stale roots, partial saga, and authorization denial. Discovery/import must start no provider, DuckDB connection, model, process, or supervisor; prompt/repository injection and tool descriptions cannot widen paths, operations, policy, or completion authority.
+
+## ASI-154 Implement fenced start, stop, and restart lifecycle orchestration
+
+- Status: pending
+- Priority: P0
+- Track: prompt-lifecycle-recovery
+- Depends on: ASI-118, ASI-150
+- Goal id: ASI-G450
+- Outputs: ipfs_accelerate_py/agent_supervisor/lifecycle_orchestrator.py, ipfs_accelerate_py/agent_supervisor/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/supervisor_watchdog.py, test/api/test_agent_supervisor_lifecycle_orchestrator.py
+- Validation: python -m pytest test/api/test_agent_supervisor_lifecycle_orchestrator.py test/api/test_agent_supervisor_fault_recovery_v2.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/lifecycle
+- Parallel lane: fenced-lifecycle
+- Resource class: process-control
+- Predicted files: ipfs_accelerate_py/agent_supervisor/lifecycle_orchestrator.py, ipfs_accelerate_py/agent_supervisor/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/supervisor_watchdog.py, test/api/test_agent_supervisor_lifecycle_orchestrator.py
+- Conflict policy: This task owns lifecycle process effects and must use the existing shared control transaction; do not add model rescue or daemon task recovery.
+- Acceptance: Model start, stop, and explicit restart as bounded state transitions that persist intent before effects and post-effect receipts after verification; resolve exact process trees/configuration rather than trusting PID files; bind repository/state/run roots, old/new process identity, authorization, revision, idempotency, lease/fence, deadline, expected/observed effects, compensation, and sustained health window. Restart must prove the old tree is terminated/fenced before starting the identical validated profile and must report/resume partial failure. Reject PID reuse, orphan descendants, split brain, cross-run/root signals, overlapping transitions, stale lease/fence, changed configuration, replay, startup that only forks without health, and shutdown that leaves descendants.
+
+## ASI-155 Unify incident diagnosis and bounded programmatic recovery
+
+- Status: pending
+- Priority: P0
+- Track: prompt-lifecycle-recovery
+- Depends on: ASI-154
+- Goal id: ASI-G450
+- Outputs: ipfs_accelerate_py/agent_supervisor/recovery_diagnostics.py, ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py, test/api/test_agent_supervisor_recovery_diagnostics.py, test/api/test_agent_supervisor_programmatic_recovery.py
+- Validation: python -m pytest test/api/test_agent_supervisor_recovery_diagnostics.py test/api/test_agent_supervisor_programmatic_recovery.py test/api/test_agent_supervisor_fault_recovery_v2.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/lifecycle
+- Parallel lane: deterministic-recovery
+- Resource class: process-control
+- Predicted files: ipfs_accelerate_py/agent_supervisor/recovery_diagnostics.py, ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py, test/api/test_agent_supervisor_recovery_diagnostics.py, test/api/test_agent_supervisor_programmatic_recovery.py
+- Conflict policy: Compose existing watchdog, task-attempt, worktree, validation, merge, lease, storage, and quarantine repairs behind typed diagnostics; do not invoke a model or accept arbitrary commands.
+- Acceptance: Derive a semantic incident CID from bounded status/health/process/heartbeat/event/lease/lock/task/attempt/task-source/worktree/merge/provider/validation/disk evidence and prior actions; distinguish stale projections from live faults; and execute the least-invasive applicable closed recovery action: reconcile stale state, expire lease/lock/attempt, retry task, restart one lane, rescue dirty worktree, replay validation/merge, quarantine corrupt scope, reassign independent work, or objective reconcile/refill under existing policy. Bind every action to preconditions, maximum attempts, cooldown, deadline, expected effects, compensation, and post-action health. Supported injected faults must recover without a model; unchanged incidents deduplicate; bounded failure must emit a current `ProgrammaticRecoveryExhaustionReceipt` or quarantine rather than loop.
+
+## ASI-156 Add an exhaustion-gated closed llm_router rescue planner
+
+- Status: pending
+- Priority: P0
+- Track: prompt-rescue
+- Depends on: ASI-143, ASI-144, ASI-155
+- Goal id: ASI-G460
+- Outputs: ipfs_accelerate_py/agent_supervisor/rescue_planner.py, test/api/test_agent_supervisor_rescue_planner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_rescue_planner.py test/api/test_agent_supervisor_task_proposal_router.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/rescue
+- Parallel lane: closed-rescue-planner
+- Resource class: provider-llm
+- Predicted files: ipfs_accelerate_py/agent_supervisor/rescue_planner.py, test/api/test_agent_supervisor_rescue_planner.py
+- Conflict policy: Reuse the existing bounded `llm_router` adapter; produce proposal-only records and do not edit router/provider, control execution, lifecycle, watchdog, or daemon code.
+- Acceptance: Invoke a provider only when explicit policy, a current incident-bound programmatic exhaustion receipt, redacted bounded evidence, token/time/cost budgets, cooldown, and circuit breaker all permit it. Give the model only the incident/exhaustion references, bounded diagnostics, exact roots, and a closed catalog of typed recovery operations. Parse strict `RescuePlan/v1` with exact targets, typed parameters, preconditions, expected effects, success/stop conditions, risks, and evidence references. Reject shell commands, code patches, credentials, new paths, unknown operations, policy/authority changes, taskboard rewrites, task completion, missing stops, excess actions, stale roots, and self-authorization. Identical incidents must reuse/circuit-break prior proposals; unavailable/malformed/over-budget models return typed no-plan/quarantine guidance without effects.
+
+## ASI-157 Validate, permit, and execute bounded rescue plans one action at a time
+
+- Status: pending
+- Priority: P0
+- Track: prompt-rescue
+- Depends on: ASI-136, ASI-150, ASI-155, ASI-156
+- Goal id: ASI-G460
+- Outputs: ipfs_accelerate_py/agent_supervisor/rescue_orchestrator.py, test/api/test_agent_supervisor_rescue_orchestrator.py
+- Validation: python -m pytest test/api/test_agent_supervisor_rescue_orchestrator.py test/api/test_agent_supervisor_execution_permit.py test/api/test_agent_supervisor_control_transactions.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/rescue
+- Parallel lane: permitted-rescue-executor
+- Resource class: process-control
+- Predicted files: ipfs_accelerate_py/agent_supervisor/rescue_orchestrator.py, test/api/test_agent_supervisor_rescue_orchestrator.py
+- Conflict policy: Execute only shared catalog operations through the existing decision/permit/control transaction; never interpret model text as a command or authorization.
+- Acceptance: Rebind each proposal to the current incident/exhaustion/request/program/IR/policy/catalog roots; validate closed operation/target/parameter schemas and simulate expected effects; independently run IntentIR, LegalIR, SecurityIR, proof, and control authorization; and obtain a short-lived exact permit for one action at a time. Before every effect recheck roots, incident, lease/fence, idempotency, cooldown, and budgets; after every effect compare observed effects and require a health test; stop on health, drift, denial, unexpected effect, action/model/time budget, or quarantine. The model cannot authorize itself or claim completion. Replay, changed targets/arguments, cross-incident permits, root drift, partial effects, policy weakening, arbitrary shell, and endless action sequences fail closed with exact recovery/partial/quarantine receipts.
+
+## ASI-158 Wire bounded autonomous unstalling into the watchdog and implementation supervisor
+
+- Status: pending
+- Priority: P0
+- Track: prompt-rescue
+- Depends on: ASI-157
+- Goal id: ASI-G460
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py, ipfs_accelerate_py/agent_supervisor/supervisor_watchdog.py, test/api/test_agent_supervisor_autonomous_unstall.py
+- Validation: python -m pytest test/api/test_agent_supervisor_autonomous_unstall.py test/api/test_agent_supervisor_fault_recovery_v2.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/rescue
+- Parallel lane: autonomous-unstall
+- Resource class: process-control
+- Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py, ipfs_accelerate_py/agent_supervisor/supervisor_watchdog.py, test/api/test_agent_supervisor_autonomous_unstall.py
+- Conflict policy: This is the sole live auto-unstall integration lane; retain existing retry/worktree/merge/watchdog logic and invoke model rescue only through the new exhaustion-gated orchestrator.
+- Acceptance: Detect stalled/blocked lanes/tasks from semantic event and health evidence; first run the unified bounded deterministic ladder; invoke optional rescue preview/execution only after current qualifying exhaustion and explicit operating policy; and preserve independent work while quarantining the affected scope. Persist incident/action/budget/cooldown/circuit-breaker state across restart; suppress identical incidents and repeated provider calls; re-evaluate roots and health after every action; never let a model or process-liveness claim mark work complete; and surface status/events/reasons through the shared control service. Fault fixtures for stale PID/heartbeat/lease/lock/attempt, dirty worktree, corrupt board/DB, provider loss, validation/merge failure, malicious rescue, repeated unchanged failure, restart during rescue, and unexpected effects must recover or reach bounded visible quarantine without an infinite loop.
+
+## ASI-159 Gate prompt bootstrap and rescue with paired E2E, adversarial, chaos, rollout, and documentation
+
+- Status: pending
+- Priority: P0
+- Track: prompt-workflow-rollout
+- Depends on: ASI-149, ASI-152, ASI-153, ASI-158
+- Goal id: ASI-G470
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_workflow_benchmark.py, ipfs_accelerate_py/agent_supervisor/prompt_workflow_rollout.py, docs/architecture/AGENT_SUPERVISOR_PROMPT_BOOTSTRAP_AND_RESCUE_PLAN.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md, test/api/test_agent_supervisor_prompt_workflow_e2e.py, test/api/test_agent_supervisor_prompt_workflow_adversarial.py, test/api/test_agent_supervisor_prompt_workflow_chaos.py, test/api/test_agent_supervisor_prompt_workflow_rollout.py, test/api/test_agent_supervisor_prompt_workflow_public_api.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_workflow_e2e.py test/api/test_agent_supervisor_prompt_workflow_adversarial.py test/api/test_agent_supervisor_prompt_workflow_chaos.py test/api/test_agent_supervisor_prompt_workflow_rollout.py test/api/test_agent_supervisor_prompt_workflow_public_api.py -q
+- Board namespace: agent-supervisor-self-improvement-v4
+- Bundle: agent-supervisor/self-improvement-v4/rollout
+- Parallel lane: prompt-workflow-rollout
+- Resource class: cpu-large
+- Predicted files: ipfs_accelerate_py/agent_supervisor/prompt_workflow_benchmark.py, ipfs_accelerate_py/agent_supervisor/prompt_workflow_rollout.py, docs/architecture/AGENT_SUPERVISOR_PROMPT_BOOTSTRAP_AND_RESCUE_PLAN.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md, test/api/test_agent_supervisor_prompt_workflow_e2e.py, test/api/test_agent_supervisor_prompt_workflow_adversarial.py, test/api/test_agent_supervisor_prompt_workflow_chaos.py, test/api/test_agent_supervisor_prompt_workflow_rollout.py, test/api/test_agent_supervisor_prompt_workflow_public_api.py
+- Conflict policy: Keep one closed paired/adversarial/chaos population and rollout owner; integrate package exports and documentation last, preserve earlier APIs, and prohibit fixture/metric narrowing during promotion.
+- Acceptance: Run frozen prompt/repository fixtures through deterministic/model planning, Markdown/DuckDB/both task sources, and Python/CLI/script/MCP surfaces; require identical admitted task CIDs, ready sets, accepted effects, and terminal outcomes. Inject crashes before/after every materialization/lifecycle/rescue intent-effect-receipt boundary and adversarial prompt/repository/path/symlink/secret/CID/schema/SQL/PID/process/policy/authorization/permit/completion cases. Require zero scope, secret, identity, SQL, process, policy, authority, effect, completion, or mandatory-evidence escapes; deterministic resume/compensation/quarantine for every fault; bounded tokens/model calls/retries/storage/processes; lazy explicit degradation without optional dependencies; and off/shadow/assist/policy-approved automatic controls with immediate rollback on parity/safety/binding regression. Publish exact Python/CLI/MCP examples, DuckDB schema/migration, lifecycle/recovery runbook, threat model, receipts/metrics, and operator rescue guidance; require a later separate fresh-root evaluation before automatic promotion.
