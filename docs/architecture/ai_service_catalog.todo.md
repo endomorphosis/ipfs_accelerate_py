@@ -408,7 +408,7 @@ Program invariants:
 
 ## AICAT-016 Define the ai.catalog.v1 MCP++ interface
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
