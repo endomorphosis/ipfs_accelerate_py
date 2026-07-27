@@ -62,6 +62,7 @@ from the old flat module.
 ## Status
 
 - Package scaffold (`__init__.py`, this README): present
-- Temporary flat API re-export: present (compatibility until ASREF-011 move)
-- Module `git mv` + caller rewrites: owned by ASREF-011 once released from
-  strategy `blocked_tasks` after this repair completes
+- Dual-copied this batch: `self_improvement_completion.py`
+- Remaining owned modules: see `objectives/ASREF_G070_CHILD_GOALS.md` (proposal-gate size batches)
+- Flat dual-copies remain until ASREF-G090 cutover; prefer `agent_supervisor.self_improvement.<module>` for landed modules
+- Entry-point retargets: when task Outputs include `pyproject.toml` / `setup.py` and target modules are landed

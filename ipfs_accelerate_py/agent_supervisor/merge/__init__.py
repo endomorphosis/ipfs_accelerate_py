@@ -9,8 +9,10 @@ Modules owned by bundle ``asref/merge`` (see
 ``docs/architecture/asref/move_map.json``) move into this package via
 ``git mv`` without long-lived re-export stubs at the former flat paths.
 
-Until those modules land under this directory, import them from their
-current flat locations. After each move, callers must use::
+First-batch modules are dual-copied under this package (flat originals
+remain until ASREF-G090 cutover). Prefer package imports for landed
+modules; remaining owned stems still live at flat paths until child
+batches land. Import landed modules via::
 
     from ipfs_accelerate_py.agent_supervisor.merge.<module> import ...
 
@@ -24,6 +26,7 @@ from __future__ import annotations
 from typing import Final
 
 __all__: Final[tuple[str, ...]] = (
+    "MERGE_LANDED_MODULES",
     "MERGE_PACKAGE_NAME",
     "MERGE_OWNED_MODULES",
     "MERGE_FORBIDDEN_DEPENDENTS",
@@ -43,6 +46,15 @@ MERGE_OWNED_MODULES: Final[tuple[str, ...]] = (
     "merge_queue",
     "merge_resolver",
     "merge_train",
+)
+
+# Dual-copied under this package in the current ASREF-011 batch.
+MERGE_LANDED_MODULES: Final[tuple[str, ...]] = (
+    "merge_resolver",
+    "checkout_lock",
+    "merge_checkpoint",
+    "git_gc",
+    "merge_conflict_repair",
 )
 
 # Packages that must not be imported by merge (DAG / cycle guard).

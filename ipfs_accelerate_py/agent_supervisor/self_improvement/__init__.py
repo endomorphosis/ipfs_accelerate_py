@@ -9,12 +9,12 @@ Modules owned by bundle ``asref/self-improvement`` (see
 ``docs/architecture/asref/move_map.json``) move into this package via
 ``git mv`` without long-lived re-export stubs at the former flat paths.
 
-**Temporary shadowing note:** Creating this package directory shadows the
-flat module ``self_improvement.py`` for
-``import ipfs_accelerate_py.agent_supervisor.self_improvement``. Until
-ASREF-011 completes the move, this ``__init__`` re-exports the flat
-module public API so existing callers keep working. That re-export is
-compatibility only—not a permanent stub policy for other packages.
+**Temporary shadowing note:** This package directory shadows the flat
+module ``self_improvement.py``. This ``__init__`` re-exports the flat
+module public API so existing callers keep working until the
+``self_improvement`` stem lands here and cutover removes the flat
+file. First-batch dual-copy includes ``self_improvement_completion``.
+See ``objectives/ASREF_G070_CHILD_GOALS.md`` for deferred stems.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Final
 
 __all__: Final[tuple[str, ...]] = (
+    "SELF_IMPROVEMENT_LANDED_MODULES",
     "SELF_IMPROVEMENT_PACKAGE_NAME",
     "SELF_IMPROVEMENT_OWNED_MODULES",
     "SELF_IMPROVEMENT_FORBIDDEN_DEPENDENTS",
@@ -46,6 +47,11 @@ SELF_IMPROVEMENT_OWNED_MODULES: Final[tuple[str, ...]] = (
     "supervisor_token_ledger",
     "supervisor_v2_benchmark",
     "supervisor_v2_contracts",
+)
+
+# Dual-copied under this package in the current ASREF-011 batch.
+SELF_IMPROVEMENT_LANDED_MODULES: Final[tuple[str, ...]] = (
+    "self_improvement_completion",
 )
 
 # Packages that must not be imported by self_improvement (DAG / cycle guard).

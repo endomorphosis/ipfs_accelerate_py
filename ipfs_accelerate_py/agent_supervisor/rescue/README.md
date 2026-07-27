@@ -41,5 +41,7 @@ change. Do not leave thin re-export stubs at former flat paths. Prefer::
 ## Status
 
 - Package scaffold (`__init__.py`, this README): present
-- Module `git mv` + caller rewrites: owned by ASREF-011 once released from
-  strategy `blocked_tasks` after this repair completes
+- Dual-copied this batch: `rescue_orchestrator.py`, `codex_failure_policy.py`
+- Remaining owned modules: see `objectives/ASREF_G070_CHILD_GOALS.md` (proposal-gate size batches)
+- Flat dual-copies remain until ASREF-G090 cutover; prefer `agent_supervisor.rescue.<module>` for landed modules
+- Entry-point retargets: when task Outputs include `pyproject.toml` / `setup.py` and target modules are landed
