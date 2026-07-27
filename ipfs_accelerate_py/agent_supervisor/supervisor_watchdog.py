@@ -27,7 +27,7 @@ import signal
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Final, Mapping, Sequence
+from typing import Any, Callable, Final, Mapping, Sequence
 
 from .control_plane import (
     LIFECYCLE_STATUS_SCHEMA,
@@ -404,59 +404,67 @@ def _replace_pid_file(pid_path: Path, pid: int) -> None:
             pass
 
 
-def restart_lane(lane_info: dict[str, Any], *, repo_root: Path) -> dict[str, Any]:
-    """Restart a dead or stale lane process."""
-    import subprocess
+def restart_lane(
+    lane_info: dict[str, Any],
+    *,
+    repo_root: Path,
+    lifecycle_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]]
+    | None = None,
+) -> dict[str, Any]:
+    """Delegate restart to an authorized fenced lifecycle transition.
 
-    command = lane_info.get("command", [])
-    if not command:
-        return {"restarted": False, "reason": "no_command"}
-    if (
-        isinstance(command, (str, bytes))
-        or not isinstance(command, Sequence)
-        or not all(str(item).strip() for item in command)
-    ):
-        return {"restarted": False, "reason": "invalid_command"}
+    A watchdog observation and a manifest command are not signal or launch
+    authority.  In particular, a dead PID file cannot prove that detached
+    descendants are absent.  The embedding control service supplies a callback
+    which resolves the bound ``OperationRequest`` and invokes
+    :class:`LifecycleOrchestrator`; without it the watchdog reports the missing
+    authority instead of performing a raw ``Popen``.
+    """
 
-    log_path = lane_info.get("log_path", "")
-    if log_path:
-        full_log_path = Path(log_path) if Path(log_path).is_absolute() else repo_root / log_path
-        full_log_path.parent.mkdir(parents=True, exist_ok=True)
-        handle = full_log_path.open("ab")
-    else:
-        handle = subprocess.DEVNULL
-
+    del repo_root
+    if lifecycle_transition is None:
+        return {
+            "restarted": False,
+            "reason": "lifecycle_orchestrator_required",
+            "control_recovery_required": True,
+        }
     try:
-        process = subprocess.Popen(
-            command,
-            cwd=repo_root,
-            stdin=subprocess.DEVNULL,
-            stdout=handle if handle != subprocess.DEVNULL else subprocess.DEVNULL,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+        raw = lifecycle_transition(dict(lane_info))
+    except Exception as exc:
+        return {
+            "restarted": False,
+            "reason": f"lifecycle_transition_failed: {exc}",
+            "control_recovery_required": True,
+        }
+    result = dict(raw) if isinstance(raw, Mapping) else {}
+    transition = result.get("transition")
+    if isinstance(transition, Mapping):
+        result.setdefault("receipt_id", transition.get("receipt_id"))
+        new_tree = transition.get("new_tree")
+        if isinstance(new_tree, Mapping):
+            members = new_tree.get("members")
+            if isinstance(members, Sequence) and members:
+                first = members[0]
+                if isinstance(first, Mapping):
+                    result.setdefault("new_pid", first.get("pid"))
+    restarted = bool(
+        result.get("restarted")
+        or result.get("succeeded")
+        or result.get("status") == "succeeded"
+        or (
+            isinstance(transition, Mapping)
+            and transition.get("phase") == "committed"
         )
-    except OSError as exc:
-        return {"restarted": False, "reason": f"launch_error: {exc}"}
-    finally:
-        if handle != subprocess.DEVNULL:
-            handle.close()
-
-    # Update PID file
-    pid_path_str = lane_info.get("pid_path", "")
-    if pid_path_str:
-        pid_path = Path(pid_path_str) if Path(pid_path_str).is_absolute() else repo_root / pid_path_str
-        pid_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            _replace_pid_file(pid_path, process.pid)
-        except OSError as exc:
-            return {
-                "restarted": True,
-                "new_pid": process.pid,
-                "pid_persisted": False,
-                "reason": f"pid_write_error: {exc}",
-            }
-
-    return {"restarted": True, "new_pid": process.pid, "pid_persisted": True}
+    )
+    result["restarted"] = restarted
+    result.setdefault("pid_persisted", False)
+    if restarted and not isinstance(result.get("new_pid"), int):
+        return {
+            **result,
+            "restarted": False,
+            "reason": "lifecycle_receipt_missing_new_process_identity",
+        }
+    return result
 
 
 def aggregate_logs(
@@ -541,6 +549,10 @@ class SupervisorWatchdog:
         lane_timeout: float = 600.0,
         max_consecutive_restarts: int = 5,
         log_aggregation_dir: Path | None = None,
+        lifecycle_restart: Callable[
+            [Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
     ) -> None:
         self.manifest_path = manifest_path
         self.repo_root = repo_root
@@ -550,6 +562,7 @@ class SupervisorWatchdog:
         self.log_aggregation_dir = log_aggregation_dir or (
             manifest_path.parent / "logs" / "aggregated"
         )
+        self.lifecycle_restart = lifecycle_restart
         self._consecutive_restart_counts: dict[str, int] = {}
         self._recent_restarts: dict[str, tuple[int, float]] = {}
         self._generation = 0
@@ -798,7 +811,18 @@ class SupervisorWatchdog:
                 else:
                     restart_info = dict(lane_started or lane)
                     restart_info.setdefault("pid_path", str(pid_check["pid_path"]))
-                    restart_result = restart_lane(restart_info, repo_root=self.repo_root)
+                    if self.lifecycle_restart is None:
+                        # Keep the call shape compatible with injected test and
+                        # deployment shims.  The built-in helper fails closed.
+                        restart_result = restart_lane(
+                            restart_info, repo_root=self.repo_root
+                        )
+                    else:
+                        restart_result = restart_lane(
+                            restart_info,
+                            repo_root=self.repo_root,
+                            lifecycle_transition=self.lifecycle_restart,
+                        )
                     report["action"] = "restarted" if restart_result.get("restarted") else "restart_failed"
                     report["restart_result"] = restart_result
                     if restart_result.get("restarted"):

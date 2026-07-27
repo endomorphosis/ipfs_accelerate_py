@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -14,7 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from .todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker, terminate_pid_tree
+from .lifecycle_orchestrator import (
+    LifecycleProfile,
+    LinuxProcessAdapter,
+    ProcessIdentityMismatch,
+)
+from .todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
 from .wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaults, env_str
 
 
@@ -973,7 +979,12 @@ def start_track(
     python_executable: str = "python3",
     output: OutputFn = _default_output,
 ) -> subprocess.Popen[bytes]:
-    """Start one supervisor track and write its supervisor PID marker."""
+    """Start one marker-bound supervisor tree and write its PID projection.
+
+    The PID file remains for legacy observability.  Stop/restart decisions use
+    the inherited lifecycle markers and exact OS identities attached to the
+    returned process, never the PID projection.
+    """
 
     resolved = track.resolve(repo_root)
     resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -983,11 +994,41 @@ def start_track(
         if resolved.module_name
         else [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
     )
+    configuration_root = "sha256:" + hashlib.sha256(
+        json.dumps(
+            command, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    ).hexdigest()
+    state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
+    run_root = state_root / "lifecycle-runs" / resolved.name
+    status_path = _inferred_supervisor_status_path(resolved)
+    profile = LifecycleProfile(
+        target_id=f"supervisor-track:{resolved.name}",
+        run_id=(
+            "multi-supervisor:"
+            + hashlib.sha256(
+                f"{repo_root.resolve()}:{resolved.name}".encode("utf-8")
+            ).hexdigest()
+        ),
+        configuration_root=configuration_root,
+        repository_root=str(repo_root.resolve()),
+        state_root=str(state_root),
+        run_root=str(run_root),
+        argv=tuple(command),
+        cwd=str(repo_root.resolve()),
+        health_path=(
+            str(status_path.resolve(strict=False))
+            if status_path is not None
+            and _path_within(status_path.resolve(strict=False), state_root)
+            else ""
+        ),
+    )
     out_handle = resolved.log_path.open("ab")
     try:
         process = subprocess.Popen(
             command,
             cwd=repo_root,
+            env=profile.launch_environment(0),
             stdin=subprocess.DEVNULL,
             stdout=out_handle,
             stderr=subprocess.STDOUT,
@@ -995,6 +1036,9 @@ def start_track(
         )
     finally:
         out_handle.close()
+    # Popen is only an observation handle.  The immutable profile is what lets
+    # stop/restart rediscover children that have detached or been reparented.
+    setattr(process, "_agent_supervisor_lifecycle_profile", profile)
     resolved.supervisor_pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
     _emit(
         output,
@@ -1003,10 +1047,53 @@ def start_track(
     return process
 
 
-def _terminate_pid(pid: int | None, *, grace_seconds: float) -> bool:
-    if not pid:
+def _path_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
         return False
-    return terminate_pid_tree(int(pid), grace_seconds=grace_seconds)
+
+
+def _terminate_managed_process(
+    process: subprocess.Popen[bytes] | None,
+    *,
+    grace_seconds: float,
+) -> tuple[bool, tuple[int, ...]]:
+    """Fence the exact marker-bound tree associated with ``process``."""
+
+    if process is None:
+        return True, ()
+    profile = getattr(process, "_agent_supervisor_lifecycle_profile", None)
+    if not isinstance(profile, LifecycleProfile):
+        # A caller-created Popen has no durable run/profile binding.  Refuse to
+        # turn its PID into signal authority.
+        return False, ()
+    adapter = LinuxProcessAdapter()
+    tree = adapter.snapshot(profile)
+    if not tree.members:
+        return True, ()
+    root_ids = {item.pid for item in tree.roots}
+    process_member = next(
+        (item for item in tree.members if item.pid == process.pid), None
+    )
+    if process_member is not None and process.pid not in root_ids:
+        raise ProcessIdentityMismatch(
+            "managed Popen does not identify the marker-bound tree root"
+        )
+    member_pids = tuple(item.pid for item in tree.members)
+    adapter.terminate(
+        tree,
+        grace_seconds=grace_seconds,
+        deadline_ms=max(1, int(max(0.0, grace_seconds) * 1000) + 1_000),
+    )
+    deadline = time.monotonic() + max(0.1, grace_seconds) + 1.0
+    while time.monotonic() < deadline:
+        if not any(adapter.identity_alive(item) for item in tree.members):
+            if not adapter.snapshot(profile).members:
+                return True, member_pids
+        time.sleep(0.02)
+    return False, member_pids
 
 
 def stop_tracks(
@@ -1017,27 +1104,35 @@ def stop_tracks(
     grace_seconds: float = 10.0,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
-    """Stop supervisor wrapper processes and their managed daemons."""
+    """Stop exact marker-bound wrapper trees and verify no descendants remain."""
 
     stopped: list[int] = []
+    all_fenced = True
     _emit(output, "stopping supervisor wrapper and managed daemons")
     for track in tracks:
-        resolved = track.resolve(repo_root)
         process = processes.get(track.name)
-        candidate_pids = [
-            process.pid if process is not None else None,
-            read_pid_file(resolved.supervisor_pid_path),
-            read_pid_file(resolved.daemon_pid_path),
-        ]
-        for pid in candidate_pids:
-            if pid and _terminate_pid(pid, grace_seconds=grace_seconds):
-                stopped.append(int(pid))
+        fenced, member_pids = _terminate_managed_process(
+            process,
+            grace_seconds=grace_seconds,
+        )
+        if fenced:
+            stopped.extend(member_pids)
+        elif process is not None:
+            all_fenced = False
+            _emit(
+                output,
+                f"could not verify complete shutdown for {track.name} pid={process.pid}",
+            )
         if process is not None:
             try:
                 process.wait(timeout=max(0.1, grace_seconds))
             except subprocess.TimeoutExpired:
                 pass
-    return {"stopped_pids": stopped, "stopped_count": len(stopped)}
+    return {
+        "stopped_pids": sorted(set(stopped)),
+        "stopped_count": len(set(stopped)),
+        "all_trees_fenced": all_fenced,
+    }
 
 
 def run_supervisor_tracks(
@@ -1124,9 +1219,14 @@ def run_supervisor_tracks(
                                 f"{supervisor_fields.get('supervisor_status_age_seconds')}"
                             ),
                         )
-                        _terminate_pid(process.pid, grace_seconds=stop_grace_seconds)
-                        if isinstance(daemon_pid, int):
-                            _terminate_pid(daemon_pid, grace_seconds=stop_grace_seconds)
+                        fenced, _member_pids = _terminate_managed_process(
+                            process,
+                            grace_seconds=stop_grace_seconds,
+                        )
+                        if not fenced:
+                            raise SupervisorRunInterrupted(
+                                f"could not fence stale {track.name} process tree"
+                            )
                         try:
                             process.wait(timeout=max(0.1, stop_grace_seconds))
                         except subprocess.TimeoutExpired:
@@ -1141,6 +1241,15 @@ def run_supervisor_tracks(
                     continue
                 old_pid = None if process is None else process.pid
                 _emit(output, f"restarting exited {track.name} supervisor old_pid={old_pid or 'none'}")
+                if process is not None:
+                    fenced, _member_pids = _terminate_managed_process(
+                        process,
+                        grace_seconds=stop_grace_seconds,
+                    )
+                    if not fenced:
+                        raise SupervisorRunInterrupted(
+                            f"could not fence exited {track.name} descendants"
+                        )
                 processes[track.name] = start_track(
                     track,
                     repo_root=resolved_repo_root,
