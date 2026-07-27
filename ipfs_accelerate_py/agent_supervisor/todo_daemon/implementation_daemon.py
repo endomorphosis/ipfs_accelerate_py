@@ -3842,12 +3842,160 @@ class PortalImplementationDaemon:
                 )
         return violation
 
+    def _auto_clear_ephemeral_protected_path_deletions(
+        self,
+        incident: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any] | None:
+        """Auto-clear workspace-only protected deletions when shared checkout is intact.
+
+        Safe conditions (all required):
+        - incident is the standard clearable schema and operator-gated
+        - every mutation is ``scope=workspace`` and ``change=deleted``
+        - every path is in the configured protected-path allowlist
+        - shared repo checkout still has each path present as a regular file
+        - no implementation runner process still owns the workspace path
+        - workspace is either gone or still under the managed worktree root
+
+        This unblocks lanes after failed agents delete protected docs *only*
+        inside ephemeral worktrees without requiring human clearance for a
+        non-shared-checkout mutation.
+        """
+
+        if (
+            incident.get("schema") != "implementation-protected-path-incident-v1"
+            or incident.get("requires_operator_clearance") is not True
+        ):
+            return None
+        mutations = incident.get("mutations")
+        if not isinstance(mutations, list) or not mutations:
+            return None
+        protected = set(self.implementation_protected_paths)
+        if not protected:
+            return None
+
+        deleted_paths: list[str] = []
+        for item in mutations:
+            if not isinstance(item, Mapping):
+                return None
+            if str(item.get("scope") or "") != "workspace":
+                return None
+            if str(item.get("change") or "") != "deleted":
+                return None
+            path = str(item.get("path") or "").strip()
+            if not path or path not in protected:
+                return None
+            deleted_paths.append(path)
+
+        # Shared checkout must still hold every protected path that was deleted
+        # only inside the ephemeral workspace.
+        for relative in deleted_paths:
+            shared = (self.repo_root / relative).resolve()
+            try:
+                if not shared.is_file():
+                    return None
+                # Must remain under the shared repo root.
+                shared.relative_to(self.repo_root.resolve())
+            except (OSError, ValueError):
+                return None
+
+        workspace_value = str(incident.get("workspace_path") or "").strip()
+        if not workspace_value:
+            return None
+        try:
+            workspace = Path(workspace_value).resolve(strict=False)
+            under_worktree = self._path_is_under(
+                workspace, self.worktree_root.resolve()
+            )
+            is_repo = workspace == self.repo_root.resolve()
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if is_repo or not under_worktree:
+            # Never auto-clear incidents that touch the shared checkout path.
+            return None
+
+        # Fail closed while an implementation runner still owns the workspace.
+        for line in self._list_process_commands():
+            if str(workspace) in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(
+                line
+            ):
+                return None
+
+        clearance_payload = {
+            "kind": "auto-clear-ephemeral-protected-deletions",
+            "task_id": str(incident.get("task_id") or ""),
+            "attempt": incident.get("attempt"),
+            "workspace_path": str(workspace),
+            "deleted_paths": sorted(deleted_paths),
+            "latched_at": str(incident.get("latched_at") or ""),
+        }
+        clearance_id = "sha256:" + hashlib.sha256(
+            json.dumps(clearance_payload, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+
+        receipt = {
+            "schema": "implementation-protected-path-auto-clearance-v1",
+            "clearance_id": clearance_id,
+            "cleared_at": utc_now(),
+            "reason": "ephemeral_workspace_protected_deletions_shared_intact",
+            "task_id": str(incident.get("task_id") or ""),
+            "attempt": incident.get("attempt"),
+            "workspace_path": str(workspace),
+            "deleted_paths": sorted(deleted_paths),
+            "shared_protected_paths_present": sorted(deleted_paths),
+            "incident_latched_at": str(incident.get("latched_at") or ""),
+        }
+        receipt_path = (
+            incident_path.parent
+            / (
+                "implementation-protected-path-auto-clearance-"
+                f"{clearance_id.removeprefix('sha256:')[:16]}.json"
+            )
+        )
+        write_json_atomic(receipt_path, receipt)
+        try:
+            incident_path.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            active_path.unlink()
+        except FileNotFoundError:
+            pass
+        result = {
+            "cleared": True,
+            "auto": True,
+            "reason": receipt["reason"],
+            "clearance_id": clearance_id,
+            "receipt_path": str(receipt_path),
+            "task_id": receipt["task_id"],
+            "attempt": receipt["attempt"],
+            "deleted_paths": receipt["deleted_paths"],
+            "blocked": False,
+        }
+        self._record_event(
+            "implementation_protected_path_incident_auto_cleared",
+            result,
+        )
+        return result
+
     def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
         incident_path = self._implementation_protected_incident_path()
         if incident_path.exists():
             incident = load_json_dict(incident_path)
+            if isinstance(incident, Mapping):
+                auto = self._auto_clear_ephemeral_protected_path_deletions(
+                    incident,
+                    incident_path=incident_path,
+                    active_path=self._implementation_protected_active_snapshot_path(),
+                )
+                if auto and auto.get("cleared"):
+                    return auto
             result = {
                 "blocked": True,
                 "reason": "implementation_protected_path_incident_latched",

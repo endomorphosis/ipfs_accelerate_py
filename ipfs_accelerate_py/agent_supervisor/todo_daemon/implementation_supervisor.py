@@ -2212,6 +2212,24 @@ class PortalImplementationSupervisor:
                 "active_task_id": state.active_task_id,
             }
 
+        # Preserve stalled branch work before dropping active markers. Without
+        # this, a dead provider leaves dirty implementation worktrees that
+        # block later merges and require manual rescue.
+        rescue_result: dict[str, Any] = {}
+        worktree_path = Path(active_worktree) if active_worktree else None
+        if worktree_path is not None and worktree_path.exists():
+            dirty = self._git_status_short(worktree_path)
+            target_ref = self._git_current_branch(self.config.repo_root) or "HEAD"
+            if dirty:
+                rescue_result = self._rescue_dirty_worktree(
+                    worktree_path,
+                    branch=active_branch,
+                    head=self._git_ref_commit(worktree_path, "HEAD"),
+                    target_ref=target_ref,
+                    status_lines=dirty,
+                    reason="stale_active_execution_auto_rescue",
+                )
+
         repaired_at = utc_now()
         recovered_attempt = consume_stale_active_attempt(state)
         state.active_attempt = 0
@@ -2231,6 +2249,7 @@ class PortalImplementationSupervisor:
             "daemon_pid": daemon_pid or 0,
             "repaired_at": repaired_at,
             "attempt_recovery": recovered_attempt,
+            "rescue_result": rescue_result,
             **active_fields,
         }
         self._record_event("stale_active_execution_state_repaired", result)

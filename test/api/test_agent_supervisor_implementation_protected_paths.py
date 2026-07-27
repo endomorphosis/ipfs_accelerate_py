@@ -1184,6 +1184,92 @@ def test_disposed_workspace_approval_rejects_selective_protected_deletion(
     assert daemon._implementation_protected_incident_path().exists()
 
 
+def test_auto_clears_workspace_only_protected_deletions_when_shared_intact(
+    tmp_path: Path,
+) -> None:
+    """Ephemeral deletions of protected docs must not permanently stall lanes."""
+
+    repo = tmp_path / "repo"
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    repo.mkdir()
+    worktrees.mkdir()
+    # Workspace is gone (typical after failed agent cleanup).
+    protected = repo / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("authoritative\n", encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(POLICY_PATH,),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(workspace),
+            "mutations": [
+                {
+                    "scope": "workspace",
+                    "path": POLICY_PATH,
+                    "change": "deleted",
+                    "before": {"state": "present"},
+                    "after": {"state": "missing"},
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("blocked") is False
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert any(
+        json.loads(line)["type"]
+        == "implementation_protected_path_incident_auto_cleared"
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    )
+
+
+def test_auto_clear_refuses_shared_checkout_mutations(tmp_path: Path) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("before\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(tmp_path / "worktrees" / "ws"),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "deleted",
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("blocked") is True
+    assert result.get("reason") == "implementation_protected_path_incident_latched"
+    assert daemon._implementation_protected_incident_path().exists()
+
+
 def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(
     tmp_path: Path,
 ) -> None:
