@@ -18,12 +18,13 @@ import hashlib
 import json
 import posixpath
 import re
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, ClassVar, Final
+from typing import Any, Callable, ClassVar, Final, MutableMapping
 
 
 PROMPT_WORKFLOW_CONTRACT_VERSION: Final[int] = 1
@@ -169,6 +170,22 @@ class RescuePlanError(PromptWorkflowContractError):
 
 class NonCanonicalPromptWorkflowError(PromptWorkflowContractError):
     """Serialized input is not the exact canonical representation."""
+
+
+class PromptWorkflowServiceError(RuntimeError):
+    """Base error raised by the provider-lazy workflow orchestrator."""
+
+
+class PromptWorkflowStaleRootError(PromptWorkflowServiceError):
+    """A request, scan, plan, policy, catalog, or output root is no longer current."""
+
+
+class PromptWorkflowAuthorizationError(PromptWorkflowServiceError):
+    """A mutation stage lacks its own current authority boundary."""
+
+
+class PromptWorkflowReceiptError(PromptWorkflowServiceError):
+    """A receipt is missing, foreign, corrupt, or bound to another stage."""
 
 
 class PromptSourceKind(str, Enum):
@@ -2066,6 +2083,16 @@ class MaterializationReference(_WorkflowContract):
         "mode",
         "projection_cids",
         "revision",
+        "scan_cid",
+        "program_root",
+        "policy_roots",
+        "catalog_root",
+        "output_policy_cid",
+        "task_source_identities",
+        "expected_effects",
+        "observed_effects",
+        "event_cursors",
+        "control_receipt_cid",
         "status",
         "created_at_ms",
         "updated_at_ms",
@@ -2084,6 +2111,16 @@ class MaterializationReference(_WorkflowContract):
     mode: OutputMode
     projection_cids: tuple[str, ...]
     revision: int
+    scan_cid: str = ""
+    program_root: str = ""
+    policy_roots: tuple[str, ...] = ()
+    catalog_root: str = ""
+    output_policy_cid: str = ""
+    task_source_identities: tuple[Mapping[str, Any], ...] = ()
+    expected_effects: tuple[str, ...] = ()
+    observed_effects: tuple[str, ...] = ()
+    event_cursors: Mapping[str, Any] = field(default_factory=dict)
+    control_receipt_cid: str = ""
     status: RecordStatus = RecordStatus.READY
     created_at_ms: int = 0
     updated_at_ms: int = 0
@@ -2113,6 +2150,64 @@ class MaterializationReference(_WorkflowContract):
         object.__setattr__(
             self, "revision", _integer(self.revision, "revision", minimum=1)
         )
+        for name in (
+            "scan_cid",
+            "program_root",
+            "catalog_root",
+            "output_policy_cid",
+            "control_receipt_cid",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _identity(getattr(self, name), name, required=False),
+            )
+        object.__setattr__(
+            self,
+            "policy_roots",
+            tuple(
+                sorted(
+                    _identity(item, "policy_roots")
+                    for item in _strings(self.policy_roots, "policy_roots")
+                )
+            ),
+        )
+        if isinstance(self.task_source_identities, (str, bytes)) or not isinstance(
+            self.task_source_identities, Sequence
+        ):
+            raise PromptWorkflowContractError(
+                "task_source_identities must be a sequence"
+            )
+        identities = tuple(
+            sorted(
+                (
+                    _freeze_json(item, "task_source_identities")
+                    for item in self.task_source_identities
+                ),
+                key=lambda item: canonical_prompt_workflow_bytes(item),
+            )
+        )
+        if any(not isinstance(item, Mapping) for item in identities):
+            raise PromptWorkflowContractError(
+                "task_source_identities must contain objects"
+            )
+        if identities and len(identities) != expected:
+            raise PromptWorkflowContractError(
+                "task-source identity count does not match output mode"
+            )
+        object.__setattr__(self, "task_source_identities", identities)
+        for name in ("expected_effects", "observed_effects"):
+            object.__setattr__(
+                self, name, _strings(getattr(self, name), name)
+            )
+        if not set(self.observed_effects).issubset(set(self.expected_effects)):
+            raise PromptWorkflowContractError(
+                "observed effects must be declared expected effects"
+            )
+        cursors = _freeze_json(self.event_cursors, "event_cursors")
+        if not isinstance(cursors, Mapping):
+            raise PromptWorkflowContractError("event_cursors must be an object")
+        object.__setattr__(self, "event_cursors", cursors)
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
@@ -2687,6 +2782,14 @@ class PromptWorkflowPreviewReceipt(_WorkflowContract):
         "deterministic_fallback",
         "expected_materialization_effects",
         "budget",
+        "intent_ir_root",
+        "legal_ir_root",
+        "security_ir_root",
+        "output_policy_cid",
+        "catalog_root",
+        "planner_receipt_cid",
+        "admission_receipt_cid",
+        "artifact_refs",
         "status",
         "created_at_ms",
         "updated_at_ms",
@@ -2711,6 +2814,14 @@ class PromptWorkflowPreviewReceipt(_WorkflowContract):
     deterministic_fallback: bool = False
     expected_materialization_effects: tuple[str, ...] = ()
     budget: PromptWorkflowBudget = field(default_factory=PromptWorkflowBudget)
+    intent_ir_root: str = ""
+    legal_ir_root: str = ""
+    security_ir_root: str = ""
+    output_policy_cid: str = ""
+    catalog_root: str = ""
+    planner_receipt_cid: str = ""
+    admission_receipt_cid: str = ""
+    artifact_refs: tuple[str, ...] = ()
     status: RecordStatus = RecordStatus.ADMITTED
     created_at_ms: int = 0
     updated_at_ms: int = 0
@@ -2742,8 +2853,6 @@ class PromptWorkflowPreviewReceipt(_WorkflowContract):
                             required=name
                             in {
                                 "policy_roots",
-                                "admitted_goal_cids",
-                                "admitted_task_cids",
                             },
                         )
                     )
@@ -2780,6 +2889,30 @@ class PromptWorkflowPreviewReceipt(_WorkflowContract):
                 "expected_materialization_effects",
             ),
         )
+        for name in (
+            "intent_ir_root",
+            "legal_ir_root",
+            "security_ir_root",
+            "output_policy_cid",
+            "catalog_root",
+            "planner_receipt_cid",
+            "admission_receipt_cid",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _identity(getattr(self, name), name, required=False),
+            )
+        object.__setattr__(
+            self,
+            "artifact_refs",
+            tuple(
+                sorted(
+                    _identity(item, "artifact_refs")
+                    for item in _strings(self.artifact_refs, "artifact_refs")
+                )
+            ),
+        )
         if not isinstance(self.budget, PromptWorkflowBudget):
             raise PromptWorkflowContractError(
                 "budget must be PromptWorkflowBudget"
@@ -2793,6 +2926,18 @@ class PromptWorkflowPreviewReceipt(_WorkflowContract):
                 "admitted tasks exceed the declared workflow budget"
             )
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
+        if self.status is RecordStatus.ADMITTED and (
+            not self.admitted_goal_cids or not self.admitted_task_cids
+        ):
+            raise PromptWorkflowContractError(
+                "admitted preview requires admitted goal and task branches"
+            )
+        if self.status is RecordStatus.REJECTED and (
+            self.admitted_goal_cids or self.admitted_task_cids
+        ):
+            raise PromptWorkflowContractError(
+                "rejected preview cannot publish admitted branches"
+            )
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
         if len(self.canonical_bytes()) > self.budget.max_serialized_bytes:
@@ -2819,6 +2964,12 @@ class PromptWorkflowResult(_WorkflowContract):
         "completed_stage_cids",
         "failure_codes",
         "safe_continuation",
+        "expected_effects",
+        "observed_effects",
+        "task_source_identities",
+        "event_cursors",
+        "control_receipt_cids",
+        "rollback_receipt_cids",
         "status",
         "created_at_ms",
         "updated_at_ms",
@@ -2837,6 +2988,12 @@ class PromptWorkflowResult(_WorkflowContract):
     completed_stage_cids: tuple[str, ...] = ()
     failure_codes: tuple[str, ...] = ()
     safe_continuation: str = ""
+    expected_effects: tuple[str, ...] = ()
+    observed_effects: tuple[str, ...] = ()
+    task_source_identities: tuple[Mapping[str, Any], ...] = ()
+    event_cursors: Mapping[str, Any] = field(default_factory=dict)
+    control_receipt_cids: tuple[str, ...] = ()
+    rollback_receipt_cids: tuple[str, ...] = ()
     status: RecordStatus = RecordStatus.READY
     created_at_ms: int = 0
     updated_at_ms: int = 0
@@ -2945,6 +3102,49 @@ class PromptWorkflowResult(_WorkflowContract):
             "safe_continuation",
             _text(self.safe_continuation, "safe_continuation", required=False),
         )
+        for name in ("expected_effects", "observed_effects"):
+            object.__setattr__(
+                self, name, _strings(getattr(self, name), name)
+            )
+        if not set(self.observed_effects).issubset(set(self.expected_effects)):
+            raise PromptWorkflowContractError(
+                "observed effects must be declared expected effects"
+            )
+        if isinstance(self.task_source_identities, (str, bytes)) or not isinstance(
+            self.task_source_identities, Sequence
+        ):
+            raise PromptWorkflowContractError(
+                "task_source_identities must be a sequence"
+            )
+        identities = tuple(
+            sorted(
+                (
+                    _freeze_json(item, "task_source_identities")
+                    for item in self.task_source_identities
+                ),
+                key=lambda item: canonical_prompt_workflow_bytes(item),
+            )
+        )
+        if any(not isinstance(item, Mapping) for item in identities):
+            raise PromptWorkflowContractError(
+                "task_source_identities must contain objects"
+            )
+        object.__setattr__(self, "task_source_identities", identities)
+        cursors = _freeze_json(self.event_cursors, "event_cursors")
+        if not isinstance(cursors, Mapping):
+            raise PromptWorkflowContractError("event_cursors must be an object")
+        object.__setattr__(self, "event_cursors", cursors)
+        for name in ("control_receipt_cids", "rollback_receipt_cids"):
+            object.__setattr__(
+                self,
+                name,
+                tuple(
+                    sorted(
+                        _identity(item, name)
+                        for item in _strings(getattr(self, name), name)
+                    )
+                ),
+            )
         if self.outcome in {
             WorkflowOutcome.PARTIAL,
             WorkflowOutcome.REJECTED,
@@ -2961,6 +3161,1682 @@ class PromptWorkflowResult(_WorkflowContract):
     @property
     def receipt_cid(self) -> str:
         return self.content_id
+
+
+@dataclass
+class _PromptPreviewState:
+    """Process-local bodies needed to continue a body-free preview receipt."""
+
+    request: PromptWorkflowRequest
+    receipt: PromptWorkflowPreviewReceipt
+    scan: DirectoryScanReceipt
+    graph: PromptGoalGraph
+    admission: Any
+
+
+@dataclass
+class _PromptMaterializationState:
+    preview: _PromptPreviewState
+    reference: MaterializationReference
+    result: PromptWorkflowResult
+
+
+def _reference_cid(value: Any, namespace: str) -> str:
+    """Normalize a bounded external receipt/identity into this contract's CID."""
+
+    if isinstance(value, str) and _CID_RE.fullmatch(value):
+        return value
+    if isinstance(value, _WorkflowContract):
+        return value.content_id
+    if isinstance(value, Mapping):
+        return prompt_workflow_cid(
+            {"namespace": namespace, "record": _wire_value(value)}
+        )
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return prompt_workflow_cid({"namespace": namespace, "identity": text})
+
+
+def _component_call(
+    component: Any,
+    method: str,
+    variants: Sequence[tuple[tuple[Any, ...], Mapping[str, Any]]],
+) -> Any:
+    """Invoke one injected component without masking a component TypeError."""
+
+    target = getattr(component, method, None)
+    if target is None:
+        target = component if callable(component) else None
+    if target is None:
+        raise TypeError(f"workflow component does not implement {method}")
+    try:
+        import inspect
+
+        signature = inspect.signature(target)
+    except (TypeError, ValueError):
+        args, kwargs = variants[0]
+        return target(*args, **dict(kwargs))
+    for args, kwargs in variants:
+        try:
+            signature.bind(*args, **dict(kwargs))
+        except TypeError:
+            continue
+        return target(*args, **dict(kwargs))
+    raise TypeError(f"workflow component {method} has an unsupported signature")
+
+
+class PromptSupervisorService:
+    """Canonical provider-lazy prompt-to-supervisor workflow orchestrator.
+
+    The service deliberately keeps the three authority and idempotency
+    boundaries separate:
+
+    * :meth:`preview` scans, plans, and admits but never mutates;
+    * :meth:`materialize` requires a fresh mutation grant and delegates each
+      projection to its own journaled/transactional task source;
+    * :meth:`start` uses the existing shared control service and a different
+      lifecycle request.
+
+    Durable records contain only canonical roots and bounded artifact
+    references.  The admitted graph is retained process-locally solely to
+    continue the saga; callers that require cross-process continuation can
+    supply a receipt mapping and restore the service with their own artifact
+    loader rather than placing prompt or model bodies in a receipt.
+    """
+
+    def __init__(
+        self,
+        *,
+        control_service: Any | None = None,
+        repository_allowlist: Sequence[str | Path] = (),
+        scanner: Any | None = None,
+        planner: Any | None = None,
+        admission: Any | None = None,
+        admission_request_factory: Any | None = None,
+        markdown_materializer: Any | None = None,
+        duckdb_materializer: Any | None = None,
+        artifact_store: Any | None = None,
+        optional_analysis: Any | None = None,
+        receipt_store: MutableMapping[str, Mapping[str, Any]] | Any | None = None,
+        root_observer: Callable[..., Mapping[str, Any]] | None = None,
+        catalog_root: str = "",
+        clock_ms: Callable[[], int] | None = None,
+    ) -> None:
+        self.control_service = control_service
+        self.repository_allowlist = tuple(str(Path(item)) for item in repository_allowlist)
+        self.scanner = scanner
+        self.planner = planner
+        self.admission = admission
+        self.admission_request_factory = admission_request_factory
+        self.markdown_materializer = markdown_materializer
+        self.duckdb_materializer = duckdb_materializer
+        self.artifact_store = artifact_store
+        self.optional_analysis = optional_analysis
+        self.receipt_store = receipt_store
+        self.root_observer = root_observer
+        self._catalog_root = (
+            _identity(catalog_root, "catalog_root") if catalog_root else ""
+        )
+        self._clock_ms = clock_ms or (lambda: 0)
+        self._preview_by_request: dict[str, _PromptPreviewState] = {}
+        self._preview_by_receipt: dict[str, _PromptPreviewState] = {}
+        self._materialization_by_key: dict[str, _PromptMaterializationState] = {}
+        self._materialization_by_cid: dict[str, _PromptMaterializationState] = {}
+        self._idempotency_fingerprints: dict[tuple[str, str], str] = {}
+        self._start_results: dict[str, PromptWorkflowResult] = {}
+        self._lock = threading.RLock()
+
+    @property
+    def catalog_root(self) -> str:
+        if self._catalog_root:
+            return self._catalog_root
+        if self.control_service is not None:
+            catalog = getattr(self.control_service, "_catalog", None)
+            value = getattr(catalog, "catalog_id", "") or getattr(
+                catalog, "content_id", ""
+            )
+            if value:
+                self._catalog_root = _reference_cid(value, "control-catalog")
+                return self._catalog_root
+        # Keep provider and process modules out of import/discovery.  The
+        # contract catalog itself is a provider-free dependency loaded only
+        # when a service instance is actually used.
+        from .control_contracts import OPERATION_CATALOG_V2
+
+        self._catalog_root = _reference_cid(
+            OPERATION_CATALOG_V2.catalog_id, "control-catalog"
+        )
+        return self._catalog_root
+
+    def _persist(self, value: _WorkflowContract) -> None:
+        if self.receipt_store is None:
+            return
+        record = value.to_record()
+        if isinstance(self.receipt_store, MutableMapping):
+            existing = self.receipt_store.get(value.content_id)
+            if existing is not None and dict(existing) != record:
+                raise PromptWorkflowReceiptError(
+                    "receipt store contains a conflicting canonical receipt"
+                )
+            self.receipt_store[value.content_id] = record
+            return
+        put = getattr(self.receipt_store, "put", None) or getattr(
+            self.receipt_store, "store", None
+        )
+        if not callable(put):
+            raise PromptWorkflowReceiptError(
+                "receipt_store must be a mutable mapping or implement put"
+            )
+        put(value.content_id, record)
+
+    def _scanner(self, request: PromptWorkflowRequest) -> Any:
+        if self.scanner is not None:
+            return self.scanner
+        from .prompt_directory_scanner import PromptDirectoryScanner
+
+        roots = self.repository_allowlist or (request.repository_root,)
+        self.scanner = PromptDirectoryScanner(
+            roots,
+            artifact_store=self.artifact_store,
+            optional_analysis=self.optional_analysis,
+        )
+        return self.scanner
+
+    def _scan(self, request: PromptWorkflowRequest) -> DirectoryScanReceipt:
+        scan = _component_call(
+            self._scanner(request),
+            "scan",
+            (
+                ((request,), {"clock_ms": self._clock_ms}),
+                ((request,), {}),
+            ),
+        )
+        if not isinstance(scan, DirectoryScanReceipt):
+            scan = DirectoryScanReceipt.from_dict(scan)
+        self._validate_scan(request, scan)
+        return scan
+
+    @staticmethod
+    def _validate_scan(
+        request: PromptWorkflowRequest, scan: DirectoryScanReceipt
+    ) -> None:
+        exact = (
+            (scan.request_cid, request.request_cid, "request"),
+            (scan.repository_root, request.repository_root, "repository path"),
+            (scan.directory, request.directory, "directory"),
+            (
+                scan.repository_root_cid,
+                request.repository_root_cid,
+                "repository root",
+            ),
+            (
+                scan.scanner_policy_cid,
+                request.scan_policy.content_id,
+                "scan policy",
+            ),
+            (scan.program_root, request.program_root, "program root"),
+        )
+        for observed, expected, noun in exact:
+            if observed != expected:
+                raise PromptWorkflowStaleRootError(
+                    f"scan is bound to a different {noun}"
+                )
+
+    @staticmethod
+    def _validate_graph(
+        request: PromptWorkflowRequest,
+        scan: DirectoryScanReceipt,
+        graph: PromptGoalGraph,
+    ) -> None:
+        if graph.request_cid != request.request_cid:
+            raise PromptWorkflowStaleRootError(
+                "plan is bound to a different request root"
+            )
+        if graph.scan_cid != scan.scan_cid:
+            raise PromptWorkflowStaleRootError(
+                "plan is bound to a different scan root"
+            )
+        if graph.program_root != request.program_root:
+            raise PromptWorkflowStaleRootError(
+                "plan is bound to a different program root"
+            )
+        roots = {
+            request.policy_root,
+            request.intent_ir_root,
+            request.legal_ir_root,
+            request.security_ir_root,
+        }
+        if set(graph.policy_roots) != roots:
+            raise PromptWorkflowStaleRootError(
+                "plan policy/IR roots differ from the request"
+            )
+
+    def _plan(
+        self,
+        request: PromptWorkflowRequest,
+        scan: DirectoryScanReceipt,
+        *,
+        capabilities: Mapping[str, Any] | None,
+        constraint_summaries: Mapping[str, Any] | None,
+    ) -> tuple[PromptGoalGraph, Any, str, bool]:
+        if self.planner is None:
+            from .prompt_goal_planner import generate_prompt_goal_graph
+
+            result = generate_prompt_goal_graph(
+                request,
+                scan,
+                capabilities=capabilities,
+                constraint_summaries=constraint_summaries,
+            )
+        else:
+            result = _component_call(
+                self.planner,
+                "plan",
+                (
+                    (
+                        (request, scan),
+                        {
+                            "capabilities": capabilities,
+                            "constraint_summaries": constraint_summaries,
+                        },
+                    ),
+                    ((request, scan), {}),
+                ),
+            )
+        graph = getattr(result, "graph", result)
+        if not isinstance(graph, PromptGoalGraph):
+            graph = PromptGoalGraph.from_dict(graph)
+        self._validate_graph(request, scan, graph)
+        planning_receipt = getattr(result, "receipt", None)
+        planning_ref = _reference_cid(
+            planning_receipt.to_dict()
+            if hasattr(planning_receipt, "to_dict")
+            else planning_receipt or {"plan_root_cid": graph.plan_root_cid},
+            "prompt-planning-receipt",
+        )
+        used_fallback = bool(
+            getattr(result, "used_fallback", False)
+            or getattr(getattr(planning_receipt, "fallback", None), "used", False)
+        )
+        return graph, result, planning_ref, used_fallback
+
+    def _admit(
+        self,
+        request: PromptWorkflowRequest,
+        scan: DirectoryScanReceipt,
+        graph: PromptGoalGraph,
+        planning_result: Any,
+    ) -> Any:
+        if self.admission is not None:
+            result = _component_call(
+                self.admission,
+                "admit",
+                (
+                    ((request, scan, graph, planning_result), {}),
+                    ((request, scan, graph), {}),
+                    ((graph,), {}),
+                ),
+            )
+        else:
+            from .prompt_plan_admission import (
+                PromptPlanAdmissionRequest,
+                admit_prompt_plan,
+            )
+
+            ir_request = None
+            compound = None
+            if self.admission_request_factory is not None:
+                built = _component_call(
+                    self.admission_request_factory,
+                    "build",
+                    (
+                        ((request, scan, graph), {}),
+                        ((graph, request, scan), {}),
+                        ((graph,), {}),
+                    ),
+                )
+                if isinstance(built, PromptPlanAdmissionRequest):
+                    compound = built
+                else:
+                    ir_request = built
+            result = (
+                admit_prompt_plan(compound)
+                if compound is not None
+                else admit_prompt_plan(
+                    graph,
+                    repository_tree_id=scan.dirty_worktree_root,
+                    ir_request=ir_request,
+                    workflow_request=request,
+                    scan_receipt=scan,
+                )
+            )
+        admitted_graph = getattr(result, "admitted_graph", None)
+        if admitted_graph is not None:
+            if not isinstance(admitted_graph, PromptGoalGraph):
+                raise PromptWorkflowReceiptError(
+                    "admission returned a non-canonical admitted graph"
+                )
+            self._validate_graph(request, scan, admitted_graph)
+            if admitted_graph.plan_root_cid != graph.plan_root_cid:
+                raise PromptWorkflowReceiptError(
+                    "admission changed the candidate graph identity"
+                )
+        return result
+
+    @staticmethod
+    def _admission_receipt_ref(result: Any) -> str:
+        receipt = getattr(result, "receipt", result)
+        payload = receipt.to_dict() if hasattr(receipt, "to_dict") else receipt
+        return _reference_cid(payload, "prompt-admission-receipt")
+
+    @staticmethod
+    def _expected_materialization_effects(
+        request: PromptWorkflowRequest,
+    ) -> tuple[str, ...]:
+        effects: list[str] = []
+        if request.output_policy.mode in {OutputMode.MARKDOWN, OutputMode.BOTH}:
+            effects.append(
+                f"write_markdown:{request.output_policy.markdown_path}"
+            )
+        if request.output_policy.mode in {OutputMode.DUCKDB, OutputMode.BOTH}:
+            effects.append(f"write_duckdb:{request.output_policy.duckdb_path}")
+        return tuple(sorted(effects))
+
+    @staticmethod
+    def _rejections(admission: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        receipt = getattr(admission, "receipt", admission)
+        findings = tuple(getattr(receipt, "findings", ()) or ())
+        branch_refs: list[str] = []
+        reasons: list[str] = []
+        for finding in findings:
+            ref = getattr(finding, "finding_id", "") or _reference_cid(
+                finding.to_dict() if hasattr(finding, "to_dict") else str(type(finding)),
+                "prompt-admission-finding",
+            )
+            branch_refs.append(_reference_cid(ref, "prompt-admission-finding"))
+            code = str(getattr(finding, "code", "") or "admission_rejected")
+            reasons.append(code)
+        if not branch_refs and not bool(getattr(admission, "admitted", False)):
+            codes = tuple(getattr(admission, "reason_codes", ()) or ())
+            reasons = [str(item) for item in codes] or ["admission_rejected"]
+            branch_refs = [
+                prompt_workflow_cid(
+                    {"namespace": "prompt-admission-rejection", "code": code}
+                )
+                for code in reasons
+            ]
+        return tuple(sorted(set(branch_refs))), tuple(sorted(set(reasons)))
+
+    def _validate_preview_control(
+        self, control_request: Any | None
+    ) -> str:
+        if control_request is None:
+            return ""
+        if self.control_service is None:
+            raise PromptWorkflowAuthorizationError(
+                "preview control request requires a control service"
+            )
+        from .control_contracts import Operation
+
+        if getattr(control_request, "operation", None) is not Operation.WORKFLOW_PREVIEW:
+            raise PromptWorkflowAuthorizationError(
+                "preview control request uses the wrong operation"
+            )
+        result = self.control_service.workflow_preview(control_request)
+        if not bool(getattr(result, "succeeded", False)):
+            raise PromptWorkflowAuthorizationError(
+                "workflow preview was rejected by the shared control service"
+            )
+        return _reference_cid(
+            getattr(result, "audit_receipt_id", "")
+            or getattr(result, "result_id", ""),
+            "workflow-preview-control-receipt",
+        )
+
+    def preview(
+        self,
+        request: PromptWorkflowRequest,
+        *,
+        control_request: Any | None = None,
+        capabilities: Mapping[str, Any] | None = None,
+        constraint_summaries: Mapping[str, Any] | None = None,
+    ) -> PromptWorkflowPreviewReceipt:
+        """Scan, plan, and admit one request without applying an effect."""
+
+        if not isinstance(request, PromptWorkflowRequest):
+            raise TypeError("request must be PromptWorkflowRequest")
+        with self._lock:
+            existing = self._preview_by_request.get(request.request_cid)
+            if existing is not None:
+                self._verify_current(existing)
+                return existing.receipt
+
+            control_ref = self._validate_preview_control(control_request)
+            scan = self._scan(request)
+            graph, planning, planner_ref, fallback = self._plan(
+                request,
+                scan,
+                capabilities=capabilities,
+                constraint_summaries=constraint_summaries,
+            )
+            admission = self._admit(request, scan, graph, planning)
+            admitted = bool(getattr(admission, "admitted", False))
+            admitted_graph = getattr(admission, "admitted_graph", None)
+            if admitted and not isinstance(admitted_graph, PromptGoalGraph):
+                raise PromptWorkflowReceiptError(
+                    "admitted result does not carry the exact admitted graph"
+                )
+            admission_ref = self._admission_receipt_ref(admission)
+            rejected_refs, rejection_reasons = self._rejections(admission)
+            selected_graph = admitted_graph if admitted else graph
+            plan_root = (
+                str(getattr(admission, "plan_root_cid", "") or "")
+                if admitted
+                else graph.plan_root_cid
+            )
+            if not plan_root:
+                raise PromptWorkflowReceiptError(
+                    "admission did not publish a plan root"
+                )
+            artifact_refs = tuple(
+                sorted(
+                    {
+                        scan.scan_cid,
+                        graph.plan_root_cid,
+                        planner_ref,
+                        admission_ref,
+                        *(
+                            (control_ref,)
+                            if control_ref
+                            else ()
+                        ),
+                    }
+                )
+            )
+            now = int(self._clock_ms())
+            receipt = PromptWorkflowPreviewReceipt(
+                request_cid=request.request_cid,
+                scan_cid=scan.scan_cid,
+                plan_root_cid=plan_root,
+                repository_root_cid=request.repository_root_cid,
+                program_root=request.program_root,
+                policy_roots=selected_graph.policy_roots,
+                admitted_goal_cids=(
+                    tuple(goal.goal_cid for goal in selected_graph.goals)
+                    if admitted
+                    else ()
+                ),
+                admitted_task_cids=(
+                    tuple(task.task_cid for task in selected_graph.tasks)
+                    if admitted
+                    else ()
+                ),
+                rejected_branch_cids=rejected_refs,
+                rejection_reasons=rejection_reasons,
+                provider_receipt_cid=planner_ref,
+                deterministic_fallback=fallback,
+                expected_materialization_effects=(
+                    self._expected_materialization_effects(request)
+                ),
+                budget=request.budget,
+                intent_ir_root=request.intent_ir_root,
+                legal_ir_root=request.legal_ir_root,
+                security_ir_root=request.security_ir_root,
+                output_policy_cid=request.output_policy.content_id,
+                catalog_root=self.catalog_root,
+                planner_receipt_cid=planner_ref,
+                admission_receipt_cid=admission_ref,
+                artifact_refs=artifact_refs,
+                status=(
+                    RecordStatus.ADMITTED if admitted else RecordStatus.REJECTED
+                ),
+                created_at_ms=now,
+                updated_at_ms=now,
+            )
+            self._persist(receipt)
+            state = _PromptPreviewState(
+                request=request,
+                receipt=receipt,
+                scan=scan,
+                graph=selected_graph,
+                admission=admission,
+            )
+            self._preview_by_request[request.request_cid] = state
+            self._preview_by_receipt[receipt.receipt_cid] = state
+            return receipt
+
+    def _preview_state(
+        self, preview_ref: str | PromptWorkflowPreviewReceipt
+    ) -> _PromptPreviewState:
+        ref = (
+            preview_ref.receipt_cid
+            if isinstance(preview_ref, PromptWorkflowPreviewReceipt)
+            else str(preview_ref or "")
+        )
+        state = self._preview_by_receipt.get(ref)
+        if state is None:
+            raise PromptWorkflowReceiptError(
+                "preview receipt is unavailable for safe continuation"
+            )
+        return state
+
+    def _verify_current(self, state: _PromptPreviewState) -> None:
+        expected = {
+            "request_cid": state.request.request_cid,
+            "repository_root_cid": state.request.repository_root_cid,
+            "scan_cid": state.scan.scan_cid,
+            "dirty_worktree_root": state.scan.dirty_worktree_root,
+            "plan_root_cid": state.receipt.plan_root_cid,
+            "program_root": state.request.program_root,
+            "policy_root": state.request.policy_root,
+            "intent_ir_root": state.request.intent_ir_root,
+            "legal_ir_root": state.request.legal_ir_root,
+            "security_ir_root": state.request.security_ir_root,
+            "output_policy_cid": state.request.output_policy.content_id,
+            "catalog_root": state.receipt.catalog_root,
+            "output_mode": state.request.output_policy.mode.value,
+            "markdown_path": state.request.output_policy.markdown_path,
+            "duckdb_path": state.request.output_policy.duckdb_path,
+        }
+        if self.catalog_root != state.receipt.catalog_root:
+            raise PromptWorkflowStaleRootError(
+                "current catalog_root differs from the preview receipt"
+            )
+        if self.root_observer is not None:
+            observed = _component_call(
+                self.root_observer,
+                "observe",
+                (
+                    ((state.request, state.scan, state.receipt), {}),
+                    ((state.request,), {}),
+                    ((), {}),
+                ),
+            )
+            if not isinstance(observed, Mapping):
+                raise PromptWorkflowStaleRootError(
+                    "root observer did not return a root mapping"
+                )
+            missing = set(expected).difference(observed)
+            if missing:
+                raise PromptWorkflowStaleRootError(
+                    "root observer omitted required current roots: "
+                    + ", ".join(sorted(missing))
+                )
+            unknown = set(observed).difference(expected)
+            if unknown:
+                raise PromptWorkflowStaleRootError(
+                    "root observer returned unknown roots: "
+                    + ", ".join(sorted(str(item) for item in unknown))
+                )
+            for key, value in expected.items():
+                if observed[key] != value:
+                    raise PromptWorkflowStaleRootError(
+                        f"current {key} differs from the preview receipt"
+                    )
+            return
+        fresh = self._scan(state.request)
+        if (
+            fresh.scan_cid != state.scan.scan_cid
+            or fresh.dirty_worktree_root != state.scan.dirty_worktree_root
+        ):
+            raise PromptWorkflowStaleRootError(
+                "repository scan root changed after preview"
+            )
+
+    @staticmethod
+    def _failure_result(
+        state: _PromptPreviewState,
+        *,
+        code: str,
+        outcome: WorkflowOutcome = WorkflowOutcome.FAILED,
+        materialization: MaterializationReference | None = None,
+        completed: Sequence[str] = (),
+        continuation: str = "",
+        expected: Sequence[str] = (),
+        observed: Sequence[str] = (),
+        identities: Sequence[Mapping[str, Any]] = (),
+        cursors: Mapping[str, Any] | None = None,
+        control_receipts: Sequence[str] = (),
+    ) -> PromptWorkflowResult:
+        status = (
+            RecordStatus.BLOCKED
+            if outcome is WorkflowOutcome.PARTIAL
+            else RecordStatus.REJECTED
+            if outcome is WorkflowOutcome.REJECTED
+            else RecordStatus.FAILED
+        )
+        return PromptWorkflowResult(
+            request_cid=state.request.request_cid,
+            outcome=outcome,
+            preview_receipt_cid=state.receipt.receipt_cid,
+            materialization=materialization,
+            completed_stage_cids=tuple(completed),
+            failure_codes=(code,),
+            safe_continuation=continuation,
+            expected_effects=tuple(expected),
+            observed_effects=tuple(observed),
+            task_source_identities=tuple(identities),
+            event_cursors=cursors or {},
+            control_receipt_cids=tuple(control_receipts),
+            status=status,
+        )
+
+    def _validate_materialize_control(
+        self, state: _PromptPreviewState, control_request: Any
+    ) -> tuple[Any, str]:
+        from .control_contracts import Operation
+
+        if getattr(control_request, "operation", None) is not Operation.WORKFLOW_MATERIALIZE:
+            raise PromptWorkflowAuthorizationError(
+                "materialization control request uses the wrong operation"
+            )
+        parameters = control_request.parameters
+        exact = {
+            "preview_ref": state.receipt.receipt_cid,
+            "preview_root": state.receipt.plan_root_cid,
+            "output_mode": state.request.output_policy.mode.value,
+            "markdown_path": state.request.output_policy.markdown_path,
+            "duckdb_path": state.request.output_policy.duckdb_path,
+            "catalog_root": state.receipt.catalog_root,
+        }
+        for key, expected in exact.items():
+            observed = parameters.get(key)
+            if observed not in (None, "") and observed != expected:
+                raise PromptWorkflowStaleRootError(
+                    f"materialization {key} differs from preview"
+                )
+        if str(control_request.repository_root) != state.request.repository_root:
+            raise PromptWorkflowStaleRootError(
+                "materialization repository root differs from preview"
+            )
+        result = self.control_service.workflow_materialize(control_request)
+        receipt = _reference_cid(
+            getattr(result, "audit_receipt_id", "")
+            or getattr(result, "result_id", ""),
+            "workflow-materialize-control-receipt",
+        )
+        return result, receipt
+
+    @staticmethod
+    def _authorization_binding(
+        state: _PromptPreviewState,
+        *,
+        control_request: Any | None,
+        authorization: Any | None,
+        idempotency_key: str,
+        lease_id: str,
+        fencing_epoch: int | None,
+    ) -> tuple[str, str, str, int]:
+        if control_request is not None:
+            return (
+                _reference_cid(control_request.request_id, "materialize-request"),
+                str(control_request.idempotency_key),
+                str(control_request.lease_id),
+                int(control_request.fencing_epoch),
+            )
+        selected_authorization = authorization or state.request.authority_cid
+        selected_key = idempotency_key or state.request.idempotency_key
+        selected_lease = lease_id or state.request.lease_id
+        selected_fence = (
+            fencing_epoch
+            if fencing_epoch is not None
+            else state.request.fencing_epoch
+        )
+        if hasattr(selected_authorization, "permitted") and not bool(
+            selected_authorization.permitted
+        ):
+            raise PromptWorkflowAuthorizationError(
+                "materialization authorization is not permitted"
+            )
+        authority_ref = _reference_cid(
+            getattr(selected_authorization, "content_id", "")
+            or selected_authorization,
+            "workflow-materialization-authority",
+        )
+        if (
+            not authority_ref
+            or not selected_key
+            or not selected_lease
+            or selected_fence is None
+        ):
+            raise PromptWorkflowAuthorizationError(
+                "materialization requires separate authority, idempotency, lease, and fence"
+            )
+        return authority_ref, str(selected_key), str(selected_lease), int(selected_fence)
+
+    @staticmethod
+    def _cursor_reference(value: Any, namespace: str) -> str:
+        if value in (None, ""):
+            return ""
+        if hasattr(value, "to_dict"):
+            return _reference_cid(value.to_dict(), namespace)
+        if isinstance(value, Mapping):
+            return _reference_cid(value, namespace)
+        return str(value)
+
+    def _normalize_projection(
+        self,
+        kind: str,
+        raw: Any,
+        state: _PromptPreviewState,
+        path: str,
+    ) -> Mapping[str, Any]:
+        effect = f"write_{kind}:{path}"
+        if isinstance(raw, Mapping):
+            committed = bool(raw.get("committed", True))
+            if not committed:
+                raise PromptWorkflowServiceError(
+                    f"{kind} projection did not commit"
+                )
+            projection_identity = (
+                raw.get("projection_cid")
+                or raw.get("projection_id")
+                or raw.get("source_id")
+                or raw.get("receipt_cid")
+            )
+            revision = raw.get("revision", 1)
+            changed = bool(raw.get("changed", False))
+            replayed = bool(raw.get("replayed", not changed))
+            cursor = raw.get("event_cursor", raw.get("cursor", ""))
+            source_schema = str(
+                raw.get("source_schema")
+                or raw.get("schema")
+                or f"prompt-{kind}-task-source"
+            )
+            task_cids = tuple(
+                raw.get("task_cids")
+                or (task.task_cid for task in state.graph.tasks)
+            )
+            root_id = str(
+                raw.get("plan_root_cid")
+                or raw.get("plan_root")
+                or state.receipt.plan_root_cid
+            )
+            source_identity = raw.get("task_source_identity")
+        else:
+            committed = bool(getattr(raw, "committed", True))
+            if not committed:
+                raise PromptWorkflowServiceError(
+                    f"{kind} projection did not commit"
+                )
+            projection = getattr(raw, "projection", None)
+            snapshot = getattr(raw, "snapshot", None)
+            projection_identity = (
+                getattr(projection, "projection_id", "")
+                or getattr(snapshot, "projection_cid", "")
+                or getattr(snapshot, "projection_id", "")
+                or getattr(raw, "projection_cid", "")
+            )
+            revision = (
+                getattr(snapshot, "revision", None)
+                or getattr(projection, "revision", None)
+                or 1
+            )
+            changed = bool(getattr(raw, "changed", False))
+            replayed = bool(
+                getattr(raw, "no_op", False)
+                or getattr(raw, "replayed", not changed)
+            )
+            cursor = getattr(raw, "event_cursor", "")
+            source_schema = str(
+                getattr(snapshot, "source_schema", "")
+                or getattr(snapshot, "projection_schema", "")
+                or getattr(projection, "schema", "")
+                or f"prompt-{kind}-task-source"
+            )
+            task_cids = tuple(
+                getattr(snapshot, "task_cids", ())
+                or getattr(projection, "task_cids", ())
+                or tuple(task.task_cid for task in state.graph.tasks)
+            )
+            root_id = str(
+                getattr(snapshot, "plan_root_cid", "")
+                or getattr(snapshot, "plan_root", "")
+                or getattr(projection, "plan_root", "")
+                or state.receipt.plan_root_cid
+            )
+            source_identity = getattr(raw, "task_source_identity", None)
+        try:
+            selected_revision = int(revision)
+        except (TypeError, ValueError) as exc:
+            raise PromptWorkflowReceiptError(
+                f"{kind} projection revision is malformed"
+            ) from exc
+        if selected_revision < 1:
+            raise PromptWorkflowReceiptError(
+                f"{kind} projection revision is malformed"
+            )
+        projection_cid = _reference_cid(
+            projection_identity,
+            f"{kind}-task-source-projection",
+        )
+        if not projection_cid:
+            raise PromptWorkflowReceiptError(
+                f"{kind} projection did not publish an identity"
+            )
+        if root_id != state.receipt.plan_root_cid:
+            raise PromptWorkflowStaleRootError(
+                f"{kind} task source published a foreign plan root"
+            )
+        expected_tasks = tuple(
+            sorted(task.task_cid for task in state.graph.tasks)
+        )
+        if tuple(sorted(str(item) for item in task_cids)) != expected_tasks:
+            raise PromptWorkflowReceiptError(
+                f"{kind} task source population differs from admitted tasks"
+            )
+        if isinstance(source_identity, Mapping):
+            identity = dict(source_identity)
+        else:
+            identity = {
+                "kind": kind,
+                "source_schema": source_schema,
+                "source_id": str(projection_identity),
+                "root_id": root_id,
+                "repository_root_cid": state.request.repository_root_cid,
+                "scan_cid": state.scan.scan_cid,
+                "revision": selected_revision,
+                "path": path,
+                "task_cids": list(expected_tasks),
+            }
+        identity.setdefault("kind", kind)
+        identity.setdefault("source_id", str(projection_identity))
+        identity.setdefault("root_id", root_id)
+        identity.setdefault("revision", selected_revision)
+        cursor_ref = self._cursor_reference(
+            cursor, f"{kind}-task-source-event-cursor"
+        )
+        return MappingProxyType(
+            {
+                "kind": kind,
+                "projection_cid": projection_cid,
+                "revision": selected_revision,
+                "identity": identity,
+                "cursor": cursor_ref,
+                "effect": effect,
+                "changed": changed,
+                "replayed": replayed,
+            }
+        )
+
+    def _materialize_markdown(
+        self,
+        state: _PromptPreviewState,
+        *,
+        idempotency_key: str,
+    ) -> Mapping[str, Any]:
+        path = state.request.output_policy.markdown_path
+        if self.markdown_materializer is not None:
+            raw = _component_call(
+                self.markdown_materializer,
+                "materialize",
+                (
+                    (
+                        (state.admission,),
+                        {
+                            "request": state.request,
+                            "preview": state.receipt,
+                            "idempotency_key": idempotency_key,
+                        },
+                    ),
+                    ((state.admission, state.request, state.receipt), {}),
+                    ((state.admission,), {}),
+                ),
+            )
+        else:
+            from .markdown_task_source import MarkdownTaskSource
+
+            absolute = (
+                Path(state.request.output_policy.output_root) / path
+            )
+            backend = MarkdownTaskSource(
+                absolute,
+                root=state.request.output_policy.output_root,
+                task_prefix=state.request.output_policy.task_prefix,
+                board_namespace=state.request.output_policy.board_namespace,
+                max_bytes=state.request.budget.max_serialized_bytes,
+                max_tasks=state.request.budget.max_tasks,
+            )
+            raw = backend.materialize(
+                state.admission,
+                revision=1,
+                epoch_id=idempotency_key,
+            )
+            cursor = backend.store.event_cursor()
+            # The native result intentionally omits the event stream because
+            # it lives beside the taskboard.  Attach only its bounded cursor.
+            raw = {
+                "committed": raw.committed,
+                "changed": raw.changed,
+                "replayed": raw.no_op,
+                "projection_id": raw.projection.projection_id,
+                "source_schema": raw.projection.schema,
+                "plan_root": raw.projection.plan_root,
+                "revision": raw.projection.revision,
+                "task_cids": raw.projection.task_cids,
+                "event_cursor": cursor,
+            }
+        return self._normalize_projection("markdown", raw, state, path)
+
+    def _materialize_duckdb(
+        self,
+        state: _PromptPreviewState,
+        *,
+        authority_ref: str,
+        idempotency_key: str,
+        fencing_epoch: int,
+    ) -> Mapping[str, Any]:
+        path = state.request.output_policy.duckdb_path
+        if self.duckdb_materializer is not None:
+            raw = _component_call(
+                self.duckdb_materializer,
+                "materialize",
+                (
+                    (
+                        (state.admission,),
+                        {
+                            "request": state.request,
+                            "preview": state.receipt,
+                            "authority_ref": authority_ref,
+                            "idempotency_key": idempotency_key,
+                            "fencing_epoch": fencing_epoch,
+                        },
+                    ),
+                    ((state.admission, state.request, state.receipt), {}),
+                    ((state.graph,), {}),
+                ),
+            )
+        else:
+            from .duckdb_task_source import DuckDBTaskSource
+            from .formal_plan_compiler import prompt_goal_graph_to_formal_input
+
+            if not DuckDBTaskSource.available():
+                raise PromptWorkflowServiceError(
+                    "optional DuckDB capability is unavailable"
+                )
+            absolute = (
+                Path(state.request.output_policy.output_root) / path
+            )
+            backend = DuckDBTaskSource(
+                absolute,
+                expected_plan_root_cid=state.receipt.plan_root_cid,
+                expected_repository_tree_id=state.scan.dirty_worktree_root,
+                writer_id=authority_ref,
+                fencing_token=fencing_epoch,
+            )
+            # Use the compiler projection with the admitted root as its source
+            # root.  This gives DuckDB and Markdown the same post-admission
+            # plan identity while retaining independent recompilation.
+            formal = prompt_goal_graph_to_formal_input(
+                state.graph,
+                repository_tree_id=state.scan.dirty_worktree_root,
+            )
+            formal["plan_root_cid"] = state.receipt.plan_root_cid
+            raw = backend.materialize(
+                formal,
+                repository_tree_id=state.scan.dirty_worktree_root,
+                plan_root_cid=state.receipt.plan_root_cid,
+                receipt={
+                    "preview_receipt_cid": state.receipt.receipt_cid,
+                    "request_cid": state.request.request_cid,
+                    "scan_cid": state.scan.scan_cid,
+                    "catalog_root": state.receipt.catalog_root,
+                    "idempotency_ref": _reference_cid(
+                        idempotency_key, "workflow-materialization-idempotency"
+                    ),
+                },
+                writer_id=authority_ref,
+                fencing_token=fencing_epoch,
+            )
+            snapshot = backend.snapshot()
+            raw = {
+                **dict(raw),
+                "source_schema": snapshot.source_schema,
+                "plan_root_cid": snapshot.plan_root_cid,
+                "revision": snapshot.revision,
+                "task_cids": tuple(
+                    record.task_cid for record in backend.list_tasks(limit=state.request.budget.max_tasks)
+                ),
+                "event_cursor": snapshot.event_cursor,
+            }
+        return self._normalize_projection("duckdb", raw, state, path)
+
+    def materialize(
+        self,
+        preview_ref: str | PromptWorkflowPreviewReceipt,
+        *,
+        control_request: Any | None = None,
+        authorization: Any | None = None,
+        idempotency_key: str = "",
+        lease_id: str = "",
+        fencing_epoch: int | None = None,
+    ) -> PromptWorkflowResult:
+        """Apply an admitted preview to its exact pinned task-source paths."""
+
+        with self._lock:
+            state = self._preview_state(preview_ref)
+            expected = state.receipt.expected_materialization_effects
+            if state.receipt.status is not RecordStatus.ADMITTED:
+                result = self._failure_result(
+                    state,
+                    code="preview_rejected",
+                    outcome=WorkflowOutcome.REJECTED,
+                    completed=(state.receipt.receipt_cid,),
+                    expected=expected,
+                )
+                self._persist(result)
+                return result
+            try:
+                self._verify_current(state)
+                if self.control_service is not None and control_request is None:
+                    raise PromptWorkflowAuthorizationError(
+                        "configured control service requires a separate materialization request"
+                    )
+                authority_ref, selected_key, selected_lease, selected_fence = (
+                    self._authorization_binding(
+                        state,
+                        control_request=control_request,
+                        authorization=authorization,
+                        idempotency_key=idempotency_key,
+                        lease_id=lease_id,
+                        fencing_epoch=fencing_epoch,
+                    )
+                )
+            except (PromptWorkflowServiceError, ValueError, TypeError) as exc:
+                code = (
+                    "stale_roots"
+                    if isinstance(exc, PromptWorkflowStaleRootError)
+                    else "missing_authority"
+                    if isinstance(exc, PromptWorkflowAuthorizationError)
+                    else "invalid_materialization_request"
+                )
+                result = self._failure_result(
+                    state,
+                    code=code,
+                    completed=(state.receipt.receipt_cid,),
+                    expected=expected,
+                    continuation=(
+                        f"materialize:{state.receipt.receipt_cid}"
+                        if code != "stale_roots"
+                        else ""
+                    ),
+                )
+                self._persist(result)
+                return result
+
+            fingerprint = prompt_workflow_cid(
+                {
+                    "schema": "prompt-materialization-stage@1",
+                    "preview_receipt_cid": state.receipt.receipt_cid,
+                    "authority_ref": authority_ref,
+                    "idempotency_key": selected_key,
+                    "lease_id": selected_lease,
+                    "fencing_epoch": selected_fence,
+                    "output_policy_cid": state.request.output_policy.content_id,
+                }
+            )
+            scope = ("materialize", selected_key)
+            prior_fingerprint = self._idempotency_fingerprints.get(scope)
+            if prior_fingerprint is not None and prior_fingerprint != fingerprint:
+                result = self._failure_result(
+                    state,
+                    code="idempotency_conflict",
+                    completed=(state.receipt.receipt_cid,),
+                    expected=expected,
+                )
+                self._persist(result)
+                return result
+            cached = self._materialization_by_key.get(fingerprint)
+            if cached is not None:
+                return cached.result
+            self._idempotency_fingerprints[scope] = fingerprint
+
+            control_receipts: tuple[str, ...] = ()
+            if control_request is not None:
+                try:
+                    control_result, control_ref = self._validate_materialize_control(
+                        state, control_request
+                    )
+                except (PromptWorkflowServiceError, ValueError, TypeError):
+                    result = self._failure_result(
+                        state,
+                        code="materialization_control_rejected",
+                        completed=(state.receipt.receipt_cid,),
+                        expected=expected,
+                        continuation=f"materialize:{state.receipt.receipt_cid}",
+                    )
+                    self._persist(result)
+                    return result
+                if not bool(getattr(control_result, "succeeded", False)):
+                    result = self._failure_result(
+                        state,
+                        code="materialization_control_rejected",
+                        completed=(state.receipt.receipt_cid,),
+                        expected=expected,
+                        continuation=f"materialize:{state.receipt.receipt_cid}",
+                        control_receipts=(control_ref,) if control_ref else (),
+                    )
+                    self._persist(result)
+                    return result
+                control_receipts = (control_ref,) if control_ref else ()
+
+            kinds = (
+                ("markdown",)
+                if state.request.output_policy.mode is OutputMode.MARKDOWN
+                else ("duckdb",)
+                if state.request.output_policy.mode is OutputMode.DUCKDB
+                else ("markdown", "duckdb")
+            )
+            completed_projections: list[Mapping[str, Any]] = []
+            failures: list[str] = []
+            for kind in kinds:
+                try:
+                    projection = (
+                        self._materialize_markdown(
+                            state, idempotency_key=selected_key
+                        )
+                        if kind == "markdown"
+                        else self._materialize_duckdb(
+                            state,
+                            authority_ref=authority_ref,
+                            idempotency_key=selected_key,
+                            fencing_epoch=selected_fence,
+                        )
+                    )
+                except Exception as exc:
+                    unavailable = (
+                        "unavailable" in str(exc).lower()
+                        or isinstance(exc, (ImportError, ModuleNotFoundError))
+                    )
+                    failures.append(
+                        f"{kind}_capability_unavailable"
+                        if unavailable
+                        else f"{kind}_projection_failed"
+                    )
+                    continue
+                completed_projections.append(projection)
+
+            observed = tuple(
+                sorted(str(item["effect"]) for item in completed_projections)
+            )
+            identities = tuple(
+                item["identity"] for item in completed_projections
+            )
+            cursors = {
+                str(item["kind"]): str(item["cursor"])
+                for item in completed_projections
+                if item["cursor"]
+            }
+            completed = (
+                state.receipt.receipt_cid,
+                *(
+                    item["projection_cid"]
+                    for item in completed_projections
+                ),
+            )
+            if failures:
+                outcome = (
+                    WorkflowOutcome.PARTIAL
+                    if completed_projections
+                    else WorkflowOutcome.FAILED
+                )
+                result = self._failure_result(
+                    state,
+                    code="+".join(sorted(failures)),
+                    outcome=outcome,
+                    completed=completed,
+                    continuation=f"materialize:{state.receipt.receipt_cid}",
+                    expected=expected,
+                    observed=observed,
+                    identities=identities,
+                    cursors=cursors,
+                    control_receipts=control_receipts,
+                )
+                self._persist(result)
+                return result
+
+            reference = MaterializationReference(
+                request_cid=state.request.request_cid,
+                preview_receipt_cid=state.receipt.receipt_cid,
+                plan_root_cid=state.receipt.plan_root_cid,
+                repository_root=state.request.repository_root,
+                output_root=state.request.output_policy.output_root,
+                mode=state.request.output_policy.mode,
+                projection_cids=tuple(
+                    item["projection_cid"] for item in completed_projections
+                ),
+                revision=max(
+                    int(item["revision"]) for item in completed_projections
+                ),
+                scan_cid=state.scan.scan_cid,
+                program_root=state.request.program_root,
+                policy_roots=state.receipt.policy_roots,
+                catalog_root=state.receipt.catalog_root,
+                output_policy_cid=state.request.output_policy.content_id,
+                task_source_identities=identities,
+                expected_effects=expected,
+                observed_effects=observed,
+                event_cursors=cursors,
+                control_receipt_cid=(
+                    control_receipts[0] if control_receipts else ""
+                ),
+                status=RecordStatus.READY,
+                created_at_ms=int(self._clock_ms()),
+                updated_at_ms=int(self._clock_ms()),
+            )
+            result = PromptWorkflowResult(
+                request_cid=state.request.request_cid,
+                outcome=WorkflowOutcome.MATERIALIZED,
+                preview_receipt_cid=state.receipt.receipt_cid,
+                materialization=reference,
+                completed_stage_cids=(
+                    state.receipt.receipt_cid,
+                    reference.materialization_cid,
+                    *(item["projection_cid"] for item in completed_projections),
+                ),
+                expected_effects=expected,
+                observed_effects=observed,
+                task_source_identities=identities,
+                event_cursors=cursors,
+                control_receipt_cids=control_receipts,
+                status=RecordStatus.READY,
+                created_at_ms=int(self._clock_ms()),
+                updated_at_ms=int(self._clock_ms()),
+            )
+            try:
+                self._persist(reference)
+                self._persist(result)
+            except PromptWorkflowReceiptError:
+                return self._failure_result(
+                    state,
+                    code="receipt_projection_failed",
+                    outcome=WorkflowOutcome.PARTIAL,
+                    materialization=reference,
+                    completed=result.completed_stage_cids,
+                    continuation=f"persist:{reference.materialization_cid}",
+                    expected=expected,
+                    observed=observed,
+                    identities=identities,
+                    cursors=cursors,
+                    control_receipts=control_receipts,
+                )
+            materialized = _PromptMaterializationState(
+                preview=state,
+                reference=reference,
+                result=result,
+            )
+            self._materialization_by_key[fingerprint] = materialized
+            self._materialization_by_cid[reference.materialization_cid] = materialized
+            return result
+
+    def _materialization_state(
+        self, materialization_ref: str | MaterializationReference | PromptWorkflowResult
+    ) -> _PromptMaterializationState:
+        if isinstance(materialization_ref, PromptWorkflowResult):
+            reference = materialization_ref.materialization
+            ref = reference.materialization_cid if reference is not None else ""
+        elif isinstance(materialization_ref, MaterializationReference):
+            ref = materialization_ref.materialization_cid
+        else:
+            ref = str(materialization_ref or "")
+        state = self._materialization_by_cid.get(ref)
+        if state is None:
+            raise PromptWorkflowReceiptError(
+                "materialization receipt is unavailable for safe continuation"
+            )
+        return state
+
+    def start(
+        self,
+        materialization_ref: str | MaterializationReference | PromptWorkflowResult,
+        *,
+        control_request: Any,
+        supervisor_profile: str = "",
+    ) -> PromptWorkflowResult:
+        """Start a materialized task source through the existing control service."""
+
+        with self._lock:
+            materialized = self._materialization_state(materialization_ref)
+            state = materialized.preview
+            reference = materialized.reference
+            expected_materialization = tuple(reference.expected_effects)
+            observed_materialization = tuple(reference.observed_effects)
+            if self.control_service is None or control_request is None:
+                result = self._failure_result(
+                    state,
+                    code="missing_start_authority",
+                    outcome=WorkflowOutcome.PARTIAL,
+                    materialization=reference,
+                    completed=materialized.result.completed_stage_cids,
+                    continuation=f"start:{reference.materialization_cid}",
+                    expected=expected_materialization,
+                    observed=observed_materialization,
+                    identities=reference.task_source_identities,
+                    cursors=reference.event_cursors,
+                    control_receipts=materialized.result.control_receipt_cids,
+                )
+                self._persist(result)
+                return result
+            try:
+                from .control_contracts import Operation
+
+                if getattr(control_request, "operation", None) is not Operation.START:
+                    raise PromptWorkflowAuthorizationError(
+                        "start control request uses the wrong operation"
+                    )
+                if str(control_request.repository_root) != state.request.repository_root:
+                    raise PromptWorkflowStaleRootError(
+                        "start repository root differs from materialization"
+                    )
+                if control_request.state_root != state.request.state_root:
+                    raise PromptWorkflowStaleRootError(
+                        "start state root differs from the workflow request"
+                    )
+                parameters = control_request.parameters
+                exact_parameters = {
+                    "materialization_ref": reference.materialization_cid,
+                    "plan_root_cid": reference.plan_root_cid,
+                    "task_source_root": prompt_workflow_cid(
+                        {
+                            "task_source_identities": _wire_value(
+                                reference.task_source_identities
+                            )
+                        }
+                    ),
+                }
+                for key, expected_value in exact_parameters.items():
+                    observed_value = parameters.get(key)
+                    if (
+                        observed_value not in (None, "")
+                        and observed_value != expected_value
+                    ):
+                        raise PromptWorkflowStaleRootError(
+                            f"start {key} differs from materialization"
+                        )
+                profile = (
+                    supervisor_profile
+                    or str(parameters.get("supervisor_profile") or "")
+                    or state.request.supervisor_profile
+                )
+                if not profile:
+                    raise PromptWorkflowAuthorizationError(
+                        "start requires a supervisor profile"
+                    )
+                self._verify_current(state)
+            except (PromptWorkflowServiceError, ValueError, TypeError):
+                result = self._failure_result(
+                    state,
+                    code="invalid_start_binding",
+                    outcome=WorkflowOutcome.PARTIAL,
+                    materialization=reference,
+                    completed=materialized.result.completed_stage_cids,
+                    continuation=f"start:{reference.materialization_cid}",
+                    expected=expected_materialization,
+                    observed=observed_materialization,
+                    identities=reference.task_source_identities,
+                    cursors=reference.event_cursors,
+                    control_receipts=materialized.result.control_receipt_cids,
+                )
+                self._persist(result)
+                return result
+
+            key = str(getattr(control_request, "idempotency_key", "") or "")
+            if not key:
+                result = self._failure_result(
+                    state,
+                    code="missing_start_idempotency",
+                    outcome=WorkflowOutcome.PARTIAL,
+                    materialization=reference,
+                    completed=materialized.result.completed_stage_cids,
+                    continuation=f"start:{reference.materialization_cid}",
+                    expected=expected_materialization,
+                    observed=observed_materialization,
+                    identities=reference.task_source_identities,
+                    cursors=reference.event_cursors,
+                    control_receipts=materialized.result.control_receipt_cids,
+                )
+                self._persist(result)
+                return result
+            fingerprint = prompt_workflow_cid(
+                {
+                    "schema": "prompt-start-stage@1",
+                    "materialization_cid": reference.materialization_cid,
+                    "lifecycle_request_cid": _reference_cid(
+                        control_request.request_id, "lifecycle-request"
+                    ),
+                    "supervisor_profile": profile,
+                    "state_root": control_request.state_root,
+                }
+            )
+            scope = ("start", key)
+            prior_fingerprint = self._idempotency_fingerprints.get(scope)
+            if prior_fingerprint is not None and prior_fingerprint != fingerprint:
+                result = self._failure_result(
+                    state,
+                    code="start_idempotency_conflict",
+                    outcome=WorkflowOutcome.PARTIAL,
+                    materialization=reference,
+                    completed=materialized.result.completed_stage_cids,
+                    continuation=f"start:{reference.materialization_cid}",
+                    expected=expected_materialization,
+                    observed=observed_materialization,
+                    identities=reference.task_source_identities,
+                    cursors=reference.event_cursors,
+                    control_receipts=materialized.result.control_receipt_cids,
+                )
+                self._persist(result)
+                return result
+            cached = self._start_results.get(fingerprint)
+            if cached is not None:
+                return cached
+            self._idempotency_fingerprints[scope] = fingerprint
+
+            control_result = self.control_service.start(control_request)
+            control_ref = _reference_cid(
+                getattr(control_result, "audit_receipt_id", "")
+                or getattr(control_result, "result_id", ""),
+                "workflow-start-control-receipt",
+            )
+            start_expected = tuple(
+                sorted(
+                    f"start:{item.effect_id}"
+                    for item in getattr(control_request, "expected_effects", ())
+                )
+            )
+            start_observed = tuple(
+                sorted(
+                    f"start:{item.effect_id}"
+                    for item in getattr(control_result, "effects", ())
+                    if bool(getattr(item, "applied", False))
+                )
+            )
+            all_expected = tuple(
+                sorted({*expected_materialization, *start_expected})
+            )
+            all_observed = tuple(
+                sorted({*observed_materialization, *start_observed})
+            )
+            control_receipts = tuple(
+                sorted(
+                    {
+                        *materialized.result.control_receipt_cids,
+                        *((control_ref,) if control_ref else ()),
+                    }
+                )
+            )
+            if (
+                not bool(getattr(control_result, "succeeded", False))
+                or set(start_observed) != set(start_expected)
+            ):
+                result = self._failure_result(
+                    state,
+                    code="partial_start",
+                    outcome=WorkflowOutcome.PARTIAL,
+                    materialization=reference,
+                    completed=(
+                        *materialized.result.completed_stage_cids,
+                        *((control_ref,) if control_ref else ()),
+                    ),
+                    continuation=f"start:{reference.materialization_cid}",
+                    expected=all_expected,
+                    observed=all_observed,
+                    identities=reference.task_source_identities,
+                    cursors=reference.event_cursors,
+                    control_receipts=control_receipts,
+                )
+                self._persist(result)
+                return result
+
+            data = getattr(control_result, "data", {}) or {}
+            process_value = (
+                data.get("process_identity_cid")
+                or data.get("process_identity")
+                or data.get("process_id")
+                or data.get("pid")
+                or ""
+            )
+            process_cid = _reference_cid(
+                process_value, "supervisor-process-identity"
+            )
+            run = SupervisorRunReference(
+                materialization_cid=reference.materialization_cid,
+                plan_root_cid=reference.plan_root_cid,
+                repository_root=reference.repository_root,
+                state_root=control_request.state_root,
+                supervisor_profile=profile,
+                lifecycle_request_cid=_reference_cid(
+                    control_request.request_id, "lifecycle-request"
+                ),
+                process_identity_cid=process_cid,
+                status=RecordStatus.RUNNING,
+                started_at_ms=int(self._clock_ms()),
+                updated_at_ms=int(self._clock_ms()),
+            )
+            cursors = dict(reference.event_cursors)
+            event_cursor = data.get("event_cursor")
+            if event_cursor not in (None, ""):
+                cursors["supervisor"] = self._cursor_reference(
+                    event_cursor, "supervisor-event-cursor"
+                )
+            result = PromptWorkflowResult(
+                request_cid=state.request.request_cid,
+                outcome=WorkflowOutcome.STARTED,
+                preview_receipt_cid=state.receipt.receipt_cid,
+                materialization=reference,
+                run=run,
+                completed_stage_cids=(
+                    *materialized.result.completed_stage_cids,
+                    run.run_cid,
+                    *((control_ref,) if control_ref else ()),
+                ),
+                expected_effects=all_expected,
+                observed_effects=all_observed,
+                task_source_identities=reference.task_source_identities,
+                event_cursors=cursors,
+                control_receipt_cids=control_receipts,
+                status=RecordStatus.RUNNING,
+                created_at_ms=int(self._clock_ms()),
+                updated_at_ms=int(self._clock_ms()),
+            )
+            self._persist(run)
+            self._persist(result)
+            self._start_results[fingerprint] = result
+            return result
+
+    def bootstrap(
+        self,
+        request: PromptWorkflowRequest,
+        *,
+        preview_control_request: Any | None = None,
+        materialize_control_request: Any | None = None,
+        start_control_request: Any | None = None,
+        authorization: Any | None = None,
+        idempotency_key: str = "",
+        lease_id: str = "",
+        fencing_epoch: int | None = None,
+        capabilities: Mapping[str, Any] | None = None,
+        constraint_summaries: Mapping[str, Any] | None = None,
+    ) -> PromptWorkflowResult:
+        """Compose the independently receipted preview/materialize/start saga."""
+
+        preview = self.preview(
+            request,
+            control_request=preview_control_request,
+            capabilities=capabilities,
+            constraint_summaries=constraint_summaries,
+        )
+        state = self._preview_state(preview)
+        if preview.status is RecordStatus.REJECTED:
+            result = self._failure_result(
+                state,
+                code="preview_rejected",
+                outcome=WorkflowOutcome.REJECTED,
+                completed=(preview.receipt_cid,),
+                expected=preview.expected_materialization_effects,
+            )
+            self._persist(result)
+            return result
+        should_materialize = bool(
+            request.materialize
+            or materialize_control_request is not None
+            or authorization is not None
+            or idempotency_key
+        )
+        if not should_materialize:
+            result = PromptWorkflowResult(
+                request_cid=request.request_cid,
+                outcome=WorkflowOutcome.PREVIEWED,
+                preview_receipt_cid=preview.receipt_cid,
+                completed_stage_cids=(preview.receipt_cid,),
+                expected_effects=preview.expected_materialization_effects,
+                status=RecordStatus.ADMITTED,
+                created_at_ms=int(self._clock_ms()),
+                updated_at_ms=int(self._clock_ms()),
+            )
+            self._persist(result)
+            return result
+        materialized = self.materialize(
+            preview,
+            control_request=materialize_control_request,
+            authorization=authorization,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fencing_epoch=fencing_epoch,
+        )
+        if materialized.outcome is not WorkflowOutcome.MATERIALIZED:
+            return materialized
+        should_start = bool(
+            request.start_after_materialize or start_control_request is not None
+        )
+        if not should_start:
+            return materialized
+        if start_control_request is None:
+            result = self._failure_result(
+                state,
+                code="missing_start_authority",
+                outcome=WorkflowOutcome.PARTIAL,
+                materialization=materialized.materialization,
+                completed=materialized.completed_stage_cids,
+                continuation=(
+                    f"start:{materialized.materialization.materialization_cid}"
+                    if materialized.materialization is not None
+                    else ""
+                ),
+                expected=materialized.expected_effects,
+                observed=materialized.observed_effects,
+                identities=materialized.task_source_identities,
+                cursors=materialized.event_cursors,
+                control_receipts=materialized.control_receipt_cids,
+            )
+            self._persist(result)
+            return result
+        assert materialized.materialization is not None
+        return self.start(
+            materialized.materialization,
+            control_request=start_control_request,
+            supervisor_profile=request.supervisor_profile,
+        )
 
 
 def decode_prompt_workflow_request(
@@ -3031,6 +4907,7 @@ __all__ = [
     "PromptOutputRecord",
     "PromptPlanningPolicy",
     "PromptRunReference",
+    "PromptSupervisorService",
     "PromptSecretError",
     "PromptSource",
     "PromptSourceError",
@@ -3044,8 +4921,12 @@ __all__ = [
     "PromptWorkflowPathError",
     "PromptWorkflowPreviewReceipt",
     "PromptWorkflowReceipt",
+    "PromptWorkflowReceiptError",
     "PromptWorkflowRequest",
     "PromptWorkflowResult",
+    "PromptWorkflowServiceError",
+    "PromptWorkflowStaleRootError",
+    "PromptWorkflowAuthorizationError",
     "PromptGraphError",
     "RecordStatus",
     "RecoveryAttempt",
