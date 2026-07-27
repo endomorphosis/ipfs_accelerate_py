@@ -12382,7 +12382,6 @@ class PortalImplementationDaemon:
             # these changed paths and the identity-bound task outputs.
             policy_allowed_paths = changed_paths
         policy = ProposalValidationPolicy(
-            allowed_paths=allowed_paths,
             allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
             expected_task_id=authority["task_id"],
@@ -12399,7 +12398,6 @@ class PortalImplementationDaemon:
             allowed_validation_commands=allowed_validation_commands,
             require_structured_details=True,
             require_patch_text=True,
-            policy_version="strict-proposal-v2+local-envelope-v2",
             policy_version=policy_version,
             **local_envelope_limits,
         )
