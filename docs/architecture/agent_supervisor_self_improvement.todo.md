@@ -4471,7 +4471,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-157 Validate, permit, and execute bounded rescue plans one action at a time
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-rescue
 - Depends on: ASI-136, ASI-150, ASI-155, ASI-156
