@@ -160,7 +160,7 @@ do not delete protected headers or rewrite completed history.
 - Depends on: ASREF-001
 - Goal id: ASREF-G090
 - Outputs: .gitignore, docs/NESTED_PACKAGES.md, docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md
-- Validation: test ! -f dashboard.out && test ! -f dashboard.pid && test ! -f err.txt || true
+- Validation: test -f .gitignore && test -f docs/NESTED_PACKAGES.md && test -f docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md
 - Board namespace: agent-supervisor-module-refactor-v1
 - Bundle: asref/root-hygiene
 - Parallel lane: asref-root-hygiene

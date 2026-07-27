@@ -2900,9 +2900,10 @@ def _command_is_allowed(
     """Return whether argv is allowed under the reviewed command prefixes.
 
     Task boards store validation as shell text and may include reviewed ``&&``
-    compound commands. Exact full-command allowlist hits may use that separator,
-    but every clause must still satisfy the normal executable and eval guards.
-    Prefix matches and all other shell metacharacters remain forbidden.
+    / ``||`` compound commands. Exact full-command allowlist hits may use those
+    separators, but every clause must still satisfy the normal executable and
+    eval guards. Prefix matches and all other shell metacharacters remain
+    forbidden.
     """
 
     command_t = tuple(str(part) for part in command)
@@ -2935,11 +2936,11 @@ def _command_is_allowed(
             return False
         return True
 
-    if command_t in prefixes_t and "&&" in command_t:
+    if command_t in prefixes_t and ("&&" in command_t or "||" in command_t):
         clauses: list[tuple[str, ...]] = []
         start = 0
         for index, part in enumerate(command_t):
-            if part == "&&":
+            if part in {"&&", "||"}:
                 clauses.append(command_t[start:index])
                 start = index + 1
             elif _SHELL_META_RE.search(part):

@@ -11646,6 +11646,12 @@ class PortalImplementationDaemon:
         """Validate a candidate patch before task validation is dispatched."""
 
         # Keep proof/compiler imports off administrative daemon paths.
+        # Reload so on-disk proposal-gate policy fixes (e.g. reviewed ``||``
+        # compounds) take effect without requiring a full daemon restart when
+        # this method body is itself freshly imported.
+        import importlib
+        from .. import proposal_validation as _proposal_validation_module
+        importlib.reload(_proposal_validation_module)
         from ..proposal_validation import (
             ImplementationProposal,
             ProposalOperation,

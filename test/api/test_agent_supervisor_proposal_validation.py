@@ -1094,6 +1094,44 @@ def test_exact_reviewed_and_chain_is_an_allowed_validation_plan() -> None:
     assert result.accepted
     assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
 
+def test_exact_reviewed_or_chain_is_an_allowed_validation_plan() -> None:
+    """Reviewed board commands may use ``||`` the same way as ``&&`` compounds."""
+    command = (
+        "test",
+        "!",
+        "-f",
+        "dashboard.out",
+        "&&",
+        "test",
+        "!",
+        "-f",
+        "dashboard.pid",
+        "&&",
+        "test",
+        "!",
+        "-f",
+        "err.txt",
+        "||",
+        "true",
+    )
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            validation_plan=(
+                ProposalValidationStep(
+                    command=command,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+        ),
+        policy=_v2_policy(allowed_validation_commands=(command,)),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
+
+
+
+
 
 @pytest.mark.parametrize(
     "command",
