@@ -656,7 +656,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-015 Resolve validation retry-budget failure for ASREF-003
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
