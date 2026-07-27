@@ -4454,7 +4454,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-156 Add an exhaustion-gated closed llm_router rescue planner
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-rescue
 - Depends on: ASI-143, ASI-144, ASI-155
