@@ -2352,6 +2352,7 @@ class PortalImplementationDaemon:
         *,
         approved_commits: Sequence[str] = (),
         operator_note: str,
+        approve_disposed_ephemeral_workspace: bool = False,
     ) -> dict[str, Any]:
         """Clear a reviewed shared-checkout incident and persist its proof.
 
@@ -2399,20 +2400,6 @@ class PortalImplementationDaemon:
         ):
             return denied("incident_not_clearable")
 
-        mutations = incident.get("mutations")
-        if not isinstance(mutations, list) or not mutations:
-            return denied("incident_mutations_missing")
-        mutation_scopes = {
-            str(item.get("scope") or "")
-            for item in mutations
-            if isinstance(item, Mapping)
-        }
-        if mutation_scopes != {"shared_checkout"}:
-            return denied(
-                "implementation_workspace_mutation_requires_manual_recovery",
-                mutation_scopes=sorted(mutation_scopes),
-            )
-
         active = load_json_dict(active_path)
         if active is None:
             return denied("active_snapshot_missing_or_malformed")
@@ -2421,6 +2408,36 @@ class PortalImplementationDaemon:
                 return denied(
                     "incident_active_snapshot_mismatch",
                     mismatched_field=field_name,
+                )
+
+        mutations = incident.get("mutations")
+        if not isinstance(mutations, list) or not mutations:
+            return denied("incident_mutations_missing")
+        mutation_scopes = {
+            str(item.get("scope") or "")
+            for item in mutations
+            if isinstance(item, Mapping)
+        }
+        disposed_workspace_proof: dict[str, Any] = {}
+        if mutation_scopes != {"shared_checkout"}:
+            if (
+                not approve_disposed_ephemeral_workspace
+                or mutation_scopes != {"shared_checkout", "workspace"}
+            ):
+                return denied(
+                    "implementation_workspace_mutation_requires_manual_recovery",
+                    mutation_scopes=sorted(mutation_scopes),
+                )
+            disposed_workspace_proof = (
+                self._disposed_ephemeral_workspace_clearance_proof(
+                    active=active,
+                    mutations=mutations,
+                )
+            )
+            if not disposed_workspace_proof:
+                return denied(
+                    "disposed_ephemeral_workspace_proof_failed",
+                    mutation_scopes=sorted(mutation_scopes),
                 )
 
         lock_path = self._implementation_lock_path()
@@ -2593,6 +2610,7 @@ class PortalImplementationDaemon:
             "protected_paths": protected_paths,
             "approved_commits": sorted(resolved_approvals),
             "history": commits,
+            "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
         }
         receipt_path = (
             incident_path.parent
@@ -2619,6 +2637,9 @@ class PortalImplementationDaemon:
             "task_id": receipt["task_id"],
             "attempt": receipt["attempt"],
             "approved_commits": receipt["approved_commits"],
+            "disposed_ephemeral_workspace_approved": bool(
+                disposed_workspace_proof
+            ),
             "stale_lock_cleared": stale_lock_cleared,
         }
         self._record_event(
@@ -2626,6 +2647,138 @@ class PortalImplementationDaemon:
             result,
         )
         return result
+
+    def _disposed_ephemeral_workspace_clearance_proof(
+        self,
+        *,
+        active: Mapping[str, Any],
+        mutations: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Prove that a managed checkout was wholly disposed, not selectively edited."""
+
+        if active.get("ephemeral_worktree") is not True:
+            return {}
+        workspace_value = str(active.get("workspace_path") or "")
+        try:
+            workspace = Path(workspace_value).resolve(strict=True)
+            workspace.relative_to(self.worktree_root.resolve(strict=True))
+        except (OSError, RuntimeError, ValueError):
+            return {}
+        if workspace == self.repo_root.resolve():
+            return {}
+
+        snapshot = active.get("snapshot")
+        before_workspace = (
+            snapshot.get("workspace")
+            if isinstance(snapshot, Mapping)
+            else None
+        )
+        if not isinstance(before_workspace, Mapping):
+            return {}
+        before_head = str(before_workspace.get("git_head") or "")
+        after_head = self._implementation_protected_git_head(workspace)
+        if not before_head or after_head != before_head:
+            return {}
+
+        workspace_mutations = [
+            item
+            for item in mutations
+            if str(item.get("scope") or "") == "workspace"
+        ]
+        if not workspace_mutations or any(
+            str(item.get("change") or "") != "deleted"
+            or not isinstance(item.get("before"), Mapping)
+            or item["before"].get("state") != "present"
+            or not isinstance(item.get("after"), Mapping)
+            or item["after"].get("state") != "missing"
+            for item in workspace_mutations
+        ):
+            return {}
+
+        tracked_result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=workspace,
+            capture_output=True,
+            check=False,
+        )
+        if tracked_result.returncode != 0:
+            return {}
+        tracked_paths = {
+            item
+            for item in tracked_result.stdout.decode(
+                "utf-8",
+                errors="surrogateescape",
+            ).split("\0")
+            if item
+        }
+        if not tracked_paths:
+            return {}
+
+        deleted_result = subprocess.run(
+            ["git", "diff", "--name-only", "--diff-filter=D", "-z"],
+            cwd=workspace,
+            capture_output=True,
+            check=False,
+        )
+        other_result = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--diff-filter=ACMRTUXB",
+                "-z",
+            ],
+            cwd=workspace,
+            capture_output=True,
+            check=False,
+        )
+        untracked_result = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+            cwd=workspace,
+            capture_output=True,
+            check=False,
+        )
+        cached_result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=workspace,
+            capture_output=True,
+            check=False,
+        )
+        if any(
+            result.returncode != 0
+            for result in (deleted_result, other_result, untracked_result)
+        ) or cached_result.returncode != 0:
+            return {}
+        deleted_paths = {
+            item
+            for item in deleted_result.stdout.decode(
+                "utf-8",
+                errors="surrogateescape",
+            ).split("\0")
+            if item
+        }
+        if (
+            deleted_paths != tracked_paths
+            or other_result.stdout
+            or untracked_result.stdout
+        ):
+            return {}
+        workspace_mutation_paths = {
+            str(item.get("path") or "")
+            for item in workspace_mutations
+        }
+        if not workspace_mutation_paths.issubset(deleted_paths):
+            return {}
+        return {
+            "schema": "disposed-ephemeral-workspace-proof-v1",
+            "workspace_path": str(workspace),
+            "git_head": after_head,
+            "tracked_path_count": len(tracked_paths),
+            "deleted_path_count": len(deleted_paths),
+            "protected_deleted_paths": sorted(workspace_mutation_paths),
+            "index_unchanged": True,
+            "untracked_path_count": 0,
+        }
 
     @staticmethod
     def _implementation_protected_snapshot_errors(
@@ -17236,6 +17389,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Required audit note for --clear-protected-path-incident.",
     )
     parser.add_argument(
+        "--approve-disposed-ephemeral-workspace",
+        action="store_true",
+        help=(
+            "Allow clearance when the incident also records deletion of every "
+            "tracked path from an otherwise unchanged managed worktree."
+        ),
+    )
+    parser.add_argument(
         "--llm-merge-resolver-command",
         default=default_llm_merge_resolver_command(),
         help=(
@@ -17515,6 +17676,9 @@ def main(argv: list[str] | None = None) -> None:
             result = daemon.clear_implementation_protected_path_incident(
                 approved_commits=args.approve_protected_path_commit,
                 operator_note=args.operator_clearance_note,
+                approve_disposed_ephemeral_workspace=(
+                    args.approve_disposed_ephemeral_workspace
+                ),
             )
             print(json.dumps(result, indent=2, sort_keys=True))
             if not result.get("cleared") and not result.get("already_clear"):

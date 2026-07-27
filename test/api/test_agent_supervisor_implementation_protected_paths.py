@@ -833,6 +833,57 @@ def test_operator_clearance_rejects_workspace_protected_path_mutation(
     assert daemon._implementation_protected_incident_path().exists()
 
 
+def test_operator_clearance_can_approve_wholly_disposed_ephemeral_workspace(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("reviewed operator update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Operator",
+        "-c",
+        "user.email=operator@example.invalid",
+        "commit",
+        "-m",
+        "update protected policy",
+    )
+    operator_commit = _git(repo, "rev-parse", "HEAD")
+    (workspace / POLICY_PATH).unlink()
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"shared_checkout", "workspace"}
+
+    result = daemon.clear_implementation_protected_path_incident(
+        approved_commits=[operator_commit],
+        operator_note="Reviewed a wholly disposed managed checkout.",
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True
+    assert result["disposed_ephemeral_workspace_approved"] is True
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    proof = receipt["disposed_ephemeral_workspace_proof"]
+    assert proof["tracked_path_count"] == proof["deleted_path_count"] == 1
+    assert proof["protected_deleted_paths"] == [POLICY_PATH]
+
+
 def test_supervisor_commits_generated_updates_to_protected_todo_board(
     tmp_path: Path,
 ) -> None:
