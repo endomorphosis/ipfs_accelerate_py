@@ -14,6 +14,12 @@ integration. It reuses generation-1 and generation-2 contracts, but its
 producer and child populations are separately closed so it does not
 retroactively narrow or expand either earlier completion population.
 
+The independent `ASI-G400` tree defines prompt-driven supervisor bootstrap,
+Markdown/DuckDB task-source parity, and bounded autonomous rescue. It composes
+the existing control and proof-directed runtime contracts, but its producer
+and child populations are separately closed so it does not retroactively
+narrow or expand any earlier completion population.
+
 Child-goal evidence entries are stable opaque receipt requirement IDs. The
 current scanner must treat them as missing until a qualifying source emits the
 exact ID; their presence in this objective heap is never evidence. ASI-003
@@ -1676,3 +1682,180 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep one closed benchmark/rollout owner so population, metrics, promotion, and rollback cannot be independently narrowed.
 - Embedding query: paired benchmark context proportional proof dependency closure corpus scale tokens adversarial shadow rollout rollback
 - AST query: DecisionRuntimeBenchmark ProofDependencyScalingReport DecisionRuntimeRolloutDecision DecisionRuntimePublicAPI
+
+## ASI-G400 Prompt-driven supervisor bootstrap and bounded autonomous rescue
+
+- Status: active
+- Parent:
+- Depends on:
+- Fib priority: 1
+- Track: prompt-supervisor-runtime
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v4/root
+- Goal: Accept a user prompt and allowlisted repository directory, compile a bounded content-addressed goal/subgoal/task graph through `llm_router` plus deterministic admission, make the identical task population directly consumable from Markdown or DuckDB, and operate or recover the supervisor through one Python/CLI/MCP control boundary whose model-assisted rescue path remains bounded, proposal-only, and independently authorized.
+- Closed producer population: ASI-142, ASI-143, ASI-144, ASI-145, ASI-146, ASI-147, ASI-148, ASI-149, ASI-150, ASI-151, ASI-152, ASI-153, ASI-154, ASI-155, ASI-156, ASI-157, ASI-158, ASI-159
+- Direct children: ASI-G410, ASI-G420, ASI-G430, ASI-G440, ASI-G450, ASI-G460, ASI-G470
+- Evidence: prompt_workflow.PROMPT_WORKFLOW_CONTRACT_REQUIREMENT_ID, prompt_goal_planner.STRUCTURED_GOAL_GRAPH_REQUIREMENT_ID, task_source.TASK_SOURCE_PARITY_REQUIREMENT_ID, control_contracts.PROMPT_LIFECYCLE_CATALOG_REQUIREMENT_ID, lifecycle_orchestrator.FENCED_LIFECYCLE_REQUIREMENT_ID, rescue_orchestrator.BOUNDED_RESCUE_REQUIREMENT_ID, prompt_workflow_rollout.PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: The exact ASI-142 through ASI-159 producer population is terminal-successful on the current tree; every direct child has fresh complete proof; request, scan, goal, task, projection, run, incident, plan, permit, and effect identities are content-addressed and current-root bound; Markdown and DuckDB expose the same task CIDs and dependency readiness; Python, CLI, script/module, and MCP call the same service and catalog; lifecycle effects are idempotent and fenced; deterministic recovery precedes any model fallback; and an LLM rescue proposal can neither execute arbitrary commands nor grant itself authority.
+- Evidence source policy: A prompt, generated plan, taskboard row, database row, path, model response, process PID, heartbeat, retry, restart, test status, or task completion flag is non-authoritative. Evidence is a fresh producer-owned receipt over exact prompt/scan/program/IR/policy/catalog roots, canonical graph population, projection equivalence, transport conformance, process-tree transition, programmatic recovery exhaustion, closed rescue plan, independent permit, observed effects, post-recovery health, and the complete paired adversarial population.
+- Outputs: docs/architecture/AGENT_SUPERVISOR_PROMPT_BOOTSTRAP_AND_RESCUE_PLAN.md, ipfs_accelerate_py/agent_supervisor/prompt_workflow.py, ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py, ipfs_accelerate_py/agent_supervisor/task_source.py, ipfs_accelerate_py/agent_supervisor/duckdb_task_source.py, ipfs_accelerate_py/agent_supervisor/lifecycle_orchestrator.py, ipfs_accelerate_py/agent_supervisor/rescue_orchestrator.py, ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_workflow_e2e.py test/api/test_agent_supervisor_task_source_parity.py test/api/test_agent_supervisor_prompt_control_conformance.py test/api/test_agent_supervisor_lifecycle_orchestrator.py test/api/test_agent_supervisor_rescue_orchestrator.py test/api/test_agent_supervisor_prompt_workflow_rollout.py -q
+- Acceptance: A bounded prompt/directory request produces a traceable admitted goal graph; Markdown and DuckDB round-trip the same task population and can each drive dependency-ready supervisor work directly; all public surfaces return canonical equivalent results/effects without an authority bypass; preview, materialize, and start remain separate replay-safe stages; start/stop/restart and rescue are process-tree aware, fenced, and health-verified; every injected supported incident deterministically recovers or reaches bounded quarantine; optional LLM rescue is called only after current programmatic exhaustion and yields only independently validated catalog operations; repeated incidents are circuit-broken; and no adversarial scope, secret, identity, SQL, process, policy, authorization, effect, or completion escape succeeds.
+- Gap task: Close the highest-risk request, scan, plan schema, admission, projection parity, task-source, transport, lifecycle, deterministic recovery, rescue-policy, or chaos-gate residual without creating a parallel control or authority stack.
+- Refinement: Preserve the seven-workstream partition. Land contracts before effects, independent Markdown and DuckDB backends before parity, control catalog before transports, deterministic recovery before model rescue, and adversarial rollout last.
+- Embedding query: prompt directory repository scan llm router goal subgoal task Markdown DuckDB supervisor start stop restart stalled blocked rescue
+- AST query: PromptWorkflowRequest PromptGoalGraph TaskSource DuckDBTaskSource SupervisorControlService LifecycleOrchestrator RescueOrchestrator
+
+## ASI-G410 Canonical prompt workflow and bounded repository scan
+
+- Status: active
+- Parent: ASI-G400
+- Depends on:
+- Fib priority: 2
+- Track: prompt-workflow-contracts
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v4/prompt-contracts
+- Goal: Define immutable provider-free request, scan, graph, projection, run, incident, and rescue references, then compile an allowlisted directory into a bounded current-worktree evidence packet without secrets, path escape, or corpus-sized prompts.
+- Producing tasks: ASI-142, ASI-143
+- Evidence: prompt_workflow.PROMPT_WORKFLOW_CONTRACT_REQUIREMENT_ID, prompt_directory_scanner.BOUNDED_DIRECTORY_SCAN_REQUIREMENT_ID
+- Evidence criteria: Canonical schemas reject unknown or over-budget input; every path resolves under an explicit repository allowlist; the scan binds dirty/untracked bytes, AST/index roots, policy, exclusions, and truncation; prompt bodies and source bodies remain referenced; secrets and supervisor state are excluded; and root changes invalidate downstream proposals.
+- Evidence source policy: Path existence, Git HEAD, ignore-file membership, a source summary, or a prompt digest alone is non-authoritative. Evidence is a fresh typed request/scan receipt over resolved roots, exact current-worktree inputs, budgets, exclusions, redaction decisions, artifact identities, schema/policy versions, and stability checks.
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_workflow.py, ipfs_accelerate_py/agent_supervisor/prompt_directory_scanner.py, test/api/test_agent_supervisor_prompt_workflow_contracts.py, test/api/test_agent_supervisor_prompt_directory_scanner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_workflow_contracts.py test/api/test_agent_supervisor_prompt_directory_scanner.py -q
+- Acceptance: Equivalent requests and scans have stable identities; status/timestamp/order changes do not change immutable IDs; symlink/nested-root/output-path escapes and secret inclusion fail closed; tracked, dirty, deleted, and admitted untracked changes affect the scan root; bounded handles replace large bodies; and unavailable optional analyzers degrade explicitly without eager imports.
+- Gap task: Repair the smallest schema, canonicalization, path, worktree-root, redaction, budget, exclusion, truncation, stability, or lazy-degradation failure.
+- Refinement: Land provider-free contracts first, then compose existing program-behavior and analysis adapters behind the scanner.
+- Embedding query: canonical prompt workflow request allowlisted directory dirty worktree bounded scan secret redaction content addressed evidence
+- AST query: PromptWorkflowRequest PromptWorkflowReceipt DirectoryScanReceipt WorktreeBehaviorRoot AnalysisPipeline
+
+## ASI-G420 Structured goal generation and hard plan admission
+
+- Status: active
+- Parent: ASI-G400
+- Depends on: ASI-G410
+- Fib priority: 3
+- Track: prompt-goal-planning
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v4/planning
+- Goal: Use a bounded `llm_router` call or deterministic fallback to propose one typed goal/subgoal/task DAG, then admit it only after schema, evidence, quality, conflict, formal-plan, IntentIR, LegalIR, SecurityIR, program-effect, proof, and validation checks pass.
+- Producing tasks: ASI-144, ASI-145
+- Evidence: prompt_goal_planner.STRUCTURED_GOAL_GRAPH_REQUIREMENT_ID, prompt_plan_admission.PROMPT_PLAN_ADMISSION_REQUIREMENT_ID
+- Evidence criteria: Model output is strict proposal-tier JSON with traceable evidence references and hard breadth/depth/token bounds; deterministic fallback is always available where policy permits; task dependencies are acyclic and acceptance-complete; arbitrary shell and unbound effects are rejected; and each hard domain independently approves the exact plan actions/effects before materialization.
+- Evidence source policy: Model confidence, valid JSON, a plausible decomposition, retrieval rank, formal-looking logic, or aggregate plan score is non-authoritative. Evidence is a fresh parser, graph, task-quality, conflict, formal compilation, IR-conformance, proof-obligation, and validation-policy receipt over the exact request/scan/plan/root population.
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py, ipfs_accelerate_py/agent_supervisor/prompt_plan_admission.py, ipfs_accelerate_py/agent_supervisor/formal_plan_compiler.py, test/api/test_agent_supervisor_prompt_goal_planner.py, test/api/test_agent_supervisor_prompt_plan_admission.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_goal_planner.py test/api/test_agent_supervisor_prompt_plan_admission.py test/api/test_agent_supervisor_ir_constraint_compiler.py -q
+- Acceptance: Malformed, unknown-field, cyclic, orphaned, over-broad, untraceable, shell-bearing, path-escaping, under-validated, or hard-domain-denied plans cannot materialize; deterministic and model paths emit the same schema; accepted task CIDs bind all immutable behavior; prompt/repository/IR/policy changes invalidate admission; and irrelevant repository growth does not enlarge the planner input beyond bounded index metadata.
+- Gap task: Close the smallest parser, fallback, graph, evidence, quality, conflict, formal compilation, cross-domain constraint, proof, validation, or context-scaling residual.
+- Refinement: Separate untrusted structured generation from deterministic admission so no model/provider output can become authority.
+- Embedding query: llm router structured goal graph subgoal task DAG deterministic fallback formal plan IntentIR LegalIR SecurityIR admission
+- AST query: PromptGoalPlanner PromptGoalGraph TaskQualityPolicy FormalPlanCompiler IRConstraintCompiler
+
+## ASI-G430 Markdown and DuckDB task-source parity
+
+- Status: active
+- Parent: ASI-G400
+- Depends on: ASI-G420
+- Fib priority: 5
+- Track: prompt-task-storage
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v4/task-storage
+- Goal: Materialize the canonical admitted graph losslessly to Markdown, DuckDB, or both and let the implementation supervisor read, watch, claim, and update dependency-ready tasks directly from either backend with identical task identities and transaction semantics.
+- Producing tasks: ASI-146, ASI-147, ASI-148, ASI-149
+- Evidence: markdown_task_source.MARKDOWN_PROJECTION_REQUIREMENT_ID, duckdb_task_source.DUCKDB_PROJECTION_REQUIREMENT_ID, task_source.DIRECT_TASK_SOURCE_REQUIREMENT_ID, task_source.TASK_SOURCE_PARITY_REQUIREMENT_ID
+- Evidence criteria: A common task-source protocol owns snapshots, bounded queries, readiness, CAS status, events, watches, and integrity; Markdown retains the existing grammar and journal behavior; DuckDB has a versioned transactional schema and formal-plan projection; dual mode proves exact CID/edge parity; and crash/restart/concurrent-writer/migration cases recover or fail closed without duplicate acceptance.
+- Evidence source policy: Similar row counts, task aliases, rendered titles, database existence, parse success, or daemon liveness is non-authoritative. Evidence is a fresh canonical round-trip, integrity, transaction, cursor, crash-recovery, and direct-supervisor-consumption receipt over the exact goal/task/dependency population and revisions.
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_source.py, ipfs_accelerate_py/agent_supervisor/markdown_task_source.py, ipfs_accelerate_py/agent_supervisor/duckdb_task_source.py, ipfs_accelerate_py/agent_supervisor/taskboard_store.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+- Validation: python -m pytest test/api/test_agent_supervisor_markdown_task_source.py test/api/test_agent_supervisor_duckdb_task_source.py test/api/test_agent_supervisor_task_source_parity.py test/api/test_agent_supervisor_task_source_e2e.py -q
+- Acceptance: Markdown-only and DuckDB-only runs expose the same ready set and terminal task results; both projections independently recompile to the same formal plan; mutable status never changes task CIDs; dual writes are one fenced logical transaction; corrupt/partial/stale/concurrent state cannot win CAS; exact replay performs no duplicate work; and missing DuckDB falls back only under an explicit verified policy.
+- Gap task: Repair the smallest canonical projection, schema, direct loader, dependency readiness, CAS, cursor/watch, transaction, migration, replay, corruption, or backend-parity failure.
+- Refinement: Land independent projection backends in parallel, then the common direct task source, then cross-backend equivalence and migration.
+- Embedding query: Markdown DuckDB taskboard task source canonical CID dependency ready CAS transaction watch cursor migration parity
+- AST query: TaskSource MarkdownTaskSource DuckDBTaskSource TaskboardStore PortalImplementationDaemon FormalPlanCompiler
+
+## ASI-G440 Python, CLI, script, and MCP workflow parity
+
+- Status: active
+- Parent: ASI-G400
+- Depends on: ASI-G420, ASI-G430
+- Fib priority: 5
+- Track: prompt-control-surfaces
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v4/control
+- Goal: Add prompt preview/materialization, explicit restart, and rescue preview/execution to the one shared operation catalog and expose schema- and effect-equivalent Python, CLI, module/script, and MCP interfaces without provider imports or transport-specific authority.
+- Producing tasks: ASI-150, ASI-151, ASI-152, ASI-153
+- Evidence: control_contracts.PROMPT_LIFECYCLE_CATALOG_REQUIREMENT_ID, prompt_workflow.PYTHON_WORKFLOW_REQUIREMENT_ID, control_cli.PROMPT_CLI_REQUIREMENT_ID, native_agent_supervisor_tools.PROMPT_MCP_REQUIREMENT_ID
+- Evidence criteria: The catalog exactly covers the new operations, schemas, bounds, errors, dry-run, idempotency, authorization, expected effects, leases, fencing, cursors, and receipts; one Python workflow service performs the work; CLI/script/module and MCP are thin adapters; directory/state allowlists are explicit; and import/discovery starts no provider, database, process, or supervisor.
+- Evidence source policy: A documented command, import, tool name, schema listing, successful dry-run, or possession of a path is non-authoritative. Evidence is a fresh exact catalog and cross-transport conformance receipt from the shared service over canonical requests, results, errors, authorization decisions, effects, and side-effect-free discovery.
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/prompt_workflow.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, scripts/ops/agent_supervisor/prompt_workflow.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_control_catalog.py test/api/test_agent_supervisor_prompt_workflow_service.py test/api/test_agent_supervisor_prompt_cli.py test/api/test_agent_supervisor_prompt_mcp.py test/api/test_agent_supervisor_prompt_control_conformance.py -q
+- Acceptance: Python, CLI, module/script, and MCP expose exactly the cataloged behavior and canonical equivalent results/effects; preview cannot mutate; materialize/restart/rescue require normal transaction authority; prompt sources are unambiguous and redacted; arbitrary MCP directories are denied without configuration; partial bootstrap sagas are resumable; and isolated imports/discovery are side-effect-free.
+- Gap task: Close the smallest catalog, service, adapter, schema, prompt-source, allowlist, authorization, idempotency, error, saga-resume, lazy-import, or transport-parity residual.
+- Refinement: Update the shared catalog/service first, then Python composition, then independent CLI and MCP adapters.
+- Embedding query: Python CLI MCP script prompt directory workflow preview materialize restart rescue shared control catalog parity
+- AST query: OperationCatalog SupervisorControlService PromptSupervisorService register_agent_cli native_agent_supervisor_tools
+
+## ASI-G450 Fenced lifecycle and deterministic recovery
+
+- Status: active
+- Parent: ASI-G400
+- Depends on: ASI-G440
+- Fib priority: 8
+- Track: prompt-lifecycle-recovery
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v4/lifecycle
+- Goal: Make start, stop, and restart exact process-tree transactions with health windows, then classify and autonomously repair supported stale process, lease, lock, task, worktree, merge, provider, validation, and storage incidents through a bounded deterministic ladder.
+- Producing tasks: ASI-154, ASI-155
+- Evidence: lifecycle_orchestrator.FENCED_LIFECYCLE_REQUIREMENT_ID, recovery_diagnostics.PROGRAMMATIC_RECOVERY_EXHAUSTION_REQUIREMENT_ID
+- Evidence criteria: Every lifecycle transition binds the old and new process tree, repository/state/configuration roots, transition intent, lease/fence/revision/idempotency, expected/observed effects, deadlines, compensation, and post-effect health; incident identities are semantic and deduplicated; the least-invasive applicable deterministic action runs first; and bounded failure produces current typed exhaustion or quarantine rather than an infinite loop.
+- Evidence source policy: PID files, process existence, heartbeat recency, a restart attempt, emptied lock, retried task, or log text is non-authoritative. Evidence is a fresh lifecycle/incident/action/exhaustion/quarantine receipt that independently verifies exact processes, roots, state, prior attempts, bounds, effects, and a sustained health window.
+- Outputs: ipfs_accelerate_py/agent_supervisor/lifecycle_orchestrator.py, ipfs_accelerate_py/agent_supervisor/recovery_diagnostics.py, ipfs_accelerate_py/agent_supervisor/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/supervisor_watchdog.py, ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py
+- Validation: python -m pytest test/api/test_agent_supervisor_lifecycle_orchestrator.py test/api/test_agent_supervisor_recovery_diagnostics.py test/api/test_agent_supervisor_programmatic_recovery.py -q
+- Acceptance: Start/stop/restart reject PID reuse, orphan descendants, split brain, cross-root signals, stale leases/fences, overlapping transitions, partial state, and replay; every injected supported incident reaches verified health or bounded quarantine; retries and restarts obey attempt/cooldown/time budgets; exact unchanged incidents are deduplicated; and no model call is required for a supported deterministic repair.
+- Gap task: Repair the smallest process-tree, transition, health-window, incident, recovery-action, compensation, retry-budget, deduplication, exhaustion, or quarantine failure.
+- Refinement: Land lifecycle state/effect receipts before unifying diagnostics and deterministic recovery.
+- Embedding query: supervisor lifecycle start stop restart process tree PID heartbeat lease fence incident deterministic recovery stalled blocked quarantine
+- AST query: LifecycleOrchestrator MultiSupervisorRunner SupervisorWatchdog SupervisorRecovery ProgrammaticRecoveryExhaustionReceipt
+
+## ASI-G460 Closed LLM rescue fallback and autonomous unstalling
+
+- Status: active
+- Parent: ASI-G400
+- Depends on: ASI-G420, ASI-G450
+- Fib priority: 13
+- Track: prompt-rescue
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v4/rescue
+- Goal: After current programmatic recovery exhaustion, optionally use `llm_router` to propose a closed incident-bound rescue plan, independently validate and permit each catalog action, execute one action at a time, and stop on health, drift, denial, budget exhaustion, or quarantine.
+- Producing tasks: ASI-156, ASI-157, ASI-158
+- Evidence: rescue_planner.CLOSED_RESCUE_PLAN_REQUIREMENT_ID, rescue_orchestrator.BOUNDED_RESCUE_REQUIREMENT_ID, implementation_supervisor.AUTONOMOUS_UNSTALL_REQUIREMENT_ID
+- Evidence criteria: The model sees only bounded redacted incident evidence and a closed operation vocabulary; current exhaustion, explicit policy, budgets, cooldown, and circuit breaker gate every call; plans containing shell/code/policy/authority/completion output are rejected; deterministic dry-run, IR constraints, and a fresh execution permit gate every action; roots and health are rechecked between actions; and unchanged incidents cannot trigger endless retries or model spend.
+- Evidence source policy: Model rationale, valid rescue JSON, selected operation names, a successful restart, a cleared queue, or process liveness is non-authoritative. Evidence is a fresh exhaustion-bound proposal, deterministic validation, exact per-action permit/use/effect, post-recovery sustained-health or quarantine, budget, cooldown, and circuit-breaker receipt over the current incident/root population.
+- Outputs: ipfs_accelerate_py/agent_supervisor/rescue_planner.py, ipfs_accelerate_py/agent_supervisor/rescue_orchestrator.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py, ipfs_accelerate_py/agent_supervisor/supervisor_watchdog.py
+- Validation: python -m pytest test/api/test_agent_supervisor_rescue_planner.py test/api/test_agent_supervisor_rescue_orchestrator.py test/api/test_agent_supervisor_autonomous_unstall.py -q
+- Acceptance: No LLM call occurs before qualifying programmatic exhaustion; no model output directly causes an effect; unknown operations, arbitrary commands, new paths, policy weakening, self-authorization, task completion, root drift, and unexpected effects fail closed; permitted actions remain bounded and idempotent; supported recovery reaches a health window; unsupported/ambiguous recovery reaches quarantine; and repeated identical incidents reuse or circuit-break the prior result.
+- Gap task: Repair the smallest exhaustion gate, redaction, closed-schema, validation, IR admission, permit, stepwise execution, root-recheck, health, cooldown, circuit-breaker, or auto-unstall integration failure.
+- Refinement: Land proposal-only rescue first, then an independently permitted executor, then wire automatic invocation after deterministic exhaustion.
+- Embedding query: llm router rescue stalled blocked supervisor programmatic exhaustion closed operations permit circuit breaker autonomous unstall
+- AST query: RescuePlanner RescuePlan RescueOrchestrator ExecutionPermit PortalImplementationSupervisor SupervisorWatchdog
+
+## ASI-G470 Adversarial end-to-end gate, rollout, and operator guidance
+
+- Status: active
+- Parent: ASI-G400
+- Depends on: ASI-G430, ASI-G440, ASI-G450, ASI-G460
+- Fib priority: 21
+- Track: prompt-workflow-rollout
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v4/rollout
+- Goal: Prove equivalent prompt-to-terminal outcomes across Markdown/DuckDB and Python/CLI/script/MCP, inject crashes and adversarial scope/identity/process/rescue failures, measure bounded autonomous recovery, and gate off/shadow/assist/automatic rollout with immediate rollback.
+- Producing tasks: ASI-159
+- Evidence: prompt_workflow_rollout.PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: One frozen paired population covers all backends/transports and deterministic/model paths; crash injection spans intent/effect/receipt boundaries; adversarial prompt/path/secret/CID/SQL/process/policy/authority/completion cases are non-compensable; metrics derive from exact receipts; optional dependency degradation is tested; and automatic promotion requires a later fresh-root evaluation with rollback triggers.
+- Evidence source policy: Happy-path demos, selected fixtures, aggregate success, task count, model judgment, process uptime, recovered status, or operator prose is non-authoritative. Evidence is a complete current-root paired/adversarial/chaos receipt over the frozen population, exact projections/transports, injected failures, authority/effect outcomes, resource/model bounds, health/quarantine results, and rollout decision.
+- Outputs: ipfs_accelerate_py/agent_supervisor/prompt_workflow_benchmark.py, ipfs_accelerate_py/agent_supervisor/prompt_workflow_rollout.py, docs/architecture/AGENT_SUPERVISOR_PROMPT_BOOTSTRAP_AND_RESCUE_PLAN.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md
+- Validation: python -m pytest test/api/test_agent_supervisor_prompt_workflow_e2e.py test/api/test_agent_supervisor_prompt_workflow_adversarial.py test/api/test_agent_supervisor_prompt_workflow_chaos.py test/api/test_agent_supervisor_prompt_workflow_rollout.py test/api/test_agent_supervisor_prompt_workflow_public_api.py -q
+- Acceptance: The exact same admitted task CIDs, dependency readiness, accepted effects, and terminal results occur across Markdown/DuckDB and Python/CLI/script/MCP; no scope, secret, identity, SQL, process, policy, authorization, effect, completion, or mandatory-evidence escape succeeds; every crash deterministically resumes, compensates, or quarantines; model calls/retries/storage/processes remain bounded; unavailable optional dependencies degrade explicitly; and any parity/safety/binding regression returns the affected mode to shadow/off.
+- Gap task: Add the smallest missing paired backend/transport/model path, crash boundary, adversarial case, quantitative bound, lazy-degradation fixture, operator control, or rollback trigger.
+- Refinement: Keep one closed benchmark and rollout owner so populations, metrics, promotion, documentation, and rollback cannot be independently narrowed.
+- Embedding query: prompt workflow end to end Markdown DuckDB Python CLI MCP chaos fault injection adversarial recovery rollout rollback
+- AST query: PromptWorkflowBenchmark PromptWorkflowRolloutDecision PromptSupervisorService TaskSource RescueOrchestrator
