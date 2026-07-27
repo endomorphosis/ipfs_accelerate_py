@@ -4544,7 +4544,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-162 Resolve implementation retry-budget failure for ASI-152
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
