@@ -1,143 +1,241 @@
-import os
-import json
-import logging
-from typing import Dict, Optional, List
+"""Backend-name compatibility projection over the canonical API model catalog.
 
-try:
-    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-except ImportError:
-    try:
-        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-    except ImportError:
-        try:
-            from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-        except ImportError:
-            HAVE_STORAGE_WRAPPER = False
+The old implementation scanned ``model_list/*.json`` and initialized a
+distributed storage wrapper at import time.  Static knowledge now comes only
+from ``api_integrations.model_registry`` and this module performs no file,
+storage, credential, or network discovery.
 
-if HAVE_STORAGE_WRAPPER:
-    try:
-        _storage = get_storage_wrapper(auto_detect_ci=True)
-    except Exception:
-        _storage = None
-else:
-    _storage = None
+This class remains available indefinitely as a reversible compatibility
+adapter.  New callers should resolve models through ModelManager's catalog.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Mapping, Optional
+
+from ..api_integrations.model_registry import (
+    APIModel,
+    APIModelRegistry,
+    APIProviderType,
+    LEGACY_REGISTRY_DEPRECATION,
+    get_global_api_model_registry,
+)
+
+
+_BACKEND_ALIASES: Mapping[str, str] = {
+    "anthropic": "claude",
+    "claude": "claude",
+    "gemini": "gemini",
+    "google": "gemini",
+    "groq": "groq",
+    "hf-tei": "hf_tei",
+    "hf-tgi": "hf_tgi",
+    "hf_tei": "hf_tei",
+    "hf_tgi": "hf_tgi",
+    "huggingface": "hf_tgi",
+    "meta-ai": "meta_ai",
+    "meta_ai": "meta_ai",
+    "meta-llama": "meta_ai",
+    "meta-spark": "meta_ai",
+    "meta_spark": "meta_ai",
+    "ollama": "ollama",
+    "openai": "openai_api",
+    "openai-api": "openai_api",
+    "openai_api": "openai_api",
+    "openvino": "ovms",
+    "ovms": "ovms",
+}
+
+_PREFIX_BACKENDS: Mapping[str, str] = {
+    "anthropic": "claude",
+    "claude": "claude",
+    "gemini": "gemini",
+    "google": "gemini",
+    "groq": "groq",
+    "hf-tei": "hf_tei",
+    "hf-tgi": "hf_tgi",
+    "hf_tei": "hf_tei",
+    "hf_tgi": "hf_tgi",
+    "huggingface": "hf_tgi",
+    "meta-ai": "meta_ai",
+    "meta_ai": "meta_ai",
+    "meta-llama": "meta_ai",
+    "meta-spark": "meta_ai",
+    "meta_spark": "meta_ai",
+    "ollama": "ollama",
+    "openai": "openai_api",
+    "openai-api": "openai_api",
+    "openai_api": "openai_api",
+    "openvino": "ovms",
+    "ovms": "ovms",
+}
+
+_EXPLICIT_MODEL_BACKENDS: Mapping[str, str] = {
+    "muse-spark-1.1": "meta_ai",
+    "meta/muse-spark-1.1": "meta_ai",
+    "meta-ai/muse-spark-1.1": "meta_ai",
+}
+
 
 class api_models:
-    """API Models Registry
-    
-    This class manages the routing of model requests to appropriate API backends.
-    It loads model lists from JSON files and provides lookup functionality to
-    determine which backend should handle a given model.
-    """
-    
-    def __init__(self, resources: Optional[Dict] = None, metadata: Optional[Dict] = None):
-        """Initialize the api_models registry
-        
-        Args:
-            resources: Optional dictionary containing shared resources
-            metadata: Optional dictionary containing configuration metadata
-        """
-        self.resources = resources if resources else {}
-        self.metadata = metadata if metadata else {}
-        
-        # Load model lists from json files
-        self.model_lists = {}
-        model_list_dir = os.path.join(os.path.dirname(__file__), 'model_list')
-        
-        for filename in os.listdir(model_list_dir):
-            if filename.endswith('.json'):
-                api_name = os.path.splitext(filename)[0]
-                filepath = os.path.join(model_list_dir, filename)
-                
-                # Try distributed storage first
-                if _storage and _storage.is_distributed:
-                    try:
-                        content = _storage.read_file(filepath)
-                        if content:
-                            self.model_lists[api_name] = json.loads(content)
-                            continue
-                    except Exception:
-                        pass
-                
-                # Fallback to local filesystem
-                try:
-                    with open(filepath, 'r') as f:
-                        self.model_lists[api_name] = json.load(f)
-                except json.JSONDecodeError as e:
-                    logging.error(f"Error loading {filename}: {e}")
-                    self.model_lists[api_name] = []
-                except Exception as e:
-                    logging.error(f"Error loading {filename}: {e}")
-                    self.model_lists[api_name] = []
+    """Preserve backend routing APIs as deterministic catalog projections."""
+
+    deprecation = LEGACY_REGISTRY_DEPRECATION
+
+    def __init__(
+        self,
+        resources: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        registry: Optional[APIModelRegistry] = None,
+    ) -> None:
+        self.resources = resources if resources is not None else {}
+        self.metadata = metadata if metadata is not None else {}
+        injected = registry or self.resources.get("api_model_registry")
+        if injected is not None and not isinstance(injected, APIModelRegistry):
+            raise TypeError("api_model_registry resource must be APIModelRegistry")
+        self.registry = injected or get_global_api_model_registry()
+
+    @property
+    def model_lists(self) -> Dict[str, List[str]]:
+        """Return fresh lists matching the historical dictionary value shape."""
+
+        return self.registry.get_backend_model_lists()
+
+    @property
+    def catalog_revision(self) -> str:
+        return self.registry.catalog_revision
+
+    def _backend_name(self, value: str) -> str:
+        if not isinstance(value, str):
+            return ""
+        return _BACKEND_ALIASES.get(value.strip().casefold(), value.strip().casefold())
 
     def get_backend_for_model(self, model_name: str) -> Optional[str]:
-        """Determine which backend should handle a given model
-        
-        Args:
-            model_name: Name of the model (e.g., "openai/gpt-4", "google/gemini-pro")
-            
-        Returns:
-            str: Name of the backend that handles this model, or None if not found
-        """
-        # First try exact match
+        """Determine the backend for a canonical name or model alias."""
+
+        if not isinstance(model_name, str) or not model_name.strip():
+            return None
+        selected = model_name.strip()
+        selected_folded = selected.casefold()
+
+        explicit_backend = _EXPLICIT_MODEL_BACKENDS.get(selected_folded)
+        if explicit_backend is not None:
+            return explicit_backend
+
+        # Prefer the catalog projection's explicit backend membership.
         for backend, models in self.model_lists.items():
-            if model_name in models:
+            if selected_folded in {item.casefold() for item in models}:
                 return backend
-        
-        # Try matching by provider prefix
-        provider = model_name.split('/')[0] if '/' in model_name else ''
-        if provider:
-            provider_map = {
-                'openai': 'openai_api',
-                'google': 'gemini',
-                'anthropic': 'claude',
-                'huggingface': 'hf_tgi',  # Default to TGI unless it's an embedding model
-                'openvino': 'ovms',
-                'groq': 'groq',
-                'ollama': 'ollama',
-                'meta-llama': 'meta_ai',
-                'meta-spark': 'meta_ai',
-            }
-            if provider in provider_map:
-                # Special case for Huggingface models
-                if provider == 'huggingface':
-                    # Check if it's an embedding model
-                    if any(term in model_name.lower() for term in ['embedding', 'encoder', 'sentence']):
-                        return 'hf_tei'
-                return provider_map[provider]
-                
-        return None
-    
+
+        # A canonical/legacy alias may not be the spelling stored for a
+        # backend, so resolve it before falling back to its provider prefix.
+        model = self.registry.get_model(selected)
+        if model is not None:
+            if model.provider == APIProviderType.HUGGINGFACE:
+                if "feature-extraction" in model.pipeline_types:
+                    return "hf_tei"
+                return "hf_tgi"
+            return {
+                APIProviderType.ANTHROPIC: "claude",
+                APIProviderType.GOOGLE: "gemini",
+                APIProviderType.OPENAI: "openai_api",
+                APIProviderType.OVMS: "ovms",
+            }.get(model.provider, model.provider.value)
+
+        prefix = selected_folded.split("/", 1)[0] if "/" in selected_folded else ""
+        backend = _PREFIX_BACKENDS.get(prefix)
+        if backend == "hf_tgi" and any(
+            term in selected_folded
+            for term in ("embedding", "encoder", "sentence")
+        ):
+            return "hf_tei"
+        return backend
+
     def get_models_for_backend(self, backend_name: str) -> List[str]:
-        """Get list of models supported by a specific backend
-        
-        Args:
-            backend_name: Name of the backend
-            
-        Returns:
-            list: List of model names supported by this backend
-        """
-        return self.model_lists.get(backend_name, [])
+        """Return a new list for the requested backend or backend alias."""
+
+        return list(self.model_lists.get(self._backend_name(backend_name), ()))
 
     def get_models(self, api_name: str) -> List[str]:
-        """Get list of models supported by a specific API
-        
-        Args:
-            api_name: Name of the API to get models for
-            
-        Returns:
-            List of model names supported by that API
-        """
-        return self.model_lists.get(api_name, [])
+        """Historical alias for :meth:`get_models_for_backend`."""
+
+        return self.get_models_for_backend(api_name)
+
+    def list_models(self, api_name: Optional[str] = None) -> List[str]:
+        """List one backend or all qualified model names deterministically."""
+
+        if api_name is not None:
+            return self.get_models_for_backend(api_name)
+        result: List[str] = []
+        seen = set()
+        for models in self.model_lists.values():
+            for model in models:
+                folded = model.casefold()
+                if folded not in seen:
+                    result.append(model)
+                    seen.add(folded)
+        return result
+
+    def search_models(
+        self, query: str, api_name: Optional[str] = None
+    ) -> List[str]:
+        """Search qualified legacy model names."""
+
+        if not isinstance(query, str):
+            return []
+        needle = query.strip().casefold()
+        models = self.list_models(api_name)
+        if not needle:
+            return models
+        return [model for model in models if needle in model.casefold()]
 
     def is_compatible_model(self, api_name: str, model_name: str) -> bool:
-        """Check if a model is compatible with a specific API
-        
-        Args:
-            api_name: Name of the API to check
-            model_name: Name of the model to check
-            
-        Returns:
-            True if the model is compatible with the API, False otherwise
-        """
-        return model_name in self.model_lists.get(api_name, [])
+        """Check explicit membership, including catalog aliases."""
+
+        backend = self._backend_name(api_name)
+        resolved = self.get_backend_for_model(model_name)
+        return resolved == backend
+
+    def validate_model(self, api_name: str, model_name: str) -> bool:
+        """Compatibility spelling for :meth:`is_compatible_model`."""
+
+        return self.is_compatible_model(api_name, model_name)
+
+    def get_model(self, model_name: str) -> Optional[APIModel]:
+        """Return the established APIModel shape for any recognized alias."""
+
+        return self.registry.get_model(model_name)
+
+    def add_model(self, model: APIModel) -> None:
+        """Persist an addition through the registry's runtime catalog source."""
+
+        self.registry.add_model(model)
+
+    def recommend_models(
+        self, pipeline_type: str, **kwargs: Any
+    ) -> List[APIModel]:
+        """Delegate deterministic recommendation to the catalog projection."""
+
+        return self.registry.recommend_models(pipeline_type, **kwargs)
+
+    def recommend_model(
+        self, pipeline_type: str, **kwargs: Any
+    ) -> Optional[APIModel]:
+        """Return the first deterministic recommendation."""
+
+        return self.registry.recommend_model(pipeline_type, **kwargs)
+
+    def export_models(self) -> Dict[str, List[str]]:
+        """Export the historical backend-to-list mapping."""
+
+        return self.model_lists
+
+    export = export_models
+
+
+APIModelsRegistry = api_models
+
+__all__ = [
+    "APIModelsRegistry",
+    "api_models",
+]
