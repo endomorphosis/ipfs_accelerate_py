@@ -36,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Final, Iterator, Mapping, Sequence
 
+from .checkout_lock import checkout_repository_id
 from .formal_verification_policy import (
     ChangedScope,
     FormalVerificationPolicy,
@@ -814,6 +815,25 @@ class MergeTrain:
         self.repo_root = Path(repo_root).resolve()
         self.queue = queue
         self.target_branch = str(target_branch or "main")
+        queue_repository_id = str(
+            getattr(queue, "target_repository_id", "") or ""
+        ).strip()
+        queue_target_branch = str(
+            getattr(queue, "target_branch", "") or ""
+        ).strip()
+        if bool(queue_repository_id) != bool(queue_target_branch):
+            raise ValueError("merge queue target binding is incomplete")
+        if queue_repository_id:
+            repository_id = checkout_repository_id(self.repo_root)
+            if queue_repository_id != repository_id:
+                raise ValueError(
+                    "merge queue target repository differs from the train "
+                    "repository"
+                )
+            if queue_target_branch != self.target_branch:
+                raise ValueError(
+                    "merge queue target branch differs from the train target"
+                )
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
         self.merge_callback = merge_callback
@@ -4571,9 +4591,17 @@ class MergeTrain:
     def _is_ancestor(self, ancestor: str, descendant: str) -> bool:
         return self._git("merge-base", "--is-ancestor", ancestor, descendant).returncode == 0
 
-    @staticmethod
-    def _dedupe_key(canonical: str, commit: str) -> str:
-        return hashlib.sha256(f"{canonical}\0{commit}".encode("utf-8")).hexdigest()
+    def _dedupe_key(self, canonical: str, commit: str) -> str:
+        parts = [canonical, commit]
+        queue_repository_id = str(
+            getattr(self.queue, "target_repository_id", "") or ""
+        ).strip()
+        queue_target_branch = str(
+            getattr(self.queue, "target_branch", "") or ""
+        ).strip()
+        if queue_repository_id and queue_target_branch:
+            parts.extend((queue_repository_id, queue_target_branch))
+        return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
     def _receipt_path(self, key: str) -> Path:
         safe = "".join(character for character in key if character.isalnum() or character in "-_")

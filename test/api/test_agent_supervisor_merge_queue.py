@@ -313,6 +313,58 @@ def test_bound_main_consumer_cannot_claim_benchmark_or_legacy_request(
     assert benchmark_queue.get(benchmark.request_id).status == "pending"  # type: ignore[union-attr]
     assert benchmark_queue.get(benchmark.request_id).consumer_id == ""  # type: ignore[union-attr]
     assert benchmark_queue.get(legacy.request_id).status == "pending"  # type: ignore[union-attr]
-    assert benchmark_queue.dequeue(
+    with pytest.raises(MergeQueueFenceError, match="target differs"):
+        main_queue.cancel(benchmark.request_id)
+    claimed_by_benchmark = benchmark_queue.dequeue(
         consumer_id="merge-train:benchmark"
-    ).request_id == benchmark.request_id  # type: ignore[union-attr]
+    )
+    assert claimed_by_benchmark is not None
+    assert claimed_by_benchmark.request_id == benchmark.request_id
+    assert main_queue.owns_claim(claimed_by_benchmark) is False
+    with pytest.raises(MergeQueueFenceError, match="target differs"):
+        main_queue.complete(claimed_by_benchmark)
+
+    assert main_queue.recover_abandoned_train_claims() == 1
+    main_after_recovery = main_queue.get(main.request_id)
+    assert main_after_recovery is not None
+    assert main_after_recovery.status == "pending"
+    assert main_after_recovery.attempt == 2
+    benchmark_after_recovery = benchmark_queue.get(benchmark.request_id)
+    assert benchmark_after_recovery is not None
+    assert benchmark_after_recovery.status == "processing"
+    assert benchmark_after_recovery.attempt == 1
+    assert benchmark_after_recovery.consumer_id == "merge-train:benchmark"
+
+
+def test_case_distinct_git_targets_have_distinct_deduplication_keys(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "shared-queue"
+    repository_id = f"repository:sha256:{'b' * 64}"
+    upper_queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="Feature",
+        require_target_binding=True,
+    )
+    lower_queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="feature",
+        require_target_binding=True,
+    )
+    enqueue_kwargs = {
+        "branch_name": "implementation/case-sensitive",
+        "task_id": "CASE-001",
+        "canonical_task_id": "canonical-case-001",
+        "commit_sha": "4" * 40,
+    }
+
+    upper = upper_queue.enqueue(**enqueue_kwargs)
+    lower = lower_queue.enqueue(**enqueue_kwargs)
+
+    assert upper.request_id != lower.request_id
+    assert upper.target_branch == "Feature"
+    assert lower.target_branch == "feature"
+    assert upper_queue.pending_count() == 1
+    assert lower_queue.pending_count() == 1

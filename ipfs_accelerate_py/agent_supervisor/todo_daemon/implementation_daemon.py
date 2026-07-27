@@ -7841,6 +7841,7 @@ class PortalImplementationDaemon:
                         task_header_prefix=str(metadata.get("task_header_prefix") or self.task_header_prefix),
                         implement=False,
                         worktree_root=self.worktree_root,
+                        merge_target_branch=self.resolved_merge_target_branch,
                         worktree_submodule_paths=self.worktree_submodule_paths,
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,

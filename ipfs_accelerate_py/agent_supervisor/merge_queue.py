@@ -125,8 +125,8 @@ class MergeRequest:
         if self.has_target_binding:
             parts.extend(
                 (
-                    self.target_repository_id.casefold(),
-                    self.target_branch.casefold(),
+                    self.target_repository_id,
+                    self.target_branch,
                 )
             )
         return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
@@ -625,6 +625,21 @@ class MergeQueue:
             == self.target_branch
         )
 
+    def _require_row_target(
+        self,
+        row: DuckDBRow,
+        *,
+        operation: str,
+        request_id: str,
+    ) -> None:
+        """Fence mutations attempted through a foreign bound queue view."""
+
+        if not self._metadata_matches_target(row["metadata_json"]):
+            raise MergeQueueFenceError(
+                f"{operation} rejected for request {request_id}: "
+                "request target differs from the queue binding"
+            )
+
     def dequeue(self, consumer_id: str = "") -> Optional[MergeRequest]:
         """Atomically claim the fairest pending request for one consumer."""
 
@@ -828,6 +843,7 @@ class MergeQueue:
             ).fetchone()
         return (
             row is not None
+            and self._metadata_matches_target(row["metadata_json"])
             and self._claim_matches(row, request, consumer_id=consumer_id)
         )
 
@@ -839,6 +855,11 @@ class MergeQueue:
         operation: str,
         allow_pending: bool = False,
     ) -> None:
+        self._require_row_target(
+            row,
+            operation=operation,
+            request_id=request.request_id,
+        )
         status = str(row["status"])
         if allow_pending and status == "pending" and not request.claim_token:
             return
@@ -860,6 +881,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return
+            self._require_row_target(
+                row,
+                operation="complete",
+                request_id=request.request_id,
+            )
             if str(row["status"]) == "completed":
                 connection.commit()
                 return
@@ -928,6 +954,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            self._require_row_target(
+                row,
+                operation="requeue",
+                request_id=request.request_id,
+            )
             if str(row["status"]) in {"completed", "quarantined"}:
                 connection.commit()
                 resolved = self._request_from_row(row)
@@ -990,6 +1021,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            self._require_row_target(
+                row,
+                operation="quarantine",
+                request_id=request.request_id,
+            )
             if str(row["status"]) == "quarantined":
                 connection.commit()
                 return self._stage_path(self._request_from_row(row))
@@ -1050,6 +1086,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            self._require_row_target(
+                row,
+                operation="cancel",
+                request_id=request_id,
+            )
             status = str(row["status"])
             if status == "cancelled":
                 connection.commit()
@@ -1122,6 +1163,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            self._require_row_target(
+                row,
+                operation="revive",
+                request_id=request_id,
+            )
             if str(row["status"]) != "quarantined":
                 connection.commit()
                 return self._request_from_row(row)
@@ -1328,6 +1374,8 @@ class MergeQueue:
                 "SELECT * FROM merge_requests WHERE status='processing' AND consumer_id LIKE 'merge-train:%'"
             ).fetchall()
             for row in rows:
+                if not self._metadata_matches_target(row["metadata_json"]):
+                    continue
                 attempt = int(row["attempt"])
                 failure_count = int(row["failure_count"]) + 1
                 if attempt < self.max_attempts:
