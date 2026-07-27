@@ -26,7 +26,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-001 Create branch and freeze inventory move map
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
