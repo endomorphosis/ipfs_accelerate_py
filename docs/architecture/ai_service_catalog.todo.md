@@ -383,7 +383,7 @@ Program invariants:
 
 ## AICAT-015 Route MCP multimodal and voice operations through canonical routers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
