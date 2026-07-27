@@ -124,3 +124,14 @@ coverage.xml
 # Performance baselines - KEEP IN VERSION CONTROL
 # (Uncomment the line below to exclude from version control if needed)
 # test/.performance_baselines.json
+
+# Ephemeral process / runtime junk (ASREF-006 root hygiene)
+dashboard.out
+dashboard.pid
+err.txt
+*.pid
+nohup.out
+.DS_Store
+Thumbs.db
+*.swp
+*~
