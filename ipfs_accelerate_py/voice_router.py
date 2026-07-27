@@ -2856,10 +2856,33 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
                 audio_input = audio
 
             generate_kwargs: Dict[str, object] = {}
-            if language:
-                generate_kwargs["language"] = language
+            english_only_whisper = (
+                "whisper" in model.casefold()
+                and model.casefold().rsplit("/", 1)[-1].endswith(".en")
+            )
+            if language and not english_only_whisper:
+                selected_language = str(language).strip()
+                if "whisper" in model.casefold():
+                    # Whisper accepts ISO-639-1 codes/names, not regional
+                    # dataset locales such as en-US.
+                    selected_language = selected_language.split("-", 1)[0].casefold()
+                generate_kwargs["language"] = selected_language
 
-            result = pipe(audio_input, generate_kwargs=generate_kwargs if generate_kwargs else None)
+            pipeline_kwargs: dict[str, object] = {}
+            for name in ("chunk_length_s", "stride_length_s", "return_timestamps"):
+                if name in kwargs:
+                    pipeline_kwargs[name] = kwargs[name]
+            if "whisper" in model.casefold():
+                # Transformers automatically enters Whisper long-form mode for
+                # inputs over 30 seconds, which requires timestamp tokens.
+                pipeline_kwargs.setdefault("return_timestamps", True)
+            if generate_kwargs:
+                pipeline_kwargs["generate_kwargs"] = generate_kwargs
+
+            result = pipe(
+                audio_input,
+                **pipeline_kwargs,
+            )
 
             if isinstance(result, dict):
                 return str(result.get("text", "") or "")

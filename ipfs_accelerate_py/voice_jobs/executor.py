@@ -12,11 +12,13 @@ import base64
 import binascii
 import gzip
 import hashlib
-import io
 import inspect
+import io
 import ipaddress
+import math
 import os
 import socket
+import subprocess
 import tempfile
 import time
 import wave
@@ -47,6 +49,17 @@ class VoiceJobExecutionError(ValueError):
 
 ArtifactFetcher = Callable[[str, int], bytes]
 SourceTaskResolver = Callable[[str], Mapping[str, Any] | None]
+AudioDecoder = Callable[[bytes, str, "ArtifactPolicy"], bytes]
+
+_BASIS_POINT_SCALE = 10_000
+_FFMPEG_DURATION_OVERREAD_MS = 1_000
+_FFMPEG_WAV_OVERHEAD_BYTES = 64 * 1024
+_NON_WAV_INPUT_FORMATS = {
+    "audio/flac": "flac",
+    "audio/mp3": "mp3",
+    "audio/mpeg": "mp3",
+    "audio/ogg": "ogg",
+}
 
 
 @dataclass(frozen=True)
@@ -64,6 +77,9 @@ class ArtifactPolicy:
     max_input_bytes: int = 32 * 1024 * 1024
     max_decoded_bytes: int = 64 * 1024 * 1024
     max_duration_ms: int = 30 * 60 * 1000
+    decoder_timeout_seconds: float = 30.0
+    silence_peak_threshold_bp: int = 100
+    clipping_peak_threshold_bp: int = 9_900
 
     def __post_init__(self) -> None:
         output_root = Path(self.output_root).expanduser().resolve()
@@ -75,6 +91,26 @@ class ArtifactPolicy:
             value = getattr(self, name)
             if isinstance(value, bool) or int(value) <= 0:
                 raise ValueError(f"{name} must be positive")
+        if (
+            isinstance(self.decoder_timeout_seconds, bool)
+            or not isinstance(self.decoder_timeout_seconds, int | float)
+            or not math.isfinite(self.decoder_timeout_seconds)
+            or self.decoder_timeout_seconds <= 0
+        ):
+            raise ValueError("decoder_timeout_seconds must be positive")
+        for name in ("silence_peak_threshold_bp", "clipping_peak_threshold_bp"):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                or value > _BASIS_POINT_SCALE
+            ):
+                raise ValueError(f"{name} must be an integer in 0..{_BASIS_POINT_SCALE}")
+        if self.silence_peak_threshold_bp > self.clipping_peak_threshold_bp:
+            raise ValueError(
+                "silence_peak_threshold_bp must not exceed clipping_peak_threshold_bp"
+            )
         object.__setattr__(self, "output_root", output_root)
         object.__setattr__(self, "allowed_file_roots", roots)
         object.__setattr__(self, "allowed_schemes", schemes)
@@ -319,7 +355,7 @@ class ArtifactResolver:
         candidate = resolved.get("artifact")
         if candidate is None:
             artifacts = resolved.get("artifacts")
-            if isinstance(artifacts, (list, tuple)) and artifacts:
+            if isinstance(artifacts, list | tuple) and artifacts:
                 candidate = artifacts[0]
         if not isinstance(candidate, Mapping):
             raise VoiceJobExecutionError("source_task_artifact_unavailable", retryable=True)
@@ -436,43 +472,205 @@ def _result(
 
 
 def _inspect_wav(data: bytes, policy: ArtifactPolicy) -> dict[str, int]:
-    import io
+    """Inspect WAV and always emit silence/clipping acoustic ratios.
 
+    PCM16 mono/stereo WAV is inspected in-process. Other WAV encodings are
+    rejected rather than silently omitting acoustic gates.
+    """
+
+    return _inspect_decoded_pcm_wav(data, policy)
+
+
+def _decode_audio_with_ffmpeg(
+    data: bytes,
+    input_format: str,
+    policy: ArtifactPolicy,
+) -> bytes:
+    """Decode one allowlisted compressed container to bounded PCM WAV.
+
+    The input demuxer is fixed by the trusted MIME allowlist, the subprocess
+    never invokes a shell, and both ffmpeg's output limit and a post-run size
+    check constrain the temporary artifact.  The one-second duration
+    overrun lets the caller distinguish an overlong input from a valid input
+    exactly at the configured ceiling.
+    """
+
+    if input_format not in frozenset(_NON_WAV_INPUT_FORMATS.values()):
+        raise VoiceJobExecutionError("audio_decoder_unsupported_media")
+    if len(data) > policy.max_input_bytes:
+        raise VoiceJobExecutionError("artifact_too_large")
+    output_limit = policy.max_decoded_bytes + _FFMPEG_WAV_OVERHEAD_BYTES
+    decode_limit_seconds = (
+        policy.max_duration_ms + _FFMPEG_DURATION_OVERREAD_MS
+    ) / 1000
+    with tempfile.TemporaryDirectory(prefix="ipfs-voice-decode-") as directory:
+        output_path = Path(directory) / "decoded.wav"
+        command = [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            input_format,
+            "-i",
+            "pipe:0",
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-sn",
+            "-dn",
+            "-map_metadata",
+            "-1",
+            "-map_chapters",
+            "-1",
+            "-c:a",
+            "pcm_s16le",
+            "-t",
+            f"{decode_limit_seconds:.3f}",
+            "-fs",
+            str(output_limit),
+            "-f",
+            "wav",
+            str(output_path),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                input=data,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=policy.decoder_timeout_seconds,
+            )
+        except FileNotFoundError as exc:
+            raise VoiceJobExecutionError("audio_decoder_unavailable") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise VoiceJobExecutionError("audio_decode_timeout") from exc
+        try:
+            output_size = output_path.stat().st_size
+        except OSError:
+            output_size = 0
+        if output_size >= output_limit:
+            raise VoiceJobExecutionError("audio_decoded_too_large")
+        if completed.returncode != 0 or output_size <= 0:
+            raise VoiceJobExecutionError("audio_decode_failed")
+        try:
+            with output_path.open("rb") as handle:
+                decoded = handle.read(output_limit + 1)
+        except OSError as exc:
+            raise VoiceJobExecutionError("audio_decode_failed") from exc
+    if len(decoded) > output_limit:
+        raise VoiceJobExecutionError("audio_decoded_too_large")
+    return decoded
+
+
+def _pcm16_acoustic_ratios(
+    pcm: bytes,
+    *,
+    policy: ArtifactPolicy,
+) -> tuple[int, int]:
+    if len(pcm) % 2:
+        raise VoiceJobExecutionError("audio_decode_failed")
+    total = len(pcm) // 2
+    if total == 0:
+        return 0, 0
+    max_amplitude = (1 << 15) - 1
+    silence_limit = (
+        max_amplitude * policy.silence_peak_threshold_bp
+    ) // _BASIS_POINT_SCALE
+    clipping_limit = (
+        max_amplitude * policy.clipping_peak_threshold_bp
+    ) // _BASIS_POINT_SCALE
+    silent = 0
+    clipped = 0
+    for offset in range(0, len(pcm), 2):
+        magnitude = abs(int.from_bytes(pcm[offset : offset + 2], "little", signed=True))
+        if magnitude <= silence_limit:
+            silent += 1
+        if magnitude >= clipping_limit:
+            clipped += 1
+    return (
+        int(round((silent / total) * _BASIS_POINT_SCALE)),
+        int(round((clipped / total) * _BASIS_POINT_SCALE)),
+    )
+
+
+def _inspect_decoded_pcm_wav(
+    data: bytes,
+    policy: ArtifactPolicy,
+) -> dict[str, int]:
     try:
         with wave.open(io.BytesIO(data), "rb") as audio:
             channels = int(audio.getnchannels())
             sample_rate = int(audio.getframerate())
             frames = int(audio.getnframes())
             sample_width = int(audio.getsampwidth())
+            compression = str(audio.getcomptype())
+            if channels <= 0 or sample_rate <= 0 or frames < 0:
+                raise VoiceJobExecutionError("audio_metadata_invalid")
+            if sample_width != 2 or compression != "NONE":
+                raise VoiceJobExecutionError("audio_decode_failed")
+            decoded_bytes = frames * channels * sample_width
+            if decoded_bytes > policy.max_decoded_bytes:
+                raise VoiceJobExecutionError("audio_decoded_too_large")
+            pcm = audio.readframes(frames)
+    except VoiceJobExecutionError:
+        raise
     except (EOFError, OSError, wave.Error) as exc:
         raise VoiceJobExecutionError("audio_decode_failed") from exc
-    if channels <= 0 or sample_rate <= 0 or sample_width <= 0 or frames < 0:
-        raise VoiceJobExecutionError("audio_metadata_invalid")
-    decoded_bytes = frames * channels * sample_width
-    if decoded_bytes > policy.max_decoded_bytes:
-        raise VoiceJobExecutionError("audio_decoded_too_large")
+    if len(pcm) != decoded_bytes:
+        raise VoiceJobExecutionError("audio_decode_failed")
     duration_ms = (frames * 1000 + sample_rate - 1) // sample_rate
     if duration_ms > policy.max_duration_ms:
         raise VoiceJobExecutionError("audio_duration_exceeded")
+    silence_ratio_bp, clipping_ratio_bp = _pcm16_acoustic_ratios(
+        pcm,
+        policy=policy,
+    )
     return {
         "channels": channels,
         "sample_rate_hz": sample_rate,
         "frames": frames,
         "duration_ms": duration_ms,
         "decoded_bytes": decoded_bytes,
+        "silence_ratio_bp": silence_ratio_bp,
+        "clipping_ratio_bp": clipping_ratio_bp,
     }
 
 
-def _audio_metrics(data: bytes, descriptor: Mapping[str, Any], policy: ArtifactPolicy) -> dict[str, int]:
-    media_type = str(descriptor.get("media_type") or "").lower()
+def _audio_metrics(
+    data: bytes,
+    descriptor: Mapping[str, Any],
+    policy: ArtifactPolicy,
+    *,
+    audio_decoder_fn: AudioDecoder | None = None,
+) -> dict[str, int]:
+    if len(data) > policy.max_input_bytes:
+        raise VoiceJobExecutionError("artifact_too_large")
+    media_type = str(descriptor.get("media_type") or "").lower().split(";", 1)[0].strip()
     uri = str(descriptor.get("uri") or "").lower()
-    if media_type in {"audio/wav", "audio/x-wav", "audio/wave"} or uri.endswith(".wav"):
+    # Prefer declared media type. Only fall back to URI suffix when media is
+    # absent so a mislabeled non-WAV URI ending in ".wav" cannot skip decode.
+    is_wav_media = media_type in {"audio/wav", "audio/x-wav", "audio/wave"}
+    if is_wav_media or (not media_type and uri.endswith(".wav")):
         return _inspect_wav(data, policy)
     if not media_type.startswith("audio/"):
         raise VoiceJobExecutionError("artifact_media_type_not_audio")
-    # Non-WAV decoding belongs to the configured provider; still enforce byte
-    # ceilings here before handing it off.
-    return {"encoded_bytes": len(data)}
+    input_format = _NON_WAV_INPUT_FORMATS.get(media_type)
+    if input_format is None:
+        raise VoiceJobExecutionError("audio_decoder_unsupported_media")
+    decoder = audio_decoder_fn or _decode_audio_with_ffmpeg
+    try:
+        decoded = decoder(data, input_format, policy)
+    except VoiceJobExecutionError:
+        raise
+    except Exception as exc:
+        raise VoiceJobExecutionError("audio_decode_failed") from exc
+    if not isinstance(decoded, bytes):
+        raise VoiceJobExecutionError("audio_decode_failed")
+    metrics = _inspect_decoded_pcm_wav(decoded, policy)
+    return {"encoded_bytes": len(data), **metrics}
 
 
 def execute_voice_tts_job(
@@ -480,6 +678,7 @@ def execute_voice_tts_job(
     *,
     resolver: ArtifactResolver | None = None,
     text_to_speech_fn: Callable[..., Any] | None = None,
+    audio_decoder_fn: AudioDecoder | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     canonical_job, payload = _canonical_job(
@@ -524,7 +723,12 @@ def execute_voice_tts_job(
         raise VoiceJobExecutionError("voice_provider_invalid_audio")
     codec = str(payload.get("codec") or payload.get("output_format") or "wav").lower()
     media_type = "audio/mpeg" if codec in {"mp3", "mpeg"} else f"audio/{codec}"
-    metrics = _audio_metrics(audio, {"media_type": media_type, "uri": f"output.{codec}"}, active_resolver.policy)
+    metrics = _audio_metrics(
+        audio,
+        {"media_type": media_type, "uri": f"output.{codec}"},
+        active_resolver.policy,
+        audio_decoder_fn=audio_decoder_fn,
+    )
     artifact = active_resolver.persist(audio, suffix=codec, media_type=media_type)
     latency_ms = round(max(0.0, clock() - started) * 1000)
     return _result(
@@ -540,6 +744,7 @@ def execute_voice_asr_job(
     *,
     resolver: ArtifactResolver | None = None,
     speech_to_text_fn: Callable[..., Any] | None = None,
+    audio_decoder_fn: AudioDecoder | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     canonical_job, payload = _canonical_job(
@@ -548,7 +753,12 @@ def execute_voice_asr_job(
     )
     active_resolver = resolver or ArtifactResolver()
     audio, descriptor = active_resolver.resolve_source(payload)
-    metrics = _audio_metrics(audio, descriptor, active_resolver.policy)
+    metrics = _audio_metrics(
+        audio,
+        descriptor,
+        active_resolver.policy,
+        audio_decoder_fn=audio_decoder_fn,
+    )
     if speech_to_text_fn is None:
         from ..voice_router import speech_to_text as speech_to_text_fn
 
@@ -576,7 +786,8 @@ def execute_voice_asr_job(
         raise VoiceJobExecutionError("voice_provider_invalid_transcript")
     transcript_bytes = transcript.encode("utf-8")
     artifact = None
-    if str(payload.get("purpose") or "dataset_asr_validation") != "runtime_stt":
+    retention_policy = str(payload.get("retention_policy") or "none")
+    if retention_policy in {"result", "publication"}:
         artifact = active_resolver.persist(
             transcript_bytes,
             suffix="txt",
@@ -585,7 +796,7 @@ def execute_voice_asr_job(
     latency_ms = round(max(0.0, clock() - started) * 1000)
     receipt = _provider_receipt(payload, latency_ms=latency_ms)
     if artifact is None:
-        # Runtime STT intentionally retains no transcript artifact.  Preserve
+        # Non-retained ASR intentionally emits no transcript artifact. Preserve
         # only its privacy-safe digest in the contract-approved response hash.
         receipt["response_id_sha256"] = hashlib.sha256(transcript_bytes).hexdigest()
     result = _result(
@@ -601,6 +812,7 @@ def execute_voice_audio_validation_job(
     job: Mapping[str, Any] | Any,
     *,
     resolver: ArtifactResolver | None = None,
+    audio_decoder_fn: AudioDecoder | None = None,
 ) -> dict[str, Any]:
     canonical_job, payload = _canonical_job(
         job,
@@ -608,7 +820,12 @@ def execute_voice_audio_validation_job(
     )
     active_resolver = resolver or ArtifactResolver()
     audio, descriptor = active_resolver.resolve_source(payload)
-    metrics = _audio_metrics(audio, descriptor, active_resolver.policy)
+    metrics = _audio_metrics(
+        audio,
+        descriptor,
+        active_resolver.policy,
+        audio_decoder_fn=audio_decoder_fn,
+    )
     policy = payload.get("validation_policy")
     if isinstance(policy, Mapping):
         minimum = policy.get("minimum_duration_ms")
@@ -641,6 +858,7 @@ def execute_task(
     resolver: ArtifactResolver | None = None,
     text_to_speech_fn: Callable[..., Any] | None = None,
     speech_to_text_fn: Callable[..., Any] | None = None,
+    audio_decoder_fn: AudioDecoder | None = None,
 ) -> dict[str, Any]:
     """Execute one canonical voice job from a queue row or bare payload."""
 
@@ -656,14 +874,20 @@ def execute_task(
             job,
             resolver=resolver,
             text_to_speech_fn=text_to_speech_fn,
+            audio_decoder_fn=audio_decoder_fn,
         )
     if task_type == "voice.asr":
         return execute_voice_asr_job(
             job,
             resolver=resolver,
             speech_to_text_fn=speech_to_text_fn,
+            audio_decoder_fn=audio_decoder_fn,
         )
-    return execute_voice_audio_validation_job(job, resolver=resolver)
+    return execute_voice_audio_validation_job(
+        job,
+        resolver=resolver,
+        audio_decoder_fn=audio_decoder_fn,
+    )
 
 
 __all__ = [
