@@ -183,7 +183,7 @@ Program invariants:
 
 ## AICAT-007 Add persistent and static catalog source adapters
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
