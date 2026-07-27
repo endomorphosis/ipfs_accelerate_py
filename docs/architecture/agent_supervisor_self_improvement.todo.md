@@ -4488,7 +4488,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-158 Wire bounded autonomous unstalling into the watchdog and implementation supervisor
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-rescue
 - Depends on: ASI-157
