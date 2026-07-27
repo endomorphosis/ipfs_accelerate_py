@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import anyio
 
 logger = logging.getLogger(__name__)
+
+CATALOG_TOOL_SCHEMA_VERSION = "ai.catalog.mcp.v1"
+MAX_CATALOG_PAGE_SIZE = 1_000
+MAX_CATALOG_SOURCES = 64
+_REDACTED = "[REDACTED]"
 
 
 def _load_model_tools_api() -> Dict[str, Any]:
@@ -120,6 +125,444 @@ def _error_result(message: str, **context: Any) -> Dict[str, Any]:
     }
     envelope.update(context)
     return envelope
+
+
+def _catalog_error_result(
+    code: str,
+    message: str,
+    *,
+    schema_version: Optional[str] = None,
+    catalog_revision: Optional[str] = None,
+    **context: Any,
+) -> Dict[str, Any]:
+    """Build a typed, secret-safe catalog error envelope."""
+
+    error = {"code": code, "message": message}
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "success": False,
+        "tool_schema_version": CATALOG_TOOL_SCHEMA_VERSION,
+        "schema_version": schema_version,
+        "catalog_revision": catalog_revision,
+        "error": error,
+        # Flat aliases keep error handling convenient for MCP clients that do
+        # not model nested discriminated unions.
+        "error_code": code,
+        "error_type": code,
+    }
+    envelope.update(context)
+    return envelope
+
+
+def _catalog_exception_result(
+    exc: BaseException,
+    *,
+    default_code: str,
+    schema_version: Optional[str] = None,
+    catalog_revision: Optional[str] = None,
+    **context: Any,
+) -> Dict[str, Any]:
+    """Map catalog exceptions without reflecting source- or user-owned text."""
+
+    exception_name = type(exc).__name__
+    errors = {
+        "StaleCursorError": (
+            "cursor_revision_mismatch",
+            "The cursor belongs to a different catalog revision.",
+        ),
+        "InvalidCursorError": (
+            "invalid_cursor",
+            "The catalog cursor is malformed or does not match this query.",
+        ),
+        "RefreshPolicyError": (
+            "refresh_denied",
+            "Catalog refresh was not authorized.",
+        ),
+        "PermissionError": (
+            "refresh_denied",
+            "Catalog refresh was not authorized.",
+        ),
+        "CatalogSourceError": (
+            default_code,
+            "The catalog source request is invalid.",
+        ),
+        "ResolutionError": (
+            default_code,
+            "The catalog resolution constraints are invalid.",
+        ),
+        "SchemaValidationError": (
+            default_code,
+            "The catalog request violates the catalog schema.",
+        ),
+        "ValueError": (
+            default_code,
+            "The catalog request is invalid.",
+        ),
+        "TypeError": (
+            default_code,
+            "The catalog request has an invalid value type.",
+        ),
+    }
+    code, message = errors.get(
+        exception_name,
+        ("catalog_unavailable", "The catalog request could not be completed."),
+    )
+    return _catalog_error_result(
+        code,
+        message,
+        schema_version=schema_version,
+        catalog_revision=catalog_revision,
+        **context,
+    )
+
+
+def _redact_catalog_payload(value: Any) -> Any:
+    """Return JSON-safe catalog data without credentials or raw endpoints."""
+
+    from ipfs_accelerate_py.model_catalog.identity import redact_secrets
+
+    redacted = redact_secrets(value)
+
+    def hide_endpoints(item: Any) -> Any:
+        if isinstance(item, Mapping):
+            return {
+                str(key): (
+                    _REDACTED
+                    if str(key).casefold() == "endpoint_uri"
+                    else hide_endpoints(child)
+                )
+                for key, child in item.items()
+            }
+        if isinstance(item, (list, tuple)):
+            return [hide_endpoints(child) for child in item]
+        return item
+
+    return hide_endpoints(redacted)
+
+
+def _catalog_success(
+    *,
+    schema_version: str,
+    catalog_revision: str,
+    **payload: Any,
+) -> Dict[str, Any]:
+    """Build a versioned, redacted successful catalog envelope."""
+
+    envelope = {
+        "status": "success",
+        "success": True,
+        "tool_schema_version": CATALOG_TOOL_SCHEMA_VERSION,
+        "schema_version": schema_version,
+        "catalog_revision": catalog_revision,
+    }
+    envelope.update(payload)
+    return _redact_catalog_payload(envelope)
+
+
+def _snapshot_versions(snapshot: Any) -> Dict[str, str]:
+    schema_version = getattr(snapshot, "schema_version", None)
+    revision = getattr(snapshot, "revision", None)
+    if not isinstance(schema_version, str) or not schema_version:
+        raise TypeError("catalog snapshot schema version is invalid")
+    if not isinstance(revision, str) or not revision:
+        raise TypeError("catalog snapshot revision is invalid")
+    return {"schema_version": schema_version, "catalog_revision": revision}
+
+
+def _catalog_page_payload(page: Any, item_key: str) -> Dict[str, Any]:
+    data = page.to_dict()
+    items = _redact_catalog_payload(data["items"])
+    return {
+        "items": items,
+        item_key: items,
+        "record_type": data["record_type"],
+        "count": len(items),
+        "total": data["total"],
+        "next_cursor": data["next_cursor"],
+    }
+
+
+def _validate_refresh_sources(sources: Any) -> Sequence[str]:
+    if (
+        isinstance(sources, (str, bytes, Mapping))
+        or not isinstance(sources, Sequence)
+        or not sources
+        or len(sources) > MAX_CATALOG_SOURCES
+        or any(not isinstance(item, str) or not item for item in sources)
+    ):
+        raise ValueError(
+            "sources must be a non-empty bounded array of source names"
+        )
+    return tuple(sources)
+
+
+async def _run_catalog_read(callback: Any) -> Dict[str, Any]:
+    """Run a catalog read against one captured immutable manager snapshot."""
+
+    def run() -> Dict[str, Any]:
+        from ipfs_accelerate_py.model_manager import get_default_model_manager
+
+        manager = get_default_model_manager()
+        snapshot = manager.snapshot()
+        versions = _snapshot_versions(snapshot)
+        try:
+            return callback(manager, snapshot, versions)
+        except Exception as exc:
+            return _catalog_exception_result(
+                exc,
+                default_code="invalid_filter",
+                **versions,
+            )
+
+    try:
+        return await anyio.to_thread.run_sync(run)
+    except Exception as exc:
+        return _catalog_exception_result(exc, default_code="invalid_filter")
+
+
+async def model_catalog_list_services(
+    limit: int = 100,
+    cursor: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    operation: Optional[str] = None,
+    modality: Optional[str] = None,
+    state: Optional[Dict[str, bool]] = None,
+    labels: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """List canonical AI service providers from ModelManager's catalog."""
+
+    def read(manager: Any, snapshot: Any, versions: Dict[str, str]) -> Dict[str, Any]:
+        page = manager.list_services(
+            limit=limit,
+            cursor=cursor,
+            provider=provider,
+            model=model,
+            operation=operation,
+            modality=modality,
+            state=state,
+            labels=labels,
+            snapshot=snapshot,
+        )
+        return _catalog_success(
+            **versions,
+            **_catalog_page_payload(page, "services"),
+        )
+
+    return await _run_catalog_read(read)
+
+
+async def model_catalog_list_models(
+    limit: int = 100,
+    cursor: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    operation: Optional[str] = None,
+    modality: Optional[str] = None,
+    state: Optional[Dict[str, bool]] = None,
+    labels: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """List canonical model descriptors from ModelManager's catalog."""
+
+    def read(manager: Any, snapshot: Any, versions: Dict[str, str]) -> Dict[str, Any]:
+        page = manager.list_catalog_models(
+            limit=limit,
+            cursor=cursor,
+            provider=provider,
+            model=model,
+            operation=operation,
+            modality=modality,
+            state=state,
+            labels=labels,
+            snapshot=snapshot,
+        )
+        return _catalog_success(
+            **versions,
+            **_catalog_page_payload(page, "models"),
+        )
+
+    return await _run_catalog_read(read)
+
+
+async def model_catalog_get(
+    identifier: str,
+    record_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get one canonical catalog record, failing closed on ambiguous aliases."""
+
+    def read(manager: Any, snapshot: Any, versions: Dict[str, str]) -> Dict[str, Any]:
+        result = manager.get(
+            identifier,
+            record_type=record_type,
+            snapshot=snapshot,
+        )
+        data = _redact_catalog_payload(result.to_dict())
+        if not result.found:
+            diagnostic = next(iter(data["diagnostics"]), {})
+            code = diagnostic.get("code", "no_match")
+            message = (
+                "The identifier matches more than one canonical record."
+                if code == "ambiguous_identifier"
+                else "The identifier did not match a canonical record."
+            )
+            return _catalog_error_result(
+                code,
+                message,
+                **versions,
+                record_type=data["record_type"],
+                query=data["query"],
+                record=None,
+                diagnostics=data["diagnostics"],
+            )
+        return _catalog_success(
+            **versions,
+            record_type=data["record_type"],
+            query=data["query"],
+            record=data["record"],
+            diagnostics=data["diagnostics"],
+        )
+
+    return await _run_catalog_read(read)
+
+
+async def model_catalog_resolve(
+    operation: str,
+    modality: Optional[str] = None,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    deployment: Optional[str] = None,
+    policy: Optional[Dict[str, Any]] = None,
+    device: Optional[str] = None,
+    context: Optional[int] = None,
+    health: Optional[bool] = None,
+    locality: Optional[str] = None,
+    configured: Optional[bool] = None,
+    authorized: Optional[bool] = None,
+    reachable: Optional[bool] = None,
+    routable: Optional[bool] = None,
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """Resolve bounded catalog constraints without invoking a provider."""
+
+    constraints = {
+        "operation": operation,
+        "modality": modality,
+        "model": model,
+        "provider": provider,
+        "deployment": deployment,
+        "policy": policy,
+        "device": device,
+        "context": context,
+        "health": health,
+        "locality": locality,
+        "configured": configured,
+        "authorized": authorized,
+        "reachable": reachable,
+        "routable": routable,
+        "limit": limit,
+    }
+
+    def read(manager: Any, snapshot: Any, versions: Dict[str, str]) -> Dict[str, Any]:
+        result = manager.resolve(snapshot=snapshot, **constraints)
+        data = _redact_catalog_payload(result.to_dict())
+        if not result.found:
+            ambiguous = any(
+                "ambiguous" in str(reason).casefold()
+                for reason in data.get("reasons", ())
+            )
+            code = "ambiguous_identifier" if ambiguous else "no_match"
+            message = (
+                "The constraints contain an ambiguous canonical identifier."
+                if ambiguous
+                else "No catalog candidate satisfies the constraints."
+            )
+            return _catalog_error_result(
+                code,
+                message,
+                **versions,
+                resolution=data,
+            )
+        return _catalog_success(**versions, resolution=data)
+
+    return await _run_catalog_read(read)
+
+
+async def model_catalog_health() -> Dict[str, Any]:
+    """Return published catalog health without refreshing or probing sources."""
+
+    def read(manager: Any, snapshot: Any, versions: Dict[str, str]) -> Dict[str, Any]:
+        health = manager.health(snapshot=snapshot)
+        return _catalog_success(
+            **versions,
+            health=_redact_catalog_payload(health.to_dict()),
+        )
+
+    return await _run_catalog_read(read)
+
+
+async def model_catalog_refresh(
+    sources: List[str],
+    authority: bool = False,
+) -> Dict[str, Any]:
+    """Refresh explicitly named catalog sources under explicit caller authority."""
+
+    if authority is not True:
+        return _catalog_error_result(
+            "refresh_denied",
+            "Catalog refresh requires explicit authority.",
+        )
+    try:
+        selected = _validate_refresh_sources(sources)
+    except Exception as exc:
+        return _catalog_exception_result(exc, default_code="invalid_sources")
+
+    def run() -> Dict[str, Any]:
+        from ipfs_accelerate_py.model_catalog.catalog import RefreshPolicy
+        from ipfs_accelerate_py.model_manager import get_default_model_manager
+
+        manager = get_default_model_manager()
+        before = manager.snapshot()
+        before_versions = _snapshot_versions(before)
+        try:
+            result = manager.refresh(
+                selected,
+                policy=RefreshPolicy(
+                    allow_side_effects=True,
+                    allowed_sources=tuple(selected),
+                ),
+            )
+            snapshot = result.snapshot
+            versions = _snapshot_versions(snapshot)
+            payload = {
+                "refreshed": list(result.refreshed),
+                "failed": list(result.failed),
+                "unchanged": list(result.unchanged),
+                "source_states": [
+                    item.to_dict() for item in result.source_states
+                ],
+                "diagnostics": [
+                    item.to_dict() for item in result.diagnostics
+                ],
+            }
+            if result.failed:
+                return _catalog_error_result(
+                    "source_refresh_failed",
+                    "One or more named catalog sources failed to refresh.",
+                    **versions,
+                    **_redact_catalog_payload(payload),
+                )
+            return _catalog_success(**versions, **payload)
+        except Exception as exc:
+            return _catalog_exception_result(
+                exc,
+                default_code="invalid_sources",
+                **before_versions,
+            )
+
+    try:
+        return await anyio.to_thread.run_sync(run)
+    except Exception as exc:
+        return _catalog_exception_result(exc, default_code="invalid_sources")
 
 
 async def model_search(
@@ -284,6 +727,182 @@ async def model_load_hf_ipld_from_ipfs(cid: str) -> Dict[str, Any]:
 
 def register_native_model_tools(manager: Any) -> None:
     """Register native model-tools category tools in unified manager."""
+    catalog_filter_properties = {
+        "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAX_CATALOG_PAGE_SIZE,
+            "default": 100,
+        },
+        "cursor": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "provider": {"type": "string", "minLength": 1, "maxLength": 256},
+        "model": {"type": "string", "minLength": 1, "maxLength": 256},
+        "operation": {"type": "string", "minLength": 1, "maxLength": 64},
+        "modality": {"type": "string", "minLength": 1, "maxLength": 64},
+        "state": {
+            "type": "object",
+            "maxProperties": 6,
+            "additionalProperties": {"type": "boolean"},
+        },
+        "labels": {
+            "type": "object",
+            "maxProperties": 64,
+            "additionalProperties": {
+                "type": "string",
+                "maxLength": 256,
+            },
+        },
+    }
+    for name, func, description in (
+        (
+            "model_catalog_list_services",
+            model_catalog_list_services,
+            "List canonical AI services with bounded filters and revision-bound pagination.",
+        ),
+        (
+            "model_catalog_list_models",
+            model_catalog_list_models,
+            "List canonical AI models with bounded filters and revision-bound pagination.",
+        ),
+    ):
+        manager.register_tool(
+            category="model_tools",
+            name=name,
+            func=func,
+            description=description,
+            input_schema={
+                "type": "object",
+                "properties": dict(catalog_filter_properties),
+                "required": [],
+                "additionalProperties": False,
+            },
+            runtime="fastapi",
+            tags=["native", "mcpp", "model-tools", "catalog", "read-only"],
+        )
+    manager.register_tool(
+        category="model_tools",
+        name="model_catalog_get",
+        func=model_catalog_get,
+        description="Get one canonical catalog record by ID, name, or alias.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "identifier": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                },
+                "record_type": {
+                    "type": "string",
+                    "enum": [
+                        "records",
+                        "providers",
+                        "models",
+                        "deployments",
+                        "bindings",
+                    ],
+                },
+            },
+            "required": ["identifier"],
+            "additionalProperties": False,
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "model-tools", "catalog", "read-only"],
+    )
+    manager.register_tool(
+        category="model_tools",
+        name="model_catalog_resolve",
+        func=model_catalog_resolve,
+        description="Resolve canonical providers and models without invoking or probing them.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                },
+                "modality": {"type": "string", "maxLength": 64},
+                "model": {"type": "string", "maxLength": 256},
+                "provider": {"type": "string", "maxLength": 256},
+                "deployment": {"type": "string", "maxLength": 256},
+                "policy": {
+                    "type": "object",
+                    "maxProperties": 64,
+                    "additionalProperties": {
+                        "type": ["string", "number", "boolean"],
+                    },
+                },
+                "device": {"type": "string", "maxLength": 256},
+                "context": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000000,
+                },
+                "health": {"type": "boolean"},
+                "locality": {"type": "string", "maxLength": 256},
+                "configured": {"type": "boolean"},
+                "authorized": {"type": "boolean"},
+                "reachable": {"type": "boolean"},
+                "routable": {"type": "boolean"},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_CATALOG_PAGE_SIZE,
+                    "default": 100,
+                },
+            },
+            "required": ["operation"],
+            "additionalProperties": False,
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "model-tools", "catalog", "read-only"],
+    )
+    manager.register_tool(
+        category="model_tools",
+        name="model_catalog_health",
+        func=model_catalog_health,
+        description="Read already-published catalog and source health without active probes.",
+        input_schema={
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "model-tools", "catalog", "read-only"],
+    )
+    manager.register_tool(
+        category="model_tools",
+        name="model_catalog_refresh",
+        func=model_catalog_refresh,
+        description="Privileged refresh of explicitly named catalog sources.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": MAX_CATALOG_SOURCES,
+                    "uniqueItems": True,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                    },
+                },
+                "authority": {
+                    "type": "boolean",
+                    "const": True,
+                    "description": "Explicit authorization for this named refresh.",
+                },
+            },
+            "required": ["sources", "authority"],
+            "additionalProperties": False,
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "model-tools", "catalog", "privileged"],
+    )
     manager.register_tool(
         category="model_tools",
         name="model_search",
