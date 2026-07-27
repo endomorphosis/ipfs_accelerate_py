@@ -541,3 +541,16 @@ Program invariants:
 - Outputs: ipfs_accelerate_py/multimodal_router.py, test/test_multimodal_router_catalog_discovery.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery
 - Validation: python -m pytest test/test_multimodal_router_catalog_discovery.py test/test_multimodal_router.py -q
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in AICAT-005. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-021-aicat-005-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release AICAT-005 from strategy blocked_tasks.
+
+## AICAT-022 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Fingerprint: 600623676fda3e318db6513371b2fa6a2566149d
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery, docs/architecture/ai_service_catalog.todo.md
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-022-reconciliation-600623676fda.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-022-reconciliation-600623676fda.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
