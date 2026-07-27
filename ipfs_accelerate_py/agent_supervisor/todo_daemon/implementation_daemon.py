@@ -4000,9 +4000,35 @@ class PortalImplementationDaemon:
             objective_paths.append(Path(self.objective_path))
         if self.objective_bundle_dir is not None:
             objective_paths.append(Path(self.objective_bundle_dir))
+        merge_queue_root = Path(self.merge_queue_dir)
+        # The merge train's consumer.lock is an ephemeral heartbeat. Watching
+        # the whole queue tree lets every idle lane wake every other idle lane.
         lease_paths = [
-            Path(self.merge_queue_dir),
-            self.state_path.parent / IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+            Path(
+                getattr(
+                    self.merge_queue,
+                    "database_path",
+                    merge_queue_root / "merge_queue.duckdb",
+                )
+            ),
+            Path(
+                getattr(
+                    self.merge_queue,
+                    "pending_dir",
+                    merge_queue_root / "pending",
+                )
+            ),
+            Path(
+                getattr(
+                    self.merge_queue,
+                    "processing_dir",
+                    merge_queue_root / "processing",
+                )
+            ),
+            checkout_mutation_lock_path(
+                self.repo_root,
+                lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+            ),
             *self.external_reservation_manifest_paths,
         ]
         policy_paths = [

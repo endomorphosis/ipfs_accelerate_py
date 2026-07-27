@@ -561,3 +561,44 @@ def test_idle_populated_board_does_not_rewrite_typed_task_identities(
     assert second["write_count"] == 0
     assert second["projection_delta"] == {}
     assert {path: _file_identity(path) for path in durable_paths} == before
+
+
+def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    lease_paths = daemon._runtime_source_paths()["lease"]
+    merge_queue_root = Path(daemon.merge_queue_dir)
+    shared_claim_dir = (
+        tmp_path / ".git" / "implementation-task-claims"
+    )
+
+    assert daemon.merge_queue.database_path in lease_paths
+    assert daemon.merge_queue.pending_dir in lease_paths
+    assert daemon.merge_queue.processing_dir in lease_paths
+    assert shared_claim_dir in lease_paths
+    assert merge_queue_root not in lease_paths
+    assert merge_queue_root / "train" not in lease_paths
+
+    consumer_lock = merge_queue_root / "train" / "consumer.lock"
+    consumer_lock.parent.mkdir(parents=True)
+    consumer_lock.write_text("initial lease\n", encoding="utf-8")
+    clock = LogicalClock()
+    watcher = LogicalWatcher(clock)
+    coordinator = RuntimeWakeCoordinator(
+        {RuntimeWakeKind.LEASE: lease_paths},
+        safety_interval_seconds=30.0,
+        watcher=watcher,
+        clock=clock,
+    )
+    try:
+        consumer_lock.write_text("ephemeral lease heartbeat\n", encoding="utf-8")
+        coordinator.notify(RuntimeWakeKind.LEASE, revision="consumer-heartbeat")
+
+        event = coordinator.wait()
+    finally:
+        coordinator.close()
+
+    assert event.kinds == (RuntimeWakeKind.OBSERVATION_WINDOW,)
+    assert event.safety_timer is True
+    assert clock() == pytest.approx(30.0)
