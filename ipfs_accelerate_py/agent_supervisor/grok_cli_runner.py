@@ -112,12 +112,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         str(args.max_turns).strip()
         or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS", "").strip()
         or os.environ.get("ipfs_accelerate_py_GROK_CLI_MAX_TURNS", "").strip()
-        or "100"
+        or str(DEFAULT_GROK_MAX_TURNS)
     )
     try:
-        max_turns = max(1, int(max_turns_raw))
+        max_turns = max(1, min(DEFAULT_GROK_MAX_TURNS, int(max_turns_raw)))
     except ValueError:
-        max_turns = 100
+        max_turns = DEFAULT_GROK_MAX_TURNS
     permission_mode = (
         str(args.permission_mode).strip()
         or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE", "").strip()

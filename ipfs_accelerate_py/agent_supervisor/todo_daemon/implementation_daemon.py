@@ -777,7 +777,10 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or _DEFAULT_GROK_IMPLEMENTATION_MODEL
     )
-    max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100").strip() or "100"
+    max_turns = (
+        os.environ.get(_GROK_MAX_TURNS_ENV, "").strip()
+        or _DEFAULT_GROK_IMPLEMENTATION_MAX_TURNS
+    )
     permission_mode = (
         os.environ.get(_GROK_PERMISSION_MODE_ENV, "").strip()
         or "bypassPermissions"
