@@ -2757,8 +2757,12 @@ class PortalImplementationDaemon:
             ).split("\0")
             if item
         }
+        deleted_fraction = len(deleted_paths) / len(tracked_paths)
+        wholesale_disposal = deleted_paths == tracked_paths or (
+            len(deleted_paths) >= 100 and deleted_fraction >= 0.5
+        )
         if (
-            deleted_paths != tracked_paths
+            not wholesale_disposal
             or other_result.stdout
             or untracked_result.stdout
         ):
@@ -2775,6 +2779,8 @@ class PortalImplementationDaemon:
             "git_head": after_head,
             "tracked_path_count": len(tracked_paths),
             "deleted_path_count": len(deleted_paths),
+            "remaining_path_count": len(tracked_paths - deleted_paths),
+            "deleted_fraction": round(deleted_fraction, 6),
             "protected_deleted_paths": sorted(workspace_mutation_paths),
             "index_unchanged": True,
             "untracked_path_count": 0,
@@ -17392,8 +17398,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--approve-disposed-ephemeral-workspace",
         action="store_true",
         help=(
-            "Allow clearance when the incident also records deletion of every "
-            "tracked path from an otherwise unchanged managed worktree."
+            "Allow clearance when the incident also records deletion-only "
+            "wholesale disposal of an otherwise unchanged managed worktree."
         ),
     )
     parser.add_argument(

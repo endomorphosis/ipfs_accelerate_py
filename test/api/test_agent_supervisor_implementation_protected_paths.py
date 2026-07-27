@@ -884,6 +884,64 @@ def test_operator_clearance_can_approve_wholly_disposed_ephemeral_workspace(
     assert proof["protected_deleted_paths"] == [POLICY_PATH]
 
 
+def test_disposed_workspace_approval_rejects_selective_protected_deletion(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    retained = repo / "src" / "retained.py"
+    retained.parent.mkdir()
+    retained.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "src/retained.py")
+    _git(
+        repo,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "add retained source",
+    )
+    _git(workspace, "merge", "--ff-only", _git(repo, "rev-parse", "HEAD"))
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("reviewed operator update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Operator",
+        "-c",
+        "user.email=operator@example.invalid",
+        "commit",
+        "-m",
+        "update protected policy",
+    )
+    operator_commit = _git(repo, "rev-parse", "HEAD")
+    (workspace / POLICY_PATH).unlink()
+    daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    result = daemon.clear_implementation_protected_path_incident(
+        approved_commits=[operator_commit],
+        operator_note="Selective deletion must remain blocked.",
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is False
+    assert result["reason"] == "disposed_ephemeral_workspace_proof_failed"
+    assert daemon._implementation_protected_incident_path().exists()
+
+
 def test_supervisor_commits_generated_updates_to_protected_todo_board(
     tmp_path: Path,
 ) -> None:
