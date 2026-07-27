@@ -4284,7 +4284,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-146 Add a canonical Markdown task-source projection
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-task-storage
 - Depends on: ASI-145
