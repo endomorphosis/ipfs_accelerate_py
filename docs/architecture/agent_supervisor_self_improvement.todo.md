@@ -4250,7 +4250,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-144 Generate a strict goal/subgoal/task graph through llm_router with deterministic fallback
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-goal-planning
 - Depends on: ASI-103, ASI-104, ASI-142, ASI-143
