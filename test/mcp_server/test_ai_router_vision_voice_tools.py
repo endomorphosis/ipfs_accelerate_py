@@ -367,6 +367,117 @@ def test_voice_transcribe_and_synthesize_dispatch_only_through_voice_router(
     assert speech["selected_binding"]["router"] == "voice_router"
 
 
+def test_fallback_enforces_limits_of_each_effective_binding(
+    install_manager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = install_manager(
+        _snapshot(
+            _records(
+                "vision-primary",
+                "multimodal_router",
+                Operation.VISION_GENERATE,
+                priority=10,
+                media_types=("image/png",),
+                max_input_bytes=1,
+                max_output_bytes=2,
+            ),
+            _records(
+                "vision-fallback",
+                "multimodal_router",
+                Operation.VISION_GENERATE,
+                priority=0,
+                media_types=("image/png",),
+                max_input_bytes=4096,
+                max_output_bytes=4096,
+            ),
+            _records(
+                "stt-primary",
+                "voice_router",
+                Operation.AUDIO_TRANSCRIBE,
+                priority=10,
+                media_types=("audio/wav",),
+                max_input_bytes=1,
+                max_output_bytes=2,
+            ),
+            _records(
+                "stt-fallback",
+                "voice_router",
+                Operation.AUDIO_TRANSCRIBE,
+                priority=0,
+                media_types=("audio/wav",),
+                max_input_bytes=4096,
+                max_output_bytes=4096,
+            ),
+            _records(
+                "tts-primary",
+                "voice_router",
+                Operation.AUDIO_SYNTHESIZE,
+                priority=10,
+                media_types=("audio/wav",),
+                max_input_bytes=1,
+                max_output_bytes=2,
+            ),
+            _records(
+                "tts-fallback",
+                "voice_router",
+                Operation.AUDIO_SYNTHESIZE,
+                priority=0,
+                media_types=("audio/wav",),
+                max_input_bytes=4096,
+                max_output_bytes=4096,
+            ),
+        )
+    )
+    calls = []
+
+    def generate(prompt: str, **kwargs: Any) -> str:
+        calls.append(("vision", kwargs["provider"]))
+        return "fallback vision output"
+
+    def transcribe(audio: bytes, **kwargs: Any) -> str:
+        calls.append(("transcribe", kwargs["provider"]))
+        return "fallback transcript"
+
+    def synthesize(text: str, **kwargs: Any) -> bytes:
+        calls.append(("synthesize", kwargs["provider"]))
+        return _wav(kwargs["sample_rate"])
+
+    monkeypatch.setattr(
+        vision_voice.multimodal_router, "generate_multimodal", generate
+    )
+    monkeypatch.setattr(vision_voice.voice_router, "speech_to_text", transcribe)
+    monkeypatch.setattr(vision_voice.voice_router, "text_to_speech", synthesize)
+
+    vision = _run(
+        vision_voice.multimodal_generate(
+            "q",
+            [_image()],
+            allow_fallback=True,
+        )
+    )
+    transcript = _run(
+        vision_voice.voice_transcribe(_audio(), allow_fallback=True)
+    )
+    speech = _run(
+        vision_voice.voice_synthesize("hello", allow_fallback=True)
+    )
+
+    assert vision["status"] == transcript["status"] == speech["status"] == "success"
+    assert vision["catalog_revision"] == manager.catalog_revision
+    assert calls == [
+        ("vision", "vision-fallback"),
+        ("transcribe", "stt-fallback"),
+        ("synthesize", "tts-fallback"),
+    ]
+    for result in (vision, transcript, speech):
+        assert result["receipt"]["fallback"]["used"] is True
+        assert (
+            result["selected_binding"]["binding_id"]
+            == result["receipt"]["fallback"]["boundary_binding_ids"][1]
+        )
+
+
 def test_wrong_modality_unsupported_mime_and_item_count_fail_before_dispatch(
     install_manager,
     monkeypatch: pytest.MonkeyPatch,
@@ -514,13 +625,24 @@ def test_uri_is_ssrf_filtered_remote_disabled_and_loader_delegated(
         "width": 10,
         "height": 10,
     }
-    unsafe = dict(uri, uri="https://127.0.0.1/private")
-
-    rejected = _run(
-        vision_voice.multimodal_generate(
-            "q", [unsafe], allow_remote_media=True
-        )
+    unsafe_uris = (
+        "https://127.0.0.1/private",
+        "https://2130706433/private",
+        "https://0177.0.0.1/private",
+        "https://0x7f000001/private",
+        "https://127.1/private",
     )
+
+    rejected = [
+        _run(
+            vision_voice.multimodal_generate(
+                "q",
+                [dict(uri, uri=unsafe_uri)],
+                allow_remote_media=True,
+            )
+        )
+        for unsafe_uri in unsafe_uris
+    ]
     disabled = _run(vision_voice.multimodal_generate("q", [uri]))
     loaded = _run(
         vision_voice.multimodal_generate(
@@ -528,7 +650,10 @@ def test_uri_is_ssrf_filtered_remote_disabled_and_loader_delegated(
         )
     )
 
-    assert rejected["error"]["code"] == "unsafe_media_uri"
+    assert {
+        result["error"]["code"]
+        for result in rejected
+    } == {"unsafe_media_uri"}
     assert disabled["error"]["code"] == "remote_media_disabled"
     assert loaded["status"] == "success"
     assert len(loader_calls) == 1
