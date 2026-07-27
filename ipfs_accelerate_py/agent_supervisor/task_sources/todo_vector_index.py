@@ -25,7 +25,7 @@ from ..core.conflict_graph import (
     project_conflict_free_wave,
 )
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
-from ..objective_graph import (
+from ..objectives.objective_graph import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_BUNDLE_CLUSTER_MIN_SCORE,
     cosine,
@@ -41,7 +41,7 @@ from .task_identity import canonical_task_identity
 from ..validation_commands import split_validation_commands
 
 
-DEFAULT_TODO_VECTOR_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.todo_vector_index"
+DEFAULT_TODO_VECTOR_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index"
 DEFAULT_TODO_COVERAGE_INPUTS_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.todo_coverage_inputs/v1"
 )

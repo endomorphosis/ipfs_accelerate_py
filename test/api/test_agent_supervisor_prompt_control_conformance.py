@@ -9,13 +9,13 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py import cli
-from ipfs_accelerate_py.agent_supervisor.control_cli import COMMAND_OPERATIONS
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_cli import COMMAND_OPERATIONS
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     Operation,
     OperationRequest,
     OperationStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
     SupervisorControlService,

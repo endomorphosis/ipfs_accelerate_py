@@ -21,12 +21,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (  # noqa: E402
     ImplementationSupervisorTrackConfig,
     build_configured_multi_supervisor_cli_runner,
     utc_run_stamp,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # noqa: E402
     parse_goal_heap,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (  # noqa: E402

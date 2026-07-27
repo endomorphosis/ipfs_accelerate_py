@@ -55,7 +55,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
+from ipfs_accelerate_py.agent_supervisor.validation.proposal_validation import (
     ImplementationProposal,
     NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA,
     NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION,

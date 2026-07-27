@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_planning_metrics import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_metrics import (
     FORMAL_PLANNING_METRIC_DIMENSIONS,
     BenchmarkMode,
     FormalPlanningBenchmarkReport,
@@ -15,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_metrics import (
     FormalPlanningMetricsError,
     build_formal_planning_benchmark_report,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_rollout import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_rollout import (
     DEFAULT_ROLLOUT_THRESHOLDS,
     FormalPlanningOverrideStore,
     FormalPlanningRolloutError,

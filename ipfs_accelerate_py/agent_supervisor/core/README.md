@@ -34,7 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import ...
 
 Relative imports inside `core/` stay package-local (`from .x import y`).
 Outbound imports to still-flat siblings use one parent level
-(`from ..task_identity import ...`).
+(`from ..task_sources.task_identity import ...`).
 
 ## Allowed dependents
 

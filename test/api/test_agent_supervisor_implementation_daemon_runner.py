@@ -29,7 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     run_configured_portal_implementation_daemon,
     run_portal_implementation_daemon_loop,
 )
-from ipfs_accelerate_py.agent_supervisor.checkout_lock import checkout_lock_owner_is_active
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import checkout_lock_owner_is_active
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTaskState,
@@ -45,7 +45,7 @@ from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     normalize_validation_command_text,
     split_validation_commands,
 )
-from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
+from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervisor_namespace_paths
 
 
 def test_validation_command_helpers_unwrap_markdown_inline_code():

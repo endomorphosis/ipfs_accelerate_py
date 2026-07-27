@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue, MergeRequest
-from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverRegistry,
     conflict_fingerprint,
 )

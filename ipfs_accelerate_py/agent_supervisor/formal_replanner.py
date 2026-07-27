@@ -45,7 +45,7 @@ from .formal_verification_contracts import (
     canonical_json,
     content_identity,
 )
-from .plan_failure_memory import (
+from .planning.plan_failure_memory import (
     DELTA_REPLAN_REQUIREMENT_ID,
     BranchFailureObservation,
     FailureMemoryDecision,

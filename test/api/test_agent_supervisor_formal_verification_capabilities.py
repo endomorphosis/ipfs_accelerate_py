@@ -9,12 +9,19 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import (
+
     FORMAL_VERIFICATION_CAPABILITY_REPORT_VERSION,
+
     FORMAL_VERIFICATION_CAPABILITY_SCHEMA_VERSION,
+
     CapabilityDimension,
+
     CapabilityHealth,
+
     FormalVerificationCapabilityProbe,
+
     FormalVerificationProbeConfig,
+
 )
 from ipfs_accelerate_py.agent_supervisor.formal_verification_capabilities import (
     EffectiveContextLimit,

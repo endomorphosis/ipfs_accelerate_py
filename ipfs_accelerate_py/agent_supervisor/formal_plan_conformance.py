@@ -2209,7 +2209,7 @@ def evaluate_completion_admission(
         if required or proof_boundary_requested:
             reasons.append("proposal_validation_missing")
     else:
-        from .proposal_validation import ProposalValidationResult
+        from .validation.proposal_validation import ProposalValidationResult
 
         proposal_result = (
             proposal_validation
@@ -2694,7 +2694,7 @@ def evaluate_strict_validation_completion(
     proof_projection_complete = False
 
     try:
-        from .proposal_validation import (
+        from .validation.proposal_validation import (
             ProposalValidationReceipt,
             ProposalValidationResult,
         )

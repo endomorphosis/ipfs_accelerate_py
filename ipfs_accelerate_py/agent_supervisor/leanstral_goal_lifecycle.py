@@ -45,7 +45,7 @@ from .leanstral_goal_development import (
     LeanstralGoalDevelopmentProvider,
     create_leanstral_goal_development_provider,
 )
-from .objective_daemon import (
+from .objectives.objective_daemon import (
     ObjectiveGenerationAdmissionResult,
     materialize_admitted_objective_work,
 )

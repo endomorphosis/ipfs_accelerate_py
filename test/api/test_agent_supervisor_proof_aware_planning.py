@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ProofRepairPolicy,
     ProofRepairWorkKind,
     generate_proof_repair_work,

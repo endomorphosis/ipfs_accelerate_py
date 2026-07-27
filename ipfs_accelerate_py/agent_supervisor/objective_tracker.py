@@ -40,14 +40,14 @@ from .goal_completion import (
     evaluate_goal_completion,
     normalize_goal_state,
 )
-from .external_completion import (
+from .core.external_completion import (
     EXTERNAL_COMPLETION_EVIDENCE_SCHEMA,
     EXTERNAL_COMPLETION_VALIDATION_SCHEMA,
     ExternalCompletionAuthority,
     ExternalCompletionEvaluation,
     evaluate_external_completion_authority,
 )
-from .objective_graph import (
+from .objectives.objective_graph import (
     DEFAULT_EMBEDDING_MIN_SCORE,
     OPAQUE_EVIDENCE_REQUIREMENT_PATTERN,
     ObjectiveFinding,
@@ -75,7 +75,7 @@ from .validation_runtime import (
     validation_shell_command,
 )
 from .scan_receipts import RepositoryTreeIdentity, scan_identity
-from .task_identity import canonical_content_cid, normalize_identity_text
+from .task_sources.task_identity import canonical_content_cid, normalize_identity_text
 
 
 DEFAULT_ULTIMATE_GOAL = (
@@ -3771,7 +3771,7 @@ def commit_objective_goal_materialization(
         raise ValueError("journal_path must be separate from objective_path")
     lock_path = objective_path.with_name(f".{objective_path.name}.admission.lock")
 
-    from .duckdb_state import exclusive_file_lock
+    from .task_sources.duckdb_state import exclusive_file_lock
 
     try:
         lock = exclusive_file_lock(
@@ -6240,7 +6240,7 @@ def write_objective_graph_artifact(
     goals = parse_goal_heap(objective_path.read_text(encoding="utf-8")) if objective_path.exists() else []
     graph = goal_graph(goals)
     payload = {
-        "schema": "ipfs_accelerate_py.agent_supervisor.objective_graph",
+        "schema": "ipfs_accelerate_py.agent_supervisor.objectives.objective_graph",
         "generated_at": utc_now(),
         "objective_path": str(objective_path),
         "goal_count": len(goals),

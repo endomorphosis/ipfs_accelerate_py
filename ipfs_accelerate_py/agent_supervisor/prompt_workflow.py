@@ -3304,7 +3304,7 @@ class PromptSupervisorService:
         # Keep provider and process modules out of import/discovery.  The
         # contract catalog itself is a provider-free dependency loaded only
         # when a service instance is actually used.
-        from .control_contracts import OPERATION_CATALOG_V2
+        from .control.control_contracts import OPERATION_CATALOG_V2
 
         self._catalog_root = _reference_cid(
             OPERATION_CATALOG_V2.catalog_id, "control-catalog"
@@ -3579,7 +3579,7 @@ class PromptSupervisorService:
             raise PromptWorkflowAuthorizationError(
                 "preview control request requires a control service"
             )
-        from .control_contracts import Operation
+        from .control.control_contracts import Operation
 
         if getattr(control_request, "operation", None) is not Operation.WORKFLOW_PREVIEW:
             raise PromptWorkflowAuthorizationError(
@@ -3827,7 +3827,7 @@ class PromptSupervisorService:
     def _validate_materialize_control(
         self, state: _PromptPreviewState, control_request: Any
     ) -> tuple[Any, str]:
-        from .control_contracts import Operation
+        from .control.control_contracts import Operation
 
         if getattr(control_request, "operation", None) is not Operation.WORKFLOW_MATERIALIZE:
             raise PromptWorkflowAuthorizationError(
@@ -4087,7 +4087,7 @@ class PromptSupervisorService:
                 ),
             )
         else:
-            from .markdown_task_source import MarkdownTaskSource
+            from .task_sources.markdown_task_source import MarkdownTaskSource
 
             absolute = (
                 Path(state.request.output_policy.output_root) / path
@@ -4150,7 +4150,7 @@ class PromptSupervisorService:
                 ),
             )
         else:
-            from .duckdb_task_source import DuckDBTaskSource
+            from .task_sources.duckdb_task_source import DuckDBTaskSource
             from .formal_plan_compiler import prompt_goal_graph_to_formal_input
 
             if not DuckDBTaskSource.available():
@@ -4521,7 +4521,7 @@ class PromptSupervisorService:
                 self._persist(result)
                 return result
             try:
-                from .control_contracts import Operation
+                from .control.control_contracts import Operation
 
                 if getattr(control_request, "operation", None) is not Operation.START:
                     raise PromptWorkflowAuthorizationError(
@@ -5173,8 +5173,8 @@ def run_prompt_workflow_cli(
         return PROMPT_WORKFLOW_CLI_EXIT_INVALID
 
     # Lazy import keeps ``import prompt_workflow`` free of control/process work.
-    from .control_cli import AgentCLIError, run_agent_cli
-    from .control_contracts import Operation
+    from .control.control_cli import AgentCLIError, run_agent_cli
+    from .control.control_contracts import Operation
 
     try:
         operation_name = _PROMPT_WORKFLOW_COMMAND_TO_OPERATION[args.command]

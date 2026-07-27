@@ -25,7 +25,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
-from .control_contracts import EventCursor
+from .control.control_contracts import EventCursor
 from .event_log import (
     latest_event_cursor,
     recover_jsonl_event_log_tail,

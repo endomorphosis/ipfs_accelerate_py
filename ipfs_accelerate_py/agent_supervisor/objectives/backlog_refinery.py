@@ -35,7 +35,7 @@ from ..analyzer_health import (
     classify_analyzer_health,
     run_analyzer_canaries,
 )
-from ..checkout_lock import BACKLOG_REFINERY_AUTHOR_EMAIL
+from ..merge.checkout_lock import BACKLOG_REFINERY_AUTHOR_EMAIL
 from ..event_log import read_jsonl_events
 from ..goal_completion import (
     DEFAULT_CLOCK_SKEW_SECONDS,
@@ -73,13 +73,13 @@ from ..scan_receipts import (
     scan_configuration_revision,
     scan_identity,
 )
-from ..task_identity import TaskIdentity, canonical_task_identity
+from ..task_sources.task_identity import TaskIdentity, canonical_task_identity
 from ..todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
     retry_budget_repair_source,
 )
-from ..taskboard_store import (
+from ..task_sources.taskboard_store import (
     locked_taskboard,
     replace_locked_taskboard,
     task_ids_from_artifact_names,
@@ -89,10 +89,10 @@ from ..validation_commands import (
     normalize_validation_command_text,
     split_validation_commands,
 )
-from ..wrapper_utils import AgentSupervisorNamespacePaths
+from ..core.wrapper_utils import AgentSupervisorNamespacePaths
 
 
-logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.backlog_refinery")
+logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery")
 
 DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MIN_OPEN_TASKS", "5"))
 DEFAULT_CODEBASE_SCAN_MAX_FINDINGS = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FINDINGS", "5"))
@@ -1967,7 +1967,7 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
         }
 
     try:
-        from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+        from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
             checkout_mutation_lock_path,
         )
     except ImportError:
@@ -6182,7 +6182,7 @@ def persist_codebase_scan_inventory(
 ) -> dict[str, Any]:
     """Persist unbounded per-path scan details and return its artifact record."""
 
-    from ..dataset_store import ObjectiveDatasetStore
+    from ..task_sources.dataset_store import ObjectiveDatasetStore
 
     scan_key = sha1(
         f"{repo_root.resolve()}\0{started_at.isoformat()}\0{time.time_ns()}".encode("utf-8")
@@ -6777,7 +6777,7 @@ def record_codebase_scan_findings(
             metadata=receipt_metadata,
             identity=source_identity,
         )
-        from ..dataset_store import ObjectiveDatasetStore
+        from ..task_sources.dataset_store import ObjectiveDatasetStore
 
         quorum_store = ObjectiveDatasetStore(dataset_dir or discovery_dir)
         stored_quorum = quorum_store.load_exhaustion_quorum(binding.repository_id)
@@ -6837,7 +6837,7 @@ def record_codebase_scan_findings(
     bundle_records: list[dict[str, Any]] = []
     generated_paths: list[Path] = []
     if bundle_dir is not None:
-        from ..todo_vector_index import collect_output_symbols
+        from ..task_sources.todo_vector_index import collect_output_symbols
 
     detected_count = len(findings)
     with locked_taskboard(todo_path) as taskboard:
@@ -8204,7 +8204,7 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     return {
-        "schema": "ipfs_accelerate_py.agent_supervisor.backlog_refinery",
+        "schema": "ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery",
         "repo_root": str(repo_root),
         "todo_path": str(args.todo_path.resolve()),
         "strategy_path": str(strategy_path),

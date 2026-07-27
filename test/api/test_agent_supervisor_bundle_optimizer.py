@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_optimizer import (
     prove_critical_path_width,
     propagate_goal_packet_completion,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     EvidenceSourcePolicy,
     TASK_GENERATION_ACCEPTANCE_CRITERIA,
     TASK_GENERATION_CHILD_GOAL_IDS,
@@ -33,18 +33,18 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     ConflictWaveProjection,
     project_conflict_free_wave,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     TodoIndexRecord,
     build_execution_packet,
 )
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     optimize_bundle_payloads,
 )
-from ipfs_accelerate_py.agent_supervisor.task_identity import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
     canonical_bundle_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.task_quality import TaskCandidate

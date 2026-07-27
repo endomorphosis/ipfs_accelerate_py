@@ -40,7 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
 from ipfs_accelerate_py.agent_supervisor.audit_scanner import (
     run_low_backlog_analysis,
 )
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     build_python_ast_blob_record,
 )
 from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import (

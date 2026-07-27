@@ -9,7 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
 )
-from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
+from ipfs_accelerate_py.agent_supervisor.validation.proposal_validation import (
     ImplementationProposal,
     NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
     ORDERED_PROPOSAL_GATES,

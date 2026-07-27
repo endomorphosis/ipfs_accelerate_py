@@ -26,7 +26,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from .backlog_refinery import (
+from .objectives.backlog_refinery import (
     DEFAULT_TASK_ID_PREFIX,
     effective_open_task_count,
     filter_self_improvement_successor_candidates,
@@ -42,7 +42,7 @@ from .goal_completion import (
     GoalCompletionDecision,
     evaluate_goal_completion,
 )
-from .objective_graph import (
+from .objectives.objective_graph import (
     ObjectiveGenerationLimits,
     ObjectiveGoalMaterializationPolicy,
     ObjectiveWorkKind,

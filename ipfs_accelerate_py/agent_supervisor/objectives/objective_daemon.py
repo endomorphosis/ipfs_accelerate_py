@@ -20,7 +20,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..goal_completion import CompletionEvidence
-from ..external_completion import (
+from ..core.external_completion import (
     ExternalCompletionAuthority,
     load_external_completion_authority,
 )
@@ -4514,7 +4514,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     payload = {
-        "schema": "ipfs_accelerate_py.agent_supervisor.objective_daemon",
+        "schema": "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon",
         "repo_root": str(repo_root),
         "objective_path": repo_relative_path(repo_root, objective_path),
         "todo_path": repo_relative_path(repo_root, todo_path),

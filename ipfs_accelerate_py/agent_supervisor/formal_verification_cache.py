@@ -28,7 +28,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final, TypeVar
 
-from .duckdb_state import (
+from .task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBRow,
     initialize_duckdb_database,

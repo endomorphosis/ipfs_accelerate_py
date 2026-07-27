@@ -5,9 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor import (
-    ProtocolVerifier as ExportedProtocolVerifier,
-)
+from ipfs_accelerate_py.agent_supervisor import ProtocolVerifier as ExportedProtocolVerifier
 from ipfs_accelerate_py.agent_supervisor.protocol_verification import (
     ATTESTATION_PROTOCOL_MODEL,
     CORE_PROTOCOL_MODEL,

@@ -17,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.decision_contracts import (
     EffectEnvelope,
     EffectKind,
 )
-from ipfs_accelerate_py.agent_supervisor.execution_permit import (
+from ipfs_accelerate_py.agent_supervisor.control.execution_permit import (
     ExecutionAttempt,
     ExecutionEvidence,
     ExecutionPermit,

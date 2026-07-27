@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from typing import Any, Final
 
-from .conflict_graph import (
+from .core.conflict_graph import (
     ConflictEdge,
     ConflictWaveProjection,
     TaskWorkContract,
@@ -31,7 +31,7 @@ from .conflict_graph import (
     materialize_task_conflict_graph,
     project_conflict_free_wave,
 )
-from .task_identity import canonical_content_cid, canonical_json_bytes
+from .task_sources.task_identity import canonical_content_cid, canonical_json_bytes
 
 
 PACKET_COMPLETION_BINDING_REQUIREMENT_ID: Final = (

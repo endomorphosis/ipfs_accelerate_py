@@ -4193,7 +4193,7 @@ def _evaluate_transitive_impact_objective_completion(
         evaluate_transitive_impact_admission_closure,
     )
     from .goal_completion import evaluate_goal_completion
-    from .proposal_validation import ProposalValidationResult
+    from .validation.proposal_validation import ProposalValidationResult
 
     proposal = (
         proposal_validation
@@ -5330,7 +5330,7 @@ class ValidationScheduler:
         )
         proposal_receipt: dict[str, Any] | None = None
         if proposal_validation is not None:
-            from .proposal_validation import ProposalValidationResult
+            from .validation.proposal_validation import ProposalValidationResult
 
             proposal_result = (
                 proposal_validation
@@ -5950,7 +5950,7 @@ class ValidationScheduler:
         node as undispatched.
         """
 
-        from .proposal_validation import ProposalValidationResult
+        from .validation.proposal_validation import ProposalValidationResult
 
         proposal_result = (
             proposal_validation

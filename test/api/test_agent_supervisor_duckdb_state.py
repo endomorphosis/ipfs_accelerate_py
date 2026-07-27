@@ -4,8 +4,8 @@ import hashlib
 import sqlite3
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor import duckdb_state
-from ipfs_accelerate_py.agent_supervisor.duckdb_state import (
+from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DUCKDB_ONLY_ENV,
     initialize_duckdb_database,
     is_sqlite_database,
@@ -13,7 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.duckdb_state import (
     resolve_duckdb_path,
 )
 from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
-from ipfs_accelerate_py.agent_supervisor.merge_resolver import MergeResolverRegistry
+from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import MergeResolverRegistry
 
 
 def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(

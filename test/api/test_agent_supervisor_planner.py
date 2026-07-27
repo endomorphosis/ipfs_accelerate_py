@@ -18,7 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
     LeaseGrant,
     adapt_goal_bundle,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
     critical_path_schedule,
     materialize_task_dependency_dag,

@@ -8,7 +8,7 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
 
-from .objective_graph import ObjectiveGoal, objective_heap_schedule
+from .objectives.objective_graph import ObjectiveGoal, objective_heap_schedule
 from .todo_daemon.implementation_daemon import PortalTask
 
 # Compatibility export; lifecycle decisions below use ObjectiveGoal's

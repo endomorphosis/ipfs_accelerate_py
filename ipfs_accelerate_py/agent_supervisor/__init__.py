@@ -968,7 +968,7 @@ from .goal_completion import (
 # ownership home; callers should migrate to
 # agent_supervisor.self_improvement.self_improvement_completion once the
 # temporary package re-export is removed.
-from .self_improvement_completion import (
+from .self_improvement.self_improvement_completion import (
     SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA,
     SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS,
     SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID,

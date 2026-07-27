@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .scan_receipts import RefillScanResult
-from .wrapper_utils import (
+from .core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
     with_default,
     with_repeated_default,

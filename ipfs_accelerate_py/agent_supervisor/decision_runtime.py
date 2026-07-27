@@ -22,7 +22,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Final
 
-from .control_contracts import EventCursor
+from .control.control_contracts import EventCursor
 from .decision_context import ContextCompletenessWitness
 from .decision_contracts import (
     ApplicabilityFact,
@@ -33,7 +33,7 @@ from .decision_contracts import (
     MANDATORY_SEMANTIC_ROOT_KINDS,
     SemanticRoot,
 )
-from .execution_permit import (
+from .control.execution_permit import (
     ExecutionAttempt,
     ExecutionEvidence,
     ExecutionPermit,

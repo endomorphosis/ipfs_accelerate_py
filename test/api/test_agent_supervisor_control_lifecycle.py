@@ -15,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA,
     CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION,
     CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION,
@@ -58,7 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
     ExhaustionQuorumMember,
     ExhaustionQuorumResult,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
     InMemoryLifecycleStore,

@@ -27,7 +27,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
-from .control_plane import (
+from .control.control_plane import (
     CONTROL_MUTATION_EVENT_SCHEMA,
     LEGAL_LIFECYCLE_TRANSITIONS,
     LIFECYCLE_EVENT_SCHEMA,

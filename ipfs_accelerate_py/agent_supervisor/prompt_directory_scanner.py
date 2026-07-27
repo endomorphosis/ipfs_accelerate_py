@@ -44,7 +44,7 @@ from .prompt_workflow import (
 
 if TYPE_CHECKING:
     from .artifact_store import BoundedArtifactStore
-    from .program_behavior import ProgramBehavior
+    from .core.program_behavior import ProgramBehavior
 
 
 PROMPT_DIRECTORY_SCANNER_VERSION: Final[str] = "1.0.0"
@@ -1089,7 +1089,7 @@ def _classify(
         ):
             policies.append(path)
 
-    from .program_behavior import ProgramObservationKind
+    from .core.program_behavior import ProgramObservationKind
 
     all_interface_observations = [
         item
@@ -1644,7 +1644,7 @@ def scan_prompt_directory_detailed(
             }
         )
     )
-    from .program_behavior import (
+    from .core.program_behavior import (
         ProgramBehaviorError,
         RepositoryRaceError,
         RequiredInputTooLargeError,

@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor import checkout_lock as checkout_lock_module
-from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+from ipfs_accelerate_py.agent_supervisor.merge import checkout_lock as checkout_lock_module
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     serialized_lock_update,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
@@ -20,7 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
-from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     generated_protected_board_commit_subject,
 )

@@ -13,7 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
 )
-from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
+from ipfs_accelerate_py.agent_supervisor.validation.proposal_validation import (
     ImplementationProposal,
     ProposalExpectedEffect,
     ProposalFindingCode,

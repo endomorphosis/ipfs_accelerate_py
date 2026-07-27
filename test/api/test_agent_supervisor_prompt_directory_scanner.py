@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor import program_behavior
+from ipfs_accelerate_py.agent_supervisor.core import program_behavior
 from ipfs_accelerate_py.agent_supervisor.prompt_directory_scanner import (
     DirectoryResolutionError,
     NestedRepositoryError,

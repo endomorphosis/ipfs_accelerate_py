@@ -8,13 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor import (
-    backlog_refinery as backlog_refinery_module,
-)
-from ipfs_accelerate_py.agent_supervisor import (
-    objective_tracker as objective_tracker_module,
-)
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery as backlog_refinery_module
+from ipfs_accelerate_py.agent_supervisor import objective_tracker as objective_tracker_module
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY,
     align_completion_gate_force_goal_ids,
     filter_self_improvement_successor_candidates,
@@ -28,7 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     GoalState,
     validate_completion_evidence,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     EvidenceMatchKind,
     EvidenceSourcePolicy,
     ObjectiveWorkProposal,

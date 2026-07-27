@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from typing import Any, Final
 
-from .task_identity import (
+from .task_sources.task_identity import (
     canonical_content_cid,
     canonical_json_bytes,
     canonical_task_identity,

@@ -15,13 +15,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from ..lifecycle_orchestrator import (
+from ..control.lifecycle_orchestrator import (
     LifecycleProfile,
     LinuxProcessAdapter,
     ProcessIdentityMismatch,
 )
 from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
-from ..wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaults, env_str
+from ..core.wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaults, env_str
 
 
 OutputFn = Callable[[str], None]
@@ -163,7 +163,7 @@ def implementation_supervisor_namespace_track_configs(
 ) -> tuple[ImplementationSupervisorTrackConfig, ...]:
     """Return implementation-supervisor track configs from namespace-based specs."""
 
-    from ..wrapper_utils import agent_supervisor_namespace_paths
+    from ..core.wrapper_utils import agent_supervisor_namespace_paths
 
     return tuple(
         implementation_supervisor_namespace_track_config(
@@ -696,7 +696,7 @@ def build_repo_implementation_multi_supervisor_launcher(
     """Build a repo-local implementation multi-supervisor launcher."""
 
     from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
-    from ..wrapper_utils import build_repo_runtime_environment_callbacks, repo_script_command
+    from ..core.wrapper_utils import build_repo_runtime_environment_callbacks, repo_script_command
 
     llm_merge_resolver_command = implementation_supervisor_llm_merge_resolver_command
     if not llm_merge_resolver_command and resolver_script_path:
@@ -1391,7 +1391,7 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
     command = [
         sys.executable,
         "-m",
-        "ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner",
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
         *_without_detach(argv),
     ]
     out_handle = master_log.open("ab")

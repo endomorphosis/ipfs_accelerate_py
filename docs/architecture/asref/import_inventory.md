@@ -31,21 +31,21 @@ Dynamic import sites: 4
 
 ## Console entry points
 
-- `ipfs-accelerate-agent-objective-daemon` → `ipfs_accelerate_py.agent_supervisor.objective_daemon:main` (pyproject.toml)
-- `ipfs-accelerate-agent-backlog-refinery` → `ipfs_accelerate_py.agent_supervisor.backlog_refinery:main` (pyproject.toml)
+- `ipfs-accelerate-agent-objective-daemon` → `ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon:main` (pyproject.toml)
+- `ipfs-accelerate-agent-backlog-refinery` → `ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery:main` (pyproject.toml)
 - `ipfs-accelerate-agent-bundle-supervisor` → `ipfs_accelerate_py.agent_supervisor.bundle_supervisor:main` (pyproject.toml)
 - `ipfs-accelerate-agent-artifact-query` → `ipfs_accelerate_py.agent_supervisor.artifact_store:main` (pyproject.toml)
 - `ipfs-accelerate-agent-implementation-daemon` → `ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main` (pyproject.toml)
 - `ipfs-accelerate-agent-implementation-supervisor` → `ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main` (pyproject.toml)
-- `ipfs-accelerate-agent-merge-resolver` → `ipfs_accelerate_py.agent_supervisor.merge_resolver:main` (pyproject.toml)
+- `ipfs-accelerate-agent-merge-resolver` → `ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main` (pyproject.toml)
 - `ipfs-accelerate-agent-llm-merge-resolver-fallback` → `ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback:main` (pyproject.toml)
-- `ipfs-accelerate-agent-objective-daemon` → `ipfs_accelerate_py.agent_supervisor.objective_daemon:main` (setup.py)
-- `ipfs-accelerate-agent-backlog-refinery` → `ipfs_accelerate_py.agent_supervisor.backlog_refinery:main` (setup.py)
+- `ipfs-accelerate-agent-objective-daemon` → `ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon:main` (setup.py)
+- `ipfs-accelerate-agent-backlog-refinery` → `ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery:main` (setup.py)
 - `ipfs-accelerate-agent-bundle-supervisor` → `ipfs_accelerate_py.agent_supervisor.bundle_supervisor:main` (setup.py)
 - `ipfs-accelerate-agent-artifact-query` → `ipfs_accelerate_py.agent_supervisor.artifact_store:main` (setup.py)
 - `ipfs-accelerate-agent-implementation-daemon` → `ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main` (setup.py)
 - `ipfs-accelerate-agent-implementation-supervisor` → `ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main` (setup.py)
-- `ipfs-accelerate-agent-merge-resolver` → `ipfs_accelerate_py.agent_supervisor.merge_resolver:main` (setup.py)
+- `ipfs-accelerate-agent-merge-resolver` → `ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main` (setup.py)
 - `ipfs-accelerate-agent-llm-merge-resolver-fallback` → `ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback:main` (setup.py)
 
 ## Dynamic import sites

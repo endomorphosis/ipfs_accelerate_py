@@ -21,7 +21,7 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from .conflict_graph import (
+from .core.conflict_graph import (
     ASTBlobRecord,
     coerce_ast_blob_record,
     index_ast_blob_records,

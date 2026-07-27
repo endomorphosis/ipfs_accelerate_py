@@ -17,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
     run_analyzer_canaries,
     validate_canary_registry,
 )
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     CODEBASE_SCAN_ANALYZER_VERSION,
     run_codebase_analyzer_canaries,
 )

@@ -1795,7 +1795,7 @@ def project_objective_markdown(
 
     if not isinstance(markdown, str):
         raise TypeError("markdown must be a string")
-    from .objective_graph import parse_goal_heap
+    from .objectives.objective_graph import parse_goal_heap
 
     parsed = parse_goal_heap(markdown)
     selected = [item for item in parsed if goal_id is None or item.goal_id == goal_id]

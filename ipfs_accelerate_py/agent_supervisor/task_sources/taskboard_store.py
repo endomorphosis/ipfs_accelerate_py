@@ -29,7 +29,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final, TextIO
 
-from ..control_contracts import EventCursor
+from ..control.control_contracts import EventCursor
 
 
 PATH_METADATA_SCHEMA: Final = (

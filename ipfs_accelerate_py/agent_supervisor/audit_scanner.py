@@ -25,7 +25,7 @@ from .analyzer_health import (
     AnalyzerHealthThresholds,
     classify_analyzer_health,
 )
-from .backlog_refinery import (
+from .objectives.backlog_refinery import (
     CODEBASE_SCAN_ANALYZER_VERSION,
     CODEBASE_AUDIT_SCANNER_VERSION,
     CODEBASE_SCAN_SKIP_PREFIXES,
@@ -39,7 +39,7 @@ from .backlog_refinery import (
     run_codebase_analyzer_canaries,
     scan_codebase_findings,
 )
-from .dataset_store import DatasetAuditSnapshotArtifact, ObjectiveDatasetStore
+from .task_sources.dataset_store import DatasetAuditSnapshotArtifact, ObjectiveDatasetStore
 from .scan_receipts import (
     DEFAULT_EXHAUSTION_QUORUM_SIZE,
     DEFAULT_SCAN_FRESHNESS_SECONDS,
@@ -164,7 +164,7 @@ def run_exhaustive_ast_coverage(
 ) -> AstCoverageReport:
     """Run the repository's real AST dataset scanner with explicit coverage limits."""
 
-    from .objective_graph import (
+    from .objectives.objective_graph import (
         collect_ast_dataset_records,
         evidence_index,
         objective_candidate_files,
@@ -957,7 +957,7 @@ def run_low_backlog_analysis(
     if analysis_pipeline is not None:
         try:
             from .analysis_pipeline import AnalysisPipelineRequest
-            from .conflict_graph import build_python_ast_blob_record
+            from .core.conflict_graph import build_python_ast_blob_record
 
             if analysis_pipeline_request is None:
                 identity = scan_identity(Path(repo_root).resolve())

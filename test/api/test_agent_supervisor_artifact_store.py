@@ -23,10 +23,10 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     write_bundle_index_artifact,
     write_scheduler_manifest_artifact,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     write_todo_vector_index_artifact,
 )
 

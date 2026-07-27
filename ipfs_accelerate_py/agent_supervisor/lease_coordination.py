@@ -25,13 +25,13 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Iterator
 
-from .duckdb_state import (
+from .task_sources.duckdb_state import (
     DuckDBConnection as _DuckConnection,
     DuckDBCursor as _DuckCursor,
     DuckDBRow as _DuckRow,
     exclusive_file_lock as _exclusive_file_lock,
 )
-from .task_identity import canonical_bundle_identity
+from .task_sources.task_identity import canonical_bundle_identity
 
 MIN_LEASE_MS = 5_000
 MAX_LEASE_MS = 300_000

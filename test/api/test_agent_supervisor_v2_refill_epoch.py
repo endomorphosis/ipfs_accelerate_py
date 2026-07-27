@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     objective_heap_content_id,
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement_v2 import (
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_v2 import (
     preview_v2_refill_epoch,
     run_v2_refill_epoch,
 )
-from ipfs_accelerate_py.agent_supervisor.taskboard_store import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import (
     taskboard_revision,
 )
 
@@ -511,7 +511,7 @@ def test_durable_journal_recovers_interruption_after_heap_cas(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from ipfs_accelerate_py.agent_supervisor import taskboard_store
+    from ipfs_accelerate_py.agent_supervisor.task_sources import taskboard_store
 
     paths = _paths(tmp_path)
     residual = _residual(task_count=2)

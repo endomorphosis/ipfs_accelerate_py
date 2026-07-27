@@ -21,7 +21,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
-from .authorization_logic import (
+from .control.authorization_logic import (
     AuthorizationDecision,
     AuthorizationGrant,
     AuthorizationPolicy,

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.goal_completion import CompletionEvidence
-from ipfs_accelerate_py.agent_supervisor.external_completion import (
+from ipfs_accelerate_py.agent_supervisor.core.external_completion import (
     ExternalArtifactIdentity,
     ExternalCompletionAuthority,
     ExternalCompletionRequirement,
@@ -20,11 +20,11 @@ from ipfs_accelerate_py.agent_supervisor.external_completion import (
     load_external_completion_authority,
     validate_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     build_arg_parser,
     run_objective_daemon,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
     generate_objective_todos,
     materialize_task_dependency_dag,
@@ -35,7 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     completion_tree_identity,
     reconcile_objective_goal_completion,
 )
-from ipfs_accelerate_py.agent_supervisor.task_identity import canonical_content_cid
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import canonical_content_cid
 
 
 EVIDENCE_TERM = "HSSLEV_EXTERNAL_OPERATION_COMPLETE"

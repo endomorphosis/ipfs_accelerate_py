@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.context_contracts import ContextBudget
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     build_arg_parser,
     discovery_fingerprints,
     run_objective_daemon,
@@ -31,28 +31,28 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ObjectiveGoal,
     objective_heap_schedule,
     parse_goal_heap,
     scan_objective_gaps,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     _canonical_dependency_waves,
     parse_todo_vector_records,
     write_todo_vector_index,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority, run_goal_validation
 from ipfs_accelerate_py.agent_supervisor.validation_commands import split_validation_commands
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     dependency_guardrail_records,
     reconciliation_guardrail_plan,
     reconciliation_guardrail_records,
     record_reconciliation_guardrail_findings,
 )
-from ipfs_accelerate_py.agent_supervisor import merge_resolver
+from ipfs_accelerate_py.agent_supervisor.merge import merge_resolver
 from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
-from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     ConfiguredMergeResolverRunner,
     MergeResolverNamespaceSpec,
     build_configured_merge_resolver_runner,
@@ -75,8 +75,8 @@ from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     run_configured_task_proposal_router_cli,
     standard_task_proposal_requested_outputs,
 )
-from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
-from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     ConfiguredMultiSupervisorCliRunner,
     ConfiguredMultiSupervisorLauncher,
     ImplementationSupervisorNamespaceTrackSpec,
@@ -125,9 +125,9 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_namespace_objective_refill_defaults_factory,
     build_objective_refill_defaults_from_paths,
 )
-from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
+from ipfs_accelerate_py.agent_supervisor.merge import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
-from ipfs_accelerate_py.agent_supervisor.git_gc import GitGarbageCollector
+from ipfs_accelerate_py.agent_supervisor.merge.git_gc import GitGarbageCollector
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -197,7 +197,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     terminate_process_with_grace,
     terminate_supervised_child,
 )
-from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
+from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import (
     AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS,
     AgentSupervisorNamespaceContext,
     AgentSupervisorNamespacePaths,
@@ -2732,7 +2732,7 @@ def test_build_repo_task_proposal_router_runner_uses_repo_runtime_bootstrap(tmp_
         return RuntimeCallbacks()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.wrapper_utils.build_repo_runtime_environment_callbacks",
+        "ipfs_accelerate_py.agent_supervisor.core.wrapper_utils.build_repo_runtime_environment_callbacks",
         fake_build_repo_runtime_environment_callbacks,
     )
 
@@ -11377,7 +11377,7 @@ def test_implementation_supervisor_runs_codebase_scan_after_objective_refill_tim
     tmp_path,
     monkeypatch,
 ):
-    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+    from ipfs_accelerate_py.agent_supervisor.objectives import objective_daemon
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11465,7 +11465,7 @@ def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
     tmp_path,
     monkeypatch,
 ):
-    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+    from ipfs_accelerate_py.agent_supervisor.objectives import objective_daemon
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11527,7 +11527,7 @@ def test_completion_reconciliation_runs_when_refill_is_skipped_by_threshold(
     tmp_path,
     monkeypatch,
 ):
-    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+    from ipfs_accelerate_py.agent_supervisor.objectives import objective_daemon
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11681,7 +11681,7 @@ def test_completion_artifact_refresh_wraps_launch_failure(tmp_path, monkeypatch)
 
 
 def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, monkeypatch):
-    from ipfs_accelerate_py.agent_supervisor import backlog_refinery
+    from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11733,7 +11733,7 @@ def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, mo
 
 
 def test_implementation_supervisor_records_codebase_refill_timeout(tmp_path, monkeypatch):
-    from ipfs_accelerate_py.agent_supervisor import backlog_refinery
+    from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12044,7 +12044,7 @@ def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
 
     payload = run_objective_daemon(args)
 
-    assert payload["schema"] == "ipfs_accelerate_py.agent_supervisor.objective_daemon"
+    assert payload["schema"] == "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon"
     assert payload["generated_count"] == 1
     assert payload["task_ids"] == ["ACCEL-001"]
     assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
@@ -12056,7 +12056,7 @@ def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
     todo_index = bundle_dir / "todo_vector_index.json"
     assert todo_index.exists()
     index_payload = json.loads(todo_index.read_text(encoding="utf-8"))
-    assert index_payload["schema"] == "ipfs_accelerate_py.agent_supervisor.todo_vector_index"
+    assert index_payload["schema"] == "ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index"
     assert index_payload["task_count"] == 1
     assert index_payload["records"][0]["goal_id"] == "VAIOS-G010"
     assert index_payload["records"][0]["merge_key"]
@@ -15727,7 +15727,7 @@ def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
 
 
 def test_llm_merge_resolver_times_out_hung_command(tmp_path):
-    from ipfs_accelerate_py.agent_supervisor.merge_resolver import invoke_llm_resolver
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import invoke_llm_resolver
 
     sleeper = tmp_path / "sleeper.py"
     sleeper.write_text("import time\ntime.sleep(5)\n", encoding="utf-8")

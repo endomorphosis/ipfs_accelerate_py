@@ -9,11 +9,11 @@ from ipfs_accelerate_py.agent_supervisor.audit_scanner import (
     audit_codebase_findings,
     classify_audit_findings,
 )
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     CodebaseFinding,
     record_codebase_scan_findings,
 )
-from ipfs_accelerate_py.agent_supervisor.dataset_store import ObjectiveDatasetStore
+from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
     ExhaustionBinding,
     RefillScanResult,

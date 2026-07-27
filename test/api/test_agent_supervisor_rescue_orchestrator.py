@@ -17,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
     SupervisorIncident,
     prompt_workflow_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.rescue_orchestrator import (
+from ipfs_accelerate_py.agent_supervisor.rescue.rescue_orchestrator import (
     REQUIRED_AUTHORIZATION_DOMAINS,
     RESCUE_ORCHESTRATION_REQUIREMENT_ID,
     RescueAuthorizationDomain,

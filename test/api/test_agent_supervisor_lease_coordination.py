@@ -22,7 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
     migrate_sqlite_coordination_store,
     profile_g_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
     submit_bundle_tasks,
 )

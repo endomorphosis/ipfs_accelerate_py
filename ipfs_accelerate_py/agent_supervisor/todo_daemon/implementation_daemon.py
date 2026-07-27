@@ -38,7 +38,7 @@ from ..formal_verification_contracts import canonical_json, content_identity
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
-from ..checkout_lock import (
+from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     checkout_lock_metadata,
@@ -52,15 +52,15 @@ from ..event_log import (
     repair_jsonl_event_log,
     unique_backup_path,
 )
-from ..merge_conflict_repair import (
+from ..merge.merge_conflict_repair import (
     resolve_append_only_markdown_conflicts,
     resolve_launch_readiness_conflicts,
     resolve_reconciliation_guardrail_todo_conflicts,
 )
-from ..submodule_degradation import DegradationState
-from ..persistent_task_queue import PersistentTaskQueue
-from ..task_identity import TaskIdentity, canonical_task_identity
-from ..task_source import (
+from ..core.submodule_degradation import DegradationState
+from ..task_sources.persistent_task_queue import PersistentTaskQueue
+from ..task_sources.task_identity import TaskIdentity, canonical_task_identity
+from ..task_sources.task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
     CanonicalTaskSource,
     TaskSourceError,
@@ -69,14 +69,14 @@ from ..task_source import (
     TaskSourceTask,
     open_task_source,
 )
-from ..taskboard_store import (
+from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
     locked_taskboard,
     replace_locked_taskboard,
 )
-from ..git_gc import GitGarbageCollector
+from ..merge.git_gc import GitGarbageCollector
 from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
-from ..merge_checkpoint import MergeCheckpoint
+from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge_queue import MergeQueue
 from ..validation_commands import (
     infer_validation_impact_paths,
@@ -4883,7 +4883,7 @@ class PortalImplementationDaemon:
 
     def _ensure_runtime_wake_coordinator(self) -> Any:
         if self._runtime_wake_coordinator is None:
-            from ..taskboard_store import RuntimeWakeCoordinator
+            from ..task_sources.taskboard_store import RuntimeWakeCoordinator
 
             self._runtime_wake_coordinator = RuntimeWakeCoordinator(
                 self._runtime_source_paths(),
@@ -11922,7 +11922,7 @@ class PortalImplementationDaemon:
         import importlib
         from .. import proposal_validation as _proposal_validation_module
         importlib.reload(_proposal_validation_module)
-        from ..proposal_validation import (
+        from ..validation.proposal_validation import (
             ImplementationProposal,
             ProposalOperation,
             ProposalRisk,
@@ -14095,7 +14095,7 @@ class PortalImplementationDaemon:
         command_template = self.llm_merge_resolver_command
         if not command_template:
             return {"attempted": False, "reason": "resolver_command_not_configured"}
-        from ipfs_accelerate_py.agent_supervisor.merge_resolver import build_merge_prompt, invoke_llm_resolver
+        from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
 
         merge_result = {
             "attempted": True,
@@ -16293,7 +16293,7 @@ class PortalImplementationDaemon:
     def _path_is_generated_status_output(self, relative: str) -> bool:
         if self._path_is_generated_worktree_artifact(relative):
             return True
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             generated_guardrail_status_filters,
             path_is_generated_status_output,
         )

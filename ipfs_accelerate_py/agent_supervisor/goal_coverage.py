@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from typing import Any, Iterable, Mapping, Sequence
 
-from .objective_graph import (
+from .objectives.objective_graph import (
     CoverageStatus,
     CoverageSurfaceKind,
     ObjectiveWorkKind,

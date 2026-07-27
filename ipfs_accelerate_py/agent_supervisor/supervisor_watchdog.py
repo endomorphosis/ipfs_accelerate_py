@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Final, Mapping, Sequence
 
-from .control_plane import (
+from .control.control_plane import (
     LIFECYCLE_STATUS_SCHEMA,
     SupervisorLifecycleState,
 )

@@ -15,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
     FormalDeltaReplanner,
     ReplannerValidationError,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_failure_memory import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_failure_memory import (
     DELTA_REPLAN_REQUIREMENT_ID,
     BranchFailureKind,
     BranchFailureObservation,

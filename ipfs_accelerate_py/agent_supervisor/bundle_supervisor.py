@@ -26,7 +26,7 @@ from .artifact_store import (
     read_artifact_fields,
     write_scheduler_manifest_artifact,
 )
-from .conflict_graph import materialize_task_conflict_graph
+from .core.conflict_graph import materialize_task_conflict_graph
 from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
 from .lease_coordination import (
     DistributedLaneDispatch,
@@ -37,7 +37,7 @@ from .lease_coordination import (
     WorkerCapabilityReceipt,
     WorkerEnvironmentReceipt,
 )
-from .objective_graph import (
+from .objectives.objective_graph import (
     DEFAULT_TASK_PREFIX,
     build_bundle_task_payloads,
     repo_relative_path,

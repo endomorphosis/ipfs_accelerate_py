@@ -14,7 +14,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from .event_log import append_scan_receipt_event
 from .scan_receipts import RefillScanResult
-from .wrapper_utils import (
+from .core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
     with_default,
     with_flag_default,

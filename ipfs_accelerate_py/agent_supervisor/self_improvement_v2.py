@@ -871,12 +871,12 @@ def generate_v2_successor_goals(
     rejection detail is bounded, while overflow remains explicitly counted.
     """
 
-    from .backlog_refinery import (
+    from .objectives.backlog_refinery import (
         filter_self_improvement_successor_candidates,
         semantic_novelty_distance,
         unsupported_successor_dependencies,
     )
-    from .objective_graph import ObjectiveWorkKind, ObjectiveWorkProposal
+    from .objectives.objective_graph import ObjectiveWorkKind, ObjectiveWorkProposal
     from .task_quality import (
         GoalQualityLintPolicy,
         lint_successor_goal_candidate,
@@ -3601,12 +3601,12 @@ def preview_v2_refill_epoch(
 ) -> V2RefillEpochPreview:
     """Purely preview one exact goal/task delta for an admitted packet."""
 
-    from .objective_graph import (
+    from .objectives.objective_graph import (
         ObjectiveGenerationLimits,
         ObjectiveGoalMaterializationPolicy,
         preview_objective_goal_materialization,
     )
-    from .taskboard_store import (
+    from .task_sources.taskboard_store import (
         TaskboardMaterializationEntry,
         preview_taskboard_materialization,
     )
@@ -3844,7 +3844,7 @@ def _v2_refill_preview_from_record(
 def _v2_refill_taskboard_preview_from_entry(entry: Mapping[str, Any]) -> Any:
     """Rebuild the exact board child transaction after a process interruption."""
 
-    from .taskboard_store import preview_taskboard_materialization
+    from .task_sources.taskboard_store import preview_taskboard_materialization
 
     recovery = entry.get("taskboard_recovery")
     if not isinstance(recovery, Mapping):
@@ -4009,7 +4009,7 @@ def _persist_v2_refill_entry(
     journal_path: Path,
     entry: Mapping[str, Any],
 ) -> dict[str, Any]:
-    from .duckdb_state import exclusive_file_lock
+    from .task_sources.duckdb_state import exclusive_file_lock
 
     lock_path = journal_path.with_name(f".{journal_path.name}.lock")
     with exclusive_file_lock(lock_path):
@@ -4048,12 +4048,12 @@ def run_v2_refill_epoch(
 ) -> V2RefillEpochResult:
     """Run, jointly CAS-commit, or exactly replay one ASI-121 refill epoch."""
 
-    from .objective_graph import objective_heap_content_id
+    from .objectives.objective_graph import objective_heap_content_id
     from .objective_tracker import (
         ObjectiveMaterializationTransactionState,
         commit_objective_goal_materialization,
     )
-    from .taskboard_store import (
+    from .task_sources.taskboard_store import (
         TaskboardMaterializationTransactionState,
         commit_taskboard_materialization,
         taskboard_revision,

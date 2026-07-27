@@ -27,7 +27,7 @@ from ..goal_completion import (
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     CompletionEvidence,
 )
-from ..task_identity import canonical_content_cid
+from ..task_sources.task_identity import canonical_content_cid
 
 
 EXTERNAL_GITLINK_SCHEMA = (

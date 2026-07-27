@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py import cli
-from ipfs_accelerate_py.agent_supervisor import control_cli
-from ipfs_accelerate_py.agent_supervisor import control_plane as control_plane_module
-from ipfs_accelerate_py.agent_supervisor.control_cli import (
+from ipfs_accelerate_py.agent_supervisor.control import control_cli
+from ipfs_accelerate_py.agent_supervisor.control import control_plane as control_plane_module
+from ipfs_accelerate_py.agent_supervisor.control.control_cli import (
     AGENT_CLI_EXIT_CANCELLED,
     AGENT_CLI_EXIT_CONFLICT,
     AGENT_CLI_EXIT_NOT_FOUND,
@@ -24,7 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.control_cli import (
     COMMAND_OPERATIONS,
     agent_cli_discovery_manifest,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     MUTATION_OPERATIONS,
     OPERATION_CATALOG_V2,
     PROPOSAL_OPERATIONS,
@@ -52,7 +52,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
 from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     content_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA,
     CONTROL_CONFORMANCE_V2_REQUIREMENT_ID,
     CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA,
@@ -1193,7 +1193,7 @@ def test_catalog_publication_fails_closed_on_population_and_semantic_drift() -> 
 
     dispatcher_ids = dict(canonical.dispatcher_ids)
     dispatcher_ids[Operation.STATUS.value] = (
-        "ipfs_accelerate_py.agent_supervisor.control_cli:run_agent_cli"
+        "ipfs_accelerate_py.agent_supervisor.control.control_cli:run_agent_cli"
     )
     with pytest.raises(
         ControlCatalogConformanceError,

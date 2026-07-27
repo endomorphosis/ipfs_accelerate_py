@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement_completion import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_completion import (
     SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA,
     SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS,
     SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID,

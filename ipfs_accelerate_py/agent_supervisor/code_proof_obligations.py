@@ -18,7 +18,7 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from .conflict_graph import (
+from .core.conflict_graph import (
     ASTBlobRecord,
     ConflictSurface,
     TaskConflictGraph,
@@ -2592,7 +2592,7 @@ def derive_fresh_implementation_obligations(
     proposal_result = None
     if proposal_validation is not None:
         # Kept local to avoid introducing a module-import cycle.
-        from .proposal_validation import ProposalValidationResult
+        from .validation.proposal_validation import ProposalValidationResult
 
         proposal_result = (
             proposal_validation
@@ -2901,7 +2901,7 @@ def transitive_impact_blocks_proof_derivation(
     authorize fresh implementation obligations or code-proof work.
     """
 
-    from .proposal_validation import ProposalValidationResult
+    from .validation.proposal_validation import ProposalValidationResult
     from .validation_scheduler import (
         REQUIRED_AUTHORITY_GATES,
         TRANSITIVE_IMPACT_OBJECTIVE_ID,
@@ -3282,7 +3282,7 @@ class ProofCandidateNonAuthorityEvidence:
         required = AssuranceLevel(self.required_assurance)
         object.__setattr__(self, "required_assurance", required)
 
-        from .proposal_validation import ProposalValidationResult
+        from .validation.proposal_validation import ProposalValidationResult
         from .validation_scheduler import ValidationDAGReceipt
 
         proposal = (

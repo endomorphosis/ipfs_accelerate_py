@@ -6,7 +6,7 @@ import pytest
 
 duckdb = pytest.importorskip("duckdb")
 
-from ipfs_accelerate_py.agent_supervisor.duckdb_task_source import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_task_source import (
     DUCKDB_TASK_SOURCE_SCHEMA,
     MAX_QUERY_LIMIT,
     DuckDBTaskSource,

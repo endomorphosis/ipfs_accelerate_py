@@ -315,7 +315,7 @@ def build_task_proposal_route_paths(
 ) -> TaskProposalRoutePaths:
     """Build standard repo-local paths for a task-proposal wrapper."""
 
-    from .wrapper_utils import repo_doc_path, repo_task_board_path
+    from .core.wrapper_utils import repo_doc_path, repo_task_board_path
 
     root = Path(repo_root)
     if artifact_dir is not None:
@@ -681,7 +681,7 @@ def build_repo_task_proposal_router_runner(
     resolved_repo_root = Path(repo_root)
     effective_bootstrap = bootstrap
     if effective_bootstrap is None:
-        from .wrapper_utils import build_repo_runtime_environment_callbacks
+        from .core.wrapper_utils import build_repo_runtime_environment_callbacks
 
         effective_bootstrap = build_repo_runtime_environment_callbacks(
             resolved_repo_root,
@@ -767,7 +767,7 @@ def build_repo_task_proposal_route_runner(
 ) -> ConfiguredTaskProposalRouterRunner:
     """Build a repo task-proposal runner from standard route inputs."""
 
-    from .wrapper_utils import task_board_path_option
+    from .core.wrapper_utils import task_board_path_option
 
     route_paths = build_task_proposal_route_paths(
         repo_root=repo_root,
@@ -2586,7 +2586,7 @@ def analysis_proposals_to_objective_work(
     actual evidence surface, files, symbols, and validation proof.
     """
 
-    from .objective_graph import ObjectiveWorkProposal
+    from .objectives.objective_graph import ObjectiveWorkProposal
 
     parent = str(parent_goal_id or "").strip()
     work: list[ObjectiveWorkProposal] = []

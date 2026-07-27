@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     persist_objective_plan_evaluations,
     plan_objective_records,
 )

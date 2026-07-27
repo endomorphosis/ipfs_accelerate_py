@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor import taskboard_store
-from ipfs_accelerate_py.agent_supervisor.markdown_task_source import (
+from ipfs_accelerate_py.agent_supervisor.task_sources import taskboard_store
+from ipfs_accelerate_py.agent_supervisor.task_sources.markdown_task_source import (
     MARKDOWN_TASK_SOURCE_SCHEMA,
     MARKDOWN_TASK_SOURCE_VERSION,
     MarkdownTaskSource,
@@ -23,7 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.markdown_task_source import (
 from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
     prompt_workflow_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.taskboard_store import TaskboardStore
+from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import TaskboardStore
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     parse_task_file,
 )

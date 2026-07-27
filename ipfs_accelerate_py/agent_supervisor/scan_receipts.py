@@ -1501,7 +1501,7 @@ def scan_receipt_cid(
         # implementation.  A few legacy analyzer metadata fields contain
         # finite floats, which that stricter identity helper rejects; the
         # canonical JSON fallback preserves those otherwise valid receipts.
-        from .task_identity import canonical_content_cid
+        from .task_sources.task_identity import canonical_content_cid
 
         return canonical_content_cid(payload)
     except ValueError:

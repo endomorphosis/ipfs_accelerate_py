@@ -10,7 +10,7 @@ This module provides periodic, non-blocking garbage collection that runs
 during supervisor idle time without disrupting active implementations.
 
 Usage:
-    from ipfs_accelerate_py.agent_supervisor.git_gc import GitGarbageCollector
+    from ipfs_accelerate_py.agent_supervisor.merge.git_gc import GitGarbageCollector
 
     gc = GitGarbageCollector(repo_root=Path("."))
     result = gc.run_if_needed()

@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor import program_behavior
+from ipfs_accelerate_py.agent_supervisor.core import program_behavior
 from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     ArtifactQuotaPolicy,
     BoundedArtifactStore,
 )
-from ipfs_accelerate_py.agent_supervisor.program_behavior import (
+from ipfs_accelerate_py.agent_supervisor.core.program_behavior import (
     ProgramObservationKind,
     ProposedEffect,
     ProposedEffectKind,

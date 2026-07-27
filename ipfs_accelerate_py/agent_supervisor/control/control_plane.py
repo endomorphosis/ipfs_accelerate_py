@@ -4022,7 +4022,7 @@ class RepositorySupervisorBackend:
         return {"value": value}
 
     def _goals(self, request: OperationRequest) -> Mapping[str, Any]:
-        from ..objective_graph import parse_goal_heap
+        from ..objectives.objective_graph import parse_goal_heap
 
         relative = _relative_parameter(request, "objective_path", "path")
         path = self._resolve(request, relative, state=False)
@@ -4043,7 +4043,7 @@ class RepositorySupervisorBackend:
         return self._window(goals, request)
 
     def _tasks(self, request: OperationRequest) -> Mapping[str, Any]:
-        from ..todo_vector_index import parse_todo_blocks
+        from ..task_sources.todo_vector_index import parse_todo_blocks
 
         relative = _relative_parameter(request, "todo_path", "path")
         path = self._resolve(request, relative, state=False)

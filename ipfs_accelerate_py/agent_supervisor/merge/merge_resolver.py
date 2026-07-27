@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
-from ..duckdb_state import (
+from ..task_sources.duckdb_state import (
     DuckDBConnection,
     initialize_duckdb_database,
     open_duckdb_connection,
@@ -685,7 +685,7 @@ def build_namespace_merge_resolver_runner(
     """Build a merge-resolver runner using the standard namespace state layout."""
 
     from ..implementation_daemon_runner import namespace_implementation_state_artifact_paths
-    from ..wrapper_utils import agent_supervisor_namespace_paths, prefixed_env_var
+    from ..core.wrapper_utils import agent_supervisor_namespace_paths, prefixed_env_var
 
     resolved_repo_root = Path(repo_root)
     namespace_paths = agent_supervisor_namespace_paths(resolved_repo_root, namespace)

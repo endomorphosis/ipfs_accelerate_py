@@ -201,14 +201,14 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-008 Close objective gap: Clear agent_supervisor package layout and monorepo root hygiene
 
-- Status: todo
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
 - Priority: P0
 - Track: agent-supervisor-refactor
 - Depends on:
-- Outputs: ipfs_accelerate_py/agent_supervisor, docs/architecture/agent_supervisor_module_refactor.objectives.md, docs/architecture/agent_supervisor_module_refactor.todo.md, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md, pyproject.toml, setup.py, scripts, test/api
+- Outputs: ipfs_accelerate_py/agent_supervisor, pyproject.toml, setup.py, scripts, test/api
 - Validation: python -m pytest test/api/test_agent_supervisor_todo_daemon_port.py test/api/test_agent_supervisor_control_conformance_v2.py -q --collect-only && rg -n "agent_supervisor\\.(objective_daemon|backlog_refinery|merge_resolver)\\b" pyproject.toml setup.py || true
 - Evidence inputs: data/agent_supervisor/discovery
 - Discovery evidence: /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-008-objective-gap-ee4a1d8f1c19.md
@@ -220,7 +220,7 @@ do not delete protected headers or rewrite completed history.
 - Objective heap index: 0
 - Parallel lane: asref/root
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
-- Predicted files: ipfs_accelerate_py/agent_supervisor, docs/architecture/agent_supervisor_module_refactor.objectives.md, docs/architecture/agent_supervisor_module_refactor.todo.md, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md, pyproject.toml, setup.py, scripts, test/api
+- Predicted files: ipfs_accelerate_py/agent_supervisor, pyproject.toml, setup.py, scripts, test/api
 - Changed paths:
 - AST symbols: objective_daemon implementation_daemon implementation_supervisor control_plane proposal_validation
 - Interfaces:
@@ -263,7 +263,7 @@ do not delete protected headers or rewrite completed history.
 - Candidate kind: aggregate
 - Todo vector key: db4328e6988f84c9
 - Acceptance: Objective scan filed this gap for ASREF-G000. Use evidence in /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-008-objective-gap-ee4a1d8f1c19.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ASREF-G010, ASREF-G090, ASREF-G100), and keep the supervisor-fed backlog aligned with the objective heap.  Bootstrap inventory and move map first; land independent packages in parallel after core; re-pack todo_daemon and public API late; root hygiene can run in parallel after bootstrap; cutover is last.
-
+- Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-009 Close objective gap: Branch bootstrap inventory and frozen move map
 
 - Status: completed
@@ -331,14 +331,14 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-010 Close objective gap: Autonomous supervisor execution with Grok 4.6
 
-- Status: todo
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
 - Priority: P1
 - Track: autonomous-execution
 - Depends on:
-- Outputs: docs/architecture/agent_supervisor_module_refactor.todo.md, data/agent_supervisor/bundles/asref, scripts/ops/agent_supervisor
+- Outputs: data/agent_supervisor/bundles/asref, scripts/ops/agent_supervisor
 - Validation: test -f docs/architecture/agent_supervisor_module_refactor.todo.md && test -d data/agent_supervisor/bundles/asref || true
 - Evidence inputs: data/agent_supervisor/discovery
 - Discovery evidence: /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-010-objective-gap-6eb7af222181.md
@@ -350,7 +350,7 @@ do not delete protected headers or rewrite completed history.
 - Objective heap index: 3
 - Parallel lane: asref/bootstrap
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
-- Predicted files: docs/architecture/agent_supervisor_module_refactor.todo.md, data/agent_supervisor/bundles/asref, scripts/ops/agent_supervisor
+- Predicted files: data/agent_supervisor/bundles/asref, scripts/ops/agent_supervisor
 - Changed paths:
 - AST symbols: MultiSupervisorRunner TodoImplementationSupervisor generate_objective_todos
 - Interfaces:
@@ -393,7 +393,7 @@ do not delete protected headers or rewrite completed history.
 - Candidate kind: aggregate
 - Todo vector key: 05f00aea4ca075a5
 - Acceptance: Objective scan filed this gap for ASREF-G100. Use evidence in /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-010-objective-gap-6eb7af222181.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md, docs/architecture/agent_supervisor_module_refactor.todo.md), and keep the supervisor-fed backlog aligned with the objective heap.  Keep provider wiring in integrations/runtime; do not block package moves on provider choice.
-
+- Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-011 Close objective gap: Objectives planning validation merge rescue runtime packages
 
 - Status: completed
@@ -461,14 +461,14 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-012 Close objective gap: Public API package README root hygiene and cutover
 
-- Status: todo
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
 - Priority: P0
 - Track: cutover
 - Depends on:
-- Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
+- Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore
 - Validation: python -m pytest test/api/test_agent_supervisor_todo_daemon_port.py test/api/test_agent_supervisor_control_conformance_v2.py test/api/test_agent_supervisor_objective_graph.py test/api/test_agent_supervisor_proposal_validation.py -q
 - Evidence inputs: data/agent_supervisor/discovery
 - Discovery evidence: /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-012-objective-gap-6b682db72fec.md
@@ -480,7 +480,7 @@ do not delete protected headers or rewrite completed history.
 - Objective heap index: 10
 - Parallel lane: asref/cutover
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
-- Predicted files: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
+- Predicted files: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore
 - Changed paths:
 - AST symbols: __all__
 - Interfaces:
@@ -523,17 +523,17 @@ do not delete protected headers or rewrite completed history.
 - Candidate kind: aggregate
 - Todo vector key: 15a18ddbf2d53263
 - Acceptance: Objective scan filed this gap for ASREF-G090. Use evidence in /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-012-objective-gap-6b682db72fec.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ASREF-G020, ASREF-G030, ASREF-G040, ASREF-G050, ASREF-G060, ASREF-G070, ASREF-G080), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f; implement a complete, cohesive change that fully advances the packet goals (ASREF-G090) and covers all the shared packet evidence in one comprehensive pass. Root hygiene may land earlier under asref/root-hygiene if parallelized, but cutover still owns the final no-old-import gate.
-
+- Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-013 Close objective gap: Public API package README root hygiene and cutover
 
-- Status: todo
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
 - Priority: P0
 - Track: cutover
 - Depends on:
-- Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
+- Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore
 - Validation: python -m pytest test/api/test_agent_supervisor_todo_daemon_port.py test/api/test_agent_supervisor_control_conformance_v2.py test/api/test_agent_supervisor_objective_graph.py test/api/test_agent_supervisor_proposal_validation.py -q
 - Evidence inputs: data/agent_supervisor/discovery
 - Discovery evidence: /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-013-objective-gap-71e6247767bc.md
@@ -545,7 +545,7 @@ do not delete protected headers or rewrite completed history.
 - Objective heap index: 10
 - Parallel lane: asref/cutover
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
-- Predicted files: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
+- Predicted files: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore
 - Changed paths:
 - AST symbols: __all__
 - Interfaces:
@@ -588,17 +588,17 @@ do not delete protected headers or rewrite completed history.
 - Candidate kind: evidence_cluster
 - Todo vector key: 0905d39565545ed8
 - Acceptance: Objective scan filed this gap for ASREF-G090. Use evidence in /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-013-objective-gap-71e6247767bc.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ASREF-G020, ASREF-G030, ASREF-G040, ASREF-G050), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f; implement a complete, cohesive change that fully advances the packet goals (ASREF-G090) and covers all the shared packet evidence in one comprehensive pass. Root hygiene may land earlier under asref/root-hygiene if parallelized, but cutover still owns the final no-old-import gate.
-
+- Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-014 Close objective gap: Public API package README root hygiene and cutover
 
-- Status: todo
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
 - Priority: P0
 - Track: cutover
 - Depends on:
-- Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
+- Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore
 - Validation: python -m pytest test/api/test_agent_supervisor_todo_daemon_port.py test/api/test_agent_supervisor_control_conformance_v2.py test/api/test_agent_supervisor_objective_graph.py test/api/test_agent_supervisor_proposal_validation.py -q
 - Evidence inputs: data/agent_supervisor/discovery
 - Discovery evidence: /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-014-objective-gap-3bf00dd5a620.md
@@ -610,7 +610,7 @@ do not delete protected headers or rewrite completed history.
 - Objective heap index: 10
 - Parallel lane: asref/cutover
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
-- Predicted files: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
+- Predicted files: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore
 - Changed paths:
 - AST symbols: __all__
 - Interfaces:
@@ -653,7 +653,7 @@ do not delete protected headers or rewrite completed history.
 - Candidate kind: evidence_cluster
 - Todo vector key: 39aca0a69b6e0270
 - Acceptance: Objective scan filed this gap for ASREF-G090. Use evidence in /home/barberb/portland-laws.github.io/ipfs_accelerate_py/data/agent_supervisor/discovery/asref/2026-07-27-asref-014-objective-gap-3bf00dd5a620.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ASREF-G060, ASREF-G070, ASREF-G080), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f; implement a complete, cohesive change that fully advances the packet goals (ASREF-G090) and covers all the shared packet evidence in one comprehensive pass. Root hygiene may land earlier under asref/root-hygiene if parallelized, but cutover still owns the final no-old-import gate.
-
+- Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-015 Resolve validation retry-budget failure for ASREF-003
 
 - Status: completed

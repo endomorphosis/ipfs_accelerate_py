@@ -26,7 +26,7 @@ from itertools import islice
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..dataset_store import DatasetArtifact, ObjectiveDatasetStore
+from ..task_sources.dataset_store import DatasetArtifact, ObjectiveDatasetStore
 from ..scan_receipts import (
     RefillScanResult,
     ScanTerminalReason,
@@ -34,7 +34,7 @@ from ..scan_receipts import (
     canonical_revision,
     scan_identity,
 )
-from ..task_identity import (
+from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_bundle_identity,
     canonical_content_cid,
@@ -49,7 +49,7 @@ from ..task_quality import (
     TASK_GENERATION_PRODUCING_TASK_IDS,
     TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS,
 )
-from ..taskboard_store import (
+from ..task_sources.taskboard_store import (
     locked_taskboard,
     replace_locked_taskboard,
     task_ids_from_artifact_names,
@@ -7374,7 +7374,7 @@ def materialize_task_planning_graph(
     merge receipts independently control dependency claimability.
     """
 
-    from ..conflict_graph import materialize_task_conflict_graph
+    from ..core.conflict_graph import materialize_task_conflict_graph
 
     task_records = list(tasks)
     dependency_graph = materialize_task_dependency_dag(
@@ -8584,7 +8584,7 @@ def scan_objective_gaps(
                 AnalysisPipelineRequest,
                 make_analysis_stage_receipt,
             )
-            from ..conflict_graph import build_python_ast_blob_record
+            from ..core.conflict_graph import build_python_ast_blob_record
 
             if analysis_pipeline is None:
                 def objective_scan_analyzer(context: Any) -> Any:
@@ -10239,7 +10239,7 @@ def generate_objective_todos(
         return []
     bundle_result = write_bundle_shards(bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records)
     if write_todo_vector_index:
-        from ..todo_vector_index import write_todo_vector_index as write_index
+        from ..task_sources.todo_vector_index import write_todo_vector_index as write_index
 
         write_index(
             repo_root=repo_root,
@@ -10449,7 +10449,7 @@ def _project_task_conflict_graph(
         if selected:
             projected_lanes[str(color)] = selected
     return {
-        "schema": graph.get("schema", "ipfs_accelerate_py.agent_supervisor.conflict_graph@1"),
+        "schema": graph.get("schema", "ipfs_accelerate_py.agent_supervisor.core.conflict_graph@1"),
         "projection": "bundle_incident",
         "surfaces": {
             cid: dict(surface)

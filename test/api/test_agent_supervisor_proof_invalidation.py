@@ -7,7 +7,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     contradictions_from_proof_invalidation,
     reconcile_goal_reopenings,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import ObjectiveGoal
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import ObjectiveGoal
 from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
     reconcile_objective_task_strategy,
 )

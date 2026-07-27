@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     OBJECTIVE_COMPLETION_EVIDENCE_ARTIFACT_SCHEMA,
     completion_gate_receipts_from_decisions,
     completion_evidence_records_from_gate_records,
@@ -13,7 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     load_goal_completion_gate_records,
 )
 from ipfs_accelerate_py.agent_supervisor.goal_completion import ContradictionEvidence
-from ipfs_accelerate_py.agent_supervisor.objective_graph import ObjectiveGoal
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import ObjectiveGoal
 from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
     JANITOR_RECEIPT_SCHEMA,
     reconcile_objective_task_strategy,

@@ -498,9 +498,7 @@ def test_logic_family_binding_stays_within_provenance_bound() -> None:
 
 
 def test_hammer_import_uses_managed_writable_environment(monkeypatch) -> None:
-    from ipfs_accelerate_py.agent_supervisor import (
-        ipfs_datasets_logic_provider as logic_provider,
-    )
+    from ipfs_accelerate_py.agent_supervisor import ipfs_datasets_logic_provider as logic_provider
 
     observed = {}
 

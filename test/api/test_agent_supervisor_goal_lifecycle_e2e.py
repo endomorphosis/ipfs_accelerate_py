@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     generate_objective_todos_result,
     scan_objective_gaps,
 )

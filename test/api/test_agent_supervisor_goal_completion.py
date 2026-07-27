@@ -30,7 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     objective_completion_revision,
     reconcile_objective_goal_completion,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     completion_gate_receipts_from_decisions,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (

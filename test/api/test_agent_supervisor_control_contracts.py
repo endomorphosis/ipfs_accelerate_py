@@ -13,7 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.context_contracts import (
     ContextReference,
     ContextTier,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     AuthorizationBindingError,
     AuthorizationDecision,
     AuthorizationVerdict,

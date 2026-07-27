@@ -4,7 +4,7 @@ import copy
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     ensure_task_blocks_present,
     next_task_id,
     refill_open_task_capacity,
@@ -12,7 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     task_id_prefix,
     task_ids_from_todo_text,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     EvidenceSourcePolicy,
     next_task_id as next_objective_task_id,
     normalize_task_id_prefix as normalize_objective_task_id_prefix,

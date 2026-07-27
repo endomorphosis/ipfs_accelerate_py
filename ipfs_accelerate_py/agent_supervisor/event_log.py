@@ -17,7 +17,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Mapping
 
-from .control_contracts import (
+from .control.control_contracts import (
     CursorReplayError,
     EventCursor,
     EventCursorError,

@@ -38,7 +38,7 @@ from typing import (
     Tuple,
 )
 
-from ..control_contracts import (
+from ..control.control_contracts import (
     EffectClaim,
     Operation,
     OperationRequest,

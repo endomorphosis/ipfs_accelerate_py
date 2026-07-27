@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from types import SimpleNamespace
 
-from ipfs_accelerate_py.agent_supervisor.control_contracts import Operation
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import Operation
 from ipfs_accelerate_py.agent_supervisor.prompt_goal_planner import (
     parse_prompt_goal_graph,
 )

@@ -9,7 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
     UNMAPPED_GOAL_ID,
     goal_coverage_work_seeds,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ObjectiveGenerationLimits,
     ObjectiveGoalMaterializationPolicy,
     ObjectiveWorkKind,
@@ -19,7 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     preview_objective_goal_materialization,
     parse_goal_heap,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     _objective_generation_board_state,
     active_objective_generation_work,
     blocked_review_objective_generation_families,

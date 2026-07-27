@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA,
     SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY,
 )

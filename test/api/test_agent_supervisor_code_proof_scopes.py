@@ -21,7 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     derive_fresh_implementation_obligations,
     validate_code_proof_receipt_bindings,
 )
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     build_conflict_surface,
     build_python_ast_blob_record,
 )

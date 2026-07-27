@@ -24,7 +24,7 @@ from hashlib import sha1
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..task_identity import canonical_content_cid, canonical_json_bytes
+from ..task_sources.task_identity import canonical_content_cid, canonical_json_bytes
 
 
 DEFAULT_SURFACE_WEIGHTS: dict[str, float] = {
@@ -1738,7 +1738,7 @@ class TaskConflictGraph:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema": "ipfs_accelerate_py.agent_supervisor.conflict_graph@1",
+            "schema": "ipfs_accelerate_py.agent_supervisor.core.conflict_graph@1",
             "surfaces": {key: value.to_dict() for key, value in sorted(self.surfaces.items())},
             "edges": [edge.to_dict() for edge in self.edges],
             "assignments": [assignment.to_dict() for assignment in self.assignments],
