@@ -233,7 +233,7 @@ Program invariants:
 
 ## AICAT-009 Expose the canonical catalog through ModelManager
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
