@@ -43,6 +43,7 @@ from ..implementation_timeout import (
     effective_implementation_hard_timeout,
     implementation_timeout_metadata_value,
 )
+from ..implementation_daemon_runner import bounded_daemon_wait_timeout
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
@@ -4708,6 +4709,15 @@ class PortalImplementationDaemon:
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
             }
         )
+        provider_backoff = self._active_provider_capacity_backoff()
+        if provider_backoff:
+            result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
+            result["next_wake_after_seconds"] = provider_backoff[
+                "retry_after_seconds"
+            ]
+        else:
+            result.pop("provider_capacity_retry_at", None)
+            result.pop("next_wake_after_seconds", None)
         self._acknowledge_runtime_events()
         return result
 
@@ -4913,17 +4923,25 @@ class PortalImplementationDaemon:
             time.monotonic() - self._last_safety_reconciliation_monotonic
             >= DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
         )
-        if (
+        preflight_unchanged = (
             source_digest == self._runtime_last_source_digest
             and not forced_wake_kinds
             and not safety_reconciliation_due
-        ):
-            return self._unchanged_runtime_result(
-                source_digest=source_digest,
-                wake_kinds=wake_kinds,
+        )
+        if preflight_unchanged:
+            provider_retry_schedule = self._provider_capacity_backoff_schedule()
+            provider_retry_due = bool(
+                provider_retry_schedule
+                and not provider_retry_schedule.get("active", False)
             )
+            if not provider_retry_due:
+                return self._unchanged_runtime_result(
+                    source_digest=source_digest,
+                    wake_kinds=wake_kinds,
+                )
         self._last_safety_reconciliation_monotonic = time.monotonic()
         event_log_repair = self.ensure_event_log_file()
+        provider_retry_schedule = self._provider_capacity_backoff_schedule()
         state_file_repair = self.ensure_state_file()
         protected_path_reconciliation = (
             self._reconcile_implementation_protected_path_fence()
@@ -5358,7 +5376,12 @@ class PortalImplementationDaemon:
         state.last_merge_commit = previous.last_merge_commit
         state.last_merge_returncode = previous.last_merge_returncode
         state.last_merge_error = previous.last_merge_error
-        if selected is not None:
+        selection_deferred_for_provider_capacity = bool(
+            self.implement
+            and selected is not None
+            and provider_retry_schedule.get("active", False)
+        )
+        if selected is not None and not selection_deferred_for_provider_capacity:
             if state.active_task_id != selected.task_id:
                 state.active_task_started_at = now
                 state.last_progress_at = now
@@ -5380,6 +5403,9 @@ class PortalImplementationDaemon:
             state.recommended_task_id = selected.task_id
             state.recommended_actions = self._build_recommended_actions(selected)
             state.selection_idle_reason = ""
+        elif selection_deferred_for_provider_capacity:
+            self._clear_active_execution_state(state, clear_task=True)
+            state.selection_idle_reason = "provider_capacity_backoff"
         else:
             state.active_task_id = ""
             state.active_task_key = ""
@@ -5426,7 +5452,19 @@ class PortalImplementationDaemon:
                 self._record_event("implementation_skipped", implementation_result)
             else:
                 implementation_result = self._run_implementation(selected, state)
-        if state_written or implementation_result is not None:
+        provider_backoff_result = bool(
+            implementation_result
+            and implementation_result.get("reason") == "provider_capacity_backoff"
+        )
+        provider_capacity_deferral_result = bool(
+            implementation_result
+            and implementation_result.get("deferred", False)
+            and implementation_result.get("reason")
+            in {"provider_capacity_exhausted", "provider_capacity_backoff"}
+        )
+        if state_written or (
+            implementation_result is not None and not provider_backoff_result
+        ):
             self._record_event(
                 "daemon_pass",
                 {
@@ -5506,22 +5544,28 @@ class PortalImplementationDaemon:
             "canonical_task_count": len(aliases_by_cid),
             "merge_train_progress": merge_train_progress,
             "protected_path_reconciliation": protected_path_reconciliation,
-            "unchanged": not state_written and implementation_result is None,
+            "unchanged": not state_written
+            and (implementation_result is None or provider_backoff_result),
             "state_written": state_written,
             "write_count": int(state_written),
             "projection_delta": projection_delta,
             "wake_kinds": sorted(wake_kinds),
             "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
-        task_source_identity = self._task_source_identity_record()
-        if task_source_identity is not None:
-            result["task_source_identity"] = task_source_identity
+        provider_backoff = self._active_provider_capacity_backoff()
+        if provider_backoff:
+            result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
+            result["next_wake_after_seconds"] = provider_backoff[
+                "retry_after_seconds"
+            ]
         final_source_digest, final_sources = self._runtime_source_head()
         # An implementation may mutate attempt, lease, validation, and active
         # execution state after the board projection above was selected. Do
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
-        if state_written and implementation_result is None:
+        if state_written and (
+            implementation_result is None or provider_capacity_deferral_result
+        ):
             checkpoint_result = self._save_runtime_checkpoint(
                 source_digest=final_source_digest,
                 sources=final_sources,
@@ -5531,7 +5575,9 @@ class PortalImplementationDaemon:
             result["delta_checkpoint"] = checkpoint_result
             result["write_count"] += int(checkpoint_result["write_count"])
         self._runtime_last_source_digest = (
-            final_source_digest if implementation_result is None else ""
+            final_source_digest
+            if implementation_result is None or provider_capacity_deferral_result
+            else ""
         )
         self._runtime_last_result = self._runtime_result_projection(result)
         self._acknowledge_runtime_events()
@@ -5638,6 +5684,10 @@ class PortalImplementationDaemon:
                 return {}
         return {}
 
+    def _active_provider_capacity_backoff(self) -> dict[str, Any]:
+        schedule = self._provider_capacity_backoff_schedule()
+        return schedule if schedule.get("active", False) else {}
+
     def _record_provider_capacity_deferral(
         self,
         *,
@@ -5666,6 +5716,7 @@ class PortalImplementationDaemon:
         state.last_implementation_branch = branch_name
         self._restore_task_attempt(state, task, max(0, attempt - 1))
         self._mark_implementation_finished(state, finished_at=finished_at)
+        state.selection_idle_reason = "provider_capacity_backoff"
         state.save(self.state_path)
         result = {
             "task_id": task.task_id,
@@ -5720,12 +5771,13 @@ class PortalImplementationDaemon:
         if provider_backoff:
             result = {
                 "skipped": True,
+                "deferred": True,
                 "reason": "provider_capacity_backoff",
                 "task_id": task.task_id,
                 "attempt": self._task_attempt(state, task),
+                "attempt_consumed": False,
                 **provider_backoff,
             }
-            self._record_event("implementation_skipped", result)
             return result
         inflight = self._find_live_inflight_implementation()
         if inflight is not None:
@@ -20785,7 +20837,12 @@ def main(argv: list[str] | None = None) -> None:
             logger.info("Portal implementation daemon pass complete: %s", result)
             if args.once:
                 break
-            daemon.wait_for_wake(timeout=args.interval)
+            daemon.wait_for_wake(
+                timeout=bounded_daemon_wait_timeout(
+                    result,
+                    default_timeout=args.interval,
+                )
+            )
     finally:
         daemon.close_event_runtime()
 

@@ -7544,6 +7544,77 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
     assert not any(event["type"] == "implementation_finished" for event in events)
 
 
+def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Wait for provider capacity
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: result.txt
+- Validation:
+- Acceptance: Provider capacity permits the implementation agent to run.
+""",
+        encoding="utf-8",
+    )
+    quota_script = repo / "quota.sh"
+    quota_script.write_text(
+        "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS",
+        "600",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="bash quota.sh",
+    )
+
+    first = daemon.run_once()
+    first_retry_at = first["implementation_result"]["retry_at"]
+    state_after_failure = state_path.read_bytes()
+    events_after_failure = events_path.read_bytes()
+
+    second = daemon.run_once()
+
+    assert second["implementation_result"] is None
+    assert second["provider_capacity_retry_at"] == first_retry_at
+    assert 0 < second["next_wake_after_seconds"] <= 600
+    assert second["unchanged"] is True
+    assert second["write_count"] == 0
+    assert state_path.read_bytes() == state_after_failure
+    assert events_path.read_bytes() == events_after_failure
+
+    third = daemon.run_once()
+
+    assert third["unchanged"] is True
+    assert third["implementation_result"] is None
+    assert third["provider_capacity_retry_at"] == first_retry_at
+    assert 0 < third["next_wake_after_seconds"] <= second["next_wake_after_seconds"]
+    assert state_path.read_bytes() == state_after_failure
+    assert events_path.read_bytes() == events_after_failure
+
+
 def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import signal
 import sys
@@ -23,6 +24,23 @@ from .event_log import append_jsonl_event
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
+
+
+def bounded_daemon_wait_timeout(
+    result: Mapping[str, Any],
+    *,
+    default_timeout: float,
+) -> float:
+    """Return the configured wait bounded by a daemon's durable retry schedule."""
+
+    timeout = max(0.0, float(default_timeout))
+    retry_after = result.get("next_wake_after_seconds")
+    if isinstance(retry_after, bool) or not isinstance(retry_after, (int, float)):
+        return timeout
+    retry_after = float(retry_after)
+    if not math.isfinite(retry_after):
+        return timeout
+    return min(timeout, max(0.0, retry_after))
 
 
 class DaemonHookTimeoutError(TimeoutError):
@@ -1216,11 +1234,21 @@ def run_portal_implementation_daemon_loop(
             pass_index += 1
             wait_for_wake = getattr(daemon, "wait_for_wake", None)
             if callable(wait_for_wake):
-                wait_for_wake(timeout=parsed.interval)
+                wait_for_wake(
+                    timeout=bounded_daemon_wait_timeout(
+                        result,
+                        default_timeout=parsed.interval,
+                    )
+                )
             else:
                 # Preserve compatibility with daemon implementations which
                 # have not adopted the event-driven wake contract.
-                time.sleep(parsed.interval)
+                time.sleep(
+                    bounded_daemon_wait_timeout(
+                        result,
+                        default_timeout=parsed.interval,
+                    )
+                )
     finally:
         close_event_runtime = getattr(daemon, "close_event_runtime", None)
         if callable(close_event_runtime):

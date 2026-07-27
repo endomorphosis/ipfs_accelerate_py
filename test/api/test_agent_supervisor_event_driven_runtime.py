@@ -375,6 +375,40 @@ def test_configured_daemon_loop_waits_for_wake_and_closes_runtime(
     assert daemon.close_calls == 1
 
 
+def test_configured_daemon_loop_honors_scheduled_retry_before_interval() -> None:
+    parsed = argparse.Namespace(once=False, interval=300.0)
+    context = ImplementationDaemonRunContext(
+        parsed=parsed,
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("events.jsonl"),
+    )
+
+    class RetryScheduledDaemon:
+        def __init__(self) -> None:
+            self.passes = 0
+            self.waits: list[float] = []
+
+        def run_once(self) -> dict[str, float]:
+            self.passes += 1
+            return {"next_wake_after_seconds": 17.5}
+
+        def wait_for_wake(self, *, timeout: float) -> None:
+            self.waits.append(timeout)
+            parsed.once = True
+
+    daemon = RetryScheduledDaemon()
+
+    run_portal_implementation_daemon_loop(
+        daemon,
+        context,
+        logger=logging.getLogger("test-provider-retry-daemon-runner"),
+    )
+
+    assert daemon.passes == 2
+    assert daemon.waits == [17.5]
+
+
 def test_metadata_scans_are_bounded_before_projection_work(
     tmp_path: Path,
 ) -> None:
