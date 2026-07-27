@@ -140,6 +140,9 @@ def _selector_value(name: str, binding: Mapping[str, Any]) -> str:
         "cache_namespace": "cache:asi-115",
         "artifact_id": "artifact:asi-115",
         "validation_id": "validation:asi-115",
+        "preview_ref": "receipt:preview-asi-115",
+        "incident_cid": "incident:asi-115",
+        "target_id": "supervisor:asi-115",
     }[name]
 
 
@@ -156,6 +159,7 @@ def _expected_effect(operation: Operation) -> ExpectedEffect:
                 Operation.RESUME,
                 Operation.DRAIN,
                 Operation.STOP,
+                Operation.RESTART,
             }
             else EffectKind.WRITE_STATE
         )
@@ -184,6 +188,71 @@ def _request_for_operation(
         "target": selectors,
         **selectors,
     }
+    if operation is Operation.WORKFLOW_PREVIEW:
+        parameters.update(
+            {
+                "directory": str(repo_root),
+                "prompt_source": {
+                    "kind": "inline",
+                    "content_cid": "prompt:asi-115",
+                },
+                "output_mode": "both",
+                "markdown_path": "plans/asi-115.todo.md",
+                "duckdb_path": "state/asi-115.duckdb",
+            }
+        )
+    elif operation is Operation.WORKFLOW_MATERIALIZE:
+        parameters.update(
+            {
+                "preview_ref": selectors["preview_ref"],
+                "preview_root": "plan:asi-115",
+                "preview_repository_id": binding["repository_id"],
+                "preview_tree_id": binding["tree_id"],
+                "preview_objective_id": binding["objective_id"],
+                "preview_objective_revision": binding["objective_revision"],
+                "preview_policy_id": binding["policy_id"],
+                "preview_policy_revision": binding["policy_revision"],
+                "output_mode": "both",
+                "markdown_path": "plans/asi-115.todo.md",
+                "duckdb_path": "state/asi-115.duckdb",
+            }
+        )
+    elif operation is Operation.RESTART:
+        parameters.update(
+            {
+                "target_id": "supervisor:asi-115",
+                "run_id": "run:asi-115",
+                "configuration_root": "configuration:asi-115",
+                "expected_revision": 1,
+                "deadline_ms": 30_000,
+                "health_window_ms": 5_000,
+                "reason": "conformance restart",
+            }
+        )
+    elif operation in {Operation.RESCUE_PREVIEW, Operation.RESCUE}:
+        parameters.update(
+            {
+                "incident_cid": selectors["incident_cid"],
+                "incident_root": "incident-root:asi-115",
+                "incident_repository_id": binding["repository_id"],
+                "incident_tree_id": binding["tree_id"],
+                "incident_objective_id": binding["objective_id"],
+                "incident_objective_revision": binding["objective_revision"],
+                "incident_policy_id": binding["policy_id"],
+                "incident_policy_revision": binding["policy_revision"],
+            }
+        )
+        if operation is Operation.RESCUE:
+            parameters.update(
+                {
+                    "rescue_plan_cid": "rescue-plan:asi-115",
+                    "rescue_plan_root": "rescue-plan-root:asi-115",
+                    "rescue_plan_incident_cid": selectors["incident_cid"],
+                    "rescue_plan_tree_id": binding["tree_id"],
+                    "action_index": 0,
+                    "expected_revision": 1,
+                }
+            )
     if descriptor.pagination.kind is PaginationKind.CURSOR:
         parameters.update(
             {
@@ -534,8 +603,9 @@ async def test_every_catalog_operation_has_exact_python_cli_and_mcp_behavior(
         compared.add(operation)
 
     assert compared == set(OPERATION_CATALOG_V2.operations) == set(Operation)
-    assert len(cases) == len(Operation) == 26
-    assert len({case.operation for case in cases}) == 26
+    expected_operation_count = len(Operation)
+    assert len(cases) == expected_operation_count
+    assert len({case.operation for case in cases}) == expected_operation_count
     assert all(
         ControlOperationConformanceCase.from_dict(case.to_record()) == case
         for case in cases
@@ -561,7 +631,7 @@ async def test_every_catalog_operation_has_exact_python_cli_and_mcp_behavior(
         CONTROL_CONFORMANCE_V2_REQUIREMENT_ID,
     )
     assert evidence.completion_authoritative is False
-    assert len(evidence.cases) == len(Operation) == 26
+    assert len(evidence.cases) == len(Operation)
     assert {case.operation for case in evidence.cases} == set(Operation)
     assert {
         manifest.surface for manifest in evidence.manifests

@@ -13,18 +13,20 @@ cannot accidentally become durable workflow receipts.
 
 from __future__ import annotations
 
+import argparse
 import base64
 import hashlib
 import json
 import posixpath
 import re
+import sys
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Callable, ClassVar, Final, MutableMapping
+from typing import Any, Callable, ClassVar, Final, MutableMapping, Optional, TextIO
 
 
 PROMPT_WORKFLOW_CONTRACT_VERSION: Final[int] = 1
@@ -4871,6 +4873,451 @@ WorkflowResult = PromptWorkflowResult
 WorkflowPreviewReceipt = PromptWorkflowPreviewReceipt
 
 
+PROMPT_WORKFLOW_CLI_EXIT_SUCCESS = 0
+PROMPT_WORKFLOW_CLI_EXIT_FAILED = 1
+PROMPT_WORKFLOW_CLI_EXIT_INVALID = 2
+PROMPT_WORKFLOW_CLI_COMMANDS: Final[tuple[str, ...]] = (
+    "workflow-preview",
+    "workflow-create",
+    "restart",
+    "rescue-preview",
+    "rescue",
+)
+_PROMPT_WORKFLOW_COMMAND_TO_OPERATION: Final[Mapping[str, str]] = {
+    "workflow-preview": "workflow_preview",
+    "workflow-create": "workflow_materialize",
+    "restart": "restart",
+    "rescue-preview": "rescue_preview",
+    "rescue": "rescue",
+}
+
+
+class PromptWorkflowCLIError(ValueError):
+    """A safe, user-correctable module-entry CLI error."""
+
+
+def _optional_json_object(raw: str | None, *, noun: str) -> Mapping[str, Any]:
+    if raw is None or raw == "":
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise PromptWorkflowCLIError(f"{noun} must be valid JSON") from exc
+    if not isinstance(value, Mapping):
+        raise PromptWorkflowCLIError(f"{noun} must be a JSON object")
+    return dict(value)
+
+
+def _read_exactly_one_prompt(
+    *,
+    prompt: str | None,
+    prompt_file: Path | None,
+    stdin_stream: TextIO,
+    stdin_flag: bool,
+) -> PromptSource:
+    """Resolve exactly one prompt source without logging the body."""
+
+    provided = sum(
+        1
+        for item in (prompt is not None, prompt_file is not None, stdin_flag)
+        if item
+    )
+    if provided != 1:
+        raise PromptWorkflowCLIError(
+            "provide exactly one of --prompt, --prompt-file, or --stdin "
+            "(prefer --prompt-file/--stdin so sensitive text is not listed in "
+            "process arguments)"
+        )
+    if prompt is not None:
+        return PromptSource.inline(prompt)
+    if prompt_file is not None:
+        path = Path(prompt_file)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise PromptWorkflowCLIError(
+                f"unable to read prompt file: {path}"
+            ) from exc
+        if not text:
+            raise PromptWorkflowCLIError("prompt file must be non-empty UTF-8 text")
+        return PromptSource.file(path.name, text=text)
+    if stdin_stream is None or getattr(stdin_stream, "isatty", lambda: False)():
+        raise PromptWorkflowCLIError(
+            "stdin prompt source requires piped non-empty UTF-8 text"
+        )
+    text = stdin_stream.read()
+    if not text:
+        raise PromptWorkflowCLIError("stdin prompt source must be non-empty")
+    return PromptSource.stdin(text)
+
+
+def build_prompt_workflow_arg_parser() -> argparse.ArgumentParser:
+    """Build the provider-free ``python -m`` entry parser.
+
+    Discovery and ``--help`` are side-effect free: no repository scan, provider,
+    DuckDB connection, or supervisor process is started.
+    """
+
+    parser = argparse.ArgumentParser(
+        prog="python -m ipfs_accelerate_py.agent_supervisor.prompt_workflow",
+        description=(
+            "Thin prompt-workflow entry over the shared agent control catalog. "
+            "Prefer --prompt-file or --stdin for sensitive prompts. This entry "
+            "does not import providers or mutate policy."
+        ),
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=PROMPT_WORKFLOW_CLI_COMMANDS,
+        help="Catalog-aligned workflow or rescue command.",
+    )
+    parser.add_argument(
+        "--request-json",
+        help="Complete canonical OperationRequest JSON object.",
+    )
+    parser.add_argument(
+        "--request-file",
+        type=Path,
+        help="File containing a complete canonical OperationRequest.",
+    )
+    parser.add_argument(
+        "--parameters-json",
+        help="Operation parameters as a JSON object (default: {}).",
+    )
+    parser.add_argument("--directory", help="Directory parameter for workflow ops.")
+    parser.add_argument("--repository-root", help="Absolute allowlisted repository root.")
+    parser.add_argument("--state-root", help="Absolute allowlisted supervisor state root.")
+    parser.add_argument("--repository-id", help="Canonical repository identity.")
+    parser.add_argument("--tree-id", help="Current repository tree identity.")
+    parser.add_argument("--objective-id", help="Objective identity.")
+    parser.add_argument("--objective-revision", help="Objective revision identity.")
+    parser.add_argument("--policy-id", help="Control policy identity.")
+    parser.add_argument("--policy-revision", help="Control policy revision.")
+    parser.add_argument("--caller", help="Authenticated caller identity.")
+    prompt_source = parser.add_mutually_exclusive_group()
+    prompt_source.add_argument(
+        "--prompt",
+        help=(
+            "Inline prompt text. Prefer --prompt-file or --stdin so sensitive "
+            "text is not visible in process listings."
+        ),
+    )
+    prompt_source.add_argument(
+        "--prompt-file",
+        type=Path,
+        help="Read the sole prompt body from a UTF-8 file.",
+    )
+    prompt_source.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read the sole prompt body from stdin.",
+    )
+    parser.add_argument(
+        "--output-mode",
+        choices=tuple(item.value for item in OutputMode),
+        help="Materialization projection mode: markdown, duckdb, or both.",
+    )
+    parser.add_argument(
+        "--markdown-path",
+        help="Root-relative Markdown task projection path.",
+    )
+    parser.add_argument(
+        "--duckdb-path",
+        help="Root-relative DuckDB task projection path.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Proposal/preview path only; never mutates.",
+    )
+    parser.add_argument(
+        "--start",
+        action="store_true",
+        help="Request start_after_materialize for workflow-create.",
+    )
+    parser.add_argument(
+        "--authorization-json",
+        help="Canonical AuthorizationDecision JSON object.",
+    )
+    parser.add_argument(
+        "--authorization-file",
+        type=Path,
+        help="File containing a canonical AuthorizationDecision.",
+    )
+    parser.add_argument("--idempotency-key", help="Caller-chosen replay key.")
+    parser.add_argument("--lease-id", help="Lease identity.")
+    parser.add_argument(
+        "--fencing-epoch",
+        type=int,
+        help="Non-negative fencing epoch.",
+    )
+    parser.add_argument(
+        "--expected-effects-json",
+        help="ExpectedEffect records as a JSON array.",
+    )
+    parser.add_argument(
+        "--human",
+        action="store_true",
+        help="Emit a concise human summary instead of compact JSON.",
+    )
+    parser.add_argument(
+        "--output-json",
+        action="store_true",
+        help="Emit compact canonical JSON (default).",
+    )
+    return parser
+
+
+def _merge_prompt_parameters(
+    args: argparse.Namespace,
+    *,
+    stdin_stream: TextIO,
+    parameters: MutableMapping[str, Any],
+) -> None:
+    if args.directory:
+        if "directory" in parameters:
+            raise PromptWorkflowCLIError(
+                "directory was supplied both directly and in --parameters-json"
+            )
+        parameters["directory"] = str(args.directory)
+    if args.output_mode:
+        if "output_mode" in parameters:
+            raise PromptWorkflowCLIError(
+                "output_mode was supplied both directly and in --parameters-json"
+            )
+        parameters["output_mode"] = str(args.output_mode)
+    if args.markdown_path:
+        if "markdown_path" in parameters:
+            raise PromptWorkflowCLIError(
+                "markdown_path was supplied both directly and in --parameters-json"
+            )
+        parameters["markdown_path"] = str(args.markdown_path)
+    if args.duckdb_path:
+        if "duckdb_path" in parameters:
+            raise PromptWorkflowCLIError(
+                "duckdb_path was supplied both directly and in --parameters-json"
+            )
+        parameters["duckdb_path"] = str(args.duckdb_path)
+    if args.start:
+        parameters.setdefault("start_after_materialize", True)
+
+    wants_prompt = bool(args.prompt is not None or args.prompt_file is not None or args.stdin)
+    if not wants_prompt:
+        return
+    if "prompt_source" in parameters:
+        raise PromptWorkflowCLIError(
+            "prompt source was supplied both directly and in --parameters-json"
+        )
+    source = _read_exactly_one_prompt(
+        prompt=args.prompt,
+        prompt_file=args.prompt_file,
+        stdin_stream=stdin_stream,
+        stdin_flag=bool(args.stdin),
+    )
+    # Durable parameters carry only the body-free descriptor.
+    parameters["prompt_source"] = {
+        key: value
+        for key, value in source.to_record().items()
+        if key not in {"schema", "contract_version", "content_id"}
+    }
+
+
+def _render_human_summary(result: Mapping[str, Any]) -> str:
+    status = result.get("status") or result.get("outcome") or "unknown"
+    operation = result.get("operation") or ""
+    request_id = result.get("request_id") or result.get("request_cid") or ""
+    error = result.get("error") or {}
+    code = ""
+    if isinstance(error, Mapping):
+        code = str(error.get("code") or error.get("error_code") or "")
+    lines = [
+        f"status={status}",
+        f"operation={operation}" if operation else "",
+        f"request_id={request_id}" if request_id else "",
+        f"error={code}" if code else "",
+    ]
+    return "\n".join(line for line in lines if line)
+
+
+def run_prompt_workflow_cli(
+    argv: Optional[Sequence[str]] = None,
+    *,
+    stdin_stream: TextIO | None = None,
+    stdout_stream: TextIO | None = None,
+    stderr_stream: TextIO | None = None,
+    control_service: Any | None = None,
+) -> int:
+    """Execute the thin module CLI and return a stable process exit code."""
+
+    import io
+
+    parser = build_prompt_workflow_arg_parser()
+    out = stdout_stream or sys.stdout
+    err = stderr_stream or sys.stderr
+    stdin = stdin_stream or sys.stdin
+    try:
+        args = parser.parse_args(list(argv) if argv is not None else None)
+    except SystemExit as exited:
+        # argparse writes usage to its own streams; map exit codes stably.
+        code = exited.code
+        if code in (None, 0):
+            return PROMPT_WORKFLOW_CLI_EXIT_SUCCESS
+        message = str(getattr(exited, "message", "") or "")
+        if message:
+            print(message, file=err)
+        return PROMPT_WORKFLOW_CLI_EXIT_INVALID
+
+    if args.command is None:
+        parser.print_help(out)
+        return PROMPT_WORKFLOW_CLI_EXIT_INVALID
+
+    # Lazy import keeps ``import prompt_workflow`` free of control/process work.
+    from .control_cli import AgentCLIError, run_agent_cli
+    from .control_contracts import Operation
+
+    try:
+        operation_name = _PROMPT_WORKFLOW_COMMAND_TO_OPERATION[args.command]
+        operation = Operation(operation_name)
+        has_complete_request = bool(args.request_json or args.request_file)
+        parameters_json: str | None = None
+        if has_complete_request:
+            convenience = any(
+                (
+                    args.prompt is not None,
+                    args.prompt_file is not None,
+                    bool(args.stdin),
+                    args.directory,
+                    args.output_mode,
+                    args.markdown_path,
+                    args.duckdb_path,
+                    bool(args.start),
+                    args.parameters_json,
+                )
+            )
+            if convenience:
+                raise PromptWorkflowCLIError(
+                    "--request-json/--request-file cannot be combined with "
+                    "prompt/parameter convenience flags"
+                )
+        else:
+            parameters = dict(
+                _optional_json_object(
+                    args.parameters_json, noun="--parameters-json"
+                )
+            )
+            _merge_prompt_parameters(
+                args, stdin_stream=stdin, parameters=parameters
+            )
+            parameters_json = json.dumps(parameters, sort_keys=True)
+
+        # Build a control_cli-compatible namespace so both entry points share one
+        # request decoder, exit-code map, and allowlist factory.
+        dry_run = bool(args.dry_run)
+        if not has_complete_request and operation in {
+            Operation.WORKFLOW_PREVIEW,
+            Operation.RESCUE_PREVIEW,
+        }:
+            dry_run = True
+        namespace = argparse.Namespace(
+            agent_command=args.command,
+            agent_operation=operation_name,
+            request_json=args.request_json,
+            request_file=args.request_file,
+            parameters_json=parameters_json,
+            repository_root=args.repository_root,
+            state_root=args.state_root,
+            repository_id=args.repository_id,
+            tree_id=args.tree_id,
+            objective_id=args.objective_id,
+            objective_revision=args.objective_revision,
+            policy_id=args.policy_id,
+            policy_revision=args.policy_revision,
+            caller=args.caller,
+            path=None,
+            limit=None,
+            offset=None,
+            cursor=None,
+            event_cursor=None,
+            task_header_prefix=None,
+            target_id=None,
+            service_id=None,
+            task_id=None,
+            bundle_id=None,
+            lane_id=None,
+            stream_id=None,
+            receipt_id=None,
+            cache_namespace=None,
+            artifact_id=None,
+            validation_id=None,
+            reason=None,
+            requested_state=None,
+            expected_effects_json=(
+                None if has_complete_request else args.expected_effects_json
+            ),
+            idempotency_key=(
+                None if has_complete_request else args.idempotency_key
+            ),
+            authorization_json=(
+                None if has_complete_request else args.authorization_json
+            ),
+            authorization_file=(
+                None if has_complete_request else args.authorization_file
+            ),
+            lease_id=None if has_complete_request else (args.lease_id or None),
+            fencing_epoch=(
+                None if has_complete_request else args.fencing_epoch
+            ),
+            dry_run=False if has_complete_request else dry_run,
+            max_items=None,
+            max_bytes=None,
+            max_text_bytes=None,
+            timeout_ms=None,
+            watch_count=1,
+            watch_interval_ms=0,
+            output_json=True,
+        )
+        capture = io.StringIO() if (args.human and not args.output_json) else None
+        code = run_agent_cli(
+            namespace,
+            service=control_service,
+            stdout=capture if capture is not None else out,
+            stderr=err,
+        )
+        if capture is not None:
+            raw = capture.getvalue().strip()
+            if raw:
+                try:
+                    record = json.loads(raw.splitlines()[-1])
+                except json.JSONDecodeError:
+                    out.write(raw + "\n")
+                else:
+                    if isinstance(record, Mapping):
+                        out.write(_render_human_summary(record) + "\n")
+                    else:
+                        out.write(raw + "\n")
+        return int(code)
+    except PromptWorkflowCLIError as exc:
+        print(str(exc), file=err)
+        return PROMPT_WORKFLOW_CLI_EXIT_INVALID
+    except AgentCLIError as exc:
+        print(str(exc), file=err)
+        return PROMPT_WORKFLOW_CLI_EXIT_INVALID
+    except Exception as exc:  # noqa: BLE001 - boundary exit mapping
+        print(str(exc), file=err)
+        return PROMPT_WORKFLOW_CLI_EXIT_FAILED
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """``python -m ipfs_accelerate_py.agent_supervisor.prompt_workflow`` entry."""
+
+    return run_prompt_workflow_cli(argv)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
 __all__ = [
     "ABSOLUTE_MAX_CONTRACT_BYTES",
     "ABSOLUTE_MAX_DEPTH",
@@ -4949,7 +5396,15 @@ __all__ = [
     "WorkflowOutcome",
     "WorkflowPreviewReceipt",
     "WorkflowResult",
+    "PROMPT_WORKFLOW_CLI_COMMANDS",
+    "PROMPT_WORKFLOW_CLI_EXIT_FAILED",
+    "PROMPT_WORKFLOW_CLI_EXIT_INVALID",
+    "PROMPT_WORKFLOW_CLI_EXIT_SUCCESS",
+    "PromptWorkflowCLIError",
+    "build_prompt_workflow_arg_parser",
     "canonical_prompt_workflow_bytes",
     "decode_prompt_workflow_request",
+    "main",
     "prompt_workflow_cid",
+    "run_prompt_workflow_cli",
 ]
