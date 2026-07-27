@@ -358,7 +358,7 @@ Program invariants:
 
 ## AICAT-014 Route MCP text and embeddings through canonical routers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
