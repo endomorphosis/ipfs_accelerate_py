@@ -4267,7 +4267,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-145 Admit prompt-generated plans through quality, formal, IR, proof, and validation gates
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-goal-planning
 - Depends on: ASI-135, ASI-144
