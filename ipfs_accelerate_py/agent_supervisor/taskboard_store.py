@@ -14,6 +14,7 @@ import errno
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import select
@@ -555,6 +556,31 @@ def _taskboard_transaction_matches(
     )
 
 
+def _has_taskboard_materialization_transaction(
+    journal_path: Path,
+    preview: TaskboardMaterializationPreview,
+    epoch_id: str,
+) -> bool:
+    """Return whether the journal contains this exact transaction.
+
+    A complete board is an identical replay even if its journal was removed.
+    Recovery is therefore attempted only when the existing journal proves
+    that this exact preview was interrupted.  Malformed or conflicting
+    records fail closed instead of being mistaken for unrelated history.
+    """
+
+    journal = _load_taskboard_materialization_journal(journal_path)
+    transaction_id = _taskboard_transaction_id(preview, epoch_id)
+    record = journal["transactions"].get(transaction_id)
+    if record is None:
+        return False
+    if not isinstance(record, Mapping) or not _taskboard_transaction_matches(
+        record, preview, epoch_id
+    ):
+        raise ValueError("taskboard materialization transaction identity conflict")
+    return True
+
+
 def _taskboard_prefix_count(
     current_revision: str,
     preview: TaskboardMaterializationPreview,
@@ -974,6 +1000,12 @@ class TaskboardSnapshot:
             raise ValueError("taskboard contains duplicate task aliases")
         if len(cids) != len(set(cids)):
             raise ValueError("taskboard contains duplicate task CIDs")
+        cid_population = set(cids)
+        if any(
+            alias != cid and alias in cid_population
+            for alias, cid in zip(aliases, cids, strict=True)
+        ):
+            raise ValueError("taskboard task alias collides with another task CID")
         _assert_taskboard_acyclic(tasks)
         if isinstance(self.byte_count, bool) or self.byte_count < 0:
             raise ValueError("byte_count must be non-negative")
@@ -1097,8 +1129,15 @@ class TaskboardStore:
     ) -> None:
         if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
             raise ValueError("max_bytes must be a positive integer")
-        if isinstance(max_tasks, bool) or not isinstance(max_tasks, int) or max_tasks < 1:
-            raise ValueError("max_tasks must be a positive integer")
+        if (
+            isinstance(max_tasks, bool)
+            or not isinstance(max_tasks, int)
+            or max_tasks < 1
+            or max_tasks > MAX_TASKBOARD_MATERIALIZATION_ENTRIES
+        ):
+            raise ValueError(
+                "max_tasks must be within the taskboard population bound"
+            )
         selected_path = Path(path).absolute()
         selected_root = (
             Path(root).resolve(strict=False)
@@ -1215,13 +1254,36 @@ class TaskboardStore:
         elif isinstance(status, str):
             statuses = {status.strip().lower()}
         else:
-            statuses = {str(item).strip().lower() for item in status}
-        selected_cids = {str(item).strip() for item in task_cids}
+            statuses = set()
+            for index, item in enumerate(status):
+                if index >= len(TASKBOARD_STATUSES):
+                    raise ValueError("status filter exceeds its configured bound")
+                statuses.add(str(item).strip().lower())
+        if statuses is not None and (
+            not statuses or not statuses.issubset(TASKBOARD_STATUSES)
+        ):
+            raise ValueError("status filter contains an unsupported status")
+        if isinstance(task_cids, (str, bytes, bytearray, memoryview)):
+            raise TypeError("task_cids must be an iterable of task CIDs")
+        selected_cids: set[str] = set()
+        for index, item in enumerate(task_cids):
+            if index >= MAX_TASKBOARD_QUERY_LIMIT:
+                raise ValueError("task_cids filter exceeds its configured bound")
+            selected_cids.add(
+                _taskboard_identifier(item, name="task_cids")
+            )
+        selected_goal = (
+            _taskboard_identifier(goal_id, name="goal_id") if goal_id else ""
+        )
         records = (
             item
             for item in self.snapshot().tasks
             if (statuses is None or item.status.lower() in statuses)
-            and (not goal_id or item.goal_id == goal_id or item.goal_cid == goal_id)
+            and (
+                not selected_goal
+                or item.goal_id == selected_goal
+                or item.goal_cid == selected_goal
+            )
             and (not selected_cids or item.task_cid in selected_cids)
         )
         result: list[TaskboardTaskRecord] = []
@@ -1237,6 +1299,9 @@ class TaskboardStore:
 
     def get(self, task_id: str) -> TaskboardTaskRecord | None:
         selected = str(task_id).strip()
+        if not selected:
+            return None
+        selected = _taskboard_identifier(selected, name="task_id")
         matches = [
             item
             for item in self.snapshot().tasks
@@ -1285,11 +1350,14 @@ class TaskboardStore:
         expected_revision: str,
         event_payload: Mapping[str, Any] | None = None,
     ) -> TaskboardCASResult:
-        expected = (
-            {expected_status.strip().lower()}
-            if isinstance(expected_status, str)
-            else {str(item).strip().lower() for item in expected_status}
-        )
+        if isinstance(expected_status, str):
+            expected = {expected_status.strip().lower()}
+        else:
+            expected = set()
+            for index, item in enumerate(expected_status):
+                if index >= len(TASKBOARD_STATUSES):
+                    raise ValueError("expected status set exceeds its bound")
+                expected.add(str(item).strip().lower())
         replacement = str(new_status).strip().lower()
         if not expected or not replacement:
             raise ValueError("status CAS requires expected and replacement status")
@@ -1307,17 +1375,22 @@ class TaskboardStore:
             raise ValueError("status CAS contains an unsupported status")
         if not expected_revision:
             raise ValueError("expected_revision is required")
+        selected_task_id = _taskboard_identifier(task_id, name="task_id")
+        selected_revision = _taskboard_identifier(
+            expected_revision, name="expected_revision"
+        )
         with self._guard():
             snapshot = self.snapshot()
-            if snapshot.board_revision != expected_revision:
+            if snapshot.board_revision != selected_revision:
                 raise ValueError("stale taskboard revision")
             matches = [
                 item
                 for item in snapshot.tasks
-                if item.task_id == task_id or item.task_cid == task_id
+                if item.task_id == selected_task_id
+                or item.task_cid == selected_task_id
             ]
             if len(matches) != 1:
-                raise KeyError(f"unknown or ambiguous task {task_id!r}")
+                raise KeyError(f"unknown or ambiguous task {selected_task_id!r}")
             task = matches[0]
             if task.status.lower() not in expected:
                 raise ValueError("task status compare-and-swap conflict")
@@ -1417,10 +1490,17 @@ class TaskboardStore:
         timeout: float = 0.0,
         event_limit: int = DEFAULT_TASKBOARD_QUERY_LIMIT,
     ) -> TaskboardWatchResult:
-        if timeout < 0 or timeout > DEFAULT_SAFETY_INTERVAL_SECONDS:
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout < 0
+            or timeout > DEFAULT_SAFETY_INTERVAL_SECONDS
+        ):
             raise ValueError(
                 "timeout must be between zero and the safety interval"
             )
+        selected_event_limit = self._bounded_limit(event_limit)
         watcher = create_directory_watcher((self.path, self.events_path))
         try:
             first = self.snapshot()
@@ -1436,7 +1516,7 @@ class TaskboardStore:
             events: tuple[Mapping[str, Any], ...] = ()
             next_cursor = cursor
             if selected_cursor is not None:
-                page = self.events(selected_cursor, limit=event_limit)
+                page = self.events(selected_cursor, limit=selected_event_limit)
                 events = tuple(page.events)
                 next_cursor = page.next_cursor
             return TaskboardWatchResult(
