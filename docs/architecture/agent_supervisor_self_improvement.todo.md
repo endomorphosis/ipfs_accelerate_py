@@ -4530,3 +4530,14 @@ planner, and refill behavior defaults to shadow mode.
 - Outputs: ipfs_accelerate_py/agent_supervisor/prompt_directory_scanner.py, test/api/test_agent_supervisor_prompt_directory_scanner.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
 - Validation: python -m pytest test/api/test_agent_supervisor_prompt_directory_scanner.py test/api/test_agent_supervisor_program_behavior.py test/api/test_agent_supervisor_analysis_pipeline.py -q
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASI-143. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-160-asi-143-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASI-143 from strategy blocked_tasks.
+
+## ASI-161 Resolve validation retry-budget failure for ASI-146
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ASI-145
+- Outputs: ipfs_accelerate_py/agent_supervisor/markdown_task_source.py, ipfs_accelerate_py/agent_supervisor/taskboard_store.py, test/api/test_agent_supervisor_markdown_task_source.py, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery
+- Validation: python -m pytest test/api/test_agent_supervisor_markdown_task_source.py test/api/test_agent_supervisor_taskboard_store.py -q
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in ASI-146. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-161-asi-146-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release ASI-146 from strategy blocked_tasks. The declared validation target paths (test/api/test_agent_supervisor_markdown_task_source.py, test/api/test_agent_supervisor_taskboard_store.py) are bounded diagnostic and repair scope: change them only when evidence proves inherited validation debt, and do not weaken correct assertions or policy.
