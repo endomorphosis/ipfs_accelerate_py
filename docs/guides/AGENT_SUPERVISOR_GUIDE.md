@@ -749,6 +749,144 @@ separate later current-tree evaluation. A stale binding or regression makes
 the effective mode `shadow` and records `rollback_applied`. The report remains
 evidence, not control authorization or goal-completion proof.
 
+### Prompt bootstrap and rescue rollout
+
+The prompt-workflow gate uses `PromptWorkflowRolloutMode`: `off`, `shadow`,
+`assist`, and `automatic`. It freezes one prompt/repository population and
+requires identical admitted task CIDs, ready sets, accepted effects, and
+terminal outcomes across deterministic and model planning, Markdown/DuckDB/both
+task sources, and Python/CLI/script/MCP surfaces.
+
+`prompt_workflow_benchmark.py` owns the closed paired, adversarial, and chaos
+receipts. `recompute_prompt_workflow_gate()` rejects any scope, secret,
+identity, SQL, process, policy, authority, effect, completion, or
+mandatory-evidence escape; requires a typed resume/compensate/quarantine
+outcome for every materialize/lifecycle/rescue intent-effect-receipt boundary;
+and bounds tokens, model calls, retries, storage, and processes. Optional
+dependency loss must degrade explicitly through a deterministic local replay
+without eager provider import.
+
+Automatic is a two-observation mode. Keep the complete qualifying evaluation,
+then collect a later separate current-root evaluation. An explicit policy must
+approve `behavior:prompt-workflow-bootstrap-rescue@1` and the automatic mode.
+A stale binding, narrowed population, safety failure, or metric regression
+returns only the affected behavior to shadow. A later separate fresh-root
+evaluation is required before automatic promotion; the local frozen smoke
+population is conformance evidence, not production promotion evidence.
+
+```python
+from ipfs_accelerate_py.agent_supervisor.prompt_workflow_benchmark import (
+    build_frozen_prompt_workflow_benchmark,
+    recompute_prompt_workflow_gate,
+)
+from ipfs_accelerate_py.agent_supervisor.prompt_workflow_rollout import (
+    PromptWorkflowControlRequest,
+    PromptWorkflowPublicAPI,
+    PromptWorkflowRolloutEvaluation,
+    build_default_prompt_workflow_binding,
+    build_default_prompt_workflow_policy,
+    evaluate_prompt_workflow_rollout,
+)
+
+qualification = PromptWorkflowRolloutEvaluation(
+    "evaluation:qualification@1",
+    "2026-01-01T00:00:00Z",
+    build_frozen_prompt_workflow_benchmark(observation_label="qualification"),
+)
+current = PromptWorkflowRolloutEvaluation(
+    "evaluation:current@1",
+    "2026-01-02T00:00:00Z",
+    build_frozen_prompt_workflow_benchmark(observation_label="current"),
+)
+binding = build_default_prompt_workflow_binding()
+policy = build_default_prompt_workflow_policy(approve_automatic=True)
+
+report = recompute_prompt_workflow_gate(qualification.benchmark)
+assert report.passed
+
+decision = evaluate_prompt_workflow_rollout(
+    qualification,
+    binding=binding,
+    policy=policy,
+    desired_mode="automatic",
+    current_evaluation=current,
+)
+
+api = PromptWorkflowPublicAPI(
+    qualification,
+    binding=binding,
+    policy=policy,
+    current_evaluation=current,
+)
+request = PromptWorkflowControlRequest(action="automatic")
+python_result = api.python(request)
+cli_result = api.cli(request.to_dict())
+mcp_result = api.mcp(request.to_dict())
+assert python_result.to_dict() == cli_result.to_dict() == mcp_result.to_dict()
+assert api.rollback().decision.effective_mode.value == "shadow"
+```
+
+Workflow bootstrap through the shared service (preview and mutation remain
+separate authority boundaries):
+
+```python
+from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+    PromptSource,
+    PromptSupervisorService,
+    PromptWorkflowRequest,
+)
+
+service = PromptSupervisorService(control_service=control_service)
+preview = service.preview(
+    PromptWorkflowRequest(
+        prompt_source=PromptSource.inline("Improve retry recovery"),
+        repository_root=repo,
+        directory=repo,
+        output_mode="both",
+        dry_run=True,
+    )
+)
+# materialize/start require normal authorization, idempotency, and expected
+# effects; bootstrap() may compose them as a receipt-linked saga only.
+```
+
+```bash
+# Prefer --prompt-file or stdin so sensitive prompts avoid process listings.
+ipfs-accelerate agent workflow-preview \
+  --directory /path/to/repository \
+  --prompt-file request.md \
+  --output-mode both \
+  --markdown-path plan.todo.md \
+  --duckdb-path plan.duckdb
+
+python -m ipfs_accelerate_py.agent_supervisor.prompt_workflow \
+  workflow-preview --directory /path/to/repository --prompt-file request.md
+
+ipfs-accelerate agent rescue-preview --repository-root /path/to/repository
+ipfs-accelerate agent rescue --allow-llm-fallback
+```
+
+MCP discovery remains provider-free and generates catalog-equivalent tools such
+as `agent_supervisor_workflow_preview`, `agent_supervisor_workflow_materialize`,
+`agent_supervisor_restart`, `agent_supervisor_rescue_preview`, and
+`agent_supervisor_rescue`. Tool selection never grants mutation authority.
+
+Operator rescue order: status/health → deterministic recovery ladder →
+exhaustion receipt → optional closed LLM rescue plan → one permitted action at
+a time → post-effect health or quarantine. Roll back automatic/assist to shadow
+immediately on parity, safety, or binding regression.
+
+Validation:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_prompt_workflow_e2e.py \
+  test/api/test_agent_supervisor_prompt_workflow_adversarial.py \
+  test/api/test_agent_supervisor_prompt_workflow_chaos.py \
+  test/api/test_agent_supervisor_prompt_workflow_rollout.py \
+  test/api/test_agent_supervisor_prompt_workflow_public_api.py -q
+```
+
 ### Proof-directed decision-runtime rollout
 
 The decision-runtime gate uses the separate `DecisionRuntimeRolloutMode`
@@ -1186,6 +1324,18 @@ python -m pytest \
   test/api/test_agent_supervisor_decision_runtime_adversarial.py \
   test/api/test_agent_supervisor_decision_runtime_rollout.py \
   test/api/test_agent_supervisor_decision_runtime_public_api.py -q
+```
+
+Run the prompt bootstrap/rescue paired, adversarial, chaos, rollout, and
+public-control gate:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_prompt_workflow_e2e.py \
+  test/api/test_agent_supervisor_prompt_workflow_adversarial.py \
+  test/api/test_agent_supervisor_prompt_workflow_chaos.py \
+  test/api/test_agent_supervisor_prompt_workflow_rollout.py \
+  test/api/test_agent_supervisor_prompt_workflow_public_api.py -q
 ```
 
 Run the generation-2 public-surface, transport-conformance, and rollback gate:
