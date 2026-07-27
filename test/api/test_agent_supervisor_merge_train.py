@@ -343,7 +343,9 @@ def test_one_conflict_fingerprint_has_one_active_resolver_attempt(tmp_path: Path
     assert registry.status(event)["state"] == "quarantined"
 
 
-def test_isolated_daemon_lanes_enqueue_into_one_repo_wide_train(tmp_path: Path) -> None:
+def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
+    tmp_path: Path,
+) -> None:
     repo = _repo(tmp_path)
     todo = repo / "tasks.md"
     todo.write_text("## REF-038 Merge train\n\n- Status: todo\n", encoding="utf-8")
@@ -362,7 +364,8 @@ def test_isolated_daemon_lanes_enqueue_into_one_repo_wide_train(tmp_path: Path) 
     lane_a = daemon("lane-a")
     lane_b = daemon("lane-b")
     assert lane_a.merge_queue.database_path == lane_b.merge_queue.database_path
-    assert lane_a.merge_queue_dir.parent == repo / ".git"
+    assert lane_a.merge_queue_dir.parent == repo / ".git" / "agent-merge-trains"
+    assert lane_a.merge_queue.target_branch == "main"
 
     task = PortalTask(
         task_id="REF-038",
@@ -385,4 +388,43 @@ def test_isolated_daemon_lanes_enqueue_into_one_repo_wide_train(tmp_path: Path) 
 
     assert result["queued"] is True
     assert request.commit_sha == commit
+    assert request.target_repository_id == lane_a.merge_target_repository_id
+    assert request.target_branch == "main"
+    assert request.has_target_binding is True
     assert lane_b.merge_queue.has_pending_for_task(identity.canonical_task_cid, commit_sha=commit)
+
+    _git(repo, "branch", "benchmark/semantic-roundtrip")
+    benchmark_state = tmp_path / "benchmark-lane"
+    benchmark_lane = PortalImplementationDaemon(
+        todo_path=todo,
+        state_path=benchmark_state / "state.json",
+        strategy_path=benchmark_state / "strategy.json",
+        events_path=benchmark_state / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        merge_target_branch="benchmark/semantic-roundtrip",
+    )
+    assert (
+        benchmark_lane.merge_queue.database_path
+        != lane_a.merge_queue.database_path
+    )
+    assert benchmark_lane.merge_queue.target_branch == (
+        "benchmark/semantic-roundtrip"
+    )
+    assert benchmark_lane.merge_queue.pending_count() == 0
+    foreign_request, _foreign_result = benchmark_lane._enqueue_merge_candidate(
+        branch_name="implementation/ref-038-benchmark",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=repo,
+        task=task,
+        attempt=1,
+    )
+
+    rejected = lane_a._merge_train_callback(foreign_request)
+
+    assert rejected["reason"] == "merge_target_binding_mismatch"
+    assert rejected["expected_target_branch"] == "main"
+    assert rejected["actual_target_branch"] == "benchmark/semantic-roundtrip"
+    assert lane_a.merge_queue.pending_count() == 1
+    assert benchmark_lane.merge_queue.pending_count() == 1

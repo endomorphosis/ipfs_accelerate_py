@@ -257,3 +257,62 @@ def test_cancelled_work_is_fenced_and_survives_restart(tmp_path: Path) -> None:
     assert durable.failure_reason == "base advanced while preflight was running"
     assert restarted.status()["cancelled"] == 1
     assert restarted.dequeue(consumer_id="merge-train:restart") is None
+
+
+def test_bound_main_consumer_cannot_claim_benchmark_or_legacy_request(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "shared-queue"
+    repository_id = f"repository:sha256:{'a' * 64}"
+    legacy = MergeQueue(queue_path).enqueue(
+        branch_name="implementation/legacy",
+        task_id="LEGACY-001",
+        canonical_task_id="canonical-legacy",
+        commit_sha="1" * 40,
+        priority="P0",
+    )
+    benchmark_queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="benchmark/semantic-roundtrip",
+        require_target_binding=True,
+    )
+    benchmark = benchmark_queue.enqueue(
+        branch_name="implementation/benchmark",
+        task_id="SRT-014",
+        canonical_task_id="canonical-srt-014",
+        commit_sha="2" * 40,
+        priority="P0",
+    )
+    main_queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="main",
+        require_target_binding=True,
+    )
+    main = main_queue.enqueue(
+        branch_name="implementation/main",
+        task_id="MAIN-001",
+        canonical_task_id="canonical-main",
+        commit_sha="3" * 40,
+        priority="P1",
+    )
+
+    claimed_by_main = main_queue.dequeue_many(
+        3,
+        consumer_id="merge-train:main",
+    )
+
+    assert [request.request_id for request in claimed_by_main] == [
+        main.request_id
+    ]
+    assert main_queue.pending_count() == 0
+    assert main_queue.processing_count() == 1
+    assert main_queue.active_canonical_task_ids() == {"canonical-main"}
+    assert main_queue.status()["target_branch"] == "main"
+    assert benchmark_queue.get(benchmark.request_id).status == "pending"  # type: ignore[union-attr]
+    assert benchmark_queue.get(benchmark.request_id).consumer_id == ""  # type: ignore[union-attr]
+    assert benchmark_queue.get(legacy.request_id).status == "pending"  # type: ignore[union-attr]
+    assert benchmark_queue.dequeue(
+        consumer_id="merge-train:benchmark"
+    ).request_id == benchmark.request_id  # type: ignore[union-attr]

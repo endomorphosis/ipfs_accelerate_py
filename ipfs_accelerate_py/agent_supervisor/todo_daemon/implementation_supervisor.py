@@ -247,6 +247,7 @@ class PortalSupervisorConfig:
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
     merge_target_branch: str = ""
+    merge_queue_dir: Path | None = None
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
     implementation_protected_paths: tuple[str, ...] = field(default_factory=tuple)
     worktree_reconciliation_enabled: bool = True
@@ -3666,6 +3667,8 @@ class PortalImplementationSupervisor:
             max_task_attempts=self.config.max_task_attempts,
             use_ephemeral_worktree=False,
             worktree_root=self.config.worktree_root,
+            merge_target_branch=self.config.merge_target_branch,
+            merge_queue_dir=self.config.merge_queue_dir,
             worktree_submodule_paths=self.config.worktree_submodule_paths,
             objective_path=self.config.objective_path,
             objective_bundle_dir=self.config.objective_bundle_dir,
@@ -6940,6 +6943,14 @@ class PortalImplementationSupervisor:
             command.extend(["--generated-status-path", str(path)])
         for relative in self.config.implementation_protected_paths:
             command.extend(["--implementation-protected-path", relative])
+        if self.config.merge_target_branch:
+            command.extend(
+                ["--merge-target-branch", self.config.merge_target_branch]
+            )
+        if self.config.merge_queue_dir is not None:
+            command.extend(
+                ["--merge-queue-dir", str(self.config.merge_queue_dir)]
+            )
         if self.config.implement:
             command.append("--implement")
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
@@ -6958,8 +6969,6 @@ class PortalImplementationSupervisor:
                 command.append("--no-ephemeral-worktree")
             if self.config.worktree_root is not None:
                 command.extend(["--worktree-root", str(self.config.worktree_root)])
-            if self.config.merge_target_branch:
-                command.extend(["--merge-target-branch", self.config.merge_target_branch])
             for relative in self.config.worktree_submodule_paths:
                 command.extend(["--worktree-submodule-path", relative])
             if self.config.objective_path is not None:
@@ -7268,6 +7277,20 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_cids
         ):
             return False
+        expected_merge_targets = (
+            {self.config.merge_target_branch}
+            if self.config.merge_target_branch
+            else set()
+        )
+        if option_values("--merge-target-branch") != expected_merge_targets:
+            return False
+        expected_merge_queue_dirs = (
+            {str(self.config.merge_queue_dir)}
+            if self.config.merge_queue_dir is not None
+            else set()
+        )
+        if option_values("--merge-queue-dir") != expected_merge_queue_dirs:
+            return False
         return True
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
@@ -7411,6 +7434,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Branch that receives isolated implementation merges. Defaults to main/master, then the "
             "current branch. A configured branch must exist."
+        ),
+    )
+    parser.add_argument(
+        "--merge-queue-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit merge-queue namespace propagated to every managed "
+            "daemon. Requests are still bound to the repository and target."
         ),
     )
     parser.add_argument(
@@ -7993,6 +8025,7 @@ def supervisor_config_from_args(
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
+        merge_queue_dir=args.merge_queue_dir,
         worktree_submodule_paths=normalize_relative_path_list(resolved_worktree_submodule_paths),
         implementation_protected_paths=normalize_implementation_protected_paths(
             resolved_implementation_protected_paths,

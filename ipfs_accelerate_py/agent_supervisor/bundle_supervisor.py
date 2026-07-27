@@ -1235,7 +1235,8 @@ class DistributedLaneDispatcher:
     ) -> dict[str, Any]:
         if self.merge_submit is None:
             return {"accepted": True, "queued": False, "reason": "merge_submit_absent"}
-        from .merge_queue import MergeRequest
+        from .checkout_lock import checkout_repository_id
+        from .merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeRequest
 
         priority = str(
             (lane.queue_payload or {}).get("priority")
@@ -1248,6 +1249,39 @@ class DistributedLaneDispatcher:
             raise ValueError(
                 "distributed merge candidate must identify its source branch"
             )
+        submitter = self.merge_submit
+        submitter_queue = getattr(submitter, "queue", None)
+        queue_payload = lane.queue_payload or {}
+        target_branch = str(
+            queue_payload.get("target_branch")
+            or getattr(submitter, "target_branch", "")
+            or getattr(submitter_queue, "target_branch", "")
+            or ""
+        ).strip()
+        target_repository_id = str(
+            queue_payload.get("target_repository_id")
+            or getattr(submitter_queue, "target_repository_id", "")
+            or ""
+        ).strip()
+        submitter_repo_root = getattr(submitter, "repo_root", None)
+        if target_branch and not target_repository_id and submitter_repo_root:
+            target_repository_id = checkout_repository_id(
+                Path(submitter_repo_root)
+            )
+        if bool(target_repository_id) != bool(target_branch):
+            raise ValueError(
+                "distributed merge target repository and branch must be "
+                "supplied together"
+            )
+        target_metadata = (
+            {
+                "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+                "target_repository_id": target_repository_id,
+                "target_branch": target_branch,
+            }
+            if target_branch
+            else {}
+        )
         request = MergeRequest(
             request_id=result.publication_id,
             branch_name=branch_name,
@@ -1259,25 +1293,40 @@ class DistributedLaneDispatcher:
                 "candidate_commit": result.candidate_commit,
                 "canonical_task_id": lane.task_cid,
                 "distributed_publication": dict(envelope),
+                **target_metadata,
             },
             commit_sha=result.candidate_commit,
             canonical_task_id=lane.task_cid,
         )
-        submitter = self.merge_submit
         if (
             hasattr(submitter, "queue")
             and hasattr(submitter, "run_once")
             and hasattr(submitter.queue, "enqueue")
         ):
-            submitter.queue.enqueue(
-                branch_name=request.branch_name,
-                task_id=request.task_id,
-                priority=request.priority,
-                lane_id=request.lane_id,
-                metadata=request.metadata,
-                commit_sha=request.commit_sha,
-                canonical_task_id=request.canonical_task_id,
-            )
+            bind_target = getattr(submitter.queue, "bind_target", None)
+            if target_branch and callable(bind_target):
+                bind_target(
+                    target_repository_id,
+                    target_branch,
+                    required=True,
+                )
+            enqueue_kwargs = {
+                "branch_name": request.branch_name,
+                "task_id": request.task_id,
+                "priority": request.priority,
+                "lane_id": request.lane_id,
+                "metadata": request.metadata,
+                "commit_sha": request.commit_sha,
+                "canonical_task_id": request.canonical_task_id,
+            }
+            if target_branch:
+                enqueue_kwargs.update(
+                    {
+                        "target_repository_id": target_repository_id,
+                        "target_branch": target_branch,
+                    }
+                )
+            submitter.queue.enqueue(**enqueue_kwargs)
             response = submitter.run_once()
         elif hasattr(submitter, "admit_distributed_publication"):
             # Lightweight adapters may own queue claiming externally while

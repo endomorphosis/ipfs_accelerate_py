@@ -46,6 +46,8 @@ from ..checkout_lock import (
     checkout_lock_metadata,
     checkout_mutation_lock_path,
     serialized_lock_update,
+    checkout_repository_id,
+    merge_target_queue_dir,
 )
 from ..event_log import (
     append_jsonl_event,
@@ -85,6 +87,8 @@ from ..validation_commands import (
     normalize_validation_command_text,
     split_validation_commands,
 )
+from ..merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
+from ..validation_commands import normalize_validation_command_text, split_validation_commands
 from ..validation_runtime import validation_shell_command
 from ..validation_scheduler import (
     ValidationScheduler,
@@ -2247,10 +2251,30 @@ class PortalImplementationDaemon:
         self._last_periodic_maintenance_monotonic: float | None = None
         # Lane state directories are intentionally isolated, so the merge train
         # cannot live next to ``state_path``.  The git common directory is shared
-        # by every worktree and supervisor lane for this repository.
-        default_merge_queue_dir = checkout_mutation_lock_path(self.repo_root).parent / "agent-merge-train"
-        self.merge_queue_dir = merge_queue_dir or default_merge_queue_dir
+        # by every worktree and supervisor lane for this repository. A second
+        # namespace component binds the train to its exact destination, keeping
+        # upgraded producers invisible to old repo-wide consumers.
+        self.resolved_merge_target_branch = self._main_branch_name()
+        self.merge_target_repository_id = checkout_repository_id(self.repo_root)
+        default_merge_queue_dir = merge_target_queue_dir(
+            self.repo_root,
+            self.resolved_merge_target_branch,
+        )
+        queue_owned_dir = getattr(merge_queue, "queue_dir", None)
+        self.merge_queue_dir = Path(
+            merge_queue_dir or queue_owned_dir or default_merge_queue_dir
+        )
         self.merge_queue = merge_queue or MergeQueue(self.merge_queue_dir)
+        bind_target = getattr(self.merge_queue, "bind_target", None)
+        if not callable(bind_target):
+            raise TypeError(
+                "implementation merge queue must support durable target binding"
+            )
+        bind_target(
+            self.merge_target_repository_id,
+            self.resolved_merge_target_branch,
+            required=True,
+        )
         configured_validation_workers = (
             _env_int(VALIDATION_MAX_WORKERS_ENV, DEFAULT_VALIDATION_MAX_WORKERS)
             if validation_max_workers is None
@@ -7306,7 +7330,10 @@ class PortalImplementationDaemon:
             )
         )
         metadata = {
-            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@1",
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@2",
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": self.merge_target_repository_id,
+            "target_branch": self.resolved_merge_target_branch,
             "baseline_ref": baseline_ref,
             "implementation_commit": implementation_commit,
             "candidate_tree": candidate_tree,
@@ -7441,6 +7468,8 @@ class PortalImplementationDaemon:
             commit_sha=implementation_commit,
             canonical_task_id=identity.canonical_task_cid,
             canonical_task_key=identity.canonical_task_key,
+            target_repository_id=self.merge_target_repository_id,
+            target_branch=self.resolved_merge_target_branch,
         )
         result = {
             "attempted": False,
@@ -7453,6 +7482,8 @@ class PortalImplementationDaemon:
             "canonical_task_key": identity.canonical_task_key,
             "canonical_task_cid": identity.canonical_task_cid,
             "queue_dir": str(self.merge_queue_dir),
+            "target_repository_id": self.merge_target_repository_id,
+            "target_branch": self.resolved_merge_target_branch,
         }
         self._record_event(
             "merge_candidate_enqueued",
@@ -7560,6 +7591,37 @@ class PortalImplementationDaemon:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        actual_repository_id = str(
+            getattr(request, "target_repository_id", "")
+            or metadata.get("target_repository_id")
+            or ""
+        ).strip()
+        actual_branch = str(
+            getattr(request, "target_branch", "")
+            or metadata.get("target_branch")
+            or ""
+        ).strip()
+        actual_schema = str(
+            metadata.get("target_binding_schema") or ""
+        ).strip()
+        if (
+            actual_schema != MERGE_TARGET_BINDING_SCHEMA
+            or actual_repository_id != self.merge_target_repository_id
+            or actual_branch != self.resolved_merge_target_branch
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "merge_target_binding_mismatch",
+                "expected_target_repository_id": (
+                    self.merge_target_repository_id
+                ),
+                "expected_target_branch": self.resolved_merge_target_branch,
+                "actual_target_repository_id": actual_repository_id,
+                "actual_target_branch": actual_branch,
+                "actual_target_binding_schema": actual_schema,
+            }
         task = self._portal_task_from_merge_request(request)
         branch_name = str(request.branch_name or "")
         implementation_commit = str(
@@ -7956,7 +8018,7 @@ class PortalImplementationDaemon:
         train = MergeTrain(
             repo_root=self.repo_root,
             queue=self.merge_queue,
-            target_branch=self._main_branch_name(),
+            target_branch=self.resolved_merge_target_branch,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
             merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
@@ -20370,6 +20432,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--merge-queue-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit merge-queue namespace. The queue remains durably bound "
+            "to this daemon's repository and resolved merge target."
+        ),
+    )
+    parser.add_argument(
         "--worktree-submodule-path",
         action="append",
         default=[],
@@ -20474,6 +20545,7 @@ def main(argv: list[str] | None = None) -> None:
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
+        merge_queue_dir=args.merge_queue_dir,
         worktree_submodule_paths=args.worktree_submodule_path or None,
         implementation_protected_paths=args.implementation_protected_path,
         objective_path=args.objective_path,

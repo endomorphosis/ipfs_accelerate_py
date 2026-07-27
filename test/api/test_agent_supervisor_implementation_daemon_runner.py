@@ -88,6 +88,36 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     assert command[command.index("--merge-target-branch") + 1] == target_branch
 
 
+def test_supervisor_propagates_explicit_merge_queue_namespace(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    merge_queue_dir = tmp_path / "runtime" / "benchmark-merge-queue"
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--merge-queue-dir",
+            str(merge_queue_dir),
+        ]
+    )
+
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+
+    assert config.merge_queue_dir == merge_queue_dir
+    assert command[command.index("--merge-queue-dir") + 1] == str(
+        merge_queue_dir
+    )
+    assert supervisor._managed_daemon_matches_command_line(
+        " ".join(command)
+    )
+
+
 def test_supervisor_propagates_execution_slice_task_ids_to_daemon(tmp_path: Path):
     board = tmp_path / "tasks.todo.md"
     board.write_text("# Tasks\n", encoding="utf-8")
@@ -168,6 +198,11 @@ def test_daemon_execution_slice_cannot_select_an_earlier_ready_bundle_member(
 
 def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp_path: Path, monkeypatch):
     target_branch = "automation/virtual-desktop-app-improvement"
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_git_ref_exists",
+        lambda _self, ref: ref == target_branch,
+    )
     daemon = PortalImplementationDaemon(
         todo_path=tmp_path / "tasks.todo.md",
         state_path=tmp_path / "state.json",
@@ -176,7 +211,6 @@ def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp
         repo_root=tmp_path,
         merge_target_branch=target_branch,
     )
-    monkeypatch.setattr(daemon, "_git_ref_exists", lambda ref: ref == target_branch)
     assert daemon._main_branch_name() == target_branch
 
     monkeypatch.setattr(daemon, "_git_ref_exists", lambda _ref: False)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import errno
+import hashlib
 import os
 import subprocess
 import sys
@@ -21,8 +22,11 @@ try:
 except ImportError:  # pragma: no cover - exercised only on non-Windows hosts
     msvcrt = None  # type: ignore[assignment]
 
+from .formal_verification_contracts import content_identity
+
 
 DEFAULT_CHECKOUT_MUTATION_LOCK_NAME = "implementation-main-merge.lock"
+DEFAULT_MERGE_TRAIN_DIRECTORY_NAME = "agent-merge-trains"
 BACKLOG_REFINERY_AUTHOR_EMAIL = "accelerator-backlog-refinery@example.invalid"
 GENERATED_PROTECTED_BOARD_COMMIT_MARKER = (
     "[agent-supervisor:generated-protected-board]"
@@ -122,6 +126,53 @@ def checkout_mutation_lock_path(
     """Return a repo-wide lock path for parent checkout mutations."""
 
     return git_common_dir(repo_root) / lock_name
+
+
+def checkout_repository_id(repo_root: Path) -> str:
+    """Return a stable local identity shared by all worktrees of one Git repo."""
+
+    common_dir = git_common_dir(repo_root)
+    try:
+        identity_source = str(common_dir.resolve())
+    except (OSError, RuntimeError):
+        identity_source = str(common_dir)
+    return (
+        "repository:"
+        + content_identity(
+            {
+                "kind": "local-git-common-directory",
+                "path": identity_source,
+            }
+        )
+    )
+
+
+def merge_target_queue_dir(
+    repo_root: Path,
+    target_branch: str,
+) -> Path:
+    """Return the queue namespace for one physical repository and target ref.
+
+    Older supervisors used one queue directly under ``agent-merge-train``.
+    Keeping target-scoped queues in a new directory prevents a still-running
+    legacy consumer from claiming requests produced by upgraded daemons.
+    """
+
+    branch = str(target_branch or "").strip()
+    if not branch:
+        raise ValueError("merge target branch must not be empty")
+    repository_id = checkout_repository_id(repo_root)
+    binding = f"{repository_id}\0{branch}".encode("utf-8")
+    digest = hashlib.sha256(binding).hexdigest()[:20]
+    safe_branch = "".join(
+        character if character.isalnum() or character in "-._" else "-"
+        for character in branch
+    ).strip("-") or "target"
+    return (
+        git_common_dir(repo_root)
+        / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME
+        / f"{safe_branch[:48]}-{digest}"
+    )
 
 
 def checkout_lock_metadata(

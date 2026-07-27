@@ -1112,6 +1112,8 @@ def build_portal_implementation_daemon_from_args(
         implementation_timeout=parsed.implementation_timeout or DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
         use_ephemeral_worktree=parsed.implement and not parsed.no_ephemeral_worktree,
         worktree_root=parsed.worktree_root,
+        merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
+        merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
         worktree_submodule_paths=worktree_submodule_paths,
         implementation_protected_paths=implementation_protected_paths,
         objective_path=parsed.objective_path or default_objective_path,
