@@ -308,7 +308,7 @@ Program invariants:
 
 ## AICAT-012 Replace duplicate API model registries with compatibility projections
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
