@@ -148,7 +148,7 @@ secrets to commit:
 | `ipfs_accelerate_py_COPILOT_SDK_MODEL` | Copilot SDK model. |
 | `ipfs_accelerate_py_GEMINI_CLI_CMD` | Gemini CLI command template. |
 | `ipfs_accelerate_py_GROK_CLI_CMD` / `GROK_CLI_CMD` | Grok CLI command or command template. |
-| `ipfs_accelerate_py_GROK_CLI_MODEL` / `GROK_CLI_MODEL` | Optional Grok CLI model; otherwise the CLI default is used. |
+| `ipfs_accelerate_py_GROK_CLI_MODEL` / `GROK_CLI_MODEL` | Grok CLI model; defaults to `grok-4.5` (run `grok models` for the catalog). |
 | `ipfs_accelerate_py_CLAUDE_CODE_CLI_CMD` | Claude Code command template. |
 | `IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD` / `ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD` | Mistral Vibe command template. |
 | `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` | Mistral authentication. |

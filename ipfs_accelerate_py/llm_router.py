@@ -28,9 +28,9 @@ Additional optional providers (opt-in by selecting provider):
     - `ipfs_accelerate_py_COPILOT_SDK_MODEL`, `ipfs_accelerate_py_COPILOT_SDK_TIMEOUT`
 - `gemini_cli`: Gemini CLI via `npx @google/gemini-cli`
     - `ipfs_accelerate_py_GEMINI_CLI_CMD` (supports `{prompt}` placeholder)
-- `grok_cli`: xAI Grok CLI via the official `grok` binary
+- `grok_cli`: xAI Grok Build CLI via the official `grok` binary
     - `ipfs_accelerate_py_GROK_CLI_CMD` (supports `{prompt}` and `{model}` placeholders)
-    - `ipfs_accelerate_py_GROK_CLI_MODEL` (optional model; otherwise the CLI default)
+    - `ipfs_accelerate_py_GROK_CLI_MODEL` (default: grok-4.5; run `grok models`)
     - Authenticate with `grok login` or `XAI_API_KEY`
 - `gemini_py`: Python wrapper in `ipfs_accelerate_py.utils.gemini_cli.GeminiCLI`
 - `claude_code`: Claude Code CLI command
@@ -47,7 +47,7 @@ Additional optional providers (opt-in by selecting provider):
     - `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` for auth
 - `xai`: xAI Grok AI (REST API, OpenAI-compatible)
     - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
-    - `ipfs_accelerate_py_XAI_MODEL` (default model, e.g. grok-3)
+    - `ipfs_accelerate_py_XAI_MODEL` (default model: grok-4.5)
     - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
 - `meta_ai`: Meta Model API / Muse Spark (OpenAI-compatible)
     - encrypted credential `meta_ai_api_key`, `MODEL_API_KEY`,
@@ -1547,8 +1547,9 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
                 "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
                 "IPFS_DATASETS_PY_GROK_CLI_MODEL",
                 "GROK_CLI_MODEL",
+                "IPFS_ACCELERATE_AGENT_GROK_MODEL",
             )
-            or "grok-cli-default"
+            or "grok-4.5"
         ).strip()
     if pk == "grok" or pk in _XAI_API_PROVIDER_ALIASES:
         return (
@@ -1558,7 +1559,7 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
                 "IPFS_DATASETS_PY_XAI_MODEL",
             )
             or _generic_llm_model_env()
-            or "grok-3"
+            or "grok-4.5"
         ).strip()
     if pk in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
         return normalize_meta_model_name(
