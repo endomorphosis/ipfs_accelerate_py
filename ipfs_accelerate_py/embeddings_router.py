@@ -1723,6 +1723,7 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
 
         def __init__(self):
             self._models = {}
+            self._models_lock = threading.Lock()
 
         def embed_texts(
             self,
@@ -1743,22 +1744,30 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
             
             # Get or create model
             cache_key = f"{model}::{device_str}"
-            if cache_key not in self._models:
-                try:
-                    from sentence_transformers import SentenceTransformer
-                    self._models[cache_key] = SentenceTransformer(model, device=device_str)
-                except ImportError:
-                    # Fall back to transformers directly
-                    from transformers import AutoTokenizer, AutoModel
-                    import torch
-                    
-                    tokenizer = AutoTokenizer.from_pretrained(model)
-                    model_obj = AutoModel.from_pretrained(model)
-                    if device_str == "cuda" and torch.cuda.is_available():
-                        model_obj = model_obj.to("cuda")
-                    self._models[cache_key] = (tokenizer, model_obj, device_str)
-            
-            model_obj = self._models[cache_key]
+            with self._models_lock:
+                if cache_key not in self._models:
+                    try:
+                        from sentence_transformers import SentenceTransformer
+                        self._models[cache_key] = SentenceTransformer(
+                            model,
+                            device=device_str,
+                        )
+                    except ImportError:
+                        # Fall back to transformers directly
+                        from transformers import AutoTokenizer, AutoModel
+                        import torch
+
+                        tokenizer = AutoTokenizer.from_pretrained(model)
+                        model_obj = AutoModel.from_pretrained(model)
+                        if device_str == "cuda" and torch.cuda.is_available():
+                            model_obj = model_obj.to("cuda")
+                        self._models[cache_key] = (
+                            tokenizer,
+                            model_obj,
+                            device_str,
+                        )
+
+                model_obj = self._models[cache_key]
             inputs = list(texts)
             
             # Use SentenceTransformer if available

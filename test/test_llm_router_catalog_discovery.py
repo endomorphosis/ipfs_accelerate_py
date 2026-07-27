@@ -78,6 +78,7 @@ def test_all_builtin_providers_publish_typed_llm_metadata() -> None:
             "copilot_sdk",
             "gemini_cli",
             "gemini_py",
+            "goose_cli",
             "grok_cli",
             "hf_inference_api",
             "llama_cpp",

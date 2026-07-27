@@ -121,6 +121,7 @@ class TestMetaAICLIIntegration(unittest.TestCase):
         integration = self.MetaAICLIIntegration()
         models = integration.list_models()
         self.assertIsInstance(models, list)
+        self.assertIn("muse-spark-1.1", models)
         self.assertIn("meta-llama/Llama-3.3-70B-Instruct", models)
         self.assertIn("meta-spark/Spark-1.1", models)
         self.assertIn("meta-llama/Llama-3.2-11B-Vision-Instruct", models)
@@ -143,25 +144,25 @@ class TestMetaAICLIIntegration(unittest.TestCase):
     def test_suggest_model_creative(self):
         self.assertEqual(
             self.MetaAICLIIntegration.suggest_model("creative"),
-            "meta-spark/Spark-1.1",
+            "muse-spark-1.1",
         )
 
     def test_suggest_model_vision(self):
         self.assertEqual(
             self.MetaAICLIIntegration.suggest_model("vision"),
-            "meta-llama/Llama-3.2-11B-Vision-Instruct",
+            "muse-spark-1.1",
         )
 
     def test_suggest_model_reasoning(self):
         self.assertEqual(
             self.MetaAICLIIntegration.suggest_model("reasoning"),
-            "meta-llama/Llama-3.1-405B-Instruct",
+            "muse-spark-1.1",
         )
 
     def test_suggest_model_subagent(self):
         self.assertEqual(
             self.MetaAICLIIntegration.suggest_model("subagent"),
-            "meta-llama/Llama-3.2-1B-Instruct",
+            "muse-spark-1.1",
         )
 
     def test_suggest_model_unknown_falls_back_to_default(self):
@@ -184,7 +185,7 @@ class TestMetaAICLIIntegration(unittest.TestCase):
             result = integration.creative_mode("Write a story")
         self.assertTrue(result["approved"])
         self.assertNotEqual(result["response"], "")
-        self.assertEqual(result["model"], "meta-spark/Spark-1.1")
+        self.assertEqual(result["model"], "muse-spark-1.1")
 
     def test_creative_mode_auto_approve_true(self):
         integration = self.MetaAICLIIntegration(headless=False)
@@ -324,12 +325,17 @@ class TestMetaAICLIIntegration(unittest.TestCase):
         with patch.object(integration, "_get_openai_client", return_value=mock_client):
             result = integration._chat_sdk(
                 message="What is IPFS?",
-                model="meta-llama/Llama-3.3-70B-Instruct",
+                model="meta-spark/Spark-1.1",
                 temperature=0.7,
+                max_tokens=512,
             )
 
         self.assertFalse(result["cached"])
         self.assertEqual(result["response"], "Live response")
+        create_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        self.assertEqual(create_kwargs["model"], "muse-spark-1.1")
+        self.assertEqual(create_kwargs["max_completion_tokens"], 512)
+        self.assertNotIn("max_tokens", create_kwargs)
 
     # ------------------------------------------------------------------
     # Global singleton
@@ -369,6 +375,7 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_import(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai, ALL_MODELS, CHAT_MODELS
+        self.assertIn("muse-spark-1.1", CHAT_MODELS)
         self.assertIn("meta-llama/Llama-3.3-70B-Instruct", CHAT_MODELS)
         self.assertIn("meta-llama/Llama-3.2-90B-Vision-Instruct", CHAT_MODELS)
         self.assertIn("meta-spark/Spark-1.1", CHAT_MODELS)
@@ -376,12 +383,21 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_init_no_key(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
-        saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+        names = (
+            "MODEL_API_KEY",
+            "META_AI_API_KEY",
+            "ipfs_accelerate_py_META_AI_API_KEY",
+            "IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER",
+        )
+        saved = {k: os.environ.pop(k, None) for k in names}
+        os.environ["IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER"] = "1"
         try:
             client = meta_cls(resources={}, metadata={})
             self.assertIsNone(client.api_key)
-            self.assertEqual(client.default_model, "meta-llama/Llama-3.3-70B-Instruct")
+            self.assertEqual(client.default_model, "muse-spark-1.1")
+            self.assertEqual(client.base_url, "https://api.meta.ai/v1")
         finally:
+            os.environ.pop("IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER", None)
             for k, v in saved.items():
                 if v is not None:
                     os.environ[k] = v
@@ -407,6 +423,7 @@ class TestMetaAIBackend(unittest.TestCase):
         client = meta_cls()
         models = client.list_models()
         self.assertIsInstance(models, list)
+        self.assertIn("muse-spark-1.1", models)
         self.assertIn("meta-llama/Llama-3.3-70B-Instruct", models)
         self.assertIn("meta-spark/Spark-1.1", models)
 
@@ -451,12 +468,20 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_make_request_raises_without_key(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
-        saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+        names = (
+            "MODEL_API_KEY",
+            "META_AI_API_KEY",
+            "ipfs_accelerate_py_META_AI_API_KEY",
+            "IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER",
+        )
+        saved = {k: os.environ.pop(k, None) for k in names}
+        os.environ["IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER"] = "1"
         try:
             client = meta_cls()
             with self.assertRaises(RuntimeError, msg="should raise without API key"):
                 client._make_request("chat/completions", {})
         finally:
+            os.environ.pop("IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER", None)
             for k, v in saved.items():
                 if v is not None:
                     os.environ[k] = v
@@ -479,6 +504,10 @@ class TestApiModelsRegistryMetaPrefixes(unittest.TestCase):
 
     def test_meta_spark_prefix(self):
         backend = self.registry.get_backend_for_model("meta-spark/Spark-1.1")
+        self.assertEqual(backend, "meta_ai")
+
+    def test_muse_spark_model_id(self):
+        backend = self.registry.get_backend_for_model("muse-spark-1.1")
         self.assertEqual(backend, "meta_ai")
 
     def test_openai_prefix_unchanged(self):
@@ -559,10 +588,18 @@ class TestMetaAIMultimodalRouter(unittest.TestCase):
 
     def test_no_provider_without_key(self):
         from ipfs_accelerate_py.multimodal_router import _get_meta_ai_multimodal_provider
-        saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+        names = (
+            "MODEL_API_KEY",
+            "META_AI_API_KEY",
+            "ipfs_accelerate_py_META_AI_API_KEY",
+            "IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER",
+        )
+        saved = {k: os.environ.pop(k, None) for k in names}
+        os.environ["IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER"] = "1"
         try:
             self.assertIsNone(_get_meta_ai_multimodal_provider())
         finally:
+            os.environ.pop("IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER", None)
             for k, v in saved.items():
                 if v is not None:
                     os.environ[k] = v

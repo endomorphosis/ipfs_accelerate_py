@@ -1,19 +1,15 @@
 """
 Meta AI CLI Integration with Common Cache
 
-Wraps the Meta AI API (Llama and Spark/Muse family) and the OpenAI-compatible
-REST endpoint at ``https://api.llamameta.net/v1`` to use the common cache
-infrastructure.
+Wraps the OpenAI-compatible Meta Model API at ``https://api.meta.ai/v1`` and
+uses the common cache infrastructure.
 
 Unique Meta AI capabilities surfaced by this integration
 ---------------------------------------------------------
-* **Creative Mode** – Routes requests through Meta Spark 1.1, Meta's
-  generative creative AI model from the Muse & Spark platform, optimised
-  for story-telling, creative writing, and artistic content generation.
-* **Vision Chat** – Passes image URLs alongside text prompts to the
-  Llama 3.2 Vision models (11B and 90B variants).
-* **Model Selector** – Automatically picks the right Llama size (1B–405B)
-  for a task based on a ``task_hint`` parameter, balancing cost and quality.
+* **Creative Mode** – Routes requests through Muse Spark 1.1.
+* **Vision Chat** – Passes image URLs alongside text prompts to Muse Spark.
+* **Model Selector** – Uses Muse Spark for current hosted API workloads while
+  retaining legacy custom-endpoint model identifiers for compatibility.
 * **Headless / CI Mode** – When ``headless=True``, creative-mode approval
   prompts are skipped and the integration runs fully non-interactively.
 
@@ -41,7 +37,8 @@ the Trio / asyncio event loop free for other MCP requests::
 
 Environment variables
 ---------------------
-``META_AI_API_KEY``                       – Required Meta AI API key.
+``MODEL_API_KEY``                         – Official Meta Model API key variable.
+``META_AI_API_KEY``                       – Compatibility API key variable.
 ``ipfs_accelerate_py_META_AI_API_KEY``    – Alternative key env var.
 ``ipfs_accelerate_py_META_AI_BASE_URL``   – Override API base URL.
 ``META_AI_HEADLESS``                      – Set to ``1`` to enable headless mode.
@@ -56,6 +53,12 @@ from typing import Any, Dict, List, Optional
 
 from .dual_mode_wrapper import DualModeWrapper, detect_cli_tool
 from ..common.llm_cache import LLMAPICache, get_global_llm_cache, get_llm_cache
+from ..common.meta_model_api import (
+    META_MODEL_API_BASE_URL,
+    META_MODEL_API_DEFAULT_MODEL,
+    normalize_meta_model_name,
+    resolve_meta_model_api_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,20 @@ logger = logging.getLogger(__name__)
 # https://developer.meta.com/ai/resources/blog/build-with-muse-spark/
 # ---------------------------------------------------------------------------
 META_AI_MODELS: Dict[str, Dict[str, Any]] = {
+    "muse-spark-1.1": {
+        "context_window": 1_048_576,
+        "max_output_tokens": 131_072,
+        "description": "Meta Muse Spark 1.1 multimodal reasoning and agentic model",
+        "recommended_for": [
+            "chat",
+            "code_generation",
+            "complex_reasoning",
+            "creative_mode",
+            "vision_chat",
+            "subagents",
+        ],
+        "modalities": ["text", "image", "video", "audio", "pdf"],
+    },
     # Llama 3.3 – flagship instruction-tuned
     "meta-llama/Llama-3.3-70B-Instruct": {
         "context_window": 128_000,
@@ -117,30 +134,33 @@ META_AI_MODELS: Dict[str, Dict[str, Any]] = {
         "recommended_for": ["subagents"],
         "modalities": ["text"],
     },
-    # Meta Spark 1.1 – creative AI (Muse & Spark platform)
+    # Backward-compatible spelling used by the pre-release integration.
     "meta-spark/Spark-1.1": {
-        "context_window": 32_768,
-        "description": "Meta Spark 1.1 – creative AI model from the Muse & Spark platform",
+        "context_window": 1_048_576,
+        "max_output_tokens": 131_072,
+        "description": "Deprecated alias for muse-spark-1.1",
         "recommended_for": ["creative_writing", "storytelling", "creative_mode"],
         "modalities": ["text"],
+        "deprecated": True,
+        "replacement": "muse-spark-1.1",
     },
 }
 
-_DEFAULT_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
-_DEFAULT_VISION_MODEL = "meta-llama/Llama-3.2-11B-Vision-Instruct"
-_DEFAULT_CREATIVE_MODEL = "meta-spark/Spark-1.1"
-_DEFAULT_BASE_URL = "https://api.llamameta.net/v1"
+_DEFAULT_MODEL = META_MODEL_API_DEFAULT_MODEL
+_DEFAULT_VISION_MODEL = META_MODEL_API_DEFAULT_MODEL
+_DEFAULT_CREATIVE_MODEL = META_MODEL_API_DEFAULT_MODEL
+_DEFAULT_BASE_URL = META_MODEL_API_BASE_URL
 
 # Task hint → suggested model mapping for automatic model selection.
 _TASK_MODEL_MAP: Dict[str, str] = {
-    "subagent": "meta-llama/Llama-3.2-1B-Instruct",
-    "simple": "meta-llama/Llama-3.2-3B-Instruct",
-    "fast": "meta-llama/Llama-3.1-8B-Instruct",
-    "chat": "meta-llama/Llama-3.3-70B-Instruct",
-    "code": "meta-llama/Llama-3.3-70B-Instruct",
-    "reasoning": "meta-llama/Llama-3.1-405B-Instruct",
-    "creative": "meta-spark/Spark-1.1",
-    "vision": "meta-llama/Llama-3.2-11B-Vision-Instruct",
+    "subagent": META_MODEL_API_DEFAULT_MODEL,
+    "simple": META_MODEL_API_DEFAULT_MODEL,
+    "fast": META_MODEL_API_DEFAULT_MODEL,
+    "chat": META_MODEL_API_DEFAULT_MODEL,
+    "code": META_MODEL_API_DEFAULT_MODEL,
+    "reasoning": META_MODEL_API_DEFAULT_MODEL,
+    "creative": META_MODEL_API_DEFAULT_MODEL,
+    "vision": META_MODEL_API_DEFAULT_MODEL,
 }
 
 
@@ -168,7 +188,7 @@ class MetaAICLIIntegration(DualModeWrapper):
         cache: Optional[LLMAPICache] = None,
         prefer_cli: bool = False,
         headless: bool = False,
-        base_url: str = _DEFAULT_BASE_URL,
+        base_url: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -216,7 +236,11 @@ class MetaAICLIIntegration(DualModeWrapper):
         if cache_was_none:
             self.cache = get_llm_cache("meta_ai", api_key=self.api_key)
 
-        self.base_url = base_url.rstrip("/")
+        self.base_url = (
+            base_url
+            or os.environ.get("ipfs_accelerate_py_META_AI_BASE_URL")
+            or _DEFAULT_BASE_URL
+        ).rstrip("/")
         self.headless = headless or (os.environ.get("META_AI_HEADLESS", "0") == "1")
 
         # Lazy-initialised OpenAI-compatible client pointed at Meta's endpoint
@@ -235,13 +259,9 @@ class MetaAICLIIntegration(DualModeWrapper):
 
     def _get_api_key_from_secrets(self) -> Optional[str]:
         """Retrieve Meta AI API key from the secrets manager or env."""
-        key = self.secrets_manager.get_credential("meta_ai_api_key")
-        if not key:
-            key = (
-                os.environ.get("META_AI_API_KEY")
-                or os.environ.get("ipfs_accelerate_py_META_AI_API_KEY")
-            )
-        return key or None
+        return resolve_meta_model_api_key(
+            secrets_manager=self.secrets_manager,
+        )
 
     def _create_sdk_client(self) -> Any:
         """Create an ``openai.OpenAI`` client pointed at the Meta AI endpoint."""
@@ -308,6 +328,8 @@ class MetaAICLIIntegration(DualModeWrapper):
         api_key:
             Optional per-request key override.
         """
+        model = normalize_meta_model_name(model)
+
         if image_url:
             user_content: Any = [
                 {"type": "text", "text": message},
@@ -343,7 +365,10 @@ class MetaAICLIIntegration(DualModeWrapper):
             "model": model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": kwargs.get("max_tokens", 4096),
+            "max_completion_tokens": kwargs.get(
+                "max_completion_tokens",
+                kwargs.get("max_tokens", kwargs.get("max_new_tokens", 4096)),
+            ),
         }
 
         response = client.chat.completions.create(**create_kwargs)
@@ -379,7 +404,7 @@ class MetaAICLIIntegration(DualModeWrapper):
         return _TASK_MODEL_MAP.get(task_hint.lower(), _DEFAULT_MODEL)
 
     # ------------------------------------------------------------------
-    # Creative Mode  (unique to Meta Spark 1.1)
+    # Creative Mode  (Muse Spark 1.1)
     # ------------------------------------------------------------------
 
     def creative_mode(
@@ -393,7 +418,7 @@ class MetaAICLIIntegration(DualModeWrapper):
     ) -> Dict[str, Any]:
         """
         Meta AI Creative Mode – generate artistic or narrative content using
-        Meta Spark 1.1.
+        Muse Spark 1.1.
 
         Meta Spark 1.1 is Meta's creative AI model from the Muse & Spark
         platform, optimised for story-telling, creative writing, and
@@ -406,7 +431,7 @@ class MetaAICLIIntegration(DualModeWrapper):
         prompt:
             Creative prompt / description of the desired content.
         model:
-            Meta AI model to use (default: ``meta-spark/Spark-1.1``).
+            Meta AI model to use (default: ``muse-spark-1.1``).
         temperature:
             Sampling temperature (high values recommended for creative tasks).
         auto_approve:

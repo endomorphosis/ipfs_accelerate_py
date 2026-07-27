@@ -30,10 +30,11 @@ Additional optional providers (opt-in by selecting provider):
     - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
     - `ipfs_accelerate_py_XAI_MULTIMODAL_MODEL` (default: grok-2-vision-1212)
     - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
-- `meta_ai`: Meta Llama vision (Llama-3.2-90B-Vision-Instruct) via OpenAI-compatible endpoint
-    - `META_AI_API_KEY` or `ipfs_accelerate_py_META_AI_API_KEY`
-    - `ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL` (default: meta-llama/Llama-3.2-90B-Vision-Instruct)
-    - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.llamameta.net/v1)
+- `meta_ai`: Meta Muse Spark multimodal API via OpenAI-compatible endpoint
+    - encrypted credential `meta_ai_api_key`, `MODEL_API_KEY`,
+      `META_AI_API_KEY`, or `ipfs_accelerate_py_META_AI_API_KEY`
+    - `ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL` (default: muse-spark-1.1)
+    - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.meta.ai/v1)
 - `huggingface`: HuggingFace transformers (LLaVA, InstructBLIP, etc.)
 - `backend_manager`: Use InferenceBackendManager for distributed inference
 """
@@ -69,6 +70,13 @@ from typing import (
 )
 
 from . import llm_router
+from .common.meta_model_api import (
+    META_MODEL_API_BASE_URL,
+    META_MODEL_API_DEFAULT_MODEL,
+    meta_model_api_key_fingerprint,
+    normalize_meta_model_name,
+    resolve_meta_model_api_key,
+)
 from .model_catalog import (
     CapabilityDescriptor,
     CatalogSnapshot,
@@ -423,7 +431,7 @@ _BUILTIN_PROVIDER_SPECS: Tuple[_MultimodalProviderSpec, ...] = (
             "meta_spark",
             "spark",
         ),
-        description="Meta AI OpenAI-compatible multimodal API.",
+        description="Meta Muse Spark OpenAI-compatible multimodal API.",
         locality="remote",
         device="provider-managed",
         authorization="required",
@@ -431,7 +439,7 @@ _BUILTIN_PROVIDER_SPECS: Tuple[_MultimodalProviderSpec, ...] = (
             "ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL",
             "ipfs_accelerate_py_MULTIMODAL_MODEL",
         ),
-        default_model="meta-llama/Llama-3.2-90B-Vision-Instruct",
+        default_model=META_MODEL_API_DEFAULT_MODEL,
     ),
     _MultimodalProviderSpec(
         name="huggingface",
@@ -484,8 +492,8 @@ def _model_facts(model_name: str) -> Tuple[Optional[int], Optional[str]]:
         return 128_000, "multimodal-transformer"
     if normalized == "llava-hf/llava-1.5-7b-hf":
         return None, "llava"
-    if normalized == "meta-llama/llama-3.2-90b-vision-instruct":
-        return None, "llama-vision"
+    if normalized == META_MODEL_API_DEFAULT_MODEL.casefold():
+        return None, "muse-spark"
     return None, None
 
 
@@ -515,6 +523,7 @@ def _remote_provider_authorized(name: str) -> Optional[bool]:
         )
     if name == "meta_ai":
         return _env_has_value(
+            "MODEL_API_KEY",
             "META_AI_API_KEY",
             "ipfs_accelerate_py_META_AI_API_KEY",
         )
@@ -1518,15 +1527,16 @@ def _get_xai_multimodal_provider() -> Optional[MultimodalProvider]:
 
 
 def _get_meta_ai_multimodal_provider() -> Optional[MultimodalProvider]:
-    """Get Meta AI vision provider (Llama-3.2-90B-Vision-Instruct) via OpenAI-compatible endpoint."""
-    api_key = (
-        os.environ.get("META_AI_API_KEY", "").strip()
-        or os.environ.get("ipfs_accelerate_py_META_AI_API_KEY", "").strip()
-    )
+    """Get the Muse Spark multimodal provider."""
+
+    api_key = resolve_meta_model_api_key()
     if not api_key:
         return None
 
-    base_url = os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "https://api.llamameta.net/v1").rstrip("/")
+    base_url = os.getenv(
+        "ipfs_accelerate_py_META_AI_BASE_URL",
+        META_MODEL_API_BASE_URL,
+    ).rstrip("/")
 
     class _MetaAIMultimodalProvider:
         def generate(
@@ -1543,8 +1553,9 @@ def _get_meta_ai_multimodal_provider() -> Optional[MultimodalProvider]:
                 model_name
                 or os.getenv("ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL")
                 or os.getenv("ipfs_accelerate_py_MULTIMODAL_MODEL")
-                or "meta-llama/Llama-3.2-90B-Vision-Instruct"
+                or META_MODEL_API_DEFAULT_MODEL
             )
+            model = normalize_meta_model_name(model)
 
             content: list = []
             if image is not None:
@@ -1557,8 +1568,12 @@ def _get_meta_ai_multimodal_provider() -> Optional[MultimodalProvider]:
                 "model": model,
                 "messages": messages,
             }
-            if "max_tokens" in kwargs:
-                payload["max_tokens"] = kwargs["max_tokens"]
+            max_completion_tokens = kwargs.get(
+                "max_completion_tokens",
+                kwargs.get("max_tokens", kwargs.get("max_new_tokens")),
+            )
+            if max_completion_tokens is not None:
+                payload["max_completion_tokens"] = int(max_completion_tokens)
             if "temperature" in kwargs:
                 payload["temperature"] = kwargs["temperature"]
 
@@ -1752,8 +1767,7 @@ def _provider_cache_key() -> tuple:
         os.getenv("ipfs_accelerate_py_XAI_API_KEY", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_MULTIMODAL_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "").strip(),
-        os.getenv("META_AI_API_KEY", "").strip(),
-        os.getenv("ipfs_accelerate_py_META_AI_API_KEY", "").strip(),
+        meta_model_api_key_fingerprint(),
         os.getenv("ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_MULTIMODAL_MODEL", "").strip(),

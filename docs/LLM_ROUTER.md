@@ -82,23 +82,32 @@ The built-in names currently recognized by the router include:
 | `codex_cli` | Codex CLI process | `codex` executable and auth |
 | `copilot_cli` | GitHub Copilot CLI process | Copilot CLI and auth |
 | `copilot_sdk` | Python Copilot SDK | optional SDK and auth |
+| `goose_cli` | Block/AAIF Goose CLI process | `goose` executable; default backend is Meta Muse Spark via OpenAI-compatible env |
 | `gemini_cli` / `gemini_py` | Gemini CLI or Python wrapper | Gemini tool/SDK and credentials |
 | `grok_cli` | Official xAI Grok CLI | `grok` executable and CLI OAuth or `XAI_API_KEY` |
 | `claude_code` / `claude_py` | Claude Code CLI or Python wrapper | Claude tool/SDK and credentials |
 | `mistral_vibe` | Mistral Vibe CLI | `vibe` and Mistral credentials |
 | `xai` | xAI OpenAI-compatible API | `XAI_API_KEY` |
-| `meta_ai` | Meta Llama-compatible API | Meta API credentials |
+| `meta_ai` | Meta Model API / Muse Spark (HTTP) | Meta API credentials (`meta_ai_api_key` / `MODEL_API_KEY`) |
 | `llama_cpp` | Local llama.cpp server | running or auto-startable server |
 | `llama_cpp_native` | `llama-cpp-python` binding | local GGUF and binding |
 | `local_hf` | Transformers pipeline | `transformers` and model weights |
 | `mock` | deterministic test provider | no external dependency |
 
 Aliases such as `codex`, `claude`, `grok`, `xai_cli`, `hf`, `huggingface`,
-`vibe`, and `accelerate` are accepted where implemented. For text generation,
-`grok` prefers the installed CLI and falls back to the xAI REST provider when
-the CLI is unavailable; use `grok_cli` or `grok_api` when the transport must
-be unambiguous. Use `get_llm_provider(name)` or the source module for the exact
-current alias set.
+`vibe`, `goose`, and `accelerate` are accepted where implemented. For text
+generation, `grok` prefers the installed CLI and falls back to the xAI REST
+provider when the CLI is unavailable; use `grok_cli` or `grok_api` when the
+transport must be unambiguous.
+
+`goose_cli` is a peer of `codex_cli` / `copilot_cli`. Ordinary
+`generate_text(..., provider="goose_cli")` is **chat-only** (no tools, no
+session, no default extensions). The default model backend is Meta Muse Spark
+through Goose's OpenAI-compatible transport (`OPENAI_HOST=https://api.meta.ai`
+plus the package Meta credential). Direct HTTP Muse Spark without Goose remains
+`meta_ai`. Authorized tool-using agent runs pass `agent=True` and an explicit
+`workspace` (used by the agent supervisor). Use `get_llm_provider(name)` or the
+source module for the exact current alias set.
 
 ## Provider selection and registration
 
@@ -144,7 +153,9 @@ secrets to commit:
 | `IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD` / `ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD` | Mistral Vibe command template. |
 | `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` | Mistral authentication. |
 | `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY` | xAI authentication. |
-| `META_AI_API_KEY` or `ipfs_accelerate_py_META_AI_API_KEY` | Meta AI authentication. |
+| `MODEL_API_KEY`, `META_AI_API_KEY`, or `ipfs_accelerate_py_META_AI_API_KEY` | Meta Model API authentication; the encrypted `meta_ai_api_key` credential is used when these are unset. |
+| `ipfs_accelerate_py_META_AI_MODEL` | Meta Model API model; defaults to `muse-spark-1.1`. |
+| `ipfs_accelerate_py_META_AI_BASE_URL` | Meta Model API endpoint; defaults to `https://api.meta.ai/v1`. |
 | `IPFS_ACCELERATE_LLAMA_CPP_*` | llama.cpp server URL, model, startup, and GPU settings. |
 | `IPFS_ACCELERATE_LLAMA_CPP_NATIVE_*` | native llama.cpp model, context, thread, and GPU settings. |
 | `ipfs_accelerate_py_ROUTER_CACHE` | Provider-instance cache; enabled unless `0`. |
@@ -155,6 +166,39 @@ secrets to commit:
 The router also accepts legacy/alternate environment names for selected batch
 and integration settings. Prefer the names documented in the module docstring
 and inspect the current source before relying on an undocumented alias.
+
+### Meta Muse Spark 1.1
+
+Store the credential once in the encrypted package credential manager:
+
+```python
+from getpass import getpass
+from ipfs_accelerate_py.common.secrets_manager import get_global_secrets_manager
+
+get_global_secrets_manager().set_credential(
+    "meta_ai_api_key",
+    getpass("Meta Model API key: "),
+)
+```
+
+Then use the canonical hosted model without exporting the key:
+
+```python
+from ipfs_accelerate_py import generate_text
+
+answer = generate_text(
+    "Reply with one sentence about content-addressed data.",
+    provider="meta_ai",
+    model_name="muse-spark-1.1",
+    max_completion_tokens=512,
+)
+print(answer)
+```
+
+The compatibility spelling `meta-spark/Spark-1.1` is normalized to
+`muse-spark-1.1`. Environment credentials override the encrypted store for a
+single process. Set `IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER=1` when an
+isolated process must not read persistent credentials.
 
 ## Caching and dependency injection
 

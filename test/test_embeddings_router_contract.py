@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import math
+import time
 from typing import Iterable, Optional
 
 import pytest
 
+import ipfs_accelerate_py.embeddings_router as embeddings_router
 from ipfs_accelerate_py.embeddings_router import (
     EmbeddingsRouterError,
     clear_embeddings_router_caches,
@@ -146,3 +148,45 @@ def test_local_huggingface_failure_is_not_retried_as_its_own_fallback() -> None:
 
     assert provider.calls == 1
     assert get_last_embedding_trace()["status"] == "error"
+
+
+def test_huggingface_model_initialization_is_thread_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sentence_transformers
+
+    initializations: list[tuple[str, str]] = []
+
+    class _Vector:
+        def tolist(self) -> list[float]:
+            return [1.0, 2.0]
+
+    class _FakeSentenceTransformer:
+        def __init__(self, model: str, *, device: str) -> None:
+            initializations.append((model, device))
+            # Make an unlocked implementation reliably overlap both workers.
+            time.sleep(0.05)
+
+        def encode(self, inputs: list[str], **kwargs: object) -> list[_Vector]:
+            _ = kwargs
+            return [_Vector() for _ in inputs]
+
+    monkeypatch.setattr(
+        sentence_transformers,
+        "SentenceTransformer",
+        _FakeSentenceTransformer,
+    )
+    provider = embeddings_router._get_huggingface_provider()
+    assert provider is not None
+
+    vectors = embed_texts_batched(
+        ["first", "second"],
+        batch_size=1,
+        max_workers=2,
+        model_name="fixture-model",
+        provider_instance=provider,
+        device="cpu",
+    )
+
+    assert vectors == [[1.0, 2.0], [1.0, 2.0]]
+    assert initializations == [("fixture-model", "cpu")]

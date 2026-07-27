@@ -234,6 +234,7 @@ def test_xai_builtin_provider_by_name():
 def test_meta_ai_backend_import():
     """Test that the Meta AI backend can be imported."""
     from ipfs_accelerate_py.api_backends.meta_ai import meta_ai, ALL_MODELS, CHAT_MODELS
+    assert "muse-spark-1.1" in CHAT_MODELS
     assert "meta-llama/Llama-3.3-70B-Instruct" in CHAT_MODELS
     assert "meta-spark/Spark-1.1" in CHAT_MODELS, "Meta Spark 1.1 should be listed"
     assert len(ALL_MODELS) >= len(CHAT_MODELS)
@@ -244,14 +245,22 @@ def test_meta_ai_backend_init_no_key():
     import os
     from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_ai_cls
 
-    saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+    names = (
+        "MODEL_API_KEY",
+        "META_AI_API_KEY",
+        "ipfs_accelerate_py_META_AI_API_KEY",
+        "IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER",
+    )
+    saved = {k: os.environ.pop(k, None) for k in names}
+    os.environ["IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER"] = "1"
     try:
         client = meta_ai_cls(resources={}, metadata={})
         assert client.api_key is None
-        assert client.base_url == "https://api.llamameta.net/v1"
-        assert "Llama" in client.default_model
+        assert client.base_url == "https://api.meta.ai/v1"
+        assert client.default_model == "muse-spark-1.1"
         assert client.list_models()
     finally:
+        os.environ.pop("IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER", None)
         for k, v in saved.items():
             if v is not None:
                 os.environ[k] = v
@@ -272,7 +281,7 @@ def test_meta_ai_backend_init_with_metadata():
         },
     )
     assert client.api_key == "meta-test-key"
-    assert client.default_model == "meta-spark/Spark-1.1"
+    assert client.default_model == "muse-spark-1.1"
     assert client.base_url == "https://custom.meta.example/v1"
     assert client.max_retries == 1
     assert client.timeout == 45.0
@@ -283,11 +292,19 @@ def test_meta_ai_llm_router_provider():
     from ipfs_accelerate_py.llm_router import _get_meta_ai_provider
     import os
 
-    saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+    names = (
+        "MODEL_API_KEY",
+        "META_AI_API_KEY",
+        "ipfs_accelerate_py_META_AI_API_KEY",
+        "IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER",
+    )
+    saved = {k: os.environ.pop(k, None) for k in names}
+    os.environ["IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER"] = "1"
     try:
         provider = _get_meta_ai_provider()
         assert provider is None, "Meta AI provider should be None without API key"
     finally:
+        os.environ.pop("IPFS_ACCELERATE_PY_DISABLE_SECRET_MANAGER", None)
         for k, v in saved.items():
             if v is not None:
                 os.environ[k] = v

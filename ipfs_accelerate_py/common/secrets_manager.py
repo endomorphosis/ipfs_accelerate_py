@@ -61,14 +61,10 @@ class SecretsManager:
         self.use_encryption = use_encryption
         self._credentials: Dict[str, str] = {}
         
-        # Initialize storage wrapper
-        if storage_wrapper:
-            try:
-                self.storage = storage_wrapper()
-            except:
-                self.storage = None
-        else:
-            self.storage = None
+        # Credentials and their encryption key must remain local.  In
+        # particular, never copy either artifact into the optional
+        # content-addressed/distributed storage layer.
+        self.storage = None
         
         # Set default secrets file location
         if secrets_file is None:

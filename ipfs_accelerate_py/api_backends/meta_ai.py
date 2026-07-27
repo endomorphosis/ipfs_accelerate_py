@@ -1,22 +1,30 @@
-"""Meta AI (Llama / Spark) API backend for ipfs_accelerate_py.
+"""Meta Model API (Muse Spark) backend for ipfs_accelerate_py.
 
-Provides access to Meta's AI models – including Meta Llama and the Spark/Muse
-family – via Meta's OpenAI-compatible REST API.
+Provides access to Muse Spark through Meta's OpenAI-compatible hosted API.
+Legacy Llama model identifiers remain in the catalogue for callers using a
+custom compatible endpoint, but the hosted default is Muse Spark 1.1.
 
 References:
   https://developer.meta.com/ai/resources/blog/build-with-muse-spark/
-  https://llama.meta.com/llama-api/
 
 Environment variables:
-  META_AI_API_KEY or ipfs_accelerate_py_META_AI_API_KEY  - Required API key
-  ipfs_accelerate_py_META_AI_MODEL                        - Default model (meta-llama/Llama-3.3-70B-Instruct)
+  MODEL_API_KEY, META_AI_API_KEY, or encrypted meta_ai_api_key - API key
+  ipfs_accelerate_py_META_AI_MODEL                        - Default model (muse-spark-1.1)
   ipfs_accelerate_py_META_AI_BASE_URL                     - Override base URL
 """
 
 import json
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
+
+from ..common.meta_model_api import (
+    META_MODEL_API_BASE_URL,
+    META_MODEL_API_DEFAULT_MODEL,
+    normalize_meta_model_name,
+    resolve_meta_model_api_key,
+)
 
 try:
     from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
@@ -66,12 +74,18 @@ except ImportError:
     except ImportError:
         BaseAPIBackend = object
 
-_DEFAULT_BASE_URL = "https://api.llamameta.net/v1"
-_DEFAULT_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
+_DEFAULT_BASE_URL = META_MODEL_API_BASE_URL
+_DEFAULT_MODEL = META_MODEL_API_DEFAULT_MODEL
 
 # Meta AI models available through the Llama API and Spark/Muse platform.
 # https://llama.meta.com/docs/model-cards-and-prompt-formats/
 CHAT_MODELS = {
+    "muse-spark-1.1": {
+        "context_window": 1_048_576,
+        "max_output_tokens": 131_072,
+        "description": "Meta Muse Spark 1.1 multimodal reasoning and agentic model",
+        "modalities": ["text", "image", "video", "audio", "pdf"],
+    },
     "meta-llama/Llama-3.3-70B-Instruct": {
         "context_window": 128000,
         "description": "Meta Llama 3.3 70B instruction-tuned – flagship chat model",
@@ -104,10 +118,13 @@ CHAT_MODELS = {
         "context_window": 128000,
         "description": "Meta Llama 3.2 1B – ultra-compact instruction-tuned model",
     },
-    # Spark 1.1 – Meta's creative AI model (Muse & Spark platform)
+    # Backward-compatible spelling used by the pre-release integration.
     "meta-spark/Spark-1.1": {
-        "context_window": 32768,
-        "description": "Meta Spark 1.1 – creative AI model from the Muse & Spark platform",
+        "context_window": 1_048_576,
+        "max_output_tokens": 131_072,
+        "description": "Deprecated alias for muse-spark-1.1",
+        "deprecated": True,
+        "replacement": "muse-spark-1.1",
     },
 }
 
@@ -115,10 +132,10 @@ ALL_MODELS = dict(CHAT_MODELS)
 
 
 class meta_ai(BaseAPIBackend):
-    """Meta AI API client.
+    """Meta Model API client.
 
-    Supports chat completions via Meta's OpenAI-compatible endpoint for the
-    Llama model family and the Spark/Muse creative AI platform.
+    Supports Muse Spark chat completions through Meta's OpenAI-compatible
+    endpoint. Custom base URLs may continue serving legacy catalogue entries.
     """
 
     def __init__(self, resources=None, metadata=None):
@@ -129,9 +146,14 @@ class meta_ai(BaseAPIBackend):
         self.base_url = (
             self.metadata.get("base_url")
             or self.metadata.get("api_base")
+            or os.environ.get("ipfs_accelerate_py_META_AI_BASE_URL")
             or _DEFAULT_BASE_URL
         ).rstrip("/")
-        self.default_model = self.metadata.get("model") or _DEFAULT_MODEL
+        self.default_model = normalize_meta_model_name(
+            self.metadata.get("model")
+            or os.environ.get("ipfs_accelerate_py_META_AI_MODEL")
+            or _DEFAULT_MODEL
+        )
 
         self.max_retries = int(self.metadata.get("max_retries", 3))
         self.timeout = float(self.metadata.get("timeout", 60.0))
@@ -151,19 +173,19 @@ class meta_ai(BaseAPIBackend):
     # ------------------------------------------------------------------
 
     def _get_api_key(self) -> Optional[str]:
-        key = (
+        explicit = (
             self.metadata.get("api_key")
             or self.metadata.get("meta_ai_api_key")
+            or self.metadata.get("MODEL_API_KEY")
             or self.metadata.get("META_AI_API_KEY")
         )
-        if key:
-            return str(key).strip()
-        import os
-        return (
-            os.environ.get("META_AI_API_KEY")
-            or os.environ.get("ipfs_accelerate_py_META_AI_API_KEY")
-            or ""
-        ).strip() or None
+        use_secrets_manager = str(
+            self.metadata.get("use_secrets_manager", "true")
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        return resolve_meta_model_api_key(
+            str(explicit) if explicit is not None else None,
+            use_secrets_manager=use_secrets_manager,
+        )
 
     # ------------------------------------------------------------------
     # Low-level HTTP request
@@ -179,7 +201,9 @@ class meta_ai(BaseAPIBackend):
         if not self.api_key:
             raise RuntimeError(
                 "Meta AI API key not configured. "
-                "Set META_AI_API_KEY or ipfs_accelerate_py_META_AI_API_KEY."
+                "Store meta_ai_api_key in the encrypted credentials manager or "
+                "set MODEL_API_KEY, META_AI_API_KEY, or "
+                "ipfs_accelerate_py_META_AI_API_KEY."
             )
         if not self.check_circuit_breaker():
             raise RuntimeError("Meta AI circuit breaker is OPEN; too many recent failures")
@@ -243,14 +267,30 @@ class meta_ai(BaseAPIBackend):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Send a chat completion request to Meta AI."""
-        _model = model or self.default_model
+        _model = normalize_meta_model_name(model or self.default_model)
+        max_completion_tokens = kwargs.get(
+            "max_completion_tokens",
+            kwargs.get("max_tokens", kwargs.get("max_new_tokens", max_tokens)),
+        )
         payload: Dict[str, Any] = {
             "model": _model,
             "messages": messages,
-            "max_tokens": max_tokens,
+            "max_completion_tokens": int(max_completion_tokens),
             "temperature": temperature,
         }
-        payload.update({k: v for k, v in kwargs.items() if v is not None})
+        ignored = {
+            "max_completion_tokens",
+            "max_new_tokens",
+            "max_tokens",
+            "timeout",
+        }
+        payload.update(
+            {
+                k: v
+                for k, v in kwargs.items()
+                if v is not None and k not in ignored
+            }
+        )
         return self._make_request("chat/completions", payload, timeout=kwargs.get("timeout"))
 
     def generate(
