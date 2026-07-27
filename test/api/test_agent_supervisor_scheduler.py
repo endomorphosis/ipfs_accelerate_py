@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     materialize_bundle_lane_taskboard,
 )
+from ipfs_accelerate_py.agent_supervisor.event_log import append_jsonl_event
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
     LeaseCoordinator,
     profile_g_cid,
@@ -115,6 +116,13 @@ class _FakeLauncher:
 class _StubbornFakeProcess(_FakeProcess):
     def terminate(self) -> None:
         self.terminate_calls += 1
+
+
+class _StubbornFakeLauncher(_FakeLauncher):
+    def __call__(self, lane: Any, grant: Any) -> _StubbornFakeProcess:
+        process = _StubbornFakeProcess(pid=10_000 + len(self.starts))
+        self.starts.append((lane, grant, process))
+        return process
 
 
 def _scheduler(
@@ -889,10 +897,10 @@ def test_two_scheduler_processes_with_same_did_do_not_share_one_grant(tmp_path: 
     assert peer_manifest["counts"]["blocked"] == 1
 
 
-def test_restarted_scheduler_reconciles_terminal_lease_and_starts_dependent(
+def test_restarted_scheduler_defers_to_predecessor_wrapper_before_starting_dependent(
     tmp_path: Path,
 ) -> None:
-    """A predecessor's completed slice must not pin the next slice forever."""
+    """A restart cannot settle its predecessor before that wrapper fences."""
 
     repo = tmp_path / "repo"
     index = repo / "index.json"
@@ -956,20 +964,29 @@ def test_restarted_scheduler_reconciles_terminal_lease_and_starts_dependent(
         ),
         encoding="utf-8",
     )
-    (completed_lane.state_dir / f"{completed_lane.state_prefix}_events.jsonl").write_text(
-        json.dumps(
-            {
-                "type": "implementation_finished",
-                "timestamp": "2026-07-24T00:00:00Z",
-                "task_id": "T-1",
-                "canonical_task_cid": completed_member["canonical_task_cid"],
-                "canonical_task_key": completed_member.get("canonical_task_key", ""),
-                "returncode": 0,
-                "merge_result": {"merged": True, "target_commit": "abc123"},
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+    append_jsonl_event(
+        completed_lane.state_dir / f"{completed_lane.state_prefix}_events.jsonl",
+        "todo_status_updated",
+        {
+            "updated": True,
+            "task_id": "T-1",
+            "updated_task_ids": ["T-1"],
+            "completion_receipts": [
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "member_completion_receipt@1"
+                    ),
+                    "task_id": "T-1",
+                    "canonical_task_cid": completed_member["canonical_task_cid"],
+                    "canonical_task_key": completed_member.get(
+                        "canonical_task_key",
+                        "",
+                    ),
+                    "status": "succeeded",
+                }
+            ],
+        },
     )
 
     replacement_launcher = _FakeLauncher()
@@ -980,29 +997,29 @@ def test_restarted_scheduler_reconciles_terminal_lease_and_starts_dependent(
         claimant="did:web:replacement.example",
         manifest_name="replacement.json",
     )
-    recovered = replacement.reconcile_once()
+    deferred = replacement.reconcile_once()
 
     assert owner_process.alive
-    assert recovered["reconciled_task_cids"] == [completed_grant.task_cid]
-    assert recovered["counts"]["completed"] == 1
+    assert deferred["reconciled_task_cids"] == []
+    assert replacement_launcher.starts == []
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.task_state(completed_grant.task_cid)["state"] == "accepted"
+        assert coordinator.list_receipts(completed_grant.task_cid) == []
+        coordinator.receipt(
+            completed_grant,
+            status="succeeded",
+            output={"reason": "predecessor wrapper fenced and completed"},
+        )
+    owner_process.finish(returncode=0)
+
+    recovered = replacement.reconcile_once()
+
+    assert recovered["reconciled_task_cids"] == []
     assert recovered["counts"]["active"] == 1
     assert [lane.task_ids for lane, _grant, _process in replacement_launcher.starts] == [
         ["T-2"]
     ]
     assert replacement_launcher.starts[0][1].task_cid != completed_grant.task_cid
-    recovery_decision = next(
-        item
-        for item in recovered["scheduler_decisions"]
-        if item["task_cid"] == completed_grant.task_cid
-    )
-    assert recovery_decision == {
-        "task_cid": completed_grant.task_cid,
-        "bundle_key": completed_lane.bundle_key,
-        "decision": "settled",
-        "reason": "reconciled_terminal_completed",
-        "recovery": "untracked_accepted_lease",
-        "snapshot_id": recovered["scheduler_decision_snapshot_id"],
-    }
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
         assert coordinator.task_state(completed_grant.task_cid)["state"] == "completed"
         receipts = coordinator.list_receipts(completed_grant.task_cid)
@@ -1335,10 +1352,19 @@ def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path:
         encoding="utf-8",
     )
 
+    stopping = scheduler.reconcile_once()
+
+    assert stopping["counts"]["active"] == 1
+    assert launcher.starts[0][2].terminate_calls == 1
+    assert launcher.starts[0][2].wait_calls == 0
+    assert launcher.starts[0][2].kill_calls == 0
+    assert stopping["lanes"][0]["state"] == "stopping"
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.active_lease(launcher.starts[0][1].task_cid) is not None
+
     settled = scheduler.reconcile_once()
 
     assert settled["counts"]["active"] == 0
-    assert launcher.starts[0][2].terminate_calls == 1
     assert launcher.starts[0][2].wait_calls == 1
     assert launcher.starts[0][2].kill_calls == 0
     # The first release remains retryable; repeated state-aware admission
@@ -1358,7 +1384,7 @@ def test_attempt_exhausted_idle_state_reaps_lane_but_ordinary_idle_persists(
     repo = tmp_path / "repo"
     index = repo / "index.json"
     _write_index(index, "T-1")
-    launcher = _FakeLauncher()
+    launcher = _StubbornFakeLauncher()
     scheduler = _scheduler(tmp_path, index, launcher)
 
     initial = scheduler.reconcile_once()
@@ -1397,11 +1423,36 @@ def test_attempt_exhausted_idle_state_reaps_lane_but_ordinary_idle_persists(
     idle_state["selection_idle_reason"] = TASK_ATTEMPT_LIMIT_IDLE_REASON
     state_path.write_text(json.dumps(idle_state), encoding="utf-8")
 
+    stopping = scheduler.reconcile_once()
+
+    assert stopping["counts"]["active"] == 1
+    assert stopping["reaped_task_cids"] == []
+    assert process.terminate_calls == 1
+    assert process.wait_calls == 0
+    assert process.alive
+    assert len(launcher.starts) == 1
+    assert scheduler.resource_scheduler.active_leases
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.active_lease(grant.task_cid) is not None
+        assert coordinator.list_receipts(grant.task_cid) == []
+
+    still_stopping = scheduler.reconcile_once()
+
+    assert still_stopping["counts"]["active"] == 1
+    assert still_stopping["reaped_task_cids"] == []
+    assert process.terminate_calls == 1
+    assert process.wait_calls == 0
+    assert process.alive
+    assert scheduler.resource_scheduler.active_leases
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.active_lease(grant.task_cid) is not None
+        assert coordinator.list_receipts(grant.task_cid) == []
+
+    process.finish(returncode=-signal.SIGTERM)
     exhausted = scheduler.reconcile_once()
 
     assert exhausted["counts"]["active"] == 0
     assert exhausted["reaped_task_cids"] == [lane.task_cid]
-    assert process.terminate_calls == 1
     assert process.wait_calls == 1
     assert len(launcher.starts) == 1
     assert not scheduler.resource_scheduler.active_leases
@@ -1418,7 +1469,9 @@ def test_attempt_exhausted_idle_state_reaps_lane_but_ordinary_idle_persists(
     assert len(launcher.starts) == 1
 
 
-def test_completed_execution_slice_releases_lane_while_shard_remains_open(tmp_path: Path) -> None:
+def test_completed_execution_slice_waits_for_wrapper_receipt_before_releasing_capacity(
+    tmp_path: Path,
+) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"
     bundle = _bundle("T-1")
@@ -1438,8 +1491,9 @@ def test_completed_execution_slice_releases_lane_while_shard_remains_open(tmp_pa
 
     initial = scheduler.reconcile_once()
     assert initial["counts"]["active"] == 1
-    lane = launcher.starts[0][0]
+    lane, grant, process = launcher.starts[0]
     assert lane.task_ids == ["T-1"]
+    resource_lease = scheduler.resource_scheduler.active_leases[0]
     lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
     lane.todo_path.write_text(
         "## T-1 Completed execution slice\n\n"
@@ -1478,13 +1532,68 @@ def test_completed_execution_slice_releases_lane_while_shard_remains_open(tmp_pa
         encoding="utf-8",
     )
 
+    premature = scheduler.reconcile_once()
+
+    assert premature["counts"]["active"] == 1
+    assert premature["reaped_task_cids"] == []
+    assert process.alive
+    assert process.terminate_calls == 0
+    assert scheduler.resource_scheduler.active_leases == (resource_lease,)
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.task_state(grant.task_cid)["state"] == "accepted"
+        assert coordinator.list_receipts(grant.task_cid) == []
+
+    member_cid = lane.expected_task_cids_by_id["T-1"]
+    append_jsonl_event(
+        lane.state_dir / f"{lane.state_prefix}_events.jsonl",
+        "todo_status_updated",
+        {
+            "updated": True,
+            "task_id": "T-1",
+            "updated_task_ids": ["T-1"],
+            "completion_receipts": [
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "member_completion_receipt@1"
+                    ),
+                    "task_id": "T-1",
+                    "canonical_task_cid": member_cid,
+                    "status": "succeeded",
+                }
+            ],
+        },
+    )
+    event_only = scheduler.reconcile_once()
+    assert event_only["counts"]["active"] == 1
+    assert event_only["reaped_task_cids"] == []
+    assert process.alive
+    assert scheduler.resource_scheduler.active_leases == (resource_lease,)
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.list_receipts(grant.task_cid) == []
+        coordinator.receipt(
+            grant,
+            status="succeeded",
+            output={"reason": "leased wrapper fenced and completed"},
+        )
+    process.finish(returncode=0)
+
     settled = scheduler.reconcile_once()
 
-    assert settled["counts"]["active"] == 0
+    assert settled["counts"]["active"] == 1
     assert settled["reaped_task_cids"] == [lane.task_cid]
-    assert launcher.starts[0][2].terminate_calls == 1
-    assert launcher.starts[0][2].wait_calls == 1
-    assert len(launcher.starts) == 1
+    assert process.terminate_calls == 0
+    assert process.wait_calls == 1
+    assert len(launcher.starts) == 2
+    assert launcher.starts[1][0].task_ids == ["T-2"]
+    assert all(
+        active.lease_id != resource_lease.lease_id
+        for active in scheduler.resource_scheduler.active_leases
+    )
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        receipts = coordinator.list_receipts(grant.task_cid)
+    assert len(receipts) == 1
+    assert receipts[0]["receipt"]["status"] == "succeeded"
 
 
 def test_transitively_blocked_waiting_tasks_release_an_idle_lane(tmp_path: Path) -> None:
@@ -1545,10 +1654,18 @@ def test_transitively_blocked_waiting_tasks_release_an_idle_lane(tmp_path: Path)
         encoding="utf-8",
     )
 
+    stopping = scheduler.reconcile_once()
+
+    assert stopping["counts"]["active"] == 1
+    assert launcher.starts[0][2].terminate_calls == 1
+    assert launcher.starts[0][2].wait_calls == 0
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.active_lease(launcher.starts[0][1].task_cid) is not None
+        assert coordinator.list_receipts(launcher.starts[0][1].task_cid) == []
+
     settled = scheduler.reconcile_once()
 
     assert settled["counts"]["active"] == 0
-    assert launcher.starts[0][2].terminate_calls == 1
     assert launcher.starts[0][2].wait_calls == 1
     assert len(launcher.starts) == 1
 
