@@ -2605,7 +2605,19 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
         "validation_result": {
             "attempted": True,
             "passed": False,
+            "returncode": 1,
+            "error": "validation_command_failed",
+            "reason": "declared_validation_failed",
             "failed_command": "pytest tests/test_runtime.py",
+            "failed_tests": [
+                "tests/test_runtime.py::test_runtime_contract"
+            ],
+            "failed_test_paths": ["tests/test_runtime.py"],
+            "validation_impact_paths": ["tests/test_runtime.py"],
+            "failure_head": (
+                "FAILED tests/test_runtime.py::test_runtime_contract - "
+                "AssertionError"
+            ),
         },
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
@@ -2631,7 +2643,24 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
     assert "## AUTO-002 Resolve validation retry-budget failure for AUTO-001" in todo_text
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
-    assert Path(findings[0]["discovery_path"]).exists()
+    discovery_path = Path(findings[0]["discovery_path"])
+    assert discovery_path.exists()
+    discovery_text = discovery_path.read_text(encoding="utf-8")
+    assert (
+        "tests/test_runtime.py::test_runtime_contract"
+        in discovery_text
+    )
+    assert "- Failed test paths: tests/test_runtime.py" in discovery_text
+    assert "- Validation target paths: tests/test_runtime.py" in (
+        discovery_text
+    )
+    assert "AssertionError" in discovery_text
+    assert (
+        "The declared validation target paths "
+        "(tests/test_runtime.py) are bounded diagnostic and repair scope"
+        in todo_text
+    )
+    assert "do not weaken correct assertions or policy" in todo_text
 
 
 def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):

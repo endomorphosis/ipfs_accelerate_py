@@ -131,6 +131,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     normalize_implementation_protected_paths,
     parse_task_file,
     parse_args as parse_implementation_daemon_args,
+    pending_retry_budget_repair_sources,
+    retry_budget_repair_validation_paths,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     ObjectiveCompletionArtifactRefreshError,
@@ -6151,6 +6153,72 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     assert not {"BASH_ENV", "ENV", "VALIDATION_SECRET"} & set(environment)
 
 
+def test_implementation_daemon_persists_bounded_validation_failure_evidence(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log_path = repo / "validation.log"
+
+    class FailedValidationScheduler:
+        def run(self, commands, **_kwargs):
+            command = tuple(commands)[0]
+            return {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "failed_command": command,
+                "results": [
+                    {
+                        "command": command,
+                        "stage": "targeted",
+                        "returncode": 1,
+                        "output": (
+                            "E   AssertionError: stale fixture\n"
+                            "FAILED "
+                            "tests/test_runtime.py::test_runtime_contract "
+                            "- AssertionError\n"
+                        ),
+                    }
+                ],
+            }
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        validation_scheduler=FailedValidationScheduler(),
+    )
+    task = PortalTask(
+        task_id="AUTO-001",
+        title="Repair runtime validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        validation=["python -m pytest tests/test_runtime.py -q"],
+    )
+
+    result = daemon._run_validation_commands(repo, task, log_path)
+
+    assert result["passed"] is False
+    assert result["error"] == "validation_command_failed"
+    assert result["reason"] == "declared_validation_failed"
+    assert result["failed_tests"] == [
+        "tests/test_runtime.py::test_runtime_contract"
+    ]
+    assert result["failed_test_paths"] == ["tests/test_runtime.py"]
+    assert result["validation_impact_paths"] == ["tests/test_runtime.py"]
+    assert result["exception_types"] == ["AssertionError"]
+    assert "stale fixture" in result["failure_head"]
+    assert "output" not in result["results"][0]
+    assert "FAILED tests/test_runtime.py::test_runtime_contract" in (
+        log_path.read_text(encoding="utf-8")
+    )
+
+
 def test_implementation_daemon_selects_only_configured_task_shard(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12072,6 +12140,72 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
     assert "decoded_output" not in receipt_text
 
 
+def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    task = PortalTask(
+        task_id="ACCEL-002",
+        title=(
+            "Resolve validation retry-budget failure for ACCEL-001"
+        ),
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["src/runtime.py", "data/discovery"],
+        validation=[
+            "python -m pytest ../outside.py /tmp/outside.py "
+            "tests/test_runtime.py "
+            "tests/test_policy.py -q"
+        ],
+        acceptance=(
+            "Use the failure evidence, then release ACCEL-001 from "
+            "strategy blocked_tasks."
+        ),
+        canonical_task_cid="task:accel-002",
+    )
+
+    assert retry_budget_repair_validation_paths(task) == (
+        "tests/test_runtime.py",
+        "tests/test_policy.py",
+    )
+    result = daemon._compile_implementation_context(task, attempt=1)
+
+    assert result.capsule.goal["instruction"].startswith(
+        "Resolve the bounded validation retry-budget blocker for ACCEL-001"
+    )
+    edit_policy = result.capsule.authority["edit_policy"]
+    assert edit_policy["mode"] == "retry_repair_validation_targets"
+    assert edit_policy["allowed_paths"] == (
+        "src/runtime.py",
+        "data/discovery",
+        "tests/test_runtime.py",
+        "tests/test_policy.py",
+    )
+    assert result.capsule.scope["retry_repair_source_task_id"] == (
+        "ACCEL-001"
+    )
+    assert result.capsule.scope["retry_repair_failure_kind"] == "validation"
+    assert result.capsule.scope["validation_target_paths"] == (
+        "tests/test_runtime.py",
+        "tests/test_policy.py",
+    )
+    prompt_rules = result.capsule.authority["generic_prompt_policy"]
+    assert any("inherited validation debt" in rule for rule in prompt_rules)
+    assert any("never weaken assertions" in rule for rule in prompt_rules)
+
+
 def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12277,6 +12411,68 @@ def test_implementation_daemon_prefers_retry_repair_for_blocked_source(tmp_path)
 
     assert selected is not None
     assert selected.task_id == "ACCEL-002"
+
+
+def test_pending_retry_repair_fences_source_across_lane_local_strategies(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Original source task
+
+- Status: todo
+- Priority: P0
+- Track: runtime
+- Outputs: src/runtime.py
+- Validation: python -m pytest tests/test_runtime.py -q
+- Acceptance: Implement the runtime.
+
+## ACCEL-002 Resolve validation retry-budget failure for ACCEL-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Outputs: src/runtime.py, data/discovery
+- Validation: python -m pytest tests/test_runtime.py -q
+- Acceptance: Use the failure evidence, then release ACCEL-001 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps({"blocked_tasks": []}),
+        encoding="utf-8",
+    )
+    tasks = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+
+    assert pending_retry_budget_repair_sources(tasks) == {"ACCEL-001"}
+
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=strategy_path,
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    result = daemon.run_once()
+
+    assert result["blocked_count"] == 1
+    assert result["ready_count"] == 1
+    assert result["active_task_id"] == "ACCEL-002"
+    assert json.loads(strategy_path.read_text(encoding="utf-8"))[
+        "blocked_tasks"
+    ] == []
 
 
 def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(tmp_path):

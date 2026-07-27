@@ -84,7 +84,11 @@ from .taskboard_store import (
     replace_locked_taskboard,
     task_ids_from_artifact_names,
 )
-from .validation_commands import normalize_validation_command_text, split_validation_commands
+from .validation_commands import (
+    infer_validation_impact_paths,
+    normalize_validation_command_text,
+    split_validation_commands,
+)
 from .wrapper_utils import AgentSupervisorNamespacePaths
 
 
@@ -5072,12 +5076,49 @@ def write_retry_budget_discovery(
             coverage_errors = latest_validation.get("coverage_errors") or []
             if isinstance(coverage_errors, str):
                 coverage_errors = [coverage_errors]
+            def _bounded_items(value: Any, *, limit: int = 12) -> list[str]:
+                if isinstance(value, str):
+                    value = [value]
+                if not isinstance(value, Sequence):
+                    return []
+                items: list[str] = []
+                for item in value:
+                    compact = " ".join(str(item or "").split())[:300]
+                    if compact and compact not in items:
+                        items.append(compact)
+                    if len(items) >= limit:
+                        break
+                return items
+
+            failed_tests = _bounded_items(
+                latest_validation.get("failed_tests")
+            )
+            failed_test_paths = _bounded_items(
+                latest_validation.get("failed_test_paths")
+            )
+            validation_impact_paths = _bounded_items(
+                latest_validation.get("validation_impact_paths"),
+                limit=16,
+            )
+            failure_head = " ".join(
+                str(latest_validation.get("failure_head") or "").split()
+            )[:2000]
             validation_evidence = "\n".join(
                 [
                     f"- Validation attempted: `{bool(latest_validation.get('attempted', False))}`",
                     f"- Validation return code: `{str(latest_validation.get('returncode') or 'not recorded')}`",
                     f"- Validation error: `{str(latest_validation.get('error') or 'not recorded')}`",
                     f"- Validation reason: `{str(latest_validation.get('reason') or 'not recorded')}`",
+                    "- Failed tests: "
+                    + (", ".join(failed_tests) or "not recorded"),
+                    "- Failed test paths: "
+                    + (", ".join(failed_test_paths) or "not recorded"),
+                    "- Validation target paths: "
+                    + (
+                        ", ".join(validation_impact_paths)
+                        or "not recorded"
+                    ),
+                    f"- Failure summary: {failure_head or 'not recorded'}",
                     "- Coverage errors: "
                     + (
                         ", ".join(str(item) for item in coverage_errors)
@@ -5128,6 +5169,17 @@ def validation_retry_task_block(
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
     validation_command = safe_retry_validation_command(failed_command, discovery_path=discovery_path)
+    validation_target_paths = infer_validation_impact_paths(
+        validation_command
+    )
+    validation_scope_acceptance = (
+        " The declared validation target paths "
+        f"({', '.join(validation_target_paths)}) are bounded diagnostic and "
+        "repair scope: change them only when evidence proves inherited "
+        "validation debt, and do not weaken correct assertions or policy."
+        if validation_target_paths
+        else ""
+    )
     launch_gate_acceptance = (
         f" For launch tasks, this repair validation preserves the {LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE}."
         if launch_playwright_validation_gate
@@ -5142,7 +5194,7 @@ def validation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
-- Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{launch_gate_acceptance}
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{validation_scope_acceptance}{launch_gate_acceptance}
 """
 
 

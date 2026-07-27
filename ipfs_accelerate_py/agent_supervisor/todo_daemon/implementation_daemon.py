@@ -17,7 +17,7 @@ import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping, Sequence
 
 from ..context_compiler import (
@@ -67,12 +67,17 @@ from ..git_gc import GitGarbageCollector
 from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
 from ..merge_queue import MergeQueue
-from ..validation_commands import normalize_validation_command_text, split_validation_commands
+from ..validation_commands import (
+    infer_validation_impact_paths,
+    normalize_validation_command_text,
+    split_validation_commands,
+)
 from ..validation_runtime import validation_shell_command
 from ..validation_scheduler import (
     ValidationScheduler,
     build_declared_validation_plan_graph,
 )
+from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
 from .worktrees import WorktreeLease, WorktreePool
@@ -714,6 +719,107 @@ def is_retry_budget_repair_task(task: Any) -> bool:
     """Return whether a task is itself a generated retry-budget repair."""
 
     return bool(retry_budget_repair_source(task)[0])
+
+
+def pending_retry_budget_repair_sources(
+    tasks: Sequence[Any],
+    *,
+    completed_task_ids: Sequence[str] = (),
+) -> set[str]:
+    """Return source tasks blocked by an unfinished board-visible repair.
+
+    Retry-budget strategies are intentionally lane-local, while the taskboard
+    is shared by every lane. Deriving this fence from the shared taskboard
+    prevents another lane from immediately reclaiming a source task after a
+    peer has emitted its repair task.
+    """
+
+    completed = {
+        str(task_id).strip()
+        for task_id in completed_task_ids
+        if str(task_id).strip()
+    }
+    completed.update(
+        str(getattr(task, "task_id", "") or "").strip()
+        for task in tasks
+        if normalize_status(str(getattr(task, "status", "") or ""))
+        == "completed"
+    )
+    blocked: set[str] = set()
+    for task in tasks:
+        task_id = str(getattr(task, "task_id", "") or "").strip()
+        if not task_id or task_id in completed:
+            continue
+        source_task_id, _failure_kind = retry_budget_repair_source(task)
+        if source_task_id and source_task_id not in completed:
+            blocked.add(source_task_id)
+    return blocked
+
+
+def normalize_retry_validation_path(value: Any) -> str:
+    """Normalize one inferred validation target without permitting escape."""
+
+    normalized = str(value or "").strip().replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    path = PurePosixPath(normalized)
+    if (
+        not normalized
+        or path.is_absolute()
+        or path.as_posix() in {".", ".."}
+        or ".." in path.parts
+        or (path.parts and path.parts[0].endswith(":"))
+    ):
+        return ""
+    return path.as_posix()
+
+
+def unsafe_validation_path_aliases(command: str) -> set[str]:
+    """Return normalized aliases derived from absolute or escaping arguments.
+
+    ``infer_validation_impact_paths`` intentionally removes a leading slash
+    for changed-file matching.  Authorization must retain that distinction,
+    so repair scopes conservatively exclude aliases whose raw argument was
+    absolute, drive-qualified, or traversed above the repository root.
+    """
+
+    try:
+        tokens = shlex.split(str(command or ""), posix=True)
+    except ValueError:
+        return set()
+    aliases: set[str] = set()
+    for token in tokens:
+        raw = token.split("::", 1)[0].strip().replace("\\", "/")
+        path = PurePosixPath(raw)
+        if not (
+            path.is_absolute()
+            or ".." in path.parts
+            or (path.parts and path.parts[0].endswith(":"))
+        ):
+            continue
+        alias = raw.lstrip("/")
+        while alias.startswith("./"):
+            alias = alias[2:]
+        if alias:
+            aliases.add(PurePosixPath(alias).as_posix())
+    return aliases
+
+
+def retry_budget_repair_validation_paths(task: Any) -> tuple[str, ...]:
+    """Return bounded repository-relative validation targets for a repair."""
+
+    if not is_retry_budget_repair_task(task):
+        return ()
+    paths: list[str] = []
+    for command in getattr(task, "validation", ()) or ():
+        unsafe_aliases = unsafe_validation_path_aliases(str(command))
+        for path in infer_validation_impact_paths(str(command)):
+            normalized = normalize_retry_validation_path(path)
+            if not normalized or normalized in unsafe_aliases:
+                continue
+            if normalized not in paths:
+                paths.append(normalized)
+    return tuple(paths)
 
 
 def write_text_atomic(path: Path, content: str, *, encoding: str = "utf-8") -> None:
@@ -3344,7 +3450,13 @@ class PortalImplementationDaemon:
             task.task_id for task in tasks if task.status == "completed"
         }
         status_completed_task_ids = board_completed_task_ids | shared_completed_task_ids
-        strategy_blocked_task_ids = {str(task_id) for task_id in strategy.get("blocked_tasks", [])}
+        pending_retry_repair_source_ids = pending_retry_budget_repair_sources(
+            tasks,
+            completed_task_ids=tuple(status_completed_task_ids),
+        )
+        strategy_blocked_task_ids = {
+            str(task_id) for task_id in strategy.get("blocked_tasks", [])
+        } | pending_retry_repair_source_ids
         # A historical deprioritization is only a scheduling hint.  Failed
         # implementation merges must still be reconciled unless the janitor
         # explicitly retired the task as off-mission.
@@ -3486,7 +3598,7 @@ class PortalImplementationDaemon:
                 # task cannot create a tight skip/retry loop.
                 resolved_statuses[task.task_id] = "blocked"
                 continue
-            if task.task_id in strategy.get("blocked_tasks", []) or (
+            if task.task_id in strategy_blocked_task_ids or (
                 task.status == "blocked"
                 and task.task_id not in dependency_reopened_task_ids
             ):
@@ -9621,6 +9733,12 @@ class PortalImplementationDaemon:
                 },
             )
 
+        failed_commands: list[str] = []
+        failed_tests: list[str] = []
+        failed_test_paths: list[str] = []
+        failure_exception_types: list[str] = []
+        failure_heads: list[str] = []
+        validation_impact_paths: list[str] = []
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as log_fh:
             log_fh.write("\nValidation:\n")
@@ -9655,23 +9773,97 @@ class PortalImplementationDaemon:
                     continue
                 cache_label = " cache-hit" if command_result.get("cache_hit") else ""
                 stage = str(command_result.get("stage") or "validation")
-                log_fh.write(f"$ {command_result.get('command', '')} [{stage}{cache_label}]\n")
+                command = str(command_result.get("command") or "")
+                log_fh.write(f"$ {command} [{stage}{cache_label}]\n")
                 output = command_result.get("output")
                 if output:
                     log_fh.write(str(output))
                     if not str(output).endswith("\n"):
                         log_fh.write("\n")
-                if command_result.get("timed_out"):
+                timed_out = bool(command_result.get("timed_out"))
+                try:
+                    command_returncode = int(
+                        command_result.get("returncode") or 0
+                    )
+                except (TypeError, ValueError):
+                    command_returncode = 1
+                if timed_out:
                     log_fh.write(f"[validation timed out] timeout={self.implementation_timeout}\n")
-                elif int(command_result.get("returncode") or 0) != 0:
+                elif command_returncode != 0:
                     log_fh.write(
                         f"[validation failed] returncode={command_result.get('returncode')}\n"
                     )
+                if timed_out or command_returncode != 0:
+                    if command and command not in failed_commands:
+                        failed_commands.append(command)
+                    unsafe_aliases = unsafe_validation_path_aliases(command)
+                    for path in infer_validation_impact_paths(command):
+                        normalized = normalize_retry_validation_path(path)
+                        if (
+                            normalized
+                            and normalized not in unsafe_aliases
+                            and normalized not in validation_impact_paths
+                        ):
+                            validation_impact_paths.append(normalized)
+                    summary = summarize_test_failure(output)
+                    for node_id in summary.get("failed_tests", ()):
+                        normalized_node_id = str(node_id or "").strip()
+                        if (
+                            normalized_node_id
+                            and normalized_node_id not in failed_tests
+                        ):
+                            failed_tests.append(normalized_node_id)
+                        normalized_path = normalize_retry_validation_path(
+                            normalized_node_id.split("::", 1)[0]
+                        )
+                        if (
+                            normalized_path
+                            and normalized_path not in failed_test_paths
+                        ):
+                            failed_test_paths.append(normalized_path)
+                    for exception_type in summary.get(
+                        "exception_types", ()
+                    ):
+                        normalized_exception = str(exception_type or "").strip()
+                        if (
+                            normalized_exception
+                            and normalized_exception
+                            not in failure_exception_types
+                        ):
+                            failure_exception_types.append(
+                                normalized_exception
+                            )
+                    failure_head = str(
+                        summary.get("failure_head") or ""
+                    ).strip()
+                    if failure_head and failure_head not in failure_heads:
+                        failure_heads.append(failure_head)
                 # Command output belongs in the attempt log, not the durable
                 # daemon state/event stream or merge-queue receipt.
                 command_result.pop("output", None)
             log_fh.write("[validation passed]\n" if result.get("passed") else "[validation stopped]\n")
             log_fh.flush()
+        if not result.get("passed", False):
+            if not str(result.get("error") or "").strip():
+                result["error"] = "validation_command_failed"
+            if not str(result.get("reason") or "").strip():
+                result["reason"] = "declared_validation_failed"
+            if failed_commands:
+                if not str(result.get("failed_command") or "").strip():
+                    result["failed_command"] = failed_commands[0]
+                result["failed_commands"] = failed_commands[:8]
+            if failed_tests:
+                result["failed_tests"] = failed_tests[:12]
+            if failed_test_paths:
+                result["failed_test_paths"] = failed_test_paths[:12]
+            if failure_exception_types:
+                result["exception_types"] = failure_exception_types[:8]
+            if validation_impact_paths:
+                result["validation_impact_paths"] = (
+                    validation_impact_paths[:16]
+                )
+            if failure_heads:
+                result["failure_head"] = "\n".join(failure_heads)[:2000]
         return result
 
     @staticmethod
@@ -15759,6 +15951,10 @@ class PortalImplementationDaemon:
             task,
             repo_root=self.repo_root,
         )
+        retry_repair_source_id, retry_repair_failure_kind = (
+            retry_budget_repair_source(task)
+        )
+        retry_validation_paths = retry_budget_repair_validation_paths(task)
         rules = (
             "Read the relevant plan and nearby code before editing.",
             "Do not revert unrelated local changes.",
@@ -15775,6 +15971,12 @@ class PortalImplementationDaemon:
                 *rules,
                 "For general implementation tasks, deliver the complete task in one pass, touching as many files as needed.",
             )
+        if retry_repair_source_id:
+            rules = (
+                *rules,
+                "For retry-budget repairs, use the persisted failure evidence and declared validation targets to distinguish a task-owned regression from inherited validation debt.",
+                "Validation targets are authorized repair scope, not required changes: preserve correct production policy and never weaken assertions merely to make the gate pass.",
+            )
         if (
             completion_scope is None
             and len(task.outputs) > 3
@@ -15784,12 +15986,29 @@ class PortalImplementationDaemon:
                 *rules,
                 "Use sub-agents or parallel execution when useful for independent output files.",
             )
-        allowed_edit_paths = tuple(
+        protected_edit_paths = tuple(self.implementation_protected_paths)
+        base_allowed_edit_paths = tuple(
             completion_scope
             if completion_scope is not None
             else task.outputs
         )
-        protected_edit_paths = tuple(self.implementation_protected_paths)
+        allowed_edit_paths = tuple(
+            dict.fromkeys(
+                (
+                    *base_allowed_edit_paths,
+                    *(
+                        retry_validation_paths
+                        if completion_scope is None
+                        else ()
+                    ),
+                )
+            )
+        )
+        allowed_edit_paths = tuple(
+            path
+            for path in allowed_edit_paths
+            if path not in protected_edit_paths
+        )
         read_only_outputs = tuple(
             path for path in task.outputs if path not in allowed_edit_paths
         )
@@ -15806,6 +16025,8 @@ class PortalImplementationDaemon:
             "mode": (
                 "completion_gap_exact"
                 if completion_scope is not None
+                else "retry_repair_validation_targets"
+                if retry_repair_source_id
                 else "task_output_exact"
             ),
             "allowed_paths": allowed_edit_paths,
@@ -15902,8 +16123,18 @@ class PortalImplementationDaemon:
             stage="implementation",
             goal={
                 "instruction": (
-                    "Implement this backlog task completely and thoroughly as "
-                    "a production-ready change in one pass."
+                    (
+                        "Resolve the bounded "
+                        f"{retry_repair_failure_kind or 'validation'} "
+                        "retry-budget blocker for "
+                        f"{retry_repair_source_id}; prove the declared gate "
+                        "without weakening correct production policy or tests."
+                    )
+                    if retry_repair_source_id
+                    else (
+                        "Implement this backlog task completely and thoroughly "
+                        "as a production-ready change in one pass."
+                    )
                 ),
                 "task_id": task.task_id,
                 "title": task.title,
@@ -15927,6 +16158,9 @@ class PortalImplementationDaemon:
                 "expected_outputs": tuple(task.outputs),
                 "allowed_edit_paths": allowed_edit_paths,
                 "protected_edit_paths": protected_edit_paths,
+                "retry_repair_source_task_id": retry_repair_source_id,
+                "retry_repair_failure_kind": retry_repair_failure_kind,
+                "validation_target_paths": retry_validation_paths,
             },
             acceptance={
                 "criteria": task.acceptance or "none listed",
