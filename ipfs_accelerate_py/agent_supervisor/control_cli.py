@@ -5,6 +5,11 @@ The adapter owns no supervisor policy.  It builds or decodes the canonical
 and writes the canonical ``OperationResult`` record.  This keeps CLI behavior
 identical to Python and MCP callers and avoids translating control operations
 into shell commands.
+
+Prompt-workflow commands (``workflow-preview``, ``workflow-create``,
+``restart``, ``rescue-preview``, ``rescue``) accept the same closed catalog
+parameters as Python/MCP.  Convenience flags never log raw prompt bodies and
+prefer file/stdin sources so sensitive text does not appear in process listings.
 """
 
 from __future__ import annotations
@@ -13,7 +18,8 @@ import argparse
 import json
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, MutableMapping
+from enum import Enum
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -58,6 +64,11 @@ AGENT_CLI_EXIT_CANCELLED = 130
 MAX_WATCH_COUNT = 100
 MAX_WATCH_INTERVAL_MS = 60_000
 
+# Evidence identity for ASI-152 prompt CLI surface publication.
+PROMPT_CLI_REQUIREMENT_ID = (
+    "requirement:agent-supervisor/prompt-cli-surface@1"
+)
+
 COMMAND_OPERATIONS: dict[str, Operation] = {
     "capabilities": Operation.CAPABILITIES,
     "status": Operation.STATUS,
@@ -92,6 +103,24 @@ COMMAND_OPERATIONS: dict[str, Operation] = {
     "rescue": Operation.RESCUE,
 }
 
+PROMPT_WORKFLOW_CLI_COMMANDS: tuple[str, ...] = (
+    "workflow-preview",
+    "workflow-create",
+    "restart",
+    "rescue-preview",
+    "rescue",
+)
+
+_PROMPT_SURFACE_OPERATIONS: frozenset[Operation] = frozenset(
+    {
+        Operation.WORKFLOW_PREVIEW,
+        Operation.WORKFLOW_MATERIALIZE,
+        Operation.RESTART,
+        Operation.RESCUE_PREVIEW,
+        Operation.RESCUE,
+    }
+)
+
 _IDENTITY_ARGUMENTS = (
     "repository_root",
     "state_root",
@@ -123,6 +152,20 @@ _DIRECT_PARAMETER_ARGUMENTS = (
     "validation_id",
     "reason",
     "requested_state",
+)
+
+_PROMPT_CONVENIENCE_ARGUMENTS = (
+    "directory",
+    "prompt",
+    "prompt_file",
+    "prompt_stdin",
+    "output_mode",
+    "markdown_path",
+    "duckdb_path",
+    "start_after",
+    "allow_llm_fallback",
+    "max_actions",
+    "budget_json",
 )
 
 
@@ -271,9 +314,97 @@ def _add_request_arguments(
         "--output-json",
         action="store_true",
         default=argparse.SUPPRESS,
-        help="Emit compact canonical JSON (agent output is always JSON).",
+        help="Emit compact canonical JSON (default agent output).",
     )
+    parser.add_argument(
+        "--human",
+        action="store_true",
+        default=False,
+        help="Emit a concise human summary instead of full JSON.",
+    )
+    if operation in _PROMPT_SURFACE_OPERATIONS:
+        _add_prompt_surface_arguments(parser, operation)
     parser.set_defaults(agent_operation=operation.value)
+
+
+def _add_prompt_surface_arguments(
+    parser: argparse.ArgumentParser, operation: Operation
+) -> None:
+    """Register thin prompt-workflow / rescue convenience flags."""
+
+    if operation is Operation.WORKFLOW_PREVIEW:
+        parser.add_argument(
+            "--directory",
+            help="Directory parameter for workflow-preview (within repository root).",
+        )
+        prompt_source = parser.add_mutually_exclusive_group()
+        prompt_source.add_argument(
+            "--prompt",
+            help=(
+                "Inline prompt text. Prefer --prompt-file or --stdin so "
+                "sensitive text is not visible in process listings."
+            ),
+        )
+        prompt_source.add_argument(
+            "--prompt-file",
+            type=Path,
+            help="Read the sole prompt body from a UTF-8 file.",
+        )
+        prompt_source.add_argument(
+            "--stdin",
+            dest="prompt_stdin",
+            action="store_true",
+            default=False,
+            help="Read the sole prompt body from stdin.",
+        )
+    if operation in {
+        Operation.WORKFLOW_PREVIEW,
+        Operation.WORKFLOW_MATERIALIZE,
+    }:
+        parser.add_argument(
+            "--output-mode",
+            choices=("markdown", "duckdb", "both"),
+            help="Materialization projection mode: markdown, duckdb, or both.",
+        )
+        parser.add_argument(
+            "--markdown-path",
+            help="Root-relative Markdown task projection path.",
+        )
+        parser.add_argument(
+            "--duckdb-path",
+            help="Root-relative DuckDB task projection path.",
+        )
+    if operation is Operation.WORKFLOW_MATERIALIZE:
+        parser.add_argument(
+            "--start",
+            dest="start_after",
+            action="store_true",
+            default=False,
+            help=(
+                "Request start after materialize when the backend saga accepts "
+                "it (workflow-create)."
+            ),
+        )
+    if operation in {Operation.RESCUE_PREVIEW, Operation.RESCUE}:
+        parser.add_argument(
+            "--allow-llm-fallback",
+            action="store_true",
+            default=False,
+            help="Permit bounded LLM fallback after programmatic recovery exhaustion.",
+        )
+        parser.add_argument(
+            "--max-actions",
+            type=int,
+            help="Rescue action budget (model/fallback ladder bound).",
+        )
+    if operation in _PROMPT_SURFACE_OPERATIONS:
+        parser.add_argument(
+            "--budget-json",
+            help=(
+                "Optional model/fallback budget object merged into parameters "
+                "when the catalog admits the fields (e.g. max_actions)."
+            ),
+        )
 
 
 def register_agent_cli(
@@ -555,10 +686,261 @@ def _request_overlay_arguments(args: argparse.Namespace) -> tuple[str, ...]:
     for name in ("max_items", "max_bytes", "max_text_bytes", "timeout_ms"):
         if getattr(args, name, None) is not None:
             names.append("--" + name.replace("_", "-"))
+
+    # Prompt-surface convenience flags also cannot overlay a full request.
+    if getattr(args, "prompt", None) is not None:
+        names.append("--prompt")
+    if getattr(args, "prompt_file", None) is not None:
+        names.append("--prompt-file")
+    if bool(getattr(args, "prompt_stdin", False)):
+        names.append("--stdin")
+    for name in (
+        "directory",
+        "output_mode",
+        "markdown_path",
+        "duckdb_path",
+        "max_actions",
+        "budget_json",
+    ):
+        if getattr(args, name, None) is not None:
+            flag = "--" + name.replace("_", "-")
+            if flag not in names:
+                names.append(flag)
+    if bool(getattr(args, "start_after", False)):
+        names.append("--start")
+    if bool(getattr(args, "allow_llm_fallback", False)):
+        names.append("--allow-llm-fallback")
     return tuple(names)
 
 
-def build_agent_request(args: argparse.Namespace) -> OperationRequest:
+def _normalize_prompt_source(value: Any) -> dict[str, str]:
+    """Project any prompt-source shape onto the closed control catalog fields.
+
+    Durable parameters carry only ``kind`` + ``content_cid`` (and optional
+    ``artifact_ref``).  Raw prompt bodies and alternate field spellings are
+    never retained on the request record.
+    """
+
+    if not isinstance(value, Mapping):
+        raise AgentCLIError("prompt_source must be an object")
+    kind = value.get("kind")
+    if not isinstance(kind, str) or not kind.strip():
+        raise AgentCLIError("prompt_source.kind is required")
+    kind = kind.strip()
+    content_cid = value.get("content_cid") or value.get("prompt_cid") or ""
+    if not content_cid:
+        inline_text = value.get("inline_text")
+        if isinstance(inline_text, str) and inline_text:
+            # Hash then drop the body so durable parameters stay body-free.
+            from .prompt_workflow import PromptSource
+
+            content_cid = PromptSource.inline(inline_text).prompt_cid
+    if not isinstance(content_cid, str) or not content_cid.strip():
+        raise AgentCLIError("prompt_source requires content_cid")
+    record: dict[str, str] = {
+        "kind": kind,
+        "content_cid": content_cid.strip(),
+    }
+    artifact = (
+        value.get("artifact_ref")
+        or value.get("artifact_handle")
+        or value.get("source_path")
+        or ""
+    )
+    if isinstance(artifact, str) and artifact.strip():
+        # Reject path escape attempts; keep only a simple relative/opaque ref.
+        cleaned = artifact.strip().replace("\\", "/")
+        if cleaned.startswith("/") or ".." in cleaned.split("/"):
+            raise AgentCLIError("prompt_source artifact_ref escapes allowed roots")
+        record["artifact_ref"] = cleaned
+    return record
+
+
+def _resolve_prompt_source_from_args(
+    args: argparse.Namespace,
+    *,
+    stdin_stream: TextIO | None = None,
+) -> dict[str, str] | None:
+    """Build a body-free prompt_source from exactly one CLI source."""
+
+    prompt = getattr(args, "prompt", None)
+    prompt_file = getattr(args, "prompt_file", None)
+    prompt_stdin = bool(getattr(args, "prompt_stdin", False))
+    provided = sum(
+        1
+        for item in (prompt is not None, prompt_file is not None, prompt_stdin)
+        if item
+    )
+    if provided == 0:
+        return None
+    if provided != 1:
+        raise AgentCLIError(
+            "provide exactly one of --prompt, --prompt-file, or --stdin "
+            "(prefer --prompt-file/--stdin so sensitive text is not listed in "
+            "process arguments)"
+        )
+    from .prompt_workflow import PromptSource
+
+    if prompt is not None:
+        if not isinstance(prompt, str) or not prompt:
+            raise AgentCLIError("--prompt must be non-empty text")
+        source = PromptSource.inline(prompt)
+        return {"kind": "inline", "content_cid": source.prompt_cid}
+    if prompt_file is not None:
+        path = Path(prompt_file)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise AgentCLIError("prompt file is not readable") from exc
+        if not text:
+            raise AgentCLIError("prompt file must be non-empty UTF-8 text")
+        # Use the basename only; never retain absolute paths in parameters.
+        source = PromptSource.file(path.name, text=text)
+        return {
+            "kind": "file",
+            "content_cid": source.prompt_cid,
+            "artifact_ref": path.name,
+        }
+    stream = stdin_stream if stdin_stream is not None else sys.stdin
+    if stream is None or getattr(stream, "isatty", lambda: False)():
+        raise AgentCLIError(
+            "stdin prompt source requires piped non-empty UTF-8 text"
+        )
+    text = stream.read()
+    if not text:
+        raise AgentCLIError("stdin prompt source must be non-empty")
+    source = PromptSource.stdin(text)
+    return {"kind": "stdin", "content_cid": source.prompt_cid}
+
+
+def _merge_prompt_convenience_parameters(
+    args: argparse.Namespace,
+    parameters: MutableMapping[str, Any],
+    *,
+    stdin_stream: TextIO | None = None,
+) -> None:
+    """Fold thin prompt/rescue convenience flags into catalog parameters."""
+
+    def _set(key: str, value: Any) -> None:
+        if key in parameters:
+            raise AgentCLIError(
+                f"{key} was supplied both directly and in --parameters-json"
+            )
+        parameters[key] = value
+
+    directory = getattr(args, "directory", None)
+    if directory is not None:
+        _set("directory", str(directory))
+    output_mode = getattr(args, "output_mode", None)
+    if output_mode is not None:
+        _set("output_mode", str(output_mode))
+    markdown_path = getattr(args, "markdown_path", None)
+    if markdown_path is not None:
+        _set("markdown_path", str(markdown_path))
+    duckdb_path = getattr(args, "duckdb_path", None)
+    if duckdb_path is not None:
+        _set("duckdb_path", str(duckdb_path))
+    if bool(getattr(args, "allow_llm_fallback", False)):
+        _set("allow_llm_fallback", True)
+    max_actions = getattr(args, "max_actions", None)
+    if max_actions is not None:
+        _set("max_actions", int(max_actions))
+    budget_raw = getattr(args, "budget_json", None)
+    if budget_raw is not None:
+        budget = _json_value(budget_raw, noun="budget")
+        if not isinstance(budget, Mapping):
+            raise AgentCLIError("budget JSON must contain an object")
+        # Only fold catalog-admitted budget keys; ignore unknown silently-no —
+        # fail closed on unknown keys that would be dropped into parameters.
+        for key, value in budget.items():
+            if key in {
+                "max_actions",
+                "allow_llm_fallback",
+                "deadline_ms",
+            }:
+                if key in parameters and parameters[key] != value:
+                    raise AgentCLIError(
+                        f"budget field {key} conflicts with a direct flag"
+                    )
+                parameters.setdefault(key, value)
+            else:
+                raise AgentCLIError(
+                    f"budget field {key!r} is not admitted on the control catalog"
+                )
+    # --start is saga intent for workflow-create; only admit it when the
+    # operator also supplies it inside parameters-json for backends that
+    # extend the catalog.  Direct injection of non-catalog fields is refused.
+    if bool(getattr(args, "start_after", False)):
+        # Keep a local marker for human output only; do not mutate parameters
+        # with non-catalog keys.
+        pass
+
+    prompt_source = _resolve_prompt_source_from_args(
+        args, stdin_stream=stdin_stream
+    )
+    if prompt_source is not None:
+        if "prompt_source" in parameters:
+            raise AgentCLIError(
+                "prompt source was supplied both directly and in --parameters-json"
+            )
+        parameters["prompt_source"] = prompt_source
+
+    if "prompt_source" in parameters:
+        parameters["prompt_source"] = _normalize_prompt_source(
+            parameters["prompt_source"]
+        )
+
+
+def _human_token(value: Any) -> str:
+    """Coerce enums/records to a stable human-readable token."""
+
+    if value is None:
+        return ""
+    # ``str`` enums are instances of ``str``, so check Enum before stringifying.
+    if isinstance(value, Enum):
+        return str(value.value)
+    return str(value)
+
+
+def _render_human_summary(record: Mapping[str, Any]) -> str:
+    """Render a concise operator summary without dumping full payloads."""
+
+    status = _human_token(record.get("status")) or "unknown"
+    operation = _human_token(record.get("operation"))
+    request_id = _human_token(
+        record.get("request_id")
+        or record.get("request_cid")
+        or record.get("result_id")
+        or ""
+    )
+    error = record.get("error") or {}
+    code = ""
+    if isinstance(error, Mapping):
+        code = _human_token(error.get("code") or error.get("error_code") or "")
+    data = record.get("data") if isinstance(record.get("data"), Mapping) else {}
+    cursor = ""
+    if isinstance(data, Mapping):
+        cursor = _human_token(
+            data.get("next_event_cursor")
+            or data.get("event_cursor")
+            or record.get("event_cursor")
+            or ""
+        )
+    lines = [
+        f"status={status}",
+        f"operation={operation}" if operation else "",
+        f"request_id={request_id}" if request_id else "",
+        f"event_cursor={cursor}" if cursor else "",
+        f"error={code}" if code else "",
+    ]
+    return "\n".join(line for line in lines if line)
+
+
+def build_agent_request(
+    args: argparse.Namespace,
+    *,
+    stdin_stream: TextIO | None = None,
+) -> OperationRequest:
     """Build the one canonical request accepted by every control surface."""
 
     validate_agent_cli_catalog()
@@ -613,6 +995,15 @@ def build_agent_request(args: argparse.Namespace) -> OperationRequest:
                     f"{key} was supplied both directly and in --parameters-json"
                 )
             parameters[key] = value
+    if operation in _PROMPT_SURFACE_OPERATIONS:
+        _merge_prompt_convenience_parameters(
+            args, parameters, stdin_stream=stdin_stream
+        )
+    elif "prompt_source" in parameters:
+        # Non-prompt operations must not smuggle prompt bodies through params.
+        parameters["prompt_source"] = _normalize_prompt_source(
+            parameters["prompt_source"]
+        )
     effects = _json_value(
         args.expected_effects_json
         if args.expected_effects_json is not None
@@ -632,7 +1023,11 @@ def build_agent_request(args: argparse.Namespace) -> OperationRequest:
             objective_id=args.objective_id,
         )
     authorization = _authorization(args)
-    if operation in MUTATION_OPERATIONS and not bool(args.dry_run):
+    dry_run = bool(args.dry_run)
+    # Preview operations are always dry-run proposals.
+    if operation in {Operation.WORKFLOW_PREVIEW, Operation.RESCUE_PREVIEW}:
+        dry_run = True
+    if operation in MUTATION_OPERATIONS and not dry_run:
         direct_guard_arguments = (
             idempotency,
             authorization,
@@ -682,7 +1077,7 @@ def build_agent_request(args: argparse.Namespace) -> OperationRequest:
         **{name: getattr(args, name) for name in _IDENTITY_ARGUMENTS},
         parameters=parameters,
         expected_effects=tuple(effects),
-        dry_run=bool(args.dry_run),
+        dry_run=dry_run,
         idempotency=idempotency,
         authorization=authorization,
         lease_id=args.lease_id or "",
@@ -747,6 +1142,7 @@ def run_agent_cli(
     | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
+    stdin: TextIO | None = None,
 ) -> int:
     """Execute an ``agent`` namespace and return a stable process exit code."""
 
@@ -757,7 +1153,7 @@ def run_agent_cli(
             raise AgentCLIError(
                 "service and service_factory are mutually exclusive"
             )
-        request = build_agent_request(args)
+        request = build_agent_request(args, stdin_stream=stdin)
         count = int(args.watch_count)
         interval_ms = int(args.watch_interval_ms)
         if not 1 <= count <= MAX_WATCH_COUNT:
@@ -785,6 +1181,9 @@ def run_agent_cli(
         selected_service = service or (
             service_factory or default_agent_control_service
         )(request)
+        human = bool(getattr(args, "human", False)) and not bool(
+            getattr(args, "output_json", False)
+        )
         result: OperationResult | None = None
         exit_code = AGENT_CLI_EXIT_SUCCESS
         for index in range(count):
@@ -818,12 +1217,16 @@ def run_agent_cli(
                     "agent control service returned a non-canonical "
                     "OperationResult"
                 ) from exc
-            _write_record(
-                stdout,
-                canonical.to_record(),
-                compact=count > 1
-                or bool(getattr(args, "output_json", False)),
-            )
+            payload = canonical.to_record()
+            if human and count == 1:
+                stdout.write(_render_human_summary(payload) + "\n")
+            else:
+                _write_record(
+                    stdout,
+                    payload,
+                    compact=count > 1
+                    or bool(getattr(args, "output_json", False)),
+                )
             result_exit_code = exit_code_for_result(result)
             if (
                 exit_code == AGENT_CLI_EXIT_SUCCESS
@@ -835,10 +1238,13 @@ def run_agent_cli(
         assert result is not None
         return exit_code
     except (AgentCLIError, ControlContractError) as exc:
+        # Never echo exception arguments that might contain operator secrets;
+        # AgentCLIError messages are constructed without prompt bodies.
+        message = str(exc)
         payload = {
             "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
             "status": "invalid_request",
-            "message": str(exc),
+            "message": message,
         }
         _write_record(stderr, payload, compact=True)
         return AGENT_CLI_EXIT_INVALID
@@ -873,6 +1279,8 @@ __all__ = [
     "COMMAND_OPERATIONS",
     "MAX_WATCH_COUNT",
     "MAX_WATCH_INTERVAL_MS",
+    "PROMPT_CLI_REQUIREMENT_ID",
+    "PROMPT_WORKFLOW_CLI_COMMANDS",
     "agent_cli_command",
     "build_agent_request",
     "build_agent_cli_command",
