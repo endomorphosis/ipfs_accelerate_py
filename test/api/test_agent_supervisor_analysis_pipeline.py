@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -100,6 +102,43 @@ def _request(**changes: object) -> AnalysisPipelineRequest:
     }
     values.update(changes)
     return AnalysisPipelineRequest(**values)
+
+
+def _completion_quorum_member(
+    *,
+    member_id: str,
+    evidence_channel: str,
+    receipt_cid: str,
+    binding: dict[str, str],
+    scan_mode: str,
+    finished_at: datetime,
+) -> dict[str, object]:
+    """Build a fully explicit independent completion-proof fixture."""
+
+    return {
+        "member_id": member_id,
+        "evidence_channel": evidence_channel,
+        "receipt_cid": receipt_cid,
+        "binding": binding,
+        "scan_mode": scan_mode,
+        "status": "passed",
+        "passed": True,
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "exhaustive": True,
+        "conclusive": True,
+        "uncontradicted": True,
+        "producer_id": member_id,
+        "implementation": f"test-fixture:{member_id}",
+        "child_receipt_binding": (
+            f"{binding['tree_id']}:{receipt_cid}"
+        ),
+        "child_receipt_sha256": (
+            "sha256:" + sha256(receipt_cid.encode("utf-8")).hexdigest()
+        ),
+        "aggregate_tree_binding": binding["tree_id"],
+        "finished_at": finished_at.isoformat(),
+    }
 
 
 class _Analyzer:
@@ -810,6 +849,7 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": result.request.analyzer_version,
     }
     binding = {
@@ -826,26 +866,22 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
         "quorum_met": True,
         "binding": binding,
         "members": [
-            {
-                "member_id": "asi-069-runtime",
-                "evidence_channel": "runtime-cohort",
-                "receipt_cid": "scan:asi-069:runtime",
-                "binding": binding,
-                "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
-                "finished_at": now.isoformat(),
-            },
-            {
-                "member_id": "asi-069-validation",
-                "evidence_channel": "fresh-validation",
-                "receipt_cid": "scan:asi-069:validation",
-                "binding": binding,
-                "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
-                "finished_at": now.isoformat(),
-            },
+            _completion_quorum_member(
+                member_id="asi-069-runtime",
+                evidence_channel="runtime-cohort",
+                receipt_cid="scan:asi-069:runtime",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now,
+            ),
+            _completion_quorum_member(
+                member_id="asi-069-validation",
+                evidence_channel="fresh-validation",
+                receipt_cid="scan:asi-069:validation",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now,
+            ),
         ],
     }
     values = {
@@ -1633,6 +1669,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": result.request.analyzer_version,
     }
     binding = {
@@ -1649,26 +1686,22 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
         "quorum_met": True,
         "binding": binding,
         "members": [
-            {
-                "member_id": "asi-065-exhaustive-a",
-                "evidence_channel": "ast-and-runtime",
-                "receipt_cid": "scan:asi-065:exhaustive-a",
-                "binding": binding,
-                "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
-                "finished_at": now.isoformat(),
-            },
-            {
-                "member_id": "asi-065-exhaustive-b",
-                "evidence_channel": "cache-and-validation",
-                "receipt_cid": "scan:asi-065:exhaustive-b",
-                "binding": binding,
-                "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
-                "finished_at": now.isoformat(),
-            },
+            _completion_quorum_member(
+                member_id="asi-065-exhaustive-a",
+                evidence_channel="ast-and-runtime",
+                receipt_cid="scan:asi-065:exhaustive-a",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now,
+            ),
+            _completion_quorum_member(
+                member_id="asi-065-exhaustive-b",
+                evidence_channel="cache-and-validation",
+                receipt_cid="scan:asi-065:exhaustive-b",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now,
+            ),
         ],
     }
     values = {
@@ -1762,7 +1795,10 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "evidence_channel": "ast-and-runtime",
+                    "producer_id": quorum["members"][0]["producer_id"],
+                    "implementation": quorum["members"][0][
+                        "implementation"
+                    ],
                 },
             ],
         },
@@ -1914,6 +1950,7 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": result.request.analyzer_version,
     }
     binding = {
@@ -1930,22 +1967,22 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
         "quorum_met": True,
         "binding": binding,
         "members": [
-            {
-                "member_id": "asi-066-exhaustive",
-                "evidence_channel": "exhaustive",
-                "receipt_cid": "scan:asi-066:exhaustive",
-                "binding": binding,
-                "scan_mode": "exhaustive",
-                "finished_at": now.isoformat(),
-            },
-            {
-                "member_id": "asi-066-audit",
-                "evidence_channel": "audit",
-                "receipt_cid": "scan:asi-066:audit",
-                "binding": binding,
-                "scan_mode": "audit",
-                "finished_at": now.isoformat(),
-            },
+            _completion_quorum_member(
+                member_id="asi-066-exhaustive",
+                evidence_channel="exhaustive",
+                receipt_cid="scan:asi-066:exhaustive",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now,
+            ),
+            _completion_quorum_member(
+                member_id="asi-066-audit",
+                evidence_channel="audit",
+                receipt_cid="scan:asi-066:audit",
+                binding=binding,
+                scan_mode="audit",
+                finished_at=now,
+            ),
         ],
     }
     values = {
@@ -2031,7 +2068,8 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
             quorum["members"][0],
             {
                 **quorum["members"][1],
-                "evidence_channel": "exhaustive",
+                "producer_id": quorum["members"][0]["producer_id"],
+                "implementation": quorum["members"][0]["implementation"],
             },
         ],
     }
@@ -2179,9 +2217,18 @@ def test_live_objective_planner_receives_ast_index_and_retrieval_cache_context(
         cold.pipeline_result["retrieval_response_id"] in prompt
         for prompt in prompts
     )
+    prompt_capsules = [json.loads(prompt) for prompt in prompts]
+    pipeline_contexts = [
+        json.loads(item["summary"])["analysis_pipeline"]
+        for capsule in prompt_capsules
+        for item in capsule["evidence"]
+        if item["kind"] == "ast-coverage-summary"
+    ]
+    assert len(pipeline_contexts) == 2
     assert all(
-        '"nomination_only"' in prompt and "true" in prompt
-        for prompt in prompts
+        context["nomination_only"] is True
+        and context["safe_for_completion_reasoning"] is False
+        for context in pipeline_contexts
     )
     assert not cold.safe_for_completion_reasoning
     assert not warm.safe_for_completion_reasoning
@@ -2367,6 +2414,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": live.request.analyzer_version,
         "binding": binding,
     }
@@ -2377,26 +2425,22 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
         "quorum_met": True,
         "binding": binding,
         "members": [
-            {
-                "member_id": "asi-079-ast-runtime",
-                "evidence_channel": "ast-runtime",
-                "receipt_cid": "scan:asi-079:ast-runtime",
-                "binding": binding,
-                "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
-                "finished_at": now.isoformat(),
-            },
-            {
-                "member_id": "asi-079-cache-validation",
-                "evidence_channel": "cache-validation",
-                "receipt_cid": "scan:asi-079:cache-validation",
-                "binding": binding,
-                "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
-                "finished_at": now.isoformat(),
-            },
+            _completion_quorum_member(
+                member_id="asi-079-ast-runtime",
+                evidence_channel="ast-runtime",
+                receipt_cid="scan:asi-079:ast-runtime",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now,
+            ),
+            _completion_quorum_member(
+                member_id="asi-079-cache-validation",
+                evidence_channel="cache-validation",
+                receipt_cid="scan:asi-079:cache-validation",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now,
+            ),
         ],
     }
     producing_tasks = tuple(
