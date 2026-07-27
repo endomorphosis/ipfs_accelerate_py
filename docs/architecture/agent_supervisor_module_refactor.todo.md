@@ -101,7 +101,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-004 Create control package and update CLI entry surfaces
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
