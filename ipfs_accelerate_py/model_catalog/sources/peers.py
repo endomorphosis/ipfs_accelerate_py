@@ -3,6 +3,13 @@
 This module never opens a socket, resolves a host, follows a URL, or discovers
 credentials. A caller must inject a transport which explicitly authorizes each
 advertisement and returns deterministic revision-bound pages.
+
+Advertisements are admitted only through :class:`AdvertisementVerifier`:
+configure ``trusted_issuers`` for production, or pass
+``allow_peer_identity_hmac=True`` for authenticated-sender compatibility.
+Federated deployment ``endpoint_uri`` values are replaced with non-routable
+``unix:/federated/...`` handles so peer-supplied network locations cannot be
+re-exported for SSRF.
 """
 
 from __future__ import annotations
@@ -20,6 +27,12 @@ from ..schema import (
     ProviderDescriptor,
     Provenance,
     RouterBinding,
+)
+from ..security import (
+    AdvertisementVerificationError,
+    AdvertisementVerifier,
+    ReplayCache,
+    SecurityPolicyError,
 )
 from ..snapshot import CatalogPage
 from .static import CatalogSourceResult, SourceDiagnostic, SourceMetadata
@@ -125,6 +138,11 @@ class PeerCatalogSource:
         max_peers: int = MAX_PEERS,
         max_pages_per_peer: int = MAX_PAGES_PER_PEER,
         max_records: int = MAX_PEER_RECORDS,
+        trusted_issuers: Optional[Mapping[str, bytes | str]] = None,
+        allow_peer_identity_hmac: bool = False,
+        max_clock_skew: float = 30.0,
+        replay_window: float = 600.0,
+        max_advertisement_lifetime: float = 600.0,
     ) -> None:
         self.trust_domain = _canonical_name(trust_domain, "trust_domain", 64)
         self._domain_token = hashlib.sha256(
@@ -157,11 +175,27 @@ class PeerCatalogSource:
                 or not 1 <= value <= maximum
             ):
                 raise ValueError("%s must be between 1 and %d" % (name, maximum))
+        if trusted_issuers is None and not allow_peer_identity_hmac:
+            raise ValueError(
+                "PeerCatalogSource requires trusted_issuers, or explicit "
+                "allow_peer_identity_hmac=True for authenticated-sender "
+                "compatibility mode"
+            )
+        if trusted_issuers is not None and not isinstance(trusted_issuers, Mapping):
+            raise TypeError("trusted_issuers must be a mapping or None")
         self.precedence = precedence
         self.page_size = page_size
         self.max_peers = max_peers
         self.max_pages_per_peer = max_pages_per_peer
         self.max_records = max_records
+        self._trusted_issuers = (
+            None if trusted_issuers is None else dict(trusted_issuers)
+        )
+        self.allow_peer_identity_hmac = bool(allow_peer_identity_hmac)
+        self._max_clock_skew = float(max_clock_skew)
+        self._replay_window = float(replay_window)
+        self._max_advertisement_lifetime = float(max_advertisement_lifetime)
+        self._replay_cache = ReplayCache()
         self._advertisements = advertisements
         self._transport = transport
         self._peer_cache: Dict[Tuple[str, str], _CachedPeer] = {}
@@ -210,17 +244,66 @@ class PeerCatalogSource:
         checker = getattr(record, "is_expired", False)
         return bool(checker() if callable(checker) else checker)
 
+    def _advertisement_verifier_for(self, record: Any) -> AdvertisementVerifier:
+        """Build a verifier that never falls back to bare peer_id HMAC alone.
+
+        Strict mode uses the configured trusted issuer keys. Compatibility mode
+        (``allow_peer_identity_hmac=True``) only admits ads where the issuer is
+        the peer identity, matching ServiceRegistry's authenticated-sender path.
+        Callers must still authorize the peer via the injected transport.
+        """
+
+        if self._trusted_issuers is not None:
+            keys: Mapping[str, bytes | str] = self._trusted_issuers
+        else:
+            peer_id = getattr(record, "peer_id", None)
+            issuer = getattr(record, "issuer", None)
+            if (
+                not self.allow_peer_identity_hmac
+                or not isinstance(peer_id, str)
+                or not peer_id
+                or issuer != peer_id
+            ):
+                raise AdvertisementVerificationError(
+                    "issuer_untrusted",
+                    "advertisement issuer is not trusted",
+                )
+            keys = {peer_id: peer_id.encode("utf-8")}
+        return AdvertisementVerifier(
+            keys,
+            max_clock_skew=self._max_clock_skew,
+            replay_window=self._replay_window,
+            max_lifetime=self._max_advertisement_lifetime,
+            replay_cache=self._replay_cache,
+        )
+
+    def _verify_advertisement(self, record: Any) -> bool:
+        """Return True only after AdvertisementVerifier accepts the record."""
+
+        if (
+            getattr(record, "service_name", None) != self.service_name
+            or not getattr(record, "is_catalog_advertisement", False)
+            or self._is_expired(record)
+            or record.catalog_cid != record.catalog_revision
+        ):
+            return False
+        try:
+            # Do not consume nonces here: the same advertisement may be
+            # re-selected across refresh generations. Replay admission for the
+            # control plane remains in ServiceRegistry.add_remote / announce.
+            self._advertisement_verifier_for(record).verify(
+                record, consume_nonce=False
+            )
+        except SecurityPolicyError:
+            return False
+        except Exception:
+            return False
+        return True
+
     def _select_advertisements(self) -> Tuple[Any, ...]:
         selected: Dict[Tuple[str, str], Any] = {}
         for record in self._listed_advertisements():
-            if (
-                getattr(record, "service_name", None) != self.service_name
-                or not getattr(record, "is_catalog_advertisement", False)
-                or self._is_expired(record)
-                or not callable(getattr(record, "verify_signature", None))
-                or not record.verify_signature()
-                or record.catalog_cid != record.catalog_revision
-            ):
+            if not self._verify_advertisement(record):
                 continue
             key = (str(record.issuer), str(record.service_id))
             previous = selected.get(key)
@@ -241,6 +324,19 @@ class PeerCatalogSource:
                 )[: self.max_peers]
             )
         return tuple(selected[key] for key in sorted(selected))
+
+    def _federated_endpoint_uri(self, original: str) -> str:
+        """Replace peer-supplied network endpoints with a non-routable handle.
+
+        Federated snapshots must not re-export attacker-chosen ``endpoint_uri``
+        values (loopback, link-local, metadata services, etc.). Dialing peers
+        remains the responsibility of the authorized transport plane.
+        """
+
+        digest = hashlib.sha256(
+            ("%s\0%s" % (self.trust_domain, original)).encode("utf-8")
+        ).hexdigest()[:40]
+        return "unix:///federated/%s/%s" % (self._domain_token, digest)
 
     def _authorize(self, record: Any) -> None:
         decision = None
@@ -429,11 +525,19 @@ class PeerCatalogSource:
                 if deployment.model_id not in model_ids:
                     raise PeerCatalogError("peer deployment references an unknown model")
                 mapped_model = model_ids[deployment.model_id]
+            original_endpoint = deployment.endpoint_uri
+            endpoint_fingerprint = hashlib.sha256(
+                original_endpoint.encode("utf-8")
+            ).hexdigest()[:32]
+            # Preserve peer labels and add a non-secret fingerprint only —
+            # never re-export the original network URI.
+            label_map = dict(deployment.labels)
+            label_map["federated_endpoint_fingerprint"] = endpoint_fingerprint
             isolated = DeploymentDescriptor(
                 provider_id=provider_ids[deployment.provider_id],
                 model_id=mapped_model,
                 name=deployment.name,
-                endpoint_uri=deployment.endpoint_uri,
+                endpoint_uri=self._federated_endpoint_uri(original_endpoint),
                 capabilities=deployment.capabilities,
                 lifecycle=deployment.lifecycle,
                 state=deployment.state,
@@ -442,7 +546,7 @@ class PeerCatalogSource:
                 provenance=(
                     self._peer_provenance(record, deployment.deployment_id),
                 ),
-                labels=deployment.labels,
+                labels=tuple(sorted(label_map.items())),
             )
             deployments.append(isolated)
             deployment_ids[deployment.deployment_id] = isolated.deployment_id

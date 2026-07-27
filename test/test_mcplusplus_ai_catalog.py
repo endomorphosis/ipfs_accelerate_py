@@ -30,6 +30,24 @@ from ipfs_accelerate_py.mcplusplus_module.trio.server import (
     _build_catalog_service_record,
 )
 
+TRUSTED_KEY = b"offline-trusted-issuer-key-for-federation-tests"
+
+
+def _peer_source(advertisements, transport, *, trust_domain="tenant-a", **kwargs):
+    """Build a PeerCatalogSource with explicit trust configuration."""
+
+    if (
+        "trusted_issuers" not in kwargs
+        and "allow_peer_identity_hmac" not in kwargs
+    ):
+        kwargs["allow_peer_identity_hmac"] = True
+    return PeerCatalogSource(
+        advertisements,
+        transport,
+        trust_domain=trust_domain,
+        **kwargs,
+    )
+
 
 def _snapshot(provider_name: str, model_names=("one", "two")) -> CatalogSnapshot:
     capability = CapabilityDescriptor(
@@ -77,6 +95,7 @@ def _advertisement(
     *,
     issued_at: float | None = None,
     ttl: float = 300.0,
+    key: bytes | str | None = None,
 ) -> ServiceRecord:
     issued = time.time() if issued_at is None else issued_at
     record = ServiceRecord(
@@ -93,7 +112,10 @@ def _advertisement(
         expires_at=issued + ttl,
         metadata={"server": peer_id},
     )
-    record.sign()
+    if key is None:
+        record.sign()
+    else:
+        record.sign(key)
     return record
 
 
@@ -223,7 +245,7 @@ def test_peer_source_fetches_all_pages_only_through_authorized_transport():
     snapshot = _snapshot("remote", ("a", "b", "c"))
     record = _advertisement("peer-a", snapshot)
     transport = OfflineTransport({"peer-a": snapshot})
-    source = PeerCatalogSource(
+    source = _peer_source(
         [record],
         transport,
         trust_domain="tenant-a",
@@ -253,7 +275,7 @@ def test_peer_source_rejects_transport_without_explicit_authorization():
     transport = OfflineTransport({"peer-a": snapshot})
     transport.authorized = False
 
-    result = PeerCatalogSource(
+    result = _peer_source(
         [record], transport, trust_domain="tenant-a"
     ).refresh()
 
@@ -273,7 +295,7 @@ def test_partial_and_duplicate_peers_are_isolated_and_deduplicated():
     )
     transport.fail.add("peer-bad")
 
-    result = PeerCatalogSource(
+    result = _peer_source(
         [duplicate, bad_record, good_record],
         transport,
         trust_domain="tenant-a",
@@ -299,7 +321,7 @@ def test_cid_mismatch_and_stale_advertisements_fail_closed():
     )
     transport.mismatch.add("peer-mismatch")
 
-    result = PeerCatalogSource(
+    result = _peer_source(
         [expired, mismatch],
         transport,
         trust_domain="tenant-a",
@@ -316,7 +338,7 @@ def test_disconnect_removes_peer_records_on_next_generation():
     registry = ServiceRegistry()
     assert registry.add_remote(record)
     transport = OfflineTransport({"peer-a": snapshot})
-    source = PeerCatalogSource(
+    source = _peer_source(
         registry,
         transport,
         trust_domain="tenant-a",
@@ -332,17 +354,17 @@ def test_restart_and_trust_domains_have_deterministic_isolated_identities():
     snapshot = _snapshot("remote", ("a",))
     record = _advertisement("peer-a", snapshot)
 
-    first = PeerCatalogSource(
+    first = _peer_source(
         [record],
         OfflineTransport({"peer-a": snapshot}),
         trust_domain="tenant-a",
     ).refresh().snapshot
-    restarted = PeerCatalogSource(
+    restarted = _peer_source(
         [record],
         OfflineTransport({"peer-a": snapshot}),
         trust_domain="tenant-a",
     ).refresh().snapshot
-    other_domain = PeerCatalogSource(
+    other_domain = _peer_source(
         [record],
         OfflineTransport({"peer-a": snapshot}),
         trust_domain="tenant-b",
@@ -356,7 +378,7 @@ def test_restart_and_trust_domains_have_deterministic_isolated_identities():
 def test_peer_records_cannot_override_trusted_local_records():
     remote = _snapshot("shared", ("remote-model",))
     record = _advertisement("peer-a", remote)
-    peer_source = PeerCatalogSource(
+    peer_source = _peer_source(
         [record],
         OfflineTransport({"peer-a": remote}),
         trust_domain="tenant-a",
@@ -425,3 +447,108 @@ def test_service_registry_pages_are_revision_bound_and_restart_safe():
         )
     assert registry.unregister_local(record.service_name, peer_id="local-peer")
     assert registry.get_local(record.service_name) is None
+
+
+def test_peer_source_requires_explicit_trust_configuration():
+    snapshot = _snapshot("remote", ("a",))
+    record = _advertisement("peer-a", snapshot)
+    transport = OfflineTransport({"peer-a": snapshot})
+    with pytest.raises(ValueError, match="trusted_issuers"):
+        PeerCatalogSource([record], transport, trust_domain="tenant-a")
+
+
+def test_peer_source_rejects_forgeable_peer_id_hmac_under_trusted_issuers():
+    """Bare peer_id HMAC must not admit ads when a trust store is configured."""
+
+    snapshot = _snapshot("remote", ("a",))
+    # Signed with public peer_id material (forgeable by any attacker).
+    forged = _advertisement("peer-a", snapshot)
+    assert forged.verify_signature()
+
+    transport = OfflineTransport({"peer-a": snapshot})
+    result = PeerCatalogSource(
+        [forged],
+        transport,
+        trust_domain="tenant-a",
+        trusted_issuers={"peer-a": TRUSTED_KEY},
+    ).refresh()
+
+    assert result.snapshot.providers == ()
+    assert transport.calls == []
+
+    trusted = _advertisement("peer-a", snapshot, key=TRUSTED_KEY)
+    accepted = PeerCatalogSource(
+        [trusted],
+        transport,
+        trust_domain="tenant-a",
+        trusted_issuers={"peer-a": TRUSTED_KEY},
+    ).refresh()
+    assert len(accepted.snapshot.providers) == 1
+
+
+def test_federated_deployments_never_reexport_peer_network_endpoints():
+    capability = CapabilityDescriptor(
+        operations=(Operation.TEXT_GENERATE,),
+        input_modalities=(Modality.TEXT,),
+        output_modalities=(Modality.TEXT,),
+    )
+    provider = ProviderDescriptor(name="ssrf", capabilities=(capability,))
+    model = ModelDescriptor(
+        provider_id=provider.provider_id,
+        name="probe",
+        capabilities=(capability,),
+    )
+    # Attacker-supplied loopback / link-local style endpoints.
+    deployment = DeploymentDescriptor(
+        provider_id=provider.provider_id,
+        model_id=model.model_id,
+        name="primary",
+        endpoint_uri="http://127.0.0.1:9/latest/meta-data",
+        capabilities=(capability,),
+    )
+    snapshot = CatalogSnapshot(
+        providers=(provider,),
+        models=(model,),
+        deployments=(deployment,),
+        bindings=(),
+    )
+    record = _advertisement("peer-a", snapshot, key=TRUSTED_KEY)
+    transport = OfflineTransport({"peer-a": snapshot})
+    result = PeerCatalogSource(
+        [record],
+        transport,
+        trust_domain="tenant-a",
+        trusted_issuers={"peer-a": TRUSTED_KEY},
+    ).refresh()
+
+    assert len(result.snapshot.deployments) == 1
+    isolated = result.snapshot.deployments[0]
+    # Schema normalizes unix URIs to ``unix:/path`` form.
+    assert isolated.endpoint_uri.startswith("unix:/federated/")
+    assert "127.0.0.1" not in isolated.endpoint_uri
+    assert "meta-data" not in isolated.endpoint_uri
+    labels = dict(isolated.labels)
+    assert "federated_endpoint_fingerprint" in labels
+    assert labels["federated_endpoint_fingerprint"] != deployment.endpoint_uri
+
+
+def test_strict_registry_local_signing_uses_configured_key_not_peer_id():
+    snapshot = _snapshot("local", ("a",))
+    record = _advertisement("local-peer", snapshot, key=TRUSTED_KEY)
+    registry = ServiceRegistry(
+        trusted_issuers={"local-peer": TRUSTED_KEY},
+        local_signing_key=TRUSTED_KEY,
+    )
+    registry.register_local(record, catalog_provider=lambda: snapshot)
+
+    published = registry.get_local(record.service_name)
+    assert published is not None
+    assert published.verify_signature(TRUSTED_KEY)
+    assert not published.verify_signature()  # peer_id default key must fail
+
+    receive_only = ServiceRegistry(trusted_issuers={"local-peer": TRUSTED_KEY})
+    with pytest.raises(RuntimeError, match="local_signing_key"):
+        receive_only.register_local(
+            _advertisement("local-peer", snapshot, key=TRUSTED_KEY),
+            catalog_provider=lambda: snapshot,
+        )

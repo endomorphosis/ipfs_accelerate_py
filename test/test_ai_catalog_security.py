@@ -212,6 +212,43 @@ def test_registry_rejects_untrusted_and_replayed_records_before_insertion():
     assert len(registry.get_services()) == 1
 
 
+def test_strict_registry_cannot_publish_peer_id_hmac_local_catalogs():
+    live_now = time.time()
+    empty = CatalogSnapshot()
+    record = ServiceRecord(
+        service_name="ipfs-accelerate-mcp",
+        peer_id="peer-a",
+        issuer="peer-a",
+        multiaddrs=["/memory/peer-a"],
+        catalog_cid=empty.revision,
+        catalog_revision=empty.revision,
+        operation_summary=["text.generate"],
+        interface_cids=["cidv1-ai-catalog"],
+        endpoint_protocol=CATALOG_ENDPOINT_PROTOCOL,
+        issued_at=live_now,
+        expires_at=live_now + 300,
+    )
+    record.sign(TRUSTED_KEY)
+
+    receive_only = ServiceRegistry(trusted_issuers={"peer-a": TRUSTED_KEY})
+    # register_local with a provider immediately refreshes/signs.
+    with pytest.raises(RuntimeError, match="local_signing_key"):
+        receive_only.register_local(record, catalog_provider=lambda: empty)
+
+    publisher = ServiceRegistry(
+        trusted_issuers={"peer-a": TRUSTED_KEY},
+        local_signing_key=TRUSTED_KEY,
+    )
+    publisher.register_local(
+        ServiceRecord.from_dict(record.to_dict()),
+        catalog_provider=lambda: empty,
+    )
+    published = publisher.get_local(record.service_name)
+    assert published is not None
+    assert published.verify_signature(TRUSTED_KEY)
+    assert not published.verify_signature()
+
+
 def test_partial_catalog_advertisements_and_replay_cache_pressure_fail_closed():
     live_now = time.time()
     payload = _record(

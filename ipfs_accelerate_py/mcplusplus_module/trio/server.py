@@ -225,8 +225,14 @@ def _build_catalog_service_record(
     node: Any,
     snapshot: Any,
     now: Optional[float] = None,
+    signing_key: Any = None,
 ) -> Any:
-    """Build the compact signed MCP++ AI catalog advertisement."""
+    """Build the compact signed MCP++ AI catalog advertisement.
+
+    When *signing_key* is provided it is used for HMAC. Otherwise the
+    peer-identity compatibility key is used (only appropriate when the
+    transport authenticates the sender as that peer).
+    """
 
     from ..service_registry import CATALOG_ENDPOINT_PROTOCOL, ServiceRecord
     from ...mcp_server.mcplusplus.idl_registry import (
@@ -263,7 +269,10 @@ def _build_catalog_service_record(
             "node_ownership": "process_singleton",
         },
     )
-    record.sign()
+    if signing_key is None:
+        record.sign()
+    else:
+        record.sign(signing_key)
     return record
 
 

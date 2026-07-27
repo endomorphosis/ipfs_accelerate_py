@@ -328,6 +328,7 @@ class ServiceRegistry:
         self,
         *,
         trusted_issuers: Optional[Mapping[str, bytes | str]] = None,
+        local_signing_key: Optional[bytes | str] = None,
         authorization_policy: Optional[CatalogAuthorizationPolicy] = None,
         max_clock_skew: float = 30.0,
         replay_window: float = 600.0,
@@ -345,11 +346,42 @@ class ServiceRegistry:
         self._trusted_issuers = (
             None if trusted_issuers is None else dict(trusted_issuers)
         )
+        if local_signing_key is None:
+            self._local_signing_key: Optional[bytes] = None
+        elif isinstance(local_signing_key, str):
+            material = local_signing_key.encode("utf-8")
+            if not material:
+                raise ValueError("local_signing_key must not be empty")
+            self._local_signing_key = material
+        elif isinstance(local_signing_key, (bytes, bytearray)):
+            material = bytes(local_signing_key)
+            if not material:
+                raise ValueError("local_signing_key must not be empty")
+            self._local_signing_key = material
+        else:
+            raise TypeError("local_signing_key must be bytes or str")
         self._authorization_policy = authorization_policy
         self._max_clock_skew = max_clock_skew
         self._replay_window = replay_window
         self._max_advertisement_lifetime = max_advertisement_lifetime
         self._replay_cache = ReplayCache()
+
+    def _sign_local_record(
+        self, record: ServiceRecord, *, rotate_nonce: bool = False
+    ) -> None:
+        """Sign a local advertisement with the configured trust material."""
+
+        if self._local_signing_key is not None:
+            record.sign(self._local_signing_key, rotate_nonce=rotate_nonce)
+            return
+        if self._trusted_issuers is not None:
+            raise RuntimeError(
+                "cannot sign local catalog advertisements without local_signing_key "
+                "when trusted_issuers is configured"
+            )
+        # Compatibility mode: peer identity is the trust anchor and matches
+        # AdvertisementVerifier's authenticated-sender key material.
+        record.sign(rotate_nonce=rotate_nonce)
 
     @staticmethod
     def _catalog_resource(service_id: str) -> str:
@@ -485,7 +517,7 @@ class ServiceRegistry:
             record.expires_at = selected_now + lifetime
             record.timestamp = selected_now
             record.ttl = lifetime
-            record.sign(rotate_nonce=True)
+            self._sign_local_record(record, rotate_nonce=True)
             self._catalog_snapshots[service_name] = snapshot
         if changed:
             self._notify_change("catalog_update", record)
@@ -514,6 +546,11 @@ class ServiceRegistry:
                 snapshot = providers[name]()
                 if self.update_local_catalog(name, snapshot, now=now):
                     changed.append(name)
+            except RuntimeError:
+                # Misconfiguration (for example, trusted_issuers without a
+                # local_signing_key) must not be soft-swallowed: local ads would
+                # otherwise remain on a stale peer_id-HMAC signature.
+                raise
             except Exception as exc:
                 logger.debug("Catalog refresh failed for %s: %s", name, exc)
         return tuple(changed)
@@ -659,7 +696,7 @@ class ServiceRegistry:
                 record.expires_at = selected_now + SERVICE_TTL
                 record.timestamp = selected_now
                 record.ttl = SERVICE_TTL
-                record.sign(rotate_nonce=True)
+                self._sign_local_record(record, rotate_nonce=True)
             for peer_id in list(p2p_node._peers.keys()):
                 try:
                     await p2p_node.call_tool(
