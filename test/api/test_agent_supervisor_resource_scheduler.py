@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
+import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +15,10 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
-from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
+from ipfs_accelerate_py.agent_supervisor.leased_lane import (
+    LeasedLaneResult,
+    run_leased_lane_result,
+)
 from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
     GoalRuntimeResourceScheduler,
     HostResourceSnapshot,
@@ -599,6 +606,368 @@ def test_leased_lane_measures_active_resources_then_advertises_idle_capacity(
     assert latest["resource_class"] == "cpu-small"
     assert latest["provider_id"] == "provider-a"
     assert {"cpu_percent", "memory_percent", "disk_percent"} <= latest.keys()
+
+
+def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "coordination.sqlite3"
+    phase_state = tmp_path / "phase-state.json"
+    child_pid_path = tmp_path / "child.pid"
+    first_bundle = {
+        "bundle_key": "objective/resources/long-lived-first",
+        "tasks": [
+            {"task_id": "RES-LONG-1"},
+            {"task_id": "RES-LONG-1B"},
+        ],
+        "execution_slice_task_ids": ["RES-LONG-1", "RES-LONG-1B"],
+    }
+    with LeaseCoordinator(path) as coordinator:
+        first = coordinator.register_bundle(first_bundle)
+        first_grant = coordinator.claim(
+            first["task_cid"],
+            "did:web:provider-worker.example",
+            requested_lease_ms=60_000,
+        )
+
+    def write_phase_state(payload: dict[str, object]) -> None:
+        temporary = phase_state.with_name(f".{phase_state.name}.tmp")
+        temporary.write_text(
+            json.dumps(payload, sort_keys=True),
+            encoding="utf-8",
+        )
+        temporary.replace(phase_state)
+
+    # A prior lease's terminal projection must not terminate this child.
+    write_phase_state(
+        {
+            "heartbeat_at": "2000-01-01T00:00:00+00:00",
+            "active_task_id": "",
+            "implementation_in_progress": False,
+            "completed_task_ids": ["RES-LONG-1", "RES-LONG-1B"],
+        }
+    )
+    outcome: list[LeasedLaneResult] = []
+    errors: list[BaseException] = []
+
+    def execute() -> None:
+        try:
+            outcome.append(
+                run_leased_lane_result(
+                    coordination_path=path,
+                    grant=first_grant,
+                    command=[
+                        sys.executable,
+                        "-c",
+                        (
+                            "import os,pathlib,sys,time;"
+                            "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()));"
+                            "time.sleep(60)"
+                        ),
+                        str(child_pid_path),
+                    ],
+                    lease_ms=60_000,
+                    heartbeat_interval=0.02,
+                    resource_class="model",
+                    provider_id="provider-a",
+                    phase_state_path=phase_state,
+                    expected_task_ids=("RES-LONG-1", "RES-LONG-1B"),
+                )
+            )
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            errors.append(exc)
+
+    lane_thread = threading.Thread(target=execute, daemon=True)
+    lane_thread.start()
+
+    deadline = time.monotonic() + 5
+    while not child_pid_path.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert child_pid_path.exists()
+    time.sleep(0.15)
+    assert lane_thread.is_alive()
+
+    try:
+        active_at = datetime.now(timezone.utc).isoformat()
+        write_phase_state(
+            {
+                "heartbeat_at": active_at,
+                "active_task_id": "RES-LONG-1",
+                "implementation_in_progress": True,
+                "completed_task_ids": [],
+            }
+        )
+        deadline = time.monotonic() + 5
+        observed_active = False
+        while time.monotonic() < deadline:
+            with LeaseCoordinator(path) as coordinator:
+                heartbeat = coordinator.latest_heartbeat(first["task_cid"])
+            if (
+                heartbeat is not None
+                and heartbeat.get("active_phase") == "implementation"
+            ):
+                observed_active = True
+                break
+            time.sleep(0.01)
+        assert observed_active
+
+        incomplete_at = datetime.now(timezone.utc).isoformat()
+        write_phase_state(
+            {
+                "heartbeat_at": incomplete_at,
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "completed_task_ids": ["RES-LONG-1"],
+            }
+        )
+        time.sleep(0.15)
+        assert lane_thread.is_alive()
+
+        completed_at = datetime.now(timezone.utc).isoformat()
+        write_phase_state(
+            {
+                "heartbeat_at": completed_at,
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "completed_task_ids": ["RES-LONG-1", "RES-LONG-1B"],
+            }
+        )
+        lane_thread.join(10)
+    finally:
+        if lane_thread.is_alive() and child_pid_path.exists():
+            try:
+                os.kill(int(child_pid_path.read_text(encoding="utf-8")), signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+            lane_thread.join(5)
+
+    assert errors == []
+    assert not lane_thread.is_alive()
+    assert len(outcome) == 1
+    result = outcome[0]
+    assert result.successful
+    assert result.disposition == "completed"
+    assert result.exit_code == 0
+    assert result.child_exit_code not in {None, 0}
+    assert result.receipt_cid
+    assert result.lease_released is True
+
+    with LeaseCoordinator(path) as coordinator:
+        latest = coordinator.latest_heartbeat(first["task_cid"])
+        receipts = coordinator.list_receipts(first["task_cid"])
+        assert coordinator.active_lease(first["task_cid"]) is None
+    assert latest is not None
+    assert latest["capacity_millionths"] == 0
+    assert latest["active_phase"] == "idle"
+    assert latest["occupied_workers"] == 0
+    assert latest["available_workers"] == 1
+    assert latest["provider_id"] == "provider-a"
+    assert len(receipts) == 1
+    assert receipts[0]["receipt"]["status"] == "succeeded"
+    assert receipts[0]["receipt"]["failure_class"] == "none"
+    assert receipts[0]["receipt"]["output_cid"]
+
+
+def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_bundle_index(index, 2, llm=True)
+    child_pid_paths = {
+        "RES-1": tmp_path / "res-1.pid",
+        "RES-2": tmp_path / "res-2.pid",
+    }
+    starts: list[tuple[object, object, object]] = []
+
+    class ThreadedLaneProcess:
+        def __init__(self, lane: object, grant: object) -> None:
+            self.lane = lane
+            self.grant = grant
+            self.result: LeasedLaneResult | None = None
+            self.error: BaseException | None = None
+            self.pid = 20_000 + len(starts)
+            self.thread = threading.Thread(target=self._execute, daemon=True)
+            self.thread.start()
+
+        @property
+        def task_id(self) -> str:
+            return self.lane.task_ids[0]
+
+        @property
+        def phase_state_path(self) -> Path:
+            return (
+                self.lane.state_dir
+                / f"{self.lane.state_prefix}_task_state.json"
+            )
+
+        def _execute(self) -> None:
+            self.lane.state_dir.mkdir(parents=True, exist_ok=True)
+            task_id = self.task_id
+            command = (
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os,pathlib,sys,time;"
+                        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()));"
+                        "time.sleep(60)"
+                    ),
+                    str(child_pid_paths[task_id]),
+                ]
+                if task_id == "RES-1"
+                else [sys.executable, "-c", "pass"]
+            )
+            try:
+                self.result = run_leased_lane_result(
+                    coordination_path=repo / "coordination.sqlite3",
+                    grant=self.grant,
+                    command=command,
+                    lease_ms=60_000,
+                    heartbeat_interval=0.02,
+                    capacity_millionths=1_000_000,
+                    resource_class=self.lane.resource_class,
+                    provider_id=self.lane.llm_provider,
+                    phase_state_path=self.phase_state_path,
+                    expected_task_ids=tuple(self.lane.task_ids),
+                )
+            except BaseException as exc:  # pragma: no cover - surfaced by wait
+                self.error = exc
+
+        def poll(self) -> int | None:
+            if self.thread.is_alive():
+                return None
+            if self.error is not None:
+                return 1
+            return int(self.result.exit_code if self.result is not None else 1)
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.thread.join(timeout)
+            if self.thread.is_alive():
+                raise subprocess.TimeoutExpired(str(self.pid), timeout)
+            return int(self.poll() or 0)
+
+        def terminate(self) -> None:
+            self._signal_child(signal.SIGTERM)
+
+        def kill(self) -> None:
+            self._signal_child(signal.SIGKILL)
+
+        def _signal_child(self, signum: int) -> None:
+            pid_path = child_pid_paths[self.task_id]
+            if not pid_path.exists():
+                return
+            try:
+                os.kill(int(pid_path.read_text(encoding="utf-8")), signum)
+            except (OSError, ValueError):
+                pass
+
+    def launch(lane: object, grant: object) -> ThreadedLaneProcess:
+        process = ThreadedLaneProcess(lane, grant)
+        starts.append((lane, grant, process))
+        return process
+
+    scheduler = DynamicBundleScheduler(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        coordination_path=repo / "coordination.sqlite3",
+        max_lanes=2,
+        launcher=launch,
+        process_alive=lambda process: process.poll() is None,
+        host_resource_source=lambda *_args, **_kwargs: _host(
+            worker_limit=2,
+            available_worker_capacity=2,
+        ),
+        provider_capacity_source=lambda: [
+            _provider("provider-a", max_concurrency=1, active_requests=0)
+        ],
+        poll_interval=0,
+    )
+
+    first_manifest = scheduler.reconcile_once()
+    assert [lane.task_ids for lane, _grant, _process in starts] == [["RES-1"]]
+    assert first_manifest["resource_schedule"]["admitted_count"] == 1
+    assert any(
+        decision["bundle_key"] == "objective/resources/2"
+        and decision["reason"] == "provider_concurrency"
+        for decision in first_manifest["scheduler_decisions"]
+    )
+    first_lane, first_grant, first_process = starts[0]
+    first_resource_lease = scheduler.resource_scheduler.active_leases[0]
+    deadline = time.monotonic() + 5
+    while (
+        not child_pid_paths["RES-1"].exists()
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.01)
+    assert child_pid_paths["RES-1"].exists()
+
+    try:
+        first_process.phase_state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = first_process.phase_state_path.with_name(
+            f".{first_process.phase_state_path.name}.tmp"
+        )
+        temporary.write_text(
+            json.dumps(
+                {
+                    "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                    "active_task_id": "",
+                    "implementation_in_progress": False,
+                    "completed_task_ids": ["RES-1"],
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        temporary.replace(first_process.phase_state_path)
+        first_process.thread.join(10)
+        assert not first_process.thread.is_alive()
+        assert first_process.error is None
+        assert first_process.result is not None
+        assert first_process.result.successful
+
+        second_manifest = scheduler.reconcile_once()
+        assert [lane.task_ids for lane, _grant, _process in starts] == [
+            ["RES-1"],
+            ["RES-2"],
+        ]
+        second_lane, _second_grant, second_process = starts[1]
+        assert second_lane.llm_provider == first_lane.llm_provider == "provider-a"
+        assert all(
+            lease.lease_id != first_resource_lease.lease_id
+            for lease in scheduler.resource_scheduler.active_leases
+        )
+        assert len(scheduler.resource_scheduler.active_leases) == 1
+        assert scheduler.resource_scheduler.active_leases[0].provider_id == (
+            "provider-a"
+        )
+        assert any(
+            decision["bundle_key"] == "objective/resources/2"
+            and decision["decision"] == "launched"
+            and decision["resource_admission"]["provider_id"] == "provider-a"
+            for decision in second_manifest["scheduler_decisions"]
+        )
+        second_process.thread.join(5)
+        assert not second_process.thread.is_alive()
+        assert second_process.result is not None
+        assert second_process.result.successful
+
+        scheduler.reconcile_once()
+        assert scheduler.resource_scheduler.active_leases == ()
+        with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+            first_heartbeat = coordinator.latest_heartbeat(first_grant.task_cid)
+        assert first_heartbeat is not None
+        assert first_heartbeat["capacity_millionths"] == 0
+        assert first_heartbeat["provider_id"] == "provider-a"
+    finally:
+        for _lane, _grant, process in starts:
+            if process.poll() is None:
+                process.kill()
+                process.thread.join(5)
+        scheduler.stop(grace_seconds=0)
 
 
 def test_goal_runtime_work_kinds_have_four_distinct_resource_classes() -> None:

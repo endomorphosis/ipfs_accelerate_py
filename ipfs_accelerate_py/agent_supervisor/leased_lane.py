@@ -216,6 +216,79 @@ def _execution_slice_violation(
     return active_task_id
 
 
+def _fresh_completed_execution_slice(
+    state_path: Path | None,
+    expected_task_ids: frozenset[str],
+    *,
+    started_at_ms: int,
+) -> dict[str, Any] | None:
+    """Return fresh terminal evidence for a fully completed execution slice.
+
+    Implementation supervisors are intentionally long-lived.  Completing the
+    final leased task therefore does not imply that their process exits.  The
+    wrapper may stop that process only when one atomic phase-state projection
+    proves all leased members complete and proves that no implementation is
+    still active.
+
+    A task-state file can survive an earlier lease.  Completion is consequently
+    authoritative only when its heartbeat was written after this wrapper began;
+    missing, malformed, naive, or older timestamps fail closed.
+    """
+
+    if state_path is None or not expected_task_ids:
+        return None
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    completed_value = state.get("completed_task_ids")
+    if not isinstance(completed_value, list):
+        return None
+    if any(
+        not isinstance(task_id, str) or not task_id.strip()
+        for task_id in completed_value
+    ):
+        return None
+    completed_task_ids = {
+        task_id.strip()
+        for task_id in completed_value
+    }
+    if not expected_task_ids.issubset(completed_task_ids):
+        return None
+    if state.get("implementation_in_progress") is not False:
+        return None
+    active_task_id = state.get("active_task_id")
+    if not isinstance(active_task_id, str) or active_task_id.strip():
+        return None
+    heartbeat_value = state.get("heartbeat_at")
+    if not isinstance(heartbeat_value, str):
+        return None
+    heartbeat_at = heartbeat_value.strip()
+    if not heartbeat_at:
+        return None
+    try:
+        heartbeat = datetime.fromisoformat(heartbeat_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if heartbeat.tzinfo is None:
+        return None
+    heartbeat_at_ms = int(heartbeat.timestamp() * 1000)
+    observed_at_ms = _now_ms()
+    if (
+        heartbeat_at_ms < int(started_at_ms)
+        or heartbeat_at_ms > observed_at_ms + 1_000
+    ):
+        return None
+    return {
+        "completed_task_ids": sorted(expected_task_ids),
+        "phase_state_not_before_ms": int(started_at_ms),
+        "phase_state_heartbeat_at": heartbeat_at,
+        "phase_state_heartbeat_at_ms": heartbeat_at_ms,
+    }
+
+
 def _terminate_child(process: subprocess.Popen[Any], *, timeout: float = 5.0) -> None:
     """Terminate a child and do not return while it can still execute work."""
 
@@ -340,6 +413,7 @@ def run_leased_lane_result(
                 error=str(exc),
             )
 
+        phase_state_not_before_ms = _now_ms()
         try:
             process = subprocess.Popen(list(command))
         except Exception as exc:
@@ -397,6 +471,7 @@ def run_leased_lane_result(
 
         stopping_signal: int | None = None
         execution_scope_error = ""
+        completed_execution_slice: dict[str, Any] | None = None
         stop_event = threading.Event()
 
         def stop_child(signum: int, _frame: object) -> None:
@@ -438,6 +513,19 @@ def run_leased_lane_result(
                         f"execution slice {sorted(expected_task_id_set)!r}"
                     )
                     logger.error("Fencing daemon lane: %s", execution_scope_error)
+                    _terminate_child(process)
+                    break
+                completed_execution_slice = _fresh_completed_execution_slice(
+                    phase_state_path,
+                    expected_task_id_set,
+                    started_at_ms=phase_state_not_before_ms,
+                )
+                if completed_execution_slice is not None:
+                    logger.info(
+                        "Stopping leased lane %s after fresh completion of %s",
+                        grant.task_cid,
+                        completed_execution_slice["completed_task_ids"],
+                    )
                     _terminate_child(process)
                     break
                 try:
@@ -498,26 +586,30 @@ def run_leased_lane_result(
             if stopping_signal is not None:
                 _terminate_child(process)
             child_exit_code = int(process.returncode or 0)
-            receipt_status = (
-                "cancelled"
-                if stopping_signal is not None
-                else "failed"
-                if execution_scope_error
-                else "succeeded"
-                if child_exit_code == 0
-                else "failed"
+            completed_by_state = (
+                completed_execution_slice is not None
+                and stopping_signal is None
+                and not execution_scope_error
             )
-            disposition: LaneDisposition = (
-                "cancelled"
-                if stopping_signal is not None
-                else "failed"
-                if execution_scope_error
-                else "completed"
-                if child_exit_code == 0
-                else "blocked"
-                if child_exit_code == FENCED_EXIT_CODE
-                else "failed"
+            completed_execution_output = dict(
+                completed_execution_slice or {}
             )
+            lane_exit_code = 0 if completed_by_state else child_exit_code
+            if stopping_signal is not None:
+                receipt_status = "cancelled"
+                disposition: LaneDisposition = "cancelled"
+            elif execution_scope_error:
+                receipt_status = "failed"
+                disposition = "failed"
+            elif completed_by_state or child_exit_code == 0:
+                receipt_status = "succeeded"
+                disposition = "completed"
+            elif child_exit_code == FENCED_EXIT_CODE:
+                receipt_status = "failed"
+                disposition = "blocked"
+            else:
+                receipt_status = "failed"
+                disposition = "failed"
             try:
                 # Publish a final live-capacity observation before the receipt
                 # closes the lease.  The lane slot can be reassigned as soon as
@@ -537,7 +629,15 @@ def run_leased_lane_result(
                     grant,
                     status=receipt_status,
                     output=(
-                        {"exit_code": child_exit_code, "command": list(command)}
+                        {
+                            "exit_code": lane_exit_code,
+                            "child_exit_code": child_exit_code,
+                            "command": list(command),
+                            "reason": "completed_execution_slice",
+                            **completed_execution_output,
+                        }
+                        if completed_by_state
+                        else {"exit_code": child_exit_code, "command": list(command)}
                         if receipt_status == "succeeded"
                         else {
                             "reason": "execution_slice_violation",
@@ -588,7 +688,7 @@ def run_leased_lane_result(
                 claimant_did=grant.claimant_did,
                 fencing_token=grant.fencing_token,
                 disposition=disposition,
-                exit_code=child_exit_code,
+                exit_code=lane_exit_code,
                 child_exit_code=child_exit_code,
                 started_at_ms=started_at_ms,
                 finished_at_ms=_now_ms(),
