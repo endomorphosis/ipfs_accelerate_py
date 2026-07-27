@@ -414,6 +414,8 @@ def _fresh_durable_terminal_blocked_pass(
         "blocked_count",
         "selectable_ready_count",
     )
+    expected_task_ids = set(expected_task_cids_by_id)
+    observed_at_ms = _now_ms()
     for source in event_log_sources((events_path,), include_rotated=True):
         for event in read_jsonl_events(source):
             if str(event.get("type") or "") != "daemon_pass":
@@ -423,6 +425,7 @@ def _fresh_durable_terminal_blocked_pass(
                 event_at_ms is None
                 or event_at_ms < int(started_at_ms)
                 or event_at_ms < int(heartbeat_at_ms)
+                or event_at_ms > observed_at_ms + 1_000
             ):
                 continue
             if str(event.get("active_task_id") or "").strip():
@@ -442,6 +445,11 @@ def _fresh_durable_terminal_blocked_pass(
                 Mapping,
             ):
                 continue
+            if (
+                set(event_task_cids) != expected_task_ids
+                or set(event_task_statuses) != expected_task_ids
+            ):
+                continue
             if any(
                 str(event_task_cids.get(task_id) or "").strip() != task_cid
                 or _normalized_task_status(event_task_statuses.get(task_id))
@@ -454,7 +462,7 @@ def _fresh_durable_terminal_blocked_pass(
                 for task_id in (event.get("attempt_limited_task_ids") or ())
                 if str(task_id).strip()
             )
-            if not expected_attempt_limited_task_ids.issubset(limited_ids):
+            if limited_ids != expected_attempt_limited_task_ids:
                 continue
             matched = {
                 "terminal_evidence_boundary": "durable_daemon_pass",

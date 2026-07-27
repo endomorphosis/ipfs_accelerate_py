@@ -8,7 +8,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Barrier
 from typing import Any
@@ -2178,6 +2178,133 @@ def test_untracked_leased_lane_self_fences_fresh_exact_blocked_slice(
     assert len(receipts) == 1
     assert receipts[0]["receipt"]["status"] == "failed"
     assert receipts[0]["receipt"]["failure_class"] == "blocked"
+
+
+def test_terminal_blocked_pass_rejects_readdressed_or_future_evidence(
+    tmp_path: Path,
+) -> None:
+    phase_state = tmp_path / "phase-state.json"
+    events_path = tmp_path / "events.jsonl"
+    task_id = "T-EXACT-BLOCKED-SLICE"
+    task_cid = profile_g_cid({"member": task_id})
+    extra_task_id = "T-OTHER-SLICE"
+    extra_task_cid = profile_g_cid({"member": extra_task_id})
+    heartbeat = datetime.now(timezone.utc)
+    phase_state.write_text(
+        json.dumps(
+            {
+                "heartbeat_at": heartbeat.isoformat(),
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "completed_task_ids": [],
+                "completed_count": 0,
+                "ready_count": 1,
+                "waiting_count": 0,
+                "blocked_count": 0,
+                "selectable_ready_count": 0,
+                "selection_idle_reason": TASK_ATTEMPT_LIMIT_IDLE_REASON,
+                "task_statuses": {task_id: "ready"},
+                "task_identities": {
+                    task_id: {
+                        "canonical_task_cid": task_cid,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    started_at_ms = int(heartbeat.timestamp() * 1000) - 1
+    common_payload = {
+        "active_task_id": "",
+        "completed_count": 0,
+        "ready_count": 1,
+        "waiting_count": 0,
+        "blocked_count": 0,
+        "selectable_ready_count": 0,
+        "selection_idle_reason": TASK_ATTEMPT_LIMIT_IDLE_REASON,
+    }
+
+    # A fresh pass for a larger slice cannot be readdressed to this lane merely
+    # because it contains the expected member.
+    append_jsonl_event(
+        events_path,
+        "daemon_pass",
+        {
+            **common_payload,
+            "attempt_limited_task_ids": [task_id, extra_task_id],
+            "execution_slice_task_statuses": {
+                task_id: "ready",
+                extra_task_id: "ready",
+            },
+            "execution_slice_task_cids_by_id": {
+                task_id: task_cid,
+                extra_task_id: extra_task_cid,
+            },
+        },
+    )
+    assert leased_lane_module._fresh_blocked_execution_slice(
+        phase_state,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+        completion_events_path=events_path,
+    ) is None
+
+    # Exact member maps still fail when attempt-limit evidence names another
+    # member outside the admitted slice.
+    append_jsonl_event(
+        events_path,
+        "daemon_pass",
+        {
+            **common_payload,
+            "attempt_limited_task_ids": [task_id, extra_task_id],
+            "execution_slice_task_statuses": {task_id: "ready"},
+            "execution_slice_task_cids_by_id": {task_id: task_cid},
+        },
+    )
+    assert leased_lane_module._fresh_blocked_execution_slice(
+        phase_state,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+        completion_events_path=events_path,
+    ) is None
+
+    append_jsonl_event(
+        events_path,
+        "daemon_pass",
+        {
+            **common_payload,
+            "timestamp": (heartbeat + timedelta(minutes=5)).isoformat(),
+            "attempt_limited_task_ids": [task_id],
+            "execution_slice_task_statuses": {task_id: "ready"},
+            "execution_slice_task_cids_by_id": {task_id: task_cid},
+        },
+    )
+    assert leased_lane_module._fresh_blocked_execution_slice(
+        phase_state,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+        completion_events_path=events_path,
+    ) is None
+
+    accepted = append_jsonl_event(
+        events_path,
+        "daemon_pass",
+        {
+            **common_payload,
+            "attempt_limited_task_ids": [task_id],
+            "execution_slice_task_statuses": {task_id: "ready"},
+            "execution_slice_task_cids_by_id": {task_id: task_cid},
+        },
+    )
+    evidence = leased_lane_module._fresh_blocked_execution_slice(
+        phase_state,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+        completion_events_path=events_path,
+    )
+
+    assert evidence is not None
+    assert evidence["terminal_event_id"] == accepted["event_id"]
 
 
 def test_exact_execution_slice_exit_zero_without_completion_evidence_fails(
