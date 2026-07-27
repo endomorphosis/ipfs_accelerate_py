@@ -296,6 +296,16 @@ def _validate_uri(value: Any) -> str:
         address = None
     if address is not None and not address.is_global:
         raise _RequestError("unsafe_media_uri", "The media URI is not allowed.")
+    # Several URL stacks accept legacy inet_aton spellings (for example a
+    # single decimal integer, octal components, or hexadecimal components)
+    # even though ipaddress intentionally does not.  Reject those spellings
+    # here so an allowlisted loader never receives an ambiguous numeric host.
+    numeric_labels = host.split(".")
+    if address is None and numeric_labels and all(
+        re.fullmatch(r"(?:0x[0-9a-f]+|[0-9]+)", label)
+        for label in numeric_labels
+    ):
+        raise _RequestError("unsafe_media_uri", "The media URI is not allowed.")
     return uri
 
 
@@ -586,15 +596,22 @@ def _candidate_limit(candidate: Any, operation: str, field_name: str) -> Optiona
 
 
 def _candidate_supports_mime(candidate: Any, operation: str, mime_type: str) -> bool:
-    declared = {
-        str(item).casefold()
-        for capability in _candidate_capabilities(candidate, operation)
-        for item in tuple(getattr(capability, "media_types", ()) or ())
-    }
-    if not declared:
-        return True
     major = mime_type.split("/", 1)[0] + "/*"
-    return mime_type in declared or major in declared
+    declarations = [
+        {
+            str(item).casefold()
+            for item in tuple(getattr(capability, "media_types", ()) or ())
+        }
+        for capability in _candidate_capabilities(candidate, operation)
+    ]
+    constrained = [declared for declared in declarations if declared]
+    # Provider, model, and deployment constraints all apply.  Treating their
+    # media types as a union could route a MIME accepted by a broad provider
+    # to a model or deployment that explicitly excludes it.
+    return all(
+        mime_type in declared or major in declared
+        for declared in constrained
+    )
 
 
 def _invocation_provider(candidate: Any) -> str:
@@ -928,21 +945,16 @@ async def multimodal_generate(
             timeout=_remaining_timeout(deadline),
         )
         input_bytes = prompt_bytes + len(data)
-        catalog_limit = _candidate_limit(
-            selected, _VISION_OPERATION, "max_input_bytes"
-        )
-        if catalog_limit is not None and input_bytes > catalog_limit:
-            raise _RequestError(
-                "input_limit_exceeded",
-                "The request exceeds the selected service input limit.",
-            )
-        catalog_output = _candidate_limit(
-            selected, _VISION_OPERATION, "max_output_bytes"
-        )
-        if catalog_output is not None:
-            output_limit = min(output_limit, catalog_output)
 
         def call(candidate: Any) -> Any:
+            catalog_input = _candidate_limit(
+                candidate, _VISION_OPERATION, "max_input_bytes"
+            )
+            if catalog_input is not None and input_bytes > catalog_input:
+                raise _RequestError(
+                    "input_limit_exceeded",
+                    "The request exceeds the selected service input limit.",
+                )
             return multimodal_router.generate_multimodal(
                 prompt_value,
                 image=data,
@@ -965,7 +977,15 @@ async def multimodal_generate(
                 "The multimodal router returned a non-text result.",
             )
         output_bytes = len(generated.encode("utf-8"))
-        if output_bytes > output_limit:
+        catalog_output = _candidate_limit(
+            selected, _VISION_OPERATION, "max_output_bytes"
+        )
+        selected_output_limit = (
+            min(output_limit, catalog_output)
+            if catalog_output is not None
+            else output_limit
+        )
+        if output_bytes > selected_output_limit:
             raise _RequestError(
                 "output_limit_exceeded",
                 "Generated text exceeds the bounded output size.",
@@ -1075,16 +1095,16 @@ async def voice_transcribe(
             allow_remote_media=allow_remote_media,
             timeout=_remaining_timeout(deadline),
         )
-        catalog_limit = _candidate_limit(
-            selected, _TRANSCRIBE_OPERATION, "max_input_bytes"
-        )
-        if catalog_limit is not None and len(data) > catalog_limit:
-            raise _RequestError(
-                "input_limit_exceeded",
-                "Audio exceeds the selected service input limit.",
-            )
 
         def call(candidate: Any) -> Any:
+            catalog_input = _candidate_limit(
+                candidate, _TRANSCRIBE_OPERATION, "max_input_bytes"
+            )
+            if catalog_input is not None and len(data) > catalog_input:
+                raise _RequestError(
+                    "input_limit_exceeded",
+                    "Audio exceeds the selected service input limit.",
+                )
             return voice_router.speech_to_text(
                 data,
                 model_name=_invocation_model(candidate),
@@ -1252,21 +1272,16 @@ async def voice_synthesize(
             mime_type=mime_type,
         )
         selected = candidates[0]
-        catalog_input = _candidate_limit(
-            selected, _SYNTHESIZE_OPERATION, "max_input_bytes"
-        )
-        if catalog_input is not None and text_bytes > catalog_input:
-            raise _RequestError(
-                "input_limit_exceeded",
-                "Text exceeds the selected service input limit.",
-            )
-        catalog_output = _candidate_limit(
-            selected, _SYNTHESIZE_OPERATION, "max_output_bytes"
-        )
-        if catalog_output is not None:
-            output_limit = min(output_limit, catalog_output)
 
         def call(candidate: Any) -> Any:
+            catalog_input = _candidate_limit(
+                candidate, _SYNTHESIZE_OPERATION, "max_input_bytes"
+            )
+            if catalog_input is not None and text_bytes > catalog_input:
+                raise _RequestError(
+                    "input_limit_exceeded",
+                    "Text exceeds the selected service input limit.",
+                )
             return voice_router.text_to_speech(
                 text_value,
                 voice=voice_value,
@@ -1294,7 +1309,15 @@ async def voice_synthesize(
             raise _RequestError(
                 "invalid_router_output", "The voice router returned empty audio."
             )
-        if len(audio) > output_limit:
+        catalog_output = _candidate_limit(
+            selected, _SYNTHESIZE_OPERATION, "max_output_bytes"
+        )
+        selected_output_limit = (
+            min(output_limit, catalog_output)
+            if catalog_output is not None
+            else output_limit
+        )
+        if len(audio) > selected_output_limit:
             raise _RequestError(
                 "output_limit_exceeded",
                 "Synthesized audio exceeds the bounded output size.",
