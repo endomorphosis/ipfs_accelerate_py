@@ -972,6 +972,84 @@ def test_sensitive_file_change_is_rejected_even_when_path_is_in_scope() -> None:
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
 
 
+def test_unchanged_baseline_secret_text_does_not_reject_an_in_scope_edit() -> None:
+    existing_secret = 'api_key = "existing-credential-value"\n'
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before=existing_secret + "VALUE = 1\n",
+                after=existing_secret + "VALUE = 2\n",
+            ),
+        ),
+        policy=_policy(),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(
+        result
+    )
+
+
+def test_dynamic_secret_lookup_is_not_mistaken_for_a_literal_secret() -> None:
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after=(
+                    "VALUE = 2\n"
+                    'api_key = _coalesce_env("OPENAI_API_KEY")\n'
+                ),
+            ),
+        ),
+        policy=_policy(),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(
+        result
+    )
+
+
+def test_new_literal_secret_remains_forbidden_in_an_in_scope_file() -> None:
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after=(
+                    "VALUE = 2\n"
+                    'api_key = "sk-live-concrete-credential-value"\n'
+                ),
+            ),
+        ),
+        policy=_policy(),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
+def test_renaming_a_secret_bearing_file_remains_forbidden() -> None:
+    source = 'api_key = "sk-live-concrete-credential-value"\n'
+    old_path = "ipfs_accelerate_py/agent_supervisor/old_config.py"
+    new_path = "ipfs_accelerate_py/agent_supervisor/new_config.py"
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                new_path,
+                before=source,
+                after=source,
+                change_kind=DiffChangeKind.RENAME,
+                old_path=old_path,
+                new_path=new_path,
+            ),
+        ),
+        policy=_policy(),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
 def test_binary_policy_remains_non_compensable_for_v2() -> None:
     result = validate_implementation_proposal(
         _v2_proposal(

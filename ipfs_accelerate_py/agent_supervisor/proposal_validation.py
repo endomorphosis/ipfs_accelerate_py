@@ -17,6 +17,7 @@ import os
 import re
 import shlex
 import stat
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -1066,6 +1067,23 @@ class ProposalValidationPolicy:
         if claimed and claimed != actual:
             raise ProposalValidationError("proposal policy identity mismatch")
         object.__setattr__(self, "policy_id", actual)
+
+    def path_is_allowed(self, path: str) -> bool:
+        """Return whether ``path`` is inside the policy's mutable envelope."""
+
+        return any(_path_matches(path, pattern) for pattern in self.allowed_paths)
+
+    def path_is_task_owned(self, path: str) -> bool:
+        """Return whether ``path`` is inside the immutable task scope."""
+
+        return any(
+            _path_matches(path, pattern) for pattern in self.task_owned_paths
+        )
+
+    def path_is_in_scope(self, path: str) -> bool:
+        """Return whether both proposal authority envelopes contain ``path``."""
+
+        return self.path_is_allowed(path) and self.path_is_task_owned(path)
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
@@ -2714,12 +2732,35 @@ def _evaluate_fail_fast_objective_completion(
 
 
 _SHELL_META_RE = re.compile(r"(?:[;&|<>`]|[$]\(|\r|\n)")
-_SECRET_CONTENT_RE = re.compile(
-    r"(?im)(?:"
-    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
-    r"|(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)"
-    r"\s*[:=]\s*[\"']?[A-Za-z0-9_+/.-]{12,}"
-    r")"
+_PRIVATE_KEY_CONTENT_RE = re.compile(
+    r"(?im)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"""(?im)(?:^|[,{;.\s])["']?"""
+    r"""(?:api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|"""
+    r"""client[_-]?secret|password|passwd)["']?\s*(?P<delimiter>[:=])\s*"""
+    r"""(?P<value>(?:[rubf]{0,2})(?:"(?:\\.|[^"\\\r\n])*"|"""
+    r"""'(?:\\.|[^'\\\r\n])*')|[^\s,;}#]+)"""
+)
+_QUOTED_SECRET_VALUE_RE = re.compile(
+    r"""(?is)^(?:[rubf]{0,2})(?P<quote>["'])(?P<value>.*)(?P=quote)$"""
+)
+_DYNAMIC_SECRET_VALUE_RE = re.compile(
+    r"""(?ix)^(?:"""
+    r"""\$\{|\$[a-z_]|"""
+    r"""(?:[a-z_]\w*\.)*[a-z_]\w*\s*\(|"""
+    r"""(?:[a-z_]\w*\.)+[a-z_]\w*$|"""
+    r"""(?:[a-z_]\w*\.)*[a-z_]\w*\[|"""
+    r"""[A-Z][A-Z0-9_]*$|"""
+    r"""none$|null$|true$|false$"""
+    r""")"""
+)
+_SECRET_PLACEHOLDER_RE = re.compile(
+    r"""(?ix)(?:"""
+    r"""example|placeholder|redacted|change[_-]?me|replace[_-]?me|"""
+    r"""your[_-](?:api[_-]?key|token|password|secret)|"""
+    r"""dummy|fake[_-]?secret"""
+    r""")"""
 )
 _TEST_SKIP_RE = re.compile(
     r"(?im)(?:pytest[.]mark[.](?:skip|xfail)|unittest[.]skip|"
@@ -2740,6 +2781,67 @@ def _path_at_boundary(path: str, boundaries: Sequence[str]) -> bool:
 def _is_test_path(path: str) -> bool:
     name = path.rsplit("/", 1)[-1]
     return path.startswith(("test/", "tests/")) or name.startswith("test_")
+
+
+def _introduced_candidate_text(entry: CandidateDiffEntry) -> str:
+    """Return only candidate lines not already present in the baseline.
+
+    A linear multiset subtraction is enough for secret admission: moved lines
+    are not new authority, while duplicated and modified lines remain visible.
+    It also avoids an adversarial quadratic sequence diff in this fail-fast
+    gate.
+    """
+
+    after = entry.after_source
+    if after is None or entry.change_kind is DiffChangeKind.DELETE:
+        return ""
+    before = entry.before_source
+    if before is None or entry.change_kind in {
+        DiffChangeKind.ADD,
+        DiffChangeKind.COPY,
+        DiffChangeKind.RENAME,
+    }:
+        return after
+    if before == after:
+        return ""
+
+    baseline_lines = Counter(before.splitlines(keepends=True))
+    introduced: list[str] = []
+    for line in after.splitlines(keepends=True):
+        if baseline_lines[line]:
+            baseline_lines[line] -= 1
+        else:
+            introduced.append(line)
+    return "".join(introduced)
+
+
+def _is_concrete_secret_value(raw_value: str) -> bool:
+    value = raw_value.strip()
+    quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(value)
+    if quoted:
+        value = quoted.group("value").strip()
+    elif _DYNAMIC_SECRET_VALUE_RE.match(value):
+        return False
+
+    if len(value) < 12:
+        return False
+    if re.fullmatch(r"[A-Z][A-Z0-9_]{11,}", value):
+        return False
+    if _SECRET_PLACEHOLDER_RE.search(value):
+        return False
+    return True
+
+
+def _entry_introduces_secret(entry: CandidateDiffEntry) -> bool:
+    introduced = _introduced_candidate_text(entry)
+    if not introduced:
+        return False
+    if _PRIVATE_KEY_CONTENT_RE.search(introduced):
+        return True
+    return any(
+        _is_concrete_secret_value(match.group("value"))
+        for match in _SECRET_ASSIGNMENT_RE.finditer(introduced)
+    )
 
 
 def _python_test_names(source: str) -> frozenset[str]:
@@ -3344,17 +3446,14 @@ class ProposalValidator:
                         "candidate path crosses a submodule boundary",
                         path,
                     )
-                if not any(_path_matches(path, allowed) for allowed in policy.allowed_paths):
+                if not policy.path_is_allowed(path):
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
                         "candidate path is outside the task-owned scope",
                         path,
                     )
-                if not any(
-                    _path_matches(path, owned)
-                    for owned in policy.task_owned_paths
-                ):
+                if not policy.path_is_task_owned(path):
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
@@ -3406,9 +3505,7 @@ class ProposalValidator:
                 or fnmatch.fnmatchcase(entry.path.rsplit("/", 1)[-1], pattern)
                 for pattern in policy.sensitive_path_patterns
             )
-            sensitive_content = bool(
-                _SECRET_CONTENT_RE.search(entry.after_source or "")
-            )
+            sensitive_content = _entry_introduces_secret(entry)
             if not policy.allow_secrets and (sensitive_path or sensitive_content):
                 add(
                     ProposalFindingCode.SECRET_CHANGE_FORBIDDEN,

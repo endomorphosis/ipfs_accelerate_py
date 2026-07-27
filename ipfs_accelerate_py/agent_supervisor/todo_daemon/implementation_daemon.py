@@ -175,6 +175,10 @@ DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
 MAX_PENDING_SCOPE_ADJUDICATIONS = 256
+SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "secret-change-scope-examination@1"
+)
 # ProposalValidationPolicy's ordinary limits are intentionally small for
 # provider output. The daemon constructs this proposal from a local Git diff
 # whose entries contain complete before/after source, so a small patch across
@@ -9014,6 +9018,84 @@ class PortalImplementationDaemon:
             "completion_authoritative": False,
         }
 
+    @staticmethod
+    def _secret_change_scope_examination(
+        proposal_validation: Any,
+    ) -> dict[str, Any] | None:
+        """Classify secret findings against both proposal scope envelopes."""
+
+        findings = tuple(
+            getattr(proposal_validation, "findings", ()) or ()
+        )
+        secret_findings = tuple(
+            finding
+            for finding in findings
+            if str(
+                getattr(getattr(finding, "code", ""), "value", "")
+                or ""
+            ).strip()
+            == "secret_change_forbidden"
+        )
+        if not secret_findings:
+            return None
+
+        proposal = getattr(proposal_validation, "proposal", None)
+        policy = getattr(proposal_validation, "policy", None)
+        finding_paths = tuple(
+            sorted(
+                {
+                    str(getattr(finding, "path", "") or "").strip()
+                    for finding in secret_findings
+                    if str(getattr(finding, "path", "") or "").strip()
+                }
+            )
+        )
+        changed_paths = tuple(
+            str(path)
+            for path in (
+                getattr(proposal, "changed_paths", ()) or ()
+            )
+            if str(path).strip()
+        )
+        examined_paths = finding_paths or tuple(sorted(set(changed_paths)))
+        path_is_in_scope = getattr(policy, "path_is_in_scope", None)
+        in_scope_paths = tuple(
+            path
+            for path in examined_paths
+            if callable(path_is_in_scope) and path_is_in_scope(path)
+        )
+        out_of_scope_paths = tuple(
+            path for path in examined_paths if path not in in_scope_paths
+        )
+        if in_scope_paths and out_of_scope_paths:
+            scope_classification = "mixed"
+        elif out_of_scope_paths:
+            scope_classification = "out_of_scope"
+        elif in_scope_paths:
+            scope_classification = "in_scope"
+        else:
+            scope_classification = "unknown"
+        examination = {
+            "schema": SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA,
+            "proposal_id": str(
+                getattr(proposal, "proposal_id", "") or ""
+            ),
+            "policy_id": str(getattr(policy, "policy_id", "") or ""),
+            "finding_code": "secret_change_forbidden",
+            "examined_paths": list(examined_paths),
+            "in_scope_paths": list(in_scope_paths),
+            "out_of_scope_paths": list(out_of_scope_paths),
+            "scope_classification": scope_classification,
+            # Scope membership never grants permission to persist a secret.
+            "secret_policy_overridden": False,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+        return {
+            **examination,
+            "examination_id": content_identity(examination),
+        }
+
     def _validate_implementation_patch(
         self,
         workspace_path: Path,
@@ -9180,6 +9262,7 @@ class PortalImplementationDaemon:
         local_envelope_limits = self._proposal_local_envelope_limits(proposal)
         policy = ProposalValidationPolicy(
             allowed_paths=allowed_paths,
+            task_owned_paths=allowed_paths,
             expected_task_id=authority["task_id"],
             expected_plan_id=authority["accepted_plan_id"],
             expected_repository_id=authority["repository_id"],
@@ -9194,7 +9277,7 @@ class PortalImplementationDaemon:
             allowed_validation_commands=allowed_validation_commands,
             require_structured_details=True,
             require_patch_text=True,
-            policy_version="strict-proposal-v2+local-envelope-v1",
+            policy_version="strict-proposal-v2+local-envelope-v2",
             **local_envelope_limits,
         )
         result = validate_implementation_proposal(proposal, policy=policy)
@@ -9279,6 +9362,17 @@ class PortalImplementationDaemon:
                 {
                     "task_id": task.task_id,
                     **adjudication_projection,
+                },
+            )
+        secret_scope_examination = self._secret_change_scope_examination(
+            result
+        )
+        if secret_scope_examination is not None:
+            self._record_event(
+                "implementation_secret_change_scope_examined",
+                {
+                    "task_id": task.task_id,
+                    **secret_scope_examination,
                 },
             )
         compact = self._compact_proposal_validation(

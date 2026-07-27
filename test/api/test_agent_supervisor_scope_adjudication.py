@@ -504,6 +504,82 @@ def test_daemon_keeps_unrelated_expansion_rejected(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("declared_output", "scope_classification", "expected_out_of_scope"),
+    [
+        ("pkg/compiler.py", "in_scope", []),
+        ("pkg/declared.py", "out_of_scope", ["pkg/compiler.py"]),
+    ],
+)
+def test_daemon_examines_secret_finding_scope_without_overriding_policy(
+    tmp_path: Path,
+    declared_output: str,
+    scope_classification: str,
+    expected_out_of_scope: list[str],
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    compiler_path = repo / "pkg" / "compiler.py"
+    compiler_path.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    compiler_path.write_text(
+        'VALUE = 2\napi_key = "sk-live-concrete-credential-value"\n',
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ASI-TEST",
+        title="Change compiler mode",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="quality",
+        outputs=[declared_output],
+        validation=["python -m pytest test/test_compiler.py"],
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is False
+    finding_codes = {finding.code.value for finding in result.findings}
+    assert "secret_change_forbidden" in finding_codes
+    if expected_out_of_scope:
+        assert "path_outside_scope" in finding_codes
+    events = [
+        json.loads(line)
+        for line in (repo / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    examination = next(
+        event
+        for event in events
+        if event["type"] == "implementation_secret_change_scope_examined"
+    )
+    assert examination["scope_classification"] == scope_classification
+    assert examination["examined_paths"] == ["pkg/compiler.py"]
+    assert examination["out_of_scope_paths"] == expected_out_of_scope
+    assert examination["secret_policy_overridden"] is False
+    assert examination["examination_id"].startswith("b")
+    assert events[-1]["type"] == "implementation_proposal_rejected"
+
+
 def test_merge_binding_rejects_detached_or_forged_scope_receipt() -> None:
     valid = {
         "passed": True,
