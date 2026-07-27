@@ -42,18 +42,45 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import json
 import logging
 import mimetypes
 import os
+import re
+import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, Union, runtime_checkable
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    Union,
+    runtime_checkable,
+)
 
 from . import llm_router
+from .model_catalog import (
+    CapabilityDescriptor,
+    CatalogSnapshot,
+    LifecycleState,
+    Modality,
+    ModelDescriptor,
+    Operation,
+    OperationalState,
+    ProviderDescriptor,
+    Provenance,
+    RouterBinding,
+)
 from .router_deps import RouterDeps, get_default_router_deps
 
 logger = logging.getLogger(__name__)
@@ -148,16 +175,45 @@ ProviderFactory = Callable[[], MultimodalProvider]
 class ProviderInfo:
     name: str
     factory: ProviderFactory
+    descriptor: Optional[ProviderDescriptor] = None
+    models: Tuple[ModelDescriptor, ...] = ()
 
 
 _PROVIDER_REGISTRY: Dict[str, ProviderInfo] = {}
+_PROVIDER_REGISTRY_LOCK = threading.RLock()
 
 
-def register_multimodal_provider(name: str, factory: ProviderFactory) -> None:
-    """Register a custom multimodal provider."""
+def register_multimodal_provider(
+    name: str,
+    factory: ProviderFactory,
+    *,
+    descriptor: ProviderDescriptor | Mapping[str, object] | None = None,
+    models: Sequence[ModelDescriptor | Mapping[str, object]] = (),
+) -> None:
+    """Register a provider and optional side-effect-free catalog metadata.
+
+    Discovery retains ``factory`` without calling it.  When catalog metadata
+    is omitted, router-level input and output facts remain known while
+    provider-specific deployment facts remain explicitly unknown.
+    """
+
     if not name or not name.strip():
         raise ValueError("Provider name must be non-empty")
-    _PROVIDER_REGISTRY[name] = ProviderInfo(name=name, factory=factory)
+    if not callable(factory):
+        raise TypeError("Provider factory must be callable")
+    normalized = name.strip().lower()
+    provider_descriptor = _registered_provider_descriptor(normalized, descriptor)
+    model_descriptors = _registered_model_descriptors(
+        provider_descriptor,
+        models,
+    )
+    with _PROVIDER_REGISTRY_LOCK:
+        _PROVIDER_REGISTRY[normalized] = ProviderInfo(
+            name=normalized,
+            factory=factory,
+            descriptor=provider_descriptor,
+            models=model_descriptors,
+        )
 
 
 def _coalesce_env(*names: str) -> str:
@@ -166,6 +222,964 @@ def _coalesce_env(*names: str) -> str:
         if value is not None and str(value).strip():
             return str(value).strip()
     return ""
+
+
+_MULTIMODAL_CATALOG_PROVENANCE = (
+    Provenance(source="multimodal_router.static"),
+)
+_MULTIMODAL_REGISTRY_PROVENANCE = (
+    Provenance(source="multimodal_router.registry"),
+)
+_MULTIMODAL_MEDIA_TYPES = ("image/*", "text/plain")
+_MULTIMODAL_OPERATIONS = (
+    Operation.TEXT_GENERATE,
+    Operation.VISION_GENERATE,
+)
+
+
+def _multimodal_capability(
+    *,
+    max_context_tokens: Optional[int] = None,
+    operations: Sequence[Operation] = _MULTIMODAL_OPERATIONS,
+    media_types: Sequence[str] = _MULTIMODAL_MEDIA_TYPES,
+) -> CapabilityDescriptor:
+    return CapabilityDescriptor(
+        operations=tuple(operations),
+        input_modalities=(Modality.TEXT, Modality.IMAGE),
+        output_modalities=(Modality.TEXT,),
+        media_types=tuple(media_types),
+        max_context_tokens=max_context_tokens,
+        # The router exposes one request at a time and does not enforce byte
+        # limits.  None deliberately means unknown, not unlimited.
+        max_batch_size=None,
+        max_input_bytes=None,
+        max_output_bytes=None,
+    )
+
+
+def _default_multimodal_labels(
+    *,
+    authorization: str,
+    device: str,
+    locality: str,
+    streaming: str = "unsupported",
+    batching: str = "unsupported",
+) -> Dict[str, str]:
+    """Return router-owned media contract labels.
+
+    ``CapabilityDescriptor`` carries typed modality and byte-limit fields.
+    These labels preserve distinctions not represented by schema v1: image
+    count, URI versus inline transport, and directional media families.
+    """
+
+    return {
+        "access_requirement": authorization,
+        "batching": batching,
+        "device": device,
+        "image_input_modes": "inline,uri",
+        "inline_input_types": "bytes,data-uri,file-path",
+        "input_media_types": "image/*,text/plain",
+        "locality": locality,
+        "max_images": "1",
+        "output_media_types": "text/plain",
+        "streaming": streaming,
+        "uri_schemes": "http,https",
+    }
+
+
+def _registered_provider_descriptor(
+    name: str,
+    descriptor: ProviderDescriptor | Mapping[str, object] | None,
+) -> ProviderDescriptor:
+    if descriptor is None:
+        return ProviderDescriptor(
+            name=name,
+            description="Dynamically registered multimodal provider.",
+            capabilities=(_multimodal_capability(),),
+            lifecycle=LifecycleState.DECLARED,
+            state=OperationalState(
+                known=True,
+                configured=True,
+                authorized=None,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+            provenance=_MULTIMODAL_REGISTRY_PROVENANCE,
+            labels=_default_multimodal_labels(
+                authorization="unknown",
+                device="unknown",
+                locality="unknown",
+                streaming="unknown",
+                batching="unknown",
+            ),
+        )
+    if isinstance(descriptor, ProviderDescriptor):
+        resolved = descriptor
+    elif isinstance(descriptor, Mapping):
+        values = dict(descriptor)
+        values.setdefault("name", name)
+        resolved = ProviderDescriptor(**values)
+    else:
+        raise TypeError(
+            "descriptor must be a ProviderDescriptor, mapping, or None"
+        )
+    if resolved.name != name:
+        raise ValueError(
+            "Provider descriptor name must match the registered name"
+        )
+    return resolved
+
+
+def _registered_model_descriptors(
+    provider: ProviderDescriptor,
+    models: Sequence[ModelDescriptor | Mapping[str, object]],
+) -> Tuple[ModelDescriptor, ...]:
+    if isinstance(models, (str, bytes, Mapping)):
+        raise TypeError("models must be a sequence of model descriptors")
+    output: List[ModelDescriptor] = []
+    for model in models:
+        if isinstance(model, ModelDescriptor):
+            resolved = model
+        elif isinstance(model, Mapping):
+            values = dict(model)
+            values.setdefault("provider_id", provider.provider_id)
+            resolved = ModelDescriptor(**values)
+        else:
+            raise TypeError(
+                "models must contain ModelDescriptor records or mappings"
+            )
+        if resolved.provider_id != provider.provider_id:
+            raise ValueError(
+                "Model descriptor provider_id does not match provider"
+            )
+        output.append(resolved)
+    identities = [model.model_id for model in output]
+    if len(identities) != len(set(identities)):
+        raise ValueError("models contain duplicate identities")
+    return tuple(
+        sorted(output, key=lambda model: (model.name, model.model_id or ""))
+    )
+
+
+@dataclass(frozen=True)
+class _MultimodalProviderSpec:
+    name: str
+    aliases: Tuple[str, ...]
+    description: str
+    locality: str
+    device: str
+    authorization: str
+    model_env: Tuple[str, ...] = ()
+    default_model: Optional[str] = None
+
+
+_BUILTIN_PROVIDER_SPECS: Tuple[_MultimodalProviderSpec, ...] = (
+    _MultimodalProviderSpec(
+        name="openrouter",
+        aliases=(),
+        description="OpenRouter OpenAI-compatible multimodal API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "IPFS_ACCELERATE_PY_OPENROUTER_MULTIMODAL_MODEL",
+            "IPFS_ACCELERATE_PY_MULTIMODAL_MODEL",
+        ),
+        default_model="openai/gpt-4o",
+    ),
+    _MultimodalProviderSpec(
+        name="openai",
+        aliases=("gpt-4o", "gpt-4v", "gpt4o", "gpt4v"),
+        description="OpenAI multimodal chat completions API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "IPFS_ACCELERATE_PY_OPENAI_MULTIMODAL_MODEL",
+            "IPFS_ACCELERATE_PY_MULTIMODAL_MODEL",
+        ),
+        default_model="gpt-4o",
+    ),
+    _MultimodalProviderSpec(
+        name="xai",
+        aliases=("grok", "xai_grok"),
+        description="xAI OpenAI-compatible multimodal API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_XAI_MULTIMODAL_MODEL",
+            "ipfs_accelerate_py_MULTIMODAL_MODEL",
+        ),
+        default_model="grok-2-vision-1212",
+    ),
+    _MultimodalProviderSpec(
+        name="meta_ai",
+        aliases=(
+            "meta",
+            "meta-ai",
+            "meta_llama",
+            "meta_spark",
+            "spark",
+        ),
+        description="Meta AI OpenAI-compatible multimodal API.",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL",
+            "ipfs_accelerate_py_MULTIMODAL_MODEL",
+        ),
+        default_model="meta-llama/Llama-3.2-90B-Vision-Instruct",
+    ),
+    _MultimodalProviderSpec(
+        name="huggingface",
+        aliases=("hf", "local_hf"),
+        description="Local Hugging Face transformers multimodal pipeline.",
+        locality="local",
+        device="cpu,cuda",
+        authorization="none",
+        model_env=("IPFS_ACCELERATE_PY_MULTIMODAL_MODEL",),
+        default_model="llava-hf/llava-1.5-7b-hf",
+    ),
+    _MultimodalProviderSpec(
+        name="backend_manager",
+        aliases=("accelerate",),
+        description="Distributed inference backend manager multimodal provider.",
+        locality="distributed",
+        device="runtime-selected",
+        authorization="unknown",
+        model_env=("IPFS_ACCELERATE_PY_MULTIMODAL_MODEL",),
+    ),
+)
+_BUILTIN_PROVIDER_SPEC_BY_NAME = {
+    spec.name: spec for spec in _BUILTIN_PROVIDER_SPECS
+}
+
+
+def _catalog_model_name(value: object) -> str:
+    """Normalize an invocation identifier into the catalog name grammar."""
+
+    normalized = str(value or "").strip().casefold()
+    normalized = re.sub(r"[^a-z0-9._/-]+", "-", normalized)
+    normalized = re.sub(r"/{2,}", "/", normalized)
+    normalized = re.sub(r"\.{2,}", ".", normalized)
+    normalized = normalized.strip("._/-")
+    if not normalized:
+        normalized = "default"
+    return normalized[:128].rstrip("._/-") or "default"
+
+
+def _model_facts(model_name: str) -> Tuple[Optional[int], Optional[str]]:
+    """Return stable built-in facts only; unknown overrides stay unknown."""
+
+    normalized = str(model_name or "").strip().casefold()
+    if normalized in {"gpt-4o", "openai/gpt-4o"}:
+        return 128_000, "multimodal-transformer"
+    if normalized == "llava-hf/llava-1.5-7b-hf":
+        return None, "llava"
+    if normalized == "meta-llama/llama-3.2-90b-vision-instruct":
+        return None, "llama-vision"
+    return None, None
+
+
+def _effective_spec_model(spec: _MultimodalProviderSpec) -> Optional[str]:
+    return _coalesce_env(*spec.model_env) or spec.default_model
+
+
+def _env_has_value(*names: str) -> bool:
+    return bool(_coalesce_env(*names))
+
+
+def _remote_provider_authorized(name: str) -> Optional[bool]:
+    if name == "openrouter":
+        return _env_has_value(
+            "IPFS_ACCELERATE_PY_OPENROUTER_API_KEY",
+            "OPENROUTER_API_KEY",
+        )
+    if name == "openai":
+        return _env_has_value(
+            "IPFS_ACCELERATE_PY_OPENAI_API_KEY",
+            "OPENAI_API_KEY",
+        )
+    if name == "xai":
+        return _env_has_value(
+            "XAI_API_KEY",
+            "ipfs_accelerate_py_XAI_API_KEY",
+        )
+    if name == "meta_ai":
+        return _env_has_value(
+            "META_AI_API_KEY",
+            "ipfs_accelerate_py_META_AI_API_KEY",
+        )
+    return None
+
+
+def _builtin_provider_state(
+    spec: _MultimodalProviderSpec,
+) -> Tuple[LifecycleState, OperationalState]:
+    authorized = _remote_provider_authorized(spec.name)
+    if authorized is not None:
+        return (
+            (
+                LifecycleState.CONFIGURED
+                if authorized
+                else LifecycleState.DECLARED
+            ),
+            OperationalState(
+                known=True,
+                configured=authorized,
+                authorized=authorized,
+                reachable=None,
+                healthy=None,
+                routable=authorized,
+            ),
+        )
+    if spec.authorization == "none":
+        return (
+            LifecycleState.DECLARED,
+            OperationalState(
+                known=True,
+                configured=None,
+                authorized=True,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+        )
+    if spec.name == "backend_manager":
+        enabled = _truthy(
+            os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER")
+        )
+        return (
+            LifecycleState.CONFIGURED
+            if enabled
+            else LifecycleState.DECLARED,
+            OperationalState(
+                known=True,
+                configured=enabled,
+                authorized=None,
+                reachable=None,
+                healthy=None,
+                routable=None,
+            ),
+        )
+    return (
+        LifecycleState.DECLARED,
+        OperationalState(
+            known=True,
+            configured=None,
+            authorized=None,
+            reachable=None,
+            healthy=None,
+            routable=None,
+        ),
+    )
+
+
+def _builtin_provider_descriptor(
+    spec: _MultimodalProviderSpec,
+) -> ProviderDescriptor:
+    model_name = _effective_spec_model(spec)
+    context_tokens, _ = _model_facts(model_name or "")
+    lifecycle, state = _builtin_provider_state(spec)
+    return ProviderDescriptor(
+        name=spec.name,
+        aliases=spec.aliases,
+        description=spec.description,
+        capabilities=(
+            _multimodal_capability(max_context_tokens=context_tokens),
+        ),
+        lifecycle=lifecycle,
+        state=state,
+        provenance=_MULTIMODAL_CATALOG_PROVENANCE,
+        labels=_default_multimodal_labels(
+            authorization=spec.authorization,
+            device=spec.device,
+            locality=spec.locality,
+        ),
+    )
+
+
+def _provider_descriptors_by_name() -> Dict[str, ProviderDescriptor]:
+    descriptors = {
+        spec.name: _builtin_provider_descriptor(spec)
+        for spec in _BUILTIN_PROVIDER_SPECS
+    }
+    with _PROVIDER_REGISTRY_LOCK:
+        registered = tuple(_PROVIDER_REGISTRY.values())
+    for info in registered:
+        # Dynamic registration has the same precedence as invocation.
+        descriptors[info.name] = (
+            info.descriptor
+            or _registered_provider_descriptor(info.name, None)
+        )
+    return descriptors
+
+
+def _canonical_provider_name(name: str) -> str:
+    requested = str(name or "").strip().lower()
+    if not requested:
+        raise ValueError("Multimodal provider name must be non-empty")
+    descriptors = _provider_descriptors_by_name()
+    if requested in descriptors:
+        return requested
+    matches = sorted(
+        descriptor.name
+        for descriptor in descriptors.values()
+        if requested in descriptor.aliases
+    )
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Ambiguous multimodal provider alias {name!r}: "
+            f"{', '.join(matches)}"
+        )
+    raise ValueError(f"Unknown multimodal provider: {name}")
+
+
+def get_provider_descriptor(name: str) -> ProviderDescriptor:
+    """Return one provider descriptor by canonical name or invocation alias."""
+
+    canonical = _canonical_provider_name(name)
+    return _provider_descriptors_by_name()[canonical]
+
+
+def _descriptor_operations(
+    descriptor: ProviderDescriptor | ModelDescriptor,
+) -> frozenset[Operation]:
+    return frozenset(
+        operation
+        for capability in descriptor.capabilities
+        for operation in capability.operations
+    )
+
+
+def _canonical_operation(
+    operation: Optional[str | Operation],
+) -> Optional[Operation]:
+    if operation is None:
+        return None
+    if isinstance(operation, Operation):
+        return operation
+    try:
+        return Operation(str(operation).strip().casefold())
+    except ValueError as exc:
+        raise ValueError(
+            f"Unknown multimodal operation: {operation!r}"
+        ) from exc
+
+
+def _canonical_modality(
+    modality: Optional[str | Modality],
+    *,
+    field_name: str,
+) -> Optional[Modality]:
+    if modality is None:
+        return None
+    if isinstance(modality, Modality):
+        return modality
+    try:
+        return Modality(str(modality).strip().casefold())
+    except ValueError as exc:
+        raise ValueError(
+            f"Unknown {field_name}: {modality!r}"
+        ) from exc
+
+
+def _media_type_matches(
+    requested: str,
+    declared: Sequence[str],
+) -> bool:
+    normalized = str(requested or "").strip().casefold()
+    if "/" not in normalized:
+        return False
+    requested_family = normalized.split("/", 1)[0] + "/*"
+    declared_set = {item.casefold() for item in declared}
+    if normalized in declared_set or requested_family in declared_set:
+        return True
+    if normalized.endswith("/*"):
+        prefix = normalized[:-1]
+        return any(item.startswith(prefix) for item in declared_set)
+    return False
+
+
+def _matches_catalog_constraints(
+    descriptor: ProviderDescriptor | ModelDescriptor,
+    *,
+    operation: Optional[Operation],
+    input_modality: Optional[Modality],
+    output_modality: Optional[Modality],
+    media_type: Optional[str],
+    image_input_mode: Optional[str],
+    image_count: Optional[int],
+    size_bytes: Optional[int],
+    streaming: Optional[bool],
+    batching: Optional[bool],
+    locality: Optional[str],
+    device: Optional[str],
+    authorized: Optional[bool],
+    ready: Optional[bool],
+) -> bool:
+    operations = _descriptor_operations(descriptor)
+    if operation is not None and operation not in operations:
+        return False
+    if streaming is True and Operation.STREAM not in operations:
+        return False
+    if streaming is False and Operation.STREAM in operations:
+        return False
+    if batching is True and Operation.BATCH not in operations:
+        return False
+    if batching is False and Operation.BATCH in operations:
+        return False
+
+    capabilities = (
+        descriptor.capabilities
+        if operation is None
+        else tuple(
+            capability
+            for capability in descriptor.capabilities
+            if operation in capability.operations
+        )
+    )
+    if input_modality is not None and not any(
+        input_modality in capability.input_modalities
+        for capability in capabilities
+    ):
+        return False
+    if output_modality is not None and not any(
+        output_modality in capability.output_modalities
+        for capability in capabilities
+    ):
+        return False
+    if media_type is not None:
+        declared_media = tuple(
+            item
+            for capability in capabilities
+            for item in capability.media_types
+        )
+        if declared_media and not _media_type_matches(
+            media_type,
+            declared_media,
+        ):
+            return False
+
+    labels = dict(descriptor.labels)
+    if image_input_mode is not None:
+        requested_mode = str(image_input_mode).strip().casefold()
+        if requested_mode not in {"inline", "uri"}:
+            raise ValueError(
+                "image_input_mode must be 'inline' or 'uri'"
+            )
+        known_modes = {
+            item.strip().casefold()
+            for item in labels.get("image_input_modes", "").split(",")
+            if item.strip()
+        }
+        if (
+            known_modes
+            and "unknown" not in known_modes
+            and requested_mode not in known_modes
+        ):
+            return False
+    if image_count is not None:
+        if isinstance(image_count, bool) or int(image_count) < 0:
+            raise ValueError("image_count must be a non-negative integer")
+        maximum = labels.get("max_images")
+        if maximum and maximum.isdigit() and int(image_count) > int(maximum):
+            return False
+    if size_bytes is not None:
+        if isinstance(size_bytes, bool) or int(size_bytes) < 0:
+            raise ValueError("size_bytes must be a non-negative integer")
+        known_limits = [
+            capability.max_input_bytes
+            for capability in capabilities
+            if capability.max_input_bytes is not None
+        ]
+        if known_limits and int(size_bytes) > max(known_limits):
+            return False
+    if locality is not None:
+        actual = labels.get("locality")
+        requested = str(locality).strip().casefold()
+        if actual not in (None, "unknown") and actual != requested:
+            return False
+    if device is not None:
+        actual_devices = {
+            item.strip().casefold()
+            for item in labels.get("device", "").split(",")
+            if item.strip()
+        }
+        requested = str(device).strip().casefold()
+        open_devices = {
+            "unknown",
+            "provider-managed",
+            "runtime-selected",
+        }
+        if (
+            actual_devices
+            and not actual_devices.intersection(open_devices)
+            and requested not in actual_devices
+        ):
+            return False
+    if authorized is not None and descriptor.state.authorized is not authorized:
+        return False
+    if ready is not None and descriptor.state.routable is not ready:
+        return False
+    return True
+
+
+def list_providers(
+    *,
+    operation: Optional[str | Operation] = None,
+    input_modality: Optional[str | Modality] = None,
+    output_modality: Optional[str | Modality] = None,
+    media_type: Optional[str] = None,
+    image_input_mode: Optional[str] = None,
+    image_count: Optional[int] = None,
+    size_bytes: Optional[int] = None,
+    streaming: Optional[bool] = None,
+    batching: Optional[bool] = None,
+    locality: Optional[str] = None,
+    device: Optional[str] = None,
+    authorized: Optional[bool] = None,
+    ready: Optional[bool] = None,
+) -> List[ProviderDescriptor]:
+    """List compatible descriptors without resolving a runtime provider."""
+
+    selected_operation = _canonical_operation(operation)
+    selected_input = _canonical_modality(
+        input_modality,
+        field_name="input modality",
+    )
+    selected_output = _canonical_modality(
+        output_modality,
+        field_name="output modality",
+    )
+    descriptors = [
+        descriptor
+        for _, descriptor in sorted(_provider_descriptors_by_name().items())
+    ]
+    return [
+        descriptor
+        for descriptor in descriptors
+        if _matches_catalog_constraints(
+            descriptor,
+            operation=selected_operation,
+            input_modality=selected_input,
+            output_modality=selected_output,
+            media_type=media_type,
+            image_input_mode=image_input_mode,
+            image_count=image_count,
+            size_bytes=size_bytes,
+            streaming=streaming,
+            batching=batching,
+            locality=locality,
+            device=device,
+            authorized=authorized,
+            ready=ready,
+        )
+    ]
+
+
+def _model_descriptor(
+    provider: ProviderDescriptor,
+    model_name: str,
+) -> ModelDescriptor:
+    context_tokens, architecture = _model_facts(model_name)
+    with _PROVIDER_REGISTRY_LOCK:
+        dynamically_registered = provider.name in _PROVIDER_REGISTRY
+    if dynamically_registered:
+        capabilities = provider.capabilities or (_multimodal_capability(),)
+        provenance = _MULTIMODAL_REGISTRY_PROVENANCE
+    else:
+        capabilities = (
+            _multimodal_capability(max_context_tokens=context_tokens),
+        )
+        provenance = _MULTIMODAL_CATALOG_PROVENANCE
+    return ModelDescriptor(
+        provider_id=provider.provider_id,
+        name=_catalog_model_name(model_name),
+        architecture=architecture,
+        capabilities=capabilities,
+        lifecycle=provider.lifecycle,
+        state=provider.state,
+        provenance=provenance,
+        labels={
+            **dict(provider.labels),
+            "invocation_model": model_name,
+        },
+    )
+
+
+def _models_for_provider(
+    provider_name: str,
+) -> Tuple[ModelDescriptor, ...]:
+    descriptors = _provider_descriptors_by_name()
+    provider = descriptors[provider_name]
+    with _PROVIDER_REGISTRY_LOCK:
+        registered = _PROVIDER_REGISTRY.get(provider_name)
+    if registered is not None:
+        return registered.models
+    spec = _BUILTIN_PROVIDER_SPEC_BY_NAME[provider_name]
+    model_name = _effective_spec_model(spec)
+    if not model_name:
+        return ()
+    return (_model_descriptor(provider, model_name),)
+
+
+def list_models(
+    provider: Optional[str] = None,
+    *,
+    operation: Optional[str | Operation] = None,
+    input_modality: Optional[str | Modality] = None,
+    output_modality: Optional[str | Modality] = None,
+    media_type: Optional[str] = None,
+    image_input_mode: Optional[str] = None,
+    image_count: Optional[int] = None,
+    size_bytes: Optional[int] = None,
+    streaming: Optional[bool] = None,
+    batching: Optional[bool] = None,
+    locality: Optional[str] = None,
+    device: Optional[str] = None,
+    authorized: Optional[bool] = None,
+    ready: Optional[bool] = None,
+) -> List[ModelDescriptor]:
+    """List statically known and dynamically registered model hints."""
+
+    selected_operation = _canonical_operation(operation)
+    selected_input = _canonical_modality(
+        input_modality,
+        field_name="input modality",
+    )
+    selected_output = _canonical_modality(
+        output_modality,
+        field_name="output modality",
+    )
+    provider_names = (
+        (_canonical_provider_name(provider),)
+        if provider is not None
+        else tuple(sorted(_provider_descriptors_by_name()))
+    )
+    models = [
+        model
+        for provider_name in provider_names
+        for model in _models_for_provider(provider_name)
+    ]
+    return sorted(
+        (
+            model
+            for model in models
+            if _matches_catalog_constraints(
+                model,
+                operation=selected_operation,
+                input_modality=selected_input,
+                output_modality=selected_output,
+                media_type=media_type,
+                image_input_mode=image_input_mode,
+                image_count=image_count,
+                size_bytes=size_bytes,
+                streaming=streaming,
+                batching=batching,
+                locality=locality,
+                device=device,
+                authorized=authorized,
+                ready=ready,
+            )
+        ),
+        key=lambda model: (
+            model.provider_id,
+            model.name,
+            model.model_id or "",
+        ),
+    )
+
+
+def _module_available(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except Exception:
+        return False
+
+
+def _select_discovery_provider(
+    provider: Optional[str],
+    *,
+    deps: Optional[RouterDeps],
+) -> str:
+    """Mirror runtime selection using only already-known process state."""
+
+    if provider:
+        return _canonical_provider_name(provider)
+
+    preferred = os.getenv(
+        "IPFS_ACCELERATE_PY_MULTIMODAL_PROVIDER",
+        "",
+    ).strip()
+    if preferred:
+        try:
+            return _canonical_provider_name(preferred)
+        except ValueError:
+            # Runtime historically ignores an unknown environment override and
+            # continues through automatic providers.
+            pass
+
+    resolved_deps = deps or get_default_router_deps()
+    if (
+        _truthy(os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER"))
+        and getattr(resolved_deps, "backend_manager", None) is not None
+    ):
+        return "backend_manager"
+    for name in ("openrouter", "xai", "meta_ai", "openai"):
+        if _remote_provider_authorized(name):
+            return name
+    if _module_available("transformers"):
+        return "huggingface"
+    raise RuntimeError(
+        "No multimodal provider is statically resolvable for the requested "
+        "constraints"
+    )
+
+
+def resolve_model(
+    model_name: Optional[str] = None,
+    *,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    operation: Optional[str | Operation] = Operation.VISION_GENERATE,
+    input_modality: Optional[str | Modality] = None,
+    output_modality: Optional[str | Modality] = None,
+    media_type: Optional[str] = None,
+    image_input_mode: Optional[str] = None,
+    image_count: Optional[int] = None,
+    size_bytes: Optional[int] = None,
+    streaming: Optional[bool] = None,
+    batching: Optional[bool] = None,
+    locality: Optional[str] = None,
+    device: Optional[str] = None,
+    authorized: Optional[bool] = None,
+    ready: Optional[bool] = None,
+    deps: Optional[RouterDeps] = None,
+) -> ModelDescriptor:
+    """Resolve an invocation-compatible provider/model without side effects."""
+
+    if model is not None:
+        if model_name is not None and str(model_name) != str(model):
+            raise ValueError("model and model_name specify different values")
+        model_name = str(model)
+    selected_operation = _canonical_operation(operation)
+    if selected_operation not in {
+        Operation.TEXT_GENERATE,
+        Operation.VISION_GENERATE,
+    }:
+        value = (
+            selected_operation.value
+            if selected_operation is not None
+            else None
+        )
+        raise ValueError(
+            f"Multimodal router does not support operation {value!r}"
+        )
+    selected_input = _canonical_modality(
+        input_modality,
+        field_name="input modality",
+    )
+    selected_output = _canonical_modality(
+        output_modality,
+        field_name="output modality",
+    )
+    provider_name = _select_discovery_provider(provider, deps=deps)
+    provider_descriptor = get_provider_descriptor(provider_name)
+    if not _matches_catalog_constraints(
+        provider_descriptor,
+        operation=selected_operation,
+        input_modality=selected_input,
+        output_modality=selected_output,
+        media_type=media_type,
+        image_input_mode=image_input_mode,
+        image_count=image_count,
+        size_bytes=size_bytes,
+        streaming=streaming,
+        batching=batching,
+        locality=locality,
+        device=device,
+        authorized=authorized,
+        ready=ready,
+    ):
+        raise ValueError(
+            f"Multimodal provider {provider_name!r} is incompatible with "
+            "the requested constraints"
+        )
+
+    known_models = _models_for_provider(provider_name)
+    requested_model = str(model_name or "").strip()
+    if not requested_model:
+        if not known_models:
+            raise ValueError(
+                f"Multimodal provider {provider_name!r} has no known default "
+                "model; specify model_name explicitly"
+            )
+        return known_models[0]
+    requested_key = requested_model.casefold()
+    for descriptor in known_models:
+        labels = dict(descriptor.labels)
+        invocation_name = labels.get("invocation_model", descriptor.name)
+        if requested_key in {
+            descriptor.name.casefold(),
+            str(invocation_name).casefold(),
+            *(alias.casefold() for alias in descriptor.aliases),
+        }:
+            return descriptor
+    return _model_descriptor(provider_descriptor, requested_model)
+
+
+def get_catalog_snapshot() -> CatalogSnapshot:
+    """Project current router metadata into a deterministic catalog snapshot."""
+
+    providers = tuple(list_providers())
+    models = tuple(list_models())
+    provider_by_id = {
+        provider.provider_id: provider for provider in providers
+    }
+    bindings = tuple(
+        RouterBinding(
+            router="multimodal_router",
+            provider_id=model.provider_id,
+            model_id=model.model_id,
+            operations=tuple(
+                sorted(
+                    {
+                        operation
+                        for capability in model.capabilities
+                        for operation in capability.operations
+                    },
+                    key=lambda operation: operation.value,
+                )
+            ),
+            priority=index,
+            state=provider_by_id[model.provider_id].state,
+            provenance=_MULTIMODAL_CATALOG_PROVENANCE,
+            labels={
+                "invocation_model": dict(model.labels).get(
+                    "invocation_model",
+                    model.name,
+                )
+            },
+        )
+        for index, model in enumerate(models)
+    )
+    return CatalogSnapshot(
+        providers=providers,
+        models=models,
+        bindings=bindings,
+    )
+
+
+def catalog_snapshot() -> CatalogSnapshot:
+    """Compatibility alias for catalog source adapters."""
+
+    return get_catalog_snapshot()
 
 
 def _encode_image_for_api(image: Union[str, bytes]) -> tuple[str, str]:
@@ -699,20 +1713,32 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[Multimoda
 
 def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) -> MultimodalProvider:
     if preferred:
-        info = _PROVIDER_REGISTRY.get(preferred)
+        preferred_key = str(preferred).strip().lower()
+        try:
+            preferred_key = _canonical_provider_name(preferred_key)
+        except ValueError:
+            pass
+        with _PROVIDER_REGISTRY_LOCK:
+            info = _PROVIDER_REGISTRY.get(preferred_key)
         if info is not None:
             return info.factory()
-        builtin = _builtin_provider_by_name(preferred, deps=deps)
+        builtin = _builtin_provider_by_name(preferred_key, deps=deps)
         if builtin is not None:
             return builtin
         raise ValueError(f"Unknown multimodal provider: {preferred}")
 
     preferred_env = os.getenv("IPFS_ACCELERATE_PY_MULTIMODAL_PROVIDER", "").strip()
     if preferred_env:
-        info = _PROVIDER_REGISTRY.get(preferred_env)
+        preferred_key = preferred_env.lower()
+        try:
+            preferred_key = _canonical_provider_name(preferred_key)
+        except ValueError:
+            pass
+        with _PROVIDER_REGISTRY_LOCK:
+            info = _PROVIDER_REGISTRY.get(preferred_key)
         if info is not None:
             return info.factory()
-        builtin = _builtin_provider_by_name(preferred_env, deps=deps)
+        builtin = _builtin_provider_by_name(preferred_key, deps=deps)
         if builtin is not None:
             return builtin
 
