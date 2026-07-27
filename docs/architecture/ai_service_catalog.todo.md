@@ -433,7 +433,7 @@ Program invariants:
 
 ## AICAT-017 Advertise and federate compact MCP++ catalog snapshots
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
