@@ -58,6 +58,15 @@ from ..merge_conflict_repair import (
 from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
 from ..task_identity import TaskIdentity, canonical_task_identity
+from ..task_source import (
+    MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
+    CanonicalTaskSource,
+    TaskSourceError,
+    TaskSourceIdentity,
+    TaskSourceIntegrityError,
+    TaskSourceTask,
+    open_task_source,
+)
 from ..taskboard_store import (
     ProjectionDeltaCheckpointStore,
     locked_taskboard,
@@ -1578,10 +1587,15 @@ class PortalImplementationDaemon:
     def __init__(
         self,
         *,
-        todo_path: Path,
+        todo_path: Path | None = None,
         state_path: Path,
         strategy_path: Path,
         events_path: Path,
+        task_source: Any = None,
+        task_source_kind: str = "",
+        expected_task_source_identity: TaskSourceIdentity | Mapping[str, Any] | None = None,
+        expected_task_source_root_id: str = "",
+        expected_task_source_repository_root_id: str = "",
         repo_root: Path | None = None,
         task_header_prefix: str = TASK_HEADER_PREFIX,
         implement: bool = False,
@@ -1635,11 +1649,51 @@ class PortalImplementationDaemon:
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
-        self.todo_path = todo_path
+        configured_task_source = task_source
+        if configured_task_source is None and task_source_kind:
+            configured_task_source = todo_path
+        if todo_path is None and configured_task_source is None:
+            raise ValueError("todo_path or task_source is required")
+        selected_path = todo_path
+        if selected_path is None:
+            selected_path = getattr(configured_task_source, "path", None)
+        if selected_path is None and isinstance(
+            configured_task_source, (str, Path)
+        ):
+            selected_path = configured_task_source
+        if selected_path is None:
+            raise ValueError("configured task source does not expose a path")
+        self.todo_path = Path(selected_path)
         self.state_path = state_path
         self.strategy_path = strategy_path
         self.events_path = events_path
         self.repo_root = (repo_root or REPO_ROOT).resolve()
+        self.task_source: CanonicalTaskSource | None = None
+        if configured_task_source is not None:
+            source_options: dict[str, Any] = {}
+            if isinstance(configured_task_source, (str, Path)):
+                inferred_kind = task_source_kind or (
+                    "duckdb"
+                    if Path(configured_task_source).suffix.lower()
+                    in {".duckdb", ".ddb"}
+                    else "markdown"
+                )
+                if inferred_kind == "markdown":
+                    source_options["task_prefix"] = normalize_task_header_prefix(
+                        task_header_prefix
+                    )
+            self.task_source = open_task_source(
+                configured_task_source,
+                kind=task_source_kind,
+                root=self.repo_root,
+                expected_identity=expected_task_source_identity,
+                expected_root_id=expected_task_source_root_id,
+                expected_repository_root_id=(
+                    expected_task_source_repository_root_id
+                ),
+                **source_options,
+            )
+            self.todo_path = self.task_source.path
         self.implementation_protected_paths = normalize_implementation_protected_paths(
             implementation_protected_paths,
             repo_root=self.repo_root,
@@ -1873,6 +1927,23 @@ class PortalImplementationDaemon:
         self._current_runtime_wake_events: list[Any] = []
         self._current_runtime_wake_kinds: set[str] = set()
         self._runtime_checkpoint = self._load_runtime_checkpoint()
+        checkpoint_source_identity = self._runtime_checkpoint.get(
+            "task_source_identity"
+        )
+        if self._runtime_checkpoint and (
+            (self.task_source is None) != (checkpoint_source_identity is None)
+        ):
+            raise TaskSourceIntegrityError(
+                "configured task-source mode differs from the durable checkpoint"
+            )
+        if self.task_source is not None and checkpoint_source_identity:
+            expected_checkpoint_identity = TaskSourceIdentity.from_dict(
+                checkpoint_source_identity
+            )
+            if self.task_source.identity != expected_checkpoint_identity:
+                raise TaskSourceIntegrityError(
+                    "configured task source differs from the durable checkpoint"
+                )
         self._runtime_last_source_digest = str(
             self._runtime_checkpoint.get("source_digest") or ""
         )
@@ -1881,6 +1952,174 @@ class PortalImplementationDaemon:
             dict(cached_result) if isinstance(cached_result, Mapping) else None
         )
         self._last_safety_reconciliation_monotonic = time.monotonic()
+
+    @staticmethod
+    def _task_source_metadata_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, Mapping):
+            return json.dumps(
+                dict(value),
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray, memoryview)
+        ):
+            return ", ".join(str(item).strip() for item in value if str(item).strip())
+        return str(value).strip()
+
+    @classmethod
+    def _portal_task_from_source_task(
+        cls,
+        task: TaskSourceTask,
+    ) -> PortalTask:
+        """Preserve daemon grammar while consuming one canonical source row."""
+
+        body = dict(task.body)
+        provenance = body.get("provenance")
+        metadata: dict[str, str] = {
+            str(key).strip().lower().replace("_", " "): cls._task_source_metadata_text(
+                value
+            )
+            for key, value in body.items()
+            if str(key).strip()
+        }
+        if isinstance(provenance, Mapping):
+            for key, value in provenance.items():
+                metadata.setdefault(
+                    str(key).strip().lower().replace("_", " "),
+                    cls._task_source_metadata_text(value),
+                )
+        metadata.update(
+            {
+                "status": task.status,
+                "task cid": task.task_cid,
+                "canonical task cid": task.task_cid,
+                "goal id": task.goal_id,
+                "goal cid": task.goal_cid,
+                "depends on": ", ".join(task.dependency_task_ids),
+                "board namespace": task.board_namespace,
+            }
+        )
+
+        output_values = body.get("outputs") or body.get("effects") or ()
+        if isinstance(output_values, (str, Mapping)):
+            output_values = (output_values,)
+        outputs: list[str] = []
+        for value in output_values if isinstance(output_values, Sequence) else ():
+            if isinstance(value, Mapping):
+                selected = str(
+                    value.get("path")
+                    or value.get("fluent_id")
+                    or value.get("output")
+                    or ""
+                ).strip()
+            else:
+                selected = str(value).strip()
+            if selected and selected not in outputs:
+                outputs.append(selected)
+
+        validation_values = (
+            body.get("validations")
+            or body.get("validation_commands")
+            or body.get("validation")
+            or ()
+        )
+        if isinstance(validation_values, (str, Mapping)):
+            validation_values = (validation_values,)
+        validations: list[str] = []
+        for value in (
+            validation_values if isinstance(validation_values, Sequence) else ()
+        ):
+            if isinstance(value, Mapping):
+                argv = value.get("argv")
+                if isinstance(argv, Sequence) and not isinstance(
+                    argv, (str, bytes, bytearray, memoryview)
+                ):
+                    selected = shlex.join(tuple(str(item) for item in argv))
+                else:
+                    selected = str(
+                        value.get("command") or value.get("value") or ""
+                    ).strip()
+            else:
+                selected = str(value).strip()
+            if selected and selected not in validations:
+                validations.append(selected)
+
+        acceptance_values = (
+            body.get("acceptance")
+            or body.get("acceptance_criteria")
+            or metadata.get("acceptance")
+            or ()
+        )
+        if isinstance(acceptance_values, (str, Mapping)):
+            acceptance_values = (acceptance_values,)
+        acceptance_items: list[str] = []
+        for value in (
+            acceptance_values if isinstance(acceptance_values, Sequence) else ()
+        ):
+            selected = (
+                str(
+                    value.get("criterion")
+                    or value.get("statement")
+                    or value.get("value")
+                    or ""
+                ).strip()
+                if isinstance(value, Mapping)
+                else str(value).strip()
+            )
+            if selected:
+                acceptance_items.append(selected)
+        acceptance = " ; ".join(acceptance_items)
+        metadata["outputs"] = ", ".join(outputs)
+        metadata["validation"] = " ; ".join(validations)
+        metadata["acceptance"] = acceptance
+
+        return PortalTask(
+            task_id=task.task_id,
+            title=task.title,
+            status=normalize_status(task.status),
+            completion=str(body.get("completion") or "manual").strip().lower(),
+            priority=str(body.get("priority") or "P2").strip().upper(),
+            track=str(body.get("track") or "ops").strip().lower(),
+            depends_on=list(task.dependency_task_ids),
+            outputs=outputs,
+            validation=validations,
+            acceptance=acceptance,
+            source_line=task.source_line,
+            metadata=metadata,
+            canonical_task_key=str(body.get("task_key") or task.task_cid),
+            canonical_task_cid=task.task_cid,
+            board_namespace=task.board_namespace,
+        )
+
+    def _load_tasks(self) -> list[PortalTask]:
+        if self.task_source is None:
+            return parse_task_file(self.todo_path, self.task_header_prefix)
+        self.task_source.check_integrity().require_valid()
+        records: list[TaskSourceTask] = []
+        cursor = ""
+        while True:
+            page = self.task_source.query(
+                cursor=cursor,
+                limit=TASK_SOURCE_QUERY_LIMIT,
+            )
+            records.extend(page.tasks)
+            cursor = page.next_cursor
+            if not cursor:
+                break
+        return [self._portal_task_from_source_task(task) for task in records]
+
+    def _task_source_identity_record(self) -> dict[str, Any] | None:
+        if self.task_source is None:
+            return None
+        return self.task_source.pinned_identity.to_dict()
 
     def _decision_runtime_route(
         self,
@@ -3146,6 +3385,24 @@ class PortalImplementationDaemon:
         # create a feedback loop on the next preflight.
         sources["event_log"] = [self._runtime_path_metadata(self.events_path)]
         sources["state"] = [self._runtime_path_metadata(self.state_path)]
+        if self.task_source is not None:
+            try:
+                task_source_snapshot = self.task_source.snapshot()
+                sources["task_source_identity"] = [
+                    {
+                        **self.task_source.identity.to_dict(),
+                        "revision": task_source_snapshot.revision,
+                        "event_cursor": task_source_snapshot.event_cursor,
+                    }
+                ]
+            except TaskSourceError as exc:
+                sources["task_source_identity"] = [
+                    {
+                        "state": "invalid",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[-4000:],
+                    }
+                ]
         encoded = json.dumps(
             sources,
             sort_keys=True,
@@ -3186,6 +3443,7 @@ class PortalImplementationDaemon:
             "state_path",
             "strategy_path",
             "events_path",
+            "task_source_identity",
             "reason",
         )
         return {key: result[key] for key in keys if key in result}
@@ -3206,6 +3464,9 @@ class PortalImplementationDaemon:
             "task_state": asdict(PortalTaskState.load(self.state_path)),
             "source_kinds": sorted(sources),
         }
+        task_source_identity = self._task_source_identity_record()
+        if task_source_identity is not None:
+            projection["task_source_identity"] = task_source_identity
         event_cursor = latest_event_cursor(self.events_path)
         materialized = self.runtime_checkpoint_store.materialize(
             projection,
@@ -3415,6 +3676,9 @@ class PortalImplementationDaemon:
             "task_count": 0,
             "active_task_id": state.active_task_id,
         }
+        task_source_identity = self._task_source_identity_record()
+        if task_source_identity is not None:
+            payload["task_source_identity"] = task_source_identity
         if error:
             payload["error"] = error[-4000:]
         if state_written:
@@ -3443,6 +3707,8 @@ class PortalImplementationDaemon:
             "wake_kinds": sorted(self._current_runtime_wake_kinds),
             "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
+        if task_source_identity is not None:
+            result["task_source_identity"] = task_source_identity
         final_source_digest, final_sources = self._runtime_source_head()
         if state_written:
             checkpoint_result = self._save_runtime_checkpoint(
@@ -3517,9 +3783,14 @@ class PortalImplementationDaemon:
                 "protected_path_reconciliation": protected_path_reconciliation,
             }
         try:
-            tasks = parse_task_file(self.todo_path, self.task_header_prefix)
-        except (OSError, UnicodeDecodeError) as exc:
-            return self._record_empty_backlog_state(reason="todo_read_failed", error=str(exc))
+            tasks = self._load_tasks()
+        except (OSError, UnicodeDecodeError, TaskSourceError, ValueError) as exc:
+            reason = (
+                "task_source_invalid"
+                if self.task_source is not None
+                else "todo_read_failed"
+            )
+            return self._record_empty_backlog_state(reason=reason, error=str(exc))
         if not tasks:
             return self._record_empty_backlog_state(reason="no_tasks_found")
         aliases_by_cid = self._register_task_identities(tasks)
@@ -4057,6 +4328,9 @@ class PortalImplementationDaemon:
             "wake_kinds": sorted(wake_kinds),
             "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
+        task_source_identity = self._task_source_identity_record()
+        if task_source_identity is not None:
+            result["task_source_identity"] = task_source_identity
         final_source_digest, final_sources = self._runtime_source_head()
         # An implementation may mutate attempt, lease, validation, and active
         # execution state after the board projection above was selected. Do
@@ -4742,6 +5016,61 @@ class PortalImplementationDaemon:
                 "already_ready_task_ids": [],
             }
 
+        if self.task_source is not None:
+            updated_task_ids: list[str] = []
+            already_ready_task_ids: list[str] = []
+            try:
+                for task_id in sorted(target_task_ids):
+                    current = self.task_source.get(task_id)
+                    if current is None:
+                        raise TaskSourceIntegrityError(
+                            f"task source does not contain {task_id!r}"
+                        )
+                    normalized = normalize_status(current.status)
+                    if normalized == "blocked":
+                        self.task_source.compare_and_swap_status(
+                            task_id,
+                            expected_status=current.status,
+                            new_status="ready",
+                            expected_revision=current.revision,
+                            receipt={
+                                "operation": "dependency_reopen",
+                                "reason": reason,
+                            },
+                        )
+                        updated_task_ids.append(task_id)
+                    elif normalized in {"todo", "in_progress"}:
+                        already_ready_task_ids.append(task_id)
+                    else:
+                        raise TaskSourceIntegrityError(
+                            f"task {task_id!r} cannot be reopened from "
+                            f"{current.status!r}"
+                        )
+            except (TaskSourceError, KeyError, ValueError) as exc:
+                result = {
+                    "updated": False,
+                    "reason": "task_source_update_failed",
+                    "error": str(exc),
+                    "updated_task_ids": updated_task_ids,
+                    "already_ready_task_ids": already_ready_task_ids,
+                    "task_source_identity": self._task_source_identity_record(),
+                }
+                self._record_event(
+                    "dependency_blocked_tasks_reopen_failed",
+                    result,
+                )
+                return result
+            result = {
+                "updated": bool(updated_task_ids),
+                "reason": reason,
+                "updated_task_ids": updated_task_ids,
+                "already_ready_task_ids": already_ready_task_ids,
+                "task_source_identity": self._task_source_identity_record(),
+            }
+            if updated_task_ids:
+                self._record_event("dependency_blocked_tasks_reopened", result)
+            return result
+
         try:
             with locked_taskboard(self.todo_path) as taskboard:
                 lines = taskboard.read().splitlines(keepends=True)
@@ -4819,9 +5148,9 @@ class PortalImplementationDaemon:
         try:
             parsed_by_id = {
                 task.task_id: task
-                for task in parse_task_file(self.todo_path, self.task_header_prefix)
+                for task in self._load_tasks()
             }
-        except (OSError, ValueError):
+        except (OSError, TaskSourceError, ValueError):
             # The already-registered identity table is still useful when a
             # generated board is concurrently replaced or becomes unreadable.
             pass
@@ -4836,8 +5165,7 @@ class PortalImplementationDaemon:
                 identity = self._identity_for_task(task)
             if identity is None:
                 continue
-            receipts.append(
-                {
+            member_receipt = {
                     "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
                     "task_id": task_id,
                     "canonical_task_key": identity.canonical_task_key,
@@ -4845,7 +5173,11 @@ class PortalImplementationDaemon:
                     "board_namespace": identity.board_namespace,
                     "status": "succeeded",
                 }
-            )
+            if self.task_source is not None:
+                member_receipt["task_source_identity"] = (
+                    self.task_source.identity.to_dict()
+                )
+            receipts.append(member_receipt)
         return receipts
 
     def _mark_task_or_bundle_completed_in_todo(self, task: PortalTask) -> dict[str, Any]:
@@ -4892,6 +5224,100 @@ class PortalImplementationDaemon:
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        target_task_ids = [
+            str(task_id).strip()
+            for task_id in dict.fromkeys(task_ids)
+            if str(task_id).strip()
+        ]
+        if self.task_source is not None:
+            updated_task_ids: list[str] = []
+            already_completed_task_ids: list[str] = []
+            completion_receipts: list[dict[str, Any]] = []
+            try:
+                for task_id in target_task_ids:
+                    current = self.task_source.get(task_id)
+                    if current is None:
+                        raise TaskSourceIntegrityError(
+                            f"task source does not contain {task_id!r}"
+                        )
+                    if normalize_status(current.status) == "completed":
+                        already_completed_task_ids.append(task_id)
+                        continue
+                    changed = self.task_source.compare_and_swap_status(
+                        task_id,
+                        expected_status=current.status,
+                        new_status="completed",
+                        expected_revision=current.revision,
+                        receipt={
+                            "operation": "mark_task_completed",
+                            "primary_task_id": primary_task_id,
+                            "completion_reason": completion_reason,
+                        },
+                    )
+                    updated_task_ids.append(task_id)
+                    completion_receipts.append(
+                        {
+                            "schema": (
+                                "ipfs_accelerate_py.agent_supervisor."
+                                "member_completion_receipt@1"
+                            ),
+                            "task_id": task_id,
+                            "canonical_task_key": str(
+                                current.body.get("task_key") or current.task_cid
+                            ),
+                            "canonical_task_cid": current.task_cid,
+                            "board_namespace": current.board_namespace,
+                            "status": "succeeded",
+                            "task_source_receipt_id": changed.receipt_id,
+                            "task_source_identity": (
+                                self.task_source.identity.to_dict()
+                            ),
+                        }
+                    )
+            except (TaskSourceError, KeyError, ValueError) as exc:
+                result = {
+                    "updated": False,
+                    "task_id": primary_task_id,
+                    "reason": "task_source_update_failed",
+                    "error": str(exc),
+                    "completion_reason": completion_reason,
+                    "updated_task_ids": updated_task_ids,
+                    "already_completed_task_ids": already_completed_task_ids,
+                    "task_source_identity": self._task_source_identity_record(),
+                }
+                if completion_receipts:
+                    result["completion_receipts"] = completion_receipts
+                self._record_event("todo_status_update_failed", result)
+                return result
+            result = {
+                "updated": bool(updated_task_ids),
+                "task_id": primary_task_id,
+                "path": str(self.task_source.path),
+                "completion_reason": completion_reason,
+                "updated_task_ids": updated_task_ids,
+                "already_completed_task_ids": already_completed_task_ids,
+                "missing_task_ids": [],
+                "missing_status_task_ids": [],
+                "inserted_status_task_ids": [],
+                "updated_checkbox_task_ids": [],
+                "task_source_identity": self._task_source_identity_record(),
+                "reason": (
+                    "updated" if updated_task_ids else "already_completed"
+                ),
+            }
+            completion_receipts.extend(
+                self._completion_receipts_for_task_ids(
+                    already_completed_task_ids
+                )
+            )
+            if completion_receipts:
+                result["completion_receipts"] = completion_receipts
+            if bundle_work_order is not None:
+                result["bundle_work_order"] = bundle_work_order
+            if updated_task_ids:
+                self._record_event("todo_status_updated", result)
+            return result
+
         todo_path = self.todo_path
         try:
             lines = todo_path.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -4900,11 +5326,6 @@ class PortalImplementationDaemon:
             self._record_event("todo_status_update_failed", result)
             return result
 
-        target_task_ids = [
-            str(task_id).strip()
-            for task_id in dict.fromkeys(task_ids)
-            if str(task_id).strip()
-        ]
         target_set = set(target_task_ids)
         current_task_id = ""
         header_indices: dict[str, int] = {}
@@ -14371,8 +14792,8 @@ class PortalImplementationDaemon:
 
     def _current_todo_task_ids_for_reconciliation(self) -> set[str] | None:
         try:
-            tasks = parse_task_file(self.todo_path, self.task_header_prefix)
-        except (OSError, UnicodeDecodeError):
+            tasks = self._load_tasks()
+        except (OSError, UnicodeDecodeError, TaskSourceError, ValueError):
             return None
         return {
             task.task_id
@@ -15390,9 +15811,9 @@ class PortalImplementationDaemon:
         try:
             shard_tasks = {
                 shard_task.task_id: shard_task
-                for shard_task in parse_task_file(self.todo_path, self.task_header_prefix)
+                for shard_task in self._load_tasks()
             }
-        except OSError:
+        except (OSError, TaskSourceError, ValueError):
             return None
         primary_bundle_key = (
             self._task_metadata_value(task, "bundle")
@@ -16868,6 +17289,9 @@ class PortalImplementationDaemon:
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
         enriched = dict(payload)
+        task_source_identity = self._task_source_identity_record()
+        if task_source_identity is not None:
+            enriched.setdefault("task_source_identity", task_source_identity)
         task_id = str(enriched.get("task_id") or "")
         identity = self._task_identity_by_display_id.get(task_id)
         if identity is not None:
@@ -16887,6 +17311,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=Path("docs/211_SERVICE_NAVIGATION_PORTAL_TODO.md"),
         help="Machine-readable markdown backlog",
+    )
+    parser.add_argument(
+        "--task-source-kind",
+        choices=("legacy-markdown", "markdown", "duckdb"),
+        default="legacy-markdown",
+        help=(
+            "Storage contract for --todo-path. 'legacy-markdown' preserves the "
+            "existing heading parser; 'markdown' opens a canonical Markdown "
+            "task source; 'duckdb' opens the database directly."
+        ),
+    )
+    parser.add_argument(
+        "--expected-task-source-root",
+        default="",
+        help="Optional canonical plan root which the configured source must match.",
+    )
+    parser.add_argument(
+        "--expected-task-source-repository-root",
+        default="",
+        help="Optional repository tree identity which the configured source must match.",
     )
     parser.add_argument(
         "--state-dir",
@@ -17163,6 +17607,20 @@ def main(argv: list[str] | None = None) -> None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
     daemon = PortalImplementationDaemon(
         todo_path=args.todo_path,
+        task_source=(
+            args.todo_path
+            if args.task_source_kind in {"markdown", "duckdb"}
+            else None
+        ),
+        task_source_kind=(
+            args.task_source_kind
+            if args.task_source_kind in {"markdown", "duckdb"}
+            else ""
+        ),
+        expected_task_source_root_id=args.expected_task_source_root,
+        expected_task_source_repository_root_id=(
+            args.expected_task_source_repository_root
+        ),
         state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
         strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
         events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
