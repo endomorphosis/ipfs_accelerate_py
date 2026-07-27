@@ -396,7 +396,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-011 Close objective gap: Objectives planning validation merge rescue runtime packages
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
