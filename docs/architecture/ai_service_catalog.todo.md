@@ -258,7 +258,7 @@ Program invariants:
 
 ## AICAT-010 Represent served endpoints and backends as deployments
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
