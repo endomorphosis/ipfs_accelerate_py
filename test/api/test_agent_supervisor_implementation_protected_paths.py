@@ -445,6 +445,130 @@ def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
     assert protected.read_text(encoding="utf-8") == "after\n"
 
 
+def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon.worktree_root = tmp_path / "worktrees"
+    workspace = daemon.worktree_root / "attempt"
+    workspace_protected = workspace / POLICY_PATH
+    workspace_protected.parent.mkdir(parents=True)
+    workspace_protected.write_text("unchanged\n", encoding="utf-8")
+    daemon._require_implementation_protected_snapshot(
+        task=_task(outputs=["src/example.py"]),
+        attempt=1,
+        workspace_path=workspace,
+    )
+    active_path = (
+        tmp_path
+        / "state"
+        / "implementation-protected-path-active.json"
+    )
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    assert set(active["snapshot"]) == {"shared_checkout", "workspace"}
+    for scope in active["snapshot"].values():
+        for identity in scope["paths"].values():
+            identity["device"] += 1
+    active_path.write_text(
+        json.dumps(active, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is False
+    assert result["reason"] == "crash_reconciliation_device_renumbered"
+    assert not active_path.exists()
+    assert not (
+        tmp_path
+        / "state"
+        / "implementation-protected-path-incident.json"
+    ).exists()
+
+
+def test_crash_snapshot_reconciliation_rejects_device_and_inode_changes(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon._require_implementation_protected_snapshot(
+        task=_task(outputs=["src/example.py"]),
+        attempt=1,
+        workspace_path=tmp_path,
+    )
+    active_path = (
+        tmp_path
+        / "state"
+        / "implementation-protected-path-active.json"
+    )
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    for scope in active["snapshot"].values():
+        for identity in scope["paths"].values():
+            identity["device"] += 1
+            identity["inode"] += 1
+    active_path.write_text(
+        json.dumps(active, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is True
+    assert result["reason"] == "implementation_protected_path_mutated"
+    assert result["incident"]["mutations"][0]["change"] == "identity_changed"
+
+
+def test_live_protected_path_fence_rejects_device_renumbering(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    before = daemon._implementation_protected_path_snapshot(tmp_path)
+    for scope in before.values():
+        for identity in scope["paths"].values():
+            identity["device"] += 1
+
+    violation = daemon._implementation_protected_path_violation(
+        task=_task(),
+        attempt=1,
+        workspace_path=tmp_path,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert violation["mutations"][0]["change"] == "identity_changed"
+
+
+def test_live_protected_path_fence_rejects_same_content_replacement(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    before = daemon._implementation_protected_path_snapshot(tmp_path)
+    replacement = protected.with_suffix(".replacement")
+    replacement.write_text("unchanged\n", encoding="utf-8")
+    os.replace(replacement, protected)
+
+    violation = daemon._implementation_protected_path_violation(
+        task=_task(),
+        attempt=1,
+        workspace_path=tmp_path,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert violation["mutations"][0]["change"] == "identity_changed"
+
+
 def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

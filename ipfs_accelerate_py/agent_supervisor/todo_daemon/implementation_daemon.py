@@ -1975,6 +1975,75 @@ class PortalImplementationDaemon:
             return "content_changed"
         return "identity_changed"
 
+    @staticmethod
+    def _implementation_protected_snapshot_device_renumbered(
+        before: Mapping[str, Mapping[str, Any]],
+        after: Mapping[str, Mapping[str, Any]],
+    ) -> bool:
+        """Accept only mount-device renumbering in a crash-surviving snapshot.
+
+        ``st_dev`` is stable while a filesystem is mounted, so live attempt
+        finalization must continue to compare it strictly.  A host reboot can
+        remount the same filesystem under a different device number, however.
+        Crash reconciliation may tolerate that one field only when every
+        scope, path, digest, inode, timestamp, owner, and mode still matches.
+        """
+
+        if before == after or set(before) != set(after):
+            return False
+        saw_device_change = False
+        for scope in before:
+            before_scope = before.get(scope)
+            after_scope = after.get(scope)
+            if not isinstance(before_scope, Mapping) or not isinstance(
+                after_scope,
+                Mapping,
+            ):
+                return False
+            before_scope_metadata = {
+                key: value for key, value in before_scope.items() if key != "paths"
+            }
+            after_scope_metadata = {
+                key: value for key, value in after_scope.items() if key != "paths"
+            }
+            if before_scope_metadata != after_scope_metadata:
+                return False
+            before_paths = before_scope.get("paths")
+            after_paths = after_scope.get("paths")
+            if not isinstance(before_paths, Mapping) or not isinstance(
+                after_paths,
+                Mapping,
+            ):
+                return False
+            if set(before_paths) != set(after_paths):
+                return False
+            for relative in before_paths:
+                before_identity = before_paths.get(relative)
+                after_identity = after_paths.get(relative)
+                if not isinstance(before_identity, Mapping) or not isinstance(
+                    after_identity,
+                    Mapping,
+                ):
+                    return False
+                if before_identity == after_identity:
+                    continue
+                if (
+                    before_identity.get("state") != "present"
+                    or after_identity.get("state") != "present"
+                    or "device" not in before_identity
+                    or "device" not in after_identity
+                    or before_identity.get("device") == after_identity.get("device")
+                ):
+                    return False
+                normalized_before = dict(before_identity)
+                normalized_after = dict(after_identity)
+                normalized_before.pop("device", None)
+                normalized_after.pop("device", None)
+                if normalized_before != normalized_after:
+                    return False
+                saw_device_change = True
+        return saw_device_change
+
     def _implementation_protected_path_violation(
         self,
         *,
@@ -2179,6 +2248,30 @@ class PortalImplementationDaemon:
                 "reason": "implementation_protected_path_snapshot_invalid",
                 "incident": incident,
             }
+
+        current_snapshot = self._implementation_protected_path_snapshot(
+            workspace_path
+        )
+        if self._implementation_protected_snapshot_device_renumbered(
+            snapshot,
+            current_snapshot,
+        ):
+            self._clear_implementation_protected_snapshot(
+                task_id=task_id,
+                attempt=attempt,
+                reason="crash_reconciliation_device_renumbered",
+            )
+            result = {
+                "blocked": False,
+                "reason": "crash_reconciliation_device_renumbered",
+                "task_id": task_id,
+                "attempt": attempt,
+            }
+            self._record_event(
+                "implementation_protected_path_snapshot_reconciled",
+                result,
+            )
+            return result
 
         violation = self._implementation_protected_path_violation(
             task_id=task_id,
