@@ -4369,7 +4369,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-151 Build the canonical Python prompt-to-supervisor workflow service
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-control-surfaces
 - Depends on: ASI-145, ASI-148, ASI-150
