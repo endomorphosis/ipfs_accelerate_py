@@ -77,6 +77,9 @@ FORMAL_PLAN_ADMISSION_PROJECTION_SCHEMA: Final = (
 FORMAL_PLAN_INPUT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-input@1"
 )
+PROMPT_FORMAL_PLAN_INPUT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/prompt-formal-plan-input@1"
+)
 DEFAULT_VOCABULARY_PROFILE_ID: Final = "supervisor-reviewed"
 
 
@@ -870,6 +873,201 @@ def project_formal_plan_for_admission(
     )
 
 
+def prompt_goal_graph_to_formal_input(
+    graph: Any,
+    *,
+    repository_tree_id: str,
+    actor_id: str = "actor:prompt-plan",
+) -> dict[str, Any]:
+    """Project one canonical prompt goal graph into reviewed compiler records.
+
+    The prompt workflow contracts already assign content identities so local
+    references can be checked without mutable aliases.  This adapter preserves
+    those identities and translates only closed, structural fields.  In
+    particular, output declarations become explicit formal effects; they are
+    never inferred from prose or predicted paths.
+    """
+
+    from .prompt_workflow import PromptGoalGraph
+
+    if isinstance(graph, Mapping):
+        graph = PromptGoalGraph.from_dict(graph)
+    if not isinstance(graph, PromptGoalGraph):
+        raise TypeError("graph must be a PromptGoalGraph or its canonical mapping")
+    tree_id = str(repository_tree_id or "").strip()
+    resolved_actor = str(actor_id or "").strip()
+    if not tree_id:
+        raise ValueError("repository_tree_id is required")
+    if not resolved_actor:
+        raise ValueError("actor_id is required")
+
+    root = graph.root_goal
+    child_goals = tuple(
+        sorted(
+            (goal for goal in graph.goals if goal.goal_cid != root.goal_cid),
+            key=lambda item: item.goal_cid,
+        )
+    )
+    subgoals = [
+        {
+            "subgoal_cid": goal.goal_cid,
+            "goal_cid": root.goal_cid,
+            "parent_id": goal.parent_goal_cid or root.goal_cid,
+            "depends_on": list(goal.dependency_goal_cids),
+            "acceptance_criteria": [
+                {
+                    "id": criterion.criterion_key,
+                    "kind": "review",
+                    "check_ids": list(criterion.validation_keys),
+                    "source_scope_ids": list(goal.scope_paths),
+                }
+                for criterion in goal.acceptance
+            ],
+            "scope_ids": list(goal.scope_paths),
+            "source_ids": [
+                goal.goal_cid,
+                *goal.evidence_cids,
+            ],
+        }
+        for goal in child_goals
+    ]
+    objectives = [
+        {
+            "goal_cid": root.goal_cid,
+            "owner_actor_id": resolved_actor,
+            "acceptance_criteria": [
+                {
+                    "id": criterion.criterion_key,
+                    "kind": "review",
+                    "check_ids": list(criterion.validation_keys),
+                    "source_scope_ids": list(root.scope_paths),
+                }
+                for criterion in root.acceptance
+            ],
+            "source_ids": [root.goal_cid, *root.evidence_cids],
+            "subgoals": subgoals,
+        }
+    ]
+
+    tasks: list[dict[str, Any]] = []
+    ast_records: list[dict[str, Any]] = []
+    for task in sorted(graph.tasks, key=lambda item: item.task_cid):
+        validation_ids = tuple(
+            canonical_json(
+                {
+                    "argv": list(validation.argv),
+                    "cwd": validation.cwd,
+                    "expected_exit_codes": list(validation.expected_exit_codes),
+                    "policy_cid": validation.policy_cid,
+                    "validation_key": validation.validation_key,
+                }
+            )
+            for validation in task.validations
+        )
+        effects = []
+        for output in task.outputs:
+            effect_id = content_identity(
+                {
+                    "namespace": "prompt-output-effect",
+                    "task_cid": task.task_cid,
+                    "output": output.to_dict(),
+                }
+            )
+            effects.append(
+                {
+                    "effect_id": effect_id,
+                    "operation": EffectOperation.ASSIGN.value,
+                    "fluent_id": f"output:{output.path}",
+                    "value": output.effect,
+                    "path": output.path,
+                    "media_type": output.media_type,
+                }
+            )
+            ast_records.append(
+                {
+                    "symbol_cid": f"path:{output.path}",
+                    "tree_cid": tree_id,
+                    "task_cid": task.task_cid,
+                    "path": output.path,
+                    "changed": True,
+                    "change_kind": output.effect,
+                }
+            )
+        tasks.append(
+            {
+                "task_cid": task.task_cid,
+                "goal_cid": root.goal_cid,
+                "subgoal_cid": (
+                    task.goal_cid if task.goal_cid != root.goal_cid else ""
+                ),
+                "actor_id": resolved_actor,
+                "depends_on": list(task.dependency_task_cids),
+                "resource_needs": [task.resource_class],
+                "changed_ast_scopes": [
+                    f"path:{path}" for path in task.predicted_files
+                ],
+                "acceptance_criteria": [
+                    {
+                        "id": criterion.criterion_key,
+                        "kind": "test",
+                        "check_ids": list(criterion.validation_keys),
+                        "source_scope_ids": list(task.scope_paths),
+                    }
+                    for criterion in task.acceptance
+                ],
+                "validation_commands": list(validation_ids),
+                "effects": effects,
+                "evidence_cids": list(task.evidence_cids),
+                "metadata": {
+                    "bundle": task.bundle,
+                    "fallback_behavior": task.fallback_behavior,
+                    "parallel_lane": task.parallel_lane,
+                    "predicted_files": list(task.predicted_files),
+                    "priority": task.priority,
+                    "prompt_task_key": task.task_key,
+                    "scope_paths": list(task.scope_paths),
+                    "track": task.track,
+                },
+            }
+        )
+
+    policy_cid = content_identity(
+        {
+            "namespace": "prompt-formal-policy",
+            "policy_roots": list(graph.policy_roots),
+        }
+    )
+    policies = [
+        {
+            "policy_cid": policy_cid,
+            "minimum_code_assurance": AssuranceLevel.CANDIDATE.value,
+            "fallback_check_ids": [],
+        }
+    ]
+    evidence = [
+        {
+            "evidence_cid": item.evidence_cid,
+            "kind": item.source_kind,
+            "metadata": {
+                "artifact_cid": item.artifact_cid,
+                "authority": item.authority.value,
+                "claim_keys": list(item.claim_keys),
+                "repository_paths": list(item.repository_paths),
+            },
+        }
+        for item in graph.evidence
+    ]
+    return {
+        "schema": PROMPT_FORMAL_PLAN_INPUT_SCHEMA,
+        "repository_tree_id": tree_id,
+        "objectives": objectives,
+        "tasks": tasks,
+        "ast": ast_records,
+        "policies": policies,
+        "evidence": evidence,
+    }
+
+
 def _graph_node(kind: str, record_id: str, **attributes: Any) -> dict[str, Any]:
     material = {
         "kind": kind,
@@ -1183,6 +1381,35 @@ class FormalPlanCompiler:
             if suffix in {".duckdb", ".db"}:
                 return self.compile_duckdb(source)
         return self.compile_json(source)
+
+    def compile_prompt_graph(
+        self,
+        graph: Any,
+        *,
+        repository_tree_id: str,
+        actor_id: str = "actor:prompt-plan",
+    ) -> PlanCompilationResult:
+        """Compile a prompt-generated graph through this compiler boundary."""
+
+        try:
+            source = prompt_goal_graph_to_formal_input(
+                graph,
+                repository_tree_id=repository_tree_id,
+                actor_id=actor_id,
+            )
+        except (TypeError, ValueError) as exc:
+            return _failure_result(
+                CompilationStatus.INVALID,
+                (
+                    CompilationIssue(
+                        CompilationIssueCode.INVALID_SOURCE,
+                        CompilationIssueSeverity.ERROR,
+                        "$",
+                        str(exc),
+                    ),
+                ),
+            )
+        return self.compile(source)
 
     def compile_admission(
         self,
@@ -3343,6 +3570,7 @@ __all__ = [
     "FormalPlanCompiler",
     "FormalWorkPlanCompiler",
     "PlanAdmissionProjection",
+    "PROMPT_FORMAL_PLAN_INPUT_SCHEMA",
     "PlanCompilationResult",
     "PlanGraphProjection",
     "compile_formal_plan",
@@ -3350,5 +3578,6 @@ __all__ = [
     "compile_formal_plan_json",
     "compile_plan_admission",
     "project_formal_plan_for_admission",
+    "prompt_goal_graph_to_formal_input",
     "write_formal_plan_compiler_input_duckdb",
 ]
