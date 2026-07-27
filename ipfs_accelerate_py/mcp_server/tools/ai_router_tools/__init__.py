@@ -1,0 +1,41 @@
+"""Provider-neutral MCP tools backed by the canonical modality routers."""
+
+from .text_embedding import (
+    AI_ROUTER_RECEIPT_SCHEMA_VERSION,
+    AI_ROUTER_TOOL_SCHEMA_VERSION,
+    MAX_EMBEDDING_DIMENSIONS,
+    MAX_INPUT_ITEMS,
+    MAX_OUTPUT_BYTES,
+    MAX_STREAM_CHUNKS,
+    MAX_TEXT_BYTES,
+    MAX_TEXT_ITEM_BYTES,
+    MAX_TIMEOUT_SECONDS,
+    embeddings_generate,
+    generate_embedding,
+    generate_embeddings,
+    generate_text,
+    llm_generate,
+    register_ai_router_tools,
+    register_native_ai_router_tool,
+    register_native_ai_router_tools,
+)
+
+__all__ = [
+    "AI_ROUTER_RECEIPT_SCHEMA_VERSION",
+    "AI_ROUTER_TOOL_SCHEMA_VERSION",
+    "MAX_EMBEDDING_DIMENSIONS",
+    "MAX_INPUT_ITEMS",
+    "MAX_OUTPUT_BYTES",
+    "MAX_STREAM_CHUNKS",
+    "MAX_TEXT_BYTES",
+    "MAX_TEXT_ITEM_BYTES",
+    "MAX_TIMEOUT_SECONDS",
+    "embeddings_generate",
+    "generate_embedding",
+    "generate_embeddings",
+    "generate_text",
+    "llm_generate",
+    "register_ai_router_tools",
+    "register_native_ai_router_tool",
+    "register_native_ai_router_tools",
+]
