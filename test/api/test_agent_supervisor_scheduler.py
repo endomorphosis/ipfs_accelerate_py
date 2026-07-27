@@ -117,6 +117,7 @@ def _scheduler(
     max_lanes: int = 1,
     manifest_name: str = "manifest.json",
     external_task_state_paths: tuple[Path, ...] = (),
+    bundle_index_refresher: Any = None,
 ) -> DynamicBundleScheduler:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
@@ -152,6 +153,7 @@ def _scheduler(
         process_alive=launcher.alive,
         host_resource_source=host_resource_source,
         external_task_state_paths=external_task_state_paths,
+        bundle_index_refresher=bundle_index_refresher,
         poll_interval=0,
         task_prefix="T-",
     )
@@ -214,6 +216,80 @@ def test_persistent_scheduler_discovers_new_and_refilled_work_without_restart(tm
         ["T-3"],
     ]
     assert _active_task_ids(fourth) == {"T-3"}
+
+
+def test_scheduler_refreshes_derived_index_before_changed_receipt_overlay(
+    tmp_path: Path,
+) -> None:
+    """A new completion source must rebuild the index before lane planning."""
+
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    refreshed_tasks = iter(("T-2", "T-3"))
+    refresh_calls = 0
+
+    def refresh_index() -> None:
+        nonlocal refresh_calls
+        refresh_calls += 1
+        _write_index(index, next(refreshed_tasks))
+
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        bundle_index_refresher=refresh_index,
+    )
+
+    first = scheduler.reconcile_once()
+    assert refresh_calls == 1
+    assert _active_task_ids(first) == {"T-2"}
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-2"]]
+
+    # No completion source changed, so polling does not repeatedly invoke the
+    # potentially expensive derived-input builder.
+    scheduler.reconcile_once()
+    assert refresh_calls == 1
+
+    launcher.process_for("T-2").finish()
+    events_path = repo / "state" / "completed_events.jsonl"
+    events_path.parent.mkdir(parents=True, exist_ok=True)
+    events_path.write_text('{"type":"member_completion"}\n', encoding="utf-8")
+
+    third = scheduler.reconcile_once()
+    assert refresh_calls == 2
+    assert _active_task_ids(third) == {"T-3"}
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [
+        ["T-2"],
+        ["T-3"],
+    ]
+
+
+def test_scheduler_fails_closed_when_derived_index_refresh_fails(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+
+    def fail_refresh() -> None:
+        raise RuntimeError("synthetic refresh failure")
+
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        bundle_index_refresher=fail_refresh,
+    )
+
+    manifest = scheduler.reconcile_once()
+
+    assert launcher.starts == []
+    assert manifest["counts"]["active"] == 0
+    assert "bundle-index refresh failed" in manifest["discovery_error"]
+    assert "synthetic refresh failure" in manifest["discovery_error"]
 
 
 def test_pool_capacity_and_shared_leases_prevent_duplicate_execution(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ import hashlib
 import json
 import logging
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -3184,6 +3185,9 @@ class DynamicBundleScheduler:
         provider_capacity_source: Callable[..., Any] | None = None,
         provider_capacity_path: Path | None = None,
         external_task_state_paths: Sequence[Path | str] = (),
+        bundle_index_refresh_command: str = "",
+        bundle_index_refresh_timeout_seconds: float = 60.0,
+        bundle_index_refresher: Callable[[], Any] | None = None,
         resource_policy: ResourcePolicy | dict[str, Any] | None = None,
         **lane_options: Any,
     ) -> None:
@@ -3232,6 +3236,20 @@ class DynamicBundleScheduler:
         self.external_task_state_paths = tuple(
             Path(path).resolve() for path in external_task_state_paths
         )
+        self.bundle_index_refresh_command = str(
+            bundle_index_refresh_command or ""
+        ).strip()
+        self.bundle_index_refresh_timeout_seconds = float(
+            bundle_index_refresh_timeout_seconds
+        )
+        if (
+            not math.isfinite(self.bundle_index_refresh_timeout_seconds)
+            or self.bundle_index_refresh_timeout_seconds <= 0
+        ):
+            raise ValueError(
+                "bundle_index_refresh_timeout_seconds must be positive"
+            )
+        self._bundle_index_refresher = bundle_index_refresher
         self._running: dict[str, RunningBundleLane] = {}
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
@@ -3241,6 +3259,9 @@ class DynamicBundleScheduler:
         self._last_scheduler_snapshot: SchedulerSnapshot | None = None
         self._last_resource_snapshot: ResourceScheduleSnapshot | None = None
         self._event_source_cache: dict[Path, tuple[int, int, list[dict[str, Any]]]] = {}
+        self._last_bundle_index_refresh_source_revision: (
+            tuple[tuple[str, int, int], ...] | None
+        ) = None
         self._plan_cache: tuple[
             tuple[Path, ...],
             tuple[tuple[str, int, int], ...],
@@ -3579,6 +3600,82 @@ class DynamicBundleScheduler:
             self._fence_external_active_members(lane, external_active_task_ids)
             for lane in base_lanes
         ]
+
+    def _refresh_bundle_index_if_needed(self) -> bool:
+        """Refresh a derived index before applying changed merge evidence."""
+
+        if (
+            self._bundle_index_refresher is None
+            and not self.bundle_index_refresh_command
+        ):
+            return False
+        receipt_revision = list(
+            bundle_member_completion_source_revision(self.state_root)
+        )
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        source_revision = tuple(
+            [
+                *receipt_revision,
+                (
+                    f"git:{head.stdout.strip() if head.returncode == 0 else ''}",
+                    0,
+                    0,
+                ),
+            ]
+        )
+        if (
+            self._last_bundle_index_refresh_source_revision is not None
+            and source_revision
+            == self._last_bundle_index_refresh_source_revision
+        ):
+            return False
+        try:
+            if self._bundle_index_refresher is not None:
+                self._bundle_index_refresher()
+            else:
+                command = shlex.split(self.bundle_index_refresh_command)
+                if not command:
+                    raise ValueError("bundle-index refresh command is empty")
+                completed = subprocess.run(
+                    command,
+                    cwd=self.repo_root,
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=self.bundle_index_refresh_timeout_seconds,
+                    check=False,
+                )
+                if completed.returncode != 0:
+                    error = str(completed.stderr or "").strip()[-2_000:]
+                    raise ValueError(
+                        "bundle-index refresh command failed with exit code "
+                        f"{completed.returncode}"
+                        + (f": {error}" if error else "")
+                    )
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError(
+                "bundle-index refresh command timed out after "
+                f"{self.bundle_index_refresh_timeout_seconds:.3f}s"
+            ) from exc
+        except Exception as exc:
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError(
+                f"bundle-index refresh failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        if not self.bundle_index_path.is_file():
+            raise ValueError(
+                "bundle-index refresh did not produce the configured index"
+            )
+        self._last_bundle_index_refresh_source_revision = source_revision
+        self._plan_cache = None
+        return True
 
     @staticmethod
     def _default_process_alive(handle: Any) -> bool:
@@ -4356,6 +4453,7 @@ class DynamicBundleScheduler:
         with self._lock:
             self._cycle += 1
             try:
+                self._refresh_bundle_index_if_needed()
                 discovered = self._plan()
                 self._last_discovery_error = ""
             except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -4883,6 +4981,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
     parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
     parser.add_argument("--poll-interval", type=float, default=5.0)
+    parser.add_argument(
+        "--bundle-index-refresh-command",
+        default="",
+        help=(
+            "Optional argv string that atomically refreshes a derived bundle "
+            "index before planning against a changed completion-receipt stream"
+        ),
+    )
+    parser.add_argument(
+        "--bundle-index-refresh-timeout-seconds",
+        type=float,
+        default=60.0,
+        help="Positive timeout for the optional bundle-index refresh command",
+    )
     parser.add_argument("--once", action="store_true", help="Run one reconciliation cycle and exit")
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument("--implement", dest="implement", action="store_true")
@@ -5013,6 +5125,16 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             provider_capacity_path=getattr(args, "provider_capacity_path", None),
             external_task_state_paths=tuple(
                 getattr(args, "external_task_state_path", ()) or ()
+            ),
+            bundle_index_refresh_command=getattr(
+                args,
+                "bundle_index_refresh_command",
+                "",
+            ),
+            bundle_index_refresh_timeout_seconds=getattr(
+                args,
+                "bundle_index_refresh_timeout_seconds",
+                60.0,
             ),
             resource_policy={
                 "max_lanes": getattr(args, "max_lanes", 1) or 1,
