@@ -1,0 +1,807 @@
+# Goose CLI Integration Task Board
+
+This board implements the
+[Goose CLI objective heap](goose_cli_integration.objectives.md). Tasks are
+ordered by explicit dependencies and predicted file ownership so independent
+work can run in parallel after the shared contracts are stable.
+
+Program invariants:
+
+- Ordinary `llm_router.generate_text(..., provider="goose_cli")` is chat-only
+  and cannot execute tools, load default extensions, or resume a session.
+- Agent execution is a distinct, explicitly authorized endpoint capability.
+- Import, provider listing, and implicit autodiscovery never install software,
+  start a process, configure credentials, or make a network request.
+- A side-effecting or uncertain request is never response-cached, blindly
+  retried, switched to a different model, or cross-provider-fallbacked.
+- All prompts enter subprocesses through stdin; dynamic values remain single
+  argv entries; shell execution is forbidden.
+- Existing user changes and unrelated providers must be preserved.
+
+## GOOSE-001 Define shared CLI runtime contracts and registry
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: cli-runtime
+- Depends on:
+- Goal id: GOOSE-G010
+- Outputs: ipfs_accelerate_py/cli_runtime/__init__.py, ipfs_accelerate_py/cli_runtime/contracts.py, ipfs_accelerate_py/cli_runtime/errors.py, ipfs_accelerate_py/cli_runtime/registry.py, test/test_cli_runtime_contracts.py
+- Validation: python -m pytest test/test_cli_runtime_contracts.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/runtime
+- Parallel lane: runtime-contracts
+- Resource class: cpu-small
+- Token class: medium
+- Estimated tokens: 9000
+- Predicted files: ipfs_accelerate_py/cli_runtime/__init__.py, ipfs_accelerate_py/cli_runtime/contracts.py, ipfs_accelerate_py/cli_runtime/errors.py, ipfs_accelerate_py/cli_runtime/registry.py, test/test_cli_runtime_contracts.py
+- Allow concurrent with:
+- Conflict policy: This task owns the initial cli_runtime package and public internal contracts. Do not modify llm_router, endpoint adapters, workers, installers, or legacy wrappers.
+- Preconditions: Inspect LLMProvider, ProviderInfo, BaseCLIWrapper, CLIEndpointAdapter, and existing error conventions before defining new records.
+- Effects: Create immutable bounded request, result, event, capability, provider-spec, execution-mode, and error contracts; create a lazy registry that stores factories or metadata without probing tools.
+- Acceptance: Preserve the existing string-returning LLMProvider surface while allowing richer result and event consumers. Define explicit chat versus agent modes, side_effecting, cacheable, retryable, streaming, sessions, cancellation, tools, and provider/model override capabilities. Make serialization deterministic and bounded. Reject invalid combinations such as side-effecting plus cacheable. Registry aliases resolve deterministically and collision checks fail closed. Importing and registry listing must not load optional providers, install tools, or start processes. Add round-trip, bounds, alias, collision, invalid-state, and cold-import tests.
+
+## GOOSE-002 Implement the bounded shared CLI process runner
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: cli-runtime
+- Depends on: GOOSE-001
+- Goal id: GOOSE-G010
+- Outputs: ipfs_accelerate_py/cli_runtime/process_runner.py, test/test_cli_runtime_process_runner.py
+- Validation: python -m pytest test/test_cli_runtime_process_runner.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/runtime
+- Parallel lane: process-runner
+- Resource class: cpu-small
+- Token class: medium
+- Estimated tokens: 10000
+- Predicted files: ipfs_accelerate_py/cli_runtime/process_runner.py, test/test_cli_runtime_process_runner.py
+- Allow concurrent with: GOOSE-003
+- Conflict policy: Own only shared process execution and its focused tests. Consume GOOSE-001 contracts without changing their public shape unless an incompatibility is proved and recorded.
+- Preconditions: GOOSE-001 contracts and error vocabulary are complete.
+- Effects: Add synchronous, asynchronous, and streamed argv execution with stdin input, environment overlays, working-directory policy, output bounds, deadlines, cancellation, process-tree cleanup, and bounded diagnostics.
+- Acceptance: Use shell=False and never interpolate dynamic data into a shell string. Enforce argv, environment, cwd, stdin, stdout, stderr, elapsed-time, and event bounds. Create a new process group and terminate descendants on timeout or cancellation on POSIX and Windows-supported paths. Distinguish spawn failure, nonzero exit, timeout, cancellation, malformed output, and policy denial. Track whether any output or side-effect event occurred. Redact prompts and secret-shaped environment values. Support injected clocks and subprocess factories. Add tests for spaces and metacharacters as one argv item, large stdin, output truncation, concurrent cancellation, TERM-to-KILL escalation, orphan prevention, cwd escape, environment removal, secret redaction, and sync/async result parity.
+
+## GOOSE-003 Add the pinned Goose lazy installer
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-installer
+- Depends on: GOOSE-001
+- Goal id: GOOSE-G020
+- Outputs: ipfs_accelerate_py/cli_runtime/installers/__init__.py, ipfs_accelerate_py/cli_runtime/installers/goose.py, ipfs_accelerate_py/cli_runtime/installers/goose_release_manifest.json, test/test_goose_installer.py
+- Validation: python -m pytest test/test_goose_installer.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/installer
+- Parallel lane: goose-installer
+- Resource class: io-artifact
+- Token class: medium
+- Estimated tokens: 11000
+- Predicted files: ipfs_accelerate_py/cli_runtime/installers/__init__.py, ipfs_accelerate_py/cli_runtime/installers/goose.py, ipfs_accelerate_py/cli_runtime/installers/goose_release_manifest.json, test/test_goose_installer.py, pyproject.toml, setup.py, MANIFEST.in
+- Allow concurrent with: GOOSE-002
+- Conflict policy: Keep all release discovery, platform mapping, download, digest, extraction, locking, and promotion logic inside the installer package. Do not put Goose-specific installation in generic pip auto_install.
+- Preconditions: GOOSE-001 error and result contracts exist; inspect utils/mistral_vibe.py and current package-data configuration.
+- Effects: Add deterministic executable discovery and an explicit-only, noninteractive, version-pinned, digest-verified, atomic managed installation lifecycle.
+- Acceptance: Search explicit path, operator argv, PATH, and managed version directory in order. Never install during import or implicit provider discovery. Support a policy override that disables an explicit lazy install. Validate supported OS, architecture, libc, standard/vulkan/musl/cuda variant, asset name, archive size, pinned SHA-256, archive members, executable version, and destination. Use per-process and cross-process locks, staging, atomic replacement, and rollback. Never invoke curl-pipe-shell, sudo, goose configure, or shell-profile edits. Keep authentication and readiness separate. Package the release manifest. Tests must use injected download/run functions and cover existing binary reuse, concurrent collapse, disabled installation, unsupported platform, offline failure, timeout, digest mismatch, path traversal, malformed archive, wrong version, atomic rollback, and successful install without live network.
+
+## GOOSE-004 Implement the canonical Goose adapter and structured parsers
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-provider-router
+- Depends on: GOOSE-002, GOOSE-003
+- Goal id: GOOSE-G030
+- Outputs: ipfs_accelerate_py/cli_runtime/providers/__init__.py, ipfs_accelerate_py/cli_runtime/providers/goose.py, test/test_goose_cli_provider.py
+- Validation: python -m pytest test/test_goose_cli_provider.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/provider
+- Parallel lane: goose-provider
+- Resource class: provider-cli
+- Token class: large
+- Estimated tokens: 13000
+- Predicted files: ipfs_accelerate_py/cli_runtime/providers/__init__.py, ipfs_accelerate_py/cli_runtime/providers/goose.py, test/test_goose_cli_provider.py
+- Allow concurrent with: GOOSE-006
+- Conflict policy: This is the sole owner of Goose command construction, version capabilities, JSON parsing, stream parsing, and error classification. Other surfaces must delegate to it.
+- Preconditions: Shared runner and installer are complete; inspect the current supported Goose run flags and fixture the exact JSON and stream-json schemas used by the tested pinned release.
+- Effects: Add Goose liveness/configuration discovery, safe chat requests, explicitly authorized agent requests, JSON and event parsing, final-response extraction, bounded metadata, and typed error mapping.
+- Acceptance: Chat mode supplies the prompt through --instructions -, sets GOOSE_MODE=chat, uses --no-session and --no-profile when supported, requests JSON, applies a tested low max-turn bound and max-tool-repetition bound, and enables no builtin or external extension. Agent mode requires an explicit policy record and validates cwd, GOOSE_PATH_ROOT, approval mode, session, extensions, builtins, and resource bounds. Separate router model_name from Goose's underlying provider. Parse JSON and stream-json without terminal-text cleanup, retain only bounded useful metadata, and expose side_effects_started. Classify not installed, unsupported version, unconfigured provider, authentication, quota/rate limit, approval required, policy denial, timeout, cancellation, malformed output, and nonzero exit. Add fake-executable fixtures for every path and version-gate tests proving required safety flags cannot be silently omitted.
+
+## GOOSE-005 Register Goose in llm_router with side-effect-aware policy
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-provider-router
+- Depends on: GOOSE-004
+- Goal id: GOOSE-G030
+- Outputs: ipfs_accelerate_py/llm_router.py, test/test_llm_router_goose.py
+- Validation: python -m pytest test/test_llm_router_goose.py test/test_llm_router_integration.py test/test_llm_router_mistral_vibe.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/router
+- Parallel lane: llm-router-goose
+- Resource class: cpu-small
+- Token class: large
+- Estimated tokens: 14000
+- Predicted files: ipfs_accelerate_py/llm_router.py, test/test_llm_router_goose.py
+- Allow concurrent with: GOOSE-007
+- Conflict policy: This task owns central router edits. Preserve all existing provider names and behavior, and delegate all Goose subprocess and parsing behavior to GOOSE-004.
+- Preconditions: The canonical Goose adapter and installer integration are complete.
+- Effects: Register goose_cli and goose aliases, explicit lazy installation, safe availability discovery, cache identity, model mapping, capability-aware response caching and retries, and CLI concurrency bounds.
+- Acceptance: Explicit provider resolution may invoke ensure_goose; implicit discovery is detect-only and initially requires an opt-in discovery flag. Forced Goose provider selection counts as explicit. model_name maps to the Goose model while goose_provider maps to Goose's underlying provider. Provider cache keys include every behavior-changing Goose setting without storing secrets. Chat requests retain ordinary string output compatibility. Agent requests bypass response caches, default-model retry, automatic provider fallback, and unsafe batch concurrency. No retry occurs after output or side-effect activity. Existing Codex, Copilot, Gemini, Claude, Mistral Vibe, llama.cpp, API, mock, and HF resolution tests remain green.
+
+## GOOSE-006 Replace abstract CLI endpoint registration with a concrete factory
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-endpoint
+- Depends on: GOOSE-001, GOOSE-002
+- Goal id: GOOSE-G040
+- Outputs: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, test/test_cli_endpoint_factory.py
+- Validation: python -m pytest test/test_cli_endpoint_factory.py test/mcp_server/test_cli_endpoint_tools.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/endpoint-foundation
+- Parallel lane: endpoint-factory
+- Resource class: cpu-small
+- Token class: large
+- Estimated tokens: 12000
+- Predicted files: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, test/test_cli_endpoint_factory.py, test/mcp_server/test_cli_endpoint_tools.py
+- Allow concurrent with: GOOSE-003
+- Conflict policy: This task owns provider-neutral endpoint registry and factory behavior. Do not add Goose-specific commands or ACP logic yet.
+- Preconditions: Shared contracts and runner semantics are stable; inspect both deprecated and native endpoint modules and preserve import compatibility.
+- Effects: Add a concrete endpoint specification/factory registry and correct list, describe, liveness, readiness, execute, stream, cancel, and lifecycle dispatch contracts.
+- Acceptance: Native registration never instantiates the abstract CLIEndpointAdapter. Unsupported tools return a typed error rather than registered false after swallowing an exception. Registration is lazy and does not probe every provider. Nonzero subprocess status is failure. Stats are concurrency safe. Request and response bounds are enforced. Errors never echo prompts. Deprecated imports remain compatibility shims over the canonical factory. Existing endpoint types continue to register and execute through their concrete adapters. Add registry collision, unavailable provider, nonzero exit, bounded result, concurrent stats, and Python/MCP parity tests.
+
+## GOOSE-007 Add Goose one-shot endpoint and MCP operations
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-endpoint
+- Depends on: GOOSE-004, GOOSE-006
+- Goal id: GOOSE-G040
+- Outputs: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, test/test_goose_cli_endpoint.py
+- Validation: python -m pytest test/test_goose_cli_endpoint.py test/test_cli_endpoint_factory.py test/mcp_server/test_cli_endpoint_tools.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/endpoint
+- Parallel lane: goose-endpoint
+- Resource class: provider-cli
+- Token class: large
+- Estimated tokens: 12000
+- Predicted files: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, test/test_goose_cli_endpoint.py, test/mcp_server/test_cli_endpoint_tools.py
+- Allow concurrent with: GOOSE-005
+- Conflict policy: Serialize after GOOSE-006 because both tasks own endpoint files. Delegate execution and parsing to GOOSE-004.
+- Preconditions: Canonical Goose adapter and endpoint factory are complete.
+- Effects: Register goose and goose_cli endpoint aliases, typed health states, safe chat execution, explicit agent policy handling, bounded response envelopes, streaming delegation, and cancellation.
+- Acceptance: List and liveness perform no model request. Health distinguishes installed, configured, ready, degraded, and unsupported version. Default execute uses the same safe chat profile as llm_router. Agent execute requires execution_mode=agent, allow_side_effects, package enable policy, allowed absolute cwd/root, explicit approval mode, extension/builtin allowlists, and finite turns/time/output. Return provider, execution mode, text, Goose version, underlying provider/model, session, tool-call count, side_effects_started, elapsed time, and typed error without prompt or credentials. MCP schemas expose the same bounded fields and reject unknown authority-bearing options.
+
+## GOOSE-008 Add persistent Goose ACP streaming and session lifecycle
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: goose-endpoint
+- Depends on: GOOSE-007
+- Goal id: GOOSE-G040
+- Outputs: ipfs_accelerate_py/cli_runtime/acp/__init__.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, ipfs_accelerate_py/cli_runtime/endpoints.py, test/test_goose_acp_client.py
+- Validation: python -m pytest test/test_goose_acp_client.py test/test_goose_cli_endpoint.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/acp
+- Parallel lane: goose-acp
+- Resource class: provider-cli
+- Token class: large
+- Estimated tokens: 15000
+- Predicted files: ipfs_accelerate_py/cli_runtime/acp/__init__.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, ipfs_accelerate_py/cli_runtime/endpoints.py, test/test_goose_acp_client.py
+- Allow concurrent with: GOOSE-009, GOOSE-010
+- Conflict policy: Own the persistent goose acp stdio transport. Keep one-shot goose run behavior intact and do not introduce a second command parser.
+- Preconditions: One-shot Goose endpoint is complete and its authority policy is reusable.
+- Effects: Add a managed ACP subprocess, framed request/response correlation, streamed events, cancellation, session create/resume/close, bounded restart recovery, and endpoint integration.
+- Acceptance: Start goose acp with an explicit executable and isolated state root. Validate protocol initialization and capabilities before accepting work. Correlate requests and events without cross-session leakage. Bound pending requests, sessions, serialized bytes, output, idle time, and restarts. Cancellation cleans pending state and child processes. Unexpected exit fails affected calls with typed uncertain-side-effect status and restarts only within policy; it never automatically replays agent work. Session state is endpoint-local and restart behavior is explicit. Tests use a deterministic fake ACP server and cover partial frames, malformed messages, unknown IDs, concurrent sessions, backpressure, cancellation, crash, restart exhaustion, and clean shutdown. Do not enable goose serve or dangerously unauthenticated network service.
+
+## GOOSE-009 Add opt-in Goose P2P worker policy
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-worker-security
+- Depends on: GOOSE-005, GOOSE-007
+- Goal id: GOOSE-G050
+- Outputs: ipfs_accelerate_py/p2p_tasks/worker.py, test/test_goose_p2p_policy.py
+- Validation: python -m pytest test/test_goose_p2p_policy.py test/api/test_task_worker_session_failover.py test/api/test_task_queue_session_affinity.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/worker
+- Parallel lane: goose-p2p
+- Resource class: cpu-small
+- Token class: medium
+- Estimated tokens: 10000
+- Predicted files: ipfs_accelerate_py/p2p_tasks/worker.py, test/test_goose_p2p_policy.py, test/api/test_task_worker_session_failover.py, test/api/test_task_queue_session_affinity.py
+- Allow concurrent with: GOOSE-008, GOOSE-010
+- Conflict policy: Own only worker admission, forwarding, fallback, session-affinity, and result policy. Do not duplicate Goose commands or endpoint parsers.
+- Preconditions: Router and one-shot endpoint policies are complete.
+- Effects: Add explicit chat and agent worker gates, conservative allowlist behavior, safe forwarded fields, root validation, sticky sessions, and side-effect-aware failure and fallback handling.
+- Acceptance: Goose is excluded from the default remote provider set. IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI enables only safe chat, while a separate IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT gate plus provider allowlist is required for agent mode. Wildcard expansion may include Goose only under these gates. Reject arbitrary config, recipe, trace, extension, session, and cwd paths unless authorized beneath configured roots. Persisted sessions remain on the assigned worker. Do not retry, locally fall back, or switch to Codex/Copilot after any Goose agent attempt or uncertain failure. Return side_effects_started and stable error classification. Add disabled-by-default, allowlist, path escape, sticky session, duplicate delivery, cancellation, uncertain failure, and no-cross-provider-fallback tests.
+
+## GOOSE-010 Add the compatibility facade and consolidate stale CLI wrappers
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: cli-compatibility
+- Depends on: GOOSE-004, GOOSE-005
+- Goal id: GOOSE-G060
+- Outputs: ipfs_accelerate_py/cli_integrations/goose_cli_integration.py, ipfs_accelerate_py/cli_integrations/__init__.py, ipfs_accelerate_py/cli_integrations/base_cli_wrapper.py, ipfs_accelerate_py/cli_integrations/openai_codex_cli_integration.py, ipfs_accelerate_py/cli_integrations/copilot_cli_integration.py, test/test_cli_integration_registry.py
+- Validation: python -m pytest test/test_cli_integration_registry.py test/test_unified_cli_integration.py test/test_llm_router_integration.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/compatibility
+- Parallel lane: cli-compatibility
+- Resource class: cpu-small
+- Token class: medium
+- Estimated tokens: 11000
+- Predicted files: ipfs_accelerate_py/cli_integrations/goose_cli_integration.py, ipfs_accelerate_py/cli_integrations/__init__.py, ipfs_accelerate_py/cli_integrations/base_cli_wrapper.py, ipfs_accelerate_py/cli_integrations/openai_codex_cli_integration.py, ipfs_accelerate_py/cli_integrations/copilot_cli_integration.py, test/test_cli_integration_registry.py, test/test_unified_cli_integration.py
+- Allow concurrent with: GOOSE-008, GOOSE-009
+- Conflict policy: Own legacy cli_integrations compatibility. Do not reimplement Goose execution or change central llm_router behavior.
+- Preconditions: Canonical Goose provider and router registration are complete.
+- Effects: Add a lazy Goose integration facade, metadata-only discovery API, deprecation path for eager get_all behavior, and side-effect-aware shared runner delegation for stale Codex and Copilot wrappers where compatibility permits.
+- Acceptance: Public Goose facade calls the canonical adapter. Listing integrations does not instantiate or run every CLI. Existing getters and import names remain valid. Current Codex uses codex exec semantics rather than the obsolete OpenAI completions command. Current Copilot compatibility delegates to the production command contract rather than github-copilot-cli suggest syntax. Preserve operator command overrides as argv-only, shell-free configuration. Disable generic caching and retries for side-effecting operations. Add tests for lazy discovery, unavailable tools, compatibility imports, command parity, no import-time probes, and unchanged llm_router provider behavior.
+
+## GOOSE-011 Run the cross-surface security and regression matrix
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-worker-security
+- Depends on: GOOSE-008, GOOSE-009, GOOSE-010
+- Goal id: GOOSE-G050
+- Outputs: test/test_goose_cli_security_e2e.py
+- Validation: python -m pytest test/test_cli_runtime_contracts.py test/test_cli_runtime_process_runner.py test/test_goose_installer.py test/test_goose_cli_provider.py test/test_llm_router_goose.py test/test_cli_endpoint_factory.py test/test_goose_cli_endpoint.py test/test_goose_acp_client.py test/test_goose_p2p_policy.py test/test_goose_cli_security_e2e.py test/test_llm_router_integration.py test/test_unified_cli_integration.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/security
+- Parallel lane: goose-security-e2e
+- Resource class: cpu-medium
+- Token class: large
+- Estimated tokens: 16000
+- Predicted files: test/test_goose_cli_security_e2e.py, ipfs_accelerate_py/cli_runtime, ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, ipfs_accelerate_py/p2p_tasks/worker.py, ipfs_accelerate_py/cli_integrations
+- Allow concurrent with:
+- Conflict policy: This is the final implementation integration lane. It may make narrowly evidenced fixes across completed Goose surfaces but must not weaken tests, broaden authority, or redesign stable contracts without recording the incompatibility.
+- Preconditions: Router, endpoint, ACP, worker, and compatibility tasks are complete.
+- Effects: Add a fake-Goose end-to-end harness and close any cross-surface security, lifecycle, or compatibility defects it reveals.
+- Acceptance: Exercise explicit lazy install, implicit no-install discovery, safe router chat, endpoint chat, authorized endpoint agent, stream cancellation, ACP session crash, worker chat, worker agent denial, and compatibility facade through deterministic fakes. Seed argv metacharacters, malicious JSON, excessive output, archive traversal, digest mismatch, stale version, timeout, orphan child, path escape, prompt-shaped secret, credential-shaped environment, duplicate task delivery, partial agent activity, and provider quota failure. Prove no shell execution, no secret or prompt leakage, no unsafe profile/tool activation, no unauthorized path, no orphan process, and no cache/retry/fallback after side effects. Run existing Codex, Copilot, Mistral Vibe, endpoint, router, and worker regression tests named by the impact surface. Live network and provider credentials remain disabled.
+
+## GOOSE-012 Publish operator documentation and controlled rollout guidance
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: goose-rollout
+- Depends on: GOOSE-011
+- Goal id: GOOSE-G070
+- Outputs: docs/LLM_ROUTER.md, README.md, docs/INDEX.md, docs/guides/QUICKSTART.md
+- Validation: python -m pytest test/test_llm_router_goose.py test/test_goose_cli_endpoint.py test/test_goose_p2p_policy.py -q
+- Board namespace: goose-cli-integration-v1
+- Bundle: llm-cli/goose/rollout
+- Parallel lane: goose-docs-rollout
+- Resource class: docs
+- Token class: medium
+- Estimated tokens: 8000
+- Predicted files: docs/LLM_ROUTER.md, README.md, docs/INDEX.md, docs/guides/QUICKSTART.md
+- Allow concurrent with:
+- Conflict policy: Documentation must describe implemented and tested behavior only. Do not change runtime code or claim live-provider readiness from mocked tests.
+- Preconditions: Cross-surface security and regression matrix passes.
+- Effects: Document provider selection, lazy installation, release pinning, configuration, chat versus agent authority, model and underlying-provider mapping, endpoint and ACP lifecycle, worker gates, state isolation, health, errors, updates, rollback, and opt-in live smoke testing.
+- Acceptance: Add Goose to the provider table and examples. List canonical environment variables and compatibility aliases without exposing secrets. Explain that generic discovery does not install and initially requires explicit opt-in. Show safe chat usage and separate authorized agent endpoint usage. Document managed install location, pinned-version update procedure, checksum manifest maintenance, shared versus isolated GOOSE_PATH_ROOT implications, readiness versus liveness, cancellation, and recovery. Document P2P gates and no-replay behavior. Provide a live smoke command gated by an explicit environment variable and configured provider, state that the default suite is offline, and include rollback and troubleshooting steps. Update documentation indexes and preserve existing provider guidance.
+
+## GOOSE-013 Close objective gap: Prove GOOSE-G010 for Secure and unified Goose CLI support
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-cli-integration
+- Depends on:
+- Outputs: data/agent_supervisor/discovery, docs/architecture/goose_cli_integration.objectives.md, ipfs_accelerate_py/cli_runtime, ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, ipfs_accelerate_py/p2p_tasks/worker.py, docs/LLM_ROUTER.md
+- Validation: python -m pytest test/test_cli_runtime_contracts.py test/test_cli_runtime_process_runner.py test/test_goose_installer.py test/test_goose_cli_provider.py test/test_llm_router_goose.py test/test_goose_cli_endpoint.py test/test_goose_acp_client.py test/test_goose_p2p_policy.py test/test_goose_cli_security_e2e.py -q
+- Bundle: llm-cli/goose/root
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/bundles/llm-cli-goose-root.todo.md
+- Bundle strategy: explicit
+- Graph parents: GOOSE-G000
+- Graph depth: 1
+- Objective heap index: 8
+- Parallel lane: llm-cli/goose/root
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/cli_runtime, ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, ipfs_accelerate_py/p2p_tasks/worker.py, docs/LLM_ROUTER.md
+- Changed paths:
+- AST symbols: GOOSE-G010
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: GOOSE-G071
+- Canonical task key: task/v1/a1795262cf467af8f30d1727b8ce3cd10c00ccca4cce4f28807093ed3fd104d2
+- Canonical task CID: baguqeerauf4veywpiz5pr4ync4t3rtr42egabtgkjthe6keaocj62p6ratja
+- Semantic identity: objective-evidence-obligation/v1/0d4071404b4fecfe33faa02159dc9e6ecd9c8df5ef0243a8435b75f7b8ab2393
+- Acceptance subset: GOOSE-G010
+- Preconditions: objective goal GOOSE-G071 is schedulable
+- Effects: satisfy evidence requirement: GOOSE-G010
+- Evidence subset: GOOSE-G010
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/GOOSE-G071
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/0d4071404b4fecfe33faa02159dc9e6ecd9c8df5ef0243a8435b75f7b8ab2393
+- Missing evidence: GOOSE-G010
+- Embedding query: GOOSE-G010
+- AST query: GOOSE-G010
+- Surplus group: objective/GOOSE-G071
+- Merge key: e7cd260ad388c5b8
+- Merge family: goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559
+- Goal packet role: packet_anchor
+- Goal packet goals: GOOSE-G071, GOOSE-G074, GOOSE-G075
+- Goal packet task count: 3
+- Goal packet work item count: 3
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: c656b34d2429a77e
+- Acceptance: Objective scan filed this gap for GOOSE-G071. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-013-objective-gap-843529978921.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (GOOSE-G010), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559; implement a complete, cohesive change that fully advances the packet goals (GOOSE-G071, GOOSE-G074, GOOSE-G075) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## GOOSE-014 Close objective gap: Prove GOOSE-G040 for Secure and unified Goose CLI support
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-cli-integration
+- Depends on:
+- Outputs: data/agent_supervisor/discovery, docs/architecture/goose_cli_integration.objectives.md, ipfs_accelerate_py/cli_runtime, ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, ipfs_accelerate_py/p2p_tasks/worker.py, docs/LLM_ROUTER.md
+- Validation: python -m pytest test/test_cli_runtime_contracts.py test/test_cli_runtime_process_runner.py test/test_goose_installer.py test/test_goose_cli_provider.py test/test_llm_router_goose.py test/test_goose_cli_endpoint.py test/test_goose_acp_client.py test/test_goose_p2p_policy.py test/test_goose_cli_security_e2e.py -q
+- Bundle: llm-cli/goose/root
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/bundles/llm-cli-goose-root.todo.md
+- Bundle strategy: explicit
+- Graph parents: GOOSE-G000
+- Graph depth: 1
+- Objective heap index: 9
+- Parallel lane: llm-cli/goose/root
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/cli_runtime, ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, ipfs_accelerate_py/p2p_tasks/worker.py, docs/LLM_ROUTER.md
+- Changed paths:
+- AST symbols: GOOSE-G040
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: GOOSE-G074
+- Canonical task key: task/v1/b071f725110b89bd2997a268f28a4e2f07498639341326fb90b5c4a574e563ed
+- Canonical task CID: baguqeerawby7ojirboe32kmxujupfcsof4dutbrzgqjsn64qwxckk5hfmpwq
+- Semantic identity: objective-evidence-obligation/v1/120e256b0a03921bf58bdd9660729c2e33283f8898ae7c94f3960fc27a55ce0f
+- Acceptance subset: GOOSE-G040
+- Preconditions: objective goal GOOSE-G074 is schedulable
+- Effects: satisfy evidence requirement: GOOSE-G040
+- Evidence subset: GOOSE-G040
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/GOOSE-G074
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/120e256b0a03921bf58bdd9660729c2e33283f8898ae7c94f3960fc27a55ce0f
+- Missing evidence: GOOSE-G040
+- Embedding query: GOOSE-G040
+- AST query: GOOSE-G040
+- Surplus group: objective/GOOSE-G074
+- Merge key: bb64be6be3187284
+- Merge family: goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559
+- Goal packet role: packet_member
+- Goal packet goals: GOOSE-G071, GOOSE-G074, GOOSE-G075
+- Goal packet task count: 3
+- Goal packet work item count: 3
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 843f2c7a0f19fd87
+- Acceptance: Objective scan filed this gap for GOOSE-G074. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-014-objective-gap-0462c58cd859.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (GOOSE-G040), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559; implement a complete, cohesive change that fully advances the packet goals (GOOSE-G071, GOOSE-G074, GOOSE-G075) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## GOOSE-015 Close objective gap: Prove GOOSE-G050 for Secure and unified Goose CLI support
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-cli-integration
+- Depends on:
+- Outputs: data/agent_supervisor/discovery, docs/architecture/goose_cli_integration.objectives.md, ipfs_accelerate_py/cli_runtime, ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, ipfs_accelerate_py/p2p_tasks/worker.py, docs/LLM_ROUTER.md
+- Validation: python -m pytest test/test_cli_runtime_contracts.py test/test_cli_runtime_process_runner.py test/test_goose_installer.py test/test_goose_cli_provider.py test/test_llm_router_goose.py test/test_goose_cli_endpoint.py test/test_goose_acp_client.py test/test_goose_p2p_policy.py test/test_goose_cli_security_e2e.py -q
+- Bundle: llm-cli/goose/root
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/bundles/llm-cli-goose-root.todo.md
+- Bundle strategy: explicit
+- Graph parents: GOOSE-G000
+- Graph depth: 1
+- Objective heap index: 10
+- Parallel lane: llm-cli/goose/root
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/cli_runtime, ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py, ipfs_accelerate_py/p2p_tasks/worker.py, docs/LLM_ROUTER.md
+- Changed paths:
+- AST symbols: GOOSE-G050
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: GOOSE-G075
+- Canonical task key: task/v1/e15a8802e23d4b37bce9e5b35e562d9c27616c66b70a151c95849804640cc177
+- Canonical task CID: baguqeera4fniqaxchvftpphj4wzv4vrntqtwc3dgw4fbkhevqsmaizamyf3q
+- Semantic identity: objective-evidence-obligation/v1/7b845b51d98b6c0a436573420740caa93014d4f12ccb7fdf1c1512f76865819e
+- Acceptance subset: GOOSE-G050
+- Preconditions: objective goal GOOSE-G075 is schedulable
+- Effects: satisfy evidence requirement: GOOSE-G050
+- Evidence subset: GOOSE-G050
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/GOOSE-G075
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/7b845b51d98b6c0a436573420740caa93014d4f12ccb7fdf1c1512f76865819e
+- Missing evidence: GOOSE-G050
+- Embedding query: GOOSE-G050
+- AST query: GOOSE-G050
+- Surplus group: objective/GOOSE-G075
+- Merge key: bb06a8282e90399d
+- Merge family: goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559
+- Goal packet role: packet_member
+- Goal packet goals: GOOSE-G071, GOOSE-G074, GOOSE-G075
+- Goal packet task count: 3
+- Goal packet work item count: 3
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: ba4def24f91c0132
+- Acceptance: Objective scan filed this gap for GOOSE-G075. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-015-objective-gap-fea655bc917f.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (GOOSE-G050), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/goose_cli_integration/ipfs_accelerate_py/f297ed3e0559; implement a complete, cohesive change that fully advances the packet goals (GOOSE-G071, GOOSE-G074, GOOSE-G075) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## GOOSE-016 Close objective gap: Shared CLI runtime contracts and process lifecycle
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: cli-runtime
+- Depends on:
+- Outputs: data/agent_supervisor/discovery, docs/architecture/goose_cli_integration.objectives.md, ipfs_accelerate_py/cli_runtime/__init__.py, ipfs_accelerate_py/cli_runtime/contracts.py, ipfs_accelerate_py/cli_runtime/errors.py, ipfs_accelerate_py/cli_runtime/registry.py, ipfs_accelerate_py/cli_runtime/process_runner.py
+- Validation: python -m pytest test/test_cli_runtime_contracts.py test/test_cli_runtime_process_runner.py -q
+- Bundle: llm-cli/goose/runtime
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/bundles/llm-cli-goose-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: GOOSE-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: llm-cli/goose/runtime
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/cli_runtime/__init__.py, ipfs_accelerate_py/cli_runtime/contracts.py, ipfs_accelerate_py/cli_runtime/errors.py, ipfs_accelerate_py/cli_runtime/registry.py, ipfs_accelerate_py/cli_runtime/process_runner.py
+- Changed paths:
+- AST symbols: LLMProvider ProviderInfo _run_cli_command BaseCLIWrapper CLIEndpointAdapter
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: GOOSE-G010
+- Canonical task key: task/v1/9f064214efd8086e0d29a3c33a2a00cdd1fd9b56a370d02d6db1fe4436fb915f
+- Canonical task CID: baguqeerat4deefhp3aeg4djjupbtukqazxi73g2wunynallnwh7einx3sfpq
+- Semantic identity: objective-evidence-obligation/v1/f9aab703eb4cec702f465845f35bac98524ef457fad8824e49a3a0e4c835bfb9
+- Acceptance subset: Existing LLMProvider string generation remains compatible, rich request, result, event, capability, and error records are deterministic and bounded, execution uses argv with shell disabled and prompt stdin, synchronous, asynchronous, and streaming paths share semantics, timeout and cancellation terminate process trees, output is bounded, working directories and environment overlays are validated, secrets and prompts are absent from errors and telemetry, importing or listing providers starts no process and loads no optional provider.
+- Preconditions: objective goal GOOSE-G010 is schedulable
+- Effects: satisfy evidence requirement: ipfs_accelerate_py/cli_runtime/process_runner.py, satisfy evidence requirement: test/test_cli_runtime_contracts.py, satisfy evidence requirement: test/test_cli_runtime_process_runner.py
+- Evidence subset: ipfs_accelerate_py/cli_runtime/process_runner.py, test/test_cli_runtime_contracts.py, test/test_cli_runtime_process_runner.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/GOOSE-G010
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/f9aab703eb4cec702f465845f35bac98524ef457fad8824e49a3a0e4c835bfb9
+- Missing evidence: ipfs_accelerate_py/cli_runtime/process_runner.py, test/test_cli_runtime_contracts.py, test/test_cli_runtime_process_runner.py
+- Embedding query: typed CLI runtime subprocess cancellation streaming capabilities side effects cache retry registry
+- AST query: LLMProvider ProviderInfo _run_cli_command BaseCLIWrapper CLIEndpointAdapter
+- Surplus group: objective/GOOSE-G010
+- Merge key: 0f242d0f2e39b0b2
+- Merge family: objective/GOOSE-G010
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 5aaa42ea4de4c440
+- Acceptance: Objective scan filed this gap for GOOSE-G010. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-016-objective-gap-e5127223c5f0.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_accelerate_py/cli_runtime/process_runner.py, test/test_cli_runtime_contracts.py, test/test_cli_runtime_process_runner.py), and keep the supervisor-fed backlog aligned with the objective heap.  Separate immutable contracts and registry work from process execution so installer, endpoint, and provider lanes can build on stable interfaces.
+
+## GOOSE-017 Close objective gap: Pinned and verifiable Goose lazy installation
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-installer
+- Depends on:
+- Outputs: data/agent_supervisor/discovery, docs/architecture/goose_cli_integration.objectives.md, ipfs_accelerate_py/cli_runtime/installers/__init__.py, ipfs_accelerate_py/cli_runtime/installers/goose.py, ipfs_accelerate_py/cli_runtime/installers/goose_release_manifest.json, test/test_goose_installer.py
+- Validation: python -m pytest test/test_goose_installer.py -q
+- Bundle: llm-cli/goose/installer
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/bundles/llm-cli-goose-installer.todo.md
+- Bundle strategy: explicit
+- Graph parents: GOOSE-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: llm-cli/goose/installer
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/cli_runtime/installers/__init__.py, ipfs_accelerate_py/cli_runtime/installers/goose.py, ipfs_accelerate_py/cli_runtime/installers/goose_release_manifest.json, test/test_goose_installer.py
+- Changed paths:
+- AST symbols: ensure_mistral_vibe MistralVibeInstallResult auto_install _process_install_lock
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: GOOSE-G020
+- Canonical task key: task/v1/9c4340ad208b10ca04d824f99d797b17db619e5d219c2578ea56b1d769b74d21
+- Canonical task CID: baguqeeratrbubljarmimubgyet4z26l3c7nwdhs5egock6hkk2y5o2nxjuqq
+- Semantic identity: objective-evidence-obligation/v1/74e3a9cf8aa4432054ceac909dc51092de9bf7876744052bd757c621db1232bf
+- Acceptance subset: Discovery checks explicit path, operator argv, PATH, and the managed versioned directory in deterministic order, implicit router discovery never installs, explicit provider selection may install unless policy disables it, OS, architecture, libc, and supported release variants are validated, archives are downloaded to staging, size bounded, SHA-256 checked against pinned package data, safely extracted, version probed, and atomically promoted, concurrent threads and processes collapse to one install, rollback preserves the prior executable, configuration and authentication remain separate typed readiness states, tests cover tampering, traversal, timeout, offline failure, unsupported platforms, locks, rollback, and no-install discovery without live network access.
+- Preconditions: objective goal GOOSE-G020 is schedulable
+- Effects: satisfy evidence requirement: ipfs_accelerate_py/cli_runtime/installers/goose.py, satisfy evidence requirement: ipfs_accelerate_py/cli_runtime/installers/goose_release_manifest.json, satisfy evidence requirement: test/test_goose_installer.py
+- Evidence subset: ipfs_accelerate_py/cli_runtime/installers/goose.py, ipfs_accelerate_py/cli_runtime/installers/goose_release_manifest.json, test/test_goose_installer.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/GOOSE-G020
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/74e3a9cf8aa4432054ceac909dc51092de9bf7876744052bd757c621db1232bf
+- Missing evidence: ipfs_accelerate_py/cli_runtime/installers/goose.py, ipfs_accelerate_py/cli_runtime/installers/goose_release_manifest.json, test/test_goose_installer.py
+- Embedding query: goose release lazy installer sha256 atomic rollback lock linux mac windows musl vulkan cuda
+- AST query: ensure_mistral_vibe MistralVibeInstallResult auto_install _process_install_lock
+- Surplus group: objective/GOOSE-G020
+- Merge key: c8f5e751ebc8015f
+- Merge family: objective/GOOSE-G020
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 99d8b45416dee1a9
+- Acceptance: Objective scan filed this gap for GOOSE-G020. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-017-objective-gap-c685daff8ede.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_accelerate_py/cli_runtime/installers/goose.py, ipfs_accelerate_py/cli_runtime/installers/goose_release_manifest.json, test/test_goose_installer.py), and keep the supervisor-fed backlog aligned with the objective heap.  Keep release-manifest maintenance separate from router and provider command construction.
+
+## GOOSE-018 Close objective gap: Safe Goose provider and llm_router integration
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-provider-router
+- Depends on:
+- Outputs: data/agent_supervisor/discovery, docs/architecture/goose_cli_integration.objectives.md, ipfs_accelerate_py/cli_runtime/providers/__init__.py, ipfs_accelerate_py/cli_runtime/providers/goose.py, ipfs_accelerate_py/llm_router.py, test/test_goose_cli_provider.py, test/test_llm_router_goose.py
+- Validation: python -m pytest test/test_goose_cli_provider.py test/test_llm_router_goose.py test/test_llm_router_integration.py -q
+- Bundle: llm-cli/goose/router
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/bundles/llm-cli-goose-router.todo.md
+- Bundle strategy: explicit
+- Graph parents: GOOSE-G000
+- Graph depth: 1
+- Objective heap index: 3
+- Parallel lane: llm-cli/goose/router
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/cli_runtime/providers/__init__.py, ipfs_accelerate_py/cli_runtime/providers/goose.py, ipfs_accelerate_py/llm_router.py, test/test_goose_cli_provider.py, test/test_llm_router_goose.py
+- Changed paths:
+- AST symbols: _builtin_provider_by_name _resolve_provider_uncached generate_text _provider_cache_key _effective_model_key
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: GOOSE-G030
+- Canonical task key: task/v1/5740c0b1f9abe36a68a505ce0b099e1d80c330ccbdd5661733fa587caf5fd2f5
+- Canonical task CID: baguqeerak5ambmpzvprwu2ffaxhawcm6dwamgmgmxxkwmfzt7jmhzl272l2q
+- Semantic identity: objective-evidence-obligation/v1/7641a83d1028e785251e23fe66f7eefae994c73d4c683553abe962abfa0099d7
+- Acceptance subset: Chat execution sets GOOSE_MODE=chat, disables sessions and default profiles, uses stdin, requests JSON, enforces low explicit turn and tool-repetition bounds, and enables no builtin or external extension, model_name maps only to the Goose model and a separate goose_provider selects the underlying provider, JSON and stream-json parsing preserves final text and bounded metadata, unsupported versions fail closed when required safety flags are missing, explicit selection can invoke the installer but generic discovery cannot, provider cache identity includes Goose configuration, agent mode is rejected by ordinary generate_text unless explicit side-effect authorization is supplied, side-effecting calls bypass response caches, default-model retry, provider fallback, and unsafe batch concurrency.
+- Preconditions: objective goal GOOSE-G030 is schedulable
+- Effects: satisfy evidence requirement: ipfs_accelerate_py/cli_runtime/providers/goose.py, satisfy evidence requirement: test/test_goose_cli_provider.py, satisfy evidence requirement: test/test_llm_router_goose.py
+- Evidence subset: ipfs_accelerate_py/cli_runtime/providers/goose.py, test/test_goose_cli_provider.py, test/test_llm_router_goose.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/GOOSE-G030
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/7641a83d1028e785251e23fe66f7eefae994c73d4c683553abe962abfa0099d7
+- Missing evidence: ipfs_accelerate_py/cli_runtime/providers/goose.py, test/test_goose_cli_provider.py, test/test_llm_router_goose.py
+- Embedding query: goose run no session no profile JSON stream chat llm router provider model retry cache
+- AST query: _builtin_provider_by_name _resolve_provider_uncached generate_text _provider_cache_key _effective_model_key
+- Surplus group: objective/GOOSE-G030
+- Merge key: d9e29f830a2d1815
+- Merge family: objective/GOOSE-G030
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: e671222f72f82427
+- Acceptance: Objective scan filed this gap for GOOSE-G030. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-018-objective-gap-dd66ed85e026.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_accelerate_py/cli_runtime/providers/goose.py, test/test_goose_cli_provider.py, test/test_llm_router_goose.py), and keep the supervisor-fed backlog aligned with the objective heap.  Complete the standalone adapter and parser before modifying central router resolution.
+
+## GOOSE-019 Close objective gap: Concrete CLI endpoints, MCP handling, and ACP lifecycle
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-endpoint
+- Depends on:
+- Outputs: data/agent_supervisor/discovery, docs/architecture/goose_cli_integration.objectives.md, ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/__init__.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py
+- Validation: python -m pytest test/test_goose_cli_endpoint.py test/test_goose_acp_client.py test/mcp_server/test_cli_endpoint_tools.py -q
+- Bundle: llm-cli/goose/endpoint
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/bundles/llm-cli-goose-endpoint.todo.md
+- Bundle strategy: explicit
+- Graph parents: GOOSE-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: llm-cli/goose/endpoint
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/__init__.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py
+- Changed paths:
+- AST symbols: CLIEndpointAdapter register_cli_endpoint execute_cli_inference cli_endpoint_register goose acp
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: GOOSE-G040
+- Canonical task key: task/v1/ef9529e37b3872fc4057c690074995dd33889a16114a61ab574da24faf7f5318
+- Canonical task CID: baguqeera56ksty33hbzpyqcxy2iaosmv3uzyrgqwcffgdk2xjwre7l37kmma
+- Semantic identity: objective-evidence-obligation/v1/94005f6ea38c3b9fb6dd9803776516e54e2cd5974e733ba8dfff9e296aeececd
+- Acceptance subset: Endpoint registration resolves a concrete factory instead of instantiating an abstract class, list and liveness are side-effect free, installed, configured, ready, and degraded states remain distinct, execute returns a typed bounded envelope without echoing the prompt, stream and cancel clean up child processes, one-shot chat uses the same Goose adapter as llm_router, persistent sessions use goose acp over stdio with bounded restart recovery, optional goose serve support, if added, binds loopback and requires a generated secret, agent endpoint requests require explicit side-effect policy, allowed roots, extension and builtin allowlists, turn limits, timeouts, and approval mode.
+- Preconditions: objective goal GOOSE-G040 is schedulable
+- Effects: satisfy evidence requirement: ipfs_accelerate_py/cli_runtime/endpoints.py, satisfy evidence requirement: ipfs_accelerate_py/cli_runtime/acp/goose_client.py, satisfy evidence requirement: test/test_goose_cli_endpoint.py, satisfy evidence requirement: test/test_goose_acp_client.py
+- Evidence subset: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, test/test_goose_cli_endpoint.py, test/test_goose_acp_client.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/GOOSE-G040
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/94005f6ea38c3b9fb6dd9803776516e54e2cd5974e733ba8dfff9e296aeececd
+- Missing evidence: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, test/test_goose_cli_endpoint.py, test/test_goose_acp_client.py
+- Embedding query: goose endpoint MCP factory health readiness stream cancel session ACP stdio lifecycle
+- AST query: CLIEndpointAdapter register_cli_endpoint execute_cli_inference cli_endpoint_register goose acp
+- Surplus group: objective/GOOSE-G040
+- Merge key: 626ca78d0ec01a8a
+- Merge family: objective/GOOSE-G040
+- Merge role: aggregate
+- Work item count: 4
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/goose_endpoint/ipfs_accelerate_py/76d9951bfacf
+- Goal packet role: packet_anchor
+- Goal packet goals: GOOSE-G040
+- Goal packet task count: 3
+- Goal packet work item count: 10
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 2a88d453a777a50e
+- Acceptance: Objective scan filed this gap for GOOSE-G040. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-019-objective-gap-346dde3c638b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, test/test_goose_cli_endpoint.py, test/test_goose_acp_client.py), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/goose_endpoint/ipfs_accelerate_py/76d9951bfacf; implement a complete, cohesive change that fully advances the packet goals (GOOSE-G040) and covers all the shared packet evidence in one comprehensive pass. Land the provider-neutral endpoint factory before Goose endpoint wiring, and land one-shot execution before ACP persistence.
+
+## GOOSE-020 Close objective gap: Concrete CLI endpoints, MCP handling, and ACP lifecycle
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: goose-endpoint
+- Depends on:
+- Outputs: data/agent_supervisor/discovery, docs/architecture/goose_cli_integration.objectives.md, ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/__init__.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py
+- Validation: python -m pytest test/test_goose_cli_endpoint.py test/test_goose_acp_client.py test/mcp_server/test_cli_endpoint_tools.py -q
+- Bundle: llm-cli/goose/endpoint
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/bundles/llm-cli-goose-endpoint.todo.md
+- Bundle strategy: explicit
+- Graph parents: GOOSE-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: llm-cli/goose/endpoint
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/__init__.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, ipfs_accelerate_py/mcp/tools/cli_endpoint_adapters.py, ipfs_accelerate_py/mcp_server/tools/cli_endpoint_tools/native_cli_endpoint_tools.py
+- Changed paths:
+- AST symbols: CLIEndpointAdapter register_cli_endpoint execute_cli_inference cli_endpoint_register goose acp
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: GOOSE-G040
+- Canonical task key: task/v1/7df6dd4c135d827f45383b9f5067cb097216e23bcad8f865f5071fb4a181f841
+- Canonical task CID: baguqeerapx3n2tatlwbh6rjyhopvaz6lbfzbnyr3zlmpqzpva4p3jimb7baq
+- Semantic identity: objective-evidence-obligation/v1/00ee5d90d49695917d4b7e1daf9c8191ae0b2e68b3bb1726c653b6d343d5da29
+- Acceptance subset: Endpoint registration resolves a concrete factory instead of instantiating an abstract class, list and liveness are side-effect free, installed, configured, ready, and degraded states remain distinct, execute returns a typed bounded envelope without echoing the prompt, stream and cancel clean up child processes, one-shot chat uses the same Goose adapter as llm_router, persistent sessions use goose acp over stdio with bounded restart recovery, optional goose serve support, if added, binds loopback and requires a generated secret, agent endpoint requests require explicit side-effect policy, allowed roots, extension and builtin allowlists, turn limits, timeouts, and approval mode.
+- Preconditions: objective goal GOOSE-G040 is schedulable
+- Effects: satisfy evidence requirement: ipfs_accelerate_py/cli_runtime/endpoints.py, satisfy evidence requirement: ipfs_accelerate_py/cli_runtime/acp/goose_client.py, satisfy evidence requirement: test/test_goose_cli_endpoint.py
+- Evidence subset: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, test/test_goose_cli_endpoint.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/GOOSE-G040
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/00ee5d90d49695917d4b7e1daf9c8191ae0b2e68b3bb1726c653b6d343d5da29
+- Missing evidence: ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, test/test_goose_cli_endpoint.py
+- Embedding query: goose endpoint MCP factory health readiness stream cancel session ACP stdio lifecycle
+- AST query: CLIEndpointAdapter register_cli_endpoint execute_cli_inference cli_endpoint_register goose acp
+- Surplus group: objective/GOOSE-G040
+- Merge key: cf1b88e36312aaef
+- Merge family: objective/GOOSE-G040
+- Merge role: evidence_cluster
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/goose_endpoint/ipfs_accelerate_py/76d9951bfacf
+- Goal packet role: packet_member
+- Goal packet goals: GOOSE-G040
+- Goal packet task count: 3
+- Goal packet work item count: 10
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: evidence_cluster
+- Todo vector key: cdb2db6fd509d081
+- Acceptance: Objective scan filed this gap for GOOSE-G040. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-020-objective-gap-2d0e6814ca6b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, test/test_goose_cli_endpoint.py), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/goose_endpoint/ipfs_accelerate_py/76d9951bfacf; implement a complete, cohesive change that fully advances the packet goals (GOOSE-G040) and covers all the shared packet evidence in one comprehensive pass. Land the provider-neutral endpoint factory before Goose endpoint wiring, and land one-shot execution before ACP persistence.
