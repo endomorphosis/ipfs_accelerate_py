@@ -29,6 +29,49 @@ When no provider is specified, the router checks its configured provider
 resolution path. To make a run reproducible, select a provider explicitly and
 record the model, relevant environment, and dependency versions.
 
+## Catalog discovery versus invocation
+
+The router has two deliberately separate surfaces:
+
+| Information plane | Invocation plane |
+| --- | --- |
+| `list_providers()` | `generate_text()` |
+| `get_provider_descriptor(name)` | `generate_text_batch()` |
+| `list_models(provider=...)` | `generate_text_mesh()` |
+| `resolve_model(..., operation=...)` | provider-specific request handling |
+| `get_catalog_snapshot()` / `catalog_snapshot()` | streaming, fallback, and response caching |
+
+Discovery returns the shared versioned `ProviderDescriptor`,
+`ModelDescriptor`, and `RouterBinding` records. It does not construct a
+provider, install a CLI, start a process, load model weights, read a credential
+store, probe an endpoint, or make a model request. `resolve_model()` is
+metadata-only and accepts the same explicit provider aliases and model
+overrides as invocation.
+
+```python
+from ipfs_accelerate_py import llm_router
+
+providers = llm_router.list_providers()
+model = llm_router.resolve_model(
+    "openai/gpt-4o-mini",
+    provider="openrouter",
+    operation="text.generate",
+)
+snapshot = llm_router.get_catalog_snapshot()
+
+print(model.model_id, snapshot.revision)
+```
+
+Canonical names determine stable IDs. Aliases such as `hf` or `codex` remain
+accepted compatibility inputs but do not create new identities. A provider
+being known is not proof that it is configured, authorized, reachable,
+healthy, or routable; those are independent tri-state facts.
+
+The aggregate catalog and `ModelManager.resolve()` can rank bindings across
+routers and sources. After resolution, invoke the selected text binding through
+this module. The catalog never owns `generate_text()`. See the
+[AI Service Catalog architecture](architecture/AI_SERVICE_CATALOG.md).
+
 ## Provider names
 
 The built-in names currently recognized by the router include:
@@ -69,6 +112,12 @@ class ExampleProvider:
 register_llm_provider("example", lambda: ExampleProvider())
 print(generate_text("hello", provider="example"))
 ```
+
+Production registrations should also supply a side-effect-free provider
+descriptor and model hints. A generated router binding must resolve back to the
+same canonical provider/model IDs. Provider construction belongs in the
+factory; it must not happen while the descriptor or catalog snapshot is being
+built.
 
 The environment variable `ipfs_accelerate_py_LLM_PROVIDER` forces a provider
 name. If it names a provider that is not registered or available, the router
@@ -123,6 +172,11 @@ other injected resources. `clear_llm_router_caches()` clears router-local
 provider caches. Response caching is useful only when the provider request is
 safe to replay; do not cache prompts or outputs containing sensitive data
 without an appropriate storage policy.
+
+Router provider/response caches are separate from the AI catalog metadata
+cache. The latter stores only descriptors and health samples, uses independent
+capability and health TTLs, and never stores prompts, media, or inference
+output. Clearing one cache does not promise to invalidate the other.
 
 ## Grok CLI
 
@@ -191,6 +245,34 @@ Provider-specific tests may require credentials, CLIs, a running llama.cpp
 server, network access, or model files. A provider being registered or
 discoverable is not evidence that an end-to-end request will succeed.
 
+The catalog conformance suite is offline by default and uses injected fake
+providers:
+
+```bash
+python -m pytest \
+  test/test_llm_router_catalog_discovery.py \
+  test/test_ai_catalog_conformance.py -q
+```
+
+An operator may select only the live modalities available in an environment:
+
+```bash
+IPFS_ACCELERATE_PY_AI_CATALOG_LIVE=text \
+IPFS_ACCELERATE_PY_AI_CATALOG_LIVE_TEXT_PROVIDER=openrouter \
+IPFS_ACCELERATE_PY_AI_CATALOG_LIVE_TEXT_MODEL=openai/gpt-4o-mini \
+python -m pytest test/test_ai_catalog_conformance.py \
+  -k opt_in_live_provider_smoke -q
+```
+
+For migration, keep calling `generate_text()` for invocation and replace
+duplicate provider/model enumeration with `ModelManager.list_services()`,
+`list_catalog_models()`, and `resolve()`. MCP callers should migrate from
+`generate_text` to `llm_generate`; the former remains a compatibility alias
+with no scheduled removal. Roll back a catalog rollout by disabling catalog
+selected traffic and refresh/federation, retaining the last immutable
+revision, and continuing to invoke the router through its compatible public
+entry points.
+
 ## Trust boundary
 
 Router output is provider output. Applications and the agent supervisor must
@@ -199,4 +281,6 @@ or authoritative proof/evidence receipts accept it. The router does not turn
 generated text into executable code or a merge decision.
 
 See [API overview](api/overview.md), [architecture overview](architecture/overview.md),
-[testing](development/testing.md), and the [agent supervisor guide](guides/AGENT_SUPERVISOR_GUIDE.md).
+[AI Service Catalog](architecture/AI_SERVICE_CATALOG.md),
+[MCP Server](MCP_SERVER.md), [testing](development/testing.md), and the
+[agent supervisor guide](guides/AGENT_SUPERVISOR_GUIDE.md).

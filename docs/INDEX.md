@@ -17,6 +17,9 @@ context of earlier implementations and are not normative API references.
   points.
 - [Architecture overview](architecture/overview.md): current runtime layers
   and data flow.
+- [AI Service Catalog architecture](architecture/AI_SERVICE_CATALOG.md):
+  canonical service identities, resolution, source precedence, security,
+  migration, and rollout.
 
 ## User guides
 
@@ -34,7 +37,9 @@ context of earlier implementations and are not normative API references.
 - [Testing](development/testing.md)
 - [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md)
 - [Contributing](../CONTRIBUTING.md)
+- [AI Service Catalog](architecture/AI_SERVICE_CATALOG.md)
 - [LLM router](LLM_ROUTER.md)
+- [MCP server AI catalog and router tools](MCP_SERVER.md)
 - [IPFS backend router](IPFS_BACKEND_ROUTER.md)
 - [Canonical MCP server README](../ipfs_accelerate_py/mcp_server/README.md)
 - [MCP++ records](../mcpplusplus/README.md)
@@ -83,6 +88,9 @@ planned work. Use the current guides and source code for present behavior.
 | Install or verify the package | [Installation](guides/getting-started/installation.md) |
 | Run inference | [Quick start](guides/QUICKSTART.md) |
 | Start MCP | [MCP setup](guides/MCP_SETUP_GUIDE.md) |
+| Discover or resolve AI services | [AI Service Catalog](architecture/AI_SERVICE_CATALOG.md) |
+| Use catalog or router tools over MCP | [MCP server AI tools](MCP_SERVER.md) |
+| Migrate legacy model or MCP APIs | [Catalog migration and compatibility](architecture/AI_SERVICE_CATALOG.md#migration-and-compatibility) |
 | Operate or migrate agent-supervisor workflows | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
 | Understand supervisor services, contracts, and trust boundaries | [Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) |
 | Follow the supervisor rollout and self-improvement roadmap | [Self-Improvement Plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md) |
@@ -91,5 +99,5 @@ planned work. Use the current guides and source code for present behavior.
 | Audit documentation drift | [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md) |
 | Troubleshoot | [FAQ](guides/troubleshooting/faq.md) |
 
-**Documentation baseline:** 2026-07-25. Update this page when a maintained
+**Documentation baseline:** 2026-07-27. Update this page when a maintained
 entry point or canonical architecture document changes.
