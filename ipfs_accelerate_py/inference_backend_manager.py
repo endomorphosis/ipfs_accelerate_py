@@ -27,11 +27,29 @@ import time
 import threading
 import inspect
 import json
+import warnings
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Dict, List, Optional, Any, Callable, Set
+from typing import Dict, List, Optional, Any, Callable, Mapping, Sequence, Set, Tuple
 from collections import defaultdict
+
+from .model_catalog import (
+    CapabilityDescriptor,
+    CatalogSnapshot,
+    DeploymentDescriptor,
+    LifecycleState,
+    Modality,
+    ModelDescriptor,
+    Operation,
+    OperationalState,
+    ProviderDescriptor,
+    Provenance,
+    RouterBinding,
+)
+from .model_catalog.catalog import AIServiceCatalog
+from .model_catalog.sources.deployments import BackendDeploymentSource
+from .model_catalog.sources.static import CatalogSourceResult, SourceMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +86,204 @@ class BackendCapabilities:
     hardware_types: Set[str] = field(default_factory=set)  # e.g., "cuda", "cpu", "mps"
     protocols: Set[str] = field(default_factory=set)  # e.g., "http", "websocket", "libp2p"
 
+    def __post_init__(self) -> None:
+        for field_name in (
+            "supported_tasks",
+            "supported_models",
+            "hardware_types",
+            "protocols",
+        ):
+            values = getattr(self, field_name)
+            if isinstance(values, str) or not isinstance(
+                values, (set, frozenset, list, tuple)
+            ):
+                raise TypeError(f"{field_name} must be a collection of strings")
+            normalized = {
+                item.strip()
+                for item in values
+                if isinstance(item, str) and item.strip()
+            }
+            if len(normalized) != len(values):
+                raise ValueError(f"{field_name} must contain non-empty strings")
+            setattr(self, field_name, normalized)
+        if (
+            isinstance(self.max_batch_size, bool)
+            or not isinstance(self.max_batch_size, int)
+            or self.max_batch_size < 1
+        ):
+            raise ValueError("max_batch_size must be a positive integer")
+        if not isinstance(self.supports_streaming, bool):
+            raise TypeError("supports_streaming must be boolean")
+        if not isinstance(self.supports_batching, bool):
+            raise TypeError("supports_batching must be boolean")
+
+
+_TASK_OPERATIONS: Dict[str, Operation] = {
+    "text-generation": Operation.TEXT_GENERATE,
+    "text_generation": Operation.TEXT_GENERATE,
+    "generate": Operation.TEXT_GENERATE,
+    "chat": Operation.TEXT_CHAT,
+    "conversational": Operation.TEXT_CHAT,
+    "embedding": Operation.EMBEDDING_GENERATE,
+    "embeddings": Operation.EMBEDDING_GENERATE,
+    "text-embedding": Operation.EMBEDDING_GENERATE,
+    "feature-extraction": Operation.EMBEDDING_GENERATE,
+    "vision": Operation.VISION_GENERATE,
+    "audio": Operation.AUDIO_TRANSCRIBE,
+    "transcription": Operation.AUDIO_TRANSCRIBE,
+    "text-to-speech": Operation.AUDIO_SYNTHESIZE,
+}
+
+
+def _catalog_capabilities(
+    tasks: Sequence[str],
+    *,
+    streaming: bool = False,
+    batching: bool = False,
+    max_batch_size: Optional[int] = None,
+) -> Tuple[CapabilityDescriptor, ...]:
+    """Translate legacy task labels once at the registration boundary."""
+
+    operations = {
+        _TASK_OPERATIONS[item.strip().casefold()]
+        for item in tasks
+        if isinstance(item, str) and item.strip().casefold() in _TASK_OPERATIONS
+    }
+    if not operations:
+        return ()
+    if streaming:
+        operations.add(Operation.STREAM)
+    if batching:
+        operations.add(Operation.BATCH)
+    inputs = {Modality.TEXT}
+    outputs = {Modality.TEXT}
+    if Operation.EMBEDDING_GENERATE in operations:
+        outputs.add(Modality.EMBEDDING)
+    if Operation.VISION_GENERATE in operations:
+        inputs.add(Modality.IMAGE)
+    if Operation.AUDIO_TRANSCRIBE in operations:
+        inputs.add(Modality.AUDIO)
+    if Operation.AUDIO_SYNTHESIZE in operations:
+        outputs.add(Modality.AUDIO)
+    return (
+        CapabilityDescriptor(
+            operations=tuple(sorted(operations, key=lambda item: item.value)),
+            input_modalities=tuple(sorted(inputs, key=lambda item: item.value)),
+            output_modalities=tuple(sorted(outputs, key=lambda item: item.value)),
+            max_batch_size=max_batch_size if batching else None,
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class ProviderRegistration:
+    """Named construction data for a lazily instantiated API provider."""
+
+    name: str
+    backend_module_path: str
+    backend_class_name: str
+    env_key_primary: Optional[str]
+    env_key_secondary: Optional[str]
+    default_base_url: Optional[str]
+    display_name: str
+    supported_tasks: frozenset[str]
+    descriptor: Optional[ProviderDescriptor] = None
+
+    def __post_init__(self) -> None:
+        name = str(self.name).strip().casefold()
+        if not name:
+            raise ValueError("provider registration name must not be empty")
+        for field_name in (
+            "backend_module_path",
+            "backend_class_name",
+            "display_name",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field_name} must be non-empty text")
+            object.__setattr__(self, field_name, value.strip())
+        for field_name in (
+            "env_key_primary",
+            "env_key_secondary",
+            "default_base_url",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and (
+                not isinstance(value, str) or not value.strip()
+            ):
+                raise ValueError(f"{field_name} must be non-empty text or None")
+        tasks = frozenset(
+            item.strip()
+            for item in self.supported_tasks
+            if isinstance(item, str) and item.strip()
+        )
+        if not tasks or len(tasks) != len(self.supported_tasks):
+            raise ValueError("supported_tasks must contain non-empty task names")
+        descriptor = self.descriptor or ProviderDescriptor(
+            name=name,
+            display_name=self.display_name,
+            capabilities=_catalog_capabilities(tuple(tasks), streaming=True),
+            lifecycle=LifecycleState.DECLARED,
+            state=OperationalState(known=True),
+            provenance=(
+                Provenance(source="inference-backend-manager.providers"),
+            ),
+        )
+        if descriptor.name != name:
+            raise ValueError("provider descriptor name must match registration name")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "supported_tasks", tasks)
+        object.__setattr__(self, "descriptor", descriptor)
+
+    # Alternate named spellings used by the first typed API draft.
+    @property
+    def module_path(self) -> str:
+        return self.backend_module_path
+
+    @property
+    def class_name(self) -> str:
+        return self.backend_class_name
+
+    @property
+    def base_url(self) -> Optional[str]:
+        return self.default_base_url
+
+    @property
+    def legacy_tuple(self) -> Tuple[Any, ...]:
+        return (
+            self.backend_module_path,
+            self.backend_class_name,
+            self.env_key_primary,
+            self.env_key_secondary,
+            self.default_base_url,
+            self.display_name,
+            set(self.supported_tasks),
+        )
+
+    def __getitem__(self, index: int) -> Any:
+        warnings.warn(
+            "indexed provider registrations are deprecated; use named fields",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.legacy_tuple[index]
+
+    def __iter__(self):
+        warnings.warn(
+            "tuple-unpacking provider registrations is deprecated; use named fields",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return iter(self.legacy_tuple)
+
+    def __len__(self) -> int:
+        return 7
+
+
+ProviderSpec = ProviderRegistration
+ProviderBackendSpec = ProviderRegistration
+ProviderConfiguration = ProviderRegistration
+
 
 @dataclass
 class BackendMetrics:
@@ -81,6 +297,32 @@ class BackendMetrics:
     models_loaded: int = 0
     last_health_check: Optional[float] = None
     uptime_seconds: float = 0.0
+
+
+@dataclass(frozen=True)
+class BackendRegistration:
+    """Typed input accepted by :meth:`register_backend`."""
+
+    backend_id: str
+    backend_type: BackendType
+    name: str
+    instance: Optional[Any] = None
+    capabilities: BackendCapabilities = field(default_factory=BackendCapabilities)
+    endpoint: Optional[str] = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    aliases: Tuple[str, ...] = ()
+    status: Optional[BackendStatus] = None
+    configured: Optional[bool] = True
+    authorized: Optional[bool] = None
+    reachable: Optional[bool] = None
+    live: Optional[bool] = None
+    ready: Optional[bool] = None
+    healthy: Optional[bool] = None
+    routable: Optional[bool] = None
+    provider: Optional[ProviderDescriptor] = None
+    models: Tuple[ModelDescriptor, ...] = ()
+    deployments: Tuple[DeploymentDescriptor, ...] = ()
+    bindings: Tuple[RouterBinding, ...] = ()
 
 
 @dataclass
@@ -101,6 +343,91 @@ class BackendInfo:
     last_selected_task: Optional[str] = None
     last_selection_reason: Optional[str] = None
     selection_count: int = 0
+    aliases: Tuple[str, ...] = ()
+    configured: Optional[bool] = True
+    authorized: Optional[bool] = None
+    reachable: Optional[bool] = None
+    live: Optional[bool] = None
+    ready: Optional[bool] = None
+    healthy: Optional[bool] = None
+    routable: Optional[bool] = None
+    provider: Optional[ProviderDescriptor] = None
+    models: Tuple[ModelDescriptor, ...] = ()
+    deployments: Tuple[DeploymentDescriptor, ...] = ()
+    bindings: Tuple[RouterBinding, ...] = ()
+
+
+class BackendManagerCatalogSource:
+    """Thread-safe, side-effect-free source published by the manager."""
+
+    source = "inference-backend-manager"
+    precedence = 40
+    side_effecting = False
+
+    def __init__(self, source: str = source, precedence: int = precedence) -> None:
+        self.source = source
+        self.precedence = precedence
+        self._lock = threading.RLock()
+        self._snapshot = CatalogSnapshot()
+
+    def replace(self, snapshot: CatalogSnapshot) -> None:
+        if not isinstance(snapshot, CatalogSnapshot):
+            raise TypeError("catalog source accepts only CatalogSnapshot values")
+        with self._lock:
+            self._snapshot = snapshot
+
+    def load(self) -> CatalogSourceResult:
+        with self._lock:
+            snapshot = self._snapshot
+        return CatalogSourceResult(
+            snapshot=snapshot,
+            metadata=SourceMetadata(
+                source=self.source,
+                precedence=self.precedence,
+                revision=snapshot.revision,
+            ),
+        )
+
+    snapshot = load
+    read = load
+
+
+BackendCatalogSource = BackendManagerCatalogSource
+
+
+def _provider_spec(
+    name: str,
+    module_path: str,
+    class_name: str,
+    env_primary: Optional[str],
+    env_secondary: Optional[str],
+    base_url: Optional[str],
+    display_name: str,
+    tasks: Set[str],
+    *,
+    aliases: Tuple[str, ...] = (),
+) -> ProviderRegistration:
+    return ProviderRegistration(
+        name=name,
+        backend_module_path=module_path,
+        backend_class_name=class_name,
+        env_key_primary=env_primary,
+        env_key_secondary=env_secondary,
+        default_base_url=base_url,
+        display_name=display_name,
+        supported_tasks=frozenset(tasks),
+        descriptor=ProviderDescriptor(
+            name=name,
+            display_name=display_name,
+            aliases=aliases,
+            capabilities=_catalog_capabilities(tuple(tasks), streaming=True),
+            lifecycle=LifecycleState.DECLARED,
+            state=OperationalState(known=True),
+            provenance=(
+                Provenance(source="inference-backend-manager.providers"),
+            ),
+        ),
+    )
 
 
 class InferenceBackendManager:
@@ -115,8 +442,22 @@ class InferenceBackendManager:
     - Status reporting
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        self.config = config or {}
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        *,
+        catalog: Optional[Any] = None,
+        catalog_source: Optional[Any] = None,
+        deployment_source: Optional[Any] = None,
+        provider_registry: Optional[Mapping[str, Any]] = None,
+    ):
+        self.config = dict(config or {})
+        catalog = self.config.get("catalog", catalog)
+        catalog_source = self.config.get(
+            "catalog_source",
+            self.config.get("deployment_source", catalog_source or deployment_source),
+        )
+        provider_registry = self.config.get("provider_registry", provider_registry)
 
         state_path = self.config.get('registry_state_path') or self.config.get('state_path')
         if state_path is None:
@@ -135,6 +476,7 @@ class InferenceBackendManager:
         # Backend registry
         self.backends: Dict[str, BackendInfo] = {}
         self._lock = threading.RLock()
+        self._backend_aliases: Dict[str, str] = {}
         
         # Backend type mapping
         self.backends_by_type: Dict[BackendType, List[str]] = defaultdict(list)
@@ -152,9 +494,138 @@ class InferenceBackendManager:
         self._round_robin_counters: Dict[str, int] = defaultdict(int)
         self._result_recorder: Optional[Callable[..., Dict[str, Any]]] = self.config.get('result_recorder')
 
+        registry = self._PROVIDER_REGISTRY if provider_registry is None else provider_registry
+        self._provider_registry = {
+            str(name).strip().casefold(): self._adapt_provider_registration(
+                str(name).strip().casefold(), value
+            )
+            for name, value in registry.items()
+        }
+
         self._load_registry_state()
+        self._catalog = AIServiceCatalog() if catalog is None else catalog
+        source_name = self.config.get(
+            "catalog_source_name", BackendManagerCatalogSource.source
+        )
+        source_precedence = self.config.get(
+            "catalog_source_precedence", BackendManagerCatalogSource.precedence
+        )
+        self._catalog_source = (
+            BackendManagerCatalogSource(source_name, source_precedence)
+            if catalog_source is None
+            else catalog_source
+        )
+        if not callable(getattr(self._catalog_source, "replace", None)):
+            raise TypeError("catalog_source must provide replace(CatalogSnapshot)")
+        if not callable(getattr(self._catalog_source, "load", None)):
+            raise TypeError("catalog_source must provide load()")
+        self._catalog_source_registered = False
+        with self._lock:
+            for backend in self.backends.values():
+                self._project_backend_catalog_records(backend)
+            self._publish_catalog_locked(refresh=False)
+        self._register_catalog_source()
         
         logger.info("InferenceBackendManager initialized")
+
+    @property
+    def catalog(self) -> Any:
+        """Canonical catalog receiving this manager's deployment projection."""
+
+        return self._catalog
+
+    @property
+    def catalog_source(self) -> Any:
+        """Side-effect-free source containing this manager's latest snapshot."""
+
+        return self._catalog_source
+
+    @property
+    def deployment_source(self) -> Any:
+        """Compatibility name for :attr:`catalog_source`."""
+
+        return self._catalog_source
+
+    @property
+    def catalog_revision(self) -> str:
+        return self.get_catalog_snapshot().revision  # type: ignore[return-value]
+
+    def get_catalog_snapshot(self) -> CatalogSnapshot:
+        """Return the immutable current snapshot without probing a backend."""
+
+        result = self._catalog_source.load()
+        return result.snapshot if hasattr(result, "snapshot") else result
+
+    catalog_snapshot = get_catalog_snapshot
+
+    def _register_catalog_source(self) -> None:
+        register = getattr(self._catalog, "register_source", None)
+        if not callable(register):
+            raise TypeError("catalog must provide register_source()")
+        source_name = self._catalog_source.source
+        states = getattr(self._catalog, "source_states", None)
+        existing = (
+            {item.name for item in states()}
+            if callable(states)
+            else set()
+        )
+        if source_name in existing:
+            logger.warning(
+                "Catalog source %s is already registered; projection remains local",
+                source_name,
+            )
+            return
+        register(
+            source_name,
+            self._catalog_source,
+            precedence=self._catalog_source.precedence,
+            side_effecting=False,
+            load=True,
+        )
+        self._catalog_source_registered = True
+
+    def _publish_catalog_locked(self, *, refresh: bool = True) -> None:
+        """Atomically publish one deterministic generation."""
+
+        providers: Dict[str, ProviderDescriptor] = {}
+        models: Dict[str, ModelDescriptor] = {}
+        deployments: Dict[str, DeploymentDescriptor] = {}
+        bindings: Dict[str, RouterBinding] = {}
+        for backend_id in sorted(self.backends):
+            backend = self.backends[backend_id]
+            if backend.provider is not None:
+                providers[backend.provider.provider_id] = backend.provider  # type: ignore[index]
+            for model in backend.models:
+                models[model.model_id] = model  # type: ignore[index]
+            for deployment in backend.deployments:
+                deployments[deployment.deployment_id] = deployment  # type: ignore[index]
+            for binding in backend.bindings:
+                bindings[binding.binding_id] = binding  # type: ignore[index]
+        snapshot = CatalogSnapshot(
+            providers=tuple(providers.values()),
+            models=tuple(models.values()),
+            deployments=tuple(deployments.values()),
+            bindings=tuple(bindings.values()),
+        )
+        self._catalog_source.replace(snapshot)
+        if not refresh or not self._catalog_source_registered:
+            return
+        try:
+            result = self._catalog.refresh(
+                (self._catalog_source.source,),
+                raise_on_error=False,
+            )
+            if result.failed:
+                logger.warning(
+                    "Backend catalog source retained its prior catalog generation"
+                )
+        except Exception as exc:
+            # Publishing is derived state and must not roll back a successful
+            # runtime registration or endpoint lifecycle operation.
+            logger.warning(
+                "Backend catalog source could not be synchronized: %s",
+                type(exc).__name__,
+            )
 
     def _serialize_backend_info(self, backend_info: BackendInfo) -> Dict[str, Any]:
         return {
@@ -190,6 +661,22 @@ class InferenceBackendManager:
             "last_selected_task": backend_info.last_selected_task,
             "last_selection_reason": backend_info.last_selection_reason,
             "selection_count": backend_info.selection_count,
+            "aliases": list(backend_info.aliases),
+            "configured": backend_info.configured,
+            "authorized": backend_info.authorized,
+            "reachable": backend_info.reachable,
+            "live": backend_info.live,
+            "ready": backend_info.ready,
+            "healthy": backend_info.healthy,
+            "routable": backend_info.routable,
+            "provider": (
+                backend_info.provider.to_dict()
+                if backend_info.provider is not None
+                else None
+            ),
+            "models": [item.to_dict() for item in backend_info.models],
+            "deployments": [item.to_dict() for item in backend_info.deployments],
+            "bindings": [item.to_dict() for item in backend_info.bindings],
         }
 
     def _deserialize_backend_info(self, payload: Dict[str, Any]) -> BackendInfo:
@@ -229,6 +716,31 @@ class InferenceBackendManager:
             last_selected_task=payload.get("last_selected_task"),
             last_selection_reason=payload.get("last_selection_reason"),
             selection_count=int(payload.get("selection_count", 0)),
+            aliases=tuple(payload.get("aliases", ())),
+            configured=payload.get("configured", True),
+            authorized=payload.get("authorized"),
+            reachable=payload.get("reachable"),
+            live=payload.get("live"),
+            ready=payload.get("ready"),
+            healthy=payload.get("healthy"),
+            routable=payload.get("routable"),
+            provider=(
+                ProviderDescriptor.from_dict(payload["provider"])
+                if payload.get("provider")
+                else None
+            ),
+            models=tuple(
+                ModelDescriptor.from_dict(item)
+                for item in payload.get("models", ())
+            ),
+            deployments=tuple(
+                DeploymentDescriptor.from_dict(item)
+                for item in payload.get("deployments", ())
+            ),
+            bindings=tuple(
+                RouterBinding.from_dict(item)
+                for item in payload.get("bindings", ())
+            ),
         )
         return backend_info
 
@@ -246,6 +758,7 @@ class InferenceBackendManager:
         self.backends.clear()
         self.backends_by_type.clear()
         self.task_routing.clear()
+        self._backend_aliases.clear()
 
         for backend_payload in payload.get("backends", []):
             try:
@@ -256,6 +769,8 @@ class InferenceBackendManager:
 
             self.backends[backend_info.backend_id] = backend_info
             self.backends_by_type[backend_info.backend_type].append(backend_info.backend_id)
+            for alias in backend_info.aliases:
+                self._backend_aliases[alias] = backend_info.backend_id
             for task in backend_info.capabilities.supported_tasks:
                 if backend_info.backend_id not in self.task_routing[task]:
                     self.task_routing[task].append(backend_info.backend_id)
@@ -265,7 +780,10 @@ class InferenceBackendManager:
             return
 
         payload = {
-            "backends": [self._serialize_backend_info(backend_info) for backend_info in self.backends.values()],
+            "backends": [
+                self._serialize_backend_info(self.backends[backend_id])
+                for backend_id in sorted(self.backends)
+            ],
             "load_balancing_strategy": self.load_balancing_strategy,
             "timestamp": time.time(),
         }
@@ -448,15 +966,474 @@ class InferenceBackendManager:
 
         return merged
     
+    @staticmethod
+    def _coerce_backend_type(value: Any) -> BackendType:
+        if isinstance(value, BackendType):
+            return value
+        if isinstance(value, str):
+            return BackendType(value.strip().casefold())
+        raise TypeError("backend_type must be a BackendType or string value")
+
+    @staticmethod
+    def _coerce_backend_status(value: Any) -> BackendStatus:
+        if isinstance(value, BackendStatus):
+            return value
+        if isinstance(value, str):
+            return BackendStatus(value.strip().casefold())
+        raise TypeError("status must be a BackendStatus or string value")
+
+    @staticmethod
+    def _coerce_capabilities(value: Any) -> BackendCapabilities:
+        if value is None:
+            return BackendCapabilities()
+        if isinstance(value, BackendCapabilities):
+            return value
+        if not isinstance(value, Mapping):
+            raise TypeError("capabilities must be BackendCapabilities or a mapping")
+        return BackendCapabilities(
+            supported_tasks=set(value.get("supported_tasks", ())),
+            supported_models=set(value.get("supported_models", ())),
+            max_batch_size=value.get("max_batch_size", 1),
+            supports_streaming=value.get("supports_streaming", False),
+            supports_batching=value.get("supports_batching", False),
+            hardware_types=set(value.get("hardware_types", ())),
+            protocols=set(value.get("protocols", ())),
+        )
+
+    @staticmethod
+    def _typed_records(
+        values: Any, record_type: Any, field_name: str
+    ) -> Tuple[Any, ...]:
+        if values is None:
+            return ()
+        if isinstance(values, (str, bytes, Mapping)) or not isinstance(
+            values, Sequence
+        ):
+            raise TypeError(f"{field_name} must be a sequence")
+        return tuple(
+            item
+            if isinstance(item, record_type)
+            else record_type.from_dict(item)
+            for item in values
+        )
+
+    @classmethod
+    def _coerce_backend_registration(
+        cls,
+        backend_id: Any,
+        backend_type: Any,
+        name: Any,
+        instance: Any,
+        capabilities: Any,
+        endpoint: Any,
+        metadata: Any,
+        aliases: Any,
+        status: Any,
+        configured: Any,
+        authorized: Any,
+        reachable: Any,
+        live: Any,
+        ready: Any,
+        healthy: Any,
+        routable: Any,
+        provider: Any,
+        models: Any,
+        deployments: Any,
+        bindings: Any,
+    ) -> BackendRegistration:
+        if isinstance(backend_id, BackendRegistration):
+            if any(
+                value is not None
+                for value in (
+                    backend_type,
+                    name,
+                    capabilities,
+                    endpoint,
+                    metadata,
+                    status,
+                    provider,
+                )
+            ) or aliases or models or deployments or bindings:
+                raise ValueError(
+                    "a BackendRegistration cannot be combined with other fields"
+                )
+            record = backend_id
+            return cls._coerce_backend_registration(
+                record.backend_id,
+                record.backend_type,
+                record.name,
+                record.instance,
+                record.capabilities,
+                record.endpoint,
+                record.metadata,
+                record.aliases,
+                record.status,
+                record.configured,
+                record.authorized,
+                record.reachable,
+                record.live,
+                record.ready,
+                record.healthy,
+                record.routable,
+                record.provider,
+                record.models,
+                record.deployments,
+                record.bindings,
+            )
+        if isinstance(backend_id, Mapping):
+            if any(value is not None for value in (backend_type, name, capabilities)):
+                raise ValueError(
+                    "a registration mapping cannot be combined with other fields"
+                )
+            values = dict(backend_id)
+            allowed = {
+                "backend_id", "backend_type", "name", "instance", "capabilities",
+                "endpoint", "metadata", "aliases", "status", "configured",
+                "authorized", "reachable", "live", "ready", "healthy",
+                "routable", "provider", "models", "deployment", "deployments",
+                "bindings",
+            }
+            unknown = set(values) - allowed
+            if unknown:
+                raise ValueError(
+                    "unknown backend registration fields: %s"
+                    % ", ".join(sorted(unknown))
+                )
+            if "deployment" in values:
+                if "deployments" in values:
+                    raise ValueError(
+                        "registration cannot set deployment and deployments"
+                    )
+                values["deployments"] = (values.pop("deployment"),)
+            return cls._coerce_backend_registration(
+                values.get("backend_id"),
+                values.get("backend_type"),
+                values.get("name"),
+                values.get("instance"),
+                values.get("capabilities"),
+                values.get("endpoint"),
+                values.get("metadata"),
+                values.get("aliases", ()),
+                values.get("status"),
+                values.get("configured", True),
+                values.get("authorized"),
+                values.get("reachable"),
+                values.get("live"),
+                values.get("ready"),
+                values.get("healthy"),
+                values.get("routable"),
+                values.get("provider"),
+                values.get("models", ()),
+                values.get("deployments", ()),
+                values.get("bindings", ()),
+            )
+        if not isinstance(backend_id, str) or not backend_id.strip():
+            raise ValueError("backend_id must be non-empty text")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("name must be non-empty text")
+        if endpoint is not None and (
+            not isinstance(endpoint, str) or not endpoint.strip()
+        ):
+            raise ValueError("endpoint must be non-empty text or None")
+        if metadata is None:
+            metadata = {}
+        if not isinstance(metadata, Mapping):
+            raise TypeError("metadata must be a mapping")
+        if isinstance(aliases, str) or not isinstance(
+            aliases, (list, tuple, set, frozenset)
+        ):
+            raise TypeError("aliases must be a collection of strings")
+        normalized_aliases = tuple(
+            sorted(
+                {
+                    item.strip().casefold()
+                    for item in aliases
+                    if isinstance(item, str) and item.strip()
+                }
+            )
+        )
+        if len(normalized_aliases) != len(aliases):
+            raise ValueError("aliases must contain unique non-empty strings")
+        if backend_id.strip().casefold() in normalized_aliases:
+            raise ValueError("backend_id cannot also be an alias")
+        for field_name, value in (
+            ("configured", configured),
+            ("authorized", authorized),
+            ("reachable", reachable),
+            ("live", live),
+            ("ready", ready),
+            ("healthy", healthy),
+            ("routable", routable),
+        ):
+            if value is not None and not isinstance(value, bool):
+                raise TypeError(f"{field_name} must be boolean or None")
+        if provider is not None and not isinstance(provider, ProviderDescriptor):
+            if isinstance(provider, Mapping):
+                provider = ProviderDescriptor.from_dict(provider)
+            else:
+                raise TypeError("provider must be a ProviderDescriptor")
+        return BackendRegistration(
+            backend_id=backend_id.strip(),
+            backend_type=cls._coerce_backend_type(backend_type),
+            name=name.strip(),
+            instance=instance,
+            capabilities=cls._coerce_capabilities(capabilities),
+            endpoint=endpoint.strip() if endpoint is not None else None,
+            metadata=dict(metadata),
+            aliases=normalized_aliases,
+            status=(
+                cls._coerce_backend_status(status)
+                if status is not None
+                else None
+            ),
+            configured=configured,
+            authorized=authorized,
+            reachable=reachable,
+            live=live,
+            ready=ready,
+            healthy=healthy,
+            routable=routable,
+            provider=provider,
+            models=cls._typed_records(models, ModelDescriptor, "models"),
+            deployments=cls._typed_records(
+                deployments, DeploymentDescriptor, "deployments"
+            ),
+            bindings=cls._typed_records(bindings, RouterBinding, "bindings"),
+        )
+
+    def _provider_registration(
+        self, name: str
+    ) -> Optional[ProviderRegistration]:
+        return self._provider_registry.get(name)
+
+    def _project_backend_catalog_records(self, backend: BackendInfo) -> None:
+        """Create or update canonical records for one runtime backend."""
+
+        observed = any(
+            value is not None
+            for value in (
+                backend.reachable,
+                backend.live,
+                backend.ready,
+                backend.healthy,
+                backend.routable,
+            )
+        )
+        if backend.ready is True:
+            catalog_status = "ready"
+        elif backend.status == BackendStatus.INITIALIZING:
+            catalog_status = "initializing"
+        elif backend.status == BackendStatus.OFFLINE:
+            catalog_status = "stopped"
+        elif backend.status == BackendStatus.DEGRADED:
+            catalog_status = "degraded"
+        else:
+            # HEALTHY and UNHEALTHY are health observations, not readiness.
+            # Keeping lifecycle configured prevents either from being silently
+            # promoted into deployment readiness.
+            catalog_status = "configured"
+        row = {
+            "backend_id": backend.backend_id,
+            "backend_type": (
+                backend.backend_type.value
+                if backend.endpoint is not None
+                else "in-process"
+            ),
+            "name": backend.name,
+            "endpoint": backend.endpoint,
+            "provider": (
+                backend.metadata.get("provider")
+                or (
+                    backend.backend_id.removeprefix("api_").removeprefix("api-")
+                    if backend.backend_type == BackendType.API
+                    else None
+                )
+            ),
+            "status": catalog_status,
+            "configured": backend.configured,
+            "authorized": backend.authorized,
+            "reachable": backend.reachable,
+            "healthy": backend.healthy,
+            "routable": backend.routable,
+            "ready": backend.ready,
+            "capabilities": {
+                "supported_tasks": sorted(
+                    {
+                        _TASK_OPERATIONS[item.strip().casefold()].value
+                        for item in backend.capabilities.supported_tasks
+                        if (
+                            isinstance(item, str)
+                            and item.strip().casefold() in _TASK_OPERATIONS
+                        )
+                    }
+                ),
+                "supported_models": sorted(backend.capabilities.supported_models),
+                "max_batch_size": backend.capabilities.max_batch_size,
+                "supports_streaming": backend.capabilities.supports_streaming,
+                "supports_batching": backend.capabilities.supports_batching,
+                "protocols": sorted(backend.capabilities.protocols),
+            },
+            "metadata": {
+                key: backend.metadata[key]
+                for key in ("provider", "locality")
+                if key in backend.metadata
+            },
+        }
+        projection = BackendDeploymentSource([row]).load()
+        if projection.error_count or not projection.deployments:
+            message = (
+                projection.diagnostics[0].message
+                if projection.diagnostics
+                else "registration did not produce a deployment"
+            )
+            raise ValueError(
+                "backend cannot be represented as a catalog deployment: %s"
+                % message
+            )
+
+        generated_provider = projection.providers[0]
+        provider_spec = self._provider_registration(generated_provider.name)
+        if backend.provider is None:
+            backend.provider = (
+                replace(
+                    provider_spec.descriptor,
+                    lifecycle=LifecycleState.CONFIGURED,
+                    state=OperationalState(known=True, configured=True),
+                )
+                if provider_spec is not None
+                else generated_provider
+            )
+        if backend.provider.provider_id != generated_provider.provider_id:
+            raise ValueError("provider descriptor does not match backend provider")
+
+        if not backend.models:
+            backend.models = projection.models
+        if any(
+            model.provider_id != backend.provider.provider_id
+            for model in backend.models
+        ):
+            raise ValueError("model descriptor provider_id does not match provider")
+
+        if not backend.deployments:
+            backend.deployments = projection.deployments
+        else:
+            generated_by_model = {
+                item.model_id: item for item in projection.deployments
+            }
+            updated = []
+            for deployment in backend.deployments:
+                if deployment.provider_id != backend.provider.provider_id:
+                    raise ValueError(
+                        "deployment descriptor provider_id does not match provider"
+                    )
+                current = generated_by_model.get(deployment.model_id)
+                updated.append(
+                    replace(
+                        deployment,
+                        lifecycle=(
+                            current.lifecycle
+                            if observed and current is not None
+                            else deployment.lifecycle
+                        ),
+                        state=(
+                            current.state
+                            if observed and current is not None
+                            else deployment.state
+                        ),
+                    )
+                )
+            backend.deployments = tuple(updated)
+
+        model_ids = {item.model_id for item in backend.models}
+        if any(
+            item.model_id is not None and item.model_id not in model_ids
+            for item in backend.deployments
+        ):
+            raise ValueError("deployment model_id does not match registered models")
+
+        operations = tuple(
+            sorted(
+                {
+                    operation
+                    for deployment in backend.deployments
+                    for capability in deployment.capabilities
+                    for operation in capability.operations
+                    if operation not in (Operation.BATCH, Operation.STREAM)
+                },
+                key=lambda item: item.value,
+            )
+        )
+        state = OperationalState(
+            known=True,
+            configured=backend.configured,
+            authorized=backend.authorized,
+            reachable=backend.reachable,
+            healthy=backend.healthy,
+            routable=backend.routable,
+        )
+        if not backend.bindings and operations:
+            backend.bindings = tuple(
+                RouterBinding(
+                    router=str(
+                        backend.metadata.get(
+                            "router", "inference_backend_manager"
+                        )
+                    ).strip().casefold(),
+                    provider_id=backend.provider.provider_id,
+                    model_id=deployment.model_id,
+                    deployment_id=deployment.deployment_id,
+                    operations=operations,
+                    priority=int(backend.metadata.get("priority", 0)),
+                    state=state,
+                    provenance=(
+                        Provenance(
+                            source="inference-backend-manager.bindings",
+                            source_record_id=backend.backend_id,
+                        ),
+                    ),
+                )
+                for deployment in backend.deployments
+            )
+        elif observed:
+            backend.bindings = tuple(
+                replace(binding, state=state)
+                for binding in backend.bindings
+            )
+        deployment_ids = {item.deployment_id for item in backend.deployments}
+        if any(
+            binding.provider_id != backend.provider.provider_id
+            or (
+                binding.deployment_id is not None
+                and binding.deployment_id not in deployment_ids
+            )
+            for binding in backend.bindings
+        ):
+            raise ValueError("router binding does not match registered deployment")
+
     def register_backend(
         self,
-        backend_id: str,
-        backend_type: BackendType,
-        name: str,
-        instance: Any,
-        capabilities: Optional[BackendCapabilities] = None,
+        backend_id: Any,
+        backend_type: Any = None,
+        name: Optional[str] = None,
+        instance: Any = None,
+        capabilities: Optional[Any] = None,
         endpoint: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Mapping[str, Any]] = None,
+        *,
+        aliases: Sequence[str] = (),
+        status: Optional[Any] = None,
+        configured: Optional[bool] = True,
+        authorized: Optional[bool] = None,
+        reachable: Optional[bool] = None,
+        live: Optional[bool] = None,
+        ready: Optional[bool] = None,
+        healthy: Optional[bool] = None,
+        routable: Optional[bool] = None,
+        provider: Optional[ProviderDescriptor] = None,
+        models: Sequence[ModelDescriptor] = (),
+        deployment: Optional[DeploymentDescriptor] = None,
+        deployments: Sequence[DeploymentDescriptor] = (),
+        bindings: Sequence[RouterBinding] = (),
     ) -> bool:
         """
         Register a new inference backend
@@ -473,33 +1450,102 @@ class InferenceBackendManager:
         Returns:
             True if registration successful
         """
+        if deployment is not None:
+            if deployments:
+                logger.warning(
+                    "registration cannot set both deployment and deployments"
+                )
+                return False
+            deployments = (deployment,)
+        try:
+            registration = self._coerce_backend_registration(
+                backend_id, backend_type, name, instance, capabilities, endpoint,
+                metadata, aliases, status, configured, authorized, reachable,
+                live, ready, healthy, routable, provider, models, deployments,
+                bindings,
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            logger.warning("Rejected malformed backend registration: %s", exc)
+            return False
+
         with self._lock:
-            if backend_id in self.backends:
-                logger.warning(f"Backend {backend_id} already registered, updating")
-            
+            backend_id = registration.backend_id
+            previous = self.backends.get(backend_id)
+            aliases_in_use = {
+                alias: owner
+                for alias, owner in self._backend_aliases.items()
+                if owner != backend_id
+            }
+            if backend_id.casefold() in aliases_in_use or any(
+                alias in self.backends and alias != backend_id
+                or alias in aliases_in_use
+                for alias in registration.aliases
+            ):
+                logger.warning("Rejected registration with a duplicate alias")
+                return False
             backend_info = BackendInfo(
                 backend_id=backend_id,
-                backend_type=backend_type,
-                name=name,
-                instance=instance,
-                endpoint=endpoint,
-                capabilities=capabilities or BackendCapabilities(),
-                metadata=metadata or {},
-                status=BackendStatus.INITIALIZING
+                backend_type=registration.backend_type,
+                name=registration.name,
+                instance=registration.instance,
+                endpoint=registration.endpoint,
+                capabilities=registration.capabilities,
+                metadata=dict(registration.metadata),
+                status=registration.status or BackendStatus.HEALTHY,
+                aliases=registration.aliases,
+                configured=registration.configured,
+                authorized=registration.authorized,
+                reachable=registration.reachable,
+                live=registration.live,
+                ready=registration.ready,
+                healthy=registration.healthy,
+                routable=registration.routable,
+                provider=registration.provider,
+                models=registration.models,
+                deployments=registration.deployments,
+                bindings=registration.bindings,
             )
-            
+            try:
+                self._project_backend_catalog_records(backend_info)
+            except (TypeError, ValueError) as exc:
+                logger.warning(
+                    "Rejected malformed backend registration %s: %s",
+                    backend_id,
+                    exc,
+                )
+                return False
+            if previous is not None:
+                if backend_id in self.backends_by_type.get(
+                    previous.backend_type, []
+                ):
+                    self.backends_by_type[previous.backend_type].remove(backend_id)
+                    if not self.backends_by_type[previous.backend_type]:
+                        del self.backends_by_type[previous.backend_type]
+                for task in previous.capabilities.supported_tasks:
+                    if backend_id in self.task_routing.get(task, []):
+                        self.task_routing[task].remove(backend_id)
+                        if not self.task_routing[task]:
+                            del self.task_routing[task]
+                for alias in previous.aliases:
+                    self._backend_aliases.pop(alias, None)
             self.backends[backend_id] = backend_info
-            self.backends_by_type[backend_type].append(backend_id)
+            if backend_id not in self.backends_by_type[registration.backend_type]:
+                self.backends_by_type[registration.backend_type].append(backend_id)
+            for alias in registration.aliases:
+                self._backend_aliases[alias] = backend_id
             
             # Update task routing
             for task in backend_info.capabilities.supported_tasks:
                 if backend_id not in self.task_routing[task]:
                     self.task_routing[task].append(backend_id)
             
-            logger.info(f"Registered backend: {backend_id} ({name}) - Type: {backend_type.value}")
-            
-            # Set to healthy after registration (can be overridden by health check)
-            self._update_backend_status(backend_id, BackendStatus.HEALTHY)
+            logger.info(
+                "Registered backend: %s (%s) - Type: %s",
+                backend_id,
+                registration.name,
+                registration.backend_type.value,
+            )
+            self._publish_catalog_locked()
             self._save_registry_state()
             
             return True
@@ -521,9 +1567,14 @@ class InferenceBackendManager:
             for task in backend_info.capabilities.supported_tasks:
                 if backend_id in self.task_routing[task]:
                     self.task_routing[task].remove(backend_id)
+                    if not self.task_routing[task]:
+                        del self.task_routing[task]
+            for alias in backend_info.aliases:
+                self._backend_aliases.pop(alias, None)
             
             # Remove from registry
             del self.backends[backend_id]
+            self._publish_catalog_locked()
             self._save_registry_state()
             
             logger.info(f"Unregistered backend: {backend_id}")
@@ -567,11 +1618,14 @@ class InferenceBackendManager:
                         self.task_routing[task].remove(backend_id)
                         if not self.task_routing[task]:
                             del self.task_routing[task]
+                for alias in backend_info.aliases:
+                    self._backend_aliases.pop(alias, None)
 
                 del self.backends[backend_id]
                 removed.append(backend_id)
 
             if removed:
+                self._publish_catalog_locked()
                 self._save_registry_state()
 
         if removed:
@@ -580,7 +1634,174 @@ class InferenceBackendManager:
     
     def get_backend(self, backend_id: str) -> Optional[BackendInfo]:
         """Get information about a specific backend"""
-        return self.backends.get(backend_id)
+        requested = str(backend_id).strip()
+        with self._lock:
+            direct = self.backends.get(requested)
+            if direct is not None:
+                return direct
+            owner = self._backend_aliases.get(requested.casefold())
+            return self.backends.get(owner) if owner is not None else None
+
+    def get_backend_by_deployment(
+        self, deployment_id: str
+    ) -> Optional[BackendInfo]:
+        """Look up the executable backend owning a typed deployment."""
+
+        with self._lock:
+            return next(
+                (
+                    backend
+                    for backend in self.backends.values()
+                    if any(
+                        item.deployment_id == deployment_id
+                        for item in backend.deployments
+                    )
+                ),
+                None,
+            )
+
+    def get_provider_descriptor(self, provider: str) -> ProviderDescriptor:
+        """Resolve a provider name, stable identity, or alias."""
+
+        requested = str(provider or "").strip().casefold()
+        canonical = self._resolve_provider_name(requested)
+        spec = self._provider_registration(canonical)
+        if spec is not None:
+            return spec.descriptor  # type: ignore[return-value]
+        with self._lock:
+            matches = {
+                backend.provider.provider_id: backend.provider
+                for backend in self.backends.values()
+                if backend.provider is not None
+                and requested
+                in {
+                    backend.provider.name,
+                    backend.provider.provider_id,
+                    *backend.provider.aliases,
+                }
+            }
+        if len(matches) == 1:
+            return next(iter(matches.values()))
+        if len(matches) > 1:
+            raise ValueError(f"ambiguous provider alias: {provider}")
+        raise KeyError(f"unknown provider: {provider}")
+
+    def update_backend_endpoint(
+        self,
+        backend_id: str,
+        endpoint: Optional[str],
+        *,
+        status: BackendStatus = BackendStatus.INITIALIZING,
+    ) -> bool:
+        """Replace endpoint identity and clear prior liveness observations."""
+
+        with self._lock:
+            backend = self.get_backend(backend_id)
+            if backend is None:
+                return False
+            previous = (
+                backend.endpoint,
+                backend.status,
+                backend.reachable,
+                backend.live,
+                backend.ready,
+                backend.healthy,
+                backend.routable,
+                backend.deployments,
+                backend.bindings,
+            )
+            backend.endpoint = endpoint
+            backend.status = self._coerce_backend_status(status)
+            backend.reachable = None
+            backend.live = None
+            backend.ready = None
+            backend.healthy = None
+            backend.routable = None
+            backend.deployments = ()
+            backend.bindings = ()
+            try:
+                self._project_backend_catalog_records(backend)
+            except (TypeError, ValueError) as exc:
+                (
+                    backend.endpoint,
+                    backend.status,
+                    backend.reachable,
+                    backend.live,
+                    backend.ready,
+                    backend.healthy,
+                    backend.routable,
+                    backend.deployments,
+                    backend.bindings,
+                ) = previous
+                raise ValueError(
+                    "endpoint cannot be represented as a catalog deployment"
+                ) from exc
+            self._publish_catalog_locked()
+            self._save_registry_state()
+            return True
+
+    set_backend_endpoint = update_backend_endpoint
+
+    def update_backend_liveness(
+        self,
+        backend_id: str,
+        *,
+        status: Optional[BackendStatus] = None,
+        reachable: Optional[bool] = None,
+        live: Optional[bool] = None,
+        ready: Optional[bool] = None,
+        healthy: Optional[bool] = None,
+        routable: Optional[bool] = None,
+    ) -> bool:
+        """Publish explicitly observed endpoint facts without deriving peers."""
+
+        values = {
+            "reachable": reachable,
+            "live": live,
+            "ready": ready,
+            "healthy": healthy,
+            "routable": routable,
+        }
+        if any(
+            value is not None and not isinstance(value, bool)
+            for value in values.values()
+        ):
+            raise TypeError("liveness observations must be boolean or None")
+        with self._lock:
+            backend = self.get_backend(backend_id)
+            if backend is None:
+                return False
+            if status is not None:
+                backend.status = self._coerce_backend_status(status)
+            for field_name, value in values.items():
+                setattr(backend, field_name, value)
+            backend.last_seen = time.time()
+            self._project_backend_catalog_records(backend)
+            self._publish_catalog_locked()
+            self._save_registry_state()
+            return True
+
+    def update_backend_status(
+        self,
+        backend_id: str,
+        status: BackendStatus,
+        *,
+        observed: bool = False,
+    ) -> bool:
+        """Update runtime status without inventing endpoint liveness facts."""
+
+        with self._lock:
+            backend = self.get_backend(backend_id)
+            if backend is None:
+                return False
+            backend.status = self._coerce_backend_status(status)
+            backend.last_seen = time.time()
+            if observed:
+                backend.healthy = status == BackendStatus.HEALTHY
+            self._project_backend_catalog_records(backend)
+            self._publish_catalog_locked()
+            self._save_registry_state()
+            return True
     
     def list_backends(
         self,
@@ -600,7 +1821,10 @@ class InferenceBackendManager:
             List of matching backends
         """
         with self._lock:
-            backends = list(self.backends.values())
+            backends = [
+                self.backends[backend_id]
+                for backend_id in sorted(self.backends)
+            ]
             
             if backend_type:
                 backends = [b for b in backends if b.backend_type == backend_type]
@@ -619,7 +1843,10 @@ class InferenceBackendManager:
         task: str,
         model: Optional[str] = None,
         preferred_types: Optional[List[BackendType]] = None,
-        required_protocols: Optional[List[str]] = None
+        required_protocols: Optional[List[str]] = None,
+        *,
+        provider: Optional[str] = None,
+        deployment_id: Optional[str] = None,
     ) -> Optional[BackendInfo]:
         """
         Select the best backend for a given task
@@ -693,7 +1920,31 @@ class InferenceBackendManager:
             if model:
                 candidates = [
                     b for b in candidates
-                    if not b.capabilities.supported_models or model in b.capabilities.supported_models
+                    if self._backend_supports_model(b, model)
+                ]
+
+            if provider:
+                requested_provider = self._resolve_provider_name(
+                    str(provider).strip().casefold()
+                )
+                candidates = [
+                    b for b in candidates
+                    if b.provider is not None
+                    and requested_provider
+                    in {
+                        b.provider.name,
+                        b.provider.provider_id,
+                        *b.provider.aliases,
+                    }
+                ]
+
+            if deployment_id:
+                candidates = [
+                    b for b in candidates
+                    if any(
+                        item.deployment_id == deployment_id
+                        for item in b.deployments
+                    )
                 ]
             
             # Filter by protocol if specified
@@ -742,6 +1993,20 @@ class InferenceBackendManager:
             selected.selection_count += 1
             self._save_registry_state()
             return selected
+
+    @staticmethod
+    def _backend_supports_model(
+        backend: BackendInfo, requested: str
+    ) -> bool:
+        if not backend.capabilities.supported_models and not backend.models:
+            return True
+        if requested in backend.capabilities.supported_models:
+            return True
+        normalized = str(requested).strip().casefold()
+        return any(
+            normalized in {model.name, model.model_id, *model.aliases}
+            for model in backend.models
+        )
     
     def get_backend_status_report(self) -> Dict[str, Any]:
         """
@@ -765,17 +2030,35 @@ class InferenceBackendManager:
                 "total_requests": sum(b.metrics.total_requests for b in self.backends.values()),
                 "total_successful": sum(b.metrics.successful_requests for b in self.backends.values()),
                 "total_failed": sum(b.metrics.failed_requests for b in self.backends.values()),
-                "supported_tasks": list(self.task_routing.keys()),
+                "supported_tasks": sorted(self.task_routing),
+                "catalog_revision": self.catalog_revision,
                 "backends": [
                     {
                         "id": b.backend_id,
+                        "backend_id": b.backend_id,
                         "name": b.name,
                         "type": b.backend_type.value,
                         "status": b.status.value,
                         "endpoint": b.endpoint,
-                        "tasks": list(b.capabilities.supported_tasks),
-                        "protocols": list(b.capabilities.protocols),
-                        "hardware_types": list(b.capabilities.hardware_types),
+                        "aliases": list(b.aliases),
+                        "tasks": sorted(b.capabilities.supported_tasks),
+                        "protocols": sorted(b.capabilities.protocols),
+                        "hardware_types": sorted(b.capabilities.hardware_types),
+                        "provider_id": (
+                            b.provider.provider_id if b.provider else None
+                        ),
+                        "deployment_ids": [
+                            item.deployment_id for item in b.deployments
+                        ],
+                        "liveness": {
+                            "configured": b.configured,
+                            "authorized": b.authorized,
+                            "reachable": b.reachable,
+                            "live": b.live,
+                            "ready": b.ready,
+                            "healthy": b.healthy,
+                            "routable": b.routable,
+                        },
                         "placement_node": (
                             b.metadata.get("placement_node")
                             or b.metadata.get("node_name")
@@ -794,16 +2077,34 @@ class InferenceBackendManager:
                             "models_loaded": b.metrics.models_loaded,
                         }
                     }
-                    for b in self.backends.values()
+                    for b in (
+                        self.backends[backend_id]
+                        for backend_id in sorted(self.backends)
+                    )
                 ],
                 "timestamp": time.time()
             }
     
-    def _update_backend_status(self, backend_id: str, status: BackendStatus):
-        """Update backend status"""
-        if backend_id in self.backends:
-            self.backends[backend_id].status = status
-            self.backends[backend_id].last_seen = time.time()
+    def _update_backend_status(
+        self,
+        backend_id: str,
+        status: BackendStatus,
+        *,
+        observed_health: Optional[bool] = None,
+    ) -> None:
+        """Internal status update used by health monitoring."""
+
+        with self._lock:
+            backend = self.backends.get(backend_id)
+            if backend is None:
+                return
+            backend.status = status
+            backend.last_seen = time.time()
+            if observed_health is not None:
+                backend.healthy = observed_health
+                backend.live = observed_health
+            self._project_backend_catalog_records(backend)
+            self._publish_catalog_locked()
             self._save_registry_state()
     
     def record_request(self, backend_id: str, success: bool, latency_ms: float):
@@ -850,7 +2151,11 @@ class InferenceBackendManager:
                 await self.check_backend_health(backend_id)
             except Exception as e:
                 logger.error(f"Health check failed for {backend_id}: {e}")
-                self._update_backend_status(backend_id, BackendStatus.UNHEALTHY)
+                self._update_backend_status(
+                    backend_id,
+                    BackendStatus.UNHEALTHY,
+                    observed_health=False,
+                )
     
     async def check_backend_health(self, backend_id: str) -> bool:
         """
@@ -878,15 +2183,55 @@ class InferenceBackendManager:
                 else:
                     result = instance.health_check()
                 
-                if result:
-                    self._update_backend_status(backend_id, BackendStatus.HEALTHY)
-                    return True
-                else:
-                    self._update_backend_status(backend_id, BackendStatus.UNHEALTHY)
-                    return False
+                if isinstance(result, Mapping):
+                    observed = {
+                        name: result.get(name)
+                        for name in (
+                            "reachable", "live", "ready", "healthy", "routable"
+                        )
+                    }
+                    if any(
+                        value is not None and not isinstance(value, bool)
+                        for value in observed.values()
+                    ):
+                        raise TypeError(
+                            "health check observations must be boolean or None"
+                        )
+                    successful = (
+                        observed["healthy"]
+                        if observed["healthy"] is not None
+                        else observed["live"]
+                    )
+                    if successful is None:
+                        successful = bool(result)
+                    self.update_backend_liveness(
+                        backend_id,
+                        status=(
+                            BackendStatus.HEALTHY
+                            if successful
+                            else BackendStatus.UNHEALTHY
+                        ),
+                        **observed,
+                    )
+                    return bool(successful)
+                successful = bool(result)
+                self._update_backend_status(
+                    backend_id,
+                    (
+                        BackendStatus.HEALTHY
+                        if successful
+                        else BackendStatus.UNHEALTHY
+                    ),
+                    observed_health=successful,
+                )
+                return successful
             except Exception as e:
                 logger.error(f"Health check error for {backend_id}: {e}")
-                self._update_backend_status(backend_id, BackendStatus.UNHEALTHY)
+                self._update_backend_status(
+                    backend_id,
+                    BackendStatus.UNHEALTHY,
+                    observed_health=False,
+                )
                 return False
         
         # If no health check method, assume healthy if recently seen
@@ -914,68 +2259,67 @@ class InferenceBackendManager:
     # API provider configuration helpers
     # ------------------------------------------------------------------
 
-    #: Maps canonical provider names (and aliases) to a tuple of
-    #: (backend_module_path, class_name, env_key_primary, env_key_secondary,
-    #:  base_url, display_name, supported_tasks).
-    _PROVIDER_REGISTRY: Dict[str, Any] = {
-        "xai": (
-            "ipfs_accelerate_py.api_backends.xai", "xai",
+    #: Named provider construction records. Legacy seven-tuples are accepted
+    #: only by :meth:`_adapt_provider_registration`.
+    _PROVIDER_REGISTRY: Dict[str, ProviderRegistration] = {
+        "xai": _provider_spec(
+            "xai", "ipfs_accelerate_py.api_backends.xai", "xai",
             "XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY",
             "https://api.x.ai/v1", "xAI Grok",
             {"text-generation", "embeddings", "vision"},
+            aliases=("grok", "xai_grok"),
         ),
-        "meta_ai": (
-            "ipfs_accelerate_py.api_backends.meta_ai", "meta_ai",
+        "meta_ai": _provider_spec(
+            "meta_ai", "ipfs_accelerate_py.api_backends.meta_ai", "meta_ai",
             "META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY",
-            "https://api.llamameta.net/v1", "Meta AI (Llama / Spark)",
+            "https://api.meta.ai/v1", "Meta Model API (Muse Spark)",
             {"text-generation", "embeddings", "vision"},
+            aliases=("meta", "meta_llama", "meta_spark", "spark"),
         ),
-        "openai": (
-            "ipfs_accelerate_py.api_backends.openai_api", "openai_api",
+        "openai": _provider_spec(
+            "openai", "ipfs_accelerate_py.api_backends.openai_api", "openai_api",
             "OPENAI_API_KEY", "ipfs_accelerate_py_OPENAI_API_KEY",
             "https://api.openai.com/v1", "OpenAI",
             {"text-generation", "embeddings", "vision", "audio"},
+            aliases=("openai_api",),
         ),
-        "claude": (
-            "ipfs_accelerate_py.api_backends.claude", "claude",
+        "claude": _provider_spec(
+            "claude", "ipfs_accelerate_py.api_backends.claude", "claude",
             "ANTHROPIC_API_KEY", "ipfs_accelerate_py_ANTHROPIC_API_KEY",
             "https://api.anthropic.com", "Anthropic Claude",
             {"text-generation", "vision"},
+            aliases=("anthropic",),
         ),
-        "gemini": (
-            "ipfs_accelerate_py.api_backends.gemini", "gemini",
+        "gemini": _provider_spec(
+            "gemini", "ipfs_accelerate_py.api_backends.gemini", "gemini",
             "GEMINI_API_KEY", "ipfs_accelerate_py_GEMINI_API_KEY",
             "https://generativelanguage.googleapis.com", "Google Gemini",
             {"text-generation", "embeddings", "vision", "audio"},
         ),
-        "groq": (
-            "ipfs_accelerate_py.api_backends.groq", "groq",
+        "groq": _provider_spec(
+            "groq", "ipfs_accelerate_py.api_backends.groq", "groq",
             "GROQ_API_KEY", "ipfs_accelerate_py_GROQ_API_KEY",
             "https://api.groq.com/openai/v1", "Groq",
             {"text-generation", "audio"},
         ),
-        "hf_tei": (
-            "ipfs_accelerate_py.api_backends.hf_tei", "hf_tei",
-            "HF_API_KEY", "ipfs_accelerate_py_HF_API_KEY",
-            None, "HuggingFace TEI",
-            {"embeddings"},
+        "hf_tei": _provider_spec(
+            "hf_tei", "ipfs_accelerate_py.api_backends.hf_tei", "hf_tei",
+            "HF_API_KEY", "ipfs_accelerate_py_HF_API_KEY", None,
+            "HuggingFace TEI", {"embeddings"},
         ),
-        "hf_tgi": (
-            "ipfs_accelerate_py.api_backends.hf_tgi", "hf_tgi",
-            "HF_API_KEY", "ipfs_accelerate_py_HF_API_KEY",
-            None, "HuggingFace TGI",
-            {"text-generation"},
+        "hf_tgi": _provider_spec(
+            "hf_tgi", "ipfs_accelerate_py.api_backends.hf_tgi", "hf_tgi",
+            "HF_API_KEY", "ipfs_accelerate_py_HF_API_KEY", None,
+            "HuggingFace TGI", {"text-generation"},
         ),
-        "ollama": (
-            "ipfs_accelerate_py.api_backends.ollama", "ollama",
-            None, None,
-            "http://localhost:11434", "Ollama",
+        "ollama": _provider_spec(
+            "ollama", "ipfs_accelerate_py.api_backends.ollama", "ollama",
+            None, None, "http://localhost:11434", "Ollama",
             {"text-generation", "embeddings", "vision"},
         ),
-        "vllm": (
-            "ipfs_accelerate_py.api_backends.vllm", "vllm",
-            None, None,
-            "http://localhost:8000/v1", "vLLM",
+        "vllm": _provider_spec(
+            "vllm", "ipfs_accelerate_py.api_backends.vllm", "vllm",
+            None, None, "http://localhost:8000/v1", "vLLM",
             {"text-generation", "embeddings"},
         ),
     }
@@ -992,9 +2336,55 @@ class InferenceBackendManager:
         "openai_api": "openai",
     }
 
+    @staticmethod
+    def _adapt_provider_registration(
+        name: str, value: Any
+    ) -> ProviderRegistration:
+        """The sole adapter for deprecated seven-position provider tuples."""
+
+        if isinstance(value, ProviderRegistration):
+            if value.name != name:
+                raise ValueError(
+                    "provider registration name must match its registry key"
+                )
+            return value
+        if isinstance(value, tuple):
+            warnings.warn(
+                "Tuple-shaped provider registrations are deprecated; "
+                "use ProviderRegistration",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            if len(value) != 7:
+                raise ValueError(
+                    "legacy provider registration must contain 7 fields"
+                )
+            return ProviderRegistration(
+                name=name,
+                backend_module_path=value[0],
+                backend_class_name=value[1],
+                env_key_primary=value[2],
+                env_key_secondary=value[3],
+                default_base_url=value[4],
+                display_name=value[5],
+                supported_tasks=frozenset(value[6]),
+            )
+        raise TypeError(
+            "provider registration must be ProviderRegistration or a legacy tuple"
+        )
+
     def _resolve_provider_name(self, provider: str) -> str:
         """Normalise a provider alias to the canonical name."""
-        return self._PROVIDER_ALIASES.get(provider, provider)
+        requested = str(provider).strip().casefold()
+        canonical = self._PROVIDER_ALIASES.get(requested, requested)
+        if canonical in self._provider_registry:
+            return canonical
+        matches = [
+            name
+            for name, spec in self._provider_registry.items()
+            if requested in spec.descriptor.aliases
+        ]
+        return matches[0] if len(matches) == 1 else canonical
 
     def configure_provider(
         self,
@@ -1028,14 +2418,19 @@ class InferenceBackendManager:
         import importlib
 
         canonical = self._resolve_provider_name(provider)
-        spec = self._PROVIDER_REGISTRY.get(canonical)
+        spec = self._provider_registration(canonical)
         if spec is None:
             logger.warning("configure_provider: unknown provider '%s'", provider)
             return {"provider": provider, "configured": False,
                     "error": f"Unknown provider '{provider}'"}
 
-        (mod_path, cls_name, env_primary, env_secondary,
-         default_base_url, display_name, supported_tasks) = spec
+        mod_path = spec.backend_module_path
+        cls_name = spec.backend_class_name
+        env_primary = spec.env_key_primary
+        env_secondary = spec.env_key_secondary
+        default_base_url = spec.default_base_url
+        display_name = spec.display_name
+        supported_tasks = spec.supported_tasks
 
         # Resolve API key from env if not supplied
         resolved_key = api_key
@@ -1094,9 +2489,9 @@ class InferenceBackendManager:
             List of canonical provider names that were registered.
         """
         registered: List[str] = []
-        for canonical, spec in self._PROVIDER_REGISTRY.items():
-            (_mod, _cls, env_primary, env_secondary,
-             _url, _name, _tasks) = spec
+        for canonical, spec in self._provider_registry.items():
+            env_primary = spec.env_key_primary
+            env_secondary = spec.env_key_secondary
             if env_primary is None:
                 continue
             key = os.environ.get(env_primary) or os.environ.get(env_secondary or "")
