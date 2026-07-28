@@ -1013,3 +1013,42 @@ def test_matrix_chat_safe_and_agent_requires_authorization(
     )
     assert denied.get("status") == "error"
     assert denied.get("error_code") == "policy_denied"
+
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-012 operator documentation contracts (endpoint surface)
+# ---------------------------------------------------------------------------
+
+
+def test_goose_operator_docs_cover_endpoint_lifecycle() -> None:
+    """Docs describe readiness vs liveness, agent endpoint auth, cancel/recovery."""
+    root = Path(__file__).resolve().parents[1]
+    doc = (root / "docs" / "LLM_ROUTER.md").read_text(encoding="utf-8")
+    for marker in (
+        "readiness",
+        "liveness",
+        "enable_agent",
+        "allow_side_effects",
+        "path_root",
+        "GOOSE_PATH_ROOT",
+        "cancel",
+        "side_effects_started",
+        "execute_cli_inference",
+        "register_cli_endpoint",
+    ):
+        assert marker in doc, f"missing endpoint guidance marker: {marker}"
+    # Chat remains default; agent is separate
+    assert "chat" in doc.lower()
+    assert "agent" in doc.lower()
+    # Managed install location for operators wiring endpoints
+    assert "ipfs_accelerate_py/goose" in doc or "managed" in doc.lower()
+
+
+def test_goose_operator_docs_quickstart_points_at_endpoint_policy() -> None:
+    root = Path(__file__).resolve().parents[1]
+    quick = (root / "docs" / "guides" / "QUICKSTART.md").read_text(encoding="utf-8")
+    assert "goose_cli" in quick
+    assert "LLM_ROUTER" in quick or "llm router" in quick.lower()
+    index = (root / "docs" / "INDEX.md").read_text(encoding="utf-8")
+    assert "Goose" in index or "goose" in index

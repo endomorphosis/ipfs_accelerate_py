@@ -797,3 +797,32 @@ def test_matrix_worker_agent_denial_and_no_fallback_after_side_effects(
         )
     assert "openai" not in seen
     assert all("goose" in p for p in seen)
+
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-012 operator documentation contracts (P2P / rollout surface)
+# ---------------------------------------------------------------------------
+
+
+def test_goose_operator_docs_cover_p2p_gates_and_no_replay() -> None:
+    """Docs document worker enable gates, path roots, and no-replay policy."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    doc = (root / "docs" / "LLM_ROUTER.md").read_text(encoding="utf-8")
+    for marker in (
+        "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI",
+        "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT",
+        "IPFS_ACCELERATE_PY_TASK_WORKER_GOOSE_PATH_ROOT",
+        "allowlist",
+        "offline",
+        "IPFS_ACCELERATE_GOOSE_LIVE",
+        "rollback",
+    ):
+        assert marker in doc, f"missing P2P/rollout marker: {marker}"
+    assert "replay" in doc.lower() or "duplicate" in doc.lower()
+    assert "fallback" in doc.lower()
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    assert "Goose" in readme or "goose_cli" in readme
+    assert "IPFS_ACCELERATE_GOOSE_LIVE" in readme

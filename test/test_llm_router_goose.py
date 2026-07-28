@@ -566,3 +566,161 @@ def test_matrix_no_install_on_implicit_and_no_retry_after_side_effects(
     assert llm_router._kwargs_are_side_effecting(
         {"agent": True, "allow_side_effects": True}
     )
+
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-012 operator documentation contracts and opt-in live smoke
+# ---------------------------------------------------------------------------
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _read_doc(*parts: str) -> str:
+    path = _repo_root().joinpath(*parts)
+    assert path.is_file(), f"missing documentation file: {path}"
+    return path.read_text(encoding="utf-8")
+
+
+def test_goose_operator_docs_cover_router_guidance() -> None:
+    """LLM_ROUTER.md documents Goose selection, env, install, and safety planes."""
+    doc = _read_doc("docs", "LLM_ROUTER.md")
+    # Provider table and aliases
+    assert "`goose_cli`" in doc
+    assert "goose" in doc.lower()
+    # Canonical env vars and discovery/install policy (no secret values)
+    for marker in (
+        "IPFS_ACCELERATE_GOOSE_DISCOVERY",
+        "IPFS_ACCELERATE_GOOSE_AUTO_INSTALL",
+        "IPFS_ACCELERATE_GOOSE_PATH",
+        "GOOSE_PROVIDER",
+        "GOOSE_MODEL",
+        "GOOSE_PATH_ROOT",
+        "IPFS_ACCELERATE_GOOSE_MANAGED_ROOT",
+        "IPFS_ACCELERATE_GOOSE_LIVE",
+    ):
+        assert marker in doc, f"missing env documentation: {marker}"
+    assert "does not install" in doc.lower() or "detect-only" in doc.lower()
+    assert "opt-in" in doc.lower() or "opt in" in doc.lower()
+    # Chat vs agent separation
+    assert "chat-only" in doc.lower() or "chat only" in doc.lower() or "GOOSE_MODE=chat" in doc
+    assert "GooseAgentPolicy" in doc or "allow_side_effects" in doc
+    assert "enable_agent" in doc
+    # Managed install / pin / checksum
+    assert "managed" in doc.lower()
+    assert "PINNED_GOOSE_VERSION" in doc or "pinned" in doc.lower()
+    assert "sha256" in doc.lower() or "checksum" in doc.lower()
+    assert "goose_release_manifest" in doc
+    # Shared vs isolated roots
+    assert "GOOSE_PATH_ROOT" in doc
+    assert "isolat" in doc.lower()
+    # Health / cancel / recovery
+    assert "readiness" in doc.lower()
+    assert "liveness" in doc.lower()
+    assert "cancel" in doc.lower()
+    # P2P gates and no-replay
+    assert "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI" in doc
+    assert "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT" in doc
+    assert "replay" in doc.lower() or "no-replay" in doc.lower() or "duplicate" in doc.lower()
+    # Offline default + live smoke + rollback
+    assert "offline" in doc.lower()
+    assert "IPFS_ACCELERATE_GOOSE_LIVE" in doc
+    assert "rollback" in doc.lower()
+    assert "troubleshoot" in doc.lower()
+    # Never document a literal secret value pattern as if it were real
+    assert "sk-proj-" not in doc
+    assert "BEGIN PRIVATE KEY" not in doc
+
+
+def test_goose_operator_docs_indexes_and_quickstart() -> None:
+    """Indexes and quickstart link Goose rollout without dropping other providers."""
+    index = _read_doc("docs", "INDEX.md")
+    assert "LLM_ROUTER" in index or "LLM router" in index
+    assert "Goose" in index or "goose" in index
+
+    quick = _read_doc("docs", "guides", "QUICKSTART.md")
+    assert "goose_cli" in quick
+    assert "IPFS_ACCELERATE_GOOSE_DISCOVERY" in quick
+    assert "LLM_ROUTER" in quick or "llm_router" in quick.lower()
+
+    readme = _read_doc("README.md")
+    assert "Goose" in readme or "goose_cli" in readme
+    assert "IPFS_ACCELERATE_GOOSE_LIVE" in readme
+    assert "LLM_ROUTER" in readme or "LLM router" in readme
+    # Preserve existing provider guidance anchors
+    for marker in ("Codex", "Copilot", "OpenRouter", "llama.cpp"):
+        assert marker.lower() in readme.lower() or marker in readme
+
+
+def test_default_goose_suite_is_offline_by_design(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default Goose tests must not require live install or network."""
+    import os
+
+    monkeypatch.delenv("IPFS_ACCELERATE_GOOSE_LIVE", raising=False)
+    assert not os.environ.get("IPFS_ACCELERATE_GOOSE_LIVE")
+    # Implicit discovery remains off without opt-in.
+    _clear_goose_env(monkeypatch)
+    assert llm_router._goose_discovery_enabled() is False
+
+
+@pytest.mark.skipif(
+    not __import__("os").environ.get("IPFS_ACCELERATE_GOOSE_LIVE"),
+    reason=(
+        "live smoke requires IPFS_ACCELERATE_GOOSE_LIVE=1 and a configured "
+        "Goose binary plus backend provider credentials"
+    ),
+)
+def test_opt_in_live_goose_smoke() -> None:
+    """Optional live chat through goose_cli when explicitly gated.
+
+    Configure binary (PATH or IPFS_ACCELERATE_GOOSE_PATH) and backend auth
+    (for example OPENAI_API_KEY / GOOSE_PROVIDER) in the environment. Never
+    commit secrets.
+    """
+    import os
+
+    binary = llm_router.find_goose_cli()
+    if not binary:
+        pytest.skip("goose binary not found; set IPFS_ACCELERATE_GOOSE_PATH")
+
+    # Auth marker presence (value not inspected beyond emptiness).
+    auth_names = (
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        "OLLAMA_HOST",
+        "DATABRICKS_TOKEN",
+    )
+    if not any(str(os.environ.get(n) or "").strip() for n in auth_names):
+        # Package secret manager may still supply Meta credentials.
+        try:
+            from ipfs_accelerate_py.common.secrets_manager import (
+                get_global_secrets_manager,
+            )
+
+            sm = get_global_secrets_manager()
+            meta = sm.get_credential("meta_ai_api_key") if sm else None
+            if not meta:
+                pytest.skip("no Goose backend credential configured for live smoke")
+        except Exception:
+            pytest.skip("no Goose backend credential configured for live smoke")
+
+    text = llm_router.generate_text(
+        "Reply with exactly: goose-live-ok",
+        provider="goose_cli",
+        max_tokens=32,
+        temperature=0.0,
+    )
+    assert isinstance(text, str)
+    assert text.strip()
+    # Live path must remain chat (no agent) and must not echo env secrets.
+    for name in auth_names:
+        secret = os.environ.get(name)
+        if secret:
+            assert secret not in text
