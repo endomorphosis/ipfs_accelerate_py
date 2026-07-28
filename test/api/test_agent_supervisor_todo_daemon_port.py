@@ -1164,6 +1164,15 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         repo_root=repo,
     )
 
+    # Hermetic against ambient agent-lane provider force (grok_cli) and PATH.
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(implementation_daemon_module, "_grok_cli_available", lambda: False)
+    monkeypatch.setattr(
+        implementation_daemon_module, "_goose_meta_spark_available", lambda: False
+    )
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
@@ -1382,6 +1391,15 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
         repo_root=repo,
     )
 
+    # Hermetic against ambient agent-lane provider force (grok_cli) and PATH.
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(implementation_daemon_module, "_grok_cli_available", lambda: False)
+    monkeypatch.setattr(
+        implementation_daemon_module, "_goose_meta_spark_available", lambda: False
+    )
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
@@ -5856,7 +5874,19 @@ def test_implementation_daemon_failed_merge_reconciliation_remains_retryable(tmp
     assert candidates[0]["implementation_commit"] == implementation_commit
 
 
-def test_implementation_daemon_retries_submodule_after_parent_commit_already_landed(tmp_path):
+def test_implementation_daemon_retries_submodule_after_parent_commit_already_landed(
+    tmp_path, monkeypatch
+):
+    # Ambient agent-lane LLM merge resolvers must not auto-heal dirty checkouts
+    # in this deterministic dirty-gate regression (they hang and clear the race).
+    monkeypatch.delenv(
+        implementation_daemon_module.LLM_MERGE_RESOLVER_COMMAND_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.LLM_MERGE_RESOLVER_TIMEOUT_ENV,
+        raising=False,
+    )
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     (repo / "README.md").write_text("base\n", encoding="utf-8")
     _git(repo, "add", "README.md")
@@ -5884,6 +5914,7 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
         worktree_submodule_paths=["libs/child"],
+        llm_merge_resolver_command="",
     )
     task = PortalTask(
         task_id="AUTO-116",
@@ -6602,6 +6633,119 @@ def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path)
     assert branch_exists.returncode != 0
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "merged_worktree_cleanup" for event in events)
+
+
+def test_implementation_daemon_fences_preparing_worktree_from_peer_merged_cleanup(
+    tmp_path,
+):
+    """ASI-171: peer cleanup must not remove a preparing claim at merge tip.
+
+    Reproduces the six-lane race: owner has claimed and created a worktree
+    whose branch tip is still an ancestor of main, with no child process
+    visible yet.  Another lane's already-merged cleanup must skip it.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
+        WorkspaceLifecycleState,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+
+    # Branch tip is still at main (ancestor of merge target) — the false
+    # positive that previously triggered cleanup.
+    branch_name = "implementation/asi-171-attempt-1-race"
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "asi-171-attempt-1-race"
+    _git(repo, "worktree", "add", "-b", branch_name, str(worktree_path), "HEAD")
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", branch_name, "main"],
+        cwd=repo,
+        check=False,
+    )
+    assert ancestor.returncode == 0
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ASI-171 Fence cross-lane worktree ownership
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: supervisor-worktree-fencing
+- Depends on:
+- Outputs: ipfs_accelerate_py/agent_supervisor/worktree_lifecycle.py
+- Validation: true
+- Acceptance: Preparing claims survive peer cleanup.
+""",
+        encoding="utf-8",
+    )
+    owner_state = repo / "state-owner"
+    peer_state = repo / "state-peer"
+    owner = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=owner_state / "task_state.json",
+        strategy_path=owner_state / "strategy.json",
+        events_path=owner_state / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ASI-",
+        worktree_root=worktree_root,
+        merged_worktree_cleanup_max=5,
+    )
+    peer = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=peer_state / "task_state.json",
+        strategy_path=peer_state / "strategy.json",
+        events_path=peer_state / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ASI-",
+        worktree_root=worktree_root,
+        merged_worktree_cleanup_max=5,
+    )
+
+    record = owner.worktree_lifecycle.begin_preparing(
+        task_id="ASI-171",
+        canonical_task_cid="task:asi-171",
+        attempt=1,
+        lane_id="owner-lane",
+        workspace_path=worktree_path,
+        branch=branch_name,
+        merge_target="main",
+        state_dir=str(owner_state),
+    )
+    assert record.state is WorkspaceLifecycleState.PREPARING
+    owner._active_worktree_lifecycle = record
+
+    # Peer lane has no active process scan hit and branch is already merged.
+    cleanup = peer._cleanup_already_merged_worktrees()
+    assert cleanup["removed_count"] == 0
+    assert worktree_path.exists()
+    assert any(
+        str(item.get("reason") or "").startswith("lifecycle_")
+        for item in cleanup.get("skipped") or []
+    ), cleanup
+
+    direct = peer._cleanup_merged_worktree(worktree_path, branch_name)
+    assert direct.get("cleaned") is False
+    assert direct.get("attempt_consumed") is False
+    assert direct.get("provider_call_allowed") is False
+    assert worktree_path.exists()
+
+    # Owner may still dispose its own claim.
+    owner_cleanup = owner._cleanup_merged_worktree(worktree_path, branch_name)
+    assert owner_cleanup.get("cleaned") is True
+    assert not worktree_path.exists()
+    assert FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID
 
 
 def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
@@ -7530,7 +7674,10 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
 
     assert first["deferred"] is True
     assert first["reason"] == "provider_capacity_exhausted"
-    assert first["providers"] == ["codex", "copilot"]
+    # Capacity text matches codex + copilot patterns; the shared "usage limit"
+    # phrase is also owned by the grok classifier, so grok may appear too.
+    assert "codex" in first["providers"]
+    assert "copilot" in first["providers"]
     assert first["attempt_consumed"] is False
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None

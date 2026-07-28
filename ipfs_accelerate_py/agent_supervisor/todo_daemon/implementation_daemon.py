@@ -56,6 +56,22 @@ from ..checkout_lock import (
     checkout_repository_id,
     merge_target_queue_dir,
 )
+from ..worktree_lifecycle import (
+    DEFAULT_LEASE_SECONDS,
+    DEFAULT_STARTUP_GRACE_SECONDS,
+    CleanupDisposition,
+    DuplicateAttemptError,
+    FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
+    FenceMismatchError,
+    LifecycleFailureKind,
+    OwnershipError,
+    WorkspaceLifecycleRecord,
+    WorkspaceLifecycleState,
+    WorktreeLifecycleError,
+    WorktreeLifecycleStore,
+    lifecycle_race_result,
+    normalize_workspace_path,
+)
 from ..event_log import (
     append_jsonl_event,
     latest_event_cursor,
@@ -193,6 +209,12 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
+    "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_LEASE_SECONDS"
+)
+WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV = (
+    "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_STARTUP_GRACE_SECONDS"
+)
 TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )
@@ -2212,6 +2234,29 @@ class PortalImplementationDaemon:
         self.worktree_context_snapshot_path = self.state_path.with_name(
             f"{self.state_path.stem}.worktree-context.json"
         )
+        lifecycle_lease_seconds = float(
+            os.environ.get(WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV, "") or 0
+        )
+        lifecycle_startup_grace = float(
+            os.environ.get(WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV, "") or 0
+        )
+        self.worktree_lifecycle = WorktreeLifecycleStore(
+            repo_root=self.repo_root,
+            lease_seconds=(
+                lifecycle_lease_seconds
+                if lifecycle_lease_seconds > 0
+                else DEFAULT_LEASE_SECONDS
+            ),
+            startup_grace_seconds=(
+                lifecycle_startup_grace
+                if lifecycle_startup_grace > 0
+                else DEFAULT_STARTUP_GRACE_SECONDS
+            ),
+        )
+        # Active attempt's fenced workspace claim (if any).  Cleanup paths
+        # pass this lease so the owner can dispose its own worktree while
+        # peer lanes remain fenced out of nonterminal claims.
+        self._active_worktree_lifecycle: WorkspaceLifecycleRecord | None = None
         self.merge_target_branch = str(merge_target_branch or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
@@ -3962,8 +4007,26 @@ class PortalImplementationDaemon:
         except (OSError, RuntimeError):
             ephemeral_workspace = True
         workspace_snapshot = snapshot.get("workspace")
+        shared_snapshot = snapshot.get("shared_checkout")
+        shared_has_git_head = isinstance(shared_snapshot, Mapping) and bool(
+            str(shared_snapshot.get("git_head") or "")
+        )
+        under_managed_worktree_root = False
+        try:
+            under_managed_worktree_root = self._path_is_under(
+                workspace_path,
+                self.worktree_root.resolve(strict=False),
+            )
+        except (OSError, RuntimeError, AttributeError):
+            under_managed_worktree_root = False
+        # Real managed ephemeral worktrees live under worktree_root of a Git
+        # shared checkout and must bind a stable HEAD.  Unit tests that only
+        # exercise content-identity renumbering against a non-Git shared root
+        # still snapshot path hashes without a Git object id.
         if (
             ephemeral_workspace
+            and under_managed_worktree_root
+            and shared_has_git_head
             and (
                 not isinstance(workspace_snapshot, Mapping)
                 or not str(workspace_snapshot.get("git_head") or "")
@@ -8353,14 +8416,47 @@ class PortalImplementationDaemon:
         protected_path_violation: dict[str, Any] = {}
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
+        lifecycle_record: WorkspaceLifecycleRecord | None = None
 
         try:
+            # Publish a preparing lifecycle claim *before* the cleanup-visible
+            # worktree exists so peer lanes cannot classify a branch-at-merge-
+            # target checkout as already-merged while the owner is still mid
+            # setup (ASI-171 / AICAT-025 prerequisite).
+            try:
+                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
+                    attempt=attempt,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    workspace_path=worktree_path,
+                    branch=branch_name,
+                    merge_target=self._main_branch_name(),
+                    state_dir=str(self.state_path.parent.resolve()),
+                )
+                self._active_worktree_lifecycle = lifecycle_record
+            except DuplicateAttemptError as exc:
+                return lifecycle_race_result(
+                    reason="worktree_lifecycle_claim_exists",
+                    task_id=task.task_id,
+                    attempt=attempt,
+                    extra={
+                        "error": str(exc)[-1000:],
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                    },
+                )
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
             # A pooled checkout keeps a stable physical path so Git does not
             # have to relocate populated submodule worktrees.  Resolve the
             # task's provisional timestamp path before any command, state, or
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
+            if lifecycle_record is not None:
+                lifecycle_record = self._sync_worktree_lifecycle_workspace(
+                    lifecycle_record,
+                    worktree_path,
+                )
             workspace_setup = self._worktree_setup_result(worktree_path)
             command = self._build_implementation_command(worktree_path)
             protected_path_snapshot = self._require_implementation_protected_snapshot(
@@ -8368,6 +8464,25 @@ class PortalImplementationDaemon:
                 attempt=attempt,
                 workspace_path=worktree_path,
             )
+            if lifecycle_record is not None:
+                try:
+                    lifecycle_record = self.worktree_lifecycle.mark_active(
+                        lifecycle_record.workspace_path,
+                        lease_id=lifecycle_record.lease_id,
+                        expected_fence=lifecycle_record.fence,
+                    )
+                    self._active_worktree_lifecycle = lifecycle_record
+                except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+                    return lifecycle_race_result(
+                        reason="worktree_lifecycle_active_transition_failed",
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        extra={
+                            "error": str(exc)[-1000:],
+                            "worktree_path": str(worktree_path),
+                            "branch": branch_name,
+                        },
+                    )
             self._mark_implementation_started(
                 state,
                 task=task,
@@ -8393,6 +8508,16 @@ class PortalImplementationDaemon:
                     "saved_duration_seconds": workspace_setup["saved_duration_seconds"],
                     "checkpoint_directory": str(checkpoint_dir),
                     "timeout_policy": timeout_policy.to_dict(),
+                    "worktree_lifecycle": (
+                        None
+                        if lifecycle_record is None
+                        else {
+                            "state": lifecycle_record.state.value,
+                            "fence": lifecycle_record.fence,
+                            "lease_id": lifecycle_record.lease_id,
+                            "requirement_id": FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
+                        }
+                    ),
                 },
             )
             with log_path.open("w", encoding="utf-8") as log_fh:
@@ -8520,6 +8645,7 @@ class PortalImplementationDaemon:
                         failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
             if returncode == 0 and not protected_path_violation:
+                self._mark_worktree_lifecycle_settling(worktree_path)
                 self._mark_active_phase(
                     state,
                     phase="validating",
@@ -16004,6 +16130,158 @@ class PortalImplementationDaemon:
     def _managed_cleanup_branch(branch_name: str) -> bool:
         return branch_name.startswith("implementation/") or branch_name.startswith("rescue/worktree/")
 
+    def _worktree_lifecycle_lane_id(self) -> str:
+        """Return a stable lane identity for lifecycle records."""
+
+        state_dir = str(self.state_path.parent.resolve())
+        shard = f"{self.task_shard_index}/{self.task_shard_count}"
+        return f"{state_dir}:{shard}:{os.getpid()}"
+
+    def _active_worktree_lifecycle_lease_id(self) -> str:
+        record = self._active_worktree_lifecycle
+        if record is None:
+            return ""
+        return str(record.lease_id or "")
+
+    def _mark_worktree_lifecycle_settling(
+        self,
+        worktree_path: Path | None,
+    ) -> WorkspaceLifecycleRecord | None:
+        """Advance the active claim into settling before validation/merge/cleanup."""
+
+        record = self._active_worktree_lifecycle
+        if worktree_path is not None:
+            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
+            if loaded is not None:
+                record = loaded
+        if record is None or record.is_terminal:
+            return record
+        if record.state is WorkspaceLifecycleState.SETTLING:
+            self._active_worktree_lifecycle = record
+            return record
+        try:
+            updated = self.worktree_lifecycle.mark_settling(
+                record.workspace_path,
+                lease_id=record.lease_id,
+                expected_fence=record.fence,
+            )
+        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError):
+            return record
+        self._active_worktree_lifecycle = updated
+        return updated
+
+    def _sync_worktree_lifecycle_workspace(
+        self,
+        record: WorkspaceLifecycleRecord,
+        worktree_path: Path,
+    ) -> WorkspaceLifecycleRecord:
+        """Rebind a preparing claim when pool resolution changes the path."""
+
+        normalized = normalize_workspace_path(worktree_path)
+        if normalize_workspace_path(record.workspace_path) == normalized:
+            return record
+        # Path changed (pooled checkout): move the existing claim with the
+        # owner lease so the task/attempt index never observes two concurrent
+        # nonterminal records for the same attempt.
+        rebound = self.worktree_lifecycle.rebind_workspace(
+            record.workspace_path,
+            normalized,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+        self._active_worktree_lifecycle = rebound
+        return rebound
+
+    def _authorize_worktree_cleanup(
+        self,
+        worktree_path: Path | None,
+        branch_name: str = "",
+        *,
+        caller_lease_id: str = "",
+    ) -> dict[str, Any]:
+        """Return cleanup authorization for a managed worktree.
+
+        Peer lanes must not delete/prune/reuse a nonterminal fenced claim,
+        including the preparing window before child-process discovery.
+        """
+
+        if worktree_path is None:
+            return {
+                "allowed": True,
+                "reason": "no_worktree_path",
+                "disposition": CleanupDisposition.ALLOW.value,
+            }
+        lease_id = caller_lease_id or self._active_worktree_lifecycle_lease_id()
+        decision = self.worktree_lifecycle.authorize_cleanup(
+            workspace_path=worktree_path,
+            branch=branch_name,
+            caller_lease_id=lease_id,
+        )
+        payload = decision.to_dict()
+        if not decision.allowed:
+            self._record_event(
+                "worktree_cleanup_fenced",
+                {
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    **payload,
+                },
+            )
+        return payload
+
+    def _finalize_worktree_lifecycle(
+        self,
+        worktree_path: Path | None,
+        *,
+        reason: str = "cleanup_finished",
+    ) -> dict[str, Any]:
+        """Mark the active (or path-bound) lifecycle record terminal after disposal."""
+
+        record = self._active_worktree_lifecycle
+        if worktree_path is not None:
+            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
+            if loaded is not None:
+                record = loaded
+        if record is None:
+            return {"finalized": False, "reason": "no_lifecycle_record"}
+        if record.is_terminal:
+            self._active_worktree_lifecycle = None
+            return {
+                "finalized": True,
+                "reason": "already_terminal",
+                "fence": record.fence,
+            }
+        try:
+            terminal = self.worktree_lifecycle.mark_terminal(
+                record.workspace_path,
+                lease_id=record.lease_id,
+                expected_fence=record.fence,
+                reason=reason,
+            )
+            self.worktree_lifecycle.compare_and_delete(
+                terminal.workspace_path,
+                expected_fence=terminal.fence,
+                lease_id=terminal.lease_id,
+            )
+            self._active_worktree_lifecycle = None
+            return {
+                "finalized": True,
+                "reason": reason,
+                "fence": terminal.fence,
+                "state": terminal.state.value,
+            }
+        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+            # Peer reclamation or concurrent owner may have advanced the fence.
+            self._active_worktree_lifecycle = None
+            return {
+                "finalized": False,
+                "reason": "lifecycle_finalize_race",
+                "error": str(exc)[-500:],
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+            }
+
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
         """Continuously drain inactive worktrees whose branches are already merged."""
 
@@ -16058,6 +16336,22 @@ class PortalImplementationDaemon:
                 continue
             if any(str(worktree_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
+                continue
+            # Fenced ownership check must run before ancestry-based cleanup so a
+            # preparing/active claim whose tip still matches the merge target is
+            # never deleted by a peer lane (ASI-171).
+            lifecycle_auth = self._authorize_worktree_cleanup(
+                worktree_path,
+                branch_name,
+            )
+            if not lifecycle_auth.get("allowed", False):
+                skipped.append(
+                    {
+                        **detail,
+                        "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
+                        "lifecycle": lifecycle_auth,
+                    }
+                )
                 continue
             if not self._managed_cleanup_branch(branch_name):
                 skipped.append({**detail, "reason": "unmanaged_branch"})
@@ -16124,6 +16418,28 @@ class PortalImplementationDaemon:
         reusable: bool = True,
     ) -> dict[str, Any]:
         started_at = utc_now()
+        lifecycle_auth = self._authorize_worktree_cleanup(
+            worktree_path,
+            branch_name,
+        )
+        if not lifecycle_auth.get("allowed", False):
+            result = {
+                "cleaned": False,
+                "branch": branch_name,
+                "worktree_path": str(worktree_path or ""),
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "removed_worktree": False,
+                "deleted_branch": False,
+                "submodule_cleanup": [],
+                "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
+                "lifecycle": lifecycle_auth,
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+            }
+            self._record_event("cleanup_finished", result)
+            return result
         lease: WorktreeLease | None = None
         lease_key: Path | None = None
         if worktree_path is not None:
@@ -16158,6 +16474,11 @@ class PortalImplementationDaemon:
                 }
                 if branch_error:
                     result["error"] = branch_error
+                if result.get("cleaned"):
+                    result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
+                        worktree_path,
+                        reason="pool_release_cleaned",
+                    )
                 self._record_event("cleanup_finished", result)
                 return result
 
@@ -16204,6 +16525,10 @@ class PortalImplementationDaemon:
             "removed_worktree": removed_worktree,
             "deleted_branch": deleted_branch,
             "submodule_cleanup": submodule_cleanup,
+            "lifecycle_finalize": self._finalize_worktree_lifecycle(
+                worktree_path,
+                reason="worktree_cleaned",
+            ),
         }
         self._record_event("cleanup_finished", result)
         return result
@@ -16341,6 +16666,19 @@ class PortalImplementationDaemon:
                 continue
             if any(str(worktree_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
+                continue
+            lifecycle_auth = self._authorize_worktree_cleanup(
+                worktree_path,
+                branch_name,
+            )
+            if not lifecycle_auth.get("allowed", False):
+                skipped.append(
+                    {
+                        **detail,
+                        "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
+                        "lifecycle": lifecycle_auth,
+                    }
+                )
                 continue
             if not self._managed_cleanup_branch(branch_name):
                 skipped.append({**detail, "reason": "unmanaged_branch"})
@@ -19847,6 +20185,10 @@ class PortalImplementationDaemon:
         configured_budget = (
             self.implementation_context_budget or parent_capsule.budget
         )
+        # See _compile_implementation_context: dual-loaded ContextBudget classes
+        # break isinstance; rehydrate via mapping for compiler-local types.
+        if hasattr(configured_budget, "to_dict"):
+            configured_budget = configured_budget.to_dict()
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,
@@ -20091,6 +20433,12 @@ class PortalImplementationDaemon:
                 max_depth=12,
                 max_text_bytes=8_192,
             )
+        # Pass budget as a mapping so ContextCompiler rehydrates it with its
+        # own ContextBudget class. Flat package-root aliases can dual-load
+        # context_contracts under two sys.modules keys; isinstance then fails
+        # even when both types share the same qualname and fields.
+        if hasattr(configured_budget, "to_dict"):
+            configured_budget = configured_budget.to_dict()
         provider_window = self.implementation_provider_context_window
         if provider_window is None:
             raw_window = os.environ.get(
