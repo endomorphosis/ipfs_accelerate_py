@@ -45,6 +45,12 @@ Self-improvement, codebase-proof, domain layout, AI service catalog, and related
 efforts are **programs** that use the supervisor—they are not alternate supervisors.
 Map board prefixes to semantic names in [PROGRAMS.md](PROGRAMS.md).
 
+## Programs
+
+Semantic index of long-running boards (not package trees):
+
+- [programs/README.md](programs/README.md)
+
 ## Domain package reference pages
 
 Per-package semantic READMEs (purpose, modules, dependency rules):
