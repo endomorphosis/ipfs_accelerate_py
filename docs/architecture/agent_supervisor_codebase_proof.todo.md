@@ -242,7 +242,7 @@ Normative:
 
 ## CBP-060 Obligation-first context capsules
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: context
