@@ -12,9 +12,12 @@ Supported CLI Tools:
 
 
 .. deprecated::
-    This module has been migrated to the canonical runtime at
-    ``ipfs_accelerate_py.mcp_server.tools.cli_endpoint_tools``.  Import from the canonical module instead.
-    This file is preserved as a compatibility shim only.
+    Registration, listing, and execution are owned by the canonical factory at
+    ``ipfs_accelerate_py.cli_runtime.endpoints``. Concrete adapter classes remain
+    here for import compatibility; ``register_cli_endpoint``,
+    ``list_cli_endpoints``, ``get_cli_endpoint``, ``execute_cli_inference``, and
+    ``CLI_ADAPTER_REGISTRY`` are compatibility shims over that factory.
+    Prefer importing from ``ipfs_accelerate_py.cli_runtime.endpoints`` for new code.
 """
 
 import os
@@ -25,9 +28,19 @@ import time
 import shutil
 import re
 import platform
+import threading
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 from abc import ABC, abstractmethod
+
+try:
+    from ipfs_accelerate_py.cli_runtime.contracts import (
+        MAX_PROMPT_CHARS as _MAX_PROMPT_CHARS,
+        MAX_TEXT_CHARS as _MAX_TEXT_CHARS,
+    )
+except Exception:  # pragma: no cover - defensive fallback
+    _MAX_PROMPT_CHARS = 100000
+    _MAX_TEXT_CHARS = 1048576
 
 # Try to import storage wrapper with comprehensive fallback
 try:
@@ -81,6 +94,13 @@ def sanitize_input(value: str, max_length: int = 10000, allowed_pattern: Optiona
     return value
 
 
+def _clip_text(value: Any, maximum: int) -> str:
+    text = str("" if value is None else value)
+    if len(text) <= maximum:
+        return text
+    return text[: max(0, maximum - 3)] + "..."
+
+
 def validate_cli_args(args: List[str]) -> List[str]:
     """
     Validate CLI arguments to prevent injection attacks
@@ -114,8 +134,12 @@ def validate_cli_args(args: List[str]) -> List[str]:
 
 
 class CLIEndpointAdapter(ABC):
-    """Base class for CLI endpoint adapters"""
-    
+    """Base class for CLI endpoint adapters.
+
+    Abstract: never instantiate directly. Use the concrete factory in
+    ``ipfs_accelerate_py.cli_runtime.endpoints`` (or a concrete subclass).
+    """
+
     def __init__(
         self,
         endpoint_id: str,
@@ -134,6 +158,7 @@ class CLIEndpointAdapter(ABC):
                                           allowed_pattern=r'^[a-zA-Z0-9_\-]+$')
         self.cli_path = cli_path or self._detect_cli_path()
         self.config = config or {}
+        self._stats_lock = threading.Lock()
         self.stats = {
             "requests": 0,
             "successes": 0,
@@ -145,6 +170,30 @@ class CLIEndpointAdapter(ABC):
         # Validate CLI is available
         if not self.is_available():
             logger.warning(f"CLI tool for {self.endpoint_id} not found at {self.cli_path}")
+
+    def _record_success(self, elapsed_time: float) -> None:
+        with self._stats_lock:
+            self.stats["requests"] += 1
+            self.stats["successes"] += 1
+            self.stats["total_time"] += elapsed_time
+            requests = self.stats["requests"]
+            self.stats["avg_time"] = (
+                self.stats["total_time"] / requests if requests else 0.0
+            )
+
+    def _record_failure(self, elapsed_time: float = 0.0) -> None:
+        with self._stats_lock:
+            self.stats["requests"] += 1
+            self.stats["failures"] += 1
+            self.stats["total_time"] += elapsed_time
+            requests = self.stats["requests"]
+            self.stats["avg_time"] = (
+                self.stats["total_time"] / requests if requests else 0.0
+            )
+
+    def _stats_snapshot(self) -> Dict[str, Any]:
+        with self._stats_lock:
+            return dict(self.stats)
     
     @abstractmethod
     def _detect_cli_path(self) -> Optional[str]:
@@ -221,7 +270,7 @@ class CLIEndpointAdapter(ABC):
         except Exception as e:
             return {
                 "available": True,
-                "error": f"Version check failed: {str(e)}"
+                "error": f"Version check failed: {type(e).__name__}"
             }
     
     def validate_config(self) -> Dict[str, Any]:
@@ -266,14 +315,15 @@ class CLIEndpointAdapter(ABC):
             **kwargs: Additional task-specific parameters
             
         Returns:
-            Dictionary with inference results and metadata
+            Dictionary with inference results and metadata.
+            Nonzero subprocess exit status is always a failure.
+            Error payloads never echo the prompt.
         """
         start_time = time.time()
-        self.stats["requests"] += 1
         
         try:
-            # Sanitize prompt input
-            prompt = sanitize_input(prompt, max_length=100000)
+            # Sanitize / bound prompt input
+            prompt = sanitize_input(prompt, max_length=_MAX_PROMPT_CHARS)
             
             # Format command
             cmd_args = self._format_prompt(prompt, task_type, **kwargs)
@@ -281,7 +331,11 @@ class CLIEndpointAdapter(ABC):
             # Validate command arguments
             cmd_args = validate_cli_args(cmd_args)
             
-            logger.info(f"Executing CLI command for {self.endpoint_id}: {' '.join(cmd_args[:3])}...")
+            logger.info(
+                "Executing CLI command for %s: %s...",
+                self.endpoint_id,
+                " ".join(str(a) for a in cmd_args[:3]),
+            )
             
             # Execute CLI command with security constraints
             result = subprocess.run(
@@ -294,68 +348,108 @@ class CLIEndpointAdapter(ABC):
                 shell=False  # Never use shell=True for security
             )
             
-            # Parse response
-            response = self._parse_response(result.stdout, result.stderr)
-            
-            # Update stats
             elapsed_time = time.time() - start_time
-            self.stats["successes"] += 1
-            self.stats["total_time"] += elapsed_time
-            self.stats["avg_time"] = self.stats["total_time"] / self.stats["requests"]
+            returncode = int(result.returncode)
+
+            # Nonzero exit is always failure (do not treat as success).
+            if returncode != 0:
+                self._record_failure(elapsed_time)
+                stderr_diag = _clip_text(
+                    (result.stderr or "").strip(), 1024
+                )
+                payload: Dict[str, Any] = {
+                    "error": f"CLI exited with status {returncode}",
+                    "endpoint_id": self.endpoint_id,
+                    "endpoint_type": "cli",
+                    "elapsed_time": elapsed_time,
+                    "status": "error",
+                    "success": False,
+                    "returncode": returncode,
+                    "error_code": "nonzero_exit",
+                }
+                if stderr_diag:
+                    payload["stderr"] = stderr_diag
+                return payload
+
+            # Parse response and bound result text
+            response = self._parse_response(result.stdout, result.stderr)
+            if isinstance(response.get("result"), str):
+                response["result"] = _clip_text(
+                    response["result"], _MAX_TEXT_CHARS
+                )
+            if isinstance(response.get("raw_response"), str):
+                response["raw_response"] = _clip_text(
+                    response["raw_response"], _MAX_TEXT_CHARS
+                )
+
+            self._record_success(elapsed_time)
             
-            # Add metadata
+            # Add metadata (never include prompt)
             response.update({
                 "endpoint_id": self.endpoint_id,
                 "endpoint_type": "cli",
                 "elapsed_time": elapsed_time,
                 "status": "success",
-                "returncode": result.returncode
+                "success": True,
+                "returncode": returncode,
             })
+            response.pop("prompt", None)
             
             return response
             
         except subprocess.TimeoutExpired:
             elapsed_time = time.time() - start_time
-            self.stats["failures"] += 1
+            self._record_failure(elapsed_time)
             logger.error(f"CLI execution timeout for {self.endpoint_id}")
             return {
                 "error": "CLI execution timeout",
                 "endpoint_id": self.endpoint_id,
                 "elapsed_time": elapsed_time,
-                "status": "timeout"
+                "status": "timeout",
+                "success": False,
             }
         
         except ValueError as e:
-            # Input validation error
+            # Input validation error — message only, never the prompt body
             elapsed_time = time.time() - start_time
-            self.stats["failures"] += 1
-            logger.error(f"Input validation error for {self.endpoint_id}: {e}")
+            self._record_failure(elapsed_time)
+            logger.error(
+                "Input validation error for %s: %s",
+                self.endpoint_id,
+                type(e).__name__,
+            )
             return {
-                "error": f"Input validation error: {str(e)}",
+                "error": f"Input validation error: {type(e).__name__}",
                 "endpoint_id": self.endpoint_id,
                 "elapsed_time": elapsed_time,
-                "status": "validation_error"
+                "status": "validation_error",
+                "success": False,
             }
             
         except Exception as e:
             elapsed_time = time.time() - start_time
-            self.stats["failures"] += 1
-            logger.error(f"CLI execution error for {self.endpoint_id}: {e}")
+            self._record_failure(elapsed_time)
+            logger.error(
+                "CLI execution error for %s: %s",
+                self.endpoint_id,
+                type(e).__name__,
+            )
             return {
-                "error": str(e),
+                "error": f"CLI execution error: {type(e).__name__}",
                 "endpoint_id": self.endpoint_id,
                 "elapsed_time": elapsed_time,
-                "status": "error"
+                "status": "error",
+                "success": False,
             }
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get endpoint statistics"""
+        """Get endpoint statistics (concurrency-safe snapshot)."""
         return {
             "endpoint_id": self.endpoint_id,
             "endpoint_type": "cli",
             "cli_path": self.cli_path,
             "available": self.is_available(),
-            "stats": self.stats
+            "stats": self._stats_snapshot(),
         }
     
     def get_capabilities(self) -> Dict[str, Any]:
@@ -1074,48 +1168,62 @@ class VSCodeCLIAdapter(CLIEndpointAdapter):
         return instructions
 
 
-# Registry to keep track of registered CLI adapters
-CLI_ADAPTER_REGISTRY: Dict[str, CLIEndpointAdapter] = {}
+# ---------------------------------------------------------------------------
+# Compatibility shims over the canonical factory
+# (ipfs_accelerate_py.cli_runtime.endpoints)
+# ---------------------------------------------------------------------------
+
+from ipfs_accelerate_py.cli_runtime.endpoints import (  # noqa: E402
+    CLI_ADAPTER_REGISTRY,
+    create_cli_endpoint,
+    execute_cli_inference as _canonical_execute_cli_inference,
+    get_cli_endpoint as _canonical_get_cli_endpoint,
+    list_cli_endpoints as _canonical_list_cli_endpoints,
+    register_cli_endpoint as _canonical_register_cli_endpoint,
+    reset_default_endpoint_registry,
+)
 
 
-def register_cli_endpoint(adapter: CLIEndpointAdapter) -> Dict[str, Any]:
+def register_cli_endpoint(
+    adapter: Optional["CLIEndpointAdapter"] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
     """
-    Register a CLI endpoint adapter
-    
+    Register a CLI endpoint adapter via the canonical factory.
+
     Args:
-        adapter: CLIEndpointAdapter instance
-        
+        adapter: Concrete CLIEndpointAdapter subclass instance, or omit and
+            pass ``tool=...`` to construct via the concrete factory.
+        **kwargs: Forwarded to the canonical registrar
+            (``tool``, ``endpoint_id``, ``config``, ``replace``, ``probe``, ...)
+
     Returns:
         Dictionary with registration status
     """
-    try:
-        endpoint_id = adapter.endpoint_id
-        CLI_ADAPTER_REGISTRY[endpoint_id] = adapter
-        
-        logger.info(f"Registered CLI endpoint: {endpoint_id} (available: {adapter.is_available()})")
-        
-        return {
-            "status": "success",
-            "endpoint_id": endpoint_id,
-            "available": adapter.is_available(),
-            "message": f"CLI endpoint {endpoint_id} registered successfully"
-        }
-    except Exception as e:
-        logger.error(f"Failed to register CLI endpoint: {e}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+    return _canonical_register_cli_endpoint(adapter, **kwargs)
 
 
-def get_cli_endpoint(endpoint_id: str) -> Optional[CLIEndpointAdapter]:
+def get_cli_endpoint(endpoint_id: str) -> Optional["CLIEndpointAdapter"]:
     """Get a registered CLI endpoint adapter"""
-    return CLI_ADAPTER_REGISTRY.get(endpoint_id)
+    return _canonical_get_cli_endpoint(endpoint_id)  # type: ignore[return-value]
 
 
-def list_cli_endpoints() -> List[Dict[str, Any]]:
-    """List all registered CLI endpoints"""
-    return [adapter.get_stats() for adapter in CLI_ADAPTER_REGISTRY.values()]
+def list_cli_endpoints(*, probe: bool = False) -> List[Dict[str, Any]]:
+    """List all registered CLI endpoints (no provider probe by default)."""
+    endpoints = _canonical_list_cli_endpoints(probe=probe)
+    # Preserve legacy shape: prefer adapter.get_stats when available.
+    enriched: List[Dict[str, Any]] = []
+    for item in endpoints:
+        endpoint_id = item.get("endpoint_id")
+        adapter = get_cli_endpoint(endpoint_id) if endpoint_id else None
+        if adapter is not None and hasattr(adapter, "get_stats"):
+            stats = dict(adapter.get_stats())
+            stats.setdefault("tool", item.get("tool"))
+            stats.setdefault("health", item.get("health"))
+            enriched.append(stats)
+        else:
+            enriched.append(item)
+    return enriched
 
 
 def execute_cli_inference(
@@ -1127,29 +1235,22 @@ def execute_cli_inference(
 ) -> Dict[str, Any]:
     """
     Execute inference using a registered CLI endpoint
-    
+
     Args:
         endpoint_id: ID of the registered CLI endpoint
         prompt: Input prompt
         task_type: Type of task to perform
         timeout: Maximum execution time in seconds
         **kwargs: Additional task-specific parameters
-        
+
     Returns:
-        Dictionary with inference results
+        Dictionary with inference results. Nonzero exit is failure; errors
+        never echo the prompt.
     """
-    adapter = get_cli_endpoint(endpoint_id)
-    
-    if not adapter:
-        return {
-            "error": f"CLI endpoint '{endpoint_id}' not found",
-            "status": "error"
-        }
-    
-    if not adapter.is_available():
-        return {
-            "error": f"CLI tool for endpoint '{endpoint_id}' is not available",
-            "status": "error"
-        }
-    
-    return adapter.execute(prompt, task_type, timeout, **kwargs)
+    return _canonical_execute_cli_inference(
+        endpoint_id,
+        prompt,
+        task_type=task_type,
+        timeout=timeout,
+        **kwargs,
+    )
