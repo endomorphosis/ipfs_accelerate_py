@@ -3112,6 +3112,18 @@ class PortalImplementationDaemon:
                         mutations=mutations,
                     )
                 )
+                if not disposed_workspace_proof:
+                    mirrored_workspace_proof = (
+                        self._mirrored_ephemeral_workspace_clearance_proof(
+                            active=active,
+                            mutations=[
+                                item
+                                for item in mutations
+                                if isinstance(item, Mapping)
+                                and str(item.get("scope") or "") == "workspace"
+                            ],
+                        )
+                    )
             elif mutation_scopes == {"workspace"}:
                 mirrored_workspace_proof = (
                     self._mirrored_ephemeral_workspace_clearance_proof(
@@ -3234,6 +3246,7 @@ class PortalImplementationDaemon:
 
         commits: list[dict[str, Any]] = []
         untrusted_commits: set[str] = set()
+        protected_path_history_unchanged = False
         if not shared_head_unchanged:
             history = subprocess.run(
                 [
@@ -3271,7 +3284,25 @@ class PortalImplementationDaemon:
                 if not trusted:
                     untrusted_commits.add(commit)
             if not commits:
-                return denied("protected_path_history_empty")
+                unchanged = subprocess.run(
+                    [
+                        "git",
+                        "diff",
+                        "--quiet",
+                        before_head,
+                        after_head,
+                        "--",
+                        *protected_paths,
+                    ],
+                    cwd=self.repo_root,
+                    check=False,
+                )
+                if unchanged.returncode != 0 or not mirrored_workspace_proof:
+                    return denied(
+                        "protected_path_history_empty",
+                        protected_path_diff_returncode=unchanged.returncode,
+                    )
+                protected_path_history_unchanged = True
         if resolved_approvals != untrusted_commits:
             return denied(
                 "operator_commit_approval_mismatch",
@@ -3292,6 +3323,9 @@ class PortalImplementationDaemon:
             "before_head": before_head,
             "after_head": after_head,
             "approved_commits": sorted(resolved_approvals),
+            "protected_path_history_unchanged": (
+                protected_path_history_unchanged
+            ),
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
             "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
         }
@@ -3311,6 +3345,9 @@ class PortalImplementationDaemon:
             "protected_paths": protected_paths,
             "approved_commits": sorted(resolved_approvals),
             "history": commits,
+            "protected_path_history_unchanged": (
+                protected_path_history_unchanged
+            ),
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
             "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
         }
@@ -3334,9 +3371,16 @@ class PortalImplementationDaemon:
         result = {
             "cleared": True,
             "reason": (
-                "operator_approved_mirrored_ephemeral_workspace"
-                if mirrored_workspace_proof
-                else "operator_approved_shared_checkout_commits"
+                (
+                    "operator_approved_shared_checkout_commits_and_"
+                    "mirrored_ephemeral_workspace"
+                )
+                if mirrored_workspace_proof and commits
+                else (
+                    "operator_approved_mirrored_ephemeral_workspace"
+                    if mirrored_workspace_proof
+                    else "operator_approved_shared_checkout_commits"
+                )
             ),
             "clearance_id": clearance_id,
             "receipt_path": str(receipt_path),
@@ -3366,7 +3410,15 @@ class PortalImplementationDaemon:
         active: Mapping[str, Any],
         mutations: Sequence[Mapping[str, Any]],
     ) -> dict[str, Any]:
-        """Prove a vanished invalid checkout only mirrored protected inputs."""
+        """Prove a vanished checkout retained exact protected input content.
+
+        A failed or externally cleaned-up Git worktree can recreate a protected
+        file under a different inode while preserving its complete meaningful
+        identity.  Once that managed worktree is both absent and unregistered,
+        an operator may clear either that identity-only change or a file that
+        was created as an exact mirror of the shared baseline.  Content,
+        file-kind, ownership, and mode changes remain fail closed.
+        """
 
         if active.get("ephemeral_worktree") is not True:
             return {}
@@ -3403,8 +3455,6 @@ class PortalImplementationDaemon:
             Mapping,
         ):
             return {}
-        if str(before_workspace.get("git_head") or ""):
-            return {}
         workspace_paths = before_workspace.get("paths")
         shared_paths = before_shared.get("paths")
         if not isinstance(workspace_paths, Mapping) or not isinstance(
@@ -3414,14 +3464,23 @@ class PortalImplementationDaemon:
             return {}
 
         mirrored_paths: list[str] = []
-        identity_keys = ("state", "kind", "size", "sha256", "symlink_target")
+        mutation_changes: list[str] = []
+        identity_keys = (
+            "state",
+            "kind",
+            "size",
+            "sha256",
+            "symlink_target",
+            "mode",
+            "uid",
+            "gid",
+        )
+        workspace_git_head = str(before_workspace.get("git_head") or "")
         for mutation in mutations:
-            if (
-                str(mutation.get("scope") or "") != "workspace"
-                or str(mutation.get("change") or "") != "created"
-            ):
+            if str(mutation.get("scope") or "") != "workspace":
                 return {}
             path = str(mutation.get("path") or "")
+            change = str(mutation.get("change") or "")
             before = mutation.get("before")
             after = mutation.get("after")
             baseline = shared_paths.get(path)
@@ -3429,17 +3488,40 @@ class PortalImplementationDaemon:
             if (
                 not path
                 or not isinstance(before, Mapping)
-                or before.get("state") != "missing"
                 or not isinstance(workspace_baseline, Mapping)
-                or workspace_baseline.get("state") != "missing"
                 or not isinstance(after, Mapping)
                 or not isinstance(baseline, Mapping)
                 or baseline.get("state") != "present"
             ):
                 return {}
-            if any(after.get(key) != baseline.get(key) for key in identity_keys):
+            if change == "created":
+                if (
+                    workspace_git_head
+                    or before.get("state") != "missing"
+                    or workspace_baseline.get("state") != "missing"
+                    or any(
+                        after.get(key) != baseline.get(key)
+                        for key in identity_keys
+                    )
+                ):
+                    return {}
+            elif change == "identity_changed":
+                if (
+                    before.get("state") != "present"
+                    or after.get("state") != "present"
+                    or workspace_baseline.get("state") != "present"
+                    or any(
+                        before.get(key) != after.get(key)
+                        or before.get(key) != workspace_baseline.get(key)
+                        or before.get(key) != baseline.get(key)
+                        for key in identity_keys
+                    )
+                ):
+                    return {}
+            else:
                 return {}
             mirrored_paths.append(path)
+            mutation_changes.append(change)
         if not mirrored_paths:
             return {}
         return {
@@ -3447,8 +3529,10 @@ class PortalImplementationDaemon:
             "workspace_path": str(workspace),
             "workspace_absent": True,
             "workspace_unregistered": True,
-            "workspace_git_head_missing_at_snapshot": True,
+            "workspace_git_head_missing_at_snapshot": not workspace_git_head,
+            "workspace_git_head_at_snapshot": workspace_git_head,
             "mirrored_protected_paths": sorted(mirrored_paths),
+            "mutation_changes": sorted(mutation_changes),
             "shared_baseline_git_head": str(
                 before_shared.get("git_head") or ""
             ),
