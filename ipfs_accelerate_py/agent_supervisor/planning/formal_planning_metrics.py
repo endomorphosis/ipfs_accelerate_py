@@ -24,8 +24,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Final
 
-from ..formal_verification_contracts import AssuranceLevel
-from ..formal_verification_policy import RiskLevel, RolloutMode
+from ..proof.formal_verification_contracts import AssuranceLevel
+from ..proof.formal_verification_policy import RiskLevel, RolloutMode
 
 
 FORMAL_PLANNING_METRICS_VERSION: Final = 1

@@ -24,7 +24,7 @@ from ..task_sources.duckdb_state import (
     initialize_duckdb_database,
     open_duckdb_connection,
 )
-from ..event_log import read_jsonl_events
+from ..runtime.event_log import read_jsonl_events
 
 
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
@@ -684,7 +684,7 @@ def build_namespace_merge_resolver_runner(
 ) -> ConfiguredMergeResolverRunner:
     """Build a merge-resolver runner using the standard namespace state layout."""
 
-    from ..implementation_daemon_runner import namespace_implementation_state_artifact_paths
+    from ..todo_daemon.implementation_daemon_runner import namespace_implementation_state_artifact_paths
     from ..core.wrapper_utils import agent_supervisor_namespace_paths, prefixed_env_var
 
     resolved_repo_root = Path(repo_root)

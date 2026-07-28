@@ -173,10 +173,10 @@ _CONTROL_BEARER_CREDENTIAL_RE: Final[re.Pattern[str]] = re.compile(
 CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES: Final[tuple[str, ...]] = (
     "ipfs_datasets_py",
     "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_",
-    "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
-    "ipfs_accelerate_py.agent_supervisor.leanstral_goal_development",
-    "ipfs_accelerate_py.agent_supervisor.leanstral_goal_lifecycle",
-    "ipfs_accelerate_py.agent_supervisor.formal_verification_provider",
+    "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
+    "ipfs_accelerate_py.agent_supervisor.proof.leanstral_goal_development",
+    "ipfs_accelerate_py.agent_supervisor.proof.leanstral_goal_lifecycle",
+    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider",
     "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm",
 )
 
@@ -4224,7 +4224,7 @@ class RepositorySupervisorBackend:
         }
 
     def _artifact(self, request: OperationRequest) -> Mapping[str, Any]:
-        from ..artifact_store import query_artifact
+        from ..runtime.artifact_store import query_artifact
 
         relative = _relative_parameter(request, "artifact_path", "path")
         root_name = str(request.parameters.get("root") or "state")
@@ -5328,7 +5328,7 @@ class SupervisorControlService:
         runtime = self._decision_runtime
         runtime_config = request.parameters.get("decision_runtime")
         if runtime_config is not None:
-            from ..decision_runtime import (
+            from ..context.decision_runtime import (
                 DecisionRuntime,
                 DecisionRuntimeConfig,
             )

@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from ..context_compiler import (
+from ..context.context_compiler import (
     ContextCompilationReceipt,
     ContextCompileResult,
     ContextCompiler,
@@ -33,8 +33,8 @@ from ..context_compiler import (
     render_context_capsule,
     render_retry_context,
 )
-from ..context_contracts import ContextBudget, ContextCapsule
-from ..formal_verification_contracts import canonical_json, content_identity
+from ..context.context_contracts import ContextBudget, ContextCapsule
+from ..proof.formal_verification_contracts import canonical_json, content_identity
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
@@ -45,7 +45,7 @@ from ..merge.checkout_lock import (
     checkout_mutation_lock_path,
     serialized_lock_update,
 )
-from ..event_log import (
+from ..runtime.event_log import (
     append_jsonl_event,
     latest_event_cursor,
     read_jsonl_events,
@@ -75,16 +75,16 @@ from ..task_sources.taskboard_store import (
     replace_locked_taskboard,
 )
 from ..merge.git_gc import GitGarbageCollector
-from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
+from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge.merge_checkpoint import MergeCheckpoint
-from ..merge_queue import MergeQueue
-from ..validation_commands import (
+from ..merge.merge_queue import MergeQueue
+from ..validation.validation_commands import (
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
 )
-from ..validation_runtime import validation_shell_command
-from ..validation_scheduler import (
+from ..validation.validation_runtime import validation_shell_command
+from ..validation.validation_scheduler import (
     ValidationScheduler,
     build_declared_validation_plan_graph,
 )
@@ -2064,7 +2064,7 @@ class PortalImplementationDaemon:
                     "decision_runtime_config cannot accompany a runtime "
                     "without an inspectable config"
                 )
-            from ..decision_runtime import DecisionRuntimeConfig
+            from ..context.decision_runtime import DecisionRuntimeConfig
 
             expected_config = DecisionRuntimeConfig.from_dict(
                 decision_runtime_config
@@ -2074,7 +2074,7 @@ class PortalImplementationDaemon:
                     "decision_runtime and decision_runtime_config disagree"
                 )
         if decision_runtime is None and decision_runtime_config is not None:
-            from ..decision_runtime import DecisionRuntime
+            from ..context.decision_runtime import DecisionRuntime
 
             decision_runtime = DecisionRuntime(
                 decision_runtime_config,
@@ -2461,7 +2461,7 @@ class PortalImplementationDaemon:
         """Route a live daemon boundary through the configured runtime."""
 
         if self._implementation_cancel_requested():
-            from ..decision_runtime import DecisionRuntimeCancelled
+            from ..context.decision_runtime import DecisionRuntimeCancelled
 
             raise DecisionRuntimeCancelled(
                 ("cancelled", f"cancelled_before_{boundary}")
@@ -7415,7 +7415,7 @@ class PortalImplementationDaemon:
         ]
         complete = len(valid_paths) <= MAX_MERGE_PROOF_METADATA_ITEMS
         scopes: list[dict[str, Any]] = []
-        from ..formal_verification_policy import ChangedScope
+        from ..proof.formal_verification_policy import ChangedScope
 
         for path in valid_paths[:MAX_MERGE_PROOF_METADATA_ITEMS]:
             scope = ChangedScope(
@@ -8121,7 +8121,7 @@ class PortalImplementationDaemon:
     def _consume_one_merge_candidate(self) -> dict[str, Any] | None:
         """Opportunistically advance one item while respecting the train lease."""
 
-        from ..merge_train import MergeTrain
+        from ..merge.merge_train import MergeTrain
 
         train = MergeTrain(
             repo_root=self.repo_root,
@@ -11369,7 +11369,7 @@ class PortalImplementationDaemon:
     ) -> Any:
         """Prefix a fully materialized child-repository diff entry."""
 
-        from ..code_proof_obligations import CandidateDiffEntry
+        from ..proof.code_proof_obligations import CandidateDiffEntry
 
         prefix = relative.rstrip("/")
 
@@ -11410,7 +11410,7 @@ class PortalImplementationDaemon:
         is rejected by the ordinary proposal boundary policy.
         """
 
-        from ..code_proof_obligations import collect_git_candidate_diff
+        from ..proof.code_proof_obligations import collect_git_candidate_diff
 
         effective_baseline = baseline_ref or "HEAD"
         root_entries = list(
@@ -11951,7 +11951,7 @@ class PortalImplementationDaemon:
             ProposalValidationPolicy,
             validate_implementation_proposal,
         )
-        from ..scope_adjudication import (
+        from ..validation.scope_adjudication import (
             adjudicate_scope_expansion,
             compact_scope_adjudication,
         )
@@ -12585,7 +12585,7 @@ class PortalImplementationDaemon:
                 else None
             )
             if scope_adjudication is not None:
-                from ..scope_adjudication import (
+                from ..validation.scope_adjudication import (
                     compact_scope_adjudication,
                 )
 
@@ -17401,7 +17401,7 @@ class PortalImplementationDaemon:
         reservations: dict[str, dict[str, Any]] = {}
         if not task_ids:
             return reservations
-        from ..artifact_store import read_artifact_fields
+        from ..runtime.artifact_store import read_artifact_fields
 
         for manifest_path in self.external_reservation_manifest_paths:
             try:

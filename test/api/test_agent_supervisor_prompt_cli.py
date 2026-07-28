@@ -27,7 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     InMemoryControlStateStore,
     SupervisorControlService,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     PROMPT_WORKFLOW_CLI_COMMANDS,
     PROMPT_WORKFLOW_CLI_EXIT_INVALID,
     build_prompt_workflow_arg_parser,
@@ -90,7 +90,7 @@ def test_cli_commands_cover_prompt_workflow_operations() -> None:
 
 def test_help_and_import_are_side_effect_free(capsys: pytest.CaptureFixture[str]) -> None:
     # Import already happened at module load; re-import must not start providers.
-    __import__("ipfs_accelerate_py.agent_supervisor.prompt_workflow")
+    __import__("ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow")
     parser = build_prompt_workflow_arg_parser()
     with pytest.raises(SystemExit) as exited:
         parser.parse_args(["--help"])

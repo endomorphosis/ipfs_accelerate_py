@@ -28,8 +28,8 @@ from .formal_planning_metrics import (
     FormalPlanningBenchmarkReport,
     FormalPlanningMetricDimensions,
 )
-from ..formal_verification_contracts import AssuranceLevel
-from ..formal_verification_policy import RolloutMode
+from ..proof.formal_verification_contracts import AssuranceLevel
+from ..proof.formal_verification_policy import RolloutMode
 
 
 FORMAL_PLANNING_ROLLOUT_VERSION: Final = 1

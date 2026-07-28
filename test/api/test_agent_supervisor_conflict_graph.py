@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import plan_bundle_lanes
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import plan_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     ConflictWeightHistory,
     build_conflict_surface,

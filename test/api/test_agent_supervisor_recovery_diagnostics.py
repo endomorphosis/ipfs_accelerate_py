@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     IncidentKind,
     prompt_workflow_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.recovery_diagnostics import (
+from ipfs_accelerate_py.agent_supervisor.rescue.recovery_diagnostics import (
     RecoveryDiagnosticError,
     RecoveryDiagnosticLimits,
     RecoveryEvidenceKind,

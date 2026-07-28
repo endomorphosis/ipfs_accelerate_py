@@ -4,7 +4,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.audit_scanner import (
+from ipfs_accelerate_py.agent_supervisor.analysis.audit_scanner import (
     AuditFindingStatus,
     audit_codebase_findings,
     classify_audit_findings,
@@ -14,7 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     record_codebase_scan_findings,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     ExhaustionBinding,
     RefillScanResult,
     ScanTerminalReason,

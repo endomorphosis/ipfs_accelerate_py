@@ -12,9 +12,9 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     load_goal_completion_evidence_records,
     load_goal_completion_gate_records,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import ContradictionEvidence
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import ContradictionEvidence
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import ObjectiveGoal
-from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_task_janitor import (
     JANITOR_RECEIPT_SCHEMA,
     reconcile_objective_task_strategy,
     registered_goal_ids_from_bundle_index,

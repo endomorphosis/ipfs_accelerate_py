@@ -4,10 +4,10 @@ import json
 import subprocess
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalysisEscalationPolicy,
 )
-from ipfs_accelerate_py.agent_supervisor.audit_scanner import (
+from ipfs_accelerate_py.agent_supervisor.analysis.audit_scanner import (
     run_audit_scan,
     run_exhaustive_ast_coverage,
     run_low_backlog_analysis,
@@ -15,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.audit_scanner import (
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     run_objective_analysis_escalation,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     StructuredPlanRouterConfig,
     generate_analysis_proposals,
 )

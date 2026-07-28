@@ -7,7 +7,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import (
+from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_analysis_provider import (
     IPFS_DATASETS_COMPLETION_ACCEPTANCE_CRITERION,
     IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY,
@@ -28,7 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import 
     inspect_analysis_provider_capability,
     normalize_analysis_provider_operation,
 )
-from ipfs_accelerate_py.agent_supervisor.analysis_retrieval import RetrievalLimits
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_retrieval import RetrievalLimits
 
 
 def _request(**changes):

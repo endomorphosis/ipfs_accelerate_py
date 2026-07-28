@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-import ipfs_accelerate_py.agent_supervisor.objective_tracker as objective_tracker_module
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+import ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker as objective_tracker_module
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     UNMAPPED_GOAL_ID,
     goal_coverage_work_seeds,
 )
@@ -32,16 +32,16 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     objective_generation_proposals,
     objective_generation_task_findings,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     ObjectiveMaterializationTransactionState,
     commit_objective_goal_materialization,
     objective_materialization_tree_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator import (
     AnalysisProposal,
     ObjectiveWorkEvaluationPolicy,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     analysis_proposals_to_objective_work,
 )
 

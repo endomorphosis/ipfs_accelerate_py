@@ -7,7 +7,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AttemptStatus,
     EvidenceAuthority,
     EvidenceFreshness,
@@ -21,7 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_scheduler import (
     ProofNodeState,
     ProofScheduler,
     ProofSchedulerConfig,

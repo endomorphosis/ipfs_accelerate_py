@@ -28,13 +28,13 @@ from pathlib import Path
 from typing import Any, Final
 
 from .duckdb_state import exclusive_file_lock
-from ..formal_plan_compiler import (
+from ..planning.formal_plan_compiler import (
     CompilationStatus,
     FORMAL_PLAN_INPUT_SCHEMA,
     FormalPlanCompiler,
     prompt_goal_graph_to_formal_input,
 )
-from ..formal_verification_contracts import canonical_json, content_identity
+from ..proof.formal_verification_contracts import canonical_json, content_identity
 
 
 DUCKDB_TASK_SOURCE_SCHEMA: Final = (
@@ -876,7 +876,7 @@ def _source_and_projection(
 
     graph_record: dict[str, Any] | None = None
     try:
-        from ..prompt_workflow import PromptGoalGraph
+        from ..prompt.prompt_workflow import PromptGoalGraph
     except ImportError:
         PromptGoalGraph = None  # type: ignore[assignment,misc]
 
@@ -1018,7 +1018,7 @@ def _task_rows(
 
     # Prompt workflow records can prove their supplied CID excludes status.
     try:
-        from ..prompt_workflow import PromptTaskRecord
+        from ..prompt.prompt_workflow import PromptTaskRecord
     except ImportError:
         PromptTaskRecord = None  # type: ignore[assignment,misc]
 

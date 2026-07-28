@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
+from ipfs_accelerate_py.agent_supervisor.planning.adaptive_planner import (
     AND_OR_SEARCH_REQUIREMENT_ID,
     AndOrNodeKind,
     AndOrPlanAlternative,
@@ -20,7 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
     evaluate_and_or_planner_promotion,
     search_typed_goal_plans,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_quality import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_quality import (
     AcceptanceCriterion,
     EvidenceAuthority,
     EvidenceProducer,
@@ -35,7 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_quality import (
     UnsupportedSemantic,
     ValidationRule,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator import (
     AndOrPlanBranch,
     PlanSearchHardConstraint,
     PlanSearchHardFailure,

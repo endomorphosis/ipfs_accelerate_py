@@ -3,10 +3,10 @@ import subprocess
 import sys
 from dataclasses import replace
 
-from ipfs_accelerate_py.agent_supervisor.decision_runtime_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime_benchmark import (
     build_frozen_decision_runtime_benchmark,
 )
-from ipfs_accelerate_py.agent_supervisor.decision_runtime_rollout import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime_rollout import (
     DecisionRuntimeControlRequest,
     DecisionRuntimePublicAPI,
     DecisionRuntimeRolloutBinding,
@@ -95,7 +95,7 @@ import json, sys
 import ipfs_accelerate_py.agent_supervisor
 forbidden = ("torch", "transformers", "openai", "neo4j", "duckdb")
 before = {name for name in sys.modules if name.split(".")[0] in forbidden}
-from ipfs_accelerate_py.agent_supervisor.decision_runtime_rollout import DecisionRuntimePublicAPI
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime_rollout import DecisionRuntimePublicAPI
 after = {name for name in sys.modules if name.split(".")[0] in forbidden}
 print(json.dumps({
     "discovery": DecisionRuntimePublicAPI.discovery(),

@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
 )
-from ipfs_accelerate_py.agent_supervisor.scope_adjudication import (
+from ipfs_accelerate_py.agent_supervisor.validation.scope_adjudication import (
     ScopeAdjudicationReceipt,
     ScopeExpansionReason,
     adjudicate_scope_expansion,

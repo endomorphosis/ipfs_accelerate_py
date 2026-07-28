@@ -52,7 +52,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import (
 
 Relative imports inside `task_sources/` stay package-local
 (`from .taskboard_store import ...`). Outbound imports to still-flat siblings
-use one parent level (`from ..prompt_workflow import ...`). Imports of
+use one parent level (`from ..prompt.prompt_workflow import ...`). Imports of
 core-owned modules use the core package
 (`from ..core.conflict_graph import ...`).
 

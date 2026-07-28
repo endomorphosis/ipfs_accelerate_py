@@ -12,7 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
     resolve_duckdb_path,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import MergeResolverRegistry
 
 

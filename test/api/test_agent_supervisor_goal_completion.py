@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     ContradictionEvidence,
     GoalCompletionDecision,
@@ -24,7 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     reopen_goal_for_contradictions,
     validate_completion_evidence,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     completion_tree_identity,
     migrate_legacy_objective_goals,
     objective_completion_revision,

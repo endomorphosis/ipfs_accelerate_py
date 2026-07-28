@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
 from ..merge.checkout_lock import serialized_lock_update
-from ..event_log import unique_backup_path
+from ..runtime.event_log import unique_backup_path
 from ..core.wrapper_utils import with_exclusive_flag_default
 from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
 

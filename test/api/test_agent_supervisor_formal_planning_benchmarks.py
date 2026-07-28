@@ -24,10 +24,10 @@ from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_rollout import
     RolloutDisposition,
     build_formal_planning_operator_projection,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_policy import (
     RiskLevel,
     RolloutMode,
 )

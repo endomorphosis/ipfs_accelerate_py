@@ -38,8 +38,8 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
-from ..artifact_store import BlobReference, BoundedArtifactStore
+from ..analysis.analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
+from ..runtime.artifact_store import BlobReference, BoundedArtifactStore
 from .conflict_graph import ASTBlobRecord, build_python_ast_blob_record
 
 

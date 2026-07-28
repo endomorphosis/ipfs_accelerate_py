@@ -5,11 +5,11 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     launch_bundle_lanes,
     plan_bundle_lanes,
 )
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     DependencyNotReadyError,
     ExecutionScopeConflictError,
     LeaseConflictError,
@@ -744,7 +744,7 @@ def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyP
     second = launch_bundle_lanes(lanes, repo_root=repo, coordination_path=coordination, claimant_did="did:web:lane-b.example")
 
     assert first[0]["accepted"] is True
-    assert "ipfs_accelerate_py.agent_supervisor.leased_lane" in first[0]["command"]
+    assert "ipfs_accelerate_py.agent_supervisor.merge.leased_lane" in first[0]["command"]
     assert second[0]["accepted"] is False
     assert second[0]["code"] == "G_CLAIM_CONFLICT"
     assert len(starts) == 1

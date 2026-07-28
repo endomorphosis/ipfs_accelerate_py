@@ -4,24 +4,24 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
+from ipfs_accelerate_py.agent_supervisor.objectives.adaptive_goal_refiner import (
     RefinementSignal,
     RefinementSignalKind,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_counterexamples import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_counterexamples import (
     CounterexampleKind,
     RepairClass,
     normalize_counterexample,
     normalize_tdfol_contradiction,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_compiler import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler import (
     FormalPlanCompiler,
     compile_formal_plan,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_validator import (
     FormalPlanValidator,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_replanner import (
     BOUNDED_REFINEMENT_EVIDENCE_ID,
     UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
     OBJECTIVE_COMPLETION_EVIDENCE_ROLES,

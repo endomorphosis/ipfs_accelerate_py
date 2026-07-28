@@ -29,7 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.control.authorization_logic import (
     render_datalog_policy,
     render_secpal_policy,
 )
-from ipfs_accelerate_py.agent_supervisor.prover_matrix_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     CommandRequest,
     CommandResult,
 )

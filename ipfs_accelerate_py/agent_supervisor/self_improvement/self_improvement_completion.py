@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Final, Mapping, Sequence
 
-from ..goal_completion import (
+from ..objectives.goal_completion import (
     DEFAULT_CLOCK_SKEW_SECONDS,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     GoalCompletionDecision,

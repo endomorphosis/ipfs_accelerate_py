@@ -5,7 +5,7 @@ from copy import deepcopy
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
 )
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.proposal_validation import (
     ProposalValidationStep,
     validate_implementation_proposal,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
     TaskProposalRouterError,
     parse_task_implementation_proposal,

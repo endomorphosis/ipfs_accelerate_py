@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.artifact_store import (
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     PROOF_METRICS_KIND,
     query_artifact,
     read_proof_metrics_artifact,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_metrics import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_metrics import (
     ASSURANCE_LEVELS,
     PROOF_LATENCY_FIELDS,
     PROOF_METRIC_DIMENSIONS,
@@ -21,7 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.proof_metrics import (
     normalize_proof_metric_identity,
     write_proof_metrics_snapshot,
 )
-from ipfs_accelerate_py.agent_supervisor.scheduler_metrics import (
+from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
     build_scheduler_snapshot,
 )
 

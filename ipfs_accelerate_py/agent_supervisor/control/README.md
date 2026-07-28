@@ -57,7 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.control.authorization_logic import ...
 
 Relative imports inside `control/` stay package-local (`from .control_contracts import ...`).
 Outbound imports to still-flat siblings use one parent level
-(`from ..formal_verification_contracts import ...`).
+(`from ..proof.formal_verification_contracts import ...`).
 
 ## CLI entry surfaces
 

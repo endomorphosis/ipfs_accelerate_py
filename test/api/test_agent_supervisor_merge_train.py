@@ -4,12 +4,12 @@ import json
 import subprocess
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue, MergeRequest
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue, MergeRequest
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverRegistry,
     conflict_fingerprint,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,

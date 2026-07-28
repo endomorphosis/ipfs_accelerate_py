@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalyzerCanaryReport,
     AnalyzerCanaryResult,
     AnalyzerHealthThresholds,
@@ -44,7 +44,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervisor_namespace_paths
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     REFILL_SCAN_RESULT_SCHEMA_VERSION,
     SCAN_RECEIPT_PROJECTION_SCHEMA,
     SCAN_RECEIPT_PROJECTION_SCHEMA_VERSION,

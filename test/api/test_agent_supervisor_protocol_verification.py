@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import ProtocolVerifier as ExportedProtocolVerifier
-from ipfs_accelerate_py.agent_supervisor.protocol_verification import (
+from ipfs_accelerate_py.agent_supervisor.proof.protocol_verification import (
     ATTESTATION_PROTOCOL_MODEL,
     CORE_PROTOCOL_MODEL,
     DEFAULT_PROTOCOL_MODELS,
@@ -34,7 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.protocol_verification import (
     probe_protocol_tools,
     protocol_model_for,
 )
-from ipfs_accelerate_py.agent_supervisor.prover_matrix_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     CommandRequest,
     CommandResult,
 )
@@ -262,7 +262,7 @@ def test_contract_rejects_forged_passing_fixture_receipt() -> None:
             executable_version="1",
             command=command,
             command_identity=__import__(
-                "ipfs_accelerate_py.agent_supervisor.formal_verification_contracts",
+                "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts",
                 fromlist=["content_identity"],
             ).content_identity({"command": command}),
             returncode=0,

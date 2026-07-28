@@ -542,7 +542,7 @@ class ObjectiveDatasetStore:
         usable in reduced installations which do not import proof contracts.
         """
 
-        from ..proof_scope_index import ProofScopeIndex
+        from ..proof.proof_scope_index import ProofScopeIndex
 
         if isinstance(index, Mapping):
             index = ProofScopeIndex.from_dict(index)
@@ -613,7 +613,7 @@ class ObjectiveDatasetStore:
     ) -> Any | None:
         """Load and, for cross-domain indexes, revalidate current artifacts."""
 
-        from ..proof_scope_index import ProofScopeIndex
+        from ..proof.proof_scope_index import ProofScopeIndex
 
         if isinstance(index, DatasetProofScopeIndexArtifact):
             path: Path | None = index.json_path
@@ -723,7 +723,7 @@ class ObjectiveDatasetStore:
     ) -> Any:
         """Merge one receipt into persisted quorum state without double voting."""
 
-        from ..scan_receipts import ExhaustionBinding, evaluate_exhaustion_quorum
+        from ..objectives.scan_receipts import ExhaustionBinding, evaluate_exhaustion_quorum
 
         resolved = binding if isinstance(binding, ExhaustionBinding) else ExhaustionBinding.from_dict(binding)
         previous = self.load_exhaustion_quorum(resolved.repository_id)

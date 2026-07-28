@@ -10,7 +10,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     objective_heap_content_id,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement_v2 import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_v2 import (
     MAX_V2_SUCCESSOR_GOALS,
     MAX_V2_SUCCESSOR_TASKS,
     V2RefillEpochBinding,

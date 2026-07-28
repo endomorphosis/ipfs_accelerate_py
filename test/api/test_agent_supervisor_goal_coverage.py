@@ -6,7 +6,7 @@ from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     compare_surface_evidence,
     detect_surface_contradictions,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     CoverageStatus,
     UNMAPPED_GOAL_ID,
     attach_findings_to_goals,

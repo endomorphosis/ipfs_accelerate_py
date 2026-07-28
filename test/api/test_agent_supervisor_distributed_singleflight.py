@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.cache_coordinator import (
+from ipfs_accelerate_py.agent_supervisor.analysis.cache_coordinator import (
     CacheAuthority,
     CacheNamespace,
     NamespaceCacheCoordinator,
     build_namespace_semantic_key,
     build_semantic_cache_key,
 )
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     DistributedSingleFlightCancelled,
     DistributedSingleFlightCoordinator,
     DistributedSingleFlightExecutionError,

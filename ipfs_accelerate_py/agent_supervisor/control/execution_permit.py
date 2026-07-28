@@ -25,22 +25,22 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
-from ..decision_context import ContextCompletenessWitness
-from ..decision_contracts import (
+from ..context.decision_context import ContextCompletenessWitness
+from ..context.decision_contracts import (
     DecisionAuthority,
     DecisionKind,
     DecisionRequest,
     DecisionStage,
 )
-from ..formal_verification_contracts import canonical_json_bytes, content_identity
-from ..ir_constraint_compiler import (
+from ..proof.formal_verification_contracts import canonical_json_bytes, content_identity
+from ..proof.ir_constraint_compiler import (
     PlanAdmissionReceipt,
     PlanAdmissionRequest,
     PlanAdmissionVerdict,
     ValidationRequirement,
     compile_plan_admission,
 )
-from ..semantic_dependency_graph import MandatoryClosure
+from ..analysis.semantic_dependency_graph import MandatoryClosure
 
 
 EXECUTION_PERMIT_VERSION: Final[int] = 1

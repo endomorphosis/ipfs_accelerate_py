@@ -1453,7 +1453,7 @@ class TaskboardStore:
         selected_type = _taskboard_identifier(event_type, name="event_type")
         if not isinstance(payload, Mapping):
             raise TypeError("event payload must be a mapping")
-        from ..event_log import append_jsonl_event
+        from ..runtime.event_log import append_jsonl_event
 
         return append_jsonl_event(
             self.events_path,
@@ -1463,7 +1463,7 @@ class TaskboardStore:
         )
 
     def event_cursor(self) -> Any:
-        from ..event_log import latest_event_cursor
+        from ..runtime.event_log import latest_event_cursor
 
         return latest_event_cursor(self.events_path)
 
@@ -1474,7 +1474,7 @@ class TaskboardStore:
         limit: int = DEFAULT_TASKBOARD_QUERY_LIMIT,
     ) -> Any:
         selected_limit = self._bounded_limit(limit)
-        from ..event_log import read_jsonl_event_page
+        from ..runtime.event_log import read_jsonl_event_page
 
         return read_jsonl_event_page(
             self.events_path, cursor, limit=selected_limit

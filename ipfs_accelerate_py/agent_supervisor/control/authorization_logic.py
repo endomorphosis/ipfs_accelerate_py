@@ -28,12 +28,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
-from ..formal_verification_contracts import (
+from ..proof.formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
     canonical_json_bytes,
 )
-from ..prover_matrix_registry import (
+from ..proof.prover_matrix_registry import (
     CommandRequest,
     CommandResult,
     _default_command_runner as _bounded_command_runner,

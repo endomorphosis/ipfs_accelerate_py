@@ -23,22 +23,22 @@ from ..merge.checkout_lock import (
     generated_protected_board_commit_subject,
     serialized_lock_update,
 )
-from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
-from ..implementation_supervisor_runner import (
+from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
+from .implementation_supervisor_runner import (
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
-from ..scan_receipts import (
+from ..objectives.scan_receipts import (
     RefillScanResult,
     ScanTerminalReason,
     adapt_legacy_scan_result,
     build_scan_result,
     scan_identity,
 )
-from ..prompt_workflow import RescueOperation, prompt_workflow_cid
-from ..rescue_planner import RescuePlanner, RescuePlannerPolicy, RescuePlanningRequest
-from ..supervisor_watchdog import (
+from ..prompt.prompt_workflow import RescueOperation, prompt_workflow_cid
+from ..rescue.rescue_planner import RescuePlanner, RescuePlannerPolicy, RescuePlanningRequest
+from ..rescue.supervisor_watchdog import (
     AUTONOMOUS_UNSTALL_STATE_SCHEMA,
     AutonomousUnstallCoordinator,
     AutonomousUnstallPolicy,
@@ -141,7 +141,7 @@ def apply_proof_rollout_projection(
     at the top level for health checks and older status consumers.
     """
 
-    from ..formal_verification_policy import (
+    from ..proof.formal_verification_policy import (
         PROOF_ROLLOUT_STATUS_SCHEMA,
         ProofRolloutStatus,
     )
@@ -5151,7 +5151,7 @@ class PortalImplementationSupervisor:
             load_goal_completion_gate_records,
             parse_goal_completion_todo_boards,
         )
-        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
             reconcile_objective_goal_completion,
         )
 
@@ -5353,7 +5353,7 @@ class PortalImplementationSupervisor:
             return disabled
 
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
-        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
             migrate_legacy_objective_goals,
         )
 
@@ -5470,7 +5470,7 @@ class PortalImplementationSupervisor:
         )
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
-        from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_task_janitor import (
             DEFAULT_MISSION_TERMS,
             reconcile_objective_task_strategy,
             registered_goal_ids_from_bundle_index,
@@ -5600,7 +5600,7 @@ class PortalImplementationSupervisor:
                 "error": str(exc),
             }
 
-        from ipfs_accelerate_py.agent_supervisor.objective_tracker import rewrite_goal_fields
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import rewrite_goal_fields
 
         updates: dict[str, dict[str, str]] = {}
         for goal_id in sorted(effective_goal_ids):
@@ -5715,7 +5715,7 @@ class PortalImplementationSupervisor:
         inferred_mapping: dict[str, dict[str, Any]] = {}
         criteria_by_goal: dict[str, list[str]] = {}
         if goals and findings:
-            from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+            from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
                 UNMAPPED_GOAL_ID,
                 acceptance_criteria_for_goal,
                 attach_findings_to_goals,
@@ -6115,7 +6115,7 @@ class PortalImplementationSupervisor:
             DEFAULT_DISCOVERY_OUTPUT_PATH,
             DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
         )
-        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
             DEFAULT_ROOT_GOAL_TITLE,
             DEFAULT_TRACKING_DOCUMENT_TITLE,
             DEFAULT_ULTIMATE_GOAL,

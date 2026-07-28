@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, MutableMapping, Sequence
 
-from ..validation_commands import split_validation_commands
+from ..validation.validation_commands import split_validation_commands
 
 
 def with_default(argv: Sequence[str], flag: str, value: str) -> list[str]:

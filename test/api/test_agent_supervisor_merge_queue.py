@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.merge_queue import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MergeQueue,
     MergeQueueFenceError,
     MergeQueueFullError,

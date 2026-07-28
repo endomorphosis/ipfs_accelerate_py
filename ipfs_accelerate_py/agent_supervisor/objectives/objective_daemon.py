@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, is_dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from ..goal_completion import CompletionEvidence
+from .goal_completion import CompletionEvidence
 from ..core.external_completion import (
     ExternalCompletionAuthority,
     load_external_completion_authority,
@@ -43,7 +43,7 @@ from .objective_graph import (
     source_protected_scan_policy,
     submit_bundle_tasks,
 )
-from ..objective_tracker import (
+from .objective_tracker import (
     DEFAULT_GOAL_PREFIX,
     DEFAULT_ROOT_GOAL_TITLE,
     DEFAULT_TRACKING_DOCUMENT_TITLE,
@@ -184,8 +184,8 @@ def plan_objective_records(
     from receiving a selected implementation plan.
     """
 
-    from ..plan_evaluator import evaluate_plan_branches
-    from ..task_proposal_router import deterministic_plan_branches, generate_structured_plan_branches
+    from ..planning.plan_evaluator import evaluate_plan_branches
+    from ..planning.task_proposal_router import deterministic_plan_branches, generate_structured_plan_branches
 
     evaluate = evaluator or evaluate_plan_branches
     count = max(1, int(branch_count))
@@ -343,7 +343,7 @@ def persist_objective_plan_evaluations(
                 task["plan_selection_rationale"] = decision.get("selection_rationale", [])
     bundle_payload["plan_evaluation_path"] = str(path)
     bundle_payload["plan_evaluation_count"] = len(ordered)
-    from ..artifact_store import write_bundle_index_artifact
+    from ..runtime.artifact_store import write_bundle_index_artifact
 
     write_bundle_index_artifact(bundle_index_path, bundle_payload)
 
@@ -654,7 +654,7 @@ def materialize_objective_generation_cycle(
         ObjectiveWorkProposal,
         materialize_bounded_objective_work,
     )
-    from ..plan_evaluator import evaluate_objective_work_proposals
+    from ..planning.plan_evaluator import evaluate_objective_work_proposals
 
     existing = load_objective_generation_work(artifact_path)
     proposal_values = tuple(proposals)
@@ -1297,7 +1297,7 @@ def materialize_admitted_objective_work(
     records, and every graph-policy gate.
     """
 
-    from ..goal_development_contracts import (
+    from .goal_development_contracts import (
         GoalDevelopmentAdmissionReceipt,
         GoalDevelopmentMode,
         GoalDevelopmentProposalReceipt,
@@ -1305,7 +1305,7 @@ def materialize_admitted_objective_work(
         GoalAdmissionDecision,
         GoalProposalDecision,
     )
-    from ..goal_refinement_verification import RefinementVerificationResult
+    from .goal_refinement_verification import RefinementVerificationResult
     from .objective_graph import (
         ObjectiveGoalMaterializationPolicy,
         ObjectiveWorkKind,
@@ -1313,7 +1313,7 @@ def materialize_admitted_objective_work(
         parse_goal_heap,
         preview_objective_goal_materialization,
     )
-    from ..objective_tracker import (
+    from .objective_tracker import (
         commit_objective_goal_materialization,
         objective_materialization_tree_identity,
     )
@@ -2681,8 +2681,8 @@ def objective_generation_proposals(
     """Collect deterministic coverage and routed-analysis work candidates."""
 
     from .objective_graph import ObjectiveWorkProposal, parse_goal_heap
-    from ..plan_evaluator import AnalysisProposal
-    from ..task_proposal_router import analysis_proposals_to_objective_work
+    from ..planning.plan_evaluator import AnalysisProposal
+    from ..planning.task_proposal_router import analysis_proposals_to_objective_work
 
     resolved_repo_root = (
         repo_root.resolve()
@@ -3053,13 +3053,13 @@ def run_objective_analysis_escalation(
 ) -> Any:
     """Production bridge from objective state to the read-only analysis policy."""
 
-    from ..audit_scanner import run_low_backlog_analysis
+    from ..analysis.audit_scanner import run_low_backlog_analysis
 
     if analysis_pipeline is None and (
         analysis_cache_path is not None or artifact_path is not None
     ):
-        from ..analysis_cache import AnalysisCache
-        from ..analysis_pipeline import AnalysisPipeline, make_analysis_stage_receipt
+        from ..analysis.analysis_cache import AnalysisCache
+        from ..analysis.analysis_pipeline import AnalysisPipeline, make_analysis_stage_receipt
 
         cache_path = Path(
             analysis_cache_path
@@ -4180,7 +4180,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     ).resolve()
     router_config = None
     if bool(getattr(args, "generate_plan_branches", False)):
-        from ..task_proposal_router import StructuredPlanRouterConfig
+        from ..planning.task_proposal_router import StructuredPlanRouterConfig
 
         router_config = StructuredPlanRouterConfig(
             repo_root=repo_root,
@@ -4209,8 +4209,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     ).resolve()
     analysis_escalation_payload: dict[str, Any] | None = None
     if bool(getattr(args, "escalate_low_backlog_analysis", False)):
-        from ..analyzer_health import AnalysisEscalationPolicy
-        from ..task_proposal_router import StructuredPlanRouterConfig
+        from ..analysis.analyzer_health import AnalysisEscalationPolicy
+        from ..planning.task_proposal_router import StructuredPlanRouterConfig
 
         analysis_policy = AnalysisEscalationPolicy(
             backlog_target=int(getattr(args, "analysis_backlog_target", 5)),
@@ -4282,7 +4282,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     objective_generation_materialized_records: list[Any] = []
     if not bool(getattr(args, "no_generate_bounded_work", False)):
         from .objective_graph import ObjectiveGenerationLimits
-        from ..plan_evaluator import ObjectiveWorkEvaluationPolicy
+        from ..planning.plan_evaluator import ObjectiveWorkEvaluationPolicy
 
         generation_terms = objective_terms_for_analysis(objective_path, records)
         reserved_router_tokens = 0

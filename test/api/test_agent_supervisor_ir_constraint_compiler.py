@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     EvidenceAuthority,
     EvidenceFreshness,
@@ -16,13 +16,13 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.intent_constraint_adapter import (
+from ipfs_accelerate_py.agent_supervisor.proof.intent_constraint_adapter import (
     IntentCompilationStatus,
     compile_intent_constraints,
     create_intent_conformance_request,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_adapters import IRAdapterRegistry
-from ipfs_accelerate_py.agent_supervisor.ir_constraint_compiler import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_adapters import IRAdapterRegistry
+from ipfs_accelerate_py.agent_supervisor.proof.ir_constraint_compiler import (
     ActionDomainBinding,
     AdmissionAssumption,
     AdmissionAuthority,
@@ -36,22 +36,22 @@ from ipfs_accelerate_py.agent_supervisor.ir_constraint_compiler import (
     ValidationStatus,
     compile_plan_admission,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_registry import (
     IRFamily,
     IRLoadRequest,
     IRLoadStatus,
     IRRegistry,
     deterministic_ir_fixture,
 )
-from ipfs_accelerate_py.agent_supervisor.legal_constraint_adapter import (
+from ipfs_accelerate_py.agent_supervisor.proof.legal_constraint_adapter import (
     LegalApplicabilityQuery,
     compile_legal_constraints,
 )
-from ipfs_accelerate_py.agent_supervisor.security_constraint_adapter import (
+from ipfs_accelerate_py.agent_supervisor.proof.security_constraint_adapter import (
     SecurityAuthorizationRequest,
     compile_security_constraints,
 )
-from ipfs_accelerate_py.agent_supervisor.semantic_dependency_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.semantic_dependency_graph import (
     MandatoryClosure,
 )
 

@@ -6,17 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     ProofPlan,
     ProofPlanStep,
     ProofStage,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_scheduler import (
     ProofScheduler,
     ProofSchedulerConfig,
 )
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     DEFAULT_RESOURCE_CLASSES,
     HostResourceSnapshot,
     LaneResourceRequirements,

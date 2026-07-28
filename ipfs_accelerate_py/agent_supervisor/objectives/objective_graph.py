@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from ..task_sources.dataset_store import DatasetArtifact, ObjectiveDatasetStore
-from ..scan_receipts import (
+from .scan_receipts import (
     RefillScanResult,
     ScanTerminalReason,
     build_scan_result,
@@ -42,7 +42,7 @@ from ..task_sources.task_identity import (
     normalize_identity_path,
     normalize_identity_text,
 )
-from ..task_quality import (
+from ..planning.task_quality import (
     TASK_GENERATION_ACCEPTANCE_CRITERIA,
     TASK_GENERATION_CHILD_GOAL_IDS,
     TASK_GENERATION_OBJECTIVE_ID,
@@ -136,7 +136,7 @@ def evaluate_task_generation_completion(
     :func:`goal_completion.evaluate_goal_completion`.
     """
 
-    from ..goal_completion import evaluate_goal_completion
+    from .goal_completion import evaluate_goal_completion
 
     if (
         isinstance(required_exhaustive_receipts, bool)
@@ -620,11 +620,11 @@ def _has_live_task_generation_producer_authority(
 
     # Lazy imports keep task generation and bundle planning independent of the
     # objective scanner during ordinary admission/optimization.
-    from ..bundle_optimizer import (
+    from .bundle_optimizer import (
         CriticalPathWidthEvidence,
         PacketCompletionBindingEvidence,
     )
-    from ..task_quality import TaskSplitRefillEvidence
+    from ..planning.task_quality import TaskSplitRefillEvidence
 
     expected_types: dict[str, type[Any]] = {
         "127990245919649912156052660092678945998": TaskSplitRefillEvidence,
@@ -1607,7 +1607,7 @@ class ObjectiveGoal:
         ``completed`` while every graph consumer sees the six-state lifecycle.
         """
 
-        from ..goal_completion import normalize_goal_state
+        from .goal_completion import normalize_goal_state
 
         return normalize_goal_state(self.status)
 
@@ -1622,7 +1622,7 @@ class ObjectiveGoal:
     def is_schedulable(self) -> bool:
         """Whether new implementation work may be generated for this goal."""
 
-        from ..goal_completion import is_schedulable_goal_state
+        from .goal_completion import is_schedulable_goal_state
 
         return is_schedulable_goal_state(self.lifecycle_state)
 
@@ -1630,7 +1630,7 @@ class ObjectiveGoal:
     def is_terminal(self) -> bool:
         """Whether the goal has reached the sole terminal lifecycle state."""
 
-        from ..goal_completion import is_terminal_goal_state
+        from .goal_completion import is_terminal_goal_state
 
         return is_terminal_goal_state(self.lifecycle_state)
 
@@ -8578,8 +8578,8 @@ def scan_objective_gaps(
     pipeline_diagnostics: dict[str, Any] = {}
     if dataset_dir is not None or analysis_pipeline is not None:
         try:
-            from ..analysis_cache import AnalysisCache
-            from ..analysis_pipeline import (
+            from ..analysis.analysis_cache import AnalysisCache
+            from ..analysis.analysis_pipeline import (
                 AnalysisPipeline,
                 AnalysisPipelineRequest,
                 make_analysis_stage_receipt,
@@ -9958,7 +9958,7 @@ def write_bundle_shards(
     index_payload["task_conflict_graph"] = index_planning_graph.conflict_graph.to_dict()
     index_payload["conflict_graph"] = index_planning_graph.conflict_graph.to_dict()
     index_payload["task_planning_graph"] = index_planning_graph.to_dict()
-    from ..artifact_store import write_bundle_index_artifact
+    from ..runtime.artifact_store import write_bundle_index_artifact
 
     write_bundle_index_artifact(index_path, index_payload)
     generated_paths.append(index_path)
@@ -10476,8 +10476,8 @@ def build_bundle_task_payloads(
 
     # Local import avoids making objective scanning depend on coordination
     # initialization while ensuring queue consumers receive immutable links.
-    from ..artifact_store import read_bundle_index_planning_projection
-    from ..lease_coordination import adapt_goal_bundle
+    from ..runtime.artifact_store import read_bundle_index_planning_projection
+    from ..merge.lease_coordination import adapt_goal_bundle
 
     payload = read_bundle_index_planning_projection(
         bundle_index_path,

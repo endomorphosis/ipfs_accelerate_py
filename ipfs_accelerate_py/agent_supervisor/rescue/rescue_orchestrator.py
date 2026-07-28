@@ -45,7 +45,7 @@ from ..control.control_contracts import (
     OperationResult,
     OperationStatus,
 )
-from ..prompt_workflow import (
+from ..prompt.prompt_workflow import (
     ProgrammaticRecoveryExhaustionReceipt,
     RecordStatus,
     RescueAction,
@@ -53,7 +53,7 @@ from ..prompt_workflow import (
     RescuePlan,
     SupervisorIncident,
 )
-from ..rescue_planner import (
+from .rescue_planner import (
     DEFAULT_RESCUE_OPERATION_CATALOG,
     RescueOperationSpec,
     RescuePlannerValidationError,

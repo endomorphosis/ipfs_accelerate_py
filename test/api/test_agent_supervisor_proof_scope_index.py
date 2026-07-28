@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
-from ipfs_accelerate_py.agent_supervisor.proof_scope_index import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_scope_index import (
     ProofInputKind,
     ProofScopeIndex,
     build_proof_scope_index,

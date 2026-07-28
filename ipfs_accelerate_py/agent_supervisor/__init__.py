@@ -136,42 +136,159 @@ AGENT_SUPERVISOR_PACKAGE_GOAL_OWNERS = AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES
 # (task_sources), ASREF-G070 (objectives/planning/validation/merge/rescue/
 # runtime/self_improvement).
 AGENT_SUPERVISOR_LANDED_MODULE_OWNERS = {
+    "adaptive_goal_refiner": "objectives",
+    "adaptive_planner": "planning",
+    "analysis_ast_index": "analysis",
+    "analysis_cache": "analysis",
+    "analysis_consensus": "analysis",
+    "analysis_contracts": "analysis",
+    "analysis_operation_registry": "analysis",
+    "analysis_pipeline": "analysis",
+    "analysis_retrieval": "analysis",
+    "analysis_transport": "analysis",
+    "analyzer_health": "analysis",
+    "artifact_store": "runtime",
+    "audit_scanner": "analysis",
     "authorization_logic": "control",
+    "backlog_refinery": "objectives",
+    "bundle_optimizer": "objectives",
+    "bundle_supervisor": "objectives",
+    "cache_coordinator": "analysis",
+    "checkout_lock": "merge",
+    "code_evidence_graph": "analysis",
+    "code_proof_obligations": "proof",
+    "codex_failure_policy": "rescue",
+    "conflict_graph": "core",
+    "context_compiler": "context",
+    "context_contracts": "context",
     "control_cli": "control",
     "control_contracts": "control",
     "control_plane": "control",
-    "execution_permit": "control",
-    "lifecycle_orchestrator": "control",
-    "conflict_graph": "core",
-    "external_completion": "core",
-    "program_behavior": "core",
-    "submodule_degradation": "core",
-    "wrapper_utils": "core",
     "dataset_store": "task_sources",
+    "decision_context": "context",
+    "decision_contracts": "context",
+    "decision_runtime": "context",
+    "decision_runtime_benchmark": "context",
+    "decision_runtime_rollout": "context",
     "duckdb_state": "task_sources",
     "duckdb_task_source": "task_sources",
+    "event_log": "runtime",
+    "execution_permit": "control",
+    "external_completion": "core",
+    "formal_counterexamples": "proof",
+    "formal_logic_vocabulary": "proof",
+    "formal_plan_compiler": "planning",
+    "formal_plan_conformance": "planning",
+    "formal_plan_context": "planning",
+    "formal_plan_validator": "planning",
+    "formal_planning_adversarial": "planning",
+    "formal_planning_contracts": "planning",
+    "formal_planning_metrics": "planning",
+    "formal_planning_rollout": "planning",
+    "formal_replanner": "planning",
+    "formal_verification_cache": "proof",
+    "formal_verification_capabilities": "proof",
+    "formal_verification_contracts": "proof",
+    "formal_verification_policy": "proof",
+    "formal_verification_provider": "proof",
+    "git_gc": "merge",
+    "goal_completion": "objectives",
+    "goal_coverage": "objectives",
+    "goal_development_contracts": "objectives",
+    "goal_quality": "objectives",
+    "goal_refinement_verification": "objectives",
+    "hyperproperty_verification": "proof",
+    "implementation_daemon_runner": "todo_daemon",
+    "implementation_supervisor_runner": "todo_daemon",
+    "intent_constraint_adapter": "proof",
+    "interface_contract_codegen": "proof",
+    "ipfs_datasets_analysis_provider": "integrations",
+    "ipfs_datasets_logic_provider": "integrations",
+    "ir_adapters": "proof",
+    "ir_constraint_compiler": "proof",
+    "ir_registry": "proof",
+    "kernel_verification": "proof",
+    "leanstral_goal_benchmark": "proof",
+    "leanstral_goal_development": "proof",
+    "leanstral_goal_lifecycle": "proof",
+    "leanstral_proof_provider": "proof",
+    "lease_coordination": "merge",
+    "leased_lane": "merge",
+    "legal_constraint_adapter": "proof",
+    "lifecycle_orchestrator": "control",
+    "llm_merge_resolver_fallback": "integrations",
+    "logic_translation_validation": "proof",
     "markdown_task_source": "task_sources",
+    "merge_checkpoint": "merge",
+    "merge_conflict_repair": "merge",
+    "merge_queue": "merge",
+    "merge_resolver": "merge",
+    "merge_train": "merge",
+    "meta_spark_goose_runner": "integrations",
+    "multi_prover_resources": "proof",
+    "multi_prover_router": "proof",
+    "multi_supervisor_runner": "runtime",
+    "objective_daemon": "objectives",
+    "objective_graph": "objectives",
+    "objective_task_janitor": "objectives",
+    "objective_tracker": "objectives",
     "persistent_task_queue": "task_sources",
+    "plan_evaluator": "planning",
+    "plan_failure_memory": "planning",
+    "program_behavior": "core",
+    "prompt_directory_scanner": "prompt",
+    "prompt_goal_planner": "prompt",
+    "prompt_plan_admission": "prompt",
+    "prompt_workflow": "prompt",
+    "proof_attestation": "proof",
+    "proof_carrying_planner": "planning",
+    "proof_context": "proof",
+    "proof_directed_retrieval": "proof",
+    "proof_fallbacks": "proof",
+    "proof_metrics": "proof",
+    "proof_obligation_templates": "proof",
+    "proof_scheduler": "proof",
+    "proof_scope_index": "proof",
+    "proposal_validation": "validation",
+    "protocol_verification": "proof",
+    "prover_conformance": "proof",
+    "prover_evidence_store": "proof",
+    "prover_matrix_registry": "proof",
+    "provider_batch_scheduler": "runtime",
+    "recovery_diagnostics": "rescue",
+    "rescue_orchestrator": "rescue",
+    "rescue_planner": "rescue",
+    "resource_scheduler": "runtime",
+    "runtime_cas": "runtime",
+    "runtime_temporal_monitor": "runtime",
+    "scan_receipts": "objectives",
+    "scheduler_metrics": "runtime",
+    "scope_adjudication": "validation",
+    "security_constraint_adapter": "proof",
+    "self_improvement": "self_improvement",
+    "self_improvement_completion": "self_improvement",
+    "self_improvement_rollout": "self_improvement",
+    "self_improvement_v2": "self_improvement",
+    "self_improvement_v2_rollout": "self_improvement",
+    "semantic_dependency_graph": "analysis",
+    "submodule_degradation": "core",
+    "supervisor_efficiency_metrics": "self_improvement",
+    "supervisor_recovery": "rescue",
+    "supervisor_state_model": "self_improvement",
+    "supervisor_token_ledger": "self_improvement",
+    "supervisor_v2_benchmark": "self_improvement",
+    "supervisor_v2_contracts": "self_improvement",
+    "supervisor_watchdog": "rescue",
     "task_identity": "task_sources",
+    "task_proposal_router": "planning",
+    "task_quality": "planning",
     "task_source": "task_sources",
     "taskboard_store": "task_sources",
     "todo_vector_index": "task_sources",
-    "backlog_refinery": "objectives",
-    "objective_daemon": "objectives",
-    "objective_graph": "objectives",
-    "proposal_validation": "validation",
-    "plan_failure_memory": "planning",
-    "formal_planning_metrics": "planning",
-    "formal_planning_rollout": "planning",
-    "checkout_lock": "merge",
-    "git_gc": "merge",
-    "merge_checkpoint": "merge",
-    "merge_conflict_repair": "merge",
-    "merge_resolver": "merge",
-    "codex_failure_policy": "rescue",
-    "rescue_orchestrator": "rescue",
-    "multi_supervisor_runner": "runtime",
-    "self_improvement_completion": "self_improvement",
+    "validation_commands": "validation",
+    "validation_runtime": "validation",
+    "validation_scheduler": "validation",
+    "wrapper_utils": "core",
 }
 
 # Flat package-root modules still awaiting domain-package moves. Sourced from
@@ -467,7 +584,7 @@ if not any(isinstance(f, _LandedModuleAliasFinder) for f in _sys.meta_path):
 # proof, model, or dataset providers.
 from .control import control_contracts as _control_contracts
 from .control import control_plane as _control_plane
-from .formal_verification_capabilities import (
+from .proof.formal_verification_capabilities import (
     DEFAULT_CAPABILITY_CACHE_TTL_SECONDS,
     DEFAULT_CAPABILITY_PROBE_MAX_CHECKS,
     DEFAULT_CAPABILITY_PROBE_TIMEOUT_SECONDS,
@@ -498,7 +615,7 @@ from .formal_verification_capabilities import (
     discover_effective_context_limit,
     probe_formal_verification_capabilities,
 )
-from .prover_matrix_registry import (
+from .proof.prover_matrix_registry import (
     DEFAULT_DOCUMENTATION_MATRIX,
     DEFAULT_MATRIX_TIMEOUT_SECONDS,
     DEFAULT_MAX_IDENTITY_FILE_BYTES,
@@ -533,7 +650,7 @@ from .prover_matrix_registry import (
     query_prover_matrix,
     write_prover_matrix_projection,
 )
-from .hyperproperty_verification import (
+from .proof.hyperproperty_verification import (
     DEFAULT_ENGINE_ADAPTER_TYPES,
     DEFAULT_ENGINE_TIMEOUT_SECONDS,
     DEFAULT_HYPERPROPERTY_MODELS,
@@ -583,7 +700,7 @@ from .hyperproperty_verification import (
     probe_hyperproperty_engines,
     verify_hyperproperty,
 )
-from .protocol_verification import (
+from .proof.protocol_verification import (
     ATTESTATION_PROTOCOL_MODEL,
     ATTESTATION_PROTOCOL_QUERIES,
     CORE_PROTOCOL_MODEL,
@@ -622,7 +739,7 @@ from .protocol_verification import (
     protocol_model_for,
     verify_protocol_model,
 )
-from .logic_translation_validation import (
+from .proof.logic_translation_validation import (
     TRANSLATION_ARTIFACT_SCHEMA,
     TRANSLATION_CONTRACT_SCHEMA,
     TRANSLATION_VALIDATION_SCHEMA,
@@ -641,7 +758,7 @@ from .logic_translation_validation import (
     inventory_from_reviewed_formula,
     validate_translation,
 )
-from .prover_conformance import (
+from .proof.prover_conformance import (
     DEFAULT_CONFORMANCE_FIXTURES,
     DEFAULT_CONFORMANCE_FIXTURE_SET,
     DEFAULT_CONFORMANCE_FIXTURE_SET_ID,
@@ -671,7 +788,7 @@ from .prover_conformance import (
     RouteHealth,
     gate_prover_path,
 )
-from .multi_prover_router import (
+from .proof.multi_prover_router import (
     DEFAULT_MAX_EVIDENCE_BYTES,
     DEFAULT_MAX_PARALLEL_PROVERS,
     DEFAULT_PORTFOLIO_TIMEOUT_SECONDS,
@@ -694,7 +811,7 @@ from .multi_prover_router import (
     execute_portfolio,
     route_obligation,
 )
-from .goal_refinement_verification import (
+from .objectives.goal_refinement_verification import (
     DEFAULT_MAX_COUNTEREXAMPLE_BYTES,
     GOAL_REFINEMENT_VERIFICATION_VERSION,
     MAX_LEANSTRAL_REPAIR_ROUNDS,
@@ -723,7 +840,7 @@ from .goal_refinement_verification import (
     property_kind_for_refinement_obligation,
     verify_refinement_obligations,
 )
-from .multi_prover_resources import (
+from .proof.multi_prover_resources import (
     PROVER_RESOURCE_CLASSES,
     BundleExecutionReceipt,
     BundleProverSupervisor,
@@ -743,7 +860,7 @@ from .multi_prover_resources import (
     dependency_closed_ready_slice,
     normalize_prover_resource_class,
 )
-from .prover_evidence_store import (
+from .proof.prover_evidence_store import (
     PROVER_EVIDENCE_DUCKDB_SCHEMA,
     PROVER_EVIDENCE_KEY_SCHEMA,
     PROVER_EVIDENCE_PROJECTION_SCHEMA,
@@ -768,7 +885,7 @@ from .prover_evidence_store import (
     query_prover_evidence,
     write_prover_evidence_projection,
 )
-from .supervisor_state_model import (
+from .self_improvement.supervisor_state_model import (
     DEFAULT_MAX_MODEL_CHECK_OUTPUT_BYTES,
     DEFAULT_MODEL_CHECK_TIMEOUT_SECONDS,
     DEFAULT_SUPERVISOR_TRANSITIONS,
@@ -799,7 +916,7 @@ from .supervisor_state_model import (
     generate_supervisor_state_model,
     parse_counterexample_trace,
 )
-from .kernel_verification import (
+from .proof.kernel_verification import (
     DEFAULT_MAX_LEAN_PROOF_BYTES,
     KERNEL_VERIFICATION_SCHEMA,
     KERNEL_VERIFICATION_SCHEMA_VERSION,
@@ -821,7 +938,7 @@ from .kernel_verification import (
     verify_admitted_lean_proof,
     verify_kernel_reconstruction,
 )
-from .goal_development_contracts import (
+from .objectives.goal_development_contracts import (
     ABSOLUTE_MAX_GOAL_DEVELOPMENT_TEXT_BYTES,
     DEFAULT_MAX_DECOMPOSITION_BREADTH,
     DEFAULT_MAX_DECOMPOSITION_BYTES,
@@ -848,7 +965,7 @@ from .goal_development_contracts import (
     GoalDevelopmentTrust,
     GoalProposalDecision,
 )
-from .leanstral_goal_benchmark import (
+from .proof.leanstral_goal_benchmark import (
     BASIS_POINTS,
     LEANSTRAL_GOAL_BENCHMARK_CASE_SCHEMA,
     LEANSTRAL_GOAL_BENCHMARK_METRICS_SCHEMA,
@@ -900,7 +1017,7 @@ from .core.conflict_graph import (
     project_conflict_free_wave,
     update_conflict_weights,
 )
-from .code_proof_obligations import (
+from .proof.code_proof_obligations import (
     ASTProofScope,
     CODE_OBLIGATION_CACHE_KEY_SCHEMA,
     CODE_OBLIGATION_REQUEST_SCHEMA,
@@ -958,7 +1075,7 @@ from .code_proof_obligations import (
     validate_code_proof_receipt_binding,
     validate_code_proof_receipt_bindings,
 )
-from .proof_scope_index import (
+from .proof.proof_scope_index import (
     ArtifactActivityState,
     CrossDomainArtifact,
     CrossDomainArtifactKind,
@@ -992,7 +1109,7 @@ from .proof_scope_index import (
     rebuild_proof_scope_index,
     update_proof_scope_index,
 )
-from .proof_obligation_templates import (
+from .proof.proof_obligation_templates import (
     DEFAULT_PROOF_OBLIGATION_TEMPLATES,
     DEFAULT_PROOF_OBLIGATION_TEMPLATE_REGISTRY,
     DEFAULT_TEMPLATE_REGISTRY,
@@ -1013,7 +1130,7 @@ from .proof_obligation_templates import (
     require_proof_obligation_template,
     select_proof_obligation_template,
 )
-from .proof_fallbacks import (
+from .proof.proof_fallbacks import (
     DEFAULT_MAX_DIAGNOSTIC_BYTES,
     DEFAULT_MAX_DIAGNOSTICS,
     DEFAULT_MAX_FIXTURE_BYTES,
@@ -1035,7 +1152,7 @@ from .proof_fallbacks import (
     route_proof_fallback,
     route_proof_fallbacks,
 )
-from .formal_counterexamples import (
+from .proof.formal_counterexamples import (
     COUNTEREXAMPLE_CAPSULE_SCHEMA,
     COUNTEREXAMPLE_GRAPH_SCHEMA,
     COUNTEREXAMPLE_STORE_SCHEMA,
@@ -1089,7 +1206,7 @@ from .formal_counterexamples import (
     normalize_unsat_core as normalize_formal_unsat_core,
     persist_counterexample,
 )
-from .validation_commands import (
+from .validation.validation_commands import (
     DeclaredValidation,
     FallbackValidationKind,
     ValidationCheckKind,
@@ -1175,7 +1292,7 @@ from .objectives.objective_graph import (
     evaluate_task_generation_completion,
     write_bundle_shards,
 )
-from .task_quality import (
+from .planning.task_quality import (
     RESOURCE_CLASSES,
     TASK_QUALITY_EVALUATOR_VERSION,
     TASK_QUALITY_SCHEMA,
@@ -1211,7 +1328,7 @@ from .task_quality import (
     split_task_candidate,
     task_semantic_similarity,
 )
-from .bundle_optimizer import (
+from .objectives.bundle_optimizer import (
     BUNDLE_OPTIMIZER_SCHEMA,
     CRITICAL_PATH_WIDTH_EVIDENCE_SCHEMA,
     CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
@@ -1230,7 +1347,7 @@ from .bundle_optimizer import (
     prove_critical_path_width,
     propagate_goal_packet_completion,
 )
-from .objective_tracker import (
+from .objectives.objective_tracker import (
     OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA,
     ObjectiveCompletionResult,
     ObjectiveGoalQualityReport,
@@ -1286,7 +1403,7 @@ from .core.external_completion import (
     load_external_completion_authority,
     validate_cid,
 )
-from .goal_completion import (
+from .objectives.goal_completion import (
     CONTRADICTION_KINDS,
     GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION,
     LEGACY_COMPLETED_GOAL_STATES,
@@ -1382,7 +1499,7 @@ evaluate_self_improvement_root_completion = (
     _self_improvement_completion.evaluate_self_improvement_root_completion
 )
 del _self_improvement_completion
-from .goal_coverage import (
+from .objectives.goal_coverage import (
     AcceptanceCoverage,
     CoverageEdge,
     CoverageSurface,
@@ -1414,7 +1531,7 @@ from .task_sources.todo_vector_index import (
     split_acceptance_criteria,
     write_todo_vector_index,
 )
-from .plan_evaluator import (
+from .planning.plan_evaluator import (
     ANALYSIS_PROPOSAL_JSON_SCHEMA,
     AND_OR_PLAN_EVALUATOR_VERSION,
     AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID,
@@ -1453,7 +1570,7 @@ from .plan_evaluator import (
     validate_evidence_aware_plan_evaluation,
     validate_and_or_plan_evaluation,
 )
-from .task_proposal_router import (
+from .planning.task_proposal_router import (
     ADAPTIVE_CANDIDATE_ROUTER_SCHEMA,
     AdaptiveCandidateProviderKind,
     AdaptiveCandidateRoutingResult,
@@ -1464,7 +1581,7 @@ from .task_proposal_router import (
     deterministic_evidence_aware_candidate,
     route_adaptive_plan_candidates,
 )
-from .adaptive_goal_refiner import (
+from .objectives.adaptive_goal_refiner import (
     ADAPTIVE_GOAL_REFINER_VERSION,
     ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
     NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA,

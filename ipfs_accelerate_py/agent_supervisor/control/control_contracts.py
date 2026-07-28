@@ -25,7 +25,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
-from ..formal_verification_contracts import (
+from ..proof.formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
     canonical_json_bytes,
@@ -5106,7 +5106,7 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
     requirement_id: str = CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
 
     def __post_init__(self) -> None:
-        from ..scan_receipts import ExhaustionQuorumResult
+        from ..objectives.scan_receipts import ExhaustionQuorumResult
 
         for name in (
             "validation_policy_id",
@@ -5258,8 +5258,8 @@ def _evaluate_control_objective_completion(
 ) -> Any:
     """Keep objective-gate policy outside the canonical receipt payload."""
 
-    from ..goal_completion import evaluate_goal_completion
-    from ..scan_receipts import ExhaustionQuorumResult
+    from ..objectives.goal_completion import evaluate_goal_completion
+    from ..objectives.scan_receipts import ExhaustionQuorumResult
 
     def payload(value: Any) -> dict[str, Any]:
         if isinstance(value, Mapping):
@@ -5703,7 +5703,7 @@ def evaluate_unified_control_completion(
     quorum populations are deliberately not caller-selectable.
     """
 
-    from ..goal_completion import evaluate_goal_completion
+    from ..objectives.goal_completion import evaluate_goal_completion
 
     if (
         isinstance(required_exhaustive_receipts, bool)
@@ -6689,7 +6689,7 @@ class ControlSurfaceParityCompletionQuorumEvidence(
     requirement_id: str = CONTROL_SURFACE_PARITY_REQUIREMENT_ID
 
     def __post_init__(self) -> None:
-        from ..scan_receipts import ExhaustionQuorumResult
+        from ..objectives.scan_receipts import ExhaustionQuorumResult
 
         for name in (
             "validation_policy_id",
@@ -7579,7 +7579,7 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
     requirement_id: str = CONTROL_MUTATION_GUARD_REQUIREMENT_ID
 
     def __post_init__(self) -> None:
-        from ..scan_receipts import ExhaustionQuorumResult
+        from ..objectives.scan_receipts import ExhaustionQuorumResult
 
         for name in (
             "validation_policy_id",

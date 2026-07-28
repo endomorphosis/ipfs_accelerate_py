@@ -337,8 +337,8 @@ def test_discovery_safety_evidence_uses_observed_python_cli_and_mcp_runs(
             (
                 "ipfs_datasets_py.",
                 "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_",
-                "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
-                "ipfs_accelerate_py.agent_supervisor.formal_verification_provider",
+                "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
+                "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider",
             )
         ):
             provider_loads += 1

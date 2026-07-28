@@ -13,13 +13,13 @@ from threading import Barrier
 from typing import Any
 
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
-from ipfs_accelerate_py.agent_supervisor.artifact_store import query_artifact
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_lanes
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import launch_bundle_lanes
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import LeaseCoordinator
 from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
-from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import HostResourceSnapshot
+from ipfs_accelerate_py.agent_supervisor.merge.leased_lane import run_leased_lane_result
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 
 _MANIFEST_GRAPH_FIELDS = {
@@ -1629,7 +1629,7 @@ def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> N
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.leased_lane",
+            "ipfs_accelerate_py.agent_supervisor.merge.leased_lane",
             "--coordination-path",
             str(coordination),
             "--grant-json",

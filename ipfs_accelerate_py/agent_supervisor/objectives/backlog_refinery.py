@@ -27,7 +27,7 @@ from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from ..analyzer_health import (
+from ..analysis.analyzer_health import (
     AnalyzerCanaryReport,
     AnalyzerHealthReport,
     AnalyzerHealthStatus,
@@ -36,8 +36,8 @@ from ..analyzer_health import (
     run_analyzer_canaries,
 )
 from ..merge.checkout_lock import BACKLOG_REFINERY_AUTHOR_EMAIL
-from ..event_log import read_jsonl_events
-from ..goal_completion import (
+from ..runtime.event_log import read_jsonl_events
+from .goal_completion import (
     DEFAULT_CLOCK_SKEW_SECONDS,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
 )
@@ -59,7 +59,7 @@ from .objective_graph import (
     repo_relative_path,
     safe_bundle_key,
 )
-from ..scan_receipts import (
+from .scan_receipts import (
     DEFAULT_EXHAUSTION_QUORUM_SIZE,
     ExhaustionBinding,
     ExhaustionQuorumResult,
@@ -84,7 +84,7 @@ from ..task_sources.taskboard_store import (
     replace_locked_taskboard,
     task_ids_from_artifact_names,
 )
-from ..validation_commands import (
+from ..validation.validation_commands import (
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
@@ -158,7 +158,7 @@ def align_completion_gate_force_goal_ids(
     goals, preserving deterministic order and avoiding duplicate tasks.
     """
 
-    from ..objective_tracker import completion_gate_actionable_goal_ids
+    from .objective_tracker import completion_gate_actionable_goal_ids
 
     aligned = {
         str(goal_id).strip()
@@ -3661,7 +3661,7 @@ def write_codebase_scan_bundle_shards(
             "bundles": bundles,
         }
     )
-    from ..artifact_store import write_bundle_index_artifact
+    from ..runtime.artifact_store import write_bundle_index_artifact
 
     write_bundle_index_artifact(index_path, index_payload)
     generated_paths.append(index_path)
@@ -7082,7 +7082,7 @@ def record_codebase_audit_findings(
     synchronize, retire, or append normal refill fingerprints.
     """
 
-    from ..audit_scanner import run_audit_scan
+    from ..analysis.audit_scanner import run_audit_scan
 
     return run_audit_scan(repo_root, dataset_dir=dataset_dir, **kwargs)
 
@@ -7367,7 +7367,7 @@ def record_configured_objective_backlog_findings(
     resolved_dataset_dir = dataset_dir if dataset_dir is not None else default_dataset_dir
     completion_identity = None
     if completion_gate_decisions:
-        from ..objective_tracker import completion_tree_identity
+        from .objective_tracker import completion_tree_identity
 
         completion_identity = completion_tree_identity(
             repo_root,
@@ -7740,7 +7740,7 @@ class ConfiguredBacklogRecorderBundle:
     ) -> Callable[[Mapping[str, Path | str]], tuple[Any, ...]]:
         """Build daemon refill hooks from this bundle without repo-local wiring."""
 
-        from ..implementation_daemon_runner import build_daemon_refill_hooks_factory_from_recorders
+        from ..todo_daemon.implementation_daemon_runner import build_daemon_refill_hooks_factory_from_recorders
 
         return build_daemon_refill_hooks_factory_from_recorders(
             discovery_dir_key=discovery_dir_key,
@@ -7786,7 +7786,7 @@ class ConfiguredBacklogRecorderBundle:
     ) -> Callable[[Mapping[str, Path | str]], tuple[Any, ...]]:
         """Build supervisor refill hooks from this bundle without repo-local wiring."""
 
-        from ..implementation_supervisor_runner import build_supervisor_refill_hooks_factory_from_recorders
+        from ..todo_daemon.implementation_supervisor_runner import build_supervisor_refill_hooks_factory_from_recorders
 
         return build_supervisor_refill_hooks_factory_from_recorders(
             discovery_dir_key=discovery_dir_key,

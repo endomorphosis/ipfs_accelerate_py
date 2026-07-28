@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from ..prompt_workflow import (
+from ..prompt.prompt_workflow import (
     PromptGoalGraph,
     PromptGoalRecord,
     PromptTaskRecord,

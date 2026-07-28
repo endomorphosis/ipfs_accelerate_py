@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     CodeProofScopeSet,
     DiffChangeKind,
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     build_conflict_surface,
     build_python_ast_blob_record,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     EvidenceAuthority,
     EvidenceKind,

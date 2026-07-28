@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
     ImplementationObligationSet,
@@ -24,7 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     prove_proof_candidate_non_authority,
     validate_code_proof_receipt_bindings,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_conformance import (
     CompletionAdmissionGate,
     CompletionEvidenceKind,
     CompletionPolicy,
@@ -45,7 +45,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
     evaluate_strict_validation_completion,
     evaluate_transitive_impact_admission_closure,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     EvidenceAuthority,
     EvidenceKind,
@@ -67,7 +67,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.proposal_validation import (
     ProposalValidationResult,
     validate_proposal,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ImpactDependencyGraph,
     TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA,
     TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
@@ -78,22 +78,22 @@ from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ValidationDAGReceipt,
     ValidationScheduler,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     AcceptanceCoverage,
     CoverageStatus,
     GoalCoverageMap,
     ValidationReceiptCoverage,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     ExhaustionBinding,
     ExhaustionQuorumMember,
     ExhaustionQuorumResult,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_commands import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationCommand,
 )
 

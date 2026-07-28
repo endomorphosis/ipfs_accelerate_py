@@ -459,7 +459,7 @@ def dynamic_bundle_scheduler_track(
         log_path=root / "bundle_scheduler.log",
         supervisor_pid_path=root / "bundle_scheduler.pid",
         daemon_pid_path=root / "bundle_scheduler_worker.pid",
-        module_name="ipfs_accelerate_py.agent_supervisor.bundle_supervisor",
+        module_name="ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor",
         extra_args=(
             "--repo-root", str(repo_root),
             "--bundle-index-path", str(bundle_index_path),
@@ -695,7 +695,7 @@ def build_repo_implementation_multi_supervisor_launcher(
 ) -> ConfiguredMultiSupervisorLauncher:
     """Build a repo-local implementation multi-supervisor launcher."""
 
-    from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
+    from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
     from ..core.wrapper_utils import build_repo_runtime_environment_callbacks, repo_script_command
 
     llm_merge_resolver_command = implementation_supervisor_llm_merge_resolver_command

@@ -9,7 +9,7 @@ import subprocess
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.core import program_behavior
-from ipfs_accelerate_py.agent_supervisor.prompt_directory_scanner import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_directory_scanner import (
     DirectoryResolutionError,
     NestedRepositoryError,
     OptionalAnalysisResult,
@@ -22,7 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.prompt_directory_scanner import (
     scan_prompt_directory,
     scan_prompt_directory_detailed,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     DirectoryScanPolicy,
     EvidenceAuthority,
     OutputMode,

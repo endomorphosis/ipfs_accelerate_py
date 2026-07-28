@@ -49,7 +49,7 @@ from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     operation_request_json_schema,
     operation_result_json_schema,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
@@ -952,8 +952,8 @@ import sys
 provider_prefixes = (
     "ipfs_datasets_py",
     "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_",
-    "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
-    "ipfs_accelerate_py.agent_supervisor.formal_verification_provider",
+    "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
+    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider",
 )
 started = []
 

@@ -9,10 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
-from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import LeaseCoordinator
+from ipfs_accelerate_py.agent_supervisor.merge.leased_lane import run_leased_lane_result
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     GoalRuntimeResourceScheduler,
     HostResourceSnapshot,
     LaneResourceRequirements,

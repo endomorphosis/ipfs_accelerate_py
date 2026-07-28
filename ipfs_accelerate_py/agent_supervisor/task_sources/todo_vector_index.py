@@ -38,7 +38,7 @@ from ..objectives.objective_graph import (
     text_embedding,
 )
 from .task_identity import canonical_task_identity
-from ..validation_commands import split_validation_commands
+from ..validation.validation_commands import split_validation_commands
 
 
 DEFAULT_TODO_VECTOR_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index"
@@ -2243,7 +2243,7 @@ def write_todo_vector_index_artifact(
 ) -> dict[str, Any]:
     """Persist a bounded vector index while retaining query-store references."""
 
-    from ..artifact_store import (
+    from ..runtime.artifact_store import (
         compact_conflict_graph_projection,
         compact_coverage_inputs_projection,
     )
@@ -2676,6 +2676,6 @@ def update_bundle_index_with_todo_vectors(
         payload["task_conflict_graph"] = graph_payload
         payload["conflict_history"] = dict(graph_payload.get("history") or {})
     payload["todo_coverage_inputs"] = build_todo_coverage_inputs(records)
-    from ..artifact_store import write_bundle_index_artifact
+    from ..runtime.artifact_store import write_bundle_index_artifact
 
     write_bundle_index_artifact(bundle_index_path, payload)

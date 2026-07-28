@@ -1511,12 +1511,12 @@ class CanonicalTaskSource:
             raise self._translated(exc) from exc
 
     def _markdown_initial_cursor(self) -> str:
-        from ..event_log import initial_event_cursor
+        from ..runtime.event_log import initial_event_cursor
 
         return initial_event_cursor(self.events_path).to_token()
 
     def _markdown_current_cursor(self) -> str:
-        from ..event_log import latest_event_cursor
+        from ..runtime.event_log import latest_event_cursor
 
         return latest_event_cursor(self.events_path).to_token()
 
@@ -1688,7 +1688,7 @@ def _canonical_event_receipt(
 def _canonical_events(source: CanonicalTaskSource) -> tuple[Mapping[str, Any], ...]:
     raw_events: list[Mapping[str, Any]] = []
     if source.source_kind == "markdown":
-        from ..event_log import initial_event_cursor
+        from ..runtime.event_log import initial_event_cursor
 
         cursor: Any = initial_event_cursor(source.events_path)
         while True:
@@ -2995,7 +2995,7 @@ def _markdown_projection_from_snapshot(
         _semantic,
         _topological_tasks,
     )
-    from ..prompt_workflow import PromptGoalGraph
+    from ..prompt.prompt_workflow import PromptGoalGraph
 
     try:
         graph = PromptGoalGraph.from_dict(
@@ -3377,7 +3377,7 @@ def rebuild_task_source_projection(
         if state["phase"] in {"snapshot_verified", "target_quarantined"}:
             if selected_kind == "duckdb":
                 from .duckdb_task_source import DuckDBTaskSource
-                from ..prompt_workflow import PromptGoalGraph
+                from ..prompt.prompt_workflow import PromptGoalGraph
 
                 if not verified.graph_record:
                     raise TaskSourceIntegrityError(

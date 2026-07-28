@@ -43,14 +43,14 @@ from ipfs_accelerate_py.agent_supervisor import (
     evaluate_goal_rollout_promotion,
 
 )
-from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     LOGIC_VOCABULARY_VERSION,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     ContractValidationError,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_development_contracts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_development_contracts import (
     GoalDevelopmentRequest,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
@@ -58,7 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     objective_goal_content_id,
     parse_goal_heap,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     append_refinement_goals,
 )
 

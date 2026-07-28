@@ -12,7 +12,7 @@ import sys
 import pytest
 
 import ipfs_accelerate_py.agent_supervisor as supervisor_api
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_compl
     SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS,
     evaluate_self_improvement_root_completion,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement_rollout import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_rollout import (
     PAIRED_EFFICIENCY_REQUIREMENT_ID,
     PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA,
     PAIRED_ROLLOUT_CHILD_GOAL_IDS,

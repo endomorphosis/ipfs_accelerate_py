@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.goal_completion import CompletionEvidence
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import CompletionEvidence
 from ipfs_accelerate_py.agent_supervisor.core.external_completion import (
     ExternalArtifactIdentity,
     ExternalCompletionAuthority,
@@ -31,7 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     parse_goal_heap,
     scan_objective_gaps,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     completion_tree_identity,
     reconcile_objective_goal_completion,
 )

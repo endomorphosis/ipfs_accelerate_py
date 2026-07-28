@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalyzerHealthReport,
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
@@ -43,17 +43,17 @@ from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     OperationResult,
     OperationStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     AcceptanceCoverage,
     CoverageStatus,
     GoalCoverageMap,
     ValidationReceiptCoverage,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     ExhaustionBinding,
     ExhaustionQuorumMember,
     ExhaustionQuorumResult,

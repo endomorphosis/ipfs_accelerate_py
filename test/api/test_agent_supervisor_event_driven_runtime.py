@@ -12,7 +12,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.task_sources import taskboard_store
 from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
-from ipfs_accelerate_py.agent_supervisor.event_log import (
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
     initial_event_cursor,
     read_event_cursor_checkpoint,
@@ -20,7 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.event_log import (
     rotate_event_log_if_needed,
     write_event_cursor_checkpoint,
 )
-from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ImplementationDaemonRunContext,
     run_portal_implementation_daemon_loop,
 )

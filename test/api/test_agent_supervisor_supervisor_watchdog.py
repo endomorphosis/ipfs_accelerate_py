@@ -10,7 +10,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.control.control_plane import LifecycleStatus
 from ipfs_accelerate_py.agent_supervisor import supervisor_watchdog as watchdog_module
-from ipfs_accelerate_py.agent_supervisor.supervisor_watchdog import (
+from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import (
     LIFECYCLE_STATUS_SCHEMA,
     SupervisorWatchdog,
     check_lane_heartbeat,

@@ -23,7 +23,7 @@ from ipfs_accelerate_py.agent_supervisor import (
     FormalVerificationProbeConfig,
 
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_capabilities import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_capabilities import (
     EffectiveContextLimit,
     InferenceCanaryRequest,
     InferenceCanaryResult,
@@ -87,7 +87,7 @@ def _all_modules() -> set[str]:
         "ipfs_datasets_py.logic.TDFOL",
         "ipfs_datasets_py.logic.external_provers",
         "ipfs_datasets_py.logic.external_provers.interactive.lean_prover_bridge",
-        "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+        "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
         "ipfs_accelerate_py.llm_router",
         "ipfs_datasets_py.logic.modal.leanstral",
         "ipfs_datasets_py.logic.modal.codec",
@@ -464,7 +464,7 @@ def test_invalid_probe_limits_fail_fast() -> None:
 def test_leanstral_surfaces_are_independent_routing_capabilities() -> None:
     discovery = FakeDiscovery(
         modules={
-            "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+            "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
             "ipfs_accelerate_py.llm_router",
         },
     )
@@ -578,7 +578,7 @@ def test_effective_context_limit_is_unknown_or_exhausted_not_unlimited() -> None
 def test_context_limit_is_attached_to_route_health_and_can_fail_route() -> None:
     discovery = FakeDiscovery(
         modules={
-            "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+            "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
             "ipfs_accelerate_py.llm_router",
         },
     )
@@ -636,7 +636,7 @@ def test_enabled_inference_canary_receives_only_bounded_health_request() -> None
     calls: list[InferenceCanaryRequest] = []
     discovery = FakeDiscovery(
         modules={
-            "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+            "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
             "ipfs_accelerate_py.llm_router",
         },
     )

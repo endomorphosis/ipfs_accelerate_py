@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.self_improvement_v2 import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_v2 import (
     MAX_V2_ABLATIONS,
     REQUIRED_V2_OBJECTIVE_DIMENSIONS,
     REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID,
@@ -23,7 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_v2 import (
     evaluate_v2_self_improvement,
     verify_v2_self_evaluation_report,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_v2_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_v2_benchmark import (
     REQUIRED_V2_FIXTURE_KINDS,
     V2BenchmarkArm,
     V2FixtureKind,

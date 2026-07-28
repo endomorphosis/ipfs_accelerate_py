@@ -27,7 +27,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
-from ..formal_verification_contracts import canonical_json, content_identity
+from ..proof.formal_verification_contracts import canonical_json, content_identity
 
 
 PLAN_FAILURE_MEMORY_VERSION: Final[int] = 1

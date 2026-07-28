@@ -15,14 +15,14 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_task_source import 
     TaskSourceInjectionError,
     TaskSourceIntegrityError,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_compiler import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler import (
     CompilationStatus,
     FormalPlanCompiler,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     PromptAcceptanceRecord,
     PromptEvidenceRecord,
     PromptGoalGraph,

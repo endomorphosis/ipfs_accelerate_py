@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
-from ipfs_accelerate_py.agent_supervisor.event_log import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
     read_jsonl_event_sources,
 )
-from ipfs_accelerate_py.agent_supervisor.scheduler_metrics import (
+from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
     GOAL_COMPLETION_DIAGNOSTICS_SCHEMA,
     LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS,
     SCHEDULER_PHASES,
@@ -23,7 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.scheduler_metrics import (
     read_scheduler_snapshot,
     write_scheduler_snapshot,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_watchdog import SupervisorWatchdog
+from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import SupervisorWatchdog
 
 
 IDENTITY = {

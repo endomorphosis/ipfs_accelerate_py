@@ -4,10 +4,10 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.code_evidence_graph import (
     build_code_evidence_graph,
 )
-from ipfs_accelerate_py.agent_supervisor.semantic_dependency_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.semantic_dependency_graph import (
     ClosureBounds,
     CrossRootEdgeError,
     SemanticAuthority,

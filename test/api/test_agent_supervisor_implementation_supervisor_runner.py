@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ConfiguredSupervisorBootstrapRunner,
     ConfiguredSupervisorRuntime,
@@ -39,7 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     run_configured_portal_implementation_supervisor,
     run_portal_implementation_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     RefillScanResult,
     ScanTerminalReason,
 )

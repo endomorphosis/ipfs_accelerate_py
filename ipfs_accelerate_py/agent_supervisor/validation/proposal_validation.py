@@ -24,7 +24,7 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..code_proof_obligations import CandidateDiffEntry, DiffChangeKind
+from ..proof.code_proof_obligations import CandidateDiffEntry, DiffChangeKind
 
 NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID = (
     "314133036252270790078901745919131980427"
@@ -2305,7 +2305,7 @@ def _evaluate_fail_fast_objective_completion(
 ) -> Any:
     """Join the G100 operational rejection with independent completion proof."""
 
-    from ..goal_completion import evaluate_goal_completion
+    from ..objectives.goal_completion import evaluate_goal_completion
 
     if (
         isinstance(required_exhaustive_receipts, bool)

@@ -30,7 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     main as merge_resolver_main,
     run_configured_merge_resolver_cli,
 )
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import plan_bundle_lanes
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import plan_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     build_arg_parser as build_objective_daemon_arg_parser,
     completion_gate_work_terms,
@@ -38,8 +38,8 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     objective_generation_task_findings,
     run_objective_daemon,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import CompletionEvidence
-from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import CompletionEvidence
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     build_goal_completion_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
@@ -58,7 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     tracked_files,
     write_bundle_shards,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     append_refinement_goals,
     completion_tree_identity,
     migrate_legacy_objective_goals,

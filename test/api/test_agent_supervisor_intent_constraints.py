@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.intent_constraint_adapter import (
+from ipfs_accelerate_py.agent_supervisor.proof.intent_constraint_adapter import (
     IntentAdapterBounds,
     IntentCompilationStatus,
     IntentConformanceRequest,
@@ -18,7 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.intent_constraint_adapter import (
     create_intent_conformance_request,
     evaluate_intent_conformance,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_registry import (
     IRFamily,
     IRLoadRequest,
     IRLoadStatus,

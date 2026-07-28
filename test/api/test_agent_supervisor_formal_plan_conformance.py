@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_conformance import (
     CanonicalExecutionEvent,
     CompletionEvidenceKind,
     CompletionPolicy,
@@ -22,7 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
     replay_conformance_evidence,
     write_conformance_evidence,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     Actor,
     ActorKind,
     EventKind,
@@ -31,7 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     PlanEvent,
     PlanTask,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import GoalState
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import GoalState
 
 
 NOW = "2026-07-23T20:00:00Z"

@@ -239,7 +239,7 @@ def _common_args(
         "--implementation-log-stall-seconds",
         "1200",
         "--llm-merge-resolver-command",
-        f"{python} -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+        f"{python} -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
         "--llm-merge-resolver-timeout-seconds",
         "1800",
         "--worktree-reconciliation-max-merges",

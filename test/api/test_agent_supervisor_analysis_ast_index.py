@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analysis_ast_index import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_ast_index import (
     ASTEvidenceIndex,
     ASTEvidenceKind,
     AnalysisASTIndex,

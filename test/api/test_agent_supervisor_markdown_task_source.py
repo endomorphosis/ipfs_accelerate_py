@@ -20,7 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.markdown_task_source impor
     parse_markdown_task_source,
     project_admitted_plan,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     prompt_workflow_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import TaskboardStore

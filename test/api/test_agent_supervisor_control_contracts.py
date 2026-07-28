@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBoundsError,
     ContextBudget,
     ContextCapsule,

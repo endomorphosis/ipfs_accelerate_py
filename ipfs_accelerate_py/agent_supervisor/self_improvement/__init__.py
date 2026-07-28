@@ -32,7 +32,7 @@ __all__: Final[tuple[str, ...]] = (
 )
 
 SELF_IMPROVEMENT_PACKAGE_NAME: Final[str] = (
-    "ipfs_accelerate_py.agent_supervisor.self_improvement"
+    "ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement"
 )
 
 # Stems owned by asref/self-improvement in docs/architecture/asref/move_map.json.

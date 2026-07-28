@@ -50,7 +50,7 @@ from ipfs_accelerate_py.agent_supervisor import (
     evaluate_code_proof_goal_completion,
 
 )
-from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     LOGIC_VOCABULARY_VERSION,
     ReviewedPredicate,
     TDFOLVocabulary,
@@ -58,7 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
     atom,
     constant,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     Actor,
     ActorKind,
     Effect,
@@ -77,7 +77,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     RefinementMode,
     Subgoal,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     EvidenceAuthority,
     EvidenceFreshness,
     EvidenceKind,
@@ -87,15 +87,15 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_development_contracts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_development_contracts import (
     GoalDevelopmentRequest,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_refinement_verification import (
     JsonlRefinementAuditStore,
     RefinementRepairCandidate,
     RefinementVerificationPolicy,
 )
-from ipfs_accelerate_py.agent_supervisor.multi_prover_router import (
+from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router import (
     AttemptOutcome,
     PropertyKind,
     ProverOutput,

@@ -24,7 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     generated_protected_board_commit_subject,
 )
-from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (

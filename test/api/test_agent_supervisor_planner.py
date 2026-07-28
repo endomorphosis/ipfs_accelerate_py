@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     BundleLaneSpec,
     launch_bundle_lanes,
     plan_bundle_lanes,
 )
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     DependencyNotReadyError,
     LeaseCoordinator,
     LeaseGrant,

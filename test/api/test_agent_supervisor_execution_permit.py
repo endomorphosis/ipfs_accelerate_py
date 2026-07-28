@@ -5,12 +5,12 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.decision_context import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_context import (
     ContextCompletenessEntry,
     ContextCompletenessWitness,
     DecisionContextRepresentation,
 )
-from ipfs_accelerate_py.agent_supervisor.decision_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_contracts import (
     ActionEnvelope,
     DecisionAuthority,
     DecisionTarget,
@@ -32,7 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.control.execution_permit import (
     _plain,
     _semantic_roots_digest,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_constraint_compiler import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_constraint_compiler import (
     PlanAdmissionRequest,
     ValidationResult,
     compile_plan_admission,

@@ -356,7 +356,7 @@ from ipfs_accelerate_py.agent_supervisor.prompt.prompt_directory_scanner import 
 ```
 
 **Until moves land**, callers may still import flat modules at package root
-(e.g. `from ipfs_accelerate_py.agent_supervisor.context_compiler import ...`).
+(e.g. `from ipfs_accelerate_py.agent_supervisor.context.context_compiler import ...`).
 Those flat paths are **not** the long-term public API. Do not add package
 re-export stubs early.
 
@@ -412,7 +412,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider impo
 ```
 
 **Until moves land**, callers may still import flat modules at package root
-(e.g. `from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import ...`).
+(e.g. `from ipfs_accelerate_py.agent_supervisor.analysis.analysis_pipeline import ...`).
 Those flat paths are **not** the long-term public API. Forbidden after land:
 `core` / `analysis` / `proof` must not import `todo_daemon` (DAG).
 

@@ -15,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_task_source import 
 from ipfs_accelerate_py.agent_supervisor.task_sources.markdown_task_source import (
     MarkdownTaskSource,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     prompt_workflow_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (

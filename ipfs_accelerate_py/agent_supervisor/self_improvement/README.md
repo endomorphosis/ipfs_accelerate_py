@@ -19,7 +19,7 @@ Python prefers the package directory over the sibling flat module
 `self_improvement.py`. Until ASREF-011 moves modules under this package:
 
 - Package `__init__.py` re-exports the flat module public API so
-  `from ipfs_accelerate_py.agent_supervisor.self_improvement import ...`
+  `from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement import ...`
   continues to work.
 - That re-export is **temporary compatibility only**, not a permanent
   old-path stub policy for other packages.
@@ -53,7 +53,7 @@ integration surfaces in a way that forms package DAG cycles.
 After each module moves into `self_improvement/`, update all callers in the
 same change. Prefer::
 
-    from ipfs_accelerate_py.agent_supervisor.self_improvement.<module> import ...
+    from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.<module> import ...
 
 Remove the temporary flat re-export path once `self_improvement.py` content
 lives only under this package and no callers depend on package-root symbols

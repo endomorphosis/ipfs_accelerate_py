@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from ipfs_accelerate_py.agent_supervisor.decision_runtime_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime_benchmark import (
     REQUIRED_ADVERSARIAL_FIXTURES,
     DecisionRuntimeBenchmark,
     recompute_proof_dependency_scaling,

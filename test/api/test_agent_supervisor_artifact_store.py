@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import artifact_store
-from ipfs_accelerate_py.agent_supervisor.artifact_store import (
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     BUNDLE_INDEX_KIND,
     QUERY_SCHEMA,
     SCHEDULER_MANIFEST_KIND,

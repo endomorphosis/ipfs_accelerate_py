@@ -4,10 +4,10 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from ipfs_accelerate_py.agent_supervisor.control.control_contracts import Operation
-from ipfs_accelerate_py.agent_supervisor.prompt_goal_planner import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
     parse_prompt_goal_graph,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     OutputMode,
     PromptSupervisorService,
     PromptWorkflowPreviewReceipt,

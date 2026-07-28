@@ -9,7 +9,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     LEGAL_LIFECYCLE_TRANSITIONS,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime_temporal_monitor import (
+from ipfs_accelerate_py.agent_supervisor.runtime.runtime_temporal_monitor import (
     MonitorVerdict,
     NoticeCode,
     RUNTIME_TEMPORAL_COUNTEREXAMPLE_SCHEMA,

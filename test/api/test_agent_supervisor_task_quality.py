@@ -18,7 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     normalize_task_id_prefix as normalize_objective_task_id_prefix,
     task_markdown_heading_prefix,
 )
-from ipfs_accelerate_py.agent_supervisor.task_quality import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_quality import (
     TASK_SPLIT_REFILL_REQUIREMENT_ID,
     TASK_WORK_CONTRACT_SCHEMA,
     TaskCandidate,
