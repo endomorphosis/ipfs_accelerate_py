@@ -84,8 +84,13 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
-# Install ipfs_kit_py from GitHub main branch
-RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@main
+# Install ipfs_kit_py without recursive submodules.  Pip's git backend enables
+# --recurse-submodules by default; nested docs/vendor submodules on main
+# frequently pin unreachable SHAs and break CI image builds.
+RUN git clone --depth 1 --filter=blob:none \
+      https://github.com/endomorphosis/ipfs_kit_py.git /tmp/ipfs_kit_py \
+ && pip install --no-cache-dir /tmp/ipfs_kit_py \
+ && rm -rf /tmp/ipfs_kit_py
 
 # Install package in editable mode with development dependencies
 # Install Flask, Werkzeug, flask-cors, and fastmcp explicitly for MCP dashboard
@@ -115,8 +120,11 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
-# Install ipfs_kit_py from GitHub main branch
-RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@main
+# Install ipfs_kit_py without recursive submodules (see development stage note).
+RUN git clone --depth 1 --filter=blob:none \
+      https://github.com/endomorphosis/ipfs_kit_py.git /tmp/ipfs_kit_py \
+ && pip install --no-cache-dir /tmp/ipfs_kit_py \
+ && rm -rf /tmp/ipfs_kit_py
 
 # Install package with ONLY testing dependencies (not the heavy ML libs)
 # This significantly reduces image size and build time

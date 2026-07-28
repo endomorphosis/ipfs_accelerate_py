@@ -139,6 +139,9 @@ testing = [
   "scipy>=1.10.0",
   "scikit-learn>=1.3.0",
   "requests>=2.31.0",
+  # Serving contract gates use FastAPI TestClient
+  "fastapi>=0.110.0",
+  "httpx>=0.27.0",
 ]
 mcp = [
   "fastmcp>=0.1.0",
