@@ -218,7 +218,7 @@ Normative:
 
 ## CBP-050 Cache-aware re-proof and invalidation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: reproof

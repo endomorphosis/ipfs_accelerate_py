@@ -5964,6 +5964,16 @@ prove_code_obligation = prove_code_obligation_with_cache
 lookup_or_prove_code_obligation = prove_code_obligation_with_cache
 
 
+# CBP-050 re-exports (implementation lives in code_proof_reproof).
+from .code_proof_reproof import (  # noqa: E402
+    InvalidationReason,
+    ReproofDisposition,
+    ReproofReport,
+    invalidation_reasons,
+    plan_reproof_from_delta,
+    reprove_code_proof_compilation,
+)
+
 __all__ = [
     "ASTProofScope",
     "CODE_OBLIGATION_CACHE_KEY_SCHEMA",
@@ -6056,4 +6066,10 @@ __all__ = [
     "normalize_residual_refs",
     "premise_set_digest",
     "assumption_set_digest",
+    "InvalidationReason",
+    "ReproofDisposition",
+    "ReproofReport",
+    "invalidation_reasons",
+    "plan_reproof_from_delta",
+    "reprove_code_proof_compilation",
 ]
