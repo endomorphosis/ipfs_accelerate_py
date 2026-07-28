@@ -1992,6 +1992,11 @@ def _default_router(
     config: PromptGoalPlannerConfig,
 ) -> str:
     # Keep the dependency optional and reuse the existing isolated adapter.
+    # ASI-168: envelope + gateway when usage mode is not off; off mode is
+    # unchanged for focused-suite compatibility and never loads the migration
+    # stack.
+    import os
+
     from ..todo_daemon.llm import LlmRouterInvocation, call_llm_router
 
     provider = config.provider
@@ -2023,7 +2028,51 @@ def _default_router(
             None if config.allow_local_fallback else "local_hf"
         ),
     )
-    return call_llm_router(prompt, invocation)
+
+    def _invoke() -> str:
+        return call_llm_router(prompt, invocation)
+
+    mode_raw = str(
+        os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
+    ).strip().casefold()
+    if mode_raw in {"", "off"}:
+        return _invoke()
+
+    from ..provider_usage_migration import (
+        ConsumerId,
+        build_consumer_call_context,
+        dispatch_migrated_provider_call,
+        resolve_usage_mode,
+        retain_last_call_result,
+    )
+
+    mode = resolve_usage_mode(mode_raw)
+    provider_id = str(provider or "llm_router:auto")
+    context = build_consumer_call_context(
+        consumer_id=ConsumerId.PROMPT_GOAL_PLANNER,
+        provider_id=provider_id,
+        stage="prompt_goal_planning",
+        task_id=str(getattr(request, "request_id", "") or "prompt_goal"),
+        goal_id=str(
+            getattr(request, "goal_id", "") or "goal:prompt-goal-planner"
+        ),
+        objective_id="prompt_goal_planner",
+        tree_id=str(
+            getattr(request, "repository_tree_id", "") or "tree:unknown"
+        ),
+        estimated_output_tokens=max(0, int(tokens or 0)),
+        estimated_input_tokens=max(
+            0, int(getattr(request.budget, "max_prompt_tokens", 0) or 0)
+        ),
+        metadata={"model": str(model)},
+    )
+    migrated = dispatch_migrated_provider_call(
+        context=context,
+        invoke=_invoke,
+        mode=mode,
+    )
+    retain_last_call_result(ConsumerId.PROMPT_GOAL_PLANNER, migrated)
+    return migrated.text
 
 
 def _failure_kind(exc: BaseException) -> str:

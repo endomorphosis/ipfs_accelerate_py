@@ -1362,62 +1362,130 @@ def _call_text_provider(
     context_limit: int,
     response_contract: str,
     provenance: Mapping[str, Any] | None = None,
+    usage_consumer_id: str = "task_proposal_router",
+    usage_migrate: bool = True,
 ) -> tuple[str, ProviderBatchResult | None]:
-    """Dispatch text directly or through the shared admitted provider stream."""
+    """Dispatch text directly or through the shared admitted provider stream.
+
+    ASI-168: chargeable work supplies a usage envelope (when usage mode is not
+    off), routes through the reservation-aware gateway or typed batch adapter,
+    and retains the operational selection/usage receipt without elevating model
+    output to completion authority. Callers that already wrap this helper may
+    pass ``usage_migrate=False`` to avoid double migration.
+    """
 
     from ..todo_daemon.llm import call_llm_router
 
-    if scheduler is None:
-        return call_llm_router(prompt, invocation), None
-    prompt_bytes = prompt.encode("utf-8", errors="surrogatepass")
-    result = scheduler.execute(
-        ProviderBatchRequest(
-            request_id=f"{route}:{uuid.uuid4().hex}",
-            payload=prompt,
-            provider_id=str(invocation.provider or "llm_router:auto"),
-            route=route,
-            model=str(invocation.model_name),
-            operation=operation,
-            context_limit=max(0, int(context_limit)),
-            policy={
-                "allow_local_fallback": bool(
-                    invocation.allow_local_fallback
-                ),
-                "reject_effective_provider_name": (
-                    invocation.reject_effective_provider_name
-                ),
-                "required_effective_providers": tuple(
-                    invocation.required_effective_providers
-                ),
-                "response_contract": response_contract,
-            },
-            generation_settings={
-                "temperature": float(invocation.temperature),
-                "backend": str(invocation.backend_default),
-            },
-            token_budget=max(0, int(invocation.max_new_tokens)),
-            timeout_ms=max(1, int(invocation.timeout_seconds) * 1_000),
-            provenance={
-                **dict(provenance or {}),
-                "route": route,
-                "response_contract": response_contract,
-                "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
-                "prompt_bytes": len(prompt_bytes),
-            },
+    provider_id = str(invocation.provider or "llm_router:auto")
+    provenance_map = dict(provenance or {})
+
+    def _legacy_dispatch() -> tuple[str, ProviderBatchResult | None]:
+        if scheduler is None:
+            return call_llm_router(prompt, invocation), None
+        prompt_bytes = prompt.encode("utf-8", errors="surrogatepass")
+        result = scheduler.execute(
+            ProviderBatchRequest(
+                request_id=f"{route}:{uuid.uuid4().hex}",
+                payload=prompt,
+                provider_id=provider_id,
+                route=route,
+                model=str(invocation.model_name),
+                operation=operation,
+                context_limit=max(0, int(context_limit)),
+                policy={
+                    "allow_local_fallback": bool(
+                        invocation.allow_local_fallback
+                    ),
+                    "reject_effective_provider_name": (
+                        invocation.reject_effective_provider_name
+                    ),
+                    "required_effective_providers": tuple(
+                        invocation.required_effective_providers
+                    ),
+                    "response_contract": response_contract,
+                },
+                generation_settings={
+                    "temperature": float(invocation.temperature),
+                    "backend": str(invocation.backend_default),
+                },
+                token_budget=max(0, int(invocation.max_new_tokens)),
+                timeout_ms=max(1, int(invocation.timeout_seconds) * 1_000),
+                provenance={
+                    **provenance_map,
+                    "route": route,
+                    "response_contract": response_contract,
+                    "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                    "prompt_bytes": len(prompt_bytes),
+                },
+            )
+        )
+        if not result.successful:
+            raise TaskProposalRouterError(
+                "shared provider dispatch failed: "
+                f"{result.status.value}: {result.error or 'no provider result'}",
+                reason_code=f"provider_batch_{result.status.value}",
+            )
+        if not isinstance(result.output, str):
+            raise TaskProposalRouterError(
+                "shared provider returned a non-text result",
+                reason_code="provider_batch_non_text",
+            )
+        return result.output, result
+
+    mode_raw = str(
+        os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
+    ).strip().casefold()
+    if (not usage_migrate) or mode_raw in {"", "off"}:
+        return _legacy_dispatch()
+
+    from ..provider_usage_migration import (
+        ConsumerId,
+        build_consumer_call_context,
+        dispatch_migrated_provider_call,
+        resolve_usage_mode,
+        retain_last_call_result,
+    )
+
+    mode = resolve_usage_mode(mode_raw)
+    batch_holder: dict[str, ProviderBatchResult | None] = {"result": None}
+
+    def _invoke() -> str:
+        text, batch = _legacy_dispatch()
+        batch_holder["result"] = batch
+        return text
+
+    consumer = ConsumerId(
+        str(
+            provenance_map.get("usage_consumer_id")
+            or usage_consumer_id
+            or ConsumerId.TASK_PROPOSAL_ROUTER.value
         )
     )
-    if not result.successful:
-        raise TaskProposalRouterError(
-            "shared provider dispatch failed: "
-            f"{result.status.value}: {result.error or 'no provider result'}",
-            reason_code=f"provider_batch_{result.status.value}",
-        )
-    if not isinstance(result.output, str):
-        raise TaskProposalRouterError(
-            "shared provider returned a non-text result",
-            reason_code="provider_batch_non_text",
-        )
-    return result.output, result
+    context = build_consumer_call_context(
+        consumer_id=consumer,
+        provider_id=provider_id,
+        stage=str(provenance_map.get("stage") or "task_proposal"),
+        lane=str(provenance_map.get("lane") or "lane-0"),
+        task_id=str(provenance_map.get("task_id") or route),
+        goal_id=str(provenance_map.get("goal_id") or "goal:task-proposal"),
+        objective_id=str(
+            provenance_map.get("objective_id") or consumer.value
+        ),
+        tree_id=str(provenance_map.get("repository_tree_id") or "tree:unknown"),
+        estimated_output_tokens=max(0, int(invocation.max_new_tokens or 0)),
+        metadata={
+            "route": route,
+            "operation": operation,
+            "response_contract": response_contract,
+        },
+    )
+    migrated = dispatch_migrated_provider_call(
+        context=context,
+        invoke=_invoke,
+        mode=mode,
+    )
+    retain_last_call_result(consumer, migrated)
+    return migrated.text, batch_holder["result"]
 
 
 def run_task_proposal_router(
