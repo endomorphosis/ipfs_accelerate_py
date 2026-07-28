@@ -4,25 +4,25 @@ import threading
 import time
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AttemptStatus,
     ProofPlan,
     ProofPlanStep,
     ProofStage,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     DEFAULT_RESOURCE_CLASSES,
     HostResourceSnapshot,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_commands import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     DeclaredValidation,
     ValidationCommand,
     ValidationRequirementKind,
     ValidationStage,
     select_validation_commands,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ValidationScheduler,
 )
 

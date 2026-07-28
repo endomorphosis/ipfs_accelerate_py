@@ -9,7 +9,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_planning_adversarial import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_adversarial import (
     AdversarialAdmission,
     AdversarialPolicy,
     AdversarialValidationCoordinator,
@@ -24,10 +24,10 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_adversarial import (
     PlanTrustBinding,
     ProverBoundaryEvidence,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
-from ipfs_accelerate_py.agent_supervisor.multi_prover_router import PropertyKind
+from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router import PropertyKind
 
 
 NOW_MS = 1_800_000_000_000

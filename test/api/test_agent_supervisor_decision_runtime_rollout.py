@@ -1,10 +1,10 @@
 from dataclasses import replace
 
-from ipfs_accelerate_py.agent_supervisor.decision_runtime_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime_benchmark import (
     DecisionRuntimeBenchmark,
     build_frozen_decision_runtime_benchmark,
 )
-from ipfs_accelerate_py.agent_supervisor.decision_runtime_rollout import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime_rollout import (
     DecisionRuntimeRolloutBinding,
     DecisionRuntimeRolloutEvaluation,
     DecisionRuntimeRolloutMode,

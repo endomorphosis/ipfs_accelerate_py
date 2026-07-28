@@ -8,21 +8,21 @@ import time
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider import (
     CancellationToken,
     ProofProviderError,
     ProviderFailureCode,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_development_contracts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_development_contracts import (
     GoalDevelopmentMode,
     GoalDevelopmentPolicy,
     GoalDevelopmentRequest,
 )
-from ipfs_accelerate_py.agent_supervisor.leanstral_goal_development import (
+from ipfs_accelerate_py.agent_supervisor.proof.leanstral_goal_development import (
     ASTGraphRAGReferenceRecord,
     CapabilityRecord,
     EvidenceGapRecord,
@@ -42,11 +42,11 @@ from ipfs_accelerate_py.agent_supervisor.leanstral_goal_development import (
     ReusableReceiptRecord,
     build_leanstral_goal_development_batch_dispatch,
 )
-from ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider import (
     LEANSTRAL_MODEL_RESOURCE_CLASS,
     LEAN_KERNEL_RESOURCE_CLASS,
 )
-from ipfs_accelerate_py.agent_supervisor.provider_batch_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_scheduler import (
     ProviderBatchCapacity,
     ProviderBatchRequest,
     ProviderBatchScheduler,

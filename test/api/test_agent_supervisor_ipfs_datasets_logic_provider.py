@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     CodeProofObligation,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider import (
     ProviderFailureCode,
     ProviderRequest,
     dispatch_provider_request,
 )
-from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_logic_provider import (
+from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provider import (
     HAMMER_TRANSLATOR_ID,
     HammerSupervisorPolicy,
     IpfsDatasetsLogicProvider,

@@ -231,3 +231,12 @@ Keep at monorepo root only what packaging and humans need:
 - [`docs/agent_supervisor_objective_graph.md`](../agent_supervisor_objective_graph.md) — how heaps become bundles and todos
 - [`docs/architecture/ai_service_catalog.objectives.md`](./ai_service_catalog.objectives.md) — style reference for goal fields
 - [`docs/architecture/agent_supervisor_self_improvement.objectives.md`](./agent_supervisor_self_improvement.objectives.md) — completion/evidence rigor reference
+
+## Execution log (bootstrap)
+
+- Branch `refactor/agent-supervisor-layout` created from main tip including plan seed commit.
+- ASREF-001 inventory committed: `docs/architecture/asref/move_map.json` and `import_inventory.md` (tracked; `data/.../discovery` is gitignored).
+- Isolated worktree for continued work: `/home/barberb/.local/share/ipfs_accelerate_py/manual-worktrees/asref-layout` (avoids concurrent main-checkout thrash).
+- First objective scan (`--no-reconcile-goal-completion --max-findings 12`) appended ASREF-008..014 gap tasks and wrote bundle shards under `data/agent_supervisor/bundles/asref/`.
+- Next operator actions: run ASREF-002 launch wiring, then package moves starting with ASREF-003 (`core/`) using Grok 4.6 multi-lane supervisors **bound to this worktree/branch only**.
+

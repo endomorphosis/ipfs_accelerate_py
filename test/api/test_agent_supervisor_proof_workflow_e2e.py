@@ -4,7 +4,7 @@ import threading
 import time
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     AttemptStatus,
     EvidenceAuthority,
@@ -19,7 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_policy import (
     ChangedScope,
     FormalVerificationPolicy,
     MergeProofGateReceipt,
@@ -29,13 +29,13 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
     RiskLevel,
     RolloutMode,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_scheduler import (
     ProofNodeState,
     ProofScheduler,
     ProofSchedulerConfig,
     ProofStepResult,
 )
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import resource_pool
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import resource_pool
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,

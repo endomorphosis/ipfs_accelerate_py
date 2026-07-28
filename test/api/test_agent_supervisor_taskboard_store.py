@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.markdown_task_source import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.markdown_task_source import (
     MarkdownTaskSource,
 )
-from ipfs_accelerate_py.agent_supervisor.taskboard_store import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import (
     TaskboardMaterializationEntry,
     TaskboardStore,
     commit_taskboard_materialization,

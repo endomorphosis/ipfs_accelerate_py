@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
-from ipfs_accelerate_py.agent_supervisor.merge_train import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor.merge.merge_train import (
     PARALLEL_ACCEPTANCE_EVIDENCE_ID,
     PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA,
     PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION,
@@ -29,18 +29,18 @@ from ipfs_accelerate_py.agent_supervisor.merge_train import (
     ParallelAcceptanceReceipt,
     evaluate_parallel_execution_completion,
 )
-from ipfs_accelerate_py.agent_supervisor.provider_batch_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_scheduler import (
     ProviderBatchRequest,
     ProviderBatchScheduler,
     ProviderBatchSchedulerConfig,
     ProviderBatchStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     AdaptiveThroughputRun,
     ResourcePolicy,
     evaluate_adaptive_throughput_benchmark,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ValidationScheduler,
 )
 

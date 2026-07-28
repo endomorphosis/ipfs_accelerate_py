@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     DCEC,
     ReviewedPredicate,
     TDFOL,
@@ -10,11 +10,11 @@ from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
     atom,
     constant,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_compiler import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler import (
     CompilationStatus,
     compile_formal_plan,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_validator import (
     CancellationToken,
     FindingDisposition,
     FormalPlanValidator,
@@ -27,7 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
     ValidationBounds,
     validate_formal_plan,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     EffectOperation,
     EventKind,
     RefinementMode,

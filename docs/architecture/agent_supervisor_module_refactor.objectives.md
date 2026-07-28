@@ -223,3 +223,41 @@ Program invariants:
 - Refinement: Keep provider wiring in integrations/runtime; do not block package moves on provider choice.
 - Embedding query: grok 4.6 multi lane implementation supervisor objective bundle protected path asref
 - AST query: MultiSupervisorRunner TodoImplementationSupervisor generate_objective_todos
+
+## ASREF-G101 Prove ASREF-G090 for Clear agent_supervisor package layout and monorepo root hygiene
+
+- Status: active
+- Parent: ASREF-G000
+- Fib priority: 3000
+- Track: agent-supervisor-refactor
+- Priority: P0
+- Bundle: asref/root
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `ASREF-G090`.
+- Evidence: ASREF-G090
+- Outputs: ipfs_accelerate_py/agent_supervisor, docs/architecture/agent_supervisor_module_refactor.objectives.md, docs/architecture/agent_supervisor_module_refactor.todo.md, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md, pyproject.toml, setup.py, scripts, test/api
+- Validation: python -m pytest test/api/test_agent_supervisor_todo_daemon_port.py test/api/test_agent_supervisor_control_conformance_v2.py -q --collect-only && rg -n "agent_supervisor\\.(objective_daemon|backlog_refinery|merge_resolver)\\b" pyproject.toml setup.py || true
+- Refinement depth: 1
+- Embedding query: ASREF-G090
+- AST query: ASREF-G090
+- Parallel lane: asref/root
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `ASREF-G090` with a narrow, verifiable change.
+
+## ASREF-G102 Prove ASREF-G100 for Clear agent_supervisor package layout and monorepo root hygiene
+
+- Status: active
+- Parent: ASREF-G000
+- Fib priority: 3001
+- Track: agent-supervisor-refactor
+- Priority: P0
+- Bundle: asref/root
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `ASREF-G100`.
+- Evidence: ASREF-G100
+- Outputs: ipfs_accelerate_py/agent_supervisor, docs/architecture/agent_supervisor_module_refactor.objectives.md, docs/architecture/agent_supervisor_module_refactor.todo.md, docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md, pyproject.toml, setup.py, scripts, test/api
+- Validation: python -m pytest test/api/test_agent_supervisor_todo_daemon_port.py test/api/test_agent_supervisor_control_conformance_v2.py -q --collect-only && rg -n "agent_supervisor\\.(objective_daemon|backlog_refinery|merge_resolver)\\b" pyproject.toml setup.py || true
+- Refinement depth: 1
+- Embedding query: ASREF-G100
+- AST query: ASREF-G100
+- Parallel lane: asref/root
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `ASREF-G100` with a narrow, verifiable change.

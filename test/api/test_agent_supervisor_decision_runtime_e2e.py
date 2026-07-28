@@ -9,11 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.decision_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_contracts import (
     DecisionKind,
     DecisionStage,
 )
-from ipfs_accelerate_py.agent_supervisor.decision_runtime import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime import (
     DecisionBoundary,
     DecisionOutcome,
     DecisionRuntime,

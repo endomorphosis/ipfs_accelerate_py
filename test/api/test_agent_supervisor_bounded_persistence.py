@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import artifact_store
-from ipfs_accelerate_py.agent_supervisor.artifact_store import (
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     ArtifactBlobIntegrityError,
     ArtifactOutcome,
     ArtifactPayloadTooLarge,
@@ -19,14 +19,14 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     enforce_projection_bound,
     enforce_receipt_bound,
 )
-from ipfs_accelerate_py.agent_supervisor.event_log import (
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     EventPayloadTooLarge,
     append_jsonl_event,
     event_log_manifest,
     read_jsonl_event_sources,
     rotate_event_log_if_needed,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_v2_contracts import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts import (
     MAX_PROJECTION_BYTES,
     MAX_RECEIPT_BYTES,
 )

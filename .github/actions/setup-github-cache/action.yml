@@ -89,62 +89,12 @@ runs:
         echo "✅ Cache size: ${{ inputs.cache-size }}"
         echo "✅ Default TTL: ${{ inputs.cache-ttl }}s"
         
-        # Initialize cache with Python
-        python3 << 'PYEOF'
-import os
-import sys
-
-try:
-    from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
-    
-    cache = GitHubAPICache(
-        cache_dir=os.environ.get('CACHE_DIR'),
-        enable_p2p=os.environ.get('ENABLE_P2P_CACHE', 'true').lower() == 'true',
-        enable_peer_discovery=os.environ.get('ENABLE_PEER_DISCOVERY', 'true').lower() == 'true',
-        github_repo=os.environ.get('GITHUB_REPOSITORY'),
-        max_cache_size=int(os.environ.get('GITHUB_CACHE_SIZE', 5000)),
-        default_ttl=int(os.environ.get('CACHE_DEFAULT_TTL', 300)),
-        p2p_listen_port=int(os.environ.get('P2P_LISTEN_PORT', 9000))
-    )
-    
-    print("✅ GitHub API cache initialized successfully")
-    
-    # Get stats
-    stats = cache.get_stats()
-    print(f"📊 Cache entries: {stats.get('cache_size', 0)}")
-    print(f"📊 P2P enabled: {stats.get('p2p_enabled', False)}")
-    
-    if stats.get('p2p_enabled'):
-        peer_count = stats.get('connected_peers', 0)
-        print(f"📡 Connected peers: {peer_count}")
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-            f.write(f"peer_count={peer_count}\n")
-            f.write("status=success\n")
-    else:
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-            f.write("peer_count=0\n")
-            f.write("status=fallback\n")
-    
-    print("::notice::✅ GitHub API cache is ready - API calls will be cached")
-    sys.exit(0)
-    
-except ImportError as e:
-    print(f"::warning::⚠️ Cache modules not available: {e}")
-    print("::notice::Continuing without caching")
-    with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-        f.write("peer_count=0\n")
-        f.write("status=disabled\n")
-    sys.exit(0)
-    
-except Exception as e:
-    print(f"::error::❌ Cache initialization failed: {e}")
-    import traceback
-    traceback.print_exc()
-    with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-        f.write("peer_count=0\n")
-        f.write("status=fallback\n")
-    sys.exit(1)
-PYEOF
+        # Initialize cache with Python (external script keeps this YAML valid)
+        if [ -f "${GITHUB_WORKSPACE}/.github/scripts/init_github_api_cache.py" ]; then
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/init_github_api_cache.py"
+        else
+          python3 "${{ github.action_path }}/init_github_api_cache.py"
+        fi
         
         echo "::endgroup::"
     

@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     DirectoryScanPolicy,
     DirectoryScanReceipt,
     IncidentKind,

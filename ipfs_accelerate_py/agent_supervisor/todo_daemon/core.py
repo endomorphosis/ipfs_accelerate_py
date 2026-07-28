@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from ..event_log import unique_backup_path
+from ..runtime.event_log import unique_backup_path
 
 
 JsonDict = Dict[str, Any]

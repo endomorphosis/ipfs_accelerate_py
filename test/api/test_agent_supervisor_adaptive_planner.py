@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
+from ipfs_accelerate_py.agent_supervisor.planning.adaptive_planner import (
     AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA,
     AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,
     AdaptivePlanCandidate,
@@ -27,23 +27,23 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
     plan_adaptively,
     select_adaptive_plan,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_replanner import (
     RepairOperation,
     RepairProgress,
     RepairRuleKind,
     RepairTransition,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator import (
     EvidenceAwarePlanCandidate,
     EvidenceAwarePlanPolicy,
     PlanBranch,
     PlanEvaluationDimension,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     AdaptiveCandidateProviderKind,
     CandidateGenerationBounds,
     CandidateProviderStatus,

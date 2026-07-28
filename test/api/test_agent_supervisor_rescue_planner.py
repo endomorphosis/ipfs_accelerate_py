@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     IncidentKind,
     ProgrammaticRecoveryExhaustionReceipt,
     PromptWorkflowBudget,
@@ -19,7 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
     SupervisorIncident,
     prompt_workflow_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.rescue_planner import (
+from ipfs_accelerate_py.agent_supervisor.rescue.rescue_planner import (
     DEFAULT_RESCUE_OPERATION_CATALOG,
     RESCUE_PLAN_RESPONSE_NAME,
     RescueGuidanceStep,

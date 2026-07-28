@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import (
     CacheLookupStatus,
     CacheRejectionReason,
     DraftCacheKey,
@@ -17,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
     build_draft_cache_key,
     build_proof_cache_key,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     EvidenceAuthority,
     EvidenceFreshness,

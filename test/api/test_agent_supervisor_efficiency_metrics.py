@@ -6,12 +6,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalyzerHealthReport,
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
 )
-from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     DELTA_RETRY_ACCEPTANCE_CRITERIA,
     DELTA_RETRY_EVIDENCE_ID,
     DELTA_RETRY_OBJECTIVE_ID,
@@ -19,25 +19,25 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID as COMPILER_REQUIRED_CONTEXT_ID,
     ContextCompiler,
 )
-from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudget,
     ContextReference,
     ContextTier,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     AcceptanceCoverage,
     CoverageStatus,
     GoalCoverageMap,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     ExhaustionBinding,
     evaluate_exhaustion_quorum,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_efficiency_metrics import (
     DELTA_RETRY_CONTEXT_EVIDENCE_ID,
     DELTA_RETRY_PROMOTION_REPORT_SCHEMA,
     EFFICIENCY_CONTRACT_VERSION,

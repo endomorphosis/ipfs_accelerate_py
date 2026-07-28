@@ -6,10 +6,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
-from ipfs_accelerate_py.agent_supervisor.multi_prover_router import (
+from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router import (
     AttemptOutcome,
     PortfolioAttempt,
     PortfolioPlan,
@@ -20,7 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.multi_prover_router import (
     ProverLane,
     ProverRole,
 )
-from ipfs_accelerate_py.agent_supervisor.prover_evidence_store import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_evidence_store import (
     ConformanceBinding,
     EvidenceLookupStatus,
     EvidenceRejectionReason,

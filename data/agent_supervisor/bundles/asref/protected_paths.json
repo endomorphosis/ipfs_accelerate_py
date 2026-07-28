@@ -1,0 +1,8 @@
+{
+  "schema": "ipfs_accelerate_py.asref.protected_paths.v1",
+  "protected_paths": [
+    "docs/architecture/agent_supervisor_module_refactor.objectives.md",
+    "docs/architecture/agent_supervisor_module_refactor.todo.md",
+    "docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md"
+  ]
+}

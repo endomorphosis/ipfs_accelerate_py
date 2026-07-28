@@ -18,12 +18,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoImplementationDaemon,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_commands import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationStage,
     build_validation_commands,
     select_validation_commands,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_NPM_CACHE_ENV,
     VALIDATION_PATH_ENV,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
@@ -35,7 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
     validation_python_executable,
     validation_shell_command,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ValidationResultCache,
     ValidationScheduler,
     build_validation_cache_key,

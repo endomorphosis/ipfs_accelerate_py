@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.code_evidence_graph import (
     ChangedASTSymbol,
     CodeImpactIndex,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     HermeticValidationRuntime,
     ValidationCancellationToken,
     ValidationResourceBounds,
@@ -17,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
     build_hermetic_validation_runtime,
     build_validation_environment,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     HermeticValidationPolicy,
     ImpactValidationCheck,
     ImpactValidationKind,

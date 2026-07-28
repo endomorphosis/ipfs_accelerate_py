@@ -8,13 +8,13 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_validator import (
     FormalPlanValidator,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_carrying_planner import (
+from ipfs_accelerate_py.agent_supervisor.planning.proof_carrying_planner import (
     EvidenceRole,
     ProofCarryingPlanner,
     ProofCarryingPlannerConfig,

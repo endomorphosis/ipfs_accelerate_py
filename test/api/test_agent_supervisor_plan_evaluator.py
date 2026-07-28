@@ -7,11 +7,11 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     persist_objective_plan_evaluations,
     plan_objective_records,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator import (
     AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID,
     AnalysisProposal,
     EvidenceAwarePlanCandidate,
@@ -24,7 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
     evaluate_objective_work_proposals,
     evaluate_plan_branches,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     parse_analysis_proposals,
     build_structured_plan_prompt,
     generate_structured_plan_branches,

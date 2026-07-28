@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.decision_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_contracts import (
     ActionEnvelope,
     ApplicabilityFact,
     ApplicabilityFactKind,

@@ -7,7 +7,7 @@ from concurrent.futures import CancelledError
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.provider_batch_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_scheduler import (
     PARTIAL_CANCELLATION_REQUIREMENT_ID,
     ProviderBatchAdmissionGrant,
     ProviderBatchCapacity,
@@ -18,7 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.provider_batch_scheduler import (
     ProviderBatchStatus,
     ResourceSchedulerBatchAdmission,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     StructuredPlanRouterConfig,
     generate_structured_plan_branches,
 )

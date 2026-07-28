@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     DCECOperator,
     DCECVocabulary,
     EvidenceEdge,
@@ -26,7 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
     project_frame_logic,
     subgoal_satisfied,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     Actor,
     ActorKind,
     ContractValidationError,
@@ -52,7 +52,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     TemporalConstraint,
     TemporalConstraintKind,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     content_identity,
 )

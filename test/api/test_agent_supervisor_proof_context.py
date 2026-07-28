@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.artifact_store import (
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     query_code_evidence_neighborhood,
     write_code_evidence_graph_artifact,
 )
-from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.code_evidence_graph import (
     build_code_evidence_graph,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_context import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_context import (
     ContextTrust,
     ProofContextBudgetError,
     ProofContextBuilder,

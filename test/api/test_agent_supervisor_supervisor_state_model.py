@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prover_matrix_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     CommandRequest,
     CommandResult,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_state_model import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_state_model import (
     LIVENESS_PROPERTIES,
     MODEL_CHECK_RECEIPT_SCHEMA,
     SAFETY_PROPERTIES,

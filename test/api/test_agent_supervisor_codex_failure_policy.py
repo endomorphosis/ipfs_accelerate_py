@@ -1,4 +1,4 @@
-from ipfs_accelerate_py.agent_supervisor.codex_failure_policy import (
+from ipfs_accelerate_py.agent_supervisor.rescue.codex_failure_policy import (
     classify_codex_program_outcome,
 )
 

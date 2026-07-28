@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,
     ADAPTIVE_STAGE_PROFILES,
     AdaptiveThroughputBenchmarkReceipt,
@@ -18,7 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
     evaluate_adaptive_throughput_benchmark,
     normalize_adaptive_stage,
 )
-from ipfs_accelerate_py.agent_supervisor.scheduler_metrics import (
+from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
     RESOURCE_ADMISSION_METRICS_SCHEMA,
     build_scheduler_snapshot,
     project_resource_admission_metrics,

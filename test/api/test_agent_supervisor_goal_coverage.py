@@ -2,21 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     compare_surface_evidence,
     detect_surface_contradictions,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     CoverageStatus,
     UNMAPPED_GOAL_ID,
     attach_findings_to_goals,
     build_goal_coverage_map,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ObjectiveCoverageGraph,
     parse_goal_heap,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     build_todo_coverage_inputs,
     parse_todo_vector_records,
 )

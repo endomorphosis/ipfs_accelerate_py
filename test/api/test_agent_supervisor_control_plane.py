@@ -7,12 +7,12 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalyzerHealthReport,
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA,
     CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION,
     CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION,
@@ -64,22 +64,22 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     operation_request_json_schema,
     operation_result_json_schema,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     AcceptanceCoverage,
     CoverageStatus,
     GoalCoverageMap,
     ValidationReceiptCoverage,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     ExhaustionBinding,
     ExhaustionQuorumMember,
     ExhaustionQuorumResult,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
     JsonlControlStateStore,
@@ -427,7 +427,7 @@ def _g070_completion_inputs() -> dict[str, Any]:
                 "uncontradicted": True,
                 "producer_id": "asi-085-implementation-validator",
                 "implementation": (
-                    "ipfs_accelerate_py.agent_supervisor.control_plane"
+                    "ipfs_accelerate_py.agent_supervisor.control.control_plane"
                 ),
                 "child_receipt_binding": repository_tree,
                 "child_receipt_sha256": f"sha256:{'1' * 64}",
@@ -448,7 +448,7 @@ def _g070_completion_inputs() -> dict[str, Any]:
                 "uncontradicted": True,
                 "producer_id": "asi-085-independent-replay",
                 "implementation": (
-                    "ipfs_accelerate_py.agent_supervisor.control_contracts"
+                    "ipfs_accelerate_py.agent_supervisor.control.control_contracts"
                 ),
                 "child_receipt_binding": repository_tree,
                 "child_receipt_sha256": f"sha256:{'2' * 64}",

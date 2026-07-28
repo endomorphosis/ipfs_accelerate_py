@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     DISTRIBUTED_LANE_REQUIREMENT_ID,
     BundleLaneSpec,
     DistributedLaneDispatcher,
@@ -16,14 +16,14 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     evaluate_distributed_lane_evidence,
     immutable_lane_input_artifact,
 )
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     ExecutionScopeConflictError,
     LeaseCoordinator,
     RemoteLaneResult,
     WorkerCapabilityReceipt,
     WorkerEnvironmentReceipt,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
 
 
 def _bundle(name: str, *, bundle_key: str | None = None) -> dict[str, object]:

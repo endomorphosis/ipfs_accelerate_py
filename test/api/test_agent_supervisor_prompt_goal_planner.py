@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prompt_goal_planner import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
     PROMPT_GOAL_PROPOSAL_SCHEMA,
     PROMPT_GOAL_PROVIDER_REQUEST_SCHEMA,
     PromptGoalPlannerConfig,
@@ -14,7 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.prompt_goal_planner import (
     generate_prompt_goal_graph,
     parse_prompt_goal_graph,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     DirectoryScanPolicy,
     DirectoryScanReceipt,
     LocalFallbackPolicy,

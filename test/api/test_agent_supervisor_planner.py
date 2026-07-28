@@ -7,19 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     BundleLaneSpec,
     _execution_slice_implementation_max_timeout,
     launch_bundle_lanes,
     plan_bundle_lanes,
 )
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     DependencyNotReadyError,
     LeaseCoordinator,
     LeaseGrant,
     adapt_goal_bundle,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
     critical_path_schedule,
     materialize_task_dependency_dag,
@@ -298,7 +298,7 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
         },
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 
@@ -327,7 +327,7 @@ def test_bundle_lane_planner_skips_explicitly_excluded_execution_units(
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: [
             {
                 "bundle_key": "bundle/included",
@@ -1057,7 +1057,7 @@ def test_bundle_launcher_surfaces_dependency_evidence_and_unblocks_after_success
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     coordination_path = tmp_path / "coordination.sqlite3"

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     IncidentKind,
     ProgrammaticRecoveryExhaustionReceipt,
     PromptWorkflowBudget,
@@ -17,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
     SupervisorIncident,
     prompt_workflow_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.rescue_orchestrator import (
+from ipfs_accelerate_py.agent_supervisor.rescue.rescue_orchestrator import (
     REQUIRED_AUTHORIZATION_DOMAINS,
     RESCUE_ORCHESTRATION_REQUIREMENT_ID,
     RescueAuthorizationDomain,
@@ -38,7 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.rescue_orchestrator import (
     RescueSimulationReceipt,
     RescueStopReason,
 )
-from ipfs_accelerate_py.agent_supervisor.rescue_planner import (
+from ipfs_accelerate_py.agent_supervisor.rescue.rescue_planner import (
     DEFAULT_RESCUE_OPERATION_CATALOG,
 )
 

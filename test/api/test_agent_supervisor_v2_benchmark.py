@@ -5,10 +5,10 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_efficiency_metrics import (
     build_efficiency_baseline_fixtures,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_v2_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_benchmark import (
     REQUIRED_V2_FIXTURE_KINDS,
     V2_CAUSAL_BASELINE_REPORT_ID,
     V2_FROZEN_CAPABILITY_ID,
