@@ -1,9 +1,12 @@
 """Native cli-endpoint-tools category implementations for unified mcp_server.
 
 Exposes CLI endpoint adapter operations (Claude Code, OpenAI Codex CLI,
-Google Gemini CLI, VSCode Copilot) through the canonical factory at
+Google Gemini CLI, VSCode Copilot, Goose CLI) through the canonical factory at
 ``ipfs_accelerate_py.cli_runtime.endpoints``. Never instantiates the abstract
 ``CLIEndpointAdapter`` base class.
+
+Goose agent authority fields are explicitly bounded; unknown authority-bearing
+options are rejected fail-closed.
 """
 
 from __future__ import annotations
@@ -12,6 +15,89 @@ import logging
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Bounded authority surface for Goose (and general CLI) execute via MCP.
+_MCP_EXECUTE_SAFE_KEYS = frozenset(
+    {
+        "max_tokens",
+        "temperature",
+        "model",
+        "model_name",
+        "goose_provider",
+        "provider",
+        "output_format",
+        "stream",
+        "streaming",
+        "timeout",
+        "task_type",
+    }
+)
+_MCP_EXECUTE_AUTHORITY_KEYS = frozenset(
+    {
+        "execution_mode",
+        "mode",
+        "agent",
+        "allow_side_effects",
+        "enable_agent",
+        "package_enable_agent",
+        "package_policy",
+        "cwd",
+        "workspace",
+        "path_root",
+        "GOOSE_PATH_ROOT",
+        "goose_path_root",
+        "approval_mode",
+        "builtins",
+        "extensions",
+        "with_builtin",
+        "with_extension",
+        "allowed_cwd_roots",
+        "max_turns",
+        "max_tool_repetitions",
+        "timeout_seconds",
+        "max_output_bytes",
+        "session_id",
+        "resume_session",
+        "agent_policy",
+        "side_effecting",
+        "with_tools",
+    }
+)
+_MCP_EXECUTE_KNOWN_KEYS = _MCP_EXECUTE_SAFE_KEYS | _MCP_EXECUTE_AUTHORITY_KEYS
+_MCP_AUTHORITY_MARKERS = (
+    "allow_side",
+    "side_effect",
+    "path_root",
+    "cwd",
+    "workspace",
+    "approval",
+    "builtin",
+    "extension",
+    "enable_agent",
+    "package_policy",
+    "agent_policy",
+    "execution_mode",
+    "max_turn",
+    "max_tool",
+    "max_output",
+    "allowed_cwd",
+    "session",
+    "resume",
+    "GOOSE_PATH",
+    "goose_path",
+)
+
+
+def _reject_unknown_authority_options(options: Dict[str, Any]) -> Optional[str]:
+    """Return error message if *options* contains unknown authority keys."""
+    for key in options:
+        k = str(key)
+        if k in _MCP_EXECUTE_KNOWN_KEYS:
+            continue
+        lowered = k.lower()
+        if any(marker.lower() in lowered for marker in _MCP_AUTHORITY_MARKERS):
+            return f"unknown authority-bearing option rejected: {k}"
+    return None
 
 
 def _load_cli_endpoint_tools_api() -> Dict[str, Any]:
@@ -216,14 +302,115 @@ async def cli_endpoint_execute(
     prompt: str,
     max_tokens: Optional[int] = None,
     temperature: Optional[float] = None,
+    execution_mode: Optional[str] = None,
+    allow_side_effects: Optional[bool] = None,
+    enable_agent: Optional[bool] = None,
+    package_enable_agent: Optional[bool] = None,
+    package_policy: Optional[Dict[str, Any]] = None,
+    cwd: Optional[str] = None,
+    path_root: Optional[str] = None,
+    approval_mode: Optional[str] = None,
+    builtins: Optional[List[str]] = None,
+    extensions: Optional[List[str]] = None,
+    allowed_cwd_roots: Optional[List[str]] = None,
+    max_turns: Optional[int] = None,
+    max_tool_repetitions: Optional[int] = None,
+    timeout_seconds: Optional[float] = None,
+    max_output_bytes: Optional[int] = None,
+    model: Optional[str] = None,
+    goose_provider: Optional[str] = None,
+    session_id: Optional[str] = None,
+    agent_policy: Optional[Dict[str, Any]] = None,
+    extra_options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Execute an inference request through a CLI endpoint adapter."""
+    """Execute an inference request through a CLI endpoint adapter.
+
+    Goose agent authority fields are bounded. Pass unknown authority-bearing
+    keys via *extra_options* and they are rejected fail-closed (never silently
+    applied). Default mode is safe chat (same profile as llm_router goose_cli).
+    """
     try:
         kwargs: Dict[str, Any] = {}
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
         if temperature is not None:
             kwargs["temperature"] = temperature
+        if execution_mode is not None:
+            kwargs["execution_mode"] = execution_mode
+        if allow_side_effects is not None:
+            kwargs["allow_side_effects"] = allow_side_effects
+        if enable_agent is not None:
+            kwargs["enable_agent"] = enable_agent
+        if package_enable_agent is not None:
+            kwargs["package_enable_agent"] = package_enable_agent
+        if package_policy is not None:
+            kwargs["package_policy"] = package_policy
+        if cwd is not None:
+            kwargs["cwd"] = cwd
+        if path_root is not None:
+            kwargs["path_root"] = path_root
+        if approval_mode is not None:
+            kwargs["approval_mode"] = approval_mode
+        if builtins is not None:
+            kwargs["builtins"] = builtins
+        if extensions is not None:
+            kwargs["extensions"] = extensions
+        if allowed_cwd_roots is not None:
+            kwargs["allowed_cwd_roots"] = allowed_cwd_roots
+        if max_turns is not None:
+            kwargs["max_turns"] = max_turns
+        if max_tool_repetitions is not None:
+            kwargs["max_tool_repetitions"] = max_tool_repetitions
+        if timeout_seconds is not None:
+            kwargs["timeout_seconds"] = timeout_seconds
+        if max_output_bytes is not None:
+            kwargs["max_output_bytes"] = max_output_bytes
+        if model is not None:
+            kwargs["model"] = model
+        if goose_provider is not None:
+            kwargs["goose_provider"] = goose_provider
+        if session_id is not None:
+            kwargs["session_id"] = session_id
+        if agent_policy is not None:
+            kwargs["agent_policy"] = agent_policy
+
+        if extra_options:
+            if not isinstance(extra_options, dict):
+                return _error_result(
+                    "extra_options must be an object",
+                    endpoint_id=endpoint_id,
+                    error_code="invalid_contract",
+                )
+            denied = _reject_unknown_authority_options(extra_options)
+            if denied:
+                return _error_result(
+                    denied,
+                    endpoint_id=endpoint_id,
+                    error_code="policy_denied",
+                    provider="goose_cli",
+                    execution_mode=str(execution_mode or "chat"),
+                    side_effects_started=False,
+                    tool_call_count=0,
+                )
+            # Only merge known non-authority or known authority keys.
+            for key, value in extra_options.items():
+                if str(key) in _MCP_EXECUTE_KNOWN_KEYS:
+                    kwargs[str(key)] = value
+
+        # Also reject if caller somehow smuggled unknown authority keys into
+        # package_policy without enable_agent structure (leave structure free).
+        denied_kwargs = _reject_unknown_authority_options(
+            {k: v for k, v in kwargs.items() if k not in _MCP_EXECUTE_KNOWN_KEYS}
+        )
+        if denied_kwargs:
+            return _error_result(
+                denied_kwargs,
+                endpoint_id=endpoint_id,
+                error_code="policy_denied",
+                side_effects_started=False,
+                tool_call_count=0,
+            )
+
         result = _API["execute_cli_inference"](
             endpoint_id=endpoint_id, prompt=prompt, **kwargs
         )
@@ -333,7 +520,12 @@ def register_native_cli_endpoint_tools(manager: Any) -> None:
         category="cli_endpoint_tools",
         name="cli_endpoint_execute",
         func=cli_endpoint_execute,
-        description="Execute an inference request through a CLI endpoint adapter.",
+        description=(
+            "Execute an inference request through a CLI endpoint adapter. "
+            "Goose defaults to safe chat; agent mode requires explicit "
+            "execution_mode, allow_side_effects, package enable policy, "
+            "absolute cwd/path_root, approval_mode, allowlists, and finite bounds."
+        ),
         input_schema={
             "type": "object",
             "properties": {
@@ -350,8 +542,96 @@ def register_native_cli_endpoint_tools(manager: Any) -> None:
                     "type": "number",
                     "description": "Optional sampling temperature.",
                 },
+                "execution_mode": {
+                    "type": "string",
+                    "enum": ["chat", "agent"],
+                    "description": "Goose execution mode (default chat).",
+                },
+                "allow_side_effects": {
+                    "type": "boolean",
+                    "description": "Required true for Goose agent mode.",
+                },
+                "enable_agent": {
+                    "type": "boolean",
+                    "description": "Package enable policy gate for agent mode.",
+                },
+                "package_enable_agent": {
+                    "type": "boolean",
+                    "description": "Alternate package enable policy flag.",
+                },
+                "package_policy": {
+                    "type": "object",
+                    "description": "Package policy object (e.g. enable_agent).",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Absolute working directory for agent mode.",
+                },
+                "path_root": {
+                    "type": "string",
+                    "description": "Absolute GOOSE_PATH_ROOT for agent mode.",
+                },
+                "approval_mode": {
+                    "type": "string",
+                    "description": "Goose approval mode (approve/auto/smart_approve).",
+                },
+                "builtins": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Builtin allowlist for agent mode.",
+                },
+                "extensions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Extension allowlist for agent mode.",
+                },
+                "allowed_cwd_roots": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Absolute roots that must contain cwd.",
+                },
+                "max_turns": {
+                    "type": "integer",
+                    "description": "Finite max turns for agent (or chat bound).",
+                },
+                "max_tool_repetitions": {
+                    "type": "integer",
+                    "description": "Finite max tool repetitions.",
+                },
+                "timeout_seconds": {
+                    "type": "number",
+                    "description": "Finite wall-clock timeout in seconds.",
+                },
+                "max_output_bytes": {
+                    "type": "integer",
+                    "description": "Finite output byte bound for agent mode.",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model name (Goose --model).",
+                },
+                "goose_provider": {
+                    "type": "string",
+                    "description": "Underlying Goose provider name.",
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Optional session id (agent only).",
+                },
+                "agent_policy": {
+                    "type": "object",
+                    "description": "Full GooseAgentPolicy mapping for agent mode.",
+                },
+                "extra_options": {
+                    "type": "object",
+                    "description": (
+                        "Optional known options only; unknown authority-bearing "
+                        "keys are rejected."
+                    ),
+                },
             },
             "required": ["endpoint_id", "prompt"],
+            "additionalProperties": False,
         },
         runtime="fastapi",
         tags=["native", "mcpp", "cli-endpoint-tools"],
@@ -371,7 +651,7 @@ def register_native_cli_endpoint_tools(manager: Any) -> None:
                     "type": "string",
                     "description": (
                         "CLI tool name (claude, openai/codex, gemini, "
-                        "vscode/copilot and aliases)."
+                        "vscode/copilot, goose/goose_cli and aliases)."
                     ),
                 },
                 "endpoint_id": {
@@ -380,7 +660,10 @@ def register_native_cli_endpoint_tools(manager: Any) -> None:
                 },
                 "config": {
                     "type": "object",
-                    "description": "Optional adapter configuration.",
+                    "description": (
+                        "Optional adapter configuration. Goose agent package "
+                        "enable policy may be set via enable_agent."
+                    ),
                 },
             },
             "required": ["tool"],

@@ -82,6 +82,7 @@ class EndpointHealth(str, Enum):
     CONFIGURED = "configured"  # config present, not yet ready
     READY = "ready"  # installed + configured + available
     DEGRADED = "degraded"  # registered but failing or partially available
+    UNSUPPORTED_VERSION = "unsupported_version"  # binary present, unsafe/old
 
 
 class EndpointLifecycleOp(str, Enum):
@@ -488,6 +489,30 @@ def _default_tool_specs() -> tuple[EndpointToolSpec, ...]:
                 "code_explanation",
                 "text_generation",
             ),
+        ),
+        EndpointToolSpec(
+            name="goose",
+            aliases=(
+                "goose_cli",
+                "block_goose",
+                "aaif_goose",
+                "goose-cli",
+            ),
+            description=(
+                "Block/AAIF Goose CLI — chat-safe by default; agent mode "
+                "requires explicit side-effect policy"
+            ),
+            adapter_class_name="GooseCLIAdapter",
+            supported_tasks=(
+                "text_generation",
+                "code_generation",
+                "analysis",
+            ),
+            metadata={
+                "provider": "goose_cli",
+                "default_execution_mode": "chat",
+                "agent_requires_policy": "true",
+            },
         ),
     )
 
@@ -902,7 +927,12 @@ class CLIEndpointRegistry:
         }
 
     def readiness(self, endpoint_id: str) -> dict[str, Any]:
-        """Readiness: optional availability probe for a single endpoint."""
+        """Readiness: optional availability probe for a single endpoint.
+
+        When the adapter exposes ``assess_health`` (e.g. Goose), prefer that
+        so installed / configured / ready / degraded / unsupported_version
+        remain distinct. List and liveness never call this path.
+        """
         record = self.get_record(endpoint_id)
         if record is None:
             return {
@@ -913,6 +943,60 @@ class CLIEndpointRegistry:
                 "error": f"CLI endpoint {endpoint_id!r} not found",
                 "error_code": CLIRuntimeErrorCode.PROVIDER_NOT_FOUND.value,
             }
+        assess = getattr(record.adapter, "assess_health", None)
+        if callable(assess):
+            try:
+                health_info = dict(assess())
+            except Exception as exc:  # noqa: BLE001
+                record.health = EndpointHealth.DEGRADED
+                return {
+                    "status": "error",
+                    "success": False,
+                    "ready": False,
+                    "endpoint_id": endpoint_id,
+                    "tool": record.tool,
+                    "health": record.health.value,
+                    "error": f"readiness probe failed: {type(exc).__name__}",
+                    "error_code": CLIRuntimeErrorCode.PROVIDER_LOAD_FAILED.value,
+                }
+            health_value = str(health_info.get("health") or EndpointHealth.UNKNOWN.value)
+            try:
+                record.health = EndpointHealth(health_value)
+            except ValueError:
+                record.health = EndpointHealth.DEGRADED
+                health_value = EndpointHealth.DEGRADED.value
+            ready = bool(health_info.get("ready", False))
+            available = bool(health_info.get("available", ready))
+            result: dict[str, Any] = {
+                "status": "success" if ready else "error",
+                "success": ready,
+                "ready": ready,
+                "endpoint_id": endpoint_id,
+                "tool": record.tool,
+                "health": health_value,
+                "available": available,
+            }
+            for key in (
+                "installed",
+                "configured",
+                "goose_version",
+                "version",
+                "reason",
+                "unsupported_version",
+            ):
+                if key in health_info:
+                    result[key] = health_info[key]
+            if health_info.get("error"):
+                result["error"] = health_info["error"]
+                result.setdefault(
+                    "error_code",
+                    health_info.get(
+                        "error_code",
+                        CLIRuntimeErrorCode.PROVIDER_LOAD_FAILED.value,
+                    ),
+                )
+            return result
+
         try:
             available = bool(record.adapter.is_available())
         except Exception as exc:  # noqa: BLE001
