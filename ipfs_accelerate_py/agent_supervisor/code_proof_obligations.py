@@ -5643,6 +5643,617 @@ compile_obligations_from_scopes = compile_code_proof_obligations
 
 
 # ---------------------------------------------------------------------------
+# CBP-120: supervisor self-properties (lease, merge, DAG, freshness)
+# ---------------------------------------------------------------------------
+
+SUPERVISOR_SELF_PROPERTY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/supervisor-self-property@1"
+)
+SUPERVISOR_SELF_PROPERTY_SELECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/supervisor-self-property-selection@1"
+)
+SUPERVISOR_SELF_PROPERTY_POLICY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/supervisor-self-property-policy@1"
+)
+SUPERVISOR_SELF_PROPERTY_BUNDLE = "agent-supervisor/codebase-proof/self"
+SUPERVISOR_SELF_PROPERTY_PRODUCER_ID = (
+    "producer:supervisor-self-property-compiler@1"
+)
+
+# Canonical property_ids / shapes that always-on (or policy-gated) self proofs
+# must exercise.  Template ids come from the reviewed registry via exact shape.
+_SELF_PROPERTY_SHAPE_ORDER: tuple[ReviewedCodeShape, ...] = (
+    ReviewedCodeShape.LEASE_UNIQUENESS_AND_FENCING,
+    ReviewedCodeShape.MERGE_IDEMPOTENCE,
+    ReviewedCodeShape.DAG_ACYCLICITY,
+    ReviewedCodeShape.EVIDENCE_FRESHNESS,
+)
+
+_SELF_PROPERTY_ID_BY_SHAPE: Mapping[str, str] = {
+    ReviewedCodeShape.LEASE_UNIQUENESS_AND_FENCING.value: (
+        "property:lease-uniqueness-and-fencing"
+    ),
+    ReviewedCodeShape.MERGE_IDEMPOTENCE.value: "property:merge-idempotence",
+    ReviewedCodeShape.DAG_ACYCLICITY.value: "property:dag-acyclicity",
+    ReviewedCodeShape.EVIDENCE_FRESHNESS.value: "property:evidence-freshness",
+}
+
+
+@dataclass(frozen=True)
+class SupervisorSelfPropertySpec:
+    """One always-on (or policy-gated) supervisor self-property binding."""
+
+    property_id: str
+    code_shape: str
+    template_id: str
+    template_version: str
+    template_semantic_hash: str
+    invariant_class: str
+    always_on: bool = True
+    title: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "property_id",
+            "code_shape",
+            "template_id",
+            "template_version",
+            "template_semantic_hash",
+            "invariant_class",
+            "title",
+        ):
+            object.__setattr__(
+                self, name, str(getattr(self, name) or "").strip()
+            )
+        if not self.property_id:
+            raise ValueError("property_id is required")
+        if not self.code_shape:
+            raise ValueError("code_shape is required")
+        if not self.template_id:
+            raise ValueError("template_id is required")
+        object.__setattr__(self, "always_on", bool(self.always_on))
+        if not self.title:
+            object.__setattr__(
+                self, "title", self.template_id.replace("-", " ")
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SUPERVISOR_SELF_PROPERTY_SCHEMA,
+            "property_id": self.property_id,
+            "code_shape": self.code_shape,
+            "template_id": self.template_id,
+            "template_version": self.template_version,
+            "template_semantic_hash": self.template_semantic_hash,
+            "invariant_class": self.invariant_class,
+            "always_on": self.always_on,
+            "title": self.title,
+        }
+
+
+@dataclass(frozen=True)
+class SupervisorSelfPropertyPolicy:
+    """Policy gate for supervisor self-property obligations.
+
+    * ``enabled=False`` disables every self-property (no compile/prove).
+    * ``always_on=True`` (default) enables every reviewed self-property shape.
+    * When ``always_on=False``, only ``enabled_property_ids`` / shapes are
+      compiled — empty enable lists then mean none.
+    """
+
+    enabled: bool = True
+    always_on: bool = True
+    enabled_property_ids: tuple[str, ...] = ()
+    enabled_code_shapes: tuple[str, ...] = ()
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "enabled", bool(self.enabled))
+        object.__setattr__(self, "always_on", bool(self.always_on))
+        object.__setattr__(
+            self,
+            "enabled_property_ids",
+            _canonical_strings(self.enabled_property_ids),
+        )
+        shapes = tuple(
+            str(getattr(item, "value", item) or "").strip()
+            for item in (self.enabled_code_shapes or ())
+            if str(getattr(item, "value", item) or "").strip()
+        )
+        object.__setattr__(self, "enabled_code_shapes", tuple(sorted(set(shapes))))
+        assurance = self.required_assurance
+        if not isinstance(assurance, AssuranceLevel):
+            assurance = AssuranceLevel(str(assurance))
+        object.__setattr__(self, "required_assurance", assurance)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SUPERVISOR_SELF_PROPERTY_POLICY_SCHEMA,
+            "enabled": self.enabled,
+            "always_on": self.always_on,
+            "enabled_property_ids": list(self.enabled_property_ids),
+            "enabled_code_shapes": list(self.enabled_code_shapes),
+            "required_assurance": self.required_assurance.value,
+        }
+
+    @classmethod
+    def always_on_default(
+        cls,
+        *,
+        required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    ) -> "SupervisorSelfPropertyPolicy":
+        return cls(
+            enabled=True,
+            always_on=True,
+            required_assurance=required_assurance,
+        )
+
+    @classmethod
+    def from_value(
+        cls,
+        value: "SupervisorSelfPropertyPolicy | bool | Mapping[str, Any] | None",
+    ) -> "SupervisorSelfPropertyPolicy":
+        if value is None:
+            return cls.always_on_default()
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, bool):
+            return cls(enabled=value, always_on=value)
+        if isinstance(value, Mapping):
+            return cls(
+                enabled=bool(value.get("enabled", True)),
+                always_on=bool(value.get("always_on", True)),
+                enabled_property_ids=tuple(
+                    value.get("enabled_property_ids") or ()
+                ),
+                enabled_code_shapes=tuple(
+                    value.get("enabled_code_shapes") or ()
+                ),
+                required_assurance=value.get(
+                    "required_assurance", AssuranceLevel.KERNEL_VERIFIED
+                ),
+            )
+        raise TypeError(
+            "supervisor self-property policy must be bool, mapping, "
+            "SupervisorSelfPropertyPolicy, or None"
+        )
+
+
+@dataclass(frozen=True)
+class SupervisorSelfPropertySelection:
+    """Exact ReviewedCodeShape → reviewed template selection for self proofs."""
+
+    specs: tuple[SupervisorSelfPropertySpec, ...]
+    registry_version: str = ""
+    policy: SupervisorSelfPropertyPolicy = field(
+        default_factory=SupervisorSelfPropertyPolicy.always_on_default
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.specs, tuple):
+            object.__setattr__(self, "specs", tuple(self.specs))
+        ordered = tuple(
+            sorted(self.specs, key=lambda item: item.property_id)
+        )
+        object.__setattr__(self, "specs", ordered)
+        object.__setattr__(
+            self, "registry_version", str(self.registry_version or "").strip()
+        )
+        if not isinstance(self.policy, SupervisorSelfPropertyPolicy):
+            object.__setattr__(
+                self, "policy", SupervisorSelfPropertyPolicy.from_value(self.policy)
+            )
+
+    @property
+    def property_ids(self) -> tuple[str, ...]:
+        return tuple(spec.property_id for spec in self.specs)
+
+    @property
+    def code_shapes(self) -> tuple[str, ...]:
+        return tuple(spec.code_shape for spec in self.specs)
+
+    @property
+    def template_ids(self) -> tuple[str, ...]:
+        return tuple(spec.template_id for spec in self.specs)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SUPERVISOR_SELF_PROPERTY_SELECTION_SCHEMA,
+            "bundle": SUPERVISOR_SELF_PROPERTY_BUNDLE,
+            "registry_version": self.registry_version,
+            "property_ids": list(self.property_ids),
+            "code_shapes": list(self.code_shapes),
+            "template_ids": list(self.template_ids),
+            "specs": [spec.to_dict() for spec in self.specs],
+            "policy": self.policy.to_dict(),
+        }
+
+
+def default_supervisor_self_property_shapes() -> tuple[ReviewedCodeShape, ...]:
+    """Return the closed always-on self-property shape population (CBP-120)."""
+
+    return _SELF_PROPERTY_SHAPE_ORDER
+
+
+def default_supervisor_self_property_ids() -> tuple[str, ...]:
+    """Return catalog property ids for the closed self-property population."""
+
+    return tuple(
+        _SELF_PROPERTY_ID_BY_SHAPE[shape.value]
+        for shape in _SELF_PROPERTY_SHAPE_ORDER
+    )
+
+
+def _normalize_self_code_shapes(
+    shapes: Sequence[str | ReviewedCodeShape] | None,
+) -> tuple[str, ...]:
+    if shapes is None:
+        return tuple(shape.value for shape in _SELF_PROPERTY_SHAPE_ORDER)
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in shapes:
+        value = str(getattr(item, "value", item) or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return tuple(normalized)
+
+
+def select_supervisor_self_templates(
+    registry: ProofObligationTemplateRegistry = DEFAULT_TEMPLATE_REGISTRY,
+    *,
+    code_shapes: Sequence[str | ReviewedCodeShape] | None = None,
+    policy: SupervisorSelfPropertyPolicy | bool | Mapping[str, Any] | None = None,
+    catalog: Any = None,
+) -> SupervisorSelfPropertySelection:
+    """Select reviewed templates for supervisor self-properties by exact shape.
+
+    Shape membership is exact: unknown or ambiguous shapes fail closed via the
+    template registry.  Catalog property ids are preferred when present.
+    """
+
+    resolved_policy = SupervisorSelfPropertyPolicy.from_value(policy)
+    if not resolved_policy.enabled:
+        return SupervisorSelfPropertySelection(
+            specs=(),
+            registry_version=str(getattr(registry, "registry_version", "") or ""),
+            policy=resolved_policy,
+        )
+
+    requested_shapes = _normalize_self_code_shapes(code_shapes)
+    if not resolved_policy.always_on:
+        allowed_shapes = set(resolved_policy.enabled_code_shapes)
+        allowed_ids = set(resolved_policy.enabled_property_ids)
+        if not allowed_shapes and not allowed_ids:
+            return SupervisorSelfPropertySelection(
+                specs=(),
+                registry_version=str(
+                    getattr(registry, "registry_version", "") or ""
+                ),
+                policy=resolved_policy,
+            )
+        filtered: list[str] = []
+        for shape in requested_shapes:
+            property_id = _SELF_PROPERTY_ID_BY_SHAPE.get(shape, f"property:{shape}")
+            if allowed_shapes and shape in allowed_shapes:
+                filtered.append(shape)
+            elif allowed_ids and property_id in allowed_ids:
+                filtered.append(shape)
+            elif not allowed_shapes and property_id in allowed_ids:
+                filtered.append(shape)
+        requested_shapes = tuple(filtered)
+
+    specs: list[SupervisorSelfPropertySpec] = []
+    for shape in requested_shapes:
+        selection = registry.select_for_code_shape(shape)
+        template = selection.require_supported()
+        property_id = _SELF_PROPERTY_ID_BY_SHAPE.get(
+            shape, f"property:{template.template_id}"
+        )
+        if catalog is not None:
+            matched = catalog.get(property_id)
+            if matched is not None:
+                property_id = matched.property_id
+                # Catalog binding must still match the exact reviewed shape.
+                if str(matched.code_shape or "") != shape:
+                    raise UnsupportedProofTemplateError(
+                        f"catalog property {property_id!r} code_shape "
+                        f"{matched.code_shape!r} does not match exact shape "
+                        f"{shape!r}"
+                    )
+                if str(matched.template_id or "") != template.template_id:
+                    raise UnsupportedProofTemplateError(
+                        f"catalog property {property_id!r} template "
+                        f"{matched.template_id!r} does not match shape-selected "
+                        f"template {template.template_id!r}"
+                    )
+        specs.append(
+            SupervisorSelfPropertySpec(
+                property_id=property_id,
+                code_shape=shape,
+                template_id=template.template_id,
+                template_version=str(template.version),
+                template_semantic_hash=str(template.semantic_hash),
+                invariant_class=str(template.invariant_class or ""),
+                always_on=resolved_policy.always_on,
+                title=template.template_id.replace("-", " "),
+            )
+        )
+
+    return SupervisorSelfPropertySelection(
+        specs=tuple(specs),
+        registry_version=str(getattr(registry, "registry_version", "") or ""),
+        policy=resolved_policy,
+    )
+
+
+def evaluate_supervisor_self_property_mutations(
+    registry: ProofObligationTemplateRegistry = DEFAULT_TEMPLATE_REGISTRY,
+    *,
+    code_shapes: Sequence[str | ReviewedCodeShape] | None = None,
+    policy: SupervisorSelfPropertyPolicy | bool | Mapping[str, Any] | None = None,
+) -> dict[str, dict[str, bool]]:
+    """Run reviewed mutation cases for each selected self-property template.
+
+    Returns ``{template_id: {case_id: passed}}``.  Every case must evaluate to
+    its declared expected result for the self-property wiring to be sound.
+    """
+
+    selection = select_supervisor_self_templates(
+        registry, code_shapes=code_shapes, policy=policy
+    )
+    outcomes: dict[str, dict[str, bool]] = {}
+    for spec in selection.specs:
+        template = registry.require(spec.template_id, spec.template_version or None)
+        if not template.supports_code_shape(spec.code_shape):
+            raise UnsupportedProofTemplateError(
+                f"template {template.template_id!r} does not support exact "
+                f"code shape {spec.code_shape!r}"
+            )
+        results = template.verify_mutation_cases()
+        outcomes[spec.template_id] = dict(results)
+        failed = [case_id for case_id, ok in results.items() if not ok]
+        if failed:
+            raise UnsupportedProofTemplateError(
+                f"self-property mutation cases failed for "
+                f"{spec.template_id!r}: {', '.join(sorted(failed))}"
+            )
+    return outcomes
+
+
+def _self_property_compile_requests(
+    selection: SupervisorSelfPropertySelection,
+) -> list[CodeProofCompileRequest]:
+    requests: list[CodeProofCompileRequest] = []
+    for spec in selection.specs:
+        requests.append(
+            CodeProofCompileRequest(
+                property_id=spec.property_id,
+                template_id=spec.template_id,
+                template_version=spec.template_version,
+                code_shape=spec.code_shape,
+                required_assurance=selection.policy.required_assurance,
+                metadata={
+                    "supervisor_self_property": True,
+                    "bundle": SUPERVISOR_SELF_PROPERTY_BUNDLE,
+                    "always_on": spec.always_on,
+                    "producer_id": SUPERVISOR_SELF_PROPERTY_PRODUCER_ID,
+                    "code_shape": spec.code_shape,
+                },
+            )
+        )
+    return requests
+
+
+def compile_supervisor_self_properties(
+    scope_set: CodeProofScopeSet | None = None,
+    *,
+    repository_tree_id: str,
+    repository_id: str = "",
+    candidate_diff: Any = None,
+    policy: SupervisorSelfPropertyPolicy | bool | Mapping[str, Any] | None = None,
+    code_shapes: Sequence[str | ReviewedCodeShape] | None = None,
+    catalog: Any = None,
+    premise_ids: Sequence[str] = (),
+    assumption_ids: Sequence[str] = (),
+    residual_refs: Sequence[Any] = (),
+    formal_plan_effects: Sequence[Any] = (),
+    effect_scope_map: Mapping[str, Sequence[str]] | None = None,
+    toolchain_id: str = "",
+    policy_id: str = "",
+    translator_id: str = "translator:default",
+    solver_id: str = "solver:default",
+    kernel_id: str = "kernel:default",
+    theorem_registry_id: str = "registry:default",
+    resource_budget: Any = None,
+    task_id: str = "",
+    required_assurance: AssuranceLevel | str | None = None,
+    registry: ProofObligationTemplateRegistry = DEFAULT_TEMPLATE_REGISTRY,
+    metadata: Mapping[str, Any] | None = None,
+    verify_mutation_cases: bool = True,
+) -> CodeProofObligationCompilation:
+    """Compile always-on / policy-gated supervisor self-property obligations.
+
+    Templates are selected only by exact :class:`ReviewedCodeShape` membership.
+    Each open item binds the selected template semantic hash and code shape so
+    the trust-aware proof cache can warm-hit on re-proof and invalidate on
+    tree/premise/toolchain/policy mutations.
+    """
+
+    from .code_property_catalog import DEFAULT_CODE_PROPERTY_CATALOG
+
+    resolved_policy = SupervisorSelfPropertyPolicy.from_value(policy)
+    if required_assurance is not None:
+        assurance = (
+            required_assurance
+            if isinstance(required_assurance, AssuranceLevel)
+            else AssuranceLevel(str(required_assurance))
+        )
+        resolved_policy = SupervisorSelfPropertyPolicy(
+            enabled=resolved_policy.enabled,
+            always_on=resolved_policy.always_on,
+            enabled_property_ids=resolved_policy.enabled_property_ids,
+            enabled_code_shapes=resolved_policy.enabled_code_shapes,
+            required_assurance=assurance,
+        )
+
+    if catalog is None:
+        catalog = DEFAULT_CODE_PROPERTY_CATALOG
+
+    selection = select_supervisor_self_templates(
+        registry,
+        code_shapes=code_shapes,
+        policy=resolved_policy,
+        catalog=catalog,
+    )
+    if verify_mutation_cases and selection.specs:
+        evaluate_supervisor_self_property_mutations(
+            registry,
+            code_shapes=selection.code_shapes,
+            policy=resolved_policy,
+        )
+
+    meta = {
+        "bundle": SUPERVISOR_SELF_PROPERTY_BUNDLE,
+        "producer_id": SUPERVISOR_SELF_PROPERTY_PRODUCER_ID,
+        "supervisor_self_properties": True,
+        "self_property_policy": resolved_policy.to_dict(),
+        "selected_code_shapes": list(selection.code_shapes),
+        "selected_template_ids": list(selection.template_ids),
+        **dict(metadata or {}),
+    }
+
+    if not selection.specs:
+        # Policy disabled / empty enable list: emit an empty compilation bound
+        # to the candidate scopes so callers still get a stable tree handle.
+        if scope_set is None:
+            if candidate_diff is None:
+                raise ValueError("scope_set or candidate_diff is required")
+            scope_set = compile_candidate_proof_scopes(candidate_diff)
+        tree_id = str(repository_tree_id or "").strip()
+        if not tree_id:
+            raise ValueError("repository_tree_id is required")
+        return CodeProofObligationCompilation(
+            repository_id=str(repository_id or "").strip(),
+            repository_tree_id=tree_id,
+            catalog_version=str(getattr(catalog, "catalog_version", "") or ""),
+            catalog_id=str(getattr(catalog, "catalog_id", "") or ""),
+            scope_set_id=scope_set.scope_set_id,
+            items=(),
+            premise_digest=premise_set_digest(normalize_premise_ids(premise_ids)),
+            assumption_digest=assumption_set_digest(
+                normalize_assumption_ids(assumption_ids)
+            ),
+            premise_ids=normalize_premise_ids(premise_ids),
+            assumption_ids=normalize_assumption_ids(assumption_ids),
+            plan_effect_ids=_normalize_plan_effect_ids(formal_plan_effects),
+            residual_ref_ids=normalize_residual_refs(residual_refs),
+            toolchain_id=str(toolchain_id or "").strip(),
+            policy_id=str(policy_id or "").strip(),
+            task_id=str(task_id or "").strip(),
+            metadata=meta,
+        )
+
+    compilation = compile_code_proof_obligations(
+        scope_set,
+        repository_tree_id=repository_tree_id,
+        repository_id=repository_id,
+        candidate_diff=candidate_diff,
+        requests=_self_property_compile_requests(selection),
+        catalog=catalog,
+        formal_plan_effects=formal_plan_effects,
+        effect_scope_map=effect_scope_map,
+        residual_refs=residual_refs,
+        premise_ids=premise_ids,
+        assumption_ids=assumption_ids,
+        toolchain_id=toolchain_id,
+        policy_id=policy_id,
+        translator_id=translator_id,
+        solver_id=solver_id,
+        kernel_id=kernel_id,
+        theorem_registry_id=theorem_registry_id,
+        resource_budget=resource_budget,
+        task_id=task_id,
+        # Pass the enum value string: compile_code_proof_obligations coerces via
+        # AssuranceLevel(str(...)), which rejects str(enum_member) name forms.
+        required_assurance=resolved_policy.required_assurance.value,
+        registry=registry,
+        metadata=meta,
+    )
+    # Ensure every selected shape survived compile with exact shape binding.
+    by_property = {item.property_id: item for item in compilation.items}
+    for spec in selection.specs:
+        item = by_property.get(spec.property_id)
+        if item is None:
+            raise UnsupportedProofTemplateError(
+                f"self-property {spec.property_id!r} missing from compilation"
+            )
+        if item.template_id and item.template_id != spec.template_id:
+            raise UnsupportedProofTemplateError(
+                f"self-property {spec.property_id!r} compiled with template "
+                f"{item.template_id!r}, expected {spec.template_id!r}"
+            )
+        if item.obligation is not None:
+            bound_shape = str(
+                (item.obligation.metadata or {}).get("code_shape") or ""
+            )
+            if bound_shape and bound_shape != spec.code_shape:
+                raise UnsupportedProofTemplateError(
+                    f"self-property {spec.property_id!r} bound shape "
+                    f"{bound_shape!r}, expected exact {spec.code_shape!r}"
+                )
+    return compilation
+
+
+def prove_supervisor_self_properties(
+    cache: Any,
+    compilation: CodeProofObligationCompilation,
+    *,
+    prove: Callable[[Any, Any], ProofReceipt],
+    previous: CodeProofObligationCompilation | None = None,
+    metrics: "ProofCacheMetrics | None" = None,
+    translator_id: str = "translator:default",
+    solver_id: str = "solver:default",
+    kernel_id: str = "kernel:default",
+    theorem_registry_id: str = "registry:default",
+    resource_budget: Any = None,
+    changed_paths: Sequence[str] = (),
+    dependency_edge_changed: bool = False,
+    prefer_cache_before_provider: bool = True,
+) -> Any:
+    """Prove / re-prove supervisor self-property obligations cache-first.
+
+    Cold path invokes ``prove`` once per open obligation; warm re-proof of an
+    unchanged binding must hit the trust-aware proof cache without a second
+    provider call.  Binding mutations invalidate and force re-solve.
+    """
+
+    # Local import keeps the CBP-050 re-export graph stable for type checkers.
+    from .code_proof_reproof import reprove_code_proof_compilation as _reprove
+
+    if not isinstance(compilation, CodeProofObligationCompilation):
+        raise TypeError(
+            "compilation must be a CodeProofObligationCompilation"
+        )
+    return _reprove(
+        cache,
+        compilation,
+        prove=prove,
+        previous=previous,
+        metrics=metrics,
+        translator_id=translator_id,
+        solver_id=solver_id,
+        kernel_id=kernel_id,
+        theorem_registry_id=theorem_registry_id,
+        resource_budget=resource_budget,
+        changed_paths=changed_paths,
+        dependency_edge_changed=dependency_edge_changed,
+        prefer_cache_before_provider=prefer_cache_before_provider,
+    )
+
+
+# ---------------------------------------------------------------------------
 
 # CBP-015: cache-first prove path over TrustAwareProofCache
 # ---------------------------------------------------------------------------
@@ -6066,6 +6677,20 @@ __all__ = [
     "normalize_residual_refs",
     "premise_set_digest",
     "assumption_set_digest",
+    "SUPERVISOR_SELF_PROPERTY_SCHEMA",
+    "SUPERVISOR_SELF_PROPERTY_SELECTION_SCHEMA",
+    "SUPERVISOR_SELF_PROPERTY_POLICY_SCHEMA",
+    "SUPERVISOR_SELF_PROPERTY_BUNDLE",
+    "SUPERVISOR_SELF_PROPERTY_PRODUCER_ID",
+    "SupervisorSelfPropertySpec",
+    "SupervisorSelfPropertyPolicy",
+    "SupervisorSelfPropertySelection",
+    "default_supervisor_self_property_shapes",
+    "default_supervisor_self_property_ids",
+    "select_supervisor_self_templates",
+    "evaluate_supervisor_self_property_mutations",
+    "compile_supervisor_self_properties",
+    "prove_supervisor_self_properties",
     "InvalidationReason",
     "ReproofDisposition",
     "ReproofReport",
