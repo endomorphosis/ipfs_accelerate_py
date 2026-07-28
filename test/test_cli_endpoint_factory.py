@@ -39,6 +39,7 @@ from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (
     CLIEndpointAdapter,
     ClaudeCodeAdapter,
     GeminiCLIAdapter,
+    GooseCLIAdapter,
     OpenAICodexAdapter,
     VSCodeCLIAdapter,
     register_cli_endpoint as adapters_register,
@@ -172,6 +173,8 @@ def test_create_cli_endpoint_concrete_types() -> None:
     assert isinstance(create_cli_endpoint("openai_cli", "o1"), OpenAICodexAdapter)
     assert isinstance(create_cli_endpoint("gemini", "g1"), GeminiCLIAdapter)
     assert isinstance(create_cli_endpoint("copilot", "v1"), VSCodeCLIAdapter)
+    assert isinstance(create_cli_endpoint("goose", "goose1"), GooseCLIAdapter)
+    assert isinstance(create_cli_endpoint("goose_cli", "goose2"), GooseCLIAdapter)
 
 
 def test_unsupported_tool_returns_typed_error() -> None:
@@ -207,6 +210,7 @@ def test_list_tools_is_lazy_and_does_not_probe(monkeypatch: pytest.MonkeyPatch) 
     assert "openai" in names
     assert "gemini" in names
     assert "vscode" in names
+    assert "goose" in names
 
 
 def test_registration_is_lazy_does_not_probe_every_provider(

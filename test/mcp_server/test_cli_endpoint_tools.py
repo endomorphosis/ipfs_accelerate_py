@@ -312,3 +312,113 @@ def test_public_exports_match_package() -> None:
     assert cli_endpoint_execute is native_execute
     assert cli_endpoint_list is native_list
     assert cli_endpoint_get is native_get
+
+
+# ---------------------------------------------------------------------------
+# Goose MCP schema bounds and authority rejection (GOOSE-007)
+# ---------------------------------------------------------------------------
+
+
+def test_native_register_goose_tool() -> None:
+    result = _run(
+        native_register(tool="goose", endpoint_id="mcp_goose_1", config={})
+    )
+    assert result.get("status") == "success", result
+    assert result.get("registered") is not False
+    adapter = py_get("mcp_goose_1")
+    assert adapter is not None
+    from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import GooseCLIAdapter
+
+    assert isinstance(adapter, GooseCLIAdapter)
+
+
+def test_native_register_goose_cli_alias() -> None:
+    result = _run(
+        native_register(tool="goose_cli", endpoint_id="mcp_goose_cli", config={})
+    )
+    assert result.get("status") == "success", result
+
+
+def test_mcp_execute_rejects_unknown_authority_options() -> None:
+    adapter = _FakeAdapter("auth_rej", available=True)
+    py_register(adapter, tool="custom", replace=True)
+
+    result = _run(
+        native_execute(
+            "auth_rej",
+            "hello",
+            extra_options={
+                "super_secret_allow_side_effects_override": True,
+            },
+        )
+    )
+    assert result["status"] == "error"
+    assert result.get("error_code") == "policy_denied"
+    assert "unknown authority" in (result.get("error") or "").lower()
+    assert "prompt" not in result
+    assert "hello" not in str(result.get("error", ""))
+
+
+def test_mcp_execute_schema_exposes_goose_authority_fields() -> None:
+    manager = _StubManager()
+    register_native_cli_endpoint_tools(manager)
+    execute_tool = next(t for t in manager.tools if t["name"] == "cli_endpoint_execute")
+    props = execute_tool["input_schema"]["properties"]
+    for field in (
+        "execution_mode",
+        "allow_side_effects",
+        "enable_agent",
+        "cwd",
+        "path_root",
+        "approval_mode",
+        "builtins",
+        "extensions",
+        "max_turns",
+        "timeout_seconds",
+        "max_output_bytes",
+        "goose_provider",
+        "session_id",
+        "extra_options",
+    ):
+        assert field in props, f"missing MCP schema field {field}"
+    assert execute_tool["input_schema"].get("additionalProperties") is False
+
+    register_tool = next(
+        t for t in manager.tools if t["name"] == "cli_endpoint_register"
+    )
+    tool_desc = register_tool["input_schema"]["properties"]["tool"]["description"]
+    assert "goose" in tool_desc.lower()
+
+
+def test_mcp_goose_agent_policy_denied_without_enable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MCP path surfaces policy denial when agent lacks package enable."""
+    # Register a goose endpoint that will not run a real binary for policy checks.
+    result = _run(
+        native_register(
+            tool="goose",
+            endpoint_id="mcp_agent_deny",
+            config={},
+        )
+    )
+    assert result.get("status") == "success", result
+
+    out = _run(
+        native_execute(
+            "mcp_agent_deny",
+            "SECRET_AGENT_PROMPT",
+            execution_mode="agent",
+            allow_side_effects=True,
+            cwd="/tmp/work",
+            path_root="/tmp",
+            approval_mode="approve",
+            max_turns=3,
+            timeout_seconds=10,
+            max_output_bytes=1024,
+        )
+    )
+    assert out["status"] == "error"
+    assert out.get("error_code") in {"policy_denied", "provider_load_failed"}
+    assert "SECRET_AGENT_PROMPT" not in str(out)
+    assert "prompt" not in out
