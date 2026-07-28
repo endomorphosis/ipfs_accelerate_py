@@ -4718,7 +4718,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-171 Fence cross-lane worktree ownership before cleanup
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

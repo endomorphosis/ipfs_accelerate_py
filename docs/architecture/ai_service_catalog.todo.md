@@ -588,11 +588,10 @@ Program invariants:
 
 ## AICAT-025 Define endpoint-scoped usage, limit, event, and receipt contracts
 
-- Status: blocked
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
-- Blocked reason: awaiting_external_supervisor_worktree_fencing_ASI-171
 - Priority: P0
 - Track: endpoint-usage-contracts
 - Depends on: AICAT-001, AICAT-010
