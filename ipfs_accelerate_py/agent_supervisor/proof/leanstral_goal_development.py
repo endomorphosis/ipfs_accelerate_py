@@ -1730,6 +1730,16 @@ class LeanstralGoalDevelopmentProvider:
         token_budget: int,
         cancellation: CancellationToken | Any | None,
     ) -> ProviderBatchResult:
+        """Dispatch through the shared batch scheduler.
+
+        ASI-168: when usage mode is active, attribute the call with a full
+        supervisor envelope and retain the operational receipt. The batch
+        scheduler remains the typed contract-equivalent adapter for physical
+        batching; migration never retries side-effecting work.
+        """
+
+        import os
+
         scheduler = self._batch_scheduler
         if scheduler is None:  # pragma: no cover - guarded by the caller
             raise RuntimeError("shared provider scheduler is not configured")
@@ -1737,48 +1747,105 @@ class LeanstralGoalDevelopmentProvider:
             f"leanstral-goal:{invocation.request.request_id}:"
             f"{uuid.uuid4().hex}"
         )
-        return scheduler.execute(
-            ProviderBatchRequest(
-                request_id=member_id,
-                payload=prompt,
-                provider_id=self.config.llm_provider,
-                route=LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
-                model=self.config.model,
-                operation=LEANSTRAL_GOAL_DEVELOPMENT_OPERATION,
-                context_limit=self.config.max_context_tokens,
-                policy={
-                    "operation_schema": LEANSTRAL_GOAL_DEVELOPMENT_REQUEST_SCHEMA,
-                    "output_schema": LEANSTRAL_GOAL_DEVELOPMENT_OUTPUT_SCHEMA,
-                    "policy_digest": invocation.policy.policy_digest,
-                    "network_allowed": invocation.network_allowed,
-                    "network_access_required": (
-                        self.config.network_access_required
-                    ),
-                    "provider_version": self.provider_version,
-                },
-                generation_settings={
-                    "allow_local_fallback": False,
-                    "disable_model_retry": True,
-                    "temperature": self.config.temperature,
-                    "mistral_vibe_agent": self.config.vibe_agent,
-                },
-                token_budget=token_budget,
-                timeout_ms=max(1, int(math.ceil(timeout * 1_000))),
-                provenance={
-                    "logical_request_id": invocation.request.request_id,
-                    "root_goal_id": invocation.request.root_goal_id,
-                    "repository_tree_id": (
-                        invocation.request.repository_tree_id
-                    ),
-                    "policy_digest": invocation.policy.policy_digest,
-                    "resource_budget": invocation.resource_budget.to_dict(),
-                    "provider_id": self.provider_id,
-                    "provider_version": self.provider_version,
-                    "operation": self.operation,
-                },
-                cancellation_token=cancellation,
+
+        def _execute() -> ProviderBatchResult:
+            return scheduler.execute(
+                ProviderBatchRequest(
+                    request_id=member_id,
+                    payload=prompt,
+                    provider_id=self.config.llm_provider,
+                    route=LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
+                    model=self.config.model,
+                    operation=LEANSTRAL_GOAL_DEVELOPMENT_OPERATION,
+                    context_limit=self.config.max_context_tokens,
+                    policy={
+                        "operation_schema": LEANSTRAL_GOAL_DEVELOPMENT_REQUEST_SCHEMA,
+                        "output_schema": LEANSTRAL_GOAL_DEVELOPMENT_OUTPUT_SCHEMA,
+                        "policy_digest": invocation.policy.policy_digest,
+                        "network_allowed": invocation.network_allowed,
+                        "network_access_required": (
+                            self.config.network_access_required
+                        ),
+                        "provider_version": self.provider_version,
+                    },
+                    generation_settings={
+                        "allow_local_fallback": False,
+                        "disable_model_retry": True,
+                        "temperature": self.config.temperature,
+                        "mistral_vibe_agent": self.config.vibe_agent,
+                    },
+                    token_budget=token_budget,
+                    timeout_ms=max(1, int(math.ceil(timeout * 1_000))),
+                    provenance={
+                        "logical_request_id": invocation.request.request_id,
+                        "root_goal_id": invocation.request.root_goal_id,
+                        "repository_tree_id": (
+                            invocation.request.repository_tree_id
+                        ),
+                        "policy_digest": invocation.policy.policy_digest,
+                        "resource_budget": invocation.resource_budget.to_dict(),
+                        "provider_id": self.provider_id,
+                        "provider_version": self.provider_version,
+                        "operation": self.operation,
+                    },
+                    cancellation_token=cancellation,
+                )
             )
+
+        mode_raw = str(
+            os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
+        ).strip().casefold()
+        if mode_raw in {"", "off"}:
+            return _execute()
+
+        from ..provider_usage_migration import (
+            ConsumerId,
+            build_consumer_call_context,
+            dispatch_migrated_provider_call,
+            resolve_usage_mode,
+            retain_last_call_result,
         )
+
+        mode = resolve_usage_mode(mode_raw)
+        holder: dict[str, ProviderBatchResult | None] = {"result": None}
+
+        def _invoke_text() -> str:
+            result = _execute()
+            holder["result"] = result
+            output = result.output
+            return output if isinstance(output, str) else str(output or "")
+
+        context = build_consumer_call_context(
+            consumer_id=ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT,
+            provider_id=str(self.config.llm_provider or "llm_router:auto"),
+            stage="leanstral_goal_development",
+            task_id=str(invocation.request.request_id),
+            goal_id=str(
+                getattr(invocation.request, "root_goal_id", "")
+                or "goal:leanstral-goal-development"
+            ),
+            objective_id="leanstral_goal_development",
+            tree_id=str(
+                getattr(invocation.request, "repository_tree_id", "")
+                or "tree:unknown"
+            ),
+            estimated_output_tokens=max(0, int(token_budget or 0)),
+            metadata={
+                "route": LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
+                "operation": LEANSTRAL_GOAL_DEVELOPMENT_OPERATION,
+            },
+        )
+        migrated = dispatch_migrated_provider_call(
+            context=context,
+            invoke=_invoke_text,
+            mode=mode,
+        )
+        retain_last_call_result(
+            ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT, migrated
+        )
+        if holder["result"] is None:
+            raise RuntimeError("shared provider dispatch produced no batch result")
+        return holder["result"]
 
     def _invoke_bounded(
         self,
@@ -1800,17 +1867,25 @@ class LeanstralGoalDevelopmentProvider:
 
         def run() -> None:
             try:
-                value = generate(
-                    prompt,
-                    provider=self.config.llm_provider,
-                    model_name=self.config.model,
-                    timeout=timeout,
-                    max_new_tokens=token_budget,
-                    allow_local_fallback=False,
-                    disable_model_retry=True,
-                    temperature=self.config.temperature,
-                    mistral_vibe_agent=self.config.vibe_agent,
-                )
+                call_kwargs = {
+                    "provider": self.config.llm_provider,
+                    "model_name": self.config.model,
+                    "timeout": timeout,
+                    "max_new_tokens": token_budget,
+                    "allow_local_fallback": False,
+                    "disable_model_retry": True,
+                    "temperature": self.config.temperature,
+                    "mistral_vibe_agent": self.config.vibe_agent,
+                }
+                try:
+                    # ASI-168: attribute bounded default-router calls to this consumer.
+                    value = generate(
+                        prompt,
+                        usage_consumer_id="leanstral_goal_development",
+                        **call_kwargs,
+                    )
+                except TypeError:
+                    value = generate(prompt, **call_kwargs)
                 responses.put_nowait((True, value))
             except BaseException as exc:  # transport exceptions are classified below
                 try:

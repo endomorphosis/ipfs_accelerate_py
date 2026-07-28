@@ -608,24 +608,97 @@ class LeanstralProofGateResult:
 
 
 def _default_llm_generate(prompt: str, **kwargs: Any) -> str:
-    """Resolve the router only for an admitted model inference request."""
+    """Resolve the router only for an admitted model inference request.
 
+    ASI-168: when supervisor usage mode is active, supply a full usage envelope
+    and consume the gateway receipt. Model output remains non-authoritative for
+    proof completion (kernel verification still owns acceptance). Off mode never
+    imports the migration stack so existing monkeypatches of ``import_module``
+    and focused suites remain compatible.
+    """
+
+    import os
+
+    # Strip migration-only kwargs so they never reach the router.
+    router_kwargs = dict(kwargs)
+    usage_consumer = str(
+        router_kwargs.pop("usage_consumer_id", "")
+        or "leanstral_proof_provider"
+    )
+    usage_migrate = bool(router_kwargs.pop("usage_migrate", True))
+
+    def _raw_generate() -> str:
+        try:
+            router = importlib.import_module("ipfs_accelerate_py.llm_router")
+        except (ImportError, ModuleNotFoundError) as exc:
+            raise ProofProviderError(
+                ProviderFailureCode.UNAVAILABLE,
+                "llm_router is unavailable; Leanstral inference is degraded",
+                details={"dependency": "llm_router"},
+            ) from exc
+        generate = getattr(router, "generate_text", None)
+        if not callable(generate):
+            raise ProofProviderError(
+                ProviderFailureCode.UNAVAILABLE,
+                "llm_router.generate_text is unavailable; Leanstral inference is degraded",
+                details={"dependency": "llm_router.generate_text"},
+            )
+        return generate(prompt, **router_kwargs)
+
+    mode_raw = str(
+        os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
+    ).strip().casefold()
+    if (not usage_migrate) or mode_raw in {"", "off"}:
+        return _raw_generate()
+
+    from ..provider_usage_migration import (
+        ConsumerId,
+        build_consumer_call_context,
+        dispatch_migrated_provider_call,
+        resolve_usage_mode,
+        retain_last_call_result,
+    )
+
+    mode = resolve_usage_mode(mode_raw)
+    provider_id = str(
+        router_kwargs.get("provider")
+        or router_kwargs.get("llm_provider")
+        or "llm_router:auto"
+    )
     try:
-        router = importlib.import_module("ipfs_accelerate_py.llm_router")
-    except (ImportError, ModuleNotFoundError) as exc:
-        raise ProofProviderError(
-            ProviderFailureCode.UNAVAILABLE,
-            "llm_router is unavailable; Leanstral inference is degraded",
-            details={"dependency": "llm_router"},
-        ) from exc
-    generate = getattr(router, "generate_text", None)
-    if not callable(generate):
-        raise ProofProviderError(
-            ProviderFailureCode.UNAVAILABLE,
-            "llm_router.generate_text is unavailable; Leanstral inference is degraded",
-            details={"dependency": "llm_router.generate_text"},
-        )
-    return generate(prompt, **kwargs)
+        consumer = ConsumerId(usage_consumer)
+    except ValueError:
+        consumer = ConsumerId.LEANSTRAL_PROOF_PROVIDER
+    context = build_consumer_call_context(
+        consumer_id=consumer,
+        provider_id=provider_id,
+        stage=(
+            "leanstral_goal_development"
+            if consumer is ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT
+            else "leanstral_proof"
+        ),
+        task_id=str(router_kwargs.get("task_id") or consumer.value),
+        goal_id=f"goal:{consumer.value}",
+        objective_id=consumer.value,
+        estimated_output_tokens=max(
+            0, int(router_kwargs.get("max_new_tokens") or 0)
+        ),
+        metadata={
+            "model": str(
+                router_kwargs.get("model_name")
+                or router_kwargs.get("model")
+                or ""
+            ),
+            "side_effect": "generate_text",
+        },
+    )
+    migrated = dispatch_migrated_provider_call(
+        context=context,
+        invoke=_raw_generate,
+        mode=mode,
+    )
+    retain_last_call_result(consumer, migrated)
+    return migrated.text
 
 
 @dataclass(frozen=True)
