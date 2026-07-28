@@ -6884,6 +6884,17 @@ def compile_code_proof_context_capsule(*args: Any, **kwargs: Any) -> Any:
     return _compile_code_proof_context_capsule(*args, **kwargs)
 
 
+
+def compile_code_proof_context_delta(*args: Any, **kwargs: Any) -> Any:
+    """CBP-070: proof_delta-only retry context bound to a parent capsule."""
+
+    from .code_proof_context import (
+        compile_code_proof_context_delta as _compile_code_proof_context_delta,
+    )
+
+    return _compile_code_proof_context_delta(*args, **kwargs)
+
+
 def compile_context_capsule(
     budget: ContextBudget,
     **kwargs: Any,
@@ -7214,6 +7225,7 @@ __all__ = [
     "build_context_delta",
     "build_prefix_context",
     "compile_code_proof_context_capsule",
+    "compile_code_proof_context_delta",
     "compile_context_capsule",
     "compile_decision_context",
     "compile_decision_context_retry",

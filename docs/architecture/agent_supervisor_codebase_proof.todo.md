@@ -266,7 +266,7 @@ Normative:
 
 ## CBP-070 Delta retry via proof_delta and cache hits
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: context-delta

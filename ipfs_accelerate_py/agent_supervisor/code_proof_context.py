@@ -24,6 +24,7 @@ from .code_proof_query import (
     ClaimQueryHit,
     CodeProofQuery,
     CodeProofQueryResult,
+    ProofDeltaResult,
     build_code_proof_query,
 )
 from .code_claim_contracts import ClaimStatus, CodeClaimRecord
@@ -31,10 +32,14 @@ from .code_proof_obligations import CodeProofObligationCompilation
 from .context_compiler import (
     ContextCompileResult,
     ContextCompiler,
+    ContextDeltaResult,
     compile_context_capsule,
+    compile_context_delta,
+    reconstruct_context,
 )
 from .context_contracts import (
     ContextBudget,
+    ContextCapsule,
     ContextReference,
     ContextTier,
 )
@@ -43,6 +48,7 @@ from .formal_verification_contracts import content_identity
 
 CODE_PROOF_CONTEXT_INTERFACE: Final = "CodeProofContext@1"
 CODE_PROOF_CONTEXT_VERSION: Final = "1"
+CODE_PROOF_CONTEXT_DELTA_INTERFACE: Final = "CodeProofContextDelta@1"
 UNTRUSTED_DATA_LABEL: Final = "untrusted_repository_data"
 
 
@@ -567,13 +573,276 @@ def compile_code_proof_context_capsule(
     )
 
 
+# ---------------------------------------------------------------------------
+# CBP-070: proof_delta-driven retry contexts
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CodeProofContextDeltaCapsule:
+    """Parent-bound retry capsule carrying only proof_delta evidence."""
+
+    parent_capsule_id: str
+    task_id: str
+    delta: ProofDeltaResult
+    reopened_property_ids: tuple[str, ...]
+    still_valid_property_ids: tuple[str, ...]
+    cold_input_tokens: int
+    retry_input_tokens: int
+    delta_result: ContextDeltaResult
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def delta_capsule(self):
+        return self.delta_result.delta_capsule
+
+    @property
+    def token_reduction_ratio(self) -> float:
+        if self.cold_input_tokens <= 0:
+            return 0.0
+        return 1.0 - (self.retry_input_tokens / float(self.cold_input_tokens))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "interface": CODE_PROOF_CONTEXT_DELTA_INTERFACE,
+            "parent_capsule_id": self.parent_capsule_id,
+            "task_id": self.task_id,
+            "delta": self.delta.to_dict(),
+            "reopened_property_ids": list(self.reopened_property_ids),
+            "still_valid_property_ids": list(self.still_valid_property_ids),
+            "cold_input_tokens": self.cold_input_tokens,
+            "retry_input_tokens": self.retry_input_tokens,
+            "token_reduction_ratio_millis": int(
+                round(self.token_reduction_ratio * 1_000_000)
+            ),
+            "metadata": dict(self.metadata),
+        }
+
+
+def _property_ids_from_query(query: CodeProofQuery) -> set[str]:
+    return {hit.property_id for hit in query.hits}
+
+
+def _delta_evidence_for_reopened(
+    *,
+    child_query: CodeProofQuery,
+    reopened_property_ids: Sequence[str],
+    repository_id: str,
+    tree_id: str,
+    delta: ProofDeltaResult,
+) -> tuple[ContextReference, ...]:
+    """Build only the delta evidence for reopened/invalidated properties."""
+
+    reopened = set(reopened_property_ids)
+    hits_by_prop = {hit.property_id: hit for hit in child_query.hits}
+    refs: list[ContextReference] = []
+
+    # Always include a compact proof_delta summary (required for retry).
+    refs.append(
+        _ref(
+            reference_id="proof-delta:summary",
+            kind="proof_delta",
+            tier=ContextTier.INVARIANT,
+            content={
+                "parent_tree_id": delta.parent_tree_id,
+                "child_tree_id": delta.child_tree_id,
+                "entry_count": len(delta.entries),
+                "reopened_property_ids": sorted(reopened),
+                "entries": [entry.to_dict() for entry in delta.entries],
+            },
+            repository_id=repository_id,
+            tree_id=tree_id,
+            summary=f"proof_delta {len(delta.entries)} entries",
+            required=True,
+            priority=0,
+            metadata={"proof_delta_only": True},
+        )
+    )
+
+    for property_id in sorted(reopened):
+        hit = hits_by_prop.get(property_id)
+        if hit is None:
+            refs.append(
+                _ref(
+                    reference_id=f"delta:missing:{property_id}",
+                    kind="reopened_obligation",
+                    tier=ContextTier.INVARIANT,
+                    content={
+                        "property_id": property_id,
+                        "status": "missing_on_child",
+                    },
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    summary=f"reopened missing {property_id}",
+                    required=True,
+                    priority=1,
+                )
+            )
+            continue
+        refs.append(
+            _ref(
+                reference_id=f"delta:open:{property_id}",
+                kind="reopened_obligation",
+                tier=ContextTier.INVARIANT,
+                content={
+                    "property_id": hit.property_id,
+                    "claim_id": hit.claim_id,
+                    "obligation_ids": list(hit.obligation_ids),
+                    "status": hit.status.value,
+                    "reason_codes": list(hit.reason_codes),
+                },
+                repository_id=repository_id,
+                tree_id=tree_id,
+                summary=f"reopened {property_id}",
+                required=True,
+                priority=1,
+                metadata={
+                    "claim_id": hit.claim_id,
+                    "property_id": property_id,
+                    "coverage_ids": (f"coverage:claim:{property_id}",),
+                },
+            )
+        )
+        if hit.counterexample is not None or hit.status is ClaimStatus.REFUTED:
+            refs.append(
+                _ref(
+                    reference_id=f"delta:cex:{property_id}",
+                    kind="counterexample",
+                    tier=ContextTier.INVARIANT,
+                    content={
+                        "property_id": property_id,
+                        "counterexample": hit.counterexample or {},
+                    },
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    summary=f"delta counterexample {property_id}",
+                    required=True,
+                    priority=2,
+                )
+            )
+    return tuple(refs)
+
+
+def compile_code_proof_context_delta(
+    parent: CodeProofContextCapsule,
+    child_request: CodeProofContextRequest,
+    *,
+    parent_query: CodeProofQuery,
+    tokenizer: Any | None = None,
+    provider_context_window: int | None = None,
+) -> CodeProofContextDeltaCapsule:
+    """Compile a proof_delta-only retry context bound to a parent capsule.
+
+    Still-valid cached obligations are **not** re-opened in the delta unless
+    :meth:`CodeProofQuery.proof_delta` reports an invalidation reason.
+    Parent-bound reconstruction preserves the invariant core.
+    """
+
+    if not isinstance(parent, CodeProofContextCapsule):
+        raise CodeProofContextError("parent must be a CodeProofContextCapsule")
+    if not isinstance(child_request, CodeProofContextRequest):
+        raise CodeProofContextError("child_request must be a CodeProofContextRequest")
+    if not isinstance(parent_query, CodeProofQuery):
+        raise CodeProofContextError("parent_query must be a CodeProofQuery")
+
+    parent_capsule: ContextCapsule = parent.capsule
+    child_query = _resolve_query(child_request)
+
+    delta = child_query.proof_delta(parent_query)
+    reopened = tuple(sorted({entry.property_id for entry in delta.entries}))
+    parent_props = _property_ids_from_query(parent_query)
+    still_valid = tuple(sorted(parent_props - set(reopened)))
+
+    # Still-valid properties must not appear as reopened open-obligation refs.
+    # ContextDeltaCapsule forbids changing immutable tree identity on evidence
+    # rows — keep parent tree_id on references; child tree is recorded inside
+    # proof_delta payload content.
+    delta_updates = _delta_evidence_for_reopened(
+        child_query=child_query,
+        reopened_property_ids=reopened,
+        repository_id=parent_capsule.repository_id or child_request.repository_id,
+        tree_id=parent_capsule.tree_id,
+        delta=delta,
+    )
+    if not delta_updates:
+        raise CodeProofContextError("proof_delta produced no retry evidence")
+
+    # compile_delta requires every parent-required reference id to remain present
+    # (and still required). Unchanged required refs are listed but not re-sent
+    # as "changed" payloads when content identity matches.
+    parent_required = {
+        ref.reference_id: ref
+        for ref in parent_capsule.evidence
+        if ref.required
+    }
+    candidates: dict[str, ContextReference] = dict(parent_required)
+    for ref in delta_updates:
+        candidates[ref.reference_id] = ref
+    delta_evidence = tuple(
+        candidates[key] for key in sorted(candidates)
+    )
+
+    budget = child_request.budget or _default_budget()
+    delta_result = compile_context_delta(
+        budget,
+        parent_capsule,
+        evidence=delta_evidence,
+        stage=child_request.stage or parent_capsule.stage,
+        tokenizer=tokenizer or (lambda text: _tokens_for(str(text))),
+        provider_context_window=provider_context_window,
+    )
+
+    cold_tokens = int(
+        parent.token_budget.get("input_tokens") or parent_capsule.input_tokens
+    )
+    # Prefer delta transmission tokens (not full reconstructed size).
+    receipt = getattr(delta_result, "receipt", None)
+    if receipt is not None and getattr(receipt, "delta_tokens", None) is not None:
+        retry_tokens = int(receipt.delta_tokens)
+    else:
+        retry_tokens = int(
+            sum(
+                int(getattr(ref, "token_count", 0) or 0)
+                for ref in delta_result.delta_capsule.evidence
+            )
+        )
+
+    reconstructed = reconstruct_context(parent_capsule, delta_result.delta_capsule)
+    if reconstructed.objective_id != parent_capsule.objective_id:
+        raise CodeProofContextError("delta reconstruction lost objective core")
+    if reconstructed.policy_id != parent_capsule.policy_id:
+        raise CodeProofContextError("delta reconstruction lost policy core")
+    if reconstructed.goal != parent_capsule.goal:
+        raise CodeProofContextError("delta reconstruction lost goal core")
+
+    return CodeProofContextDeltaCapsule(
+        parent_capsule_id=str(parent_capsule.capsule_id),
+        task_id=child_request.task_id or parent.task_id,
+        delta=delta,
+        reopened_property_ids=reopened,
+        still_valid_property_ids=still_valid,
+        cold_input_tokens=cold_tokens,
+        retry_input_tokens=retry_tokens,
+        delta_result=delta_result,
+        metadata={
+            "interface": CODE_PROOF_CONTEXT_DELTA_INTERFACE,
+            "proof_delta_only": True,
+            "still_valid_not_reopened": True,
+            "cache_reuse_expected_for_still_valid": True,
+        },
+    )
+
+
 __all__ = [
     "CODE_PROOF_CONTEXT_INTERFACE",
     "CODE_PROOF_CONTEXT_VERSION",
+    "CODE_PROOF_CONTEXT_DELTA_INTERFACE",
     "UNTRUSTED_DATA_LABEL",
     "CodeProofContextError",
     "CodeProofContextRequest",
     "CodeProofContextCapsule",
+    "CodeProofContextDeltaCapsule",
     "build_code_proof_context_references",
     "compile_code_proof_context_capsule",
+    "compile_code_proof_context_delta",
 ]
