@@ -120,6 +120,7 @@ runs:
 
             injected_count = 0
             failed_count = 0
+            skipped_empty_count = 0
 
             # Parse credentials to inject
             credentials_json = os.environ.get('CREDENTIALS_JSON', '[]')
@@ -135,8 +136,10 @@ runs:
                     ttl_hours = cred.get('ttl_hours', 24)
 
                     if not name or not value:
+                        # Empty secrets are common in example workflows when
+                        # repository secrets are unset; treat as soft skip.
                         print(f"::warning::Skipping invalid credential (missing name or value)")
-                        failed_count += 1
+                        skipped_empty_count += 1
                         continue
 
                     try:
@@ -217,6 +220,10 @@ runs:
                 status = "success"
             elif injected_count > 0:
                 status = "partial"
+            elif failed_count == 0 and skipped_empty_count > 0:
+                status = "skipped"
+            elif failed_count == 0:
+                status = "empty"
             else:
                 status = "error"
 
@@ -227,11 +234,15 @@ runs:
             print(f"\n📊 Summary:")
             print(f"  - Successfully injected: {injected_count}")
             print(f"  - Failed: {failed_count}")
+            print(f"  - Skipped empty: {skipped_empty_count}")
             print(f"  - Status: {status}")
 
             if injected_count > 0:
                 print("::notice::✅ Credentials injected successfully")
+            elif skipped_empty_count > 0 and failed_count == 0:
+                print("::notice::No non-empty credentials to inject; continuing")
 
+            # Only hard-fail on real retrieval/storage errors, not missing secrets.
             sys.exit(0 if failed_count == 0 else 1)
 
         except Exception as e:
