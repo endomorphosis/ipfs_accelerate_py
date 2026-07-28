@@ -613,7 +613,7 @@ Program invariants:
 
 ## AICAT-026 Normalize configured and provider-observed usage metadata
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
