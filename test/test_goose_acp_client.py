@@ -932,3 +932,43 @@ def test_failure_kind_constant_stable() -> None:
     assert err.uncertain_side_effects is True
     assert err.failure_kind == FAILURE_KIND_UNCERTAIN_SIDE_EFFECT
     assert err.retryable is False
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-011 security matrix anchors (ACP surface)
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_restart_policy_forbids_auto_replay_and_crash_uncertain(
+    fake_bin: Path, state_root: Path
+) -> None:
+    """ACP never auto-replays agent work; crash path stays non-retryable."""
+    with pytest.raises(PolicyDeniedError):
+        ACPRestartPolicy(auto_replay_agent_work=True)
+
+    exe = _write_fake_acp(
+        fake_bin,
+        script=_base_fake_acp_script(crash_after_prompt=True),
+    )
+    client = _client(
+        exe,
+        state_root,
+        restart_on_unexpected_exit=False,
+        restart_enabled=False,
+    )
+    client.start()
+    try:
+        sid = client.session_new()["session_id"]
+        secret = "ACP_MATRIX_PROMPT_SECRET"
+        result = client.session_prompt(sid, secret)
+        assert result["success"] is True
+        deadline = time.time() + 3.0
+        while client.is_ready and time.time() < deadline:
+            time.sleep(0.05)
+        with pytest.raises((ACPNotReadyError, ACPUncertainSideEffectError, Exception)):
+            client.session_prompt(sid, "after-crash")
+        desc = client.describe()
+        assert desc["auto_replay_agent_work"] is False
+        assert secret not in str(desc)
+    finally:
+        client.stop()

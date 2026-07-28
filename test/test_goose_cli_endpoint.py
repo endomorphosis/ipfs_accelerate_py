@@ -970,3 +970,46 @@ def test_unregister_stops_acp_client(fake_bin: Path, tmp_path: Path) -> None:
     assert record.acp_client is not None
     assert registry.unregister("acp_unreg") is True
     assert registry.get_record("acp_unreg") is None
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-011 security matrix anchors (endpoint surface)
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_chat_safe_and_agent_requires_authorization(
+    fake_bin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Chat keeps safety flags; unauthorized agent is policy-denied."""
+    argv_path = fake_bin / "mx_argv.json"
+    exe = _write_fake_goose(fake_bin, script=_json_success_script("mx-chat"))
+    monkeypatch.setenv("GOOSE_FAKE_ARGV_PATH", str(argv_path))
+    monkeypatch.setenv("OPENAI_API_KEY", "matrix-cred-not-for-leak")
+    _register_goose(exe, "mx_chat_ep", config={"model": "m"})
+    adapter = get_cli_endpoint("mx_chat_ep")
+    assert isinstance(adapter, GooseCLIAdapter)
+    adapter._get_provider().version = PINNED_GOOSE_VERSION
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
+    adapter._get_provider().executable = str(exe)
+    secret = "ENDPOINT_MATRIX_PROMPT_SECRET"
+    out = execute_cli_inference("mx_chat_ep", secret, timeout=30)
+    assert out.get("status") == "success", out
+    assert secret not in str(out)
+    assert "matrix-cred-not-for-leak" not in str(out)
+    if argv_path.exists():
+        recorded = json.loads(argv_path.read_text(encoding="utf-8"))
+        assert "--no-profile" in recorded["argv"]
+        assert recorded["env_mode"] == "chat"
+
+    _register_goose(exe, "mx_agent_ep", config={"enable_agent": False})
+    adapter2 = get_cli_endpoint("mx_agent_ep")
+    assert isinstance(adapter2, GooseCLIAdapter)
+    denied = adapter2.execute(
+        "agent",
+        execution_mode="agent",
+        allow_side_effects=True,
+        cwd="/tmp/w",
+        path_root="/tmp",
+    )
+    assert denied.get("status") == "error"
+    assert denied.get("error_code") == "policy_denied"

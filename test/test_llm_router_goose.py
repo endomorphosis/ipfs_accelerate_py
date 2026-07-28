@@ -527,3 +527,42 @@ def test_kwargs_are_side_effecting_helpers() -> None:
     assert llm_router._kwargs_are_side_effecting({"agent_policy": MagicMock()})
     assert not llm_router._kwargs_are_side_effecting({})
     assert not llm_router._kwargs_are_side_effecting({"temperature": 0.2})
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-011 security matrix anchors (router surface)
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_no_install_on_implicit_and_no_retry_after_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Implicit discovery never installs; side-effect failures are non-retryable."""
+    _clear_goose_env(monkeypatch)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.cli_runtime.installers.goose.ensure_goose",
+        lambda **_k: pytest.fail("implicit path must not install"),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.cli_runtime.installers.goose.discover_goose",
+        lambda **_k: _install_result(available=False, reason="not_installed"),
+    )
+    monkeypatch.setattr(llm_router, "find_goose_cli", lambda: None)
+    assert llm_router._builtin_provider_by_name("goose_cli") is None
+
+    from ipfs_accelerate_py.cli_runtime.providers.goose import (
+        GooseErrorKind,
+        GooseProviderError,
+    )
+
+    err = GooseProviderError(
+        "partial tool activity",
+        kind=GooseErrorKind.NONZERO_EXIT,
+        side_effects_started=True,
+        retryable=False,
+    )
+    assert err.side_effects_started is True
+    assert err.retryable is False
+    assert llm_router._kwargs_are_side_effecting(
+        {"agent": True, "allow_side_effects": True}
+    )

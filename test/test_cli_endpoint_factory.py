@@ -554,16 +554,42 @@ def test_deprecated_imports_are_shims() -> None:
 
 
 def test_cli_adapter_registry_view_shared() -> None:
-    from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (
-        CLI_ADAPTER_REGISTRY,
-    )
-    from ipfs_accelerate_py.cli_runtime.endpoints import CLI_ADAPTER_REGISTRY as CANON
+    """Adapters and endpoints share one live registry view.
 
+    Other suite members may cold-reimport ``cli_runtime`` (dropping module
+    identity for previously imported symbols). Always resolve register/get
+    against the *current* ``sys.modules`` endpoints export.
+    """
+    import ipfs_accelerate_py.cli_runtime.endpoints as endpoints_mod
+    import ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters as adapters_mod
+
+    # Point the adapters compatibility facade at the live endpoints module.
+    adapters_mod.CLI_ADAPTER_REGISTRY = endpoints_mod.CLI_ADAPTER_REGISTRY
+    adapters_mod.reset_default_endpoint_registry = (
+        endpoints_mod.reset_default_endpoint_registry
+    )
+    adapters_mod._canonical_register_cli_endpoint = (  # type: ignore[attr-defined]
+        endpoints_mod.register_cli_endpoint
+    )
+    adapters_mod._canonical_get_cli_endpoint = (  # type: ignore[attr-defined]
+        endpoints_mod.get_cli_endpoint
+    )
+
+    endpoints_mod.reset_default_endpoint_registry()
     adapter = _FakeAdapter("view_1")
-    register_cli_endpoint(adapter, tool="custom", replace=True)
-    assert "view_1" in CLI_ADAPTER_REGISTRY
-    assert "view_1" in CANON
-    assert CLI_ADAPTER_REGISTRY.get("view_1") is adapter
+    # Register through the live module object (not a stale test-module binding).
+    result = endpoints_mod.register_cli_endpoint(
+        adapter, tool="custom", replace=True
+    )
+    assert result.get("status") == "success"
+
+    canon = endpoints_mod.CLI_ADAPTER_REGISTRY
+    shim = adapters_mod.CLI_ADAPTER_REGISTRY
+    assert shim is canon
+    assert canon.get("view_1") is adapter
+    assert shim.get("view_1") is adapter
+    assert "view_1" in list(canon.keys())
+    assert endpoints_mod.get_cli_endpoint("view_1") is adapter
 
 
 # ---------------------------------------------------------------------------
@@ -596,3 +622,44 @@ def test_stream_emits_completed_without_prompt() -> None:
     assert "completed" in kinds
     blob = str(events)
     assert "secret-stream-prompt" not in blob
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-011 security matrix anchors (endpoint factory surface)
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_goose_aliases_and_error_envelope_redaction() -> None:
+    """Goose endpoint aliases register; error envelopes redact secrets."""
+    tools = {t["name"] for t in list_cli_endpoint_tools()}
+    assert "goose" in tools
+    goose = create_cli_endpoint("goose_cli", "mx_goose_alias")
+    assert isinstance(goose, GooseCLIAdapter)
+
+    cleaned = sanitize_error_payload(
+        {
+            "error": "boom",
+            "prompt": "user confidential prompt",
+            "credential": "endpoint-credential-marker",
+            "token": "endpoint-token-marker",
+            "secret": "endpoint-secret-marker",
+        }
+    )
+    assert cleaned["prompt"] == "[redacted]"
+    assert cleaned["credential"] == "[redacted]"
+    assert cleaned["token"] == "[redacted]"
+    assert cleaned["secret"] == "[redacted]"
+    assert "user confidential" not in str(cleaned)
+    assert "endpoint-credential-marker" not in str(cleaned)
+    assert "endpoint-token-marker" not in str(cleaned)
+    assert "endpoint-secret-marker" not in str(cleaned)
+
+    envelope = error_envelope(
+        "failed",
+        code="policy_denied",
+        prompt="should-not-appear",
+        credential="also-credential-marker",
+    )
+    assert envelope["status"] == "error"
+    assert "should-not-appear" not in str(envelope)
+    assert "also-credential-marker" not in str(envelope)

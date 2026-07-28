@@ -653,11 +653,44 @@ def test_stdin_bounds_exceeded() -> None:
 
 
 def test_import_does_not_start_processes() -> None:
-    """Importing the module must remain side-effect free (smoke check)."""
-    import importlib
+    """Importing the module must remain side-effect free (smoke check).
 
+    Avoid ``importlib.reload``: reloading rebinds ``ProcessSpec`` while
+    providers still hold the original class, breaking ``isinstance`` checks in
+    ``ProcessRunner.run`` for the rest of the suite.
+    """
     import ipfs_accelerate_py.cli_runtime.process_runner as mod
 
-    importlib.reload(mod)
-    # No assertion beyond surviving reload without spawning; covered by no hang.
     assert hasattr(mod, "ProcessRunner")
+    assert hasattr(mod, "ProcessSpec")
+    assert callable(mod.run_process)
+    assert callable(mod.stream_process)
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-011 security matrix anchors (process runner surface)
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_shell_false_with_metacharacters_and_secret_env() -> None:
+    """Argv metacharacters never shell-expand; secret env is redacted."""
+    dangerous = "a; rm -rf / && echo pwned"
+    recorder = _RecordingPopen()
+    runner = ProcessRunner(popen_factory=recorder)
+    result = runner.run(_py("import sys; print(sys.argv[1])") + [dangerous])
+    assert result.ok
+    assert result.stdout.strip() == dangerous
+    assert recorder.calls[0]["shell"] is False
+    assert dangerous in recorder.calls[0]["argv"]
+
+    redacted = redact_env_mapping(
+        {
+            "OPENAI_API_KEY": "matrix-cred-secret-value",
+            "PROMPT_TEXT": "user private prompt",
+            "PATH": "/usr/bin",
+        }
+    )
+    assert redacted["OPENAI_API_KEY"] == REDACTED
+    assert redacted["PROMPT_TEXT"] == REDACTED
+    assert redacted["PATH"] == "/usr/bin"
+    assert "matrix-cred-secret-value" not in str(redacted)
