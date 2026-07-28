@@ -12976,7 +12976,9 @@ class PortalImplementationDaemon:
         # compounds) take effect without requiring a full daemon restart when
         # this method body is itself freshly imported.
         import importlib
-        from .. import proposal_validation as _proposal_validation_module
+        from ..validation import (
+            proposal_validation as _proposal_validation_module,
+        )
         importlib.reload(_proposal_validation_module)
         from ..validation.proposal_validation import (
             ImplementationProposal,
