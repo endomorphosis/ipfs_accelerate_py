@@ -410,7 +410,7 @@ Normative:
 
 ## CBP-130 Closed-loop quality, coverage, token, and proof-cost gates
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: metrics
