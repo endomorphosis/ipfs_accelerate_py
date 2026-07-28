@@ -8,17 +8,22 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     CandidateDiffEntry,
+    CodeProofCompileRequest,
     CodeProofScopeSet,
     DiffChangeKind,
     ImplementationEvidenceKind,
     ImplementationObligationKind,
     ImplementationObligationSet,
     ImplementationResultEvidence,
+    ObligationCompileStatus,
+    PremiseValidationError,
     ProofScopeKind,
     collect_git_candidate_diff,
     compile_candidate_diff,
     compile_candidate_proof_scopes,
+    compile_code_proof_obligations,
     derive_fresh_implementation_obligations,
+    normalize_premise_ids,
     validate_code_proof_receipt_bindings,
 )
 from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
@@ -749,3 +754,82 @@ def test_plan_consistency_and_conformance_receipts_cannot_be_promoted_to_code_pr
         assert result.valid is False
         assert result.contradictory is True
         assert any("purpose" in reason for reason in result.reason_codes)
+
+
+def test_obligation_compiler_uses_changed_ast_scopes_and_rejects_repo_wide_premises() -> None:
+    scope_set = compile_candidate_proof_scopes(
+        [
+            CandidateDiffEntry(
+                new_path="src/runtime.py",
+                change_kind=DiffChangeKind.ADD,
+                after_source=PYTHON_SOURCE,
+                after_blob_id="git:runtime-scopes",
+            )
+        ]
+    )
+    compilation = compile_code_proof_obligations(
+        scope_set,
+        repository_tree_id="git-tree:scopes",
+        repository_id="repo:scopes",
+        claim_families=("dependency_reachability", "api_contract"),
+        premise_ids=("premise:scope-edge",),
+        assumption_ids=("assumption:bounded",),
+        toolchain_id="toolchain:test",
+        policy_id="policy:test",
+        formal_plan_effects=("effect:run",),
+    )
+    assert compilation.scope_set_id == scope_set.scope_set_id
+    assert compilation.open_obligations()
+    for obligation in compilation.open_obligations():
+        assert obligation.ast_scope_ids
+        assert all(
+            scope_id in set(scope_set.scope_ids) for scope_id in obligation.ast_scope_ids
+        )
+        # Path inventory / conservative scopes never become formal premises.
+        assert not any(
+            "conservative" in scope_id for scope_id in obligation.ast_scope_ids
+        )
+
+    with pytest.raises(PremiseValidationError, match="repository-wide"):
+        normalize_premise_ids(["repository_wide"])
+    with pytest.raises(PremiseValidationError, match="repository-wide|opaque"):
+        compile_code_proof_obligations(
+            scope_set,
+            repository_tree_id="git-tree:scopes",
+            claim_families=("security_property",),
+            premise_ids=["*"],
+        )
+
+
+def test_obligation_compiler_distinguishes_unsupported_from_not_measured_on_scopes() -> None:
+    scope_set = _implementation_scope_set()
+    unsupported = compile_code_proof_obligations(
+        scope_set,
+        repository_tree_id=IMPLEMENTATION_TREE,
+        repository_id=IMPLEMENTATION_REPOSITORY,
+        property_ids=("property:unsupported-proof-fail-closed",),
+        premise_ids=("premise:a",),
+        assumption_ids=("assumption:a",),
+        toolchain_id="toolchain:t",
+        policy_id="policy:p",
+    )
+    not_measured = compile_code_proof_obligations(
+        scope_set,
+        repository_tree_id=IMPLEMENTATION_TREE,
+        repository_id=IMPLEMENTATION_REPOSITORY,
+        requests=(
+            CodeProofCompileRequest(
+                claim_family="semantic_equivalence",
+                force_not_measured=True,
+            ),
+        ),
+        premise_ids=("premise:a",),
+        assumption_ids=("assumption:a",),
+        toolchain_id="toolchain:t",
+        policy_id="policy:p",
+    )
+    assert unsupported.items[0].status is ObligationCompileStatus.UNSUPPORTED
+    assert not_measured.items[0].status is ObligationCompileStatus.NOT_MEASURED
+    assert unsupported.items[0].status is not not_measured.items[0].status
+    assert unsupported.items[0].claim.status.value == "unsupported"
+    assert not_measured.items[0].claim.status.value == "not_measured"

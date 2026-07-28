@@ -170,7 +170,7 @@ Normative:
 
 ## CBP-030 Obligation compiler with cache-key binding
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: obligations
