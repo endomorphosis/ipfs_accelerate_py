@@ -4604,7 +4604,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-166 Add one reservation-aware supervisor provider execution gateway
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

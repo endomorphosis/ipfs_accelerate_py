@@ -352,3 +352,23 @@ def install_active_llm_signal_handlers(
 
     for signum in signals:
         signal.signal(signum, handle_active_llm_signal)
+
+
+def execute_via_provider_gateway(
+    request: Any,
+    *,
+    gateway: Any | None = None,
+) -> Any:
+    """Optional ASI-166 adapter: run a ProviderExecutionRequest through the gateway.
+
+    Keeps the existing subprocess helpers intact while allowing callers to
+    route chargeable provider work through the reservation-aware gateway.
+    """
+
+    if gateway is None:
+        from ipfs_accelerate_py.agent_supervisor.provider_execution import (
+            ProviderExecutionGateway,
+        )
+
+        gateway = ProviderExecutionGateway()
+    return gateway.execute(request)
