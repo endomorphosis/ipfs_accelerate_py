@@ -4,6 +4,10 @@ Package layout (ASREF): domain subpackages under this root own landed modules.
 The package root re-exports a reviewed public API only; prefer domain package
 imports for new code (see README.md). Retired flat module paths must not be
 reintroduced as long-lived shims.
+
+Cutover goal ASREF-G090 (task ASREF-012) publishes this intentional public
+surface and package map. Parent evidence terms are package goals ASREF-G020
+through ASREF-G080 (see AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE).
 """
 
 from types import MappingProxyType as _MappingProxyType
@@ -12,30 +16,53 @@ import importlib as _importlib
 import os as _os
 import sys as _sys
 
+# ASREF-G090 cutover identity. Objective scanners and discovery manifests may
+# bind this constant to the package-root public API without scraping markdown.
+AGENT_SUPERVISOR_CUTOVER_GOAL_ID = "ASREF-G090"
+AGENT_SUPERVISOR_CUTOVER_TASK_ID = "ASREF-012"
+AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET = (
+    "goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f"
+)
+
+# Package goals that form ASREF-G090 evidence (exact goal-id terms). Keep the
+# literal ASREF-G0xx tokens for objective evidence scans and cutover receipts.
+AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE = (
+    "ASREF-G020",  # core package submodule
+    "ASREF-G030",  # control package submodule
+    "ASREF-G040",  # task_sources package submodule
+    "ASREF-G050",  # context and prompt package submodules
+    "ASREF-G060",  # analysis and proof package submodules
+    "ASREF-G070",  # objectives planning validation merge rescue runtime packages
+    "ASREF-G080",  # todo_daemon re-packaging and integrations package
+)
+
 # Domain packages under this root (ASREF layout). Prefer package imports for
 # landed modules; do not add long-lived re-export stubs at retired flat paths.
+# Order matches the package dependency DAG (bottom-up) and README package map.
 AGENT_SUPERVISOR_DOMAIN_PACKAGES = (
-    "core",
-    "control",
-    "task_sources",
-    "context",
-    "analysis",
-    "proof",
-    "objectives",
-    "planning",
-    "prompt",
-    "validation",
-    "merge",
-    "rescue",
-    "runtime",
-    "self_improvement",
-    "integrations",
-    "todo_daemon",
+    "core",  # ASREF-G020
+    "control",  # ASREF-G030
+    "task_sources",  # ASREF-G040
+    "context",  # ASREF-G050
+    "analysis",  # ASREF-G060
+    "proof",  # ASREF-G060
+    "objectives",  # ASREF-G070
+    "planning",  # ASREF-G070
+    "prompt",  # ASREF-G050
+    "validation",  # ASREF-G070
+    "merge",  # ASREF-G070
+    "rescue",  # ASREF-G070
+    "runtime",  # ASREF-G070
+    "self_improvement",  # ASREF-G070
+    "integrations",  # ASREF-G080
+    "todo_daemon",  # ASREF-G080
 )
 
 # Dual-copied stems that already live under a domain package. Public and lazy
 # package-root exports resolve these via the package path, not the retired flat
-# module path.
+# module path. Owners: ASREF-G020 (core), ASREF-G030 (control), ASREF-G040
+# (task_sources), ASREF-G070 (objectives/planning/validation/merge/rescue/
+# runtime/self_improvement).
 AGENT_SUPERVISOR_LANDED_MODULE_OWNERS = {
     "authorization_logic": "control",
     "control_cli": "control",
@@ -1018,21 +1045,66 @@ from .goal_completion import (
     reopen_goal_for_contradictions,
     validate_completion_evidence,
 )
-# Prefer the flat completion module until self_improvement/__init__ no longer
-# re-exports the heavy flat self_improvement.py (that chain loads todo_daemon.llm
-# and optional ipfs_datasets_py). The dual-copied package file remains the
-# ownership home; callers should migrate to
-# agent_supervisor.self_improvement.self_improvement_completion once the
-# temporary package re-export is removed.
-from .self_improvement.self_improvement_completion import (
-    SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA,
-    SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS,
-    SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID,
-    SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION,
-    SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS,
-    SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS,
-    evaluate_self_improvement_root_completion,
+# Load self_improvement_completion without executing self_improvement/__init__.py.
+# That package __init__ still re-exports the heavy flat self_improvement.py, which
+# pulls todo_daemon.llm -> optional ipfs_datasets_py onto cold import (ASREF-G090
+# provider-free package import gate). Dual-copied ownership remains under
+# self_improvement/; this loader only avoids the temporary re-export side effect.
+def _load_self_improvement_completion_cold():
+    import importlib.util
+    from pathlib import Path
+
+    package_name = f"{__name__}.self_improvement"
+    canonical = f"{package_name}.self_improvement_completion"
+    # Prefer a fully imported package module when the package is already live.
+    existing = _sys.modules.get(canonical)
+    if existing is not None and getattr(existing, "__file__", None):
+        return existing
+    cold_name = f"{__name__}._self_improvement_completion_cold"
+    existing_cold = _sys.modules.get(cold_name)
+    if existing_cold is not None:
+        return existing_cold
+    path = (
+        Path(__file__).resolve().parent
+        / "self_improvement"
+        / "self_improvement_completion.py"
+    )
+    # Load under an isolated module name so we never leave a stub
+    # self_improvement package in sys.modules (that would block the real package
+    # __init__ later). Relative imports resolve via __package__ alone.
+    spec = importlib.util.spec_from_file_location(cold_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load self_improvement_completion from {path}")
+    module = importlib.util.module_from_spec(spec)
+    module.__package__ = package_name
+    _sys.modules[cold_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_self_improvement_completion = _load_self_improvement_completion_cold()
+SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA
 )
+SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS
+)
+SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID
+)
+SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION
+)
+SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS
+)
+SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
+)
+evaluate_self_improvement_root_completion = (
+    _self_improvement_completion.evaluate_self_improvement_root_completion
+)
+del _self_improvement_completion
 from .goal_coverage import (
     AcceptanceCoverage,
     CoverageEdge,
@@ -3001,8 +3073,12 @@ agent_supervisor_v2_control_surface_publication = control_service_publication
 __all__.extend(
     name
     for name in (
+        "AGENT_SUPERVISOR_CUTOVER_GOAL_ID",
+        "AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET",
+        "AGENT_SUPERVISOR_CUTOVER_TASK_ID",
         "AGENT_SUPERVISOR_DOMAIN_PACKAGES",
         "AGENT_SUPERVISOR_LANDED_MODULE_OWNERS",
+        "AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE",
         "AGENT_SUPERVISOR_V2_EXPORT_MODULES",
         "AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION",
         "AGENT_SUPERVISOR_V2_STABLE_EXPORTS",
