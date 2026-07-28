@@ -471,6 +471,54 @@ def _canonical_sha256(value: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _typed_completion_quorum_payload(
+    quorum: Mapping[str, Any],
+    *,
+    analyzer_version: str,
+    member_binding: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Preserve eligibility facts proved by ``ExhaustionQuorumResult``.
+
+    Typed quorum members exist only after ``evaluate_exhaustion_quorum`` has
+    accepted a healthy, exhaustive, terminally exhausted receipt.  The typed
+    projection predates the stricter completion gate and does not serialize
+    those derived booleans.  Reattach them only at the explicitly typed
+    boundary so raw mappings must continue to provide their own exact facts.
+    """
+
+    members_value = quorum.get("members")
+    members = (
+        members_value
+        if isinstance(members_value, (list, tuple))
+        else ()
+    )
+    projected_members: list[dict[str, Any]] = []
+    for member in members:
+        if not isinstance(member, Mapping):
+            continue
+        binding = (
+            dict(member_binding)
+            if member_binding is not None
+            else dict(member.get("binding"))
+            if isinstance(member.get("binding"), Mapping)
+            else {}
+        )
+        projected_members.append(
+            {
+                **member,
+                "binding": binding,
+                "passed": True,
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+            }
+        )
+    return {**quorum, "members": projected_members}
+
+
 def _coerce_records(
     values: Any,
     expected_type: type,
@@ -3438,11 +3486,22 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             analyzer_version = str(
                 binding_value.get("analyzer_version") or ""
             ).strip()
+        if (
+            typed_health
+            and evaluated_quorum
+            and quorum_value.get("satisfied") is True
+        ):
+            health_value = {
+                **health_value,
+                "analyzer_version": analyzer_version,
+                "exhaustive": True,
+            }
         health_complete = (
             str(health_value.get("status") or "").strip().lower()
             == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
+            and health_value.get("exhaustive") is True
             and bool(analyzer_version)
         )
         if not health_complete:
@@ -3485,6 +3544,12 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             if isinstance(members_value, (list, tuple))
             else ()
         )
+        if evaluated_quorum:
+            quorum_value = _typed_completion_quorum_payload(
+                quorum_value,
+                analyzer_version=analyzer_version,
+            )
+            members = quorum_value["members"]
         evaluated_members_complete = bool(
             evaluated_quorum
             and quorum_value.get("satisfied") is True
@@ -4410,6 +4475,7 @@ class RequiredContextPromotionReport(CanonicalContract):
             == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
+            and health_value.get("exhaustive") is True
             and bool(analyzer_version)
         )
         if not health_complete:
@@ -5490,6 +5556,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
             == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
+            and health_value.get("exhaustive") is True
             and bool(analyzer_version)
         )
         if not health_complete:
@@ -6608,6 +6675,7 @@ def evaluate_token_efficiency_completion(
             **health_value,
             "analyzer_version": analyzer_version,
             "binding": health_binding,
+            "exhaustive": quorum_value.get("satisfied") is True,
         }
     expected_binding = {
         "repository_id": repository_id,
@@ -6625,6 +6693,7 @@ def evaluate_token_efficiency_completion(
         normalized(health_value.get("status")) == "healthy"
         and health_value.get("healthy") is True
         and health_value.get("safe_for_completion_reasoning") is True
+        and health_value.get("exhaustive") is True
         and bool(analyzer_version)
         and bool(expected_binding["configuration_revision"])
         and all(
@@ -6650,22 +6719,15 @@ def evaluate_token_efficiency_completion(
             **quorum_binding,
             "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
         }
-        members = [
+        quorum_value = _typed_completion_quorum_payload(
             {
-                **member,
+                **quorum_value,
                 "binding": quorum_binding,
-                "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
-            }
-            for member in members
-            if isinstance(member, Mapping)
-        ]
-        quorum_value = {
-            **quorum_value,
-            "binding": quorum_binding,
-            "members": members,
-        }
+            },
+            analyzer_version=analyzer_version,
+            member_binding=quorum_binding,
+        )
+        members = quorum_value["members"]
 
     def independent_field(name: str) -> bool:
         values = [
@@ -6683,7 +6745,13 @@ def evaluate_token_efficiency_completion(
         isinstance(member, Mapping)
         and member.get("healthy") is True
         and member.get("safe_for_completion_reasoning") is True
-        and normalized(member.get("scan_mode")) == "exhaustive"
+        and (
+            normalized(member.get("scan_mode")) == "exhaustive"
+            or (
+                typed_quorum
+                and normalized(member.get("scan_mode")) == "audit"
+            )
+        )
         and isinstance(member.get("binding"), Mapping)
         and all(
             member["binding"].get(name) == expected
@@ -6987,10 +7055,1026 @@ PairedSupervisorEfficiencyCase = PairedEfficiencyCase
 PairedSupervisorEfficiencyReport = PairedEfficiencyReport
 
 
+# ---------------------------------------------------------------------------
+# CBP-130: closed-loop code-proof quality / coverage / token / proof-cost
+# efficiency extensions.  Digests and counters only — no prompt bodies.
+# ---------------------------------------------------------------------------
+
+CODE_PROOF_EFFICIENCY_CASE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/code-proof-efficiency-case@1"
+)
+CODE_PROOF_EFFICIENCY_REPORT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/code-proof-efficiency-report@1"
+)
+# CBPEV130MET — producer-owned requirement identity for CBP-G130.
+CODE_PROOF_EFFICIENCY_EVIDENCE_ID = (
+    "130015bf52ec4879cbp130metclosedloopqualitycoverage00001"
+)
+CODE_PROOF_EFFICIENCY_OBJECTIVE_ID = "CBP-G130"
+# ≥40% fewer input tokens per accepted criterion.
+CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS = 4_000
+# ≥60% retry token reduction.
+CODE_PROOF_MIN_RETRY_TOKEN_REDUCTION_BPS = 6_000
+CODE_PROOF_FROZEN_GOAL_REFERENCE = "goal:cbp-g130"
+CODE_PROOF_FROZEN_POLICY_DIGEST = (
+    "sha256:" + hashlib.sha256(b"code-proof-efficiency-policy-v1").hexdigest()
+)
+CODE_PROOF_FROZEN_TREE_DIGEST = (
+    "sha256:" + hashlib.sha256(b"code-proof-efficiency-tree-v1").hexdigest()
+)
+
+# CBP-130 producer routing metadata (separate from the ASI accepted-work
+# registry so existing exact-equality producers stay stable).  Metadata only —
+# not evidence by itself.
+CODE_PROOF_EFFICIENCY_EVIDENCE_PRODUCERS = {
+    CODE_PROOF_EFFICIENCY_EVIDENCE_ID: (
+        "supervisor_efficiency_metrics.build_code_proof_efficiency_report"
+    ),
+}
+
+
+@dataclass(frozen=True)
+class CodeProofEfficiencyCase:
+    """One bulk-source vs obligation-first accepted-task efficiency pair.
+
+    Extends the general paired-efficiency idea with retry-token and proof-cost
+    dimensions required by CBP-130.  Values are digests and counters only.
+    """
+
+    task_reference: str
+    claim_family: str
+    bulk_receipt_id: str
+    obligation_receipt_id: str
+    bulk_input_tokens: int
+    obligation_input_tokens: int
+    bulk_retry_tokens: int
+    obligation_retry_tokens: int
+    bulk_proof_cost_microunits: int
+    obligation_proof_cost_microunits: int
+    bulk_accepted_criteria: int
+    obligation_accepted_criteria: int
+    bulk_provider_calls: int
+    obligation_provider_calls: int
+    bulk_cache_hits: int
+    obligation_cache_hits: int
+    bulk_cache_rejects: int
+    obligation_cache_rejects: int
+    bulk_wall_time_ms: int
+    obligation_wall_time_ms: int
+    required_evidence_references: tuple[str, ...]
+    bulk_covered_evidence_references: tuple[str, ...]
+    obligation_covered_evidence_references: tuple[str, ...]
+    warm_cache_dominated: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "task_reference",
+            _text(
+                self.task_reference,
+                field_name="task_reference",
+                required=True,
+                max_bytes=MAX_REFERENCE_BYTES,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "claim_family",
+            _code(self.claim_family, field_name="claim_family"),
+        )
+        for name in ("bulk_receipt_id", "obligation_receipt_id"):
+            object.__setattr__(
+                self,
+                name,
+                _text(
+                    getattr(self, name),
+                    field_name=name,
+                    required=True,
+                    max_bytes=MAX_REFERENCE_BYTES,
+                ),
+            )
+        for name in (
+            "bulk_input_tokens",
+            "obligation_input_tokens",
+            "bulk_retry_tokens",
+            "obligation_retry_tokens",
+            "bulk_proof_cost_microunits",
+            "obligation_proof_cost_microunits",
+            "bulk_accepted_criteria",
+            "obligation_accepted_criteria",
+            "bulk_provider_calls",
+            "obligation_provider_calls",
+            "bulk_cache_hits",
+            "obligation_cache_hits",
+            "bulk_cache_rejects",
+            "obligation_cache_rejects",
+            "bulk_wall_time_ms",
+            "obligation_wall_time_ms",
+        ):
+            maximum = (
+                MAX_DURATION_MS
+                if name.endswith("_ms")
+                else MAX_TOKENS * MAX_RECEIPTS_PER_REPORT
+            )
+            object.__setattr__(
+                self,
+                name,
+                _integer(getattr(self, name), field_name=name, maximum=maximum),
+            )
+        for name in (
+            "required_evidence_references",
+            "bulk_covered_evidence_references",
+            "obligation_covered_evidence_references",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(
+                    getattr(self, name),
+                    field_name=name,
+                    maximum=MAX_EVIDENCE_REFERENCES,
+                ),
+            )
+        if not self.required_evidence_references:
+            raise ContractValidationError(
+                "code-proof efficiency cases require evidence references"
+            )
+        required = set(self.required_evidence_references)
+        if not set(self.bulk_covered_evidence_references).issubset(required):
+            raise ContractValidationError(
+                "bulk covered evidence must be a subset of required evidence"
+            )
+        if not set(self.obligation_covered_evidence_references).issubset(
+            required
+        ):
+            raise ContractValidationError(
+                "obligation covered evidence must be a subset of required evidence"
+            )
+        if self.bulk_retry_tokens > self.bulk_input_tokens:
+            raise ContractValidationError(
+                "bulk retry tokens cannot exceed bulk input tokens"
+            )
+        if self.obligation_retry_tokens > self.obligation_input_tokens:
+            raise ContractValidationError(
+                "obligation retry tokens cannot exceed obligation input tokens"
+            )
+        if not isinstance(self.warm_cache_dominated, bool):
+            raise ContractValidationError(
+                "warm_cache_dominated must be a boolean"
+            )
+
+    @property
+    def case_id(self) -> str:
+        return _canonical_sha256(self.to_dict(include_derived=False))
+
+    @property
+    def bulk_tokens_per_criterion(self) -> int:
+        if self.bulk_accepted_criteria <= 0:
+            return self.bulk_input_tokens
+        return self.bulk_input_tokens // self.bulk_accepted_criteria
+
+    @property
+    def obligation_tokens_per_criterion(self) -> int:
+        if self.obligation_accepted_criteria <= 0:
+            return self.obligation_input_tokens
+        return (
+            self.obligation_input_tokens // self.obligation_accepted_criteria
+        )
+
+    @property
+    def input_token_reduction_bps(self) -> int:
+        if not self.bulk_input_tokens:
+            return 0
+        if self.obligation_input_tokens > self.bulk_input_tokens:
+            return 0
+        return (
+            (self.bulk_input_tokens - self.obligation_input_tokens)
+            * BASIS_POINTS
+            // self.bulk_input_tokens
+        )
+
+    @property
+    def tokens_per_criterion_reduction_bps(self) -> int:
+        baseline = self.bulk_tokens_per_criterion
+        if not baseline:
+            return 0
+        candidate = self.obligation_tokens_per_criterion
+        if candidate > baseline:
+            return 0
+        return (baseline - candidate) * BASIS_POINTS // baseline
+
+    @property
+    def retry_token_reduction_bps(self) -> int:
+        if not self.bulk_retry_tokens:
+            return BASIS_POINTS if self.obligation_retry_tokens == 0 else 0
+        if self.obligation_retry_tokens > self.bulk_retry_tokens:
+            return 0
+        return (
+            (self.bulk_retry_tokens - self.obligation_retry_tokens)
+            * BASIS_POINTS
+            // self.bulk_retry_tokens
+        )
+
+    @property
+    def proof_cost_reduction_bps(self) -> int:
+        if not self.bulk_proof_cost_microunits:
+            return 0
+        if (
+            self.obligation_proof_cost_microunits
+            > self.bulk_proof_cost_microunits
+        ):
+            return 0
+        return (
+            (
+                self.bulk_proof_cost_microunits
+                - self.obligation_proof_cost_microunits
+            )
+            * BASIS_POINTS
+            // self.bulk_proof_cost_microunits
+        )
+
+    @property
+    def required_coverage_preserved(self) -> bool:
+        return set(self.bulk_covered_evidence_references).issubset(
+            self.obligation_covered_evidence_references
+        )
+
+    def to_dict(self, *, include_derived: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": CODE_PROOF_EFFICIENCY_CASE_SCHEMA,
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "task_reference": self.task_reference,
+            "claim_family": self.claim_family,
+            "bulk_receipt_id": self.bulk_receipt_id,
+            "obligation_receipt_id": self.obligation_receipt_id,
+            "bulk_input_tokens": self.bulk_input_tokens,
+            "obligation_input_tokens": self.obligation_input_tokens,
+            "bulk_retry_tokens": self.bulk_retry_tokens,
+            "obligation_retry_tokens": self.obligation_retry_tokens,
+            "bulk_proof_cost_microunits": self.bulk_proof_cost_microunits,
+            "obligation_proof_cost_microunits": (
+                self.obligation_proof_cost_microunits
+            ),
+            "bulk_accepted_criteria": self.bulk_accepted_criteria,
+            "obligation_accepted_criteria": self.obligation_accepted_criteria,
+            "bulk_provider_calls": self.bulk_provider_calls,
+            "obligation_provider_calls": self.obligation_provider_calls,
+            "bulk_cache_hits": self.bulk_cache_hits,
+            "obligation_cache_hits": self.obligation_cache_hits,
+            "bulk_cache_rejects": self.bulk_cache_rejects,
+            "obligation_cache_rejects": self.obligation_cache_rejects,
+            "bulk_wall_time_ms": self.bulk_wall_time_ms,
+            "obligation_wall_time_ms": self.obligation_wall_time_ms,
+            "required_evidence_references": self.required_evidence_references,
+            "bulk_covered_evidence_references": (
+                self.bulk_covered_evidence_references
+            ),
+            "obligation_covered_evidence_references": (
+                self.obligation_covered_evidence_references
+            ),
+            "warm_cache_dominated": self.warm_cache_dominated,
+        }
+        if include_derived:
+            payload.update(
+                {
+                    "case_id": self.case_id,
+                    "bulk_tokens_per_criterion": self.bulk_tokens_per_criterion,
+                    "obligation_tokens_per_criterion": (
+                        self.obligation_tokens_per_criterion
+                    ),
+                    "input_token_reduction_bps": self.input_token_reduction_bps,
+                    "tokens_per_criterion_reduction_bps": (
+                        self.tokens_per_criterion_reduction_bps
+                    ),
+                    "retry_token_reduction_bps": self.retry_token_reduction_bps,
+                    "proof_cost_reduction_bps": self.proof_cost_reduction_bps,
+                    "required_coverage_preserved": (
+                        self.required_coverage_preserved
+                    ),
+                }
+            )
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CodeProofEfficiencyCase":
+        if not isinstance(payload, Mapping):
+            raise ContractValidationError(
+                "code-proof efficiency case must be an object"
+            )
+        if payload.get("schema") not in (
+            None,
+            CODE_PROOF_EFFICIENCY_CASE_SCHEMA,
+        ):
+            raise ContractValidationError(
+                "unsupported code-proof efficiency case schema"
+            )
+        return cls(
+            task_reference=payload.get("task_reference", ""),
+            claim_family=payload.get("claim_family", ""),
+            bulk_receipt_id=payload.get("bulk_receipt_id", ""),
+            obligation_receipt_id=payload.get("obligation_receipt_id", ""),
+            bulk_input_tokens=payload.get("bulk_input_tokens", 0),
+            obligation_input_tokens=payload.get("obligation_input_tokens", 0),
+            bulk_retry_tokens=payload.get("bulk_retry_tokens", 0),
+            obligation_retry_tokens=payload.get("obligation_retry_tokens", 0),
+            bulk_proof_cost_microunits=payload.get(
+                "bulk_proof_cost_microunits", 0
+            ),
+            obligation_proof_cost_microunits=payload.get(
+                "obligation_proof_cost_microunits", 0
+            ),
+            bulk_accepted_criteria=payload.get("bulk_accepted_criteria", 0),
+            obligation_accepted_criteria=payload.get(
+                "obligation_accepted_criteria", 0
+            ),
+            bulk_provider_calls=payload.get("bulk_provider_calls", 0),
+            obligation_provider_calls=payload.get(
+                "obligation_provider_calls", 0
+            ),
+            bulk_cache_hits=payload.get("bulk_cache_hits", 0),
+            obligation_cache_hits=payload.get("obligation_cache_hits", 0),
+            bulk_cache_rejects=payload.get("bulk_cache_rejects", 0),
+            obligation_cache_rejects=payload.get(
+                "obligation_cache_rejects", 0
+            ),
+            bulk_wall_time_ms=payload.get("bulk_wall_time_ms", 0),
+            obligation_wall_time_ms=payload.get("obligation_wall_time_ms", 0),
+            required_evidence_references=tuple(
+                payload.get("required_evidence_references") or ()
+            ),
+            bulk_covered_evidence_references=tuple(
+                payload.get("bulk_covered_evidence_references") or ()
+            ),
+            obligation_covered_evidence_references=tuple(
+                payload.get("obligation_covered_evidence_references") or ()
+            ),
+            warm_cache_dominated=bool(
+                payload.get("warm_cache_dominated", False)
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class CodeProofEfficiencyReport:
+    """Aggregate bulk vs obligation-first efficiency gates for CBP-130.
+
+    Live-model channels never populate this report.  Fixture gates alone may
+    emit :data:`CODE_PROOF_EFFICIENCY_EVIDENCE_ID`.
+    """
+
+    cases: tuple[CodeProofEfficiencyCase, ...]
+    minimum_input_token_reduction_bps: int = (
+        CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS
+    )
+    minimum_retry_token_reduction_bps: int = (
+        CODE_PROOF_MIN_RETRY_TOKEN_REDUCTION_BPS
+    )
+    report_id: str = ""
+
+    def __post_init__(self) -> None:
+        cases: list[CodeProofEfficiencyCase] = []
+        for item in self.cases:
+            if isinstance(item, CodeProofEfficiencyCase):
+                cases.append(item)
+            elif isinstance(item, Mapping):
+                cases.append(CodeProofEfficiencyCase.from_dict(item))
+            else:
+                raise ContractValidationError(
+                    "code-proof efficiency cases must be typed records"
+                )
+        if not cases:
+            raise ContractValidationError(
+                "code-proof efficiency report requires at least one case"
+            )
+        if len(cases) > MAX_RECEIPTS_PER_REPORT:
+            raise ContractValidationError(
+                "code-proof efficiency cases exceed report bound"
+            )
+        tasks = [item.task_reference for item in cases]
+        if len(tasks) != len(set(tasks)):
+            raise ContractValidationError(
+                "code-proof efficiency cases must have unique task references"
+            )
+        object.__setattr__(
+            self,
+            "cases",
+            tuple(sorted(cases, key=lambda item: item.task_reference)),
+        )
+        object.__setattr__(
+            self,
+            "minimum_input_token_reduction_bps",
+            _integer(
+                self.minimum_input_token_reduction_bps,
+                field_name="minimum_input_token_reduction_bps",
+                maximum=BASIS_POINTS,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "minimum_retry_token_reduction_bps",
+            _integer(
+                self.minimum_retry_token_reduction_bps,
+                field_name="minimum_retry_token_reduction_bps",
+                maximum=BASIS_POINTS,
+            ),
+        )
+        material = self._identity_material()
+        digest = _canonical_sha256(material)
+        if self.report_id:
+            claimed = _digest(self.report_id, field_name="report_id")
+            if claimed != digest:
+                raise ContractValidationError(
+                    "code-proof efficiency report_id does not match contents"
+                )
+        object.__setattr__(self, "report_id", digest)
+
+    def _identity_material(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_PROOF_EFFICIENCY_REPORT_SCHEMA,
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "cases": [
+                item.to_dict(include_derived=False) for item in self.cases
+            ],
+            "minimum_input_token_reduction_bps": (
+                self.minimum_input_token_reduction_bps
+            ),
+            "minimum_retry_token_reduction_bps": (
+                self.minimum_retry_token_reduction_bps
+            ),
+        }
+
+    @property
+    def bulk_input_tokens(self) -> int:
+        return sum(item.bulk_input_tokens for item in self.cases)
+
+    @property
+    def obligation_input_tokens(self) -> int:
+        return sum(item.obligation_input_tokens for item in self.cases)
+
+    @property
+    def bulk_retry_tokens(self) -> int:
+        return sum(item.bulk_retry_tokens for item in self.cases)
+
+    @property
+    def obligation_retry_tokens(self) -> int:
+        return sum(item.obligation_retry_tokens for item in self.cases)
+
+    @property
+    def bulk_proof_cost_microunits(self) -> int:
+        return sum(item.bulk_proof_cost_microunits for item in self.cases)
+
+    @property
+    def obligation_proof_cost_microunits(self) -> int:
+        return sum(
+            item.obligation_proof_cost_microunits for item in self.cases
+        )
+
+    @property
+    def bulk_accepted_criteria(self) -> int:
+        return sum(item.bulk_accepted_criteria for item in self.cases)
+
+    @property
+    def obligation_accepted_criteria(self) -> int:
+        return sum(item.obligation_accepted_criteria for item in self.cases)
+
+    @property
+    def input_tokens_per_accepted_criterion_bulk(self) -> int:
+        if self.bulk_accepted_criteria <= 0:
+            return self.bulk_input_tokens
+        return self.bulk_input_tokens // self.bulk_accepted_criteria
+
+    @property
+    def input_tokens_per_accepted_criterion_obligation(self) -> int:
+        if self.obligation_accepted_criteria <= 0:
+            return self.obligation_input_tokens
+        return (
+            self.obligation_input_tokens // self.obligation_accepted_criteria
+        )
+
+    @property
+    def tokens_per_criterion_reduction_bps(self) -> int:
+        baseline = self.input_tokens_per_accepted_criterion_bulk
+        if not baseline:
+            return 0
+        candidate = self.input_tokens_per_accepted_criterion_obligation
+        if candidate > baseline:
+            return 0
+        return (baseline - candidate) * BASIS_POINTS // baseline
+
+    @property
+    def retry_token_reduction_bps(self) -> int:
+        if not self.bulk_retry_tokens:
+            return BASIS_POINTS if self.obligation_retry_tokens == 0 else 0
+        if self.obligation_retry_tokens > self.bulk_retry_tokens:
+            return 0
+        return (
+            (self.bulk_retry_tokens - self.obligation_retry_tokens)
+            * BASIS_POINTS
+            // self.bulk_retry_tokens
+        )
+
+    @property
+    def warm_prove_cost_reduction_bps(self) -> int:
+        warm = [item for item in self.cases if item.warm_cache_dominated]
+        if not warm:
+            return 0
+        bulk = sum(item.bulk_proof_cost_microunits for item in warm)
+        obligation = sum(
+            item.obligation_proof_cost_microunits for item in warm
+        )
+        if not bulk or obligation > bulk:
+            return 0
+        return (bulk - obligation) * BASIS_POINTS // bulk
+
+    @property
+    def required_coverage_preserved(self) -> bool:
+        return all(item.required_coverage_preserved for item in self.cases)
+
+    @property
+    def input_token_gate_passed(self) -> bool:
+        return (
+            self.tokens_per_criterion_reduction_bps
+            >= self.minimum_input_token_reduction_bps
+        )
+
+    @property
+    def retry_token_gate_passed(self) -> bool:
+        return (
+            self.retry_token_reduction_bps
+            >= self.minimum_retry_token_reduction_bps
+        )
+
+    @property
+    def warm_prove_cost_gate_passed(self) -> bool:
+        return self.warm_prove_cost_reduction_bps > 0
+
+    @property
+    def passed(self) -> bool:
+        return (
+            self.required_coverage_preserved
+            and self.input_token_gate_passed
+            and self.retry_token_gate_passed
+            and self.warm_prove_cost_gate_passed
+        )
+
+    @property
+    def evidence_claim_references(self) -> tuple[str, ...]:
+        if not self.passed:
+            return ()
+        return (CODE_PROOF_EFFICIENCY_EVIDENCE_ID,)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_PROOF_EFFICIENCY_REPORT_SCHEMA,
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "cases": [item.to_dict() for item in self.cases],
+            "minimum_input_token_reduction_bps": (
+                self.minimum_input_token_reduction_bps
+            ),
+            "minimum_retry_token_reduction_bps": (
+                self.minimum_retry_token_reduction_bps
+            ),
+            "bulk_input_tokens": self.bulk_input_tokens,
+            "obligation_input_tokens": self.obligation_input_tokens,
+            "bulk_retry_tokens": self.bulk_retry_tokens,
+            "obligation_retry_tokens": self.obligation_retry_tokens,
+            "bulk_proof_cost_microunits": self.bulk_proof_cost_microunits,
+            "obligation_proof_cost_microunits": (
+                self.obligation_proof_cost_microunits
+            ),
+            "bulk_accepted_criteria": self.bulk_accepted_criteria,
+            "obligation_accepted_criteria": self.obligation_accepted_criteria,
+            "input_tokens_per_accepted_criterion_bulk": (
+                self.input_tokens_per_accepted_criterion_bulk
+            ),
+            "input_tokens_per_accepted_criterion_obligation": (
+                self.input_tokens_per_accepted_criterion_obligation
+            ),
+            "tokens_per_criterion_reduction_bps": (
+                self.tokens_per_criterion_reduction_bps
+            ),
+            "retry_token_reduction_bps": self.retry_token_reduction_bps,
+            "warm_prove_cost_reduction_bps": (
+                self.warm_prove_cost_reduction_bps
+            ),
+            "required_coverage_preserved": self.required_coverage_preserved,
+            "input_token_gate_passed": self.input_token_gate_passed,
+            "retry_token_gate_passed": self.retry_token_gate_passed,
+            "warm_prove_cost_gate_passed": self.warm_prove_cost_gate_passed,
+            "passed": self.passed,
+            "evidence_claim_references": list(self.evidence_claim_references),
+            "report_id": self.report_id,
+            "live_model_authoritative": False,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "CodeProofEfficiencyReport":
+        if not isinstance(payload, Mapping):
+            raise ContractValidationError(
+                "code-proof efficiency report must be an object"
+            )
+        if payload.get("schema") not in (
+            None,
+            CODE_PROOF_EFFICIENCY_REPORT_SCHEMA,
+        ):
+            raise ContractValidationError(
+                "unsupported code-proof efficiency report schema"
+            )
+        return cls(
+            cases=tuple(payload.get("cases") or ()),
+            minimum_input_token_reduction_bps=payload.get(
+                "minimum_input_token_reduction_bps",
+                CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS,
+            ),
+            minimum_retry_token_reduction_bps=payload.get(
+                "minimum_retry_token_reduction_bps",
+                CODE_PROOF_MIN_RETRY_TOKEN_REDUCTION_BPS,
+            ),
+            report_id=payload.get("report_id", "") or "",
+        )
+
+
+def _code_proof_arm_receipt(
+    arm: Any,
+    *,
+    path_label: str,
+) -> EfficiencyReceipt:
+    """Project a benchmark arm observation into a typed efficiency receipt."""
+
+    task = str(getattr(arm, "task_reference", "") or "")
+    input_tokens = int(getattr(arm, "input_tokens", 0) or 0)
+    retry_tokens = int(getattr(arm, "retry_tokens", 0) or 0)
+    output_tokens = int(getattr(arm, "output_tokens", 0) or 0)
+    proof_cost = int(getattr(arm, "proof_cost_microunits", 0) or 0)
+    wall_time = int(getattr(arm, "wall_time_ms", 0) or 0)
+    cache_hits = int(getattr(arm, "cache_hits", 0) or 0)
+    cache_rejects = int(getattr(arm, "cache_rejects", 0) or 0)
+    cache_lookups = int(getattr(arm, "cache_lookups", 0) or 0)
+    warm = cache_hits > 0 and cache_hits * 2 >= max(cache_lookups, 1)
+
+    if retry_tokens > input_tokens:
+        # Lifecycle total must dominate retries for the shared receipt contract.
+        input_tokens = retry_tokens
+
+    retries: tuple[RetryObservation, ...] = ()
+    attempt = 1
+    if retry_tokens > 0:
+        retries = (
+            RetryObservation(
+                attempt=2,
+                reason_code="validation_failure",
+                diagnostic_digest=_fixture_digest(f"{task}:{path_label}:diag"),
+                delta_context_digest=_fixture_digest(
+                    f"{task}:{path_label}:delta"
+                ),
+                tokens=TokenUsage(
+                    input_tokens=retry_tokens,
+                    output_tokens=min(output_tokens, max(retry_tokens // 5, 1)),
+                    reused_tokens=min(
+                        retry_tokens // 3 if warm else 0, retry_tokens
+                    ),
+                ),
+                latency_ms=min(2_000, max(wall_time // 4, 1)),
+            ),
+        )
+        attempt = 2
+
+    cache_obs: list[CacheObservation] = []
+    for index in range(max(cache_lookups, 1)):
+        if index < cache_hits:
+            disposition = CacheDisposition.HIT
+        elif index < cache_hits + cache_rejects:
+            disposition = CacheDisposition.INVALIDATED
+        else:
+            disposition = CacheDisposition.MISS
+        cache_obs.append(
+            CacheObservation(
+                namespace="proof" if index % 2 else "analysis",
+                disposition=disposition,
+                key_digest=_fixture_digest(
+                    f"{task}:{path_label}:cache:{index}"
+                ),
+                lookup_latency_ms=5 if disposition is CacheDisposition.HIT else 20,
+                bytes_reused=1024 if disposition is CacheDisposition.HIT else 0,
+            )
+        )
+
+    reused = min(input_tokens // 2, input_tokens) if warm else 0
+    scenario = EfficiencyScenario.WARM if warm else EfficiencyScenario.OBSERVED
+    if retries and not warm:
+        scenario = EfficiencyScenario.REPAIRED
+    elif retries and warm:
+        # Warm + retries: prefer warm (requires hit + reused); keep retries.
+        scenario = EfficiencyScenario.WARM
+
+    evidence_refs = tuple(
+        sorted(
+            {
+                f"evidence:{task}:primary",
+                f"evidence:{task}:acceptance",
+            }
+        )
+    )
+    return EfficiencyReceipt(
+        task_reference=task,
+        goal_reference=CODE_PROOF_FROZEN_GOAL_REFERENCE,
+        provider_reference="provider:code-proof-fixture",
+        attempt=attempt,
+        scenario=scenario,
+        repository_tree_digest=CODE_PROOF_FROZEN_TREE_DIGEST,
+        policy_digest=CODE_PROOF_FROZEN_POLICY_DIGEST,
+        context_digest=_fixture_digest(f"{task}:{path_label}:context"),
+        input_digest=_fixture_digest(f"{task}:{path_label}:input"),
+        output_digest=_fixture_digest(f"{task}:{path_label}:output"),
+        elapsed_ms=max(wall_time, 1_000),
+        queue_delay_ms=min(500, max(wall_time // 10, 0)),
+        stages=(
+            StageTiming(StageName.CONTEXT, max(wall_time // 5, 1)),
+            StageTiming(StageName.INFERENCE, max(wall_time // 3, 1)),
+            StageTiming(StageName.VALIDATION, max(wall_time // 6, 1)),
+            StageTiming(StageName.PROOF, max(wall_time // 6, 1)),
+        ),
+        tokens=TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=max(output_tokens, 1),
+            reused_tokens=reused,
+        ),
+        cache_observations=tuple(cache_obs),
+        retries=retries,
+        inference_cost_microunits=input_tokens + output_tokens * 2,
+        validation=WorkCost(
+            status=WorkStatus.PASSED,
+            duration_ms=max(wall_time // 6, 1),
+            cost_microunits=400,
+            operation_count=1,
+            evidence_references=("receipt:validation",),
+        ),
+        proof=WorkCost(
+            status=WorkStatus.PASSED,
+            duration_ms=max(wall_time // 6, 1),
+            cost_microunits=max(proof_cost, 1),
+            operation_count=1,
+            evidence_references=("receipt:proof",),
+        ),
+        changed_scope=ChangedScope(
+            paths=(f"src/{task.split(':')[-1]}.py",),
+            symbols=(f"{task.split(':')[-1]}.run",),
+            lines_added=12,
+            lines_deleted=2,
+        ),
+        artifacts=(
+            ArtifactReference(
+                reference_id=f"artifact:{task}:{path_label}",
+                digest=_fixture_digest(f"{task}:{path_label}:artifact"),
+                kind="patch",
+                byte_count=1024,
+                media_type="text/x-diff",
+            ),
+        ),
+        evidence=EvidenceDelta(
+            baseline_references=("evidence:syntax",),
+            terminal_references=evidence_refs,
+        ),
+        terminal=TerminalAcceptance(
+            outcome=TerminalOutcome.ACCEPTED,
+            reason_codes=("accepted",),
+            acceptance_digest=_fixture_digest(f"{task}:{path_label}:accept"),
+        ),
+    )
+
+
+def build_code_proof_paired_receipts(
+    paired_cases: Sequence[Any],
+) -> tuple[list[EfficiencyReceipt], list[EfficiencyReceipt], dict[str, tuple[str, ...]]]:
+    """Build bulk (baseline) and obligation-first (candidate) receipt arms."""
+
+    baseline: list[EfficiencyReceipt] = []
+    candidate: list[EfficiencyReceipt] = []
+    required: dict[str, tuple[str, ...]] = {}
+    for case in paired_cases:
+        bulk = getattr(case, "bulk", None)
+        obligation = getattr(case, "obligation_first", None)
+        if bulk is None or obligation is None:
+            raise ContractValidationError(
+                "paired case requires bulk and obligation_first arms"
+            )
+        bulk_receipt = _code_proof_arm_receipt(bulk, path_label="bulk")
+        obl_receipt = _code_proof_arm_receipt(
+            obligation, path_label="obligation"
+        )
+        baseline.append(bulk_receipt)
+        candidate.append(obl_receipt)
+        required[bulk_receipt.task_reference] = (
+            bulk_receipt.evidence.terminal_references
+        )
+    return baseline, candidate, required
+
+
+def build_code_proof_efficiency_report(
+    paired_source: (
+        Sequence[Any]
+        | tuple[
+            Sequence[EfficiencyReceipt | Mapping[str, Any]],
+            Sequence[EfficiencyReceipt | Mapping[str, Any]],
+            Mapping[str, Sequence[str]],
+        ]
+    ),
+) -> CodeProofEfficiencyReport:
+    """Build the CBP-130 efficiency report from paired arms or receipts.
+
+    Accepts either:
+
+    * an iterable of benchmark paired cases exposing ``bulk`` /
+      ``obligation_first`` arms; or
+    * the triple returned by :func:`build_code_proof_paired_receipts`.
+    """
+
+    if (
+        isinstance(paired_source, tuple)
+        and len(paired_source) == 3
+        and not hasattr(paired_source[0], "bulk")
+    ):
+        baseline_receipts, candidate_receipts, required_map = paired_source
+        # When only receipts are supplied, synthesize efficiency cases from the
+        # general paired report plus proof-cost / retry projections.
+        paired = build_paired_efficiency_report(
+            baseline_receipts,
+            candidate_receipts,
+            required_evidence_by_task=required_map,
+            minimum_input_token_reduction_bps=(
+                CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS
+            ),
+        )
+        baseline_by_task, _ = _normalize_efficiency_arm(
+            baseline_receipts, arm_name="baseline"
+        )
+        candidate_by_task, _ = _normalize_efficiency_arm(
+            candidate_receipts, arm_name="candidate"
+        )
+        cases: list[CodeProofEfficiencyCase] = []
+        for case in paired.cases:
+            bulk_attempts = baseline_by_task[case.task_reference]
+            obl_attempts = candidate_by_task[case.task_reference]
+            bulk_terminal = next(
+                item
+                for item in bulk_attempts
+                if item.receipt_id == case.baseline_terminal_receipt_id
+            )
+            obl_terminal = next(
+                item
+                for item in obl_attempts
+                if item.receipt_id == case.candidate_terminal_receipt_id
+            )
+            bulk_retry = sum(
+                sum(r.tokens.input_tokens for r in item.retries)
+                for item in bulk_attempts
+            )
+            obl_retry = sum(
+                sum(r.tokens.input_tokens for r in item.retries)
+                for item in obl_attempts
+            )
+            bulk_hits = sum(
+                1
+                for item in bulk_attempts
+                for obs in item.cache_observations
+                if obs.disposition is CacheDisposition.HIT
+            )
+            obl_hits = sum(
+                1
+                for item in obl_attempts
+                for obs in item.cache_observations
+                if obs.disposition is CacheDisposition.HIT
+            )
+            bulk_rejects = sum(
+                1
+                for item in bulk_attempts
+                for obs in item.cache_observations
+                if obs.disposition is CacheDisposition.INVALIDATED
+            )
+            obl_rejects = sum(
+                1
+                for item in obl_attempts
+                for obs in item.cache_observations
+                if obs.disposition is CacheDisposition.INVALIDATED
+            )
+            cases.append(
+                CodeProofEfficiencyCase(
+                    task_reference=case.task_reference,
+                    claim_family="code_proof",
+                    bulk_receipt_id=case.baseline_terminal_receipt_id,
+                    obligation_receipt_id=case.candidate_terminal_receipt_id,
+                    bulk_input_tokens=case.baseline_input_tokens,
+                    obligation_input_tokens=case.candidate_input_tokens,
+                    bulk_retry_tokens=bulk_retry,
+                    obligation_retry_tokens=obl_retry,
+                    bulk_proof_cost_microunits=sum(
+                        item.proof.cost_microunits for item in bulk_attempts
+                    ),
+                    obligation_proof_cost_microunits=sum(
+                        item.proof.cost_microunits for item in obl_attempts
+                    ),
+                    bulk_accepted_criteria=max(
+                        len(case.required_evidence_references), 1
+                    ),
+                    obligation_accepted_criteria=max(
+                        len(case.required_evidence_references), 1
+                    ),
+                    bulk_provider_calls=len(bulk_attempts),
+                    obligation_provider_calls=len(obl_attempts),
+                    bulk_cache_hits=bulk_hits,
+                    obligation_cache_hits=obl_hits,
+                    bulk_cache_rejects=bulk_rejects,
+                    obligation_cache_rejects=obl_rejects,
+                    bulk_wall_time_ms=sum(
+                        item.elapsed_ms for item in bulk_attempts
+                    ),
+                    obligation_wall_time_ms=sum(
+                        item.elapsed_ms for item in obl_attempts
+                    ),
+                    required_evidence_references=(
+                        case.required_evidence_references
+                    ),
+                    bulk_covered_evidence_references=(
+                        case.baseline_covered_evidence_references
+                    ),
+                    obligation_covered_evidence_references=(
+                        case.candidate_covered_evidence_references
+                    ),
+                    warm_cache_dominated=obl_hits > bulk_hits and obl_hits > 0,
+                )
+            )
+        return CodeProofEfficiencyReport(cases=tuple(cases))
+
+    # Benchmark paired-case path: preserve claim family and explicit metrics.
+    cases = []
+    for item in paired_source:  # type: ignore[assignment]
+        bulk = item.bulk
+        obligation = item.obligation_first
+        claim_family = getattr(
+            getattr(item, "claim_family", None),
+            "value",
+            getattr(item, "claim_family", "code_proof"),
+        )
+        bulk_receipt = _code_proof_arm_receipt(bulk, path_label="bulk")
+        obl_receipt = _code_proof_arm_receipt(
+            obligation, path_label="obligation"
+        )
+        required = bulk_receipt.evidence.terminal_references
+        cases.append(
+            CodeProofEfficiencyCase(
+                task_reference=str(item.task_reference),
+                claim_family=str(claim_family),
+                bulk_receipt_id=bulk_receipt.receipt_id,
+                obligation_receipt_id=obl_receipt.receipt_id,
+                bulk_input_tokens=int(bulk.input_tokens),
+                obligation_input_tokens=int(obligation.input_tokens),
+                bulk_retry_tokens=min(
+                    int(bulk.retry_tokens), int(bulk.input_tokens)
+                ),
+                obligation_retry_tokens=min(
+                    int(obligation.retry_tokens),
+                    int(obligation.input_tokens),
+                ),
+                bulk_proof_cost_microunits=int(bulk.proof_cost_microunits),
+                obligation_proof_cost_microunits=int(
+                    obligation.proof_cost_microunits
+                ),
+                bulk_accepted_criteria=max(int(bulk.accepted_criteria), 1),
+                obligation_accepted_criteria=max(
+                    int(obligation.accepted_criteria), 1
+                ),
+                bulk_provider_calls=int(bulk.provider_calls),
+                obligation_provider_calls=int(obligation.provider_calls),
+                bulk_cache_hits=int(bulk.cache_hits),
+                obligation_cache_hits=int(obligation.cache_hits),
+                bulk_cache_rejects=int(bulk.cache_rejects),
+                obligation_cache_rejects=int(obligation.cache_rejects),
+                bulk_wall_time_ms=int(bulk.wall_time_ms),
+                obligation_wall_time_ms=int(obligation.wall_time_ms),
+                required_evidence_references=required,
+                bulk_covered_evidence_references=required,
+                obligation_covered_evidence_references=required,
+                warm_cache_dominated=bool(
+                    getattr(item, "warm_cache_dominated", False)
+                ),
+            )
+        )
+    return CodeProofEfficiencyReport(cases=tuple(cases))
+
+
 __all__ = [
     "ARTIFACT_REFERENCE_SCHEMA",
     "CACHE_OBSERVATION_SCHEMA",
     "CHANGED_SCOPE_SCHEMA",
+    "CODE_PROOF_EFFICIENCY_CASE_SCHEMA",
+    "CODE_PROOF_EFFICIENCY_EVIDENCE_ID",
+    "CODE_PROOF_EFFICIENCY_EVIDENCE_PRODUCERS",
+    "CODE_PROOF_EFFICIENCY_OBJECTIVE_ID",
+    "CODE_PROOF_EFFICIENCY_REPORT_SCHEMA",
+    "CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS",
+    "CODE_PROOF_MIN_RETRY_TOKEN_REDUCTION_BPS",
     "DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS",
     "DELTA_RETRY_CONTEXT_EVIDENCE_ID",
     "DELTA_RETRY_PROMOTION_REPORT_SCHEMA",
@@ -7038,6 +8122,8 @@ __all__ = [
     "CacheDisposition",
     "CacheObservation",
     "ChangedScope",
+    "CodeProofEfficiencyCase",
+    "CodeProofEfficiencyReport",
     "DeltaRetryProofBinding",
     "DeltaRetryPromotionReport",
     "EfficiencyAggregate",
@@ -7063,6 +8149,8 @@ __all__ = [
     "WorkStatus",
     "aggregate_efficiency_receipts",
     "aggregate_receipts",
+    "build_code_proof_efficiency_report",
+    "build_code_proof_paired_receipts",
     "build_paired_efficiency_report",
     "build_terminal_accepted_work_evidence",
     "verify_terminal_accepted_work_evidence",

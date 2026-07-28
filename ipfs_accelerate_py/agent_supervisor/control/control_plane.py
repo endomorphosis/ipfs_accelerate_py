@@ -18,6 +18,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import heapq
+import inspect
 import json
 import os
 import re
@@ -39,9 +40,31 @@ from .control_contracts import (
     CONTROL_CONTRACT_VERSION,
     DEFAULT_CONTROL_CATALOG,
     DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS,
+    MAX_USAGE_CONTROL_AUDIT,
+    MAX_USAGE_CONTROL_EXPECTED_EFFECTS,
+    MAX_USAGE_CONTROL_IDEMPOTENCY_KEY,
+    MAX_USAGE_CONTROL_PAGE_SIZE,
+    MAX_USAGE_CONTROL_REASON_CODES,
+    MAX_USAGE_CONTROL_RECEIPTS,
+    MAX_USAGE_CONTROL_STRING,
     MUTATION_OPERATIONS,
     PROPOSAL_OPERATIONS,
     READ_OPERATIONS,
+    SUPERVISOR_USAGE_ADMIN_AUTHORITY,
+    SUPERVISOR_USAGE_BUDGET_AUTHORITY,
+    SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID,
+    SUPERVISOR_USAGE_CONTROL_SCHEMA_VERSION,
+    SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION,
+    SUPERVISOR_USAGE_CORRECTION_AUTHORITY,
+    SUPERVISOR_USAGE_POLICY_AUTHORITY,
+    SUPERVISOR_USAGE_READ_AUTHORITY,
+    SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY,
+    SUPERVISOR_USAGE_REASON_CODES,
+    SUPERVISOR_USAGE_RESET_AUTHORITY,
+    USAGE_CONTROL_MUTATION_AUTHORITIES,
+    USAGE_CONTROL_MUTATION_OPERATIONS,
+    USAGE_CONTROL_READ_OPERATIONS,
+    USAGE_HEADROOM_BANDS,
     AuthorityViolationError,
     AuthorizationBindingError,
     CapabilityDegradation,
@@ -72,9 +95,15 @@ from .control_contracts import (
     OperationStatus,
     PaginationKind,
     PathEscapeError,
+    SupervisorUsageControlOperation,
     UnsupportedCapabilityError,
     canonical_control_json_bytes,
     decode_operation_request,
+    discover_usage_control_catalog,
+    usage_control_authorities,
+    usage_control_operations,
+    usage_control_reason_codes,
+    usage_headroom_band,
 )
 
 
@@ -4379,6 +4408,8 @@ class SupervisorControlService:
         decision_runtime: Any = None,
         decision_runtime_cancellation: Any = None,
         clock_ms: Callable[[], int] = _now_ms,
+        usage_control: Union["ProviderUsageControl", None] = None,
+        usage_coordinator: Any = None,
     ) -> None:
         repositories = (
             repository_allowlist
@@ -4425,6 +4456,20 @@ class SupervisorControlService:
         self._mutation_audit_receipt_count = 0
         self._last_mutation_dispatch_request_id = ""
         self._last_mutation_audit_receipt_id = ""
+        if usage_control is not None and not isinstance(
+            usage_control, ProviderUsageControl
+        ):
+            raise TypeError("usage_control must be a ProviderUsageControl")
+        self._usage_control = usage_control or ProviderUsageControl(
+            coordinator=usage_coordinator,
+            catalog_revision_provider=lambda: (
+                getattr(self._catalog, "catalog_id", None)
+                or f"catalog-revision:{CONTROL_CATALOG_VERSION}"
+            ),
+            supervisor_revision_provider=lambda: (
+                f"supervisor:{self._service_id}:{self._service_version}"
+            ),
+        )
         registered = getattr(self._backend, "registered_operations", None)
         if registered is None:
             self._registered_operations = frozenset(Operation)
@@ -5670,6 +5715,1852 @@ class SupervisorControlService:
             raise ValueError("request is not a lifecycle operation")
         return self.execute(request)
 
+    @property
+    def usage_control(self) -> "ProviderUsageControl":
+        """Bound usage-governance surface (operational evidence only)."""
+
+        return self._usage_control
+
+    def usage_discover(self) -> Mapping[str, Any]:
+        """Side-effect-free discovery of usage-governance operations."""
+
+        return self._usage_control.discover()
+
+    def usage_execute(
+        self,
+        operation: Union["SupervisorUsageControlOperation", str],
+        *,
+        authorities: Sequence[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Dispatch one usage-governance operation through the shared service."""
+
+        return self._usage_control.execute(
+            operation, authorities=authorities, **kwargs
+        )
+
+
+# ---------------------------------------------------------------------------
+# ASI-169 ProviderUsageControl — usage-governance service
+# ---------------------------------------------------------------------------
+
+
+class ProviderUsageControlError(Exception):
+    """Typed usage-governance failure with a stable reason code."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "invalid_request",
+        reason_codes: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        self.code = str(code)
+        self.reason_codes = tuple(
+            str(item)[:64]
+            for item in (reason_codes or (self.code,))
+        )[:MAX_USAGE_CONTROL_REASON_CODES]
+
+
+@dataclass(frozen=True)
+class _UsageAuditReceipt:
+    operation: str
+    target_id: str
+    actor: str | None
+    idempotency_key: str
+    expected_usage_revision: str
+    result_usage_revision: str | None
+    fence: int
+    lease_id: str
+    reason_codes: tuple[str, ...]
+    effects: tuple[str, ...]
+    created_at: str
+    audit_id: str
+    catalog_revision: str
+    policy_revision: str
+    supervisor_revision: str
+    success: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "operation": self.operation,
+            "target_id": self.target_id,
+            "actor": self.actor,
+            "idempotency_key": self.idempotency_key,
+            "expected_usage_revision": self.expected_usage_revision,
+            "result_usage_revision": self.result_usage_revision,
+            "fence": self.fence,
+            "lease_id": self.lease_id,
+            "reason_codes": list(self.reason_codes),
+            "effects": list(self.effects),
+            "created_at": self.created_at,
+            "audit_id": self.audit_id,
+            "catalog_revision": self.catalog_revision,
+            "policy_revision": self.policy_revision,
+            "supervisor_revision": self.supervisor_revision,
+            "success": self.success,
+            "completion_authoritative": False,
+        }
+
+
+@dataclass
+class _UsageIdempotencyRecord:
+    key: str
+    operation: str
+    target_id: str
+    request_digest: str
+    response: dict[str, Any]
+    created_at: str
+
+
+def _usage_now_rfc3339(now: datetime | None = None) -> str:
+    value = now or datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return (
+        value.astimezone(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _usage_require_text(
+    value: Any, field: str, *, maximum: int = MAX_USAGE_CONTROL_STRING
+) -> str:
+    if not isinstance(value, str) or not value or len(value) > maximum:
+        raise ProviderUsageControlError(
+            f"{field} must be non-empty text within {maximum} bytes",
+            code="invalid_request",
+            reason_codes=("invalid_request", field),
+        )
+    return value
+
+
+def _usage_bounded_page(limit: Any, *, default: int = 50) -> int:
+    if limit is None:
+        return default
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise ProviderUsageControlError(
+            "limit must be an integer",
+            code="unbounded_page",
+            reason_codes=("unbounded_page",),
+        )
+    if not 1 <= limit <= MAX_USAGE_CONTROL_PAGE_SIZE:
+        raise ProviderUsageControlError(
+            f"limit must be between 1 and {MAX_USAGE_CONTROL_PAGE_SIZE}",
+            code="unbounded_page",
+            reason_codes=("unbounded_page",),
+        )
+    return limit
+
+
+def _usage_authorities(granted: Sequence[str] | frozenset | None) -> frozenset[str]:
+    if granted is None:
+        return frozenset()
+    if isinstance(granted, (str, bytes)):
+        raise ProviderUsageControlError(
+            "authorities must be a sequence of strings",
+            code="invalid_request",
+            reason_codes=("invalid_request",),
+        )
+    return frozenset(str(item) for item in granted if str(item))
+
+
+def _usage_has_authority(granted: Sequence[str] | frozenset, required: str) -> bool:
+    return required in frozenset(str(item) for item in granted)
+
+
+def _usage_require_read(granted: Sequence[str] | frozenset) -> None:
+    if not _usage_has_authority(granted, SUPERVISOR_USAGE_READ_AUTHORITY):
+        raise ProviderUsageControlError(
+            f"usage read requires {SUPERVISOR_USAGE_READ_AUTHORITY}",
+            code="read_denied",
+            reason_codes=("read_denied",),
+        )
+
+
+def _usage_require_mutation_authority(
+    granted: Sequence[str] | frozenset,
+    operation: SupervisorUsageControlOperation,
+) -> None:
+    required = USAGE_CONTROL_MUTATION_AUTHORITIES[operation]
+    # Admin is a super-authority for mutations, but each mutation still
+    # accepts its distinct authority so callers cannot silently escalate.
+    if _usage_has_authority(granted, required) or _usage_has_authority(
+        granted, SUPERVISOR_USAGE_ADMIN_AUTHORITY
+    ):
+        return
+    code = {
+        SUPERVISOR_USAGE_BUDGET_AUTHORITY: "budget_authority_denied",
+        SUPERVISOR_USAGE_POLICY_AUTHORITY: "policy_authority_denied",
+        SUPERVISOR_USAGE_CORRECTION_AUTHORITY: "correction_authority_denied",
+        SUPERVISOR_USAGE_RESET_AUTHORITY: "reset_authority_denied",
+    }.get(required, "admin_denied")
+    raise ProviderUsageControlError(
+        f"usage mutation requires {required}",
+        code=code,
+        reason_codes=(code, "admin_denied"),
+    )
+
+
+def _usage_content_cid(payload: Mapping[str, Any]) -> str:
+    body = canonical_control_json_bytes(dict(payload))
+    return "sha256:" + hashlib.sha256(body).hexdigest()
+
+
+def _usage_redact(
+    payload: Any,
+    *,
+    allow_detail: bool,
+) -> Any:
+    """Redact credential/account/tenant detail unless detail authority is held."""
+
+    if isinstance(payload, Mapping):
+        out: dict[str, Any] = {}
+        for key, value in payload.items():
+            name = str(key)
+            lowered = name.casefold()
+            if lowered in {
+                "prompt",
+                "prompt_text",
+                "media",
+                "media_bytes",
+                "output",
+                "completion",
+                "model_output",
+                "raw_endpoint",
+                "endpoint_url",
+                "endpoint_uri",
+                "bearer_token",
+                "api_key",
+                "authorization",
+            }:
+                continue
+            if not allow_detail and lowered in {
+                "account_pseudonym",
+                "project_pseudonym",
+                "organization_pseudonym",
+                "credential_pseudonym",
+                "credential_id",
+                "tenant_id",
+                "tenant",
+                "endpoint_fingerprint",
+            }:
+                continue
+            out[name] = _usage_redact(value, allow_detail=allow_detail)
+        return out
+    if isinstance(payload, list):
+        return [_usage_redact(item, allow_detail=allow_detail) for item in payload]
+    if isinstance(payload, tuple):
+        return tuple(_usage_redact(item, allow_detail=allow_detail) for item in payload)
+    return payload
+
+
+class ProviderUsageControl:
+    """Bounded supervisor usage-governance control surface.
+
+    Read/query/preview paths are side-effect free: they never reserve capacity,
+    refresh catalogs, probe providers, or invoke models.  Mutations require an
+    exact target, distinct authority, expected usage/policy revision, lease,
+    fence, idempotency, expected effects, and emit an audit receipt.
+
+    Hierarchical budgets may only be lowered relative to a parent.  Callers
+    cannot raise a parent budget or mutate provider truth through model/peer
+    data.  Results are operational evidence only — never completion authority.
+    """
+
+    requirement_id = SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID
+
+    def __init__(
+        self,
+        coordinator: Any = None,
+        *,
+        catalog_revision_provider: Callable[[], str] | None = None,
+        supervisor_revision_provider: Callable[[], str] | None = None,
+        policy_revision_provider: Callable[[], str] | None = None,
+        observability: Any = None,
+        metrics_recorder: Any = None,
+        max_receipts: int = MAX_USAGE_CONTROL_RECEIPTS,
+        max_audit: int = MAX_USAGE_CONTROL_AUDIT,
+        default_authorities: Sequence[str] | None = None,
+        adapter_capabilities_provider: Callable[[], Sequence[Mapping[str, Any]]]
+        | None = None,
+    ) -> None:
+        if (
+            isinstance(max_receipts, bool)
+            or not isinstance(max_receipts, int)
+            or not 1 <= max_receipts <= MAX_USAGE_CONTROL_RECEIPTS
+        ):
+            raise ValueError("max_receipts is invalid")
+        if (
+            isinstance(max_audit, bool)
+            or not isinstance(max_audit, int)
+            or not 1 <= max_audit <= MAX_USAGE_CONTROL_AUDIT
+        ):
+            raise ValueError("max_audit is invalid")
+        self._coordinator = coordinator
+        self._catalog_revision_provider = catalog_revision_provider
+        self._supervisor_revision_provider = supervisor_revision_provider
+        self._policy_revision_provider = policy_revision_provider
+        self._observability = observability
+        self._metrics_recorder = metrics_recorder
+        self._max_receipts = max_receipts
+        self._max_audit = max_audit
+        self._default_authorities = _usage_authorities(default_authorities)
+        self._adapter_capabilities_provider = adapter_capabilities_provider
+        self._lock = threading.RLock()
+        self._receipts: list[dict[str, Any]] = []
+        self._audits: list[_UsageAuditReceipt] = []
+        self._idempotency: dict[str, _UsageIdempotencyRecord] = {}
+        self._budgets: dict[str, dict[str, Any]] = {}
+        self._budget_parents: dict[str, str] = {}
+        self._policies: dict[str, dict[str, Any]] = {}
+        self._blocked_work: list[dict[str, Any]] = []
+        self._usage_revision = 0
+        self._policy_revision = 0
+        self._fence = 1
+
+    # -- revision binding -------------------------------------------------
+
+    def catalog_revision(self) -> str:
+        if self._catalog_revision_provider is None:
+            return f"catalog-revision:{CONTROL_CATALOG_VERSION}"
+        value = self._catalog_revision_provider()
+        if not isinstance(value, str) or not value:
+            return f"catalog-revision:{CONTROL_CATALOG_VERSION}"
+        return value
+
+    def supervisor_revision(self) -> str:
+        if self._supervisor_revision_provider is None:
+            return f"supervisor-revision:{self._usage_revision}"
+        value = self._supervisor_revision_provider()
+        if not isinstance(value, str) or not value:
+            return f"supervisor-revision:{self._usage_revision}"
+        return value
+
+    def policy_revision(self) -> str:
+        if self._policy_revision_provider is not None:
+            value = self._policy_revision_provider()
+            if isinstance(value, str) and value:
+                return value
+        return f"policy-revision:{self._policy_revision}"
+
+    def usage_revision(self) -> str:
+        return f"usage-revision:{self._usage_revision}"
+
+    def discover(self) -> Mapping[str, Any]:
+        """Lazy, side-effect-free discovery of usage-governance operations."""
+
+        catalog = dict(discover_usage_control_catalog())
+        catalog["catalog_revision"] = self.catalog_revision()
+        catalog["usage_revision"] = self.usage_revision()
+        catalog["policy_revision"] = self.policy_revision()
+        catalog["supervisor_revision"] = self.supervisor_revision()
+        return catalog
+
+    def _bind_revisions(
+        self,
+        *,
+        usage_revision: str | None = None,
+        extra: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": SUPERVISOR_USAGE_CONTROL_SCHEMA_VERSION,
+            "tool_schema_version": SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION,
+            "requirement_id": self.requirement_id,
+            "catalog_revision": self.catalog_revision(),
+            "usage_revision": usage_revision or self.usage_revision(),
+            "policy_revision": self.policy_revision(),
+            "supervisor_revision": self.supervisor_revision(),
+            "completion_authoritative": False,
+            "operational_evidence_only": True,
+        }
+        if extra:
+            payload.update(dict(extra))
+        return payload
+
+    def _success(
+        self,
+        *,
+        authorities: Sequence[str] | frozenset,
+        usage_revision: str | None = None,
+        **payload: Any,
+    ) -> dict[str, Any]:
+        allow_detail = _usage_has_authority(
+            authorities, SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY
+        )
+        envelope = self._bind_revisions(
+            usage_revision=usage_revision,
+            extra={"status": "success", "success": True, **payload},
+        )
+        return _usage_redact(envelope, allow_detail=allow_detail)
+
+    def _error(
+        self,
+        exc: BaseException,
+        *,
+        authorities: Sequence[str] | frozenset = (),
+        usage_revision: str | None = None,
+    ) -> dict[str, Any]:
+        if isinstance(exc, ProviderUsageControlError):
+            code = exc.code
+            message = str(exc)
+            reasons = list(exc.reason_codes)
+        else:
+            code = "invalid_request"
+            message = "usage control request failed"
+            reasons = ["invalid_request"]
+        allow_detail = _usage_has_authority(
+            authorities, SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY
+        )
+        envelope = self._bind_revisions(
+            usage_revision=usage_revision,
+            extra={
+                "status": "error",
+                "success": False,
+                "error": {"code": code, "detail": message},
+                "error_code": code,
+                "error_type": code,
+                "reason_codes": reasons[:MAX_USAGE_CONTROL_REASON_CODES],
+            },
+        )
+        return _usage_redact(envelope, allow_detail=allow_detail)
+
+    def _resolve_authorities(
+        self, authorities: Sequence[str] | None
+    ) -> frozenset[str]:
+        if authorities is None:
+            return self._default_authorities
+        return _usage_authorities(authorities)
+
+    def _bump_usage_revision(self) -> str:
+        with self._lock:
+            self._usage_revision += 1
+            return self.usage_revision()
+
+    def _bump_policy_revision(self) -> str:
+        with self._lock:
+            self._policy_revision += 1
+            return self.policy_revision()
+
+    def _store_meta(self) -> dict[str, Any]:
+        meta: dict[str, Any] = {
+            "fence": self._fence,
+            "budget_count": len(self._budgets),
+            "policy_count": len(self._policies),
+            "blocked_count": len(self._blocked_work),
+            "receipt_count": len(self._receipts),
+        }
+        if self._coordinator is not None:
+            store = getattr(self._coordinator, "store", None)
+            if store is not None and callable(getattr(store, "read", None)):
+                try:
+                    doc = store.read()
+                    if isinstance(doc, Mapping):
+                        meta["store_revision"] = int(doc.get("revision") or 0)
+                        meta["store_fence"] = int(doc.get("fence") or 0)
+                        meta["event_count"] = len(doc.get("events") or [])
+                        meta["reservation_count"] = len(
+                            doc.get("reservations") or {}
+                        )
+                except Exception:
+                    meta["store_unhealthy"] = True
+        return meta
+
+    def _page_items(
+        self,
+        items: Sequence[Any],
+        *,
+        limit: int,
+        cursor: str | None,
+        cursor_key: Callable[[Any], str],
+    ) -> tuple[list[Any], str | None]:
+        ordered = list(items)
+        start = 0
+        if cursor is not None:
+            if not isinstance(cursor, str) or not cursor:
+                raise ProviderUsageControlError(
+                    "cursor must be non-empty text",
+                    code="invalid_cursor",
+                    reason_codes=("invalid_cursor",),
+                )
+            for idx, item in enumerate(ordered):
+                if cursor_key(item) == cursor:
+                    start = idx + 1
+                    break
+            else:
+                raise ProviderUsageControlError(
+                    "cursor does not match this result set",
+                    code="invalid_cursor",
+                    reason_codes=("invalid_cursor", "cursor_revision_mismatch"),
+                )
+        page = ordered[start : start + limit]
+        next_cursor = None
+        if start + limit < len(ordered) and page:
+            next_cursor = cursor_key(page[-1])
+        return page, next_cursor
+
+    def _list_scope_ids(self) -> list[str]:
+        scopes: set[str] = set(self._budgets)
+        scopes.update(self._policies)
+        if self._coordinator is not None and callable(
+            getattr(self._coordinator, "snapshot", None)
+        ):
+            store = getattr(self._coordinator, "store", None)
+            if store is not None and callable(getattr(store, "read", None)):
+                try:
+                    doc = store.read()
+                    if isinstance(doc, Mapping):
+                        for key in (
+                            "limits",
+                            "caller_budgets",
+                            "cooldown_until",
+                            "disabled_scopes",
+                        ):
+                            section = doc.get(key) or {}
+                            if isinstance(section, Mapping):
+                                scopes.update(str(item) for item in section.keys())
+                        for record in (doc.get("reservations") or {}).values():
+                            if isinstance(record, Mapping) and record.get("scope_id"):
+                                scopes.add(str(record["scope_id"]))
+                except Exception:
+                    pass
+        return sorted(scopes)[:MAX_USAGE_CONTROL_PAGE_SIZE]
+
+    def _coordinator_snapshot(self, scope_id: str) -> Mapping[str, Any] | None:
+        if self._coordinator is None or not callable(
+            getattr(self._coordinator, "snapshot", None)
+        ):
+            return None
+        snap = self._coordinator.snapshot(scope_id)
+        if hasattr(snap, "to_dict"):
+            return snap.to_dict()
+        if isinstance(snap, Mapping):
+            return dict(snap)
+        return None
+
+    def record_receipt(self, receipt: Mapping[str, Any]) -> None:
+        """Append a redacted operational receipt (never completion evidence)."""
+
+        safe = _usage_redact(dict(receipt), allow_detail=True)
+        safe["completion_authoritative"] = False
+        with self._lock:
+            self._receipts.append(safe)
+            if len(self._receipts) > self._max_receipts:
+                self._receipts = self._receipts[-self._max_receipts :]
+
+    def record_blocked_work(self, item: Mapping[str, Any]) -> None:
+        """Register blocked work awaiting capacity / next-eligible wake."""
+
+        row = {
+            "work_id": str(item.get("work_id") or item.get("task_id") or ""),
+            "scope_id": str(item.get("scope_id") or ""),
+            "stage": str(item.get("stage") or "other"),
+            "reason": str(item.get("reason") or "capacity_unavailable"),
+            "next_eligible_at": item.get("next_eligible_at"),
+            "provider": str(item.get("provider") or "other"),
+            "deployment": str(item.get("deployment") or "other"),
+        }
+        if not row["work_id"]:
+            raise ValueError("work_id is required")
+        with self._lock:
+            self._blocked_work = [
+                existing
+                for existing in self._blocked_work
+                if existing.get("work_id") != row["work_id"]
+            ]
+            self._blocked_work.append(row)
+            if len(self._blocked_work) > self._max_receipts:
+                self._blocked_work = self._blocked_work[-self._max_receipts :]
+
+    def _record_metric(self, method: str, **kwargs: Any) -> None:
+        recorder = self._metrics_recorder or self._observability
+        if recorder is None:
+            return
+        hook = getattr(recorder, method, None)
+        if callable(hook):
+            try:
+                hook(**kwargs)
+            except Exception:
+                pass
+
+    def _mutation_preflight(
+        self,
+        *,
+        operation: SupervisorUsageControlOperation,
+        authorities: frozenset[str],
+        target_id: str,
+        expected_usage_revision: str | None,
+        expected_policy_revision: str | None,
+        idempotency_key: str | None,
+        lease_id: str | None,
+        fence: int | None,
+        expected_effects: Sequence[str] | None,
+        request_body: Mapping[str, Any],
+        source: str | None = None,
+    ) -> dict[str, Any] | None:
+        _usage_require_mutation_authority(authorities, operation)
+        _usage_require_text(target_id, "target_id")
+        if source in {"model_output", "model", "completion"}:
+            raise ProviderUsageControlError(
+                "model output cannot mutate usage state",
+                code="mutation_denied_model_output",
+                reason_codes=("mutation_denied_model_output",),
+            )
+        if source in {"remote_peer", "federated", "peer", "federation"}:
+            raise ProviderUsageControlError(
+                "remote peer data cannot mutate usage state",
+                code="mutation_denied_remote_peer",
+                reason_codes=("mutation_denied_remote_peer",),
+            )
+        if expected_usage_revision is None:
+            raise ProviderUsageControlError(
+                "expected_usage_revision is required for mutations",
+                code="revision_mismatch",
+                reason_codes=("revision_mismatch",),
+            )
+        _usage_require_text(expected_usage_revision, "expected_usage_revision")
+        if not idempotency_key:
+            raise ProviderUsageControlError(
+                "idempotency_key is required for mutations",
+                code="invalid_request",
+                reason_codes=("invalid_request",),
+            )
+        key = _usage_require_text(
+            idempotency_key,
+            "idempotency_key",
+            maximum=MAX_USAGE_CONTROL_IDEMPOTENCY_KEY,
+        )
+        if not lease_id:
+            raise ProviderUsageControlError(
+                "lease_id is required for mutations",
+                code="lease_required",
+                reason_codes=("lease_required",),
+            )
+        _usage_require_text(lease_id, "lease_id")
+        if fence is None:
+            raise ProviderUsageControlError(
+                "fence is required for mutations",
+                code="fence_required",
+                reason_codes=("fence_required",),
+            )
+        if isinstance(fence, bool) or not isinstance(fence, int) or fence < 0:
+            raise ProviderUsageControlError(
+                "fence must be a non-negative integer",
+                code="fence_required",
+                reason_codes=("fence_required",),
+            )
+        if int(fence) < int(self._fence):
+            raise ProviderUsageControlError(
+                "caller fence is stale",
+                code="stale_fence",
+                reason_codes=("stale_fence",),
+            )
+        effects = tuple(str(item)[:64] for item in (expected_effects or ()))
+        if not effects:
+            raise ProviderUsageControlError(
+                "expected_effects are required for mutations",
+                code="invalid_request",
+                reason_codes=("invalid_request",),
+            )
+        if len(effects) > MAX_USAGE_CONTROL_EXPECTED_EFFECTS:
+            raise ProviderUsageControlError(
+                "expected_effects exceeds bound",
+                code="expected_effects_exceeded",
+                reason_codes=("expected_effects_exceeded",),
+            )
+        # Reject secret-shaped payloads in mutation bodies.
+        body_text = json.dumps(dict(request_body), sort_keys=True, default=str)
+        for token in (
+            "prompt",
+            "api_key",
+            "bearer",
+            "authorization:",
+            "sk-",
+        ):
+            if token in body_text.casefold():
+                raise ProviderUsageControlError(
+                    "mutation body must not contain prompt/media/credential material",
+                    code="invalid_request",
+                    reason_codes=("invalid_request", "side_effect_forbidden"),
+                )
+        digest = _usage_content_cid(
+            {
+                "operation": operation.value,
+                "target_id": target_id,
+                "expected_usage_revision": expected_usage_revision,
+                "body": dict(request_body),
+            }
+        )
+        # Idempotent replay is checked before revision pinning so a successful
+        # mutation can be safely re-submitted without a fresh revision token.
+        with self._lock:
+            existing = self._idempotency.get(key)
+            if existing is not None:
+                if (
+                    existing.operation != operation.value
+                    or existing.target_id != target_id
+                    or existing.request_digest != digest
+                ):
+                    raise ProviderUsageControlError(
+                        "idempotency key reused with different request",
+                        code="idempotency_conflict",
+                        reason_codes=("idempotency_conflict",),
+                    )
+                replay = dict(existing.response)
+                reasons = list(replay.get("reason_codes") or [])
+                if "idempotency_replay" not in reasons:
+                    reasons.append("idempotency_replay")
+                replay["reason_codes"] = reasons[:MAX_USAGE_CONTROL_REASON_CODES]
+                return replay
+        if expected_usage_revision != self.usage_revision():
+            raise ProviderUsageControlError(
+                "expected_usage_revision does not match current revision",
+                code="stale_snapshot",
+                reason_codes=("stale_snapshot", "revision_mismatch"),
+            )
+        if expected_policy_revision is not None:
+            _usage_require_text(expected_policy_revision, "expected_policy_revision")
+            if expected_policy_revision != self.policy_revision():
+                raise ProviderUsageControlError(
+                    "expected_policy_revision does not match current revision",
+                    code="revision_mismatch",
+                    reason_codes=("revision_mismatch",),
+                )
+        return None
+
+    def _finish_mutation(
+        self,
+        *,
+        operation: SupervisorUsageControlOperation,
+        authorities: frozenset[str],
+        target_id: str,
+        expected_usage_revision: str,
+        idempotency_key: str,
+        lease_id: str,
+        fence: int,
+        effects: Sequence[str],
+        actor: str | None,
+        response_body: Mapping[str, Any],
+        result_usage_revision: str | None,
+        request_body: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        audit = _UsageAuditReceipt(
+            operation=operation.value,
+            target_id=target_id,
+            actor=actor,
+            idempotency_key=idempotency_key,
+            expected_usage_revision=expected_usage_revision,
+            result_usage_revision=result_usage_revision,
+            fence=fence,
+            lease_id=lease_id,
+            reason_codes=("ok", operation.value),
+            effects=tuple(str(item)[:64] for item in effects)[
+                :MAX_USAGE_CONTROL_EXPECTED_EFFECTS
+            ],
+            created_at=_usage_now_rfc3339(),
+            audit_id=_usage_content_cid(
+                {
+                    "operation": operation.value,
+                    "target_id": target_id,
+                    "idempotency_key": idempotency_key,
+                    "result": result_usage_revision or "",
+                }
+            ),
+            catalog_revision=self.catalog_revision(),
+            policy_revision=self.policy_revision(),
+            supervisor_revision=self.supervisor_revision(),
+            success=True,
+        )
+        with self._lock:
+            self._audits.append(audit)
+            if len(self._audits) > self._max_audit:
+                self._audits = self._audits[-self._max_audit :]
+        response = self._success(
+            authorities=authorities,
+            usage_revision=result_usage_revision,
+            operation=operation.value,
+            target_id=target_id,
+            audit=audit.to_dict(),
+            store=self._store_meta(),
+            **dict(response_body),
+        )
+        digest = _usage_content_cid(
+            {
+                "operation": operation.value,
+                "target_id": target_id,
+                "expected_usage_revision": expected_usage_revision,
+                "body": dict(request_body),
+            }
+        )
+        with self._lock:
+            self._idempotency[idempotency_key] = _UsageIdempotencyRecord(
+                key=idempotency_key,
+                operation=operation.value,
+                target_id=target_id,
+                request_digest=digest,
+                response=dict(response),
+                created_at=_usage_now_rfc3339(),
+            )
+        self._record_metric(
+            "record_control_mutation",
+            operation=operation.value,
+            outcome="success",
+        )
+        return response
+
+    def execute(
+        self,
+        operation: SupervisorUsageControlOperation | str,
+        *,
+        authorities: Sequence[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Dispatch one usage-control operation by name."""
+
+        selected = (
+            operation
+            if isinstance(operation, SupervisorUsageControlOperation)
+            else SupervisorUsageControlOperation(str(operation))
+        )
+        method = {
+            SupervisorUsageControlOperation.STATUS: self.status,
+            SupervisorUsageControlOperation.HEALTH: self.health,
+            SupervisorUsageControlOperation.BUDGETS: self.budgets,
+            SupervisorUsageControlOperation.HEADROOM: self.headroom,
+            SupervisorUsageControlOperation.RESERVATIONS: self.reservations,
+            SupervisorUsageControlOperation.RECEIPTS: self.receipts,
+            SupervisorUsageControlOperation.ROUTE_PREVIEW: self.route_preview,
+            SupervisorUsageControlOperation.BLOCKED_WORK: self.blocked_work,
+            SupervisorUsageControlOperation.NEXT_ELIGIBLE: self.next_eligible,
+            SupervisorUsageControlOperation.ADAPTER_CAPABILITIES: (
+                self.adapter_capabilities
+            ),
+            SupervisorUsageControlOperation.SET_BUDGET: self.set_budget,
+            SupervisorUsageControlOperation.SET_POLICY: self.set_policy,
+            SupervisorUsageControlOperation.CORRECT: self.correct,
+            SupervisorUsageControlOperation.RESET: self.reset,
+        }[selected]
+        # Drop transport-padding keys that a specific method does not accept.
+        signature = inspect.signature(method)
+        accepts_var_kw = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+        if accepts_var_kw:
+            filtered = dict(kwargs)
+        else:
+            allowed = {
+                name
+                for name, parameter in signature.parameters.items()
+                if parameter.kind
+                in {
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                }
+            }
+            filtered = {
+                key: value for key, value in kwargs.items() if key in allowed
+            }
+        return method(authorities=authorities, **filtered)
+
+    # -- read / query / preview -------------------------------------------
+
+    def status(
+        self,
+        *,
+        target_id: str | None = None,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+        state: str | None = None,
+    ) -> dict[str, Any]:
+        """Aggregate usage status. Never reserves, probes, refreshes, or invokes."""
+
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            page_limit = _usage_bounded_page(limit)
+            if target_id:
+                scopes = [_usage_require_text(target_id, "target_id")]
+            else:
+                scopes = self._list_scope_ids()
+            rows: list[dict[str, Any]] = []
+            for sid in scopes:
+                snap = self._coordinator_snapshot(sid)
+                budget = self._budgets.get(sid)
+                bands: dict[str, str] = {}
+                next_eligible = None
+                snap_state = "unknown"
+                active_reservations = 0
+                if isinstance(snap, Mapping):
+                    snap_state = str(snap.get("state") or "unknown")
+                    next_eligible = snap.get("next_eligible_at")
+                    for item in snap.get("headroom") or ():
+                        if not isinstance(item, Mapping):
+                            continue
+                        dim = str(item.get("dimension") or "other")
+                        bands[dim] = usage_headroom_band(
+                            item.get("available") or item.get("remaining"),
+                            item.get("ceiling"),
+                            state=str(item.get("state") or ""),
+                        )
+                    active_reservations = len(snap.get("reservations") or ())
+                if state and snap_state != str(state):
+                    continue
+                rows.append(
+                    {
+                        "target_id": sid,
+                        "scope_id": sid,
+                        "usage_revision": (
+                            snap.get("usage_revision")
+                            if isinstance(snap, Mapping)
+                            else self.usage_revision()
+                        ),
+                        "state": snap_state,
+                        "next_eligible_at": next_eligible,
+                        "headroom_bands": bands,
+                        "active_reservations": active_reservations,
+                        "has_budget": budget is not None,
+                        "parent_target_id": self._budget_parents.get(sid),
+                        # Aggregate only: credential/account/tenant omitted
+                        # unless read_detail is granted (redaction layer).
+                        "credential_pseudonym": (
+                            snap.get("credential_pseudonym")
+                            if isinstance(snap, Mapping)
+                            else None
+                        ),
+                        "account_pseudonym": (
+                            snap.get("account_pseudonym")
+                            if isinstance(snap, Mapping)
+                            else None
+                        ),
+                        "tenant_id": (
+                            snap.get("tenant_id")
+                            if isinstance(snap, Mapping)
+                            else None
+                        ),
+                    }
+                )
+            page, next_cursor = self._page_items(
+                rows,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(item["target_id"]),
+            )
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.STATUS.value,
+                items=page,
+                count=len(page),
+                total=len(rows),
+                next_cursor=next_cursor,
+                store=self._store_meta(),
+                reserved=False,
+                invoked=False,
+                probed=False,
+                refreshed=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def health(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            meta = self._store_meta()
+            healthy = not bool(meta.get("store_unhealthy"))
+            reasons = ["ok"] if healthy else ["store_unhealthy"]
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.HEALTH.value,
+                healthy=healthy,
+                scope_count=len(self._list_scope_ids()),
+                store=meta,
+                reason_codes=reasons,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def budgets(
+        self,
+        *,
+        target_id: str | None = None,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            page_limit = _usage_bounded_page(limit)
+            if target_id:
+                keys = [_usage_require_text(target_id, "target_id")]
+            else:
+                keys = sorted(self._budgets)
+            rows = []
+            for key in keys:
+                budget = self._budgets.get(key)
+                if budget is None:
+                    continue
+                rows.append(
+                    {
+                        "target_id": key,
+                        "parent_target_id": self._budget_parents.get(key),
+                        "budget": dict(budget),
+                        "usage_revision": self.usage_revision(),
+                    }
+                )
+            page, next_cursor = self._page_items(
+                rows,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(item["target_id"]),
+            )
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.BUDGETS.value,
+                items=page,
+                count=len(page),
+                total=len(rows),
+                next_cursor=next_cursor,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def headroom(
+        self,
+        target_id: str,
+        *,
+        authorities: Sequence[str] | None = None,
+        dimension: str | None = None,
+        expected_usage_revision: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            sid = _usage_require_text(target_id, "target_id")
+            if (
+                expected_usage_revision is not None
+                and expected_usage_revision != self.usage_revision()
+            ):
+                raise ProviderUsageControlError(
+                    "usage revision mismatch",
+                    code="revision_mismatch",
+                    reason_codes=("revision_mismatch", "stale_snapshot"),
+                )
+            snap = self._coordinator_snapshot(sid) or {}
+            items = []
+            for item in snap.get("headroom") or ():
+                if not isinstance(item, Mapping):
+                    continue
+                dim = str(item.get("dimension") or "other")
+                if dimension and dim != dimension:
+                    continue
+                row = dict(item)
+                row["band"] = usage_headroom_band(
+                    item.get("available") or item.get("remaining"),
+                    item.get("ceiling"),
+                    state=str(item.get("state") or ""),
+                )
+                items.append(row)
+            # Hierarchical budget headroom when no endpoint snapshot.
+            budget = self._budgets.get(sid)
+            if budget and not items:
+                for limit in budget.get("limits") or ():
+                    if not isinstance(limit, Mapping):
+                        continue
+                    dim = str(limit.get("dimension") or "other")
+                    if dimension and dim != dimension:
+                        continue
+                    ceiling = int(limit.get("ceiling") or 0)
+                    used = int(limit.get("used") or 0)
+                    available = max(0, ceiling - used)
+                    items.append(
+                        {
+                            "dimension": dim,
+                            "ceiling": {"kind": "finite", "value": ceiling},
+                            "available": {"kind": "finite", "value": available},
+                            "used": {"kind": "finite", "value": used},
+                            "band": usage_headroom_band(
+                                {"kind": "finite", "value": available},
+                                {"kind": "finite", "value": ceiling},
+                            ),
+                            "state": "ready" if available > 0 else "exhausted",
+                        }
+                    )
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.HEADROOM.value,
+                target_id=sid,
+                items=items,
+                count=len(items),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def reservations(
+        self,
+        target_id: str,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+        expected_usage_revision: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            page_limit = _usage_bounded_page(limit)
+            sid = _usage_require_text(target_id, "target_id")
+            if (
+                expected_usage_revision is not None
+                and expected_usage_revision != self.usage_revision()
+            ):
+                raise ProviderUsageControlError(
+                    "usage revision mismatch",
+                    code="revision_mismatch",
+                    reason_codes=("revision_mismatch", "stale_snapshot"),
+                )
+            snap = self._coordinator_snapshot(sid) or {}
+            items = list(snap.get("reservations") or ())
+            items = [
+                item.to_dict() if hasattr(item, "to_dict") else dict(item)
+                for item in items
+                if isinstance(item, Mapping) or hasattr(item, "to_dict")
+            ]
+            items.sort(
+                key=lambda item: str(
+                    item.get("reservation_id") or item.get("id") or ""
+                )
+            )
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(
+                    item.get("reservation_id") or item.get("id") or ""
+                ),
+            )
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.RESERVATIONS.value,
+                target_id=sid,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def receipts(
+        self,
+        *,
+        target_id: str | None = None,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            page_limit = _usage_bounded_page(limit)
+            with self._lock:
+                items = list(self._receipts)
+            if target_id:
+                sid = _usage_require_text(target_id, "target_id")
+                items = [
+                    item
+                    for item in items
+                    if item.get("scope_id") == sid or item.get("target_id") == sid
+                ]
+            items = list(reversed(items))
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(
+                    item.get("receipt_id")
+                    or item.get("attempt_id")
+                    or item.get("audit_id")
+                    or ""
+                ),
+            )
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.RECEIPTS.value,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def route_preview(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        candidates: Sequence[Mapping[str, Any]] | None = None,
+        target_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Preview eligible routes without reserving, probing, or invoking."""
+
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            page_limit = _usage_bounded_page(limit)
+            rows: list[dict[str, Any]] = []
+            for index, candidate in enumerate(candidates or ()):
+                if not isinstance(candidate, Mapping):
+                    raise ProviderUsageControlError(
+                        "candidates must be objects",
+                        code="invalid_request",
+                        reason_codes=("invalid_request",),
+                    )
+                sid = str(
+                    candidate.get("scope_id")
+                    or candidate.get("target_id")
+                    or target_id
+                    or ""
+                )
+                headroom = self.headroom(sid, authorities=list(granted)) if sid else {}
+                bands = {
+                    str(item.get("dimension")): item.get("band")
+                    for item in (headroom.get("items") or ())
+                    if isinstance(item, Mapping)
+                }
+                eligible = not any(
+                    band in {"exhausted", "critical"} for band in bands.values()
+                )
+                rows.append(
+                    {
+                        "binding_id": str(
+                            candidate.get("binding_id") or f"binding:{index}"
+                        ),
+                        "provider": str(candidate.get("provider_id") or "other"),
+                        "deployment": str(candidate.get("deployment_id") or "other"),
+                        "target_id": sid,
+                        "eligible": eligible,
+                        "headroom_bands": bands,
+                        "reasons": (
+                            ["ok"] if eligible else ["limit_exhausted"]
+                        ),
+                    }
+                )
+            page = rows[:page_limit]
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.ROUTE_PREVIEW.value,
+                items=page,
+                count=len(page),
+                total=len(rows),
+                reserved=False,
+                invoked=False,
+                probed=False,
+                refreshed=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def blocked_work(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+        target_id: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            page_limit = _usage_bounded_page(limit)
+            with self._lock:
+                items = list(self._blocked_work)
+            if target_id:
+                sid = _usage_require_text(target_id, "target_id")
+                items = [item for item in items if item.get("scope_id") == sid]
+            items.sort(key=lambda item: str(item.get("work_id") or ""))
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(item.get("work_id") or ""),
+            )
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.BLOCKED_WORK.value,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def next_eligible(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        target_id: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            with self._lock:
+                items = list(self._blocked_work)
+            if target_id:
+                sid = _usage_require_text(target_id, "target_id")
+                items = [item for item in items if item.get("scope_id") == sid]
+            soonest = None
+            for item in items:
+                candidate = item.get("next_eligible_at")
+                if candidate is None:
+                    continue
+                if soonest is None or str(candidate) < str(soonest):
+                    soonest = candidate
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.NEXT_ELIGIBLE.value,
+                next_eligible_at=soonest,
+                blocked_count=len(items),
+                items=[
+                    {
+                        "work_id": item.get("work_id"),
+                        "next_eligible_at": item.get("next_eligible_at"),
+                        "reason": item.get("reason"),
+                    }
+                    for item in items[:MAX_USAGE_CONTROL_PAGE_SIZE]
+                ],
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def adapter_capabilities(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+        adapter_id: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _usage_require_read(granted)
+            page_limit = _usage_bounded_page(limit)
+            if self._adapter_capabilities_provider is not None:
+                rows = [dict(item) for item in self._adapter_capabilities_provider()]
+            else:
+                rows = [
+                    {
+                        "adapter_id": "supervisor.endpoint_usage",
+                        "family": "endpoint_usage",
+                        "capabilities": {
+                            "reserve": True,
+                            "settle": True,
+                            "correct": True,
+                            "reset": True,
+                            "hierarchical_budget": True,
+                        },
+                    },
+                    {
+                        "adapter_id": "supervisor.provider_execution",
+                        "family": "provider_execution",
+                        "capabilities": {
+                            "reserve": True,
+                            "settle": True,
+                            "correct": False,
+                            "reset": False,
+                            "hierarchical_budget": True,
+                        },
+                    },
+                ]
+            if adapter_id:
+                aid = _usage_require_text(adapter_id, "adapter_id")
+                rows = [row for row in rows if row.get("adapter_id") == aid]
+            rows.sort(key=lambda row: str(row.get("adapter_id") or ""))
+            page, next_cursor = self._page_items(
+                rows,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(item.get("adapter_id") or ""),
+            )
+            return self._success(
+                authorities=granted,
+                operation=SupervisorUsageControlOperation.ADAPTER_CAPABILITIES.value,
+                items=page,
+                count=len(page),
+                total=len(rows),
+                next_cursor=next_cursor,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    # -- privileged mutations ---------------------------------------------
+
+    def set_budget(
+        self,
+        target_id: str,
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_usage_revision: str | None = None,
+        expected_policy_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        budget: Mapping[str, Any] | None = None,
+        parent_target_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Install or lower a hierarchical budget. Cannot raise a parent."""
+
+        granted = self._resolve_authorities(authorities)
+        request_body = {
+            "budget": dict(budget or {}),
+            "parent_target_id": parent_target_id,
+            "source": source,
+        }
+        try:
+            replay = self._mutation_preflight(
+                operation=SupervisorUsageControlOperation.SET_BUDGET,
+                authorities=granted,
+                target_id=target_id,
+                expected_usage_revision=expected_usage_revision,
+                expected_policy_revision=expected_policy_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                request_body=request_body,
+                source=source,
+            )
+            if replay is not None:
+                return replay
+            if not budget or not isinstance(budget, Mapping):
+                raise ProviderUsageControlError(
+                    "budget is required",
+                    code="budget_rejected",
+                    reason_codes=("budget_rejected",),
+                )
+            limits = budget.get("limits") or ()
+            if not isinstance(limits, Sequence) or isinstance(limits, (str, bytes)):
+                raise ProviderUsageControlError(
+                    "budget.limits must be a sequence",
+                    code="budget_rejected",
+                    reason_codes=("budget_rejected",),
+                )
+            parsed_limits: list[dict[str, Any]] = []
+            for item in limits:
+                if not isinstance(item, Mapping):
+                    raise ProviderUsageControlError(
+                        "budget limits must be objects",
+                        code="budget_rejected",
+                        reason_codes=("budget_rejected",),
+                    )
+                ceiling = item.get("ceiling")
+                if isinstance(ceiling, bool) or not isinstance(ceiling, int) or ceiling < 0:
+                    raise ProviderUsageControlError(
+                        "budget ceiling must be a non-negative integer",
+                        code="budget_rejected",
+                        reason_codes=("budget_rejected",),
+                    )
+                parsed_limits.append(
+                    {
+                        "dimension": str(item.get("dimension") or "requests"),
+                        "ceiling": int(ceiling),
+                        "used": int(item.get("used") or 0),
+                        "currency": item.get("currency"),
+                        "window": dict(item.get("window") or {})
+                        if isinstance(item.get("window"), Mapping)
+                        else {"kind": "fixed", "length_ms": 60_000},
+                    }
+                )
+            parent_id = parent_target_id
+            if parent_id:
+                parent = self._budgets.get(parent_id)
+                if parent is None:
+                    raise ProviderUsageControlError(
+                        "parent budget target not found",
+                        code="scope_not_found",
+                        reason_codes=("scope_not_found",),
+                    )
+                parent_by_dim = {
+                    str(limit.get("dimension")): int(limit.get("ceiling") or 0)
+                    for limit in parent.get("limits") or ()
+                    if isinstance(limit, Mapping)
+                }
+                for limit in parsed_limits:
+                    dim = str(limit["dimension"])
+                    if dim in parent_by_dim and int(limit["ceiling"]) > parent_by_dim[dim]:
+                        raise ProviderUsageControlError(
+                            "child budget cannot raise a parent ceiling",
+                            code="parent_budget_raise_denied",
+                            reason_codes=("parent_budget_raise_denied",),
+                        )
+            # Also reject attempts to raise an existing parent record in-place.
+            if target_id in self._budget_parents.values():
+                # target is a parent of someone — cannot raise own ceilings
+                # above previous when dependents exist.
+                previous = self._budgets.get(target_id)
+                if previous is not None:
+                    prev_by_dim = {
+                        str(limit.get("dimension")): int(limit.get("ceiling") or 0)
+                        for limit in previous.get("limits") or ()
+                        if isinstance(limit, Mapping)
+                    }
+                    for limit in parsed_limits:
+                        dim = str(limit["dimension"])
+                        if dim in prev_by_dim and int(limit["ceiling"]) > prev_by_dim[dim]:
+                            # Raising a parent budget is denied.
+                            raise ProviderUsageControlError(
+                                "callers cannot raise a parent budget",
+                                code="parent_budget_raise_denied",
+                                reason_codes=("parent_budget_raise_denied",),
+                            )
+            stored = {
+                "limits": parsed_limits,
+                "level": str(budget.get("level") or "task"),
+                "updated_at": _usage_now_rfc3339(),
+            }
+            with self._lock:
+                self._budgets[target_id] = stored
+                if parent_id:
+                    self._budget_parents[target_id] = parent_id
+            revision = self._bump_usage_revision()
+            return self._finish_mutation(
+                operation=SupervisorUsageControlOperation.SET_BUDGET,
+                authorities=granted,
+                target_id=target_id,
+                expected_usage_revision=str(expected_usage_revision),
+                idempotency_key=str(idempotency_key),
+                lease_id=str(lease_id),
+                fence=int(fence),  # type: ignore[arg-type]
+                effects=expected_effects or ("set_budget",),
+                actor=actor,
+                response_body={
+                    "budget": stored,
+                    "parent_target_id": parent_id,
+                },
+                result_usage_revision=revision,
+                request_body=request_body,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def set_policy(
+        self,
+        target_id: str,
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_usage_revision: str | None = None,
+        expected_policy_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        policy: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        request_body = {"policy": dict(policy or {}), "source": source}
+        try:
+            replay = self._mutation_preflight(
+                operation=SupervisorUsageControlOperation.SET_POLICY,
+                authorities=granted,
+                target_id=target_id,
+                expected_usage_revision=expected_usage_revision,
+                expected_policy_revision=expected_policy_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                request_body=request_body,
+                source=source,
+            )
+            if replay is not None:
+                return replay
+            if not policy or not isinstance(policy, Mapping):
+                raise ProviderUsageControlError(
+                    "policy is required",
+                    code="policy_rejected",
+                    reason_codes=("policy_rejected",),
+                )
+            mode = str(policy.get("mode") or "observe")
+            if mode not in {"off", "observe", "shadow", "assist", "enforce"}:
+                raise ProviderUsageControlError(
+                    "policy.mode is invalid",
+                    code="policy_rejected",
+                    reason_codes=("policy_rejected",),
+                )
+            stored = {
+                "mode": mode,
+                "fairness": dict(policy.get("fairness") or {})
+                if isinstance(policy.get("fairness"), Mapping)
+                else {"weighted": True, "anti_starvation": True},
+                "fallback": str(policy.get("fallback") or "none"),
+                "updated_at": _usage_now_rfc3339(),
+            }
+            with self._lock:
+                self._policies[target_id] = stored
+            self._bump_policy_revision()
+            revision = self._bump_usage_revision()
+            return self._finish_mutation(
+                operation=SupervisorUsageControlOperation.SET_POLICY,
+                authorities=granted,
+                target_id=target_id,
+                expected_usage_revision=str(expected_usage_revision),
+                idempotency_key=str(idempotency_key),
+                lease_id=str(lease_id),
+                fence=int(fence),  # type: ignore[arg-type]
+                effects=expected_effects or ("set_policy",),
+                actor=actor,
+                response_body={"policy": stored},
+                result_usage_revision=revision,
+                request_body=request_body,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def correct(
+        self,
+        target_id: str,
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_usage_revision: str | None = None,
+        expected_policy_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        supersedes_event_id: str | None = None,
+        units: Mapping[str, Any] | None = None,
+        reason: str = "correction",
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        request_body = {
+            "supersedes_event_id": supersedes_event_id,
+            "units": dict(units or {}),
+            "reason": reason,
+            "source": source,
+        }
+        try:
+            replay = self._mutation_preflight(
+                operation=SupervisorUsageControlOperation.CORRECT,
+                authorities=granted,
+                target_id=target_id,
+                expected_usage_revision=expected_usage_revision,
+                expected_policy_revision=expected_policy_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                request_body=request_body,
+                source=source,
+            )
+            if replay is not None:
+                return replay
+            if not supersedes_event_id:
+                raise ProviderUsageControlError(
+                    "supersedes_event_id is required",
+                    code="correction_rejected",
+                    reason_codes=("correction_rejected",),
+                )
+            if units is None:
+                raise ProviderUsageControlError(
+                    "units are required for correction",
+                    code="correction_rejected",
+                    reason_codes=("correction_rejected",),
+                )
+            event: Mapping[str, Any]
+            if self._coordinator is not None and callable(
+                getattr(self._coordinator, "correct", None)
+            ):
+                try:
+                    result = self._coordinator.correct(
+                        target_id,
+                        supersedes_event_id=supersedes_event_id,
+                        units=units,
+                        reason=reason,
+                    )
+                    event = (
+                        result.to_dict()
+                        if hasattr(result, "to_dict")
+                        else dict(result)
+                        if isinstance(result, Mapping)
+                        else {
+                            "kind": "correction",
+                            "scope_id": target_id,
+                            "supersedes_event_id": supersedes_event_id,
+                        }
+                    )
+                except Exception as exc:
+                    raise ProviderUsageControlError(
+                        f"correction rejected: {exc}",
+                        code="correction_rejected",
+                        reason_codes=("correction_rejected",),
+                    ) from exc
+            else:
+                event = {
+                    "kind": "correction",
+                    "scope_id": target_id,
+                    "supersedes_event_id": supersedes_event_id,
+                    "units": dict(units),
+                    "reason": reason,
+                    "event_id": _usage_content_cid(
+                        {
+                            "target_id": target_id,
+                            "supersedes": supersedes_event_id,
+                            "units": dict(units),
+                        }
+                    ),
+                }
+            revision = self._bump_usage_revision()
+            self._record_metric(
+                "record_reconciliation",
+                kind="correction",
+            )
+            self.record_receipt(
+                {
+                    "receipt_id": event.get("event_id") or revision,
+                    "target_id": target_id,
+                    "scope_id": target_id,
+                    "kind": "correction",
+                    "completion_authoritative": False,
+                }
+            )
+            return self._finish_mutation(
+                operation=SupervisorUsageControlOperation.CORRECT,
+                authorities=granted,
+                target_id=target_id,
+                expected_usage_revision=str(expected_usage_revision),
+                idempotency_key=str(idempotency_key),
+                lease_id=str(lease_id),
+                fence=int(fence),  # type: ignore[arg-type]
+                effects=expected_effects or ("correction",),
+                actor=actor,
+                response_body={"event": dict(event)},
+                result_usage_revision=revision,
+                request_body=request_body,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def reset(
+        self,
+        target_id: str,
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_usage_revision: str | None = None,
+        expected_policy_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        reason: str = "reset",
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        request_body = {"reason": reason, "source": source}
+        try:
+            replay = self._mutation_preflight(
+                operation=SupervisorUsageControlOperation.RESET,
+                authorities=granted,
+                target_id=target_id,
+                expected_usage_revision=expected_usage_revision,
+                expected_policy_revision=expected_policy_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                request_body=request_body,
+                source=source,
+            )
+            if replay is not None:
+                return replay
+            if self._coordinator is not None and callable(
+                getattr(self._coordinator, "reset", None)
+            ):
+                try:
+                    self._coordinator.reset(target_id, reason=reason)
+                except TypeError:
+                    self._coordinator.reset(target_id)
+                except Exception as exc:
+                    raise ProviderUsageControlError(
+                        f"reset rejected: {exc}",
+                        code="reset_rejected",
+                        reason_codes=("reset_rejected",),
+                    ) from exc
+            with self._lock:
+                budget = self._budgets.get(target_id)
+                if budget is not None:
+                    reset_limits = []
+                    for limit in budget.get("limits") or ():
+                        if isinstance(limit, Mapping):
+                            row = dict(limit)
+                            row["used"] = 0
+                            reset_limits.append(row)
+                    self._budgets[target_id] = {
+                        **budget,
+                        "limits": reset_limits,
+                        "updated_at": _usage_now_rfc3339(),
+                    }
+                # Clear blocked work for this target on reset.
+                self._blocked_work = [
+                    item
+                    for item in self._blocked_work
+                    if item.get("scope_id") != target_id
+                ]
+            revision = self._bump_usage_revision()
+            self._record_metric("record_reset", reason="reset")
+            return self._finish_mutation(
+                operation=SupervisorUsageControlOperation.RESET,
+                authorities=granted,
+                target_id=target_id,
+                expected_usage_revision=str(expected_usage_revision),
+                idempotency_key=str(idempotency_key),
+                lease_id=str(lease_id),
+                fence=int(fence),  # type: ignore[arg-type]
+                effects=expected_effects or ("reset",),
+                actor=actor,
+                response_body={"reset": True, "reason": reason},
+                result_usage_revision=revision,
+                request_body=request_body,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+
+# Module-level alias matching evidence path provider_usage_controls.*
+provider_usage_controls = type(
+    "provider_usage_controls",
+    (),
+    {
+        "SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID": (
+            SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID
+        ),
+        "ProviderUsageControl": ProviderUsageControl,
+        "discover_usage_control_catalog": discover_usage_control_catalog,
+        "usage_control_authorities": usage_control_authorities,
+        "usage_control_operations": usage_control_operations,
+        "usage_control_reason_codes": usage_control_reason_codes,
+        "USAGE_HEADROOM_BANDS": USAGE_HEADROOM_BANDS,
+        "SUPERVISOR_USAGE_REASON_CODES": SUPERVISOR_USAGE_REASON_CODES,
+    },
+)()
+
 
 def control_service_publication(
     service: Union[SupervisorControlService, None] = None,
@@ -5991,6 +7882,8 @@ __all__ = [
     "OperationHandler",
     "OperationUnavailableError",
     "PartialMutationError",
+    "ProviderUsageControl",
+    "ProviderUsageControlError",
     "PythonSupervisorBackend",
     "ReadOnlySupervisorClient",
     "RepositorySupervisorBackend",
@@ -6019,6 +7912,7 @@ __all__ = [
     "normalize_control_request",
     "normalize_control_result",
     "normalize_control_target",
+    "provider_usage_controls",
     "publish_control_catalog",
     "redact_control_data",
     "redact_control_text",

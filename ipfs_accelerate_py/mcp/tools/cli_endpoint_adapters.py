@@ -12,9 +12,12 @@ Supported CLI Tools:
 
 
 .. deprecated::
-    This module has been migrated to the canonical runtime at
-    ``ipfs_accelerate_py.mcp_server.tools.cli_endpoint_tools``.  Import from the canonical module instead.
-    This file is preserved as a compatibility shim only.
+    Registration, listing, and execution are owned by the canonical factory at
+    ``ipfs_accelerate_py.cli_runtime.endpoints``. Concrete adapter classes remain
+    here for import compatibility; ``register_cli_endpoint``,
+    ``list_cli_endpoints``, ``get_cli_endpoint``, ``execute_cli_inference``, and
+    ``CLI_ADAPTER_REGISTRY`` are compatibility shims over that factory.
+    Prefer importing from ``ipfs_accelerate_py.cli_runtime.endpoints`` for new code.
 """
 
 import os
@@ -25,9 +28,19 @@ import time
 import shutil
 import re
 import platform
-from typing import Dict, List, Any, Optional, Union
+import threading
+from typing import Dict, List, Any, Optional, Union, Mapping
 from datetime import datetime
 from abc import ABC, abstractmethod
+
+try:
+    from ipfs_accelerate_py.cli_runtime.contracts import (
+        MAX_PROMPT_CHARS as _MAX_PROMPT_CHARS,
+        MAX_TEXT_CHARS as _MAX_TEXT_CHARS,
+    )
+except Exception:  # pragma: no cover - defensive fallback
+    _MAX_PROMPT_CHARS = 100000
+    _MAX_TEXT_CHARS = 1048576
 
 # Try to import storage wrapper with comprehensive fallback
 try:
@@ -81,6 +94,13 @@ def sanitize_input(value: str, max_length: int = 10000, allowed_pattern: Optiona
     return value
 
 
+def _clip_text(value: Any, maximum: int) -> str:
+    text = str("" if value is None else value)
+    if len(text) <= maximum:
+        return text
+    return text[: max(0, maximum - 3)] + "..."
+
+
 def validate_cli_args(args: List[str]) -> List[str]:
     """
     Validate CLI arguments to prevent injection attacks
@@ -114,8 +134,12 @@ def validate_cli_args(args: List[str]) -> List[str]:
 
 
 class CLIEndpointAdapter(ABC):
-    """Base class for CLI endpoint adapters"""
-    
+    """Base class for CLI endpoint adapters.
+
+    Abstract: never instantiate directly. Use the concrete factory in
+    ``ipfs_accelerate_py.cli_runtime.endpoints`` (or a concrete subclass).
+    """
+
     def __init__(
         self,
         endpoint_id: str,
@@ -134,6 +158,7 @@ class CLIEndpointAdapter(ABC):
                                           allowed_pattern=r'^[a-zA-Z0-9_\-]+$')
         self.cli_path = cli_path or self._detect_cli_path()
         self.config = config or {}
+        self._stats_lock = threading.Lock()
         self.stats = {
             "requests": 0,
             "successes": 0,
@@ -145,6 +170,30 @@ class CLIEndpointAdapter(ABC):
         # Validate CLI is available
         if not self.is_available():
             logger.warning(f"CLI tool for {self.endpoint_id} not found at {self.cli_path}")
+
+    def _record_success(self, elapsed_time: float) -> None:
+        with self._stats_lock:
+            self.stats["requests"] += 1
+            self.stats["successes"] += 1
+            self.stats["total_time"] += elapsed_time
+            requests = self.stats["requests"]
+            self.stats["avg_time"] = (
+                self.stats["total_time"] / requests if requests else 0.0
+            )
+
+    def _record_failure(self, elapsed_time: float = 0.0) -> None:
+        with self._stats_lock:
+            self.stats["requests"] += 1
+            self.stats["failures"] += 1
+            self.stats["total_time"] += elapsed_time
+            requests = self.stats["requests"]
+            self.stats["avg_time"] = (
+                self.stats["total_time"] / requests if requests else 0.0
+            )
+
+    def _stats_snapshot(self) -> Dict[str, Any]:
+        with self._stats_lock:
+            return dict(self.stats)
     
     @abstractmethod
     def _detect_cli_path(self) -> Optional[str]:
@@ -221,7 +270,7 @@ class CLIEndpointAdapter(ABC):
         except Exception as e:
             return {
                 "available": True,
-                "error": f"Version check failed: {str(e)}"
+                "error": f"Version check failed: {type(e).__name__}"
             }
     
     def validate_config(self) -> Dict[str, Any]:
@@ -266,14 +315,15 @@ class CLIEndpointAdapter(ABC):
             **kwargs: Additional task-specific parameters
             
         Returns:
-            Dictionary with inference results and metadata
+            Dictionary with inference results and metadata.
+            Nonzero subprocess exit status is always a failure.
+            Error payloads never echo the prompt.
         """
         start_time = time.time()
-        self.stats["requests"] += 1
         
         try:
-            # Sanitize prompt input
-            prompt = sanitize_input(prompt, max_length=100000)
+            # Sanitize / bound prompt input
+            prompt = sanitize_input(prompt, max_length=_MAX_PROMPT_CHARS)
             
             # Format command
             cmd_args = self._format_prompt(prompt, task_type, **kwargs)
@@ -281,7 +331,11 @@ class CLIEndpointAdapter(ABC):
             # Validate command arguments
             cmd_args = validate_cli_args(cmd_args)
             
-            logger.info(f"Executing CLI command for {self.endpoint_id}: {' '.join(cmd_args[:3])}...")
+            logger.info(
+                "Executing CLI command for %s: %s...",
+                self.endpoint_id,
+                " ".join(str(a) for a in cmd_args[:3]),
+            )
             
             # Execute CLI command with security constraints
             result = subprocess.run(
@@ -294,68 +348,108 @@ class CLIEndpointAdapter(ABC):
                 shell=False  # Never use shell=True for security
             )
             
-            # Parse response
-            response = self._parse_response(result.stdout, result.stderr)
-            
-            # Update stats
             elapsed_time = time.time() - start_time
-            self.stats["successes"] += 1
-            self.stats["total_time"] += elapsed_time
-            self.stats["avg_time"] = self.stats["total_time"] / self.stats["requests"]
+            returncode = int(result.returncode)
+
+            # Nonzero exit is always failure (do not treat as success).
+            if returncode != 0:
+                self._record_failure(elapsed_time)
+                stderr_diag = _clip_text(
+                    (result.stderr or "").strip(), 1024
+                )
+                payload: Dict[str, Any] = {
+                    "error": f"CLI exited with status {returncode}",
+                    "endpoint_id": self.endpoint_id,
+                    "endpoint_type": "cli",
+                    "elapsed_time": elapsed_time,
+                    "status": "error",
+                    "success": False,
+                    "returncode": returncode,
+                    "error_code": "nonzero_exit",
+                }
+                if stderr_diag:
+                    payload["stderr"] = stderr_diag
+                return payload
+
+            # Parse response and bound result text
+            response = self._parse_response(result.stdout, result.stderr)
+            if isinstance(response.get("result"), str):
+                response["result"] = _clip_text(
+                    response["result"], _MAX_TEXT_CHARS
+                )
+            if isinstance(response.get("raw_response"), str):
+                response["raw_response"] = _clip_text(
+                    response["raw_response"], _MAX_TEXT_CHARS
+                )
+
+            self._record_success(elapsed_time)
             
-            # Add metadata
+            # Add metadata (never include prompt)
             response.update({
                 "endpoint_id": self.endpoint_id,
                 "endpoint_type": "cli",
                 "elapsed_time": elapsed_time,
                 "status": "success",
-                "returncode": result.returncode
+                "success": True,
+                "returncode": returncode,
             })
+            response.pop("prompt", None)
             
             return response
             
         except subprocess.TimeoutExpired:
             elapsed_time = time.time() - start_time
-            self.stats["failures"] += 1
+            self._record_failure(elapsed_time)
             logger.error(f"CLI execution timeout for {self.endpoint_id}")
             return {
                 "error": "CLI execution timeout",
                 "endpoint_id": self.endpoint_id,
                 "elapsed_time": elapsed_time,
-                "status": "timeout"
+                "status": "timeout",
+                "success": False,
             }
         
         except ValueError as e:
-            # Input validation error
+            # Input validation error — message only, never the prompt body
             elapsed_time = time.time() - start_time
-            self.stats["failures"] += 1
-            logger.error(f"Input validation error for {self.endpoint_id}: {e}")
+            self._record_failure(elapsed_time)
+            logger.error(
+                "Input validation error for %s: %s",
+                self.endpoint_id,
+                type(e).__name__,
+            )
             return {
-                "error": f"Input validation error: {str(e)}",
+                "error": f"Input validation error: {type(e).__name__}",
                 "endpoint_id": self.endpoint_id,
                 "elapsed_time": elapsed_time,
-                "status": "validation_error"
+                "status": "validation_error",
+                "success": False,
             }
             
         except Exception as e:
             elapsed_time = time.time() - start_time
-            self.stats["failures"] += 1
-            logger.error(f"CLI execution error for {self.endpoint_id}: {e}")
+            self._record_failure(elapsed_time)
+            logger.error(
+                "CLI execution error for %s: %s",
+                self.endpoint_id,
+                type(e).__name__,
+            )
             return {
-                "error": str(e),
+                "error": f"CLI execution error: {type(e).__name__}",
                 "endpoint_id": self.endpoint_id,
                 "elapsed_time": elapsed_time,
-                "status": "error"
+                "status": "error",
+                "success": False,
             }
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get endpoint statistics"""
+        """Get endpoint statistics (concurrency-safe snapshot)."""
         return {
             "endpoint_id": self.endpoint_id,
             "endpoint_type": "cli",
             "cli_path": self.cli_path,
             "available": self.is_available(),
-            "stats": self.stats
+            "stats": self._stats_snapshot(),
         }
     
     def get_capabilities(self) -> Dict[str, Any]:
@@ -1074,48 +1168,1040 @@ class VSCodeCLIAdapter(CLIEndpointAdapter):
         return instructions
 
 
-# Registry to keep track of registered CLI adapters
-CLI_ADAPTER_REGISTRY: Dict[str, CLIEndpointAdapter] = {}
+# ---------------------------------------------------------------------------
+# Goose CLI adapter (delegates to canonical GooseCLIProvider)
+# ---------------------------------------------------------------------------
 
 
-def register_cli_endpoint(adapter: CLIEndpointAdapter) -> Dict[str, Any]:
+# Known kwargs accepted by Goose endpoint execute (bounded authority surface).
+_GOOSE_SAFE_EXECUTE_KEYS: frozenset[str] = frozenset(
+    {
+        "model",
+        "model_name",
+        "goose_provider",
+        "provider",
+        "temperature",
+        "max_tokens",
+        "output_format",
+        "stream",
+        "streaming",
+        "timeout",
+        "task_type",
+    }
+)
+_GOOSE_AUTHORITY_EXECUTE_KEYS: frozenset[str] = frozenset(
+    {
+        "execution_mode",
+        "mode",
+        "agent",
+        "allow_side_effects",
+        "enable_agent",
+        "package_enable_agent",
+        "package_policy",
+        "cwd",
+        "workspace",
+        "path_root",
+        "GOOSE_PATH_ROOT",
+        "goose_path_root",
+        "approval_mode",
+        "builtins",
+        "extensions",
+        "with_builtin",
+        "with_extension",
+        "allowed_cwd_roots",
+        "max_turns",
+        "max_tool_repetitions",
+        "timeout_seconds",
+        "max_output_bytes",
+        "session_id",
+        "resume_session",
+        "agent_policy",
+        "side_effecting",
+        "with_tools",
+    }
+)
+_GOOSE_KNOWN_EXECUTE_KEYS: frozenset[str] = (
+    _GOOSE_SAFE_EXECUTE_KEYS | _GOOSE_AUTHORITY_EXECUTE_KEYS
+)
+
+
+def _goose_package_agent_enabled(
+    config: Mapping[str, Any],
+    kwargs: Mapping[str, Any],
+) -> bool:
+    """Return True when the package enable policy explicitly allows agent mode."""
+    for source in (kwargs, config):
+        if not isinstance(source, Mapping):
+            continue
+        if source.get("enable_agent") is True:
+            return True
+        if source.get("package_enable_agent") is True:
+            return True
+        policy = source.get("package_policy")
+        if isinstance(policy, Mapping) and policy.get("enable_agent") is True:
+            return True
+    return False
+
+
+def _goose_reject_unknown_authority(kwargs: Mapping[str, Any]) -> Optional[str]:
+    """Return an error message if unknown authority-bearing keys are present."""
+    # Authority-bearing markers that must never be accepted under unknown names.
+    authority_markers = (
+        "allow_side",
+        "side_effect",
+        "path_root",
+        "cwd",
+        "workspace",
+        "approval",
+        "builtin",
+        "extension",
+        "enable_agent",
+        "package_policy",
+        "agent_policy",
+        "execution_mode",
+        "max_turn",
+        "max_tool",
+        "max_output",
+        "allowed_cwd",
+        "session",
+        "resume",
+        "GOOSE_PATH",
+        "goose_path",
+    )
+    for key in kwargs:
+        k = str(key)
+        if k in _GOOSE_KNOWN_EXECUTE_KEYS:
+            continue
+        lowered = k.lower()
+        if any(marker.lower() in lowered for marker in authority_markers):
+            return f"unknown authority-bearing option rejected: {k}"
+    return None
+
+
+class GooseCLIAdapter(CLIEndpointAdapter):
+    """Concrete Goose CLI endpoint adapter.
+
+    Delegates command construction, parsing, and policy to the canonical
+    :class:`~ipfs_accelerate_py.cli_runtime.providers.goose.GooseCLIProvider`.
+
+    Safety:
+
+    - Default execute is chat-only (same safe profile as llm_router / goose run).
+    - Agent mode requires ``execution_mode=agent`` (or agent=True),
+      ``allow_side_effects=True``, package enable policy, absolute cwd/root,
+      explicit approval mode, extension/builtin allowlists, and finite
+      turns/time/output.
+    - List/liveness never invoke this adapter's execute path; health probes
+      never send model prompts.
+    - Response envelopes never include the prompt or credential material.
     """
-    Register a CLI endpoint adapter
-    
+
+    config_fields = {
+        "model": {
+            "type": "string",
+            "description": "Goose model name (maps to --model / GOOSE_MODEL)",
+            "default": None,
+        },
+        "goose_provider": {
+            "type": "string",
+            "description": "Underlying provider (maps to --provider / GOOSE_PROVIDER)",
+            "default": None,
+        },
+        "enable_agent": {
+            "type": "boolean",
+            "description": "Package enable policy: allow agent-mode requests",
+            "default": False,
+        },
+        "allow_install": {
+            "type": "boolean",
+            "description": "Permit explicit lazy install on ensure_ready only",
+            "default": False,
+        },
+    }
+
+    supported_tasks = ["text_generation", "code_generation", "analysis"]
+    tool_name = "goose"
+
+    def __init__(
+        self,
+        endpoint_id: str,
+        cli_path: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+    ):
+        self._provider = None  # type: ignore[assignment]
+        self._cancel_token = None
+        super().__init__(endpoint_id, cli_path, config)
+        # Prefer explicit path; keep tool stamp for registry describe.
+        self.tool_name = "goose"
+        if isinstance(self.config, dict):
+            self.config.setdefault("tool", "goose")
+
+    # -- abstract API (unused by execute; kept for ABC completeness) -------
+
+    def _detect_cli_path(self) -> Optional[str]:
+        """Detect goose binary without starting a model request."""
+        possible_paths = [
+            "goose",
+            "goose.exe",
+            "/usr/local/bin/goose",
+            "/usr/bin/goose",
+            os.path.expanduser("~/.local/bin/goose"),
+            os.path.expanduser("~/bin/goose"),
+        ]
+        for path in possible_paths:
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+            found = shutil.which(path)
+            if found:
+                return found
+        # Env overrides (detect-only; no install).
+        for env_name in (
+            "IPFS_ACCELERATE_GOOSE_PATH",
+            "IPFS_ACCELERATE_PY_GOOSE_PATH",
+            "GOOSE_CLI_PATH",
+        ):
+            raw = os.environ.get(env_name)
+            if raw and str(raw).strip():
+                candidate = os.path.expanduser(str(raw).strip())
+                if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                    return candidate
+        return "goose"
+
+    def _format_prompt(self, prompt: str, task_type: str, **kwargs) -> List[str]:
+        # Execute path never uses this; Goose builds argv via the provider.
+        return [self.cli_path or "goose", "run", "--instructions", "-"]
+
+    def _parse_response(self, stdout: str, stderr: str) -> Dict[str, Any]:
+        return {"result": (stdout or "").strip(), "raw_response": stdout or ""}
+
+    def _config(self) -> Dict[str, Any]:
+        return {
+            "tool_name": "Goose CLI",
+            "description": (
+                "Block/AAIF Goose CLI — chat-safe defaults; agent requires "
+                "explicit package enable policy and GooseAgentPolicy fields"
+            ),
+            "config_fields": self.config_fields,
+            "setup_steps": [
+                "1. Install Goose CLI (pinned release via ensure_goose or operator install)",
+                "2. Configure a provider (GOOSE_PROVIDER / OPENAI_API_KEY / etc.)",
+                "3. Register endpoint with tool='goose' or tool='goose_cli'",
+                "4. Default execute is chat-only; agent needs enable_agent + policy",
+            ],
+            "agent_requirements": [
+                "execution_mode=agent",
+                "allow_side_effects=True",
+                "package enable policy (enable_agent / package_enable_agent)",
+                "absolute cwd and path_root (GOOSE_PATH_ROOT)",
+                "explicit approval_mode (not chat)",
+                "extension/builtin allowlists (may be empty)",
+                "finite max_turns, timeout_seconds, max_output_bytes",
+            ],
+        }
+
+    def _install(self) -> Dict[str, Any]:
+        system = platform.system().lower()
+        return {
+            "tool_name": "Goose CLI",
+            "platform": system,
+            "install_methods": [
+                {
+                    "method": "ipfs_accelerate lazy installer (explicit only)",
+                    "commands": [
+                        "from ipfs_accelerate_py.cli_runtime.installers.goose "
+                        "import ensure_goose",
+                        "ensure_goose(auto_install=True)",
+                    ],
+                },
+                {
+                    "method": "Upstream binary",
+                    "commands": [
+                        "# Download a pinned release from aaif-goose/goose",
+                        "# Place goose on PATH or set IPFS_ACCELERATE_GOOSE_PATH",
+                    ],
+                },
+            ],
+            "verify_command": "goose --version",
+            "documentation": "https://block.github.io/goose/",
+        }
+
+    # -- provider / availability / health ----------------------------------
+
+    def _get_provider(self):
+        """Lazy construct the canonical GooseCLIProvider (no install, no run)."""
+        if self._provider is not None:
+            return self._provider
+        try:
+            from ipfs_accelerate_py.cli_runtime.providers.goose import (
+                GooseCLIProvider,
+            )
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError("GooseCLIProvider unavailable") from exc
+
+        cfg = self.config if isinstance(self.config, dict) else {}
+        executable = self.cli_path
+        # Treat bare "goose" as unresolved so provider discovery can run.
+        if executable and not (
+            os.path.isfile(executable) or os.sep in str(executable)
+        ):
+            # Keep name for which() inside provider discover.
+            pass
+        self._provider = GooseCLIProvider(
+            executable=executable if executable else None,
+            default_model=cfg.get("model") or cfg.get("model_name"),
+            default_goose_provider=cfg.get("goose_provider") or cfg.get("provider"),
+            allow_install=bool(cfg.get("allow_install", False)),
+        )
+        return self._provider
+
+    def is_available(self) -> bool:
+        """Binary presence only — never sends a model request."""
+        if self.cli_path and os.path.isfile(self.cli_path) and os.access(
+            self.cli_path, os.X_OK
+        ):
+            return True
+        if self.cli_path and shutil.which(self.cli_path):
+            return True
+        return shutil.which("goose") is not None
+
+    def assess_health(self) -> Dict[str, Any]:
+        """Typed health without a model request.
+
+        Distinguishes installed, configured, ready, degraded, and
+        unsupported_version. May run ``goose --version`` (not a prompt).
+        """
+        from ipfs_accelerate_py.cli_runtime.endpoints import EndpointHealth
+        from ipfs_accelerate_py.cli_runtime.providers.goose import (
+            capabilities_for_version,
+            goose_auth_available,
+        )
+
+        base: Dict[str, Any] = {
+            "endpoint_id": self.endpoint_id,
+            "provider": "goose_cli",
+            "installed": False,
+            "configured": False,
+            "ready": False,
+            "available": False,
+            "unsupported_version": False,
+            "goose_version": "",
+            "version": "",
+            "health": EndpointHealth.MISSING.value,
+            "reason": "not_installed",
+        }
+
+        # Explicit absolute/path-like cli_path that is missing → MISSING
+        # without falling through to ambient PATH discovery.
+        explicit = self.cli_path
+        if explicit and (
+            os.sep in str(explicit) or str(explicit).startswith("~")
+        ):
+            expanded = os.path.expanduser(str(explicit))
+            if not (
+                os.path.isfile(expanded) and os.access(expanded, os.X_OK)
+            ):
+                base["reason"] = "not_installed"
+                base["cli_path"] = explicit
+                return base
+
+        try:
+            provider = self._get_provider()
+            # Detect-only discovery; never installs.
+            install = provider.discover(
+                explicit_path=self.cli_path if self.cli_path else None,
+                probe_version=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Ambient discovery errors are degraded only when we did not have
+            # a clear missing-path signal above.
+            if not self.is_available():
+                base["health"] = EndpointHealth.MISSING.value
+                base["reason"] = f"not_installed:{type(exc).__name__}"
+                return base
+            base["health"] = EndpointHealth.DEGRADED.value
+            base["reason"] = f"discovery_failed:{type(exc).__name__}"
+            base["error"] = f"health probe failed: {type(exc).__name__}"
+            return base
+
+        if not install.available or not install.executable:
+            base["health"] = EndpointHealth.MISSING.value
+            base["reason"] = install.reason or "not_installed"
+            return base
+
+        version = install.version or getattr(provider, "version", "") or ""
+        base["installed"] = True
+        base["available"] = True
+        base["goose_version"] = version
+        base["version"] = version
+        base["cli_path"] = install.executable
+
+        # Version capability gate (no model request).
+        caps = capabilities_for_version(version or "0.0.0")
+        missing_flags = caps.missing_required_chat_flags()
+        if missing_flags:
+            base["health"] = EndpointHealth.UNSUPPORTED_VERSION.value
+            base["unsupported_version"] = True
+            base["ready"] = False
+            base["reason"] = "unsupported_version"
+            base["error"] = (
+                "Goose version does not support required chat safety flags"
+            )
+            base["error_code"] = "unsupported_capability"
+            base["missing_flags"] = list(missing_flags)
+            return base
+
+        authenticated = False
+        try:
+            authenticated = bool(goose_auth_available())
+        except Exception:  # noqa: BLE001
+            authenticated = False
+
+        # Configured: auth markers present and/or explicit model/provider config.
+        cfg = self.config if isinstance(self.config, dict) else {}
+        has_config = bool(
+            authenticated
+            or cfg.get("goose_provider")
+            or cfg.get("provider")
+            or cfg.get("model")
+            or cfg.get("model_name")
+        )
+        base["configured"] = has_config
+
+        if not has_config:
+            base["health"] = EndpointHealth.INSTALLED.value
+            base["ready"] = False
+            base["reason"] = "missing_auth"
+            return base
+
+        # Configured but treat ready only when installed + auth/config + safe version.
+        if authenticated or has_config:
+            base["health"] = EndpointHealth.READY.value
+            base["ready"] = True
+            base["reason"] = "ready"
+            # If only config fields without env auth, still configured/ready for
+            # operator-supplied provider routing via kwargs at execute time.
+            if not authenticated and has_config:
+                base["health"] = EndpointHealth.CONFIGURED.value
+                base["ready"] = True
+                base["reason"] = "configured"
+            return base
+
+        base["health"] = EndpointHealth.INSTALLED.value
+        base["reason"] = "installed"
+        return base
+
+    def check_version(self) -> Dict[str, Any]:
+        """Version probe only (not a model request)."""
+        health = self.assess_health()
+        return {
+            "available": bool(health.get("installed")),
+            "version": health.get("goose_version") or health.get("version") or "",
+            "health": health.get("health"),
+            "unsupported_version": bool(health.get("unsupported_version")),
+        }
+
+    # -- execute -----------------------------------------------------------
+
+    def execute(
+        self,
+        prompt: str,
+        task_type: str = "text_generation",
+        timeout: int = 30,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """One-shot Goose execute with chat defaults or explicit agent policy.
+
+        Returns a bounded envelope with provider, execution_mode, text,
+        goose_version, underlying provider/model, session, tool_call_count,
+        side_effects_started, elapsed_time, and typed error fields. Never
+        echoes the prompt or credentials.
+        """
+        start_time = time.time()
+        unknown = _goose_reject_unknown_authority(kwargs)
+        if unknown:
+            self._record_failure(0.0)
+            return {
+                "status": "error",
+                "success": False,
+                "error": unknown,
+                "error_code": "policy_denied",
+                "provider": "goose_cli",
+                "execution_mode": "chat",
+                "endpoint_id": self.endpoint_id,
+                "text": "",
+                "result": "",
+                "goose_version": "",
+                "underlying_provider": None,
+                "model": None,
+                "session": None,
+                "tool_call_count": 0,
+                "side_effects_started": False,
+                "elapsed_time": 0.0,
+            }
+
+        try:
+            prompt = sanitize_input(prompt, max_length=_MAX_PROMPT_CHARS)
+        except ValueError:
+            self._record_failure(0.0)
+            return {
+                "status": "error",
+                "success": False,
+                "error": "Input validation error: ValueError",
+                "error_code": "invalid_contract",
+                "provider": "goose_cli",
+                "execution_mode": "chat",
+                "endpoint_id": self.endpoint_id,
+                "text": "",
+                "result": "",
+                "tool_call_count": 0,
+                "side_effects_started": False,
+                "elapsed_time": 0.0,
+            }
+
+        try:
+            from ipfs_accelerate_py.cli_runtime.contracts import (
+                CLICapabilities,
+                CLIRequest,
+                ExecutionMode,
+            )
+            from ipfs_accelerate_py.cli_runtime.errors import (
+                CLIRuntimeError,
+                PolicyDeniedError,
+                ContractValidationError as _CVE,
+            )
+            from ipfs_accelerate_py.cli_runtime.providers.goose import (
+                DEFAULT_AGENT_MAX_TOOL_REPETITIONS,
+                DEFAULT_AGENT_MAX_TURNS,
+                DEFAULT_AGENT_TIMEOUT_SECONDS,
+                DEFAULT_CHAT_TIMEOUT_SECONDS,
+                GooseAgentPolicy,
+                GooseErrorKind,
+                GooseProviderError,
+            )
+        except ImportError as exc:
+            self._record_failure(0.0)
+            return {
+                "status": "error",
+                "success": False,
+                "error": f"Goose provider unavailable: {type(exc).__name__}",
+                "error_code": "provider_load_failed",
+                "provider": "goose_cli",
+                "execution_mode": "chat",
+                "endpoint_id": self.endpoint_id,
+                "text": "",
+                "result": "",
+                "tool_call_count": 0,
+                "side_effects_started": False,
+                "elapsed_time": 0.0,
+            }
+
+        cfg = self.config if isinstance(self.config, dict) else {}
+        mode_raw = (
+            kwargs.get("execution_mode")
+            or kwargs.get("mode")
+            or cfg.get("execution_mode")
+            or "chat"
+        )
+        wants_agent = bool(
+            kwargs.get("agent")
+            or kwargs.get("side_effecting")
+            or kwargs.get("with_tools")
+            or str(mode_raw).strip().lower() == "agent"
+        )
+        execution_mode = "agent" if wants_agent else "chat"
+
+        model_name = (
+            kwargs.get("model_name")
+            or kwargs.get("model")
+            or cfg.get("model_name")
+            or cfg.get("model")
+        )
+        goose_provider = (
+            kwargs.get("goose_provider")
+            or kwargs.get("provider")
+            or cfg.get("goose_provider")
+            or cfg.get("provider")
+        )
+        session_id = kwargs.get("session_id") or cfg.get("session_id")
+
+        policy: Any = None
+        if wants_agent:
+            # Package enable policy gate (fail-closed).
+            if not _goose_package_agent_enabled(cfg, kwargs):
+                self._record_failure(0.0)
+                return self._goose_error_envelope(
+                    message=(
+                        "agent mode requires package enable policy "
+                        "(enable_agent / package_enable_agent / "
+                        "package_policy.enable_agent)"
+                    ),
+                    error_code="policy_denied",
+                    execution_mode="agent",
+                    elapsed=0.0,
+                    model=model_name,
+                    goose_provider=goose_provider,
+                    session=session_id,
+                )
+            allow_side = kwargs.get("allow_side_effects", cfg.get("allow_side_effects"))
+            if allow_side is not True:
+                self._record_failure(0.0)
+                return self._goose_error_envelope(
+                    message="agent mode requires allow_side_effects=True",
+                    error_code="policy_denied",
+                    execution_mode="agent",
+                    elapsed=0.0,
+                    model=model_name,
+                    goose_provider=goose_provider,
+                    session=session_id,
+                )
+
+            policy_raw = kwargs.get("agent_policy") or cfg.get("agent_policy")
+            try:
+                if isinstance(policy_raw, GooseAgentPolicy):
+                    policy = policy_raw
+                elif isinstance(policy_raw, Mapping):
+                    # Ensure allow_side_effects is present on the mapping.
+                    payload = dict(policy_raw)
+                    payload.setdefault("allow_side_effects", True)
+                    policy = GooseAgentPolicy.from_mapping(payload)
+                else:
+                    cwd = (
+                        kwargs.get("cwd")
+                        or kwargs.get("workspace")
+                        or cfg.get("cwd")
+                        or cfg.get("workspace")
+                    )
+                    path_root = (
+                        kwargs.get("path_root")
+                        or kwargs.get("GOOSE_PATH_ROOT")
+                        or kwargs.get("goose_path_root")
+                        or cfg.get("path_root")
+                        or cfg.get("GOOSE_PATH_ROOT")
+                        or cfg.get("goose_path_root")
+                    )
+                    if not cwd or not path_root:
+                        self._record_failure(0.0)
+                        return self._goose_error_envelope(
+                            message=(
+                                "agent mode requires absolute cwd and "
+                                "path_root (GOOSE_PATH_ROOT)"
+                            ),
+                            error_code="policy_denied",
+                            execution_mode="agent",
+                            elapsed=0.0,
+                            model=model_name,
+                            goose_provider=goose_provider,
+                            session=session_id,
+                        )
+                    builtins = kwargs.get("builtins") or kwargs.get("with_builtin")
+                    extensions = (
+                        kwargs.get("extensions") or kwargs.get("with_extension")
+                    )
+                    roots = kwargs.get("allowed_cwd_roots") or cfg.get(
+                        "allowed_cwd_roots"
+                    )
+                    if isinstance(builtins, str):
+                        builtins = tuple(
+                            p.strip() for p in builtins.split(",") if p.strip()
+                        )
+                    if isinstance(extensions, str):
+                        extensions = tuple(
+                            p.strip() for p in extensions.split(",") if p.strip()
+                        )
+                    if isinstance(roots, list):
+                        roots = tuple(roots)
+                    max_turns = int(
+                        kwargs.get("max_turns")
+                        or cfg.get("max_turns")
+                        or DEFAULT_AGENT_MAX_TURNS
+                    )
+                    max_reps = int(
+                        kwargs.get("max_tool_repetitions")
+                        or cfg.get("max_tool_repetitions")
+                        or DEFAULT_AGENT_MAX_TOOL_REPETITIONS
+                    )
+                    timeout_s = float(
+                        kwargs.get("timeout_seconds")
+                        or kwargs.get("timeout")
+                        or timeout
+                        or DEFAULT_AGENT_TIMEOUT_SECONDS
+                    )
+                    max_out = kwargs.get("max_output_bytes")
+                    if max_out is None:
+                        max_out = cfg.get("max_output_bytes")
+                    if max_out is None:
+                        # Finite output bound required for agent mode.
+                        max_out = _MAX_TEXT_CHARS
+                    approval = str(
+                        kwargs.get("approval_mode")
+                        or cfg.get("approval_mode")
+                        or "approve"
+                    )
+                    policy = GooseAgentPolicy(
+                        allow_side_effects=True,
+                        cwd=str(cwd),
+                        path_root=str(path_root),
+                        approval_mode=approval,
+                        session_id=session_id,
+                        resume_session=bool(
+                            kwargs.get("resume_session", cfg.get("resume_session", False))
+                        ),
+                        builtins=tuple(builtins or ()),
+                        extensions=tuple(extensions or ()),
+                        max_turns=max_turns,
+                        max_tool_repetitions=max_reps,
+                        timeout_seconds=timeout_s,
+                        max_output_bytes=int(max_out) if max_out is not None else None,
+                        allowed_cwd_roots=tuple(roots or ()),
+                    )
+            except (PolicyDeniedError, _CVE, GooseProviderError, CLIRuntimeError) as exc:
+                self._record_failure(0.0)
+                code = getattr(getattr(exc, "code", None), "value", None) or "policy_denied"
+                return self._goose_error_envelope(
+                    message=str(exc)[:512] or type(exc).__name__,
+                    error_code=str(code),
+                    execution_mode="agent",
+                    elapsed=0.0,
+                    model=model_name,
+                    goose_provider=goose_provider,
+                    session=session_id,
+                )
+            except (TypeError, ValueError) as exc:
+                self._record_failure(0.0)
+                return self._goose_error_envelope(
+                    message=f"invalid agent policy: {type(exc).__name__}",
+                    error_code="invalid_contract",
+                    execution_mode="agent",
+                    elapsed=0.0,
+                    model=model_name,
+                    goose_provider=goose_provider,
+                    session=session_id,
+                )
+
+            # Finite turns/time/output already validated by GooseAgentPolicy;
+            # re-assert fail-closed if somehow missing.
+            if (
+                policy.max_turns < 1
+                or policy.timeout_seconds <= 0
+                or (
+                    policy.max_output_bytes is not None
+                    and policy.max_output_bytes < 1
+                )
+            ):
+                self._record_failure(0.0)
+                return self._goose_error_envelope(
+                    message="agent mode requires finite turns/time/output bounds",
+                    error_code="policy_denied",
+                    execution_mode="agent",
+                    elapsed=0.0,
+                    model=model_name,
+                    goose_provider=goose_provider,
+                    session=session_id,
+                )
+
+        # Chat timeout: prefer explicit timeout_seconds, else adapter timeout.
+        if wants_agent and policy is not None:
+            run_timeout = float(policy.timeout_seconds)
+        else:
+            run_timeout = float(
+                kwargs.get("timeout_seconds")
+                or timeout
+                or DEFAULT_CHAT_TIMEOUT_SECONDS
+            )
+
+        metadata: Dict[str, str] = {}
+        if goose_provider:
+            metadata["goose_provider"] = str(goose_provider)
+        if not wants_agent:
+            if kwargs.get("max_turns") is not None:
+                metadata["max_turns"] = str(kwargs["max_turns"])
+            if kwargs.get("max_tool_repetitions") is not None:
+                metadata["max_tool_repetitions"] = str(
+                    kwargs["max_tool_repetitions"]
+                )
+        output_format = kwargs.get("output_format")
+        if output_format:
+            metadata["output_format"] = str(output_format)
+        streaming = bool(kwargs.get("stream") or kwargs.get("streaming"))
+
+        request = CLIRequest(
+            prompt=str(prompt),
+            mode=ExecutionMode.AGENT if wants_agent else ExecutionMode.CHAT,
+            model_name=str(model_name) if model_name else None,
+            provider_name="goose_cli",
+            provider_override=str(goose_provider) if goose_provider else None,
+            side_effecting=bool(wants_agent),
+            cacheable=not wants_agent,
+            retryable=not wants_agent,
+            streaming=streaming,
+            session_id=str(session_id) if (wants_agent and session_id) else None,
+            tools=tuple(policy.builtins) if (wants_agent and policy) else (),
+            timeout_seconds=run_timeout,
+            workspace=(
+                str(policy.cwd) if (wants_agent and policy) else None
+            ),
+            metadata=metadata,
+            capabilities=(
+                CLICapabilities.agent_defaults()
+                if wants_agent
+                else CLICapabilities.chat_defaults()
+            ),
+        )
+
+        try:
+            provider = self._get_provider()
+            # Prefer configured executable path when present.
+            if self.cli_path and (
+                os.path.isfile(self.cli_path)
+                or (os.sep in str(self.cli_path) and os.path.exists(self.cli_path))
+            ):
+                provider.executable = self.cli_path
+            result = provider.generate_result(
+                request,
+                agent_policy=policy,
+                goose_provider=str(goose_provider) if goose_provider else None,
+                output_format=str(output_format) if output_format else None,
+            )
+        except (GooseProviderError, PolicyDeniedError, _CVE, CLIRuntimeError) as exc:
+            elapsed = time.time() - start_time
+            self._record_failure(elapsed)
+            kind = getattr(exc, "kind", None)
+            code = getattr(getattr(exc, "code", None), "value", None)
+            if code is None and kind is not None:
+                try:
+                    from ipfs_accelerate_py.cli_runtime.providers.goose import (
+                        goose_error_code,
+                    )
+                    code = goose_error_code(kind).value
+                except Exception:  # noqa: BLE001
+                    code = "internal"
+            return self._goose_error_envelope(
+                message=str(exc)[:512] or type(exc).__name__,
+                error_code=str(code or "internal"),
+                execution_mode=execution_mode,
+                elapsed=elapsed,
+                model=model_name,
+                goose_provider=goose_provider,
+                session=session_id if wants_agent else None,
+                goose_version=getattr(self._provider, "version", "") or "",
+                side_effects_started=bool(
+                    getattr(exc, "side_effects_started", False)
+                ),
+                goose_error_kind=getattr(kind, "value", None),
+            )
+        except Exception as exc:  # noqa: BLE001
+            elapsed = time.time() - start_time
+            self._record_failure(elapsed)
+            return self._goose_error_envelope(
+                message=f"CLI execution error: {type(exc).__name__}",
+                error_code="internal",
+                execution_mode=execution_mode,
+                elapsed=elapsed,
+                model=model_name,
+                goose_provider=goose_provider,
+                session=session_id if wants_agent else None,
+            )
+
+        elapsed = time.time() - start_time
+        meta = dict(result.metadata or {})
+        text = result.text or ""
+        if isinstance(text, str) and len(text) > _MAX_TEXT_CHARS:
+            text = text[: max(0, _MAX_TEXT_CHARS - 3)] + "..."
+
+        tool_call_count = 0
+        if "tool_call_count" in meta:
+            try:
+                tool_call_count = int(meta["tool_call_count"])
+            except (TypeError, ValueError):
+                tool_call_count = 0
+        side_effects_started = bool(
+            result.had_side_effect_event or result.side_effecting
+        )
+        goose_version = (
+            meta.get("goose_version")
+            or getattr(self._provider, "version", "")
+            or ""
+        )
+        underlying = (
+            meta.get("goose_provider")
+            or (str(goose_provider) if goose_provider else None)
+        )
+        model_out = result.model_name or (
+            str(model_name) if model_name else None
+        )
+        session_out = (
+            request.session_id
+            or (policy.session_id if policy is not None else None)
+        )
+
+        if not result.ok:
+            self._record_failure(elapsed)
+            err = result.error
+            error_code = err.code.value if err is not None else "nonzero_exit"
+            error_msg = (
+                err.message if err is not None else "Goose run failed"
+            )
+            return self._goose_error_envelope(
+                message=error_msg,
+                error_code=error_code,
+                execution_mode=execution_mode,
+                elapsed=elapsed,
+                model=model_out,
+                goose_provider=underlying,
+                session=session_out,
+                goose_version=goose_version,
+                tool_call_count=tool_call_count,
+                side_effects_started=side_effects_started,
+                text=text,
+                returncode=result.exit_code,
+                goose_error_kind=meta.get("goose_error_kind"),
+            )
+
+        self._record_success(elapsed)
+        envelope: Dict[str, Any] = {
+            "status": "success",
+            "success": True,
+            "provider": "goose_cli",
+            "execution_mode": execution_mode,
+            "text": text,
+            "result": text,
+            "goose_version": goose_version,
+            "underlying_provider": underlying,
+            "model": model_out,
+            "session": session_out,
+            "tool_call_count": tool_call_count,
+            "side_effects_started": side_effects_started,
+            "elapsed_time": elapsed,
+            "endpoint_id": self.endpoint_id,
+            "endpoint_type": "cli",
+            "returncode": (
+                int(result.exit_code) if result.exit_code is not None else 0
+            ),
+            "error": None,
+            "error_code": None,
+            "task_type": task_type,
+        }
+        # Hard guarantee: never echo prompt or credentials.
+        envelope.pop("prompt", None)
+        return envelope
+
+    def _goose_error_envelope(
+        self,
+        *,
+        message: str,
+        error_code: str,
+        execution_mode: str,
+        elapsed: float,
+        model: Any = None,
+        goose_provider: Any = None,
+        session: Any = None,
+        goose_version: str = "",
+        tool_call_count: int = 0,
+        side_effects_started: bool = False,
+        text: str = "",
+        returncode: Any = None,
+        goose_error_kind: Any = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "status": "error",
+            "success": False,
+            "error": _clip_text(message, 512),
+            "error_code": str(error_code),
+            "provider": "goose_cli",
+            "execution_mode": execution_mode,
+            "text": _clip_text(text, _MAX_TEXT_CHARS) if text else "",
+            "result": "",
+            "goose_version": goose_version or "",
+            "underlying_provider": goose_provider,
+            "model": model,
+            "session": session,
+            "tool_call_count": int(tool_call_count or 0),
+            "side_effects_started": bool(side_effects_started),
+            "elapsed_time": float(elapsed),
+            "endpoint_id": self.endpoint_id,
+            "endpoint_type": "cli",
+        }
+        if returncode is not None:
+            try:
+                payload["returncode"] = int(returncode)
+            except (TypeError, ValueError):
+                pass
+        if goose_error_kind:
+            payload["goose_error_kind"] = str(goose_error_kind)
+        payload.pop("prompt", None)
+        return payload
+
+    def get_stats(self) -> Dict[str, Any]:
+        stats = super().get_stats()
+        stats["tool"] = "goose"
+        stats["provider"] = "goose_cli"
+        return stats
+
+    def get_capabilities(self) -> Dict[str, Any]:
+        caps = super().get_capabilities()
+        caps["provider"] = "goose_cli"
+        caps["default_execution_mode"] = "chat"
+        caps["agent_requires_policy"] = True
+        caps["authority_keys"] = sorted(_GOOSE_AUTHORITY_EXECUTE_KEYS)
+        return caps
+
+
+# ---------------------------------------------------------------------------
+# Compatibility shims over the canonical factory
+# (ipfs_accelerate_py.cli_runtime.endpoints)
+# ---------------------------------------------------------------------------
+
+from ipfs_accelerate_py.cli_runtime.endpoints import (  # noqa: E402
+    CLI_ADAPTER_REGISTRY,
+    create_cli_endpoint,
+    execute_cli_inference as _canonical_execute_cli_inference,
+    get_cli_endpoint as _canonical_get_cli_endpoint,
+    list_cli_endpoints as _canonical_list_cli_endpoints,
+    register_cli_endpoint as _canonical_register_cli_endpoint,
+    reset_default_endpoint_registry,
+)
+
+
+def register_cli_endpoint(
+    adapter: Optional["CLIEndpointAdapter"] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """
+    Register a CLI endpoint adapter via the canonical factory.
+
     Args:
-        adapter: CLIEndpointAdapter instance
-        
+        adapter: Concrete CLIEndpointAdapter subclass instance, or omit and
+            pass ``tool=...`` to construct via the concrete factory.
+        **kwargs: Forwarded to the canonical registrar
+            (``tool``, ``endpoint_id``, ``config``, ``replace``, ``probe``, ...)
+
     Returns:
         Dictionary with registration status
     """
-    try:
-        endpoint_id = adapter.endpoint_id
-        CLI_ADAPTER_REGISTRY[endpoint_id] = adapter
-        
-        logger.info(f"Registered CLI endpoint: {endpoint_id} (available: {adapter.is_available()})")
-        
-        return {
-            "status": "success",
-            "endpoint_id": endpoint_id,
-            "available": adapter.is_available(),
-            "message": f"CLI endpoint {endpoint_id} registered successfully"
-        }
-    except Exception as e:
-        logger.error(f"Failed to register CLI endpoint: {e}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+    return _canonical_register_cli_endpoint(adapter, **kwargs)
 
 
-def get_cli_endpoint(endpoint_id: str) -> Optional[CLIEndpointAdapter]:
+def get_cli_endpoint(endpoint_id: str) -> Optional["CLIEndpointAdapter"]:
     """Get a registered CLI endpoint adapter"""
-    return CLI_ADAPTER_REGISTRY.get(endpoint_id)
+    return _canonical_get_cli_endpoint(endpoint_id)  # type: ignore[return-value]
 
 
-def list_cli_endpoints() -> List[Dict[str, Any]]:
-    """List all registered CLI endpoints"""
-    return [adapter.get_stats() for adapter in CLI_ADAPTER_REGISTRY.values()]
+def list_cli_endpoints(*, probe: bool = False) -> List[Dict[str, Any]]:
+    """List all registered CLI endpoints (no provider probe by default)."""
+    endpoints = _canonical_list_cli_endpoints(probe=probe)
+    # Preserve legacy shape: prefer adapter.get_stats when available.
+    enriched: List[Dict[str, Any]] = []
+    for item in endpoints:
+        endpoint_id = item.get("endpoint_id")
+        adapter = get_cli_endpoint(endpoint_id) if endpoint_id else None
+        if adapter is not None and hasattr(adapter, "get_stats"):
+            stats = dict(adapter.get_stats())
+            stats.setdefault("tool", item.get("tool"))
+            stats.setdefault("health", item.get("health"))
+            enriched.append(stats)
+        else:
+            enriched.append(item)
+    return enriched
 
 
 def execute_cli_inference(
@@ -1127,29 +2213,22 @@ def execute_cli_inference(
 ) -> Dict[str, Any]:
     """
     Execute inference using a registered CLI endpoint
-    
+
     Args:
         endpoint_id: ID of the registered CLI endpoint
         prompt: Input prompt
         task_type: Type of task to perform
         timeout: Maximum execution time in seconds
         **kwargs: Additional task-specific parameters
-        
+
     Returns:
-        Dictionary with inference results
+        Dictionary with inference results. Nonzero exit is failure; errors
+        never echo the prompt.
     """
-    adapter = get_cli_endpoint(endpoint_id)
-    
-    if not adapter:
-        return {
-            "error": f"CLI endpoint '{endpoint_id}' not found",
-            "status": "error"
-        }
-    
-    if not adapter.is_available():
-        return {
-            "error": f"CLI tool for endpoint '{endpoint_id}' is not available",
-            "status": "error"
-        }
-    
-    return adapter.execute(prompt, task_type, timeout, **kwargs)
+    return _canonical_execute_cli_inference(
+        endpoint_id,
+        prompt,
+        task_type=task_type,
+        timeout=timeout,
+        **kwargs,
+    )

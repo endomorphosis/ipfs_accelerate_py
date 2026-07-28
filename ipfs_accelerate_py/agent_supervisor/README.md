@@ -28,6 +28,26 @@ on-disk packages, public imports, root hygiene, and the no-old-import gate.
 **ASREF-G080** — mirrored by `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080`
 and the analysis/ops/daemon sections.
 
+## Documentation (product vocabulary)
+
+Prefer semantic docs over board-prefix plans when learning the system:
+
+| Audience | Doc |
+| --- | --- |
+| Design philosophy | [`docs/architecture/AGENT_SUPERVISOR_PHILOSOPHY.md`](../../docs/architecture/AGENT_SUPERVISOR_PHILOSOPHY.md) |
+| Doc hub | [`docs/architecture/agent_supervisor/README.md`](../../docs/architecture/agent_supervisor/README.md) |
+| Package map (human) | [`docs/architecture/agent_supervisor/PACKAGE_MAP.md`](../../docs/architecture/agent_supervisor/PACKAGE_MAP.md) |
+| Domain package READMEs | [`docs/architecture/agent_supervisor/packages/`](../../docs/architecture/agent_supervisor/packages/) |
+| Operators | [`docs/guides/AGENT_SUPERVISOR_GUIDE.md`](../../docs/guides/AGENT_SUPERVISOR_GUIDE.md) |
+| Agents | [`docs/architecture/agent_supervisor/FOR_AGENTS.md`](../../docs/architecture/agent_supervisor/FOR_AGENTS.md) |
+| Contributors | [`docs/architecture/agent_supervisor/FOR_CONTRIBUTORS.md`](../../docs/architecture/agent_supervisor/FOR_CONTRIBUTORS.md) |
+| Programs index | [`docs/architecture/agent_supervisor/programs/`](../../docs/architecture/agent_supervisor/programs/) |
+
+This package is a **proof- and policy-bounded control plane**: models propose;
+validation, leases, allowlists, and typed evidence admit mutations. Do **not**
+encode taskboard prefixes into public API names (use `code_proof_*` / domain
+names; board IDs stay on objectives/todos).
+
 ## Public API (package root)
 
 Import the reviewed control surface, stable manifests, and layout constants

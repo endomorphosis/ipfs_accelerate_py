@@ -763,3 +763,143 @@ def test_structured_planning_route_uses_shared_singleflight_and_provenance(
     assert all(item is not None and item.singleflight_shared for item in batches)
     assert len({item.execution_id for item in batches if item is not None}) == 1
     assert len({item.request_id for item in batches if item is not None}) == 2
+
+
+# ---------------------------------------------------------------------------
+# ASI-167: endpoint usage projection into batch admission
+# ---------------------------------------------------------------------------
+
+
+def _load_declared_batch_module():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / "provider_batch_scheduler.py"
+    )
+    name = "ipfs_accelerate_py.agent_supervisor._declared_pbs_for_batch_tests"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_asi167_batch_requirement_and_symbols_installed() -> None:
+    mod = _load_declared_batch_module()
+    from ipfs_accelerate_py.agent_supervisor.runtime import provider_batch_scheduler as runtime_pbs
+
+    assert mod.ENDPOINT_USAGE_BATCH_ADMISSION_REQUIREMENT_ID.startswith("requirement:")
+    assert mod.PHYSICAL_BATCH_RESERVE_ONCE_REQUIREMENT_ID.startswith("requirement:")
+    assert hasattr(runtime_pbs, "reserve_physical_batch")
+    assert hasattr(runtime_pbs, "UsageAwareProviderBatchScheduler")
+
+
+def test_asi167_physical_batch_member_cancel_does_not_charge_sibling() -> None:
+    mod = _load_declared_batch_module()
+    requests = [
+        _request("left", "a", token_budget=100),
+        _request("right", "b", token_budget=250),
+    ]
+    snapshot = {
+        "scope_id": "scope:batch",
+        "usage_revision": "rev",
+        "state": "available",
+        "headroom": [
+            {
+                "dimension": "total_tokens",
+                "available": {"kind": "finite", "value": 10_000},
+                "ceiling": {"kind": "finite", "value": 10_000},
+                "reserved": {"kind": "finite", "value": 0},
+                "state": "available",
+            },
+            {
+                "dimension": "concurrent_requests",
+                "available": {"kind": "finite", "value": 2},
+                "ceiling": {"kind": "finite", "value": 2},
+                "reserved": {"kind": "finite", "value": 0},
+                "state": "available",
+            },
+        ],
+        "reservations": [],
+        "reason_codes": [],
+    }
+    reservation, grant = mod.reserve_physical_batch(
+        requests,
+        provider_id="provider-a",
+        snapshot=snapshot,
+        mode=mod.UsageAdmissionMode.ENFORCE,
+        shared_overhead_tokens=40,
+        base_capacity=ProviderBatchCapacity(
+            provider_id="provider-a",
+            healthy=True,
+            max_batch_size=8,
+            max_concurrent_batches=2,
+            available_concurrent_batches=2,
+            token_budget_remaining=10_000,
+        ),
+    )
+    assert grant.admitted is True and reservation is not None
+    assert reservation.settle_shared_overhead_once() == 40
+    assert reservation.settle_shared_overhead_once() == 0
+    reservation.cancel_member("left")
+    assert reservation.member_attributions["left"].charged is False
+    assert reservation.member_attributions["right"].charged is True
+    assert reservation.total_charged_tokens() == 250 + 40
+
+
+def test_asi167_usage_aware_batch_scheduler_enforce_capacity_supplier() -> None:
+    mod = _load_declared_batch_module()
+    calls: list[tuple[str, ...]] = []
+
+    def dispatch(requests: object) -> list[str]:
+        members = tuple(requests)  # type: ignore[arg-type]
+        calls.append(tuple(item.request_id for item in members))
+        return [f"ok:{item.request_id}" for item in members]
+
+    def snapshot_supplier(_provider_id: str) -> dict[str, object]:
+        return {
+            "scope_id": "scope:live",
+            "usage_revision": "rev",
+            "state": "available",
+            "headroom": [
+                {
+                    "dimension": "concurrent_requests",
+                    "available": {"kind": "finite", "value": 1},
+                    "ceiling": {"kind": "finite", "value": 1},
+                    "reserved": {"kind": "finite", "value": 0},
+                    "state": "available",
+                },
+                {
+                    "dimension": "total_tokens",
+                    "available": {"kind": "finite", "value": 50_000},
+                    "ceiling": {"kind": "finite", "value": 50_000},
+                    "reserved": {"kind": "finite", "value": 0},
+                    "state": "available",
+                },
+            ],
+            "reservations": [],
+            "reason_codes": [],
+        }
+
+    with mod.UsageAwareProviderBatchScheduler(
+        dispatch,
+        config=_config(batch_window_ms=10, max_parallel_batches=1),
+        usage_mode=mod.UsageAdmissionMode.ENFORCE,
+        usage_snapshot_supplier=snapshot_supplier,
+        shared_overhead_tokens=10,
+    ) as scheduler:
+        futures = [
+            scheduler.submit(_request("u1", "a", token_budget=100)),
+            scheduler.submit(_request("u2", "b", token_budget=100)),
+        ]
+        results = [future.result(timeout=3) for future in futures]
+    assert all(result.status is ProviderBatchStatus.SUCCEEDED for result in results)
+    assert calls  # at least one physical dispatch

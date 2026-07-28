@@ -9,21 +9,36 @@ The package is intentionally broader than an LLM wrapper. Models propose plans
 and edits, but deterministic parsers, policy checks, validation commands, Git
 operations, leases, and evidence receipts decide whether work may advance.
 
+**Start here for product vocabulary:**
+[Design philosophy](AGENT_SUPERVISOR_PHILOSOPHY.md) ·
+[Doc hub](agent_supervisor/README.md) ·
+[Package map](agent_supervisor/PACKAGE_MAP.md) ·
+[Operator guide](../guides/AGENT_SUPERVISOR_GUIDE.md)
+
+This architecture document is the **implementation map**. Prefer domain package
+paths on current `main` (`agent_supervisor.proof.…`). Flat module filenames
+still appear where the source tree or historical text uses them; see the
+[domain package layout](#domain-package-layout) section.
+
 ## Architectural status
 
 The supervisor currently provides executable, resumable formal planning and
 Leanstral-assisted goal development. The following capabilities define the
 architecture:
 
-| Capability | Implementation | Operational meaning |
+| Capability | Implementation (module) | Operational meaning |
 | --- | --- | --- |
-| Shared prover admission | `multi_prover_resources.py` (`REF-291`) | SMT, ATP, kernel, model-checker, protocol, hyperproperty, runtime, validation, model, and artifact-I/O work share one bounded top-level lease. Child processes inherit limits and release capacity on cancellation. |
-| Adversarial evidence admission | `formal_planning_adversarial.py` (`REF-292`) | Plan identity, provider boundary evidence, cache freshness, conformance, public-output leakage, and property-specific assurance are checked together. Unknown, forged, stale, or insufficient evidence is rejected. |
-| Plan conformance and completion | `formal_plan_conformance.py` (`REF-290`) | Canonical execution events are compared with the accepted plan; unauthorized, reordered, skipped, failed, overridden, or superseded transitions are retained as findings. Completion requires fresh evidence and can reopen a goal. |
-| Counterexample-guided repair | `formal_replanner.py` (`REF-289`) | Typed, bounded repair rules produce content-addressed candidates and compact Codex packets. Retry, refinement, candidate, changed-record, and prompt budgets prevent unbounded replanning. |
-| Proof-carrying execution | `proof_carrying_planner.py` (`REF-293`) | Compile, verify, implement, scope-check, merge, monitor, and repair nodes run as a durable DAG with paired JSON/DuckDB state. The workflow is replayable and only completes when required assurance is present. |
-| Rollout measurement and gates | `formal_planning_metrics.py`, `formal_planning_rollout.py` (`REF-294`) | Cold/warm/parallel benchmark samples measure context reduction, defect detection, proof support, counterexample quality, cache reuse, queue latency, CPU, memory, and throughput before promotion. |
-| Prompt bootstrap and rescue gate | `prompt_workflow.py`, `prompt_workflow_benchmark.py`, `prompt_workflow_rollout.py` (`ASI-159` / `ASI-G470`) | Frozen prompt/repository fixtures prove Markdown/DuckDB/both and Python/CLI/script/MCP parity; adversarial and chaos populations reject scope/secret/identity/SQL/process/policy/authority/completion escapes; off/shadow/assist/automatic promotion requires a later fresh-root evaluation with immediate rollback. |
+| Shared prover admission | `multi_prover_resources` | SMT, ATP, kernel, model-checker, protocol, hyperproperty, runtime, validation, model, and artifact-I/O work share one bounded top-level lease. Child processes inherit limits and release capacity on cancellation. |
+| Adversarial evidence admission | `formal_planning_adversarial` | Plan identity, provider boundary evidence, cache freshness, conformance, public-output leakage, and property-specific assurance are checked together. Unknown, forged, stale, or insufficient evidence is rejected. |
+| Plan conformance and completion | `formal_plan_conformance` | Canonical execution events are compared with the accepted plan; unauthorized, reordered, skipped, failed, overridden, or superseded transitions are retained as findings. Completion requires fresh evidence and can reopen a goal. |
+| Counterexample-guided repair | `formal_replanner` | Typed, bounded repair rules produce content-addressed candidates and compact implementation packets. Retry, refinement, candidate, changed-record, and prompt budgets prevent unbounded replanning. |
+| Proof-carrying execution | `proof_carrying_planner` | Compile, verify, implement, scope-check, merge, monitor, and repair nodes run as a durable DAG with paired JSON/DuckDB state. The workflow is replayable and only completes when required assurance is present. |
+| Rollout measurement and gates | `formal_planning_metrics`, `formal_planning_rollout` | Cold/warm/parallel benchmark samples measure context reduction, defect detection, proof support, counterexample quality, cache reuse, queue latency, CPU, memory, and throughput before promotion. |
+| Prompt bootstrap and rescue gate | `prompt_workflow`, `prompt_workflow_benchmark`, `prompt_workflow_rollout` | Frozen prompt/repository fixtures prove Markdown/DuckDB/both and Python/CLI/script/MCP parity; adversarial and chaos populations reject scope/secret/identity/SQL/process/policy/authority/completion escapes; off/shadow/assist/automatic promotion requires a later fresh-root evaluation with immediate rollback. |
+| Endpoint-aware supervisor usage | `provider_usage`, `provider_execution`, `resource_scheduler`, `provider_usage_migration`, `supervisor_usage_rollout` | Nested budgets and one reservation-aware gateway meter every provider stage; fair admission and complete callsite coverage bind endpoint headroom; off/observe/shadow/assist/enforce promotion requires paired E2E/chaos evidence with fail-closed distributed enforcement and immediate shadow/off rollback. |
+
+Program/board evidence tags that historically labeled these capabilities are
+listed in [Appendix: historical program evidence tags](#appendix-historical-program-evidence-tags).
 
 ## Stable control surface and operating model
 
@@ -58,7 +73,7 @@ whose members resolve lazily to their identical objects in the provider-free
 owner module. Package-owned
 `PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`
 (`300500866741873729474343907613893393545`) and
-`PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID` (ASI-G114) name the import-isolation
+`PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID` name the import-isolation
 obligation without resolving rollout code. This obligation is validated in a
 fresh interpreter across the complete manifest and optional-provider
 inventory; a warm-process import or a partial name check is non-authoritative.
@@ -333,14 +348,15 @@ least a 2,000-basis-point aggregate invalid-plan-branch reduction.
 
 `PairedRolloutReport.evidence_for(requirement_id, repository_id=...,
 repository_tree=...)` exposes the bounded, criterion-specific typed projection
-used for those bindings. It derives canonical ASI-G112/ASI-G113 internally,
-returns a negative diagnostic for an unmet supported term, and rejects an
-unsupported term. `PairedRolloutRequirementEvidence.from_dict` requires the
-typed source report and re-derives the complete claim, rejecting changed,
-detached, or unknown data. The witness never converts a report into completion
-or mutation authority. Its identities, measurements, and stable reason codes
-are sufficient for diagnostics; raw prompts, model outputs, patches, proofs,
-cache values, and artifact bodies remain outside the report boundary.
+used for those bindings. It derives the paired-efficiency requirement terms
+internally, returns a negative diagnostic for an unmet supported term, and
+rejects an unsupported term. `PairedRolloutRequirementEvidence.from_dict`
+requires the typed source report and re-derives the complete claim, rejecting
+changed, detached, or unknown data. The witness never converts a report into
+completion or mutation authority. Its identities, measurements, and stable
+reason codes are sufficient for diagnostics; raw prompts, model outputs,
+patches, proofs, cache values, and artifact bodies remain outside the report
+boundary.
 
 Report version 2 adds the invalid-plan-branch count and explicit token, cache,
 planning, and throughput projections. Version-1 reports remain recomputable
@@ -352,10 +368,10 @@ evaluator are enumerated by the package-root
 `PAIRED_ROLLOUT_STABLE_EXPORTS` compatibility manifest. Cold import, manifest
 inspection, and static control discovery do not load optional providers or
 start processes; first access to a listed name loads only the provider-free
-rollout contracts. The isolated ASI-G114 validation checks cold state, exact
-`__all__`/manifest equality, owner identity for every member, absence of all
-registered and dataset-backed optional providers. It is public-interface
-evidence, not a third
+rollout contracts. The isolated **import-isolation preflight** checks cold
+state, exact `__all__`/manifest equality, owner identity for every member, and
+absence of all registered and dataset-backed optional providers. It is
+public-interface evidence, not a third
 `PairedRolloutRequirementEvidence`, because it is independent of paired
 fixture measurements.
 
@@ -366,13 +382,14 @@ retain the two report evidence projections with the current tree, objective,
 policy, capability, and profile identities, and return to shadow when any
 package, manifest, provider, or report binding changes.
 
-Completion authority remains separate. The ASI-G090 adapter fixes terminal
-producers ASI-023/ASI-024, verified direct descendants
-ASI-G112/ASI-G113/ASI-G114, the five literal rollout/adoption criteria, and a
-two-receipt exhaustive quorum. It recomputes a fresh complete paired report and
-restores both current-tree report projections as operational prerequisites,
-but never treats them, the import preflight, documentation, or analyzer output
-as passing criterion validation. Every criterion has one fresh passing receipt
+Completion authority remains separate. The **paired-rollout completion
+adapter** fixes terminal producers for the reviewed rollout criteria, verified
+direct descendants of the paired-efficiency and import-isolation obligations,
+the five literal rollout/adoption criteria, and a two-receipt exhaustive
+quorum. It recomputes a fresh complete paired report and restores both
+current-tree report projections as operational prerequisites, but never treats
+them, the import preflight, documentation, or analyzer output as passing
+criterion validation. Every criterion has one fresh passing receipt
 bound by exact implementation coverage; the analyzer is explicitly healthy,
 completion-safe, and fully bound; and two fresh healthy exhaustive members are
 independent by member, channel, and receipt identity. Missing or invalid
@@ -455,10 +472,10 @@ completion receipt.
 #### Prompt bootstrap and rescue rollout
 
 `prompt_workflow_benchmark.py` and `prompt_workflow_rollout.py` own the
-ASI-159 / ASI-G470 gate. One frozen prompt/repository population must produce
-identical admitted task CIDs, ready sets, accepted effects, and terminal
-outcomes across deterministic and model planning, Markdown/DuckDB/both
-projections, and Python/CLI/script/MCP surfaces. The adversarial population
+**prompt bootstrap and rescue rollout gate**. One frozen prompt/repository
+population must produce identical admitted task CIDs, ready sets, accepted
+effects, and terminal outcomes across deterministic and model planning,
+Markdown/DuckDB/both projections, and Python/CLI/script/MCP surfaces. The adversarial population
 covers prompt and repository injection, path/symlink escape, secret leakage,
 forged CID, schema downgrade, SQL injection, PID reuse, process escape, policy
 weakening, authorization and permit forgery, completion forgery, mandatory
@@ -475,6 +492,32 @@ affected behavior to `shadow`. `PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID`
 identifies the evidence. The report is never a mutation permit or completion
 receipt. A separate fresh-root evaluation is required before automatic
 promotion.
+
+#### Endpoint-aware supervisor usage rollout
+
+`provider_usage.py`, `provider_execution.py`, `resource_scheduler.py`,
+`provider_usage_migration.py`, and `supervisor_usage_rollout.py` own the
+**endpoint-aware supervisor usage path**. Hierarchical envelopes bind
+run/goal/task/attempt/stage/lane/request identity and child budgets that can
+only lower parents. Every chargeable provider attempt flows through the
+reservation-aware gateway, which estimates, reserves, invokes, observes, and
+settles exactly once. Scheduler and batch admission project endpoint headroom
+and reset state; the closed consumer population (task proposal, prompt goal
+planning, rescue, Leanstral proof, Leanstral goal development) must use the
+gateway or a typed equivalent adapter.
+
+`SupervisorUsageRolloutMode` is `off`, `observe`, `shadow`, `assist`, or
+`enforce`. Observe and shadow never alter execution selection. Assist requires
+operator authority. Enforce requires a later distinct paired E2E/chaos report
+that passes exact attribution, zero hard-limit and ancestor-budget overshoot,
+zero double/missing charge, no scope merge, bounded wait without starvation or
+reset herds, redaction hygiene, and no authority/completion escape. Reviewed
+cost, latency, and quality limits are part of the gate. Distributed enforcement
+without a strong fenced coordinator fails closed. Any safety, binding, parity,
+fairness, quality, cost, latency, or compatibility regression returns only the
+affected behavior to `shadow`/`off` while retaining observed ledger usage.
+`SUPERVISOR_USAGE_ROLLOUT_REQUIREMENT_ID` identifies the evidence; the decision
+is never a mutation permit or completion receipt.
 
 ### Metrics, failure recovery, and self-refill epochs
 
@@ -657,6 +700,46 @@ The supervisor is designed around six constraints:
    candidate, and kernel-checked theorem are different kinds of evidence; none
    is silently promoted to another.
 
+## Domain package layout
+
+On current `main`, modules are grouped into domain packages with an acyclic
+dependency DAG. New code should import from these packages, not from retired
+flat paths.
+
+```text
+core
+  ↑
+control, task_sources, context, analysis, proof
+  ↑
+objectives, planning, validation, prompt
+  ↑
+merge, rescue, runtime, self_improvement
+  ↑
+todo_daemon (implementation), integrations
+```
+
+| Package | Owns (summary) |
+| --- | --- |
+| `core/` | Shared identity, conflict graph, wrappers, external completion |
+| `control/` | Transport-neutral operations, CLI/MCP contracts, lifecycle, permits |
+| `task_sources/` | Markdown/DuckDB boards, queues, task identity, indexes |
+| `context/` | Context compiler, decision runtime, capsules |
+| `prompt/` | Prompt workflow, scanning, plan admission |
+| `analysis/` | Analysis pipeline, AST, cache, retrieval, consensus |
+| `proof/` | Formal verification, provers, proof cache, attestation, codebase-proof |
+| `objectives/` | Objective heap, daemon, tracker, janitor, goal quality |
+| `planning/` | Adaptive/formal plan compile and validate |
+| `validation/` | Proposal validation and validation schedulers |
+| `merge/` | Merge queue/train/resolver, locks, leases, git hygiene |
+| `rescue/` | Rescue/recovery orchestrators and diagnostics |
+| `runtime/` | Multi-supervisor runners, event log, CAS, schedulers |
+| `self_improvement/` | Epoch contracts, refill, v2 efficiency surfaces |
+| `integrations/` | Optional LLM/merge/goose/dataset adapters |
+| `todo_daemon/` | Implementation daemon and supervisor process loops |
+
+Human-oriented detail: [Package map](agent_supervisor/PACKAGE_MAP.md) and
+[package README index](agent_supervisor/packages/README.md).
+
 ## System view
 
 The main flow is:
@@ -665,22 +748,24 @@ The main flow is:
 objective heap / operator request
               |
               v
-   objective tracker + graph scanner
+   objective tracker + graph scanner   (objectives/, analysis/)
               |
               +--> AST, path, text, and vector evidence datasets
               +--> objective graph and bundle index
               v
-     todo shards / task-queue payloads
+     todo shards / task-queue payloads   (task_sources/)
               |
               v
- bundle supervisor -> implementation supervisor -> implementation daemon
+ bundle / multi supervisor -> implementation supervisor -> implementation daemon
+         (runtime/)                 (todo_daemon/)              (todo_daemon/)
                               |                         |
                               |                         +--> isolated worktree
-                              |                         +--> LLM/Codex proposal
+                              |                         +--> model proposal
                               |                         +--> validation workspace
                               |                         +--> accepted/failed artifacts
                               v
                  proof, policy, lease, and resource gates
+                 (proof/, validation/, planning/, merge/)
                               |
                               v
                  merge train / conflict repair / receipts
@@ -1366,6 +1451,8 @@ many modules intentionally participate in more than one group.
 **Execution, scheduling, and coordination:** `bundle_supervisor.py`,
 `multi_supervisor_runner.py`, `implementation_daemon_runner.py`,
 `implementation_supervisor_runner.py`, `resource_scheduler.py`,
+`provider_usage.py`, `provider_execution.py`, `provider_batch_scheduler.py`,
+`provider_usage_migration.py`, `supervisor_usage_rollout.py`,
 `lease_coordination.py`, `leased_lane.py`, `checkout_lock.py`,
 `wrapper_utils.py`, `analyzer_health.py`, `supervisor_watchdog.py`,
 `runtime_temporal_monitor.py`, `scheduler_metrics.py`.
@@ -1397,3 +1484,47 @@ adapters, registries, and task formats.
 `__init__.py` is a public re-export surface, not the execution coordinator.
 Importing a symbol from it should be understood as API convenience; the
 invariants remain owned by the implementation module named above.
+
+## Appendix: historical program evidence tags
+
+Older prose and acceptance records labeled capabilities with **program board
+IDs**. Those IDs remain valid for audit and taskboards; product documentation
+should prefer the semantic names above.
+
+| Historical tag | Semantic topic | Primary modules |
+| --- | --- | --- |
+| REF-289 | Counterexample-guided repair | `formal_replanner` |
+| REF-290 | Plan conformance and completion | `formal_plan_conformance` |
+| REF-291 | Shared prover admission | `multi_prover_resources` |
+| REF-292 | Adversarial evidence admission | `formal_planning_adversarial` |
+| REF-293 | Proof-carrying execution | `proof_carrying_planner` |
+| REF-294 | Formal planning rollout metrics | `formal_planning_metrics`, `formal_planning_rollout` |
+| ASI-G090 family | Paired-rollout completion adapter | self-improvement / rollout contracts |
+| ASI-G112 / ASI-G113 | Paired-efficiency requirement terms | `PairedRolloutRequirementEvidence` |
+| ASI-G114 | Import-isolation preflight | `PAIRED_ROLLOUT_STABLE_EXPORTS` cold validation |
+| ASI-159 / ASI-G470 | Prompt bootstrap and rescue rollout | `prompt_workflow_*` |
+| ASI-165–ASI-170 / ASI-G500–ASI-G530 | Endpoint-aware supervisor usage and rollout | `provider_usage`, `provider_execution`, `resource_scheduler`, `provider_usage_migration`, `supervisor_usage_rollout` |
+
+Board prefix glossary: [PROGRAMS.md](agent_supervisor/PROGRAMS.md).
+
+## Appendix: domain package module homes
+
+When reading the source on a domain-layout tree, map flat module names from the
+module map above into packages (see [PACKAGE_MAP.md](agent_supervisor/PACKAGE_MAP.md)):
+
+| Concern | Domain package |
+| --- | --- |
+| Control operations, CLI, permits | `control/` |
+| Taskboards, queues, identity | `task_sources/` |
+| Objectives, goal lifecycle | `objectives/` |
+| Formal plan compile/conformance | `planning/` |
+| Proof cache, provers, attestation, codebase-proof | `proof/` |
+| Context capsules, decision runtime | `context/` |
+| Prompt bootstrap / rescue | `prompt/` |
+| Multi-lane runners, event log, CAS | `runtime/` |
+| Merge train / resolver | `merge/` |
+| Rescue / recovery | `rescue/` |
+| Self-improvement epochs | `self_improvement/` |
+| Implementation daemon loops | `todo_daemon/` |
+| Optional providers / merge LLM fallback | `integrations/` |
+| Shared leaf utilities | `core/` |

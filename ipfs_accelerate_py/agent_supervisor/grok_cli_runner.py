@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -85,6 +86,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--model", default="")
     parser.add_argument("--max-turns", default="")
     parser.add_argument(
+        "--permission-mode",
+        default="",
+        help="Grok permission mode (default: bypassPermissions in agent mode).",
+    )
+    parser.add_argument(
         "--mode",
         default="agent",
         choices=("agent", "chat"),
@@ -156,10 +162,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             cmd = build_grok_cli_command(
                 mode=str(args.mode),
                 workspace=workspace,
-                model_name=str(args.model).strip() or None,
-                max_turns=int(args.max_turns) if str(args.max_turns).strip() else None,
+                model_name=model,
+                max_turns=max_turns,
                 grok_bin=grok_bin,
                 prompt_file=prompt_path,
+                permission_mode=permission_mode,
             )
             env = build_grok_cli_env()
         except LLMRouterError as exc:

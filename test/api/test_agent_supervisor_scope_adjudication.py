@@ -15,6 +15,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.scope_adjudication import (
     ScopeExpansionReason,
     adjudicate_scope_expansion,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
+    ValidationScheduler,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -426,6 +429,18 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
     assert proposal_validation.accepted is True
     assert proposal_validation.policy.policy_version.endswith(
         "+scope-adjudication-v1"
+    )
+    canonical_scheduler_result = ValidationScheduler().run_validated(
+        proposal_validation,
+        (),
+        workspace_path=repo,
+        require_impact_graph=False,
+    )
+    assert (
+        canonical_scheduler_result["proposal_validation"]["proposal"][
+            "proposal_id"
+        ]
+        == proposal_validation.proposal.proposal_id
     )
     validation_result = daemon._run_validation_commands(
         repo,

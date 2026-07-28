@@ -44,13 +44,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import importlib.util
+import ipaddress
 import json
 import logging
 import mimetypes
 import os
 import re
 import threading
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from functools import lru_cache
@@ -98,6 +101,97 @@ LLMRouterError = llm_router.LLMRouterError
 get_llm_provider = llm_router.get_llm_provider
 clear_llm_router_caches = llm_router.clear_llm_router_caches
 chat_completions_create = llm_router.chat_completions_create
+
+
+class MultimodalRouterError(RuntimeError):
+    """Raised when a provider or media input violates the multimodal contract."""
+
+
+class UsageCapacityError(MultimodalRouterError):
+    """Raised when usage-aware admission denies capacity before or during dispatch."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_codes: Sequence[str] = (),
+        next_eligible_at: Optional[str] = None,
+        admission: Optional[object] = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason_codes = tuple(reason_codes or ())
+        self.next_eligible_at = next_eligible_at
+        self.admission = admission
+
+
+# Evidence identity for AICAT-G130 / AICAT-032 multimodal usage integration.
+USAGE_ROUTING_REQUIREMENT_ID = "requirement:multimodal-router-usage-routing.v1"
+MULTIMODAL_USAGE_OPERATION = "multimodal.generate"
+
+# Default conservative ceilings applied only when callers/env request enforcement
+# of size/MIME policy (never invent unlimited remote quotas).
+_DEFAULT_MAX_MEDIA_BYTES = 20 * 1024 * 1024
+_SSRF_BLOCKED_HOSTS = frozenset(
+    {
+        "localhost",
+        "localhost.localdomain",
+        "metadata",
+        "metadata.google.internal",
+        "metadata.goog",
+        "0.0.0.0",
+    }
+)
+_SSRF_BLOCKED_SCHEMES = frozenset(
+    {
+        "file",
+        "ftp",
+        "gopher",
+        "dict",
+        "sftp",
+        "tftp",
+        "jar",
+        "ldap",
+        "ldaps",
+    }
+)
+_ALLOWED_IMAGE_MIME_PREFIXES = (
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+    "image/tiff",
+    "image/*",
+)
+
+_LAST_MULTIMODAL_TRACE = threading.local()
+_LAST_USAGE_ADMISSION = threading.local()
+
+
+def _set_last_multimodal_trace(**values: object) -> None:
+    _LAST_MULTIMODAL_TRACE.payload = dict(values)
+
+
+def get_last_multimodal_trace() -> Dict[str, object]:
+    """Return a copy of the most recent multimodal-call trace for this thread."""
+
+    payload = getattr(_LAST_MULTIMODAL_TRACE, "payload", None)
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _set_last_usage_admission(payload: Optional[Mapping[str, object]]) -> None:
+    _LAST_USAGE_ADMISSION.payload = dict(payload) if payload is not None else None
+
+
+def get_last_usage_admission() -> Dict[str, object]:
+    """Return a copy of the most recent usage-admission result for this thread.
+
+    Operational evidence only: never prompts, media bytes, or generated text.
+    """
+
+    payload = getattr(_LAST_USAGE_ADMISSION, "payload", None)
+    return dict(payload) if isinstance(payload, dict) else {}
 
 
 def _truthy(value: Optional[str]) -> bool:
@@ -1874,6 +1968,1447 @@ def get_multimodal_provider(
     return _resolve_provider_cached(provider, _provider_cache_key())
 
 
+# ---------------------------------------------------------------------------
+# Usage-aware admission (optional; off mode is the default legacy path)
+# ---------------------------------------------------------------------------
+
+
+def _provider_name(
+    backend: Optional[object],
+    *,
+    requested: Optional[str] = None,
+) -> str:
+    if backend is not None:
+        name = getattr(backend, "router_provider_name", None)
+        if name:
+            return str(name)
+    return str(requested or "").strip()
+
+
+def estimate_text_tokens(text: str) -> int:
+    """Conservative text token estimate for multimodal admission."""
+
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    if not text:
+        return 1
+    char_estimate = (len(text) + 3) // 4
+    word_estimate = max(1, len(text.split()))
+    byte_estimate = (len(text.encode("utf-8")) + 2) // 3
+    return max(1, char_estimate, word_estimate, byte_estimate)
+
+
+@dataclass(frozen=True)
+class MediaReferenceFacts:
+    """Bounded, non-payload facts about a media reference.
+
+    The image bytes/URI themselves are never stored here and must never enter
+    the ledger or routing receipt.
+    """
+
+    image_count: int
+    media_bytes: int
+    pixels: Optional[int]
+    mime_type: Optional[str]
+    input_mode: str  # none | inline | uri
+    scheme: Optional[str]
+    host_kind: Optional[str]
+    local_only: bool
+
+
+def _parse_data_uri_mime(value: str) -> Optional[str]:
+    if not value.startswith("data:"):
+        return None
+    header = value[5:].split(",", 1)[0]
+    mime = header.split(";", 1)[0].strip().casefold()
+    return mime or None
+
+
+def _host_is_blocked(host: str) -> bool:
+    cleaned = (host or "").strip().casefold().rstrip(".")
+    if not cleaned:
+        return True
+    if cleaned in _SSRF_BLOCKED_HOSTS or cleaned.endswith(".localhost"):
+        return True
+    if cleaned.endswith(".internal") or cleaned.endswith(".local"):
+        return True
+    # Strip IPv6 brackets.
+    if cleaned.startswith("[") and cleaned.endswith("]"):
+        cleaned = cleaned[1:-1]
+    try:
+        ip = ipaddress.ip_address(cleaned)
+    except ValueError:
+        return False
+    return bool(
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def inspect_media_reference(
+    image: Optional[Union[str, bytes]],
+    *,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    declared_media_bytes: Optional[int] = None,
+    mime_type: Optional[str] = None,
+) -> MediaReferenceFacts:
+    """Derive reference-only media facts without retaining payload content."""
+
+    if image is None:
+        return MediaReferenceFacts(
+            image_count=0,
+            media_bytes=0,
+            pixels=None,
+            mime_type=mime_type,
+            input_mode="none",
+            scheme=None,
+            host_kind=None,
+            local_only=True,
+        )
+
+    pixels: Optional[int] = None
+    if width is not None and height is not None:
+        try:
+            w = int(width)
+            h = int(height)
+            if w > 0 and h > 0:
+                pixels = w * h
+        except (TypeError, ValueError):
+            pixels = None
+
+    if isinstance(image, bytes):
+        media_bytes = (
+            int(declared_media_bytes)
+            if declared_media_bytes is not None
+            else len(image)
+        )
+        return MediaReferenceFacts(
+            image_count=1,
+            media_bytes=max(0, media_bytes),
+            pixels=pixels,
+            mime_type=(mime_type or "image/jpeg").casefold(),
+            input_mode="inline",
+            scheme=None,
+            host_kind="inline-bytes",
+            local_only=True,
+        )
+
+    if not isinstance(image, str):
+        raise TypeError("image must be str, bytes, or None")
+
+    stripped = image.strip()
+    if stripped.startswith("data:"):
+        mime = mime_type or _parse_data_uri_mime(stripped) or "image/jpeg"
+        # Estimate payload size from base64 tail without decoding full content
+        # into the ledger path.
+        comma = stripped.find(",")
+        payload = stripped[comma + 1 :] if comma >= 0 else ""
+        # Rough decoded-byte estimate for base64.
+        media_bytes = (
+            int(declared_media_bytes)
+            if declared_media_bytes is not None
+            else max(0, (len(payload) * 3) // 4)
+        )
+        return MediaReferenceFacts(
+            image_count=1,
+            media_bytes=media_bytes,
+            pixels=pixels,
+            mime_type=str(mime).casefold(),
+            input_mode="inline",
+            scheme="data",
+            host_kind="data-uri",
+            local_only=True,
+        )
+
+    if stripped.startswith(("http://", "https://")):
+        parsed = urllib.parse.urlparse(stripped)
+        scheme = (parsed.scheme or "").casefold()
+        host = parsed.hostname or ""
+        media_bytes = int(declared_media_bytes) if declared_media_bytes is not None else 0
+        return MediaReferenceFacts(
+            image_count=1,
+            media_bytes=max(0, media_bytes),
+            pixels=pixels,
+            mime_type=(mime_type or "image/*").casefold(),
+            input_mode="uri",
+            scheme=scheme,
+            host_kind="public" if host and not _host_is_blocked(host) else "blocked-or-private",
+            local_only=False,
+        )
+
+    # Local path or opaque reference: treat as inline/local-only.
+    media_bytes = 0
+    if declared_media_bytes is not None:
+        media_bytes = int(declared_media_bytes)
+    else:
+        try:
+            media_bytes = max(0, int(os.path.getsize(stripped)))
+        except OSError:
+            media_bytes = max(0, len(stripped.encode("utf-8")))
+    guessed = mimetypes.guess_type(stripped)[0]
+    return MediaReferenceFacts(
+        image_count=1,
+        media_bytes=media_bytes,
+        pixels=pixels,
+        mime_type=(mime_type or guessed or "image/*").casefold(),
+        input_mode="inline",
+        scheme="file-path",
+        host_kind="local-path",
+        local_only=True,
+    )
+
+
+def validate_multimodal_media_input(
+    image: Optional[Union[str, bytes]],
+    *,
+    max_media_bytes: Optional[int] = None,
+    allowed_mime_prefixes: Sequence[str] = _ALLOWED_IMAGE_MIME_PREFIXES,
+    allow_remote_uri: bool = True,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    declared_media_bytes: Optional[int] = None,
+    mime_type: Optional[str] = None,
+) -> MediaReferenceFacts:
+    """Fail closed on adversarial size/MIME/SSRF-shaped media before reserve.
+
+    Media payloads are inspected only for bounds; the reference itself is never
+    copied into usage state.
+    """
+
+    if image is None:
+        return inspect_media_reference(None)
+
+    if isinstance(image, str):
+        stripped = image.strip()
+        lower = stripped.casefold()
+        # SSRF-shaped schemes fail before any reservation or provider call.
+        for scheme in _SSRF_BLOCKED_SCHEMES:
+            if lower.startswith(f"{scheme}:"):
+                raise MultimodalRouterError(
+                    f"media URI scheme {scheme!r} is not permitted"
+                )
+        if lower.startswith(("http://", "https://")):
+            if not allow_remote_uri:
+                raise MultimodalRouterError(
+                    "remote media URIs are not permitted by current policy"
+                )
+            parsed = urllib.parse.urlparse(stripped)
+            host = parsed.hostname or ""
+            if not host or _host_is_blocked(host):
+                raise MultimodalRouterError(
+                    "media URI host is blocked by SSRF policy"
+                )
+            # Reject userinfo (credential-shaped) and non-http(s) after normalize.
+            if parsed.username or parsed.password:
+                raise MultimodalRouterError(
+                    "media URI must not embed credentials"
+                )
+        elif lower.startswith("data:"):
+            mime = (mime_type or _parse_data_uri_mime(stripped) or "").casefold()
+            if mime and not any(
+                mime == prefix.casefold() or mime.startswith(prefix.rstrip("*").casefold())
+                for prefix in allowed_mime_prefixes
+            ):
+                # image/* is allowed via prefix match on "image/"
+                if not mime.startswith("image/"):
+                    raise MultimodalRouterError(
+                        f"media MIME type {mime!r} is not permitted"
+                    )
+
+    facts = inspect_media_reference(
+        image,
+        width=width,
+        height=height,
+        declared_media_bytes=declared_media_bytes,
+        mime_type=mime_type,
+    )
+    if facts.mime_type and facts.mime_type not in {"image/*", "application/octet-stream"}:
+        mime = facts.mime_type
+        if not any(
+            mime == prefix.casefold()
+            or mime.startswith(prefix.rstrip("*").casefold())
+            for prefix in allowed_mime_prefixes
+        ):
+            if not mime.startswith("image/"):
+                raise MultimodalRouterError(
+                    f"media MIME type {mime!r} is not permitted"
+                )
+
+    ceiling = max_media_bytes
+    if ceiling is None:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_PY_MULTIMODAL_MAX_MEDIA_BYTES",
+            "IPFS_DATASETS_PY_MULTIMODAL_MAX_MEDIA_BYTES",
+        )
+        if raw:
+            try:
+                ceiling = int(raw)
+            except (TypeError, ValueError):
+                ceiling = None
+    if ceiling is not None and facts.media_bytes > int(ceiling):
+        raise MultimodalRouterError(
+            f"media exceeds max_media_bytes bound ({facts.media_bytes} > {ceiling})"
+        )
+    if facts.image_count > 1:
+        raise MultimodalRouterError("image_count exceeds multimodal router bound")
+    return facts
+
+
+def estimate_multimodal_usage(
+    prompt: str,
+    *,
+    image: Optional[Union[str, bytes]] = None,
+    max_output_tokens: Optional[int] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    declared_media_bytes: Optional[int] = None,
+    mime_type: Optional[str] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+    include_concurrency: bool = True,
+    remote: bool = True,
+    media_facts: Optional[MediaReferenceFacts] = None,
+) -> "object":
+    """Build a conservative multi-dimension usage vector for multimodal work.
+
+    Dimensions covered when applicable: requests, images, pixels, media_bytes,
+    input_tokens, output_tokens, concurrent_requests, and cost_micros.
+    Media content is referenced only via scalar facts — never embedded.
+    """
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not isinstance(prompt, str):
+        raise TypeError("prompt must be a string")
+    if not remote:
+        return UsageVector()
+
+    facts = media_facts or inspect_media_reference(
+        image,
+        width=width,
+        height=height,
+        declared_media_bytes=declared_media_bytes,
+        mime_type=mime_type,
+    )
+    input_tokens = estimate_text_tokens(prompt)
+    # Vision models typically bill additional image tokens; keep a floor when
+    # an image is present so headroom cannot be under-reserved.
+    if facts.image_count > 0:
+        image_token_floor = 85
+        if facts.pixels is not None:
+            image_token_floor = max(image_token_floor, (int(facts.pixels) + 767) // 768)
+        input_tokens += image_token_floor
+
+    output_tokens = 1
+    if max_output_tokens is not None:
+        try:
+            output_tokens = max(1, int(max_output_tokens))
+        except (TypeError, ValueError):
+            output_tokens = 1
+
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+    }
+    if facts.image_count > 0:
+        amounts["images"] = facts.image_count
+    if facts.pixels is not None and facts.pixels > 0:
+        amounts["pixels"] = int(facts.pixels)
+    if facts.media_bytes > 0:
+        amounts["media_bytes"] = int(facts.media_bytes)
+    if include_concurrency:
+        amounts["concurrent_requests"] = 1
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    return UsageVector.of(**amounts)
+
+
+def settle_multimodal_usage(
+    prompt: str,
+    *,
+    image: Optional[Union[str, bytes]] = None,
+    output_text: Optional[str] = None,
+    max_output_tokens: Optional[int] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    declared_media_bytes: Optional[int] = None,
+    mime_type: Optional[str] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+    media_facts: Optional[MediaReferenceFacts] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+) -> "object":
+    """Actual remote usage for a completed multimodal invocation."""
+
+    from .endpoint_usage.schema import UsageVector
+
+    facts = media_facts or inspect_media_reference(
+        image,
+        width=width,
+        height=height,
+        declared_media_bytes=declared_media_bytes,
+        mime_type=mime_type,
+    )
+    estimated = estimate_multimodal_usage(
+        prompt,
+        image=image,
+        max_output_tokens=max_output_tokens,
+        media_facts=facts,
+        remote=True,
+    )
+    amounts: Dict[str, int] = {}
+    for entry in getattr(estimated, "entries", ()) or ():
+        name = str(getattr(entry.dimension, "value", entry.dimension) or "")
+        value = getattr(entry.amount, "value", None)
+        if value is not None:
+            amounts[name] = int(value)
+    if input_tokens is not None:
+        amounts["input_tokens"] = max(0, int(input_tokens))
+    if output_tokens is not None:
+        amounts["output_tokens"] = max(0, int(output_tokens))
+    elif output_text is not None:
+        amounts["output_tokens"] = estimate_text_tokens(str(output_text))
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    if not amounts:
+        return UsageVector()
+    return UsageVector.of(**amounts)
+
+
+# Ranking-input names that embed these substrings are rejected by receipt
+# digests. Still reserve the full vector; only the planning ``required``
+# surface is filtered for receipt safety.
+_RECEIPT_UNSAFE_DIMENSION_MARKERS = (
+    "token",
+    "media",
+    "prompt",
+    "message",
+    "payload",
+    "endpoint",
+    "credential",
+    "secret",
+    "password",
+    "authorization",
+)
+
+
+def planning_required_usage(requested: "object") -> "object":
+    """Return a receipt-safe planning vector derived from a full estimate."""
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not isinstance(requested, UsageVector):
+        return UsageVector()
+    safe: List[object] = []
+    for entry in requested.entries:
+        name = str(getattr(entry.dimension, "value", entry.dimension) or "")
+        lowered = name.casefold()
+        if any(marker in lowered for marker in _RECEIPT_UNSAFE_DIMENSION_MARKERS):
+            continue
+        safe.append(entry)
+    return UsageVector(entries=tuple(safe))  # type: ignore[arg-type]
+
+
+def _normalize_usage_policy(policy: object) -> "object":
+    from .endpoint_usage.schema import RoutingMode, RoutingPolicy
+
+    if policy is None:
+        return RoutingPolicy(mode=RoutingMode.OFF)
+    if isinstance(policy, RoutingPolicy):
+        return policy
+    if isinstance(policy, Mapping):
+        return RoutingPolicy.from_dict(policy)
+    raise TypeError("usage_policy must be a RoutingPolicy, mapping, or None")
+
+
+def _usage_mode_is_off(policy: object, coordinator: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    if coordinator is None:
+        return True
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode is RoutingMode.OFF or str(mode) == RoutingMode.OFF.value
+
+
+def _usage_mode_observes_only(policy: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode in (RoutingMode.OBSERVE, RoutingMode.SHADOW) or str(mode) in {
+        RoutingMode.OBSERVE.value,
+        RoutingMode.SHADOW.value,
+    }
+
+
+def _usage_mode_enforces(policy: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode in (RoutingMode.ENFORCE, RoutingMode.ASSIST) or str(mode) in {
+        RoutingMode.ENFORCE.value,
+        RoutingMode.ASSIST.value,
+    }
+
+
+def _multimodal_compatibility_labels(
+    *,
+    provider_name: str,
+    model_name: Optional[str],
+    device: Optional[str],
+    media_facts: MediaReferenceFacts,
+    kwargs: Mapping[str, object],
+    operation: str = MULTIMODAL_USAGE_OPERATION,
+) -> Dict[str, str]:
+    labels: Dict[str, str] = {
+        "router_provider": str(provider_name or ""),
+        "operation": str(operation or MULTIMODAL_USAGE_OPERATION),
+        "output_media_types": "text/plain",
+        "max_images": "1",
+    }
+    try:
+        descriptor = get_provider_descriptor(provider_name) if provider_name else None
+    except Exception:
+        descriptor = None
+    if descriptor is not None:
+        for key in (
+            "locality",
+            "device",
+            "access_requirement",
+            "input_media_types",
+            "output_media_types",
+            "image_input_modes",
+            "max_images",
+            "uri_schemes",
+            "data.governance",
+            "data_governance",
+        ):
+            value = dict(descriptor.labels or {}).get(key)
+            if value is not None:
+                labels[key] = str(value)
+    if media_facts.mime_type:
+        labels["mime_family"] = (
+            "image/*"
+            if media_facts.mime_type.startswith("image/")
+            else media_facts.mime_type
+        )
+        labels["input_mime"] = media_facts.mime_type
+    labels["image_count"] = str(media_facts.image_count)
+    labels["image_input_mode"] = media_facts.input_mode
+    if media_facts.pixels is not None:
+        labels["pixels"] = str(media_facts.pixels)
+    if model_name:
+        labels["model_name"] = str(model_name)
+    if device:
+        labels["device"] = str(device)
+    for key in (
+        "locality",
+        "data.governance",
+        "data_governance",
+        "access_requirement",
+        "output_media_types",
+        "operation",
+    ):
+        if key in kwargs and kwargs[key] is not None:
+            labels[key] = str(kwargs[key])
+    # Local-only media cannot fall back onto a route that requires remote upload.
+    if media_facts.local_only and media_facts.image_count > 0:
+        labels["forbid_remote_upload"] = "1"
+        labels["requires_remote_upload"] = "0"
+    return labels
+
+
+def multimodal_fallback_compatible(
+    origin_labels: Mapping[str, str],
+    candidate_labels: Mapping[str, str],
+) -> bool:
+    """Return True when a fallback preserves multimodal contracts.
+
+    Fallback must preserve operation, model compatibility, MIME, item count,
+    dimensions, safety/data governance, locality/device, authorization, and
+    output contract. It cannot use a route that requires a forbidden remote
+    upload.
+    """
+
+    origin = {str(k): str(v) for k, v in origin_labels.items()}
+    candidate = {str(k): str(v) for k, v in candidate_labels.items()}
+
+    for key in (
+        "operation",
+        "locality",
+        "device",
+        "output_media_types",
+        "mime_family",
+    ):
+        if key in origin and origin[key] not in {"", "unknown", "provider-managed"}:
+            if candidate.get(key, origin[key]) != origin[key]:
+                return False
+
+    if "image_count" in origin:
+        try:
+            origin_count = int(origin["image_count"])
+            cand_max = candidate.get("max_images")
+            if cand_max and cand_max.isdigit() and origin_count > int(cand_max):
+                return False
+        except (TypeError, ValueError):
+            return False
+
+    if "pixels" in origin and "pixels" in candidate:
+        if candidate["pixels"] != origin["pixels"]:
+            # Allow candidate without pixel pin; reject explicit mismatch.
+            return False
+
+    origin_mime = origin.get("input_mime") or origin.get("mime_family")
+    cand_mimes = (
+        candidate.get("input_media_types")
+        or candidate.get("mime_family")
+        or candidate.get("input_mime")
+        or ""
+    )
+    if origin_mime and cand_mimes:
+        allowed = [part.strip() for part in cand_mimes.split(",") if part.strip()]
+        if allowed and not any(
+            origin_mime == item
+            or item.endswith("/*")
+            and origin_mime.startswith(item[:-1])
+            or item == "image/*"
+            and origin_mime.startswith("image/")
+            for item in allowed
+        ):
+            return False
+
+    origin_access = origin.get("access_requirement")
+    cand_access = candidate.get("access_requirement")
+    if origin_access == "required" and cand_access not in (
+        None,
+        "required",
+        "optional",
+    ):
+        return False
+
+    origin_gov = origin.get("data.governance") or origin.get("data_governance")
+    cand_gov = candidate.get("data.governance") or candidate.get("data_governance")
+    if origin_gov and cand_gov and cand_gov != origin_gov:
+        return False
+    if cand_gov and str(cand_gov).casefold() in {"deny", "forbidden", "blocked"}:
+        return False
+
+    # Forbidden remote upload: local/inline media must not move to a candidate
+    # that requires uploading bytes to a remote host first.
+    if origin.get("forbid_remote_upload") in {"1", "true", "yes"}:
+        if candidate.get("requires_remote_upload") in {"1", "true", "yes"}:
+            return False
+        modes = {
+            part.strip()
+            for part in str(candidate.get("image_input_modes") or "").split(",")
+            if part.strip()
+        }
+        if modes and "inline" not in modes and "uri" in modes:
+            # URI-only remote endpoints cannot accept local-only media without upload.
+            if origin.get("image_input_mode") == "inline":
+                return False
+
+    origin_model = origin.get("model_name")
+    cand_model = candidate.get("model_name")
+    if origin_model and cand_model and origin_model != cand_model:
+        # Model pin is soft-compatible only when equivalence labels match.
+        if origin.get("equivalent_model") and candidate.get("equivalent_model"):
+            if origin.get("equivalent_model") != candidate.get("equivalent_model"):
+                return False
+        elif origin.get("model_compatible_with") != cand_model:
+            return False
+    return True
+
+
+def _build_multimodal_static_candidate(
+    *,
+    provider_name: str,
+    model_name: Optional[str],
+    device: Optional[str],
+    scope_id: str,
+    media_facts: MediaReferenceFacts,
+    kwargs: Mapping[str, object],
+    score: int = 10,
+    authorized: bool = True,
+) -> "object":
+    from .endpoint_usage.identity import stable_id
+    from .endpoint_usage.resolution import StaticCandidate
+
+    labels = _multimodal_compatibility_labels(
+        provider_name=provider_name,
+        model_name=model_name,
+        device=device,
+        media_facts=media_facts,
+        kwargs=kwargs,
+    )
+    provider_id = stable_id("provider", "multimodal", provider_name)
+    model_id = stable_id(
+        "model", "multimodal", provider_name, model_name or "default"
+    )
+    deployment_id = stable_id(
+        "deployment", "multimodal", provider_name, device or "default"
+    )
+    binding_id = stable_id(
+        "binding", "multimodal", provider_name, model_name or "default", scope_id
+    )
+    return StaticCandidate(
+        binding_id=binding_id,
+        provider_id=provider_id,
+        model_id=model_id,
+        deployment_id=deployment_id,
+        scope_id=scope_id,
+        catalog_score=score,
+        locality=labels.get("locality"),
+        authorized=authorized,
+        healthy=True,
+        routable=True,
+        configured=True,
+        labels=labels,
+    )
+
+
+def _filter_compatible_candidates(
+    candidates: Sequence[object],
+    *,
+    origin_labels: Mapping[str, str],
+) -> List[object]:
+    kept: List[object] = []
+    for cand in candidates:
+        labels = dict(getattr(cand, "labels", None) or {})
+        if multimodal_fallback_compatible(origin_labels, labels):
+            kept.append(cand)
+    return kept
+
+
+def _admission_result_to_trace(result: object) -> Dict[str, object]:
+    """Reduce an admission result to a redacted operational trace."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output
+
+    selected = getattr(result, "selected", None)
+    receipt = getattr(result, "receipt", None)
+    payload: Dict[str, object] = {
+        "success": bool(getattr(result, "success", False)),
+        "final_status": str(getattr(result, "final_status", "") or ""),
+        "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
+        "next_eligible_at": getattr(result, "next_eligible_at", None),
+        "attempt_count": len(getattr(result, "attempts", ()) or ()),
+        "selected_binding_id": getattr(selected, "binding_id", None)
+        if selected
+        else None,
+        "selected_scope_id": getattr(selected, "scope_id", None)
+        if selected
+        else None,
+        "reservation_id": getattr(selected, "reservation_id", None)
+        if selected
+        else None,
+        "receipt_id": getattr(receipt, "receipt_id", None) if receipt else None,
+        "usage_revision": getattr(selected, "usage_revision", None)
+        if selected
+        else None,
+        "catalog_revision": getattr(selected, "catalog_revision", None)
+        if selected
+        else None,
+        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+    }
+    if receipt is not None:
+        try:
+            receipt_dict = receipt.to_dict()
+            assert_no_prompt_media_or_output(receipt_dict)
+            payload["receipt"] = receipt_dict
+        except Exception:
+            payload["receipt"] = {"receipt_id": payload.get("receipt_id")}
+    assert_no_prompt_media_or_output(payload)
+    return payload
+
+
+def _parse_provider_observation(
+    *,
+    scope_id: str,
+    request_id: str,
+    observation: object,
+    settled: object,
+) -> Optional[object]:
+    """Parse optional provider observation; never retain media or prompts."""
+
+    if observation is None:
+        return None
+    from .endpoint_usage.schema import (
+        ConfidenceLevel,
+        LimitSource,
+        Provenance,
+        ProviderUsageObservation,
+        UsageVector,
+    )
+
+    if isinstance(observation, ProviderUsageObservation):
+        return observation
+    if not isinstance(observation, Mapping):
+        return None
+    try:
+        from .endpoint_usage.adapters import parse_provider_observation
+
+        if any(
+            key in observation
+            for key in ("headers", "body", "family", "http_status", "usage")
+        ):
+            payload = dict(observation)
+            payload.setdefault("scope_id", scope_id)
+            payload.setdefault("request_id", request_id)
+            return parse_provider_observation(payload)
+    except Exception:
+        logger.debug("multimodal usage observation adapter failed", exc_info=True)
+
+    usage = observation.get("usage")
+    if usage is None:
+        usage = settled if isinstance(settled, UsageVector) else UsageVector()
+    elif not isinstance(usage, UsageVector):
+        try:
+            usage = UsageVector.from_dict(usage)
+        except Exception:
+            usage = settled if isinstance(settled, UsageVector) else UsageVector()
+    try:
+        return ProviderUsageObservation(
+            scope_id=scope_id,
+            request_id=request_id,
+            usage=usage,
+            http_status=observation.get("http_status"),
+            confidence=ConfidenceLevel.HIGH
+            if observation.get("http_status") == 200
+            else ConfidenceLevel.MEDIUM,
+            provenance=Provenance(source=LimitSource.RESPONSE_BODY),
+            reason_codes=tuple(observation.get("reason_codes") or ()),
+            retry_after_ms=observation.get("retry_after_ms"),
+            limits=tuple(observation.get("limits") or ()),
+        )
+    except Exception:
+        logger.debug("multimodal usage observation construct failed", exc_info=True)
+        return None
+
+
+def _resolve_usage_pin(
+    *,
+    pin: object,
+    provider: Optional[str],
+    allow_fallback_with_pin: bool,
+) -> object:
+    from .endpoint_usage.identity import stable_id
+    from .endpoint_usage.routing import RoutePin
+
+    if pin is not None:
+        if isinstance(pin, RoutePin):
+            return pin
+        if isinstance(pin, Mapping):
+            return RoutePin(
+                provider_id=pin.get("provider_id"),
+                model_id=pin.get("model_id"),
+                deployment_id=pin.get("deployment_id"),
+                binding_id=pin.get("binding_id"),
+                allow_fallback_with_pin=bool(
+                    pin.get("allow_fallback_with_pin", allow_fallback_with_pin)
+                ),
+            )
+        raise TypeError("usage_pin must be a RoutePin, mapping, or None")
+    if provider:
+        return RoutePin(
+            provider_id=stable_id("provider", "multimodal", provider),
+            allow_fallback_with_pin=allow_fallback_with_pin,
+        )
+    return RoutePin()
+
+
+def _record_usage_observe_shadow(
+    *,
+    prompt: str,
+    media_facts: MediaReferenceFacts,
+    remote_charged: bool,
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_scope_id: Optional[str],
+    usage_request_id: Optional[str],
+    usage_cost_micros: Optional[int],
+    usage_cost_currency: Optional[str],
+    success: bool,
+    provider_used: str,
+    max_output_tokens: Optional[int],
+) -> None:
+    """Observe/shadow diagnostics: estimate only; never change selection or charge."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.schema import RoutingMode, UsageEventKind
+
+    policy = usage_policy
+    mode = getattr(policy, "mode", RoutingMode.OBSERVE)
+    estimate = estimate_multimodal_usage(
+        prompt,
+        media_facts=media_facts,
+        max_output_tokens=max_output_tokens,
+        cost_micros=usage_cost_micros,
+        cost_currency=usage_cost_currency,
+        remote=remote_charged,
+    )
+    payload: Dict[str, object] = {
+        "success": success,
+        "final_status": "observed" if success else "observe_error",
+        "reason_codes": [
+            "usage_observe"
+            if mode is RoutingMode.OBSERVE or str(mode) == "observe"
+            else "usage_shadow",
+            "no_selection_change",
+        ],
+        "attempt_count": 0,
+        "estimate_entries": len(getattr(estimate, "entries", ()) or ()),
+        "provider_used": str(provider_used or ""),
+        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+        "remote_charged": False,
+        "mode": str(getattr(mode, "value", mode)),
+        "image_count": media_facts.image_count,
+    }
+    if not remote_charged:
+        payload["reason_codes"] = list(payload["reason_codes"]) + [
+            "cache_hit",
+            "no_remote_charge",
+        ]
+    if usage_scope_id and usage_coordinator is not None:
+        try:
+            snap = usage_coordinator.snapshot(usage_scope_id)  # type: ignore[attr-defined]
+            payload["usage_revision"] = getattr(snap, "usage_revision", None)
+            payload["scope_id"] = usage_scope_id
+        except Exception:
+            payload["reason_codes"] = list(payload["reason_codes"]) + [
+                "snapshot_unavailable"
+            ]
+        if (
+            success
+            and remote_charged
+            and str(getattr(mode, "value", mode)) == "shadow"
+        ):
+            try:
+                from .endpoint_usage.schema import UsageVector as _UsageVector
+
+                usage_coordinator.append_observation(  # type: ignore[attr-defined]
+                    usage_scope_id,
+                    kind=UsageEventKind.OBSERVATION_SUCCESS,
+                    units=_UsageVector(),
+                    request_id=usage_request_id
+                    or stable_id("mreq", "shadow", usage_scope_id),
+                    reason_codes=("shadow_observe",),
+                )
+            except Exception:
+                logger.debug("shadow observation append failed", exc_info=True)
+    _ = estimate
+    assert_no_prompt_media_or_output(payload)
+    _set_last_usage_admission(payload)
+
+
+def _generate_multimodal_with_usage_admission(
+    prompt: str,
+    *,
+    image: Optional[Union[str, bytes]],
+    model_name: Optional[str],
+    device: Optional[str],
+    provider: Optional[str],
+    provider_instance: Optional[MultimodalProvider],
+    deps: "RouterDeps",
+    kwargs: Dict[str, object],
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_candidates: Optional[Sequence[object]],
+    usage_pin: object,
+    usage_request: object,
+    usage_request_id: Optional[str],
+    usage_idempotency_key: Optional[str],
+    usage_catalog_revision: Optional[str],
+    usage_provider_by_binding: Optional[Mapping[str, MultimodalProvider]],
+    usage_observation: object,
+    usage_cost_micros: Optional[int],
+    usage_cost_currency: Optional[str],
+    usage_cancel_event: Optional[threading.Event],
+    usage_max_media_bytes: Optional[int],
+    usage_width: Optional[int],
+    usage_height: Optional[int],
+    usage_declared_media_bytes: Optional[int],
+    usage_mime_type: Optional[str],
+    started: float,
+) -> str:
+    """Reserve, dispatch, settle one multimodal unit under admission."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.resolution import StaticCandidate, UsageRoutingRequest
+    from .endpoint_usage.routing import (
+        ErrorSafetyClass,
+        InvokeOutcome,
+        UsageRouteAdmission,
+        classify_invoke_error,
+        meta_from_static,
+    )
+    from .endpoint_usage.schema import (
+        FallbackClass,
+        RoutingPolicy,
+        UsageVector,
+    )
+
+    policy = usage_policy
+    if not isinstance(policy, RoutingPolicy):
+        policy = _normalize_usage_policy(policy)
+
+    # Adversarial size/MIME/SSRF-shaped inputs fail before reservation.
+    max_output_tokens = kwargs.get("max_tokens")
+    if max_output_tokens is None:
+        max_output_tokens = kwargs.get("max_output_tokens")
+    try:
+        media_facts = validate_multimodal_media_input(
+            image,
+            max_media_bytes=usage_max_media_bytes,
+            width=usage_width,
+            height=usage_height,
+            declared_media_bytes=usage_declared_media_bytes,
+            mime_type=usage_mime_type,
+        )
+    except MultimodalRouterError as exc:
+        _set_last_usage_admission(
+            {
+                "success": False,
+                "final_status": "media_rejected",
+                "reason_codes": ["media_policy_rejected", type(exc).__name__],
+                "attempt_count": 0,
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": False,
+            }
+        )
+        raise
+
+    resolved_for_cache = provider_instance
+    cache_provider_name = (
+        _provider_name(resolved_for_cache, requested=provider)
+        if resolved_for_cache is not None
+        else str(provider or "")
+    )
+    if resolved_for_cache is None and provider:
+        try:
+            resolved_for_cache = get_multimodal_provider(provider, deps=deps)
+            cache_provider_name = _provider_name(
+                resolved_for_cache, requested=provider
+            )
+        except Exception:
+            resolved_for_cache = None
+
+    cache_enabled = _response_cache_enabled()
+    if cache_enabled and cache_provider_name:
+        cache_key = _response_cache_key(
+            provider=cache_provider_name,
+            model_name=model_name,
+            prompt=prompt,
+            image=image,
+            kwargs=dict(kwargs),
+        )
+        try:
+            getter = getattr(deps, "get_cached_or_remote", None)
+            cached = (
+                getter(cache_key)
+                if callable(getter)
+                else deps.get_cached(cache_key)
+            )
+            if isinstance(cached, str):
+                _set_last_usage_admission(
+                    {
+                        "success": True,
+                        "final_status": "cache_hit",
+                        "reason_codes": ["cache_hit", "no_remote_charge"],
+                        "attempt_count": 0,
+                        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                        "remote_charged": False,
+                    }
+                )
+                assert_no_prompt_media_or_output(get_last_usage_admission())
+                _set_last_multimodal_trace(
+                    status="ok",
+                    provider_requested=str(provider or ""),
+                    provider_used=cache_provider_name,
+                    model_name=str(model_name or ""),
+                    device=str(device or ""),
+                    cache_hit=True,
+                    fallback_used=False,
+                    usage_mode=str(getattr(policy.mode, "value", policy.mode)),
+                    remote_charged=False,
+                    image_count=media_facts.image_count,
+                    elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+                )
+                return cached
+        except Exception:
+            pass
+
+    if usage_cancel_event is not None and usage_cancel_event.is_set():
+        raise UsageCapacityError(
+            "multimodal usage admission cancelled before dispatch",
+            reason_codes=("cancelled_before_dispatch",),
+        )
+
+    requested = estimate_multimodal_usage(
+        prompt,
+        media_facts=media_facts,
+        max_output_tokens=int(max_output_tokens)
+        if isinstance(max_output_tokens, int)
+        or (
+            isinstance(max_output_tokens, str) and str(max_output_tokens).isdigit()
+        )
+        else None,
+        cost_micros=usage_cost_micros,
+        cost_currency=usage_cost_currency,
+        remote=True,
+    )
+    request_id = usage_request_id or stable_id(
+        "mreq", "multimodal", str(time.time_ns()), str(media_facts.image_count)
+    )
+    idempotency_key = usage_idempotency_key or stable_id(
+        "midem", request_id, str(media_facts.image_count)
+    )
+    catalog_revision = usage_catalog_revision or stable_id(
+        "cat", "multimodal_router", USAGE_ROUTING_REQUIREMENT_ID
+    )
+
+    pin = _resolve_usage_pin(
+        pin=usage_pin,
+        provider=provider,
+        allow_fallback_with_pin=False,
+    )
+
+    candidates: List[object]
+    if usage_candidates is not None:
+        candidates = list(usage_candidates)
+    else:
+        backend = provider_instance or get_multimodal_provider(provider, deps=deps)
+        provider_used = _provider_name(backend, requested=provider)
+        scope_id = stable_id(
+            "scope", "multimodal", provider_used, model_name or "default"
+        )
+        ureq_probe = usage_request
+        if isinstance(ureq_probe, Mapping):
+            preferred_scope = ureq_probe.get("preferred_scope_id")
+        else:
+            preferred_scope = getattr(ureq_probe, "preferred_scope_id", None)
+        if preferred_scope:
+            scope_id = str(preferred_scope)
+        candidates = [
+            _build_multimodal_static_candidate(
+                provider_name=provider_used,
+                model_name=model_name,
+                device=device,
+                scope_id=scope_id,
+                media_facts=media_facts,
+                kwargs=kwargs,
+            )
+        ]
+        usage_provider_by_binding = {
+            candidates[0].binding_id: backend,  # type: ignore[attr-defined]
+            **dict(usage_provider_by_binding or {}),
+        }
+
+    if not candidates:
+        raise UsageCapacityError(
+            "no multimodal usage candidates",
+            reason_codes=("no_candidates",),
+        )
+
+    first = candidates[0]
+    origin_labels = dict(getattr(first, "labels", None) or {})
+    origin_labels.update(
+        _multimodal_compatibility_labels(
+            provider_name=str(
+                origin_labels.get("router_provider") or provider or ""
+            ),
+            model_name=model_name,
+            device=device,
+            media_facts=media_facts,
+            kwargs=kwargs,
+        )
+    )
+    candidates = _filter_compatible_candidates(
+        candidates, origin_labels=origin_labels
+    ) or list(candidates[:1])
+
+    meta_by_binding = {
+        cand.binding_id: meta_from_static(cand)  # type: ignore[attr-defined]
+        for cand in candidates
+        if isinstance(cand, StaticCandidate)
+    }
+
+    planning_required = planning_required_usage(requested)
+    ureq = usage_request
+    if ureq is None:
+        ureq = UsageRoutingRequest(
+            required=planning_required,
+            require_snapshot=True,
+        )
+    elif isinstance(ureq, Mapping):
+        ureq = UsageRoutingRequest.from_dict(ureq)
+    elif not isinstance(ureq, UsageRoutingRequest):
+        raise TypeError("usage_request must be UsageRoutingRequest, mapping, or None")
+    source_required = ureq.required if ureq.required.entries else requested
+    safe_required = planning_required_usage(source_required)
+    if not safe_required.entries:
+        safe_required = planning_required
+    ureq = UsageRoutingRequest(
+        required=safe_required,
+        unknown_limit_policy=ureq.unknown_limit_policy,
+        stale_snapshot_policy=ureq.stale_snapshot_policy,
+        preferred_binding_id=ureq.preferred_binding_id,
+        preferred_provider_id=ureq.preferred_provider_id,
+        preferred_scope_id=ureq.preferred_scope_id,
+        affinity_binding_id=ureq.affinity_binding_id,
+        media_bytes=ureq.media_bytes,
+        images=ureq.images,
+        audio_seconds=ureq.audio_seconds,
+        max_cost_micros=ureq.max_cost_micros,
+        cost_currency=ureq.cost_currency,
+        deadline_at=ureq.deadline_at,
+        now=ureq.now,
+        health_by_binding=ureq.health_by_binding,
+        circuit_open_by_binding=ureq.circuit_open_by_binding,
+        latency_ms_by_binding=ureq.latency_ms_by_binding,
+        queue_delay_ms_by_binding=ureq.queue_delay_ms_by_binding,
+        quality_preference_by_binding=ureq.quality_preference_by_binding,
+        locality_by_binding=ureq.locality_by_binding,
+        require_snapshot=ureq.require_snapshot,
+        reason_codes=ureq.reason_codes,
+    )
+
+    provider_map: Dict[str, MultimodalProvider] = dict(
+        usage_provider_by_binding or {}
+    )
+    result_holder: Dict[str, object] = {}
+    fallback_used = False
+    used_model_name = model_name
+    provider_used_name = cache_provider_name
+    invoke_error_holder: Dict[str, BaseException] = {}
+
+    def invoke(attempt: object) -> InvokeOutcome:
+        nonlocal fallback_used, used_model_name, provider_used_name
+        if usage_cancel_event is not None and usage_cancel_event.is_set():
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.CLIENT,
+                reason_codes=("cancelled_before_dispatch",),
+                side_effecting=False,
+            )
+        binding_id = getattr(attempt, "binding_id", None)
+        scope_id = getattr(attempt, "scope_id", None) or ""
+        active_backend: Optional[MultimodalProvider] = None
+        labels: Dict[str, str] = {}
+        if binding_id and binding_id in provider_map:
+            active_backend = provider_map[binding_id]
+            for cand in candidates:
+                if getattr(cand, "binding_id", None) == binding_id:
+                    labels = dict(getattr(cand, "labels", None) or {})
+                    break
+        else:
+            for cand in candidates:
+                if getattr(cand, "binding_id", None) == binding_id:
+                    labels = dict(getattr(cand, "labels", None) or {})
+                    break
+            if labels and not multimodal_fallback_compatible(origin_labels, labels):
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.SEMANTIC,
+                    reason_codes=("incompatible_multimodal_candidate",),
+                    side_effecting=False,
+                )
+            # Reject routes that would require a forbidden remote upload.
+            if origin_labels.get("forbid_remote_upload") in {"1", "true", "yes"}:
+                if labels.get("requires_remote_upload") in {"1", "true", "yes"}:
+                    return InvokeOutcome(
+                        success=False,
+                        error_class=ErrorSafetyClass.SEMANTIC,
+                        reason_codes=("forbidden_remote_upload",),
+                        side_effecting=False,
+                    )
+            router_name = labels.get("router_provider") or provider
+            try:
+                active_backend = provider_instance or get_multimodal_provider(
+                    router_name, deps=deps
+                )
+            except Exception as exc:
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.TRANSIENT,
+                    reason_codes=("provider_resolve_failed", type(exc).__name__),
+                    side_effecting=False,
+                )
+        assert active_backend is not None
+        try:
+            text = str(
+                active_backend.generate(
+                    prompt,
+                    image=image,
+                    model_name=model_name,
+                    device=device,
+                    **kwargs,
+                )
+            )
+        except Exception as exc:
+            invoke_error_holder["error"] = exc
+            error_class = classify_invoke_error(
+                reason_codes=(type(exc).__name__,),
+            )
+            message = str(exc).casefold()
+            if any(
+                token in message
+                for token in ("rate limit", "429", "quota", "capacity", "503")
+            ):
+                error_class = ErrorSafetyClass.CAPACITY
+            return InvokeOutcome(
+                success=False,
+                error_class=error_class,
+                reason_codes=("provider_error", type(exc).__name__),
+                side_effecting=False,
+            )
+
+        settled = settle_multimodal_usage(
+            prompt,
+            media_facts=media_facts,
+            output_text=text,
+            max_output_tokens=int(max_output_tokens)
+            if isinstance(max_output_tokens, int)
+            else None,
+            cost_micros=usage_cost_micros,
+            cost_currency=usage_cost_currency,
+        )
+        obs = _parse_provider_observation(
+            scope_id=str(scope_id),
+            request_id=request_id,
+            observation=usage_observation,
+            settled=settled,
+        )
+        provider_used_name = _provider_name(active_backend, requested=provider)
+        used_model_name = model_name
+        result_holder["text"] = text
+        result_holder["provider_used"] = provider_used_name
+        result_holder["settled"] = settled
+        return InvokeOutcome(
+            success=True,
+            observation=obs,
+            settled=settled,
+            error_class=ErrorSafetyClass.SUCCESS,
+            reason_codes=("generated",),
+        )
+
+    admission = UsageRouteAdmission(
+        usage_coordinator,  # type: ignore[arg-type]
+        owner_id="multimodal_router",
+        jitter_max_ms=0,
+    )
+    effective_policy = policy
+    if getattr(pin, "is_exact", False) and not getattr(
+        pin, "allow_fallback_with_pin", False
+    ):
+        if policy.fallback is not FallbackClass.NONE:
+            effective_policy = RoutingPolicy(
+                mode=policy.mode,
+                fallback=FallbackClass.NONE,
+                max_attempts=1,
+                deadline_ms=policy.deadline_ms,
+                allow_wait=policy.allow_wait,
+                max_wait_ms=policy.max_wait_ms,
+                prefer_local=policy.prefer_local,
+                cost_ceiling_micros=policy.cost_ceiling_micros,
+                cost_currency=policy.cost_currency,
+            )
+
+    result = admission.admit(
+        catalog_revision=catalog_revision,
+        candidates=candidates,  # type: ignore[arg-type]
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+        operation=MULTIMODAL_USAGE_OPERATION,
+        requested=requested if isinstance(requested, UsageVector) else UsageVector(),
+        policy=effective_policy,
+        request=ureq,
+        pin=pin,  # type: ignore[arg-type]
+        meta_by_binding=meta_by_binding,
+        invoke=invoke,
+        caller_id="multimodal_router",
+    )
+    _set_last_usage_admission(_admission_result_to_trace(result))
+
+    if not result.success or "text" not in result_holder:
+        original = invoke_error_holder.get("error")
+        capacity_like = any(
+            code
+            in {
+                "no_eligible_candidates",
+                "all_candidates_denied",
+                "capacity",
+                "deadline_or_attempt_bound",
+                "pin_rejected",
+            }
+            or "capacity" in code
+            or "headroom" in code
+            for code in (result.reason_codes or ())
+        )
+        if original is not None and not capacity_like:
+            raise original
+        raise UsageCapacityError(
+            "multimodal usage admission failed: %s"
+            % (",".join(result.reason_codes) or result.final_status),
+            reason_codes=result.reason_codes,
+            next_eligible_at=result.next_eligible_at,
+            admission=result,
+        )
+
+    text = str(result_holder["text"])
+    provider_used_name = str(result_holder.get("provider_used") or provider_used_name)
+    if cache_enabled:
+        try:
+            cache_key = _response_cache_key(
+                provider=provider_used_name or cache_provider_name or provider,
+                model_name=used_model_name,
+                prompt=prompt,
+                image=image,
+                kwargs=dict(kwargs),
+            )
+            setter = getattr(deps, "set_cached_and_remote", None)
+            if callable(setter):
+                setter(cache_key, text)
+            else:
+                deps.set_cached(cache_key, text)
+        except Exception:
+            pass
+
+    _set_last_multimodal_trace(
+        status="ok",
+        provider_requested=str(provider or ""),
+        provider_used=provider_used_name,
+        model_name=str(used_model_name or ""),
+        device=str(device or ""),
+        cache_hit=False,
+        fallback_used=fallback_used
+        or bool(
+            result.selected
+            and result.attempts
+            and len(result.attempts) > 1
+        ),
+        usage_mode=str(getattr(policy.mode, "value", policy.mode)),
+        remote_charged=True,
+        reservation_id=getattr(result.selected, "reservation_id", None)
+        if result.selected
+        else None,
+        receipt_id=getattr(result.receipt, "receipt_id", None)
+        if result.receipt
+        else None,
+        image_count=media_facts.image_count,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+    )
+    return text
+
+
 def generate_multimodal(
     prompt: str,
     *,
@@ -1883,9 +3418,35 @@ def generate_multimodal(
     provider: Optional[str] = None,
     provider_instance: Optional[MultimodalProvider] = None,
     deps: Optional[RouterDeps] = None,
+    usage_coordinator: Optional[object] = None,
+    usage_policy: Optional[object] = None,
+    usage_candidates: Optional[Sequence[object]] = None,
+    usage_pin: Optional[object] = None,
+    usage_request: Optional[object] = None,
+    usage_request_id: Optional[str] = None,
+    usage_idempotency_key: Optional[str] = None,
+    usage_catalog_revision: Optional[str] = None,
+    usage_provider_by_binding: Optional[Mapping[str, MultimodalProvider]] = None,
+    usage_observation: Optional[object] = None,
+    usage_cost_micros: Optional[int] = None,
+    usage_cost_currency: Optional[str] = None,
+    usage_cancel_event: Optional[threading.Event] = None,
+    usage_scope_id: Optional[str] = None,
+    usage_max_media_bytes: Optional[int] = None,
+    usage_width: Optional[int] = None,
+    usage_height: Optional[int] = None,
+    usage_declared_media_bytes: Optional[int] = None,
+    usage_mime_type: Optional[str] = None,
     **kwargs: object,
 ) -> str:
     """Generate text from a prompt and optional image.
+
+    Optional usage-aware admission (AICAT-032) is inactive unless a
+    ``usage_coordinator`` is supplied with a non-``off`` ``usage_policy``.
+    Off mode and a missing coordinator preserve legacy selection and errors
+    exactly. Enforce/assist reserve before remote dispatch; observe/shadow
+    never change the selected provider; cache hits create no remote charge.
+    Media remains referenced and never enters the ledger or receipt.
 
     Args:
         prompt: Text prompt or question
@@ -1901,7 +3462,45 @@ def generate_multimodal(
     Returns:
         Generated text string
     """
+    started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
+    policy = _normalize_usage_policy(usage_policy)
+    if usage_scope_id is None and usage_request is not None:
+        if isinstance(usage_request, Mapping):
+            usage_scope_id = usage_request.get("preferred_scope_id")  # type: ignore[assignment]
+        else:
+            usage_scope_id = getattr(usage_request, "preferred_scope_id", None)
+
+    if usage_coordinator is not None and _usage_mode_enforces(policy):
+        return _generate_multimodal_with_usage_admission(
+            prompt,
+            image=image,
+            model_name=model_name,
+            device=device,
+            provider=provider,
+            provider_instance=provider_instance,
+            deps=resolved_deps,
+            kwargs=dict(kwargs),
+            usage_coordinator=usage_coordinator,
+            usage_policy=policy,
+            usage_candidates=usage_candidates,
+            usage_pin=usage_pin,
+            usage_request=usage_request,
+            usage_request_id=usage_request_id,
+            usage_idempotency_key=usage_idempotency_key,
+            usage_catalog_revision=usage_catalog_revision,
+            usage_provider_by_binding=usage_provider_by_binding,
+            usage_observation=usage_observation,
+            usage_cost_micros=usage_cost_micros,
+            usage_cost_currency=usage_cost_currency,
+            usage_cancel_event=usage_cancel_event,
+            usage_max_media_bytes=usage_max_media_bytes,
+            usage_width=usage_width,
+            usage_height=usage_height,
+            usage_declared_media_bytes=usage_declared_media_bytes,
+            usage_mime_type=usage_mime_type,
+            started=started,
+        )
 
     if _response_cache_enabled():
         cache_key = _response_cache_key(
@@ -1913,13 +3512,67 @@ def generate_multimodal(
         )
         try:
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
-            cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
+            cached = (
+                getter(cache_key)
+                if callable(getter)
+                else resolved_deps.get_cached(cache_key)
+            )
             if isinstance(cached, str):
+                if usage_coordinator is not None and _usage_mode_observes_only(policy):
+                    facts = inspect_media_reference(
+                        image,
+                        width=usage_width,
+                        height=usage_height,
+                        declared_media_bytes=usage_declared_media_bytes,
+                        mime_type=usage_mime_type,
+                    )
+                    _record_usage_observe_shadow(
+                        prompt=prompt,
+                        media_facts=facts,
+                        remote_charged=False,
+                        usage_coordinator=usage_coordinator,
+                        usage_policy=policy,
+                        usage_scope_id=usage_scope_id,
+                        usage_request_id=usage_request_id,
+                        usage_cost_micros=usage_cost_micros,
+                        usage_cost_currency=usage_cost_currency,
+                        success=True,
+                        provider_used=str(provider or ""),
+                        max_output_tokens=None,
+                    )
+                elif usage_coordinator is None or _usage_mode_is_off(
+                    policy, usage_coordinator
+                ):
+                    _set_last_usage_admission(
+                        {
+                            "success": True,
+                            "final_status": "off",
+                            "reason_codes": ["usage_routing_off", "cache_hit"],
+                            "attempt_count": 0,
+                            "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                            "remote_charged": False,
+                            "mode": "off",
+                        }
+                    )
+                _set_last_multimodal_trace(
+                    status="ok",
+                    provider_requested=str(provider or ""),
+                    provider_used=str(provider or ""),
+                    model_name=str(model_name or ""),
+                    device=str(device or ""),
+                    cache_hit=True,
+                    fallback_used=False,
+                    elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+                )
                 return cached
         except Exception:
             pass
 
-    backend = provider_instance or get_multimodal_provider(provider, deps=resolved_deps)
+    backend = provider_instance or get_multimodal_provider(
+        provider, deps=resolved_deps
+    )
+    provider_used = _provider_name(backend, requested=provider)
+    fallback_used = False
     try:
         result = backend.generate(
             prompt,
@@ -1932,7 +3585,7 @@ def generate_multimodal(
         if _response_cache_enabled():
             try:
                 cache_key = _response_cache_key(
-                    provider=provider,
+                    provider=provider_used or provider,
                     model_name=model_name,
                     prompt=prompt,
                     image=image,
@@ -1945,19 +3598,125 @@ def generate_multimodal(
                     resolved_deps.set_cached(cache_key, text)
             except Exception:
                 pass
+        _set_last_multimodal_trace(
+            status="ok",
+            provider_requested=str(provider or ""),
+            provider_used=provider_used,
+            model_name=str(model_name or ""),
+            device=str(device or ""),
+            cache_hit=False,
+            fallback_used=False,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
+        if usage_coordinator is not None and _usage_mode_observes_only(policy):
+            facts = inspect_media_reference(
+                image,
+                width=usage_width,
+                height=usage_height,
+                declared_media_bytes=usage_declared_media_bytes,
+                mime_type=usage_mime_type,
+            )
+            _record_usage_observe_shadow(
+                prompt=prompt,
+                media_facts=facts,
+                remote_charged=True,
+                usage_coordinator=usage_coordinator,
+                usage_policy=policy,
+                usage_scope_id=usage_scope_id,
+                usage_request_id=usage_request_id,
+                usage_cost_micros=usage_cost_micros,
+                usage_cost_currency=usage_cost_currency,
+                success=True,
+                provider_used=provider_used,
+                max_output_tokens=kwargs.get("max_tokens")  # type: ignore[arg-type]
+                if isinstance(kwargs.get("max_tokens"), int)
+                else None,
+            )
+        elif usage_coordinator is None or _usage_mode_is_off(
+            policy, usage_coordinator
+        ):
+            _set_last_usage_admission(
+                {
+                    "success": True,
+                    "final_status": "off",
+                    "reason_codes": ["usage_routing_off"],
+                    "attempt_count": 0,
+                    "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                    "remote_charged": None,
+                    "mode": "off",
+                }
+            )
         return text
     except Exception as primary_error:
         logger.debug(f"Primary multimodal provider failed: {primary_error}")
         if provider is None:
             hf_provider = _get_huggingface_provider()
             if hf_provider is not None and backend is not hf_provider:
-                return hf_provider.generate(
-                    prompt,
-                    image=image,
-                    model_name=model_name,
-                    device=device,
-                    **kwargs,
+                text = str(
+                    hf_provider.generate(
+                        prompt,
+                        image=image,
+                        model_name=model_name,
+                        device=device,
+                        **kwargs,
+                    )
                 )
+                fallback_used = True
+                provider_used = "huggingface"
+                _set_last_multimodal_trace(
+                    status="ok",
+                    provider_requested=str(provider or ""),
+                    provider_used=provider_used,
+                    model_name=str(model_name or ""),
+                    device=str(device or ""),
+                    cache_hit=False,
+                    fallback_used=fallback_used,
+                    elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+                )
+                if usage_coordinator is not None and _usage_mode_observes_only(
+                    policy
+                ):
+                    facts = inspect_media_reference(image)
+                    _record_usage_observe_shadow(
+                        prompt=prompt,
+                        media_facts=facts,
+                        remote_charged=True,
+                        usage_coordinator=usage_coordinator,
+                        usage_policy=policy,
+                        usage_scope_id=usage_scope_id,
+                        usage_request_id=usage_request_id,
+                        usage_cost_micros=usage_cost_micros,
+                        usage_cost_currency=usage_cost_currency,
+                        success=True,
+                        provider_used=provider_used,
+                        max_output_tokens=None,
+                    )
+                elif usage_coordinator is None or _usage_mode_is_off(
+                    policy, usage_coordinator
+                ):
+                    _set_last_usage_admission(
+                        {
+                            "success": True,
+                            "final_status": "off",
+                            "reason_codes": ["usage_routing_off"],
+                            "attempt_count": 0,
+                            "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                            "remote_charged": None,
+                            "mode": "off",
+                        }
+                    )
+                return text
+        _set_last_multimodal_trace(
+            status="error",
+            provider_requested=str(provider or ""),
+            provider_used=provider_used,
+            model_name=str(model_name or ""),
+            device=str(device or ""),
+            cache_hit=False,
+            fallback_used=False,
+            error_type=type(primary_error).__name__,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
         raise
 
 

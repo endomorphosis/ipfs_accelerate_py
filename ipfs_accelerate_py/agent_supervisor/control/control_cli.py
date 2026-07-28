@@ -25,6 +25,7 @@ from typing import Any, TextIO
 
 from .control_contracts import (
     MUTATION_OPERATIONS,
+    SUPERVISOR_USAGE_READ_AUTHORITY,
     AuthorizationDecision,
     CapabilityDegradation,
     ControlBounds,
@@ -37,12 +38,16 @@ from .control_contracts import (
     OperationRequest,
     OperationResult,
     OperationStatus,
+    SupervisorUsageControlOperation,
     decode_operation_request,
+    discover_usage_control_catalog,
     get_operation_catalog,
+    usage_control_operations,
 )
 from .control_plane import (
     DIRECT_CONTROL_SERVICE_DISPATCHER_ID,
     ControlSurfacePublication,
+    ProviderUsageControl,
     SupervisorControlService,
     control_operation_behavior_id,
     validate_control_surface_publication,
@@ -110,6 +115,27 @@ PROMPT_WORKFLOW_CLI_COMMANDS: tuple[str, ...] = (
     "rescue-preview",
     "rescue",
 )
+
+# Usage-governance CLI commands (thin adapters; not Operation catalog members).
+USAGE_CLI_COMMANDS: dict[str, str] = {
+    "usage-discover": "discover",
+    "usage-status": SupervisorUsageControlOperation.STATUS.value,
+    "usage-health": SupervisorUsageControlOperation.HEALTH.value,
+    "usage-budgets": SupervisorUsageControlOperation.BUDGETS.value,
+    "usage-headroom": SupervisorUsageControlOperation.HEADROOM.value,
+    "usage-reservations": SupervisorUsageControlOperation.RESERVATIONS.value,
+    "usage-receipts": SupervisorUsageControlOperation.RECEIPTS.value,
+    "usage-route-preview": SupervisorUsageControlOperation.ROUTE_PREVIEW.value,
+    "usage-blocked-work": SupervisorUsageControlOperation.BLOCKED_WORK.value,
+    "usage-next-eligible": SupervisorUsageControlOperation.NEXT_ELIGIBLE.value,
+    "usage-adapter-capabilities": (
+        SupervisorUsageControlOperation.ADAPTER_CAPABILITIES.value
+    ),
+    "usage-set-budget": SupervisorUsageControlOperation.SET_BUDGET.value,
+    "usage-set-policy": SupervisorUsageControlOperation.SET_POLICY.value,
+    "usage-correct": SupervisorUsageControlOperation.CORRECT.value,
+    "usage-reset": SupervisorUsageControlOperation.RESET.value,
+}
 
 _PROMPT_SURFACE_OPERATIONS: frozenset[Operation] = frozenset(
     {
@@ -434,6 +460,45 @@ def register_agent_cli(
             help=f"Run the {operation.value} control operation.",
         )
         _add_request_arguments(child, operation)
+    # Usage-governance commands are thin adapters over ProviderUsageControl.
+    # They intentionally sit outside COMMAND_OPERATIONS so the closed Operation
+    # catalog population remains exact for control-plane conformance.
+    for command, operation_name in USAGE_CLI_COMMANDS.items():
+        child = commands.add_parser(
+            command,
+            help=f"Run the {operation_name} usage-governance operation.",
+        )
+        child.set_defaults(
+            agent_usage_operation=operation_name,
+            agent_usage_command=command,
+        )
+        child.add_argument(
+            "--authorities-json",
+            help="JSON array of usage authorities.",
+        )
+        child.add_argument(
+            "--target-id",
+            help="Exact usage target / scope identifier.",
+        )
+        child.add_argument(
+            "--limit",
+            type=int,
+            default=50,
+            help="Bounded page size for list operations.",
+        )
+        child.add_argument(
+            "--cursor",
+            help="Opaque pagination cursor.",
+        )
+        child.add_argument(
+            "--parameters-json",
+            help="Additional JSON parameters for the usage operation.",
+        )
+        child.add_argument(
+            "--output-json",
+            action="store_true",
+            help="Emit the canonical JSON envelope.",
+        )
     return agent
 
 
@@ -1134,6 +1199,111 @@ def _write_record(
     stream.write(encoded + "\n")
 
 
+def _usage_authorities_from_args(args: argparse.Namespace) -> list[str]:
+    raw = getattr(args, "authorities_json", None)
+    if raw is None or raw == "":
+        return [SUPERVISOR_USAGE_READ_AUTHORITY]
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AgentCLIError("authorities JSON is invalid") from exc
+    if not isinstance(payload, list) or not all(
+        isinstance(item, str) and item for item in payload
+    ):
+        raise AgentCLIError("authorities JSON must be an array of strings")
+    return list(payload)
+
+
+def run_usage_cli(
+    args: argparse.Namespace,
+    *,
+    usage_control: ProviderUsageControl | None = None,
+    service: SupervisorControlService | None = None,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> int:
+    """Thin CLI adapter for ProviderUsageControl (schema/result/error parity)."""
+
+    stdout = stdout or sys.stdout
+    stderr = stderr or sys.stderr
+    try:
+        operation = str(getattr(args, "agent_usage_operation", "") or "")
+        if not operation:
+            raise AgentCLIError("usage operation is required")
+        controller = usage_control
+        if controller is None and service is not None:
+            controller = service.usage_control
+        if controller is None:
+            controller = ProviderUsageControl()
+        authorities = _usage_authorities_from_args(args)
+        if operation == "discover":
+            record = dict(controller.discover())
+            record["success"] = True
+            record["status"] = "success"
+        else:
+            parameters: dict[str, Any] = {}
+            raw_params = getattr(args, "parameters_json", None)
+            if raw_params:
+                try:
+                    loaded = json.loads(raw_params)
+                except json.JSONDecodeError as exc:
+                    raise AgentCLIError("parameters JSON is invalid") from exc
+                if not isinstance(loaded, Mapping):
+                    raise AgentCLIError("parameters JSON must be an object")
+                parameters = dict(loaded)
+            target_id = getattr(args, "target_id", None)
+            if target_id:
+                parameters.setdefault("target_id", target_id)
+            if getattr(args, "limit", None) is not None:
+                parameters.setdefault("limit", int(args.limit))
+            if getattr(args, "cursor", None):
+                parameters.setdefault("cursor", args.cursor)
+            record = controller.execute(
+                operation, authorities=authorities, **parameters
+            )
+        _write_record(
+            stdout,
+            record,
+            compact=bool(getattr(args, "output_json", False)),
+        )
+        if record.get("success") is False:
+            return AGENT_CLI_EXIT_FAILED
+        return AGENT_CLI_EXIT_SUCCESS
+    except AgentCLIError as exc:
+        payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
+            "status": "invalid_request",
+            "error": {"code": "invalid_request", "detail": str(exc)},
+            "error_code": "invalid_request",
+            "success": False,
+        }
+        _write_record(stderr, payload, compact=True)
+        return AGENT_CLI_EXIT_INVALID
+    except Exception:
+        payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/cli-error@1",
+            "status": "internal_error",
+            "error": {
+                "code": "internal_error",
+                "detail": "usage control operation failed",
+            },
+            "error_code": "internal_error",
+            "success": False,
+        }
+        _write_record(stderr, payload, compact=True)
+        return AGENT_CLI_EXIT_FAILED
+
+
+def usage_cli_discovery_manifest() -> dict[str, Any]:
+    """Static discovery for usage-governance CLI commands."""
+
+    catalog = dict(discover_usage_control_catalog())
+    catalog["surface"] = "cli"
+    catalog["commands"] = dict(USAGE_CLI_COMMANDS)
+    catalog["operations"] = list(usage_control_operations())
+    return catalog
+
+
 def run_agent_cli(
     args: argparse.Namespace,
     *,
@@ -1152,6 +1322,13 @@ def run_agent_cli(
         if service is not None and service_factory is not None:
             raise AgentCLIError(
                 "service and service_factory are mutually exclusive"
+            )
+        if getattr(args, "agent_usage_operation", None):
+            return run_usage_cli(
+                args,
+                service=service,
+                stdout=stdout,
+                stderr=stderr,
             )
         request = build_agent_request(args, stdin_stream=stdin)
         count = int(args.watch_count)
@@ -1281,6 +1458,7 @@ __all__ = [
     "MAX_WATCH_INTERVAL_MS",
     "PROMPT_CLI_REQUIREMENT_ID",
     "PROMPT_WORKFLOW_CLI_COMMANDS",
+    "USAGE_CLI_COMMANDS",
     "agent_cli_command",
     "build_agent_request",
     "build_agent_cli_command",
@@ -1292,6 +1470,8 @@ __all__ = [
     "generate_agent_cli_command",
     "register_agent_cli",
     "run_agent_cli",
+    "run_usage_cli",
+    "usage_cli_discovery_manifest",
     "validate_agent_cli_catalog",
     "v2_cli_control_surface_publication",
 ]

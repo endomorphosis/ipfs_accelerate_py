@@ -11,6 +11,8 @@ the shorter orientation page for new readers.
 | Install the package | [Installation guide](guides/getting-started/installation.md) |
 | Run inference or start MCP | [Getting started](guides/getting-started/README.md) and [Quick start](guides/QUICKSTART.md) |
 | Operate the objective-driven agent supervisor | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
+| Understand supervisor design philosophy | [Agent Supervisor philosophy](architecture/AGENT_SUPERVISOR_PHILOSOPHY.md) |
+| Orient in supervisor docs by audience | [Agent Supervisor doc hub](architecture/agent_supervisor/README.md) |
 | Understand system structure | [Architecture overview](architecture/overview.md) |
 | Use Python APIs | [API overview](api/overview.md) |
 | Configure hardware | [Hardware guide](guides/hardware/overview.md) |
@@ -38,9 +40,16 @@ capability/status command or test for those integrations.
 ## Agent supervisor documentation
 
 The supervisor is a maintainer/operator subsystem, not a prerequisite for
-ordinary inference. Start with the [operator guide](guides/AGENT_SUPERVISOR_GUIDE.md),
-then use the design documents for the trust and assurance model:
+ordinary inference. Start with the [doc hub](architecture/agent_supervisor/README.md)
+and [design philosophy](architecture/AGENT_SUPERVISOR_PHILOSOPHY.md) for the
+product mental model, then the [operator guide](guides/AGENT_SUPERVISOR_GUIDE.md)
+for day-to-day use:
 
+- [Documentation hub](architecture/agent_supervisor/README.md)
+- [Design philosophy](architecture/AGENT_SUPERVISOR_PHILOSOPHY.md)
+- [Package map](architecture/agent_supervisor/PACKAGE_MAP.md)
+- [Agent capsule](architecture/agent_supervisor/FOR_AGENTS.md)
+- [Contributor guide](architecture/agent_supervisor/FOR_CONTRIBUTORS.md)
 - [Agent supervisor architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
 - [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
 - [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)

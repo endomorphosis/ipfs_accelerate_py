@@ -1136,6 +1136,152 @@ def test_operator_clearance_accepts_disposed_exact_baseline_mirror(
     assert proof["mirrored_protected_paths"] == [POLICY_PATH]
 
 
+def test_operator_clearance_accepts_disposed_identity_only_recreation(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected = workspace / POLICY_PATH
+    replacement = protected.with_name(f"{protected.name}.replacement")
+    replacement.write_bytes(protected.read_bytes())
+    replacement.chmod(protected.stat().st_mode)
+    replacement.replace(protected)
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"workspace"}
+    assert violation["mutations"][0]["change"] == "identity_changed"
+    assert (
+        violation["mutations"][0]["before"]["sha256"]
+        == violation["mutations"][0]["after"]["sha256"]
+    )
+    unrelated = repo / "src" / "unrelated.py"
+    unrelated.parent.mkdir(exist_ok=True)
+    unrelated.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "src/unrelated.py")
+    _git(
+        repo,
+        "-c",
+        "user.name=Unrelated",
+        "-c",
+        "user.email=unrelated@example.invalid",
+        "commit",
+        "-m",
+        "change an unrelated path",
+    )
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    result = daemon.clear_implementation_protected_path_incident(
+        operator_note=(
+            "Reviewed an absent checkout whose protected file was recreated "
+            "with identical content and metadata."
+        ),
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True, result
+    assert result["reason"] == (
+        "operator_approved_mirrored_ephemeral_workspace"
+    )
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    proof = receipt["mirrored_ephemeral_workspace_proof"]
+    assert proof["workspace_absent"] is True
+    assert proof["workspace_unregistered"] is True
+    assert proof["workspace_git_head_missing_at_snapshot"] is False
+    assert proof["mutation_changes"] == ["identity_changed"]
+    assert proof["mirrored_protected_paths"] == [POLICY_PATH]
+    assert receipt["protected_path_history_unchanged"] is True
+    assert receipt["history"] == []
+
+
+def test_operator_clearance_accepts_shared_commit_and_disposed_identity_recreation(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    workspace_protected = workspace / POLICY_PATH
+    replacement = workspace_protected.with_name(
+        f"{workspace_protected.name}.replacement"
+    )
+    replacement.write_bytes(workspace_protected.read_bytes())
+    replacement.chmod(workspace_protected.stat().st_mode)
+    replacement.replace(workspace_protected)
+    protected.write_text("reviewed operator update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Operator",
+        "-c",
+        "user.email=operator@example.invalid",
+        "commit",
+        "-m",
+        "update protected policy",
+    )
+    operator_commit = _git(repo, "rev-parse", "HEAD")
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"shared_checkout", "workspace"}
+    assert {
+        item["change"]
+        for item in violation["mutations"]
+        if item["scope"] == "workspace"
+    } == {"identity_changed"}
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    result = daemon.clear_implementation_protected_path_incident(
+        approved_commits=[operator_commit],
+        operator_note=(
+            "Reviewed the operator commit and the absent checkout's "
+            "identity-only recreation."
+        ),
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True, result
+    assert result["reason"] == (
+        "operator_approved_shared_checkout_commits_and_"
+        "mirrored_ephemeral_workspace"
+    )
+    assert result["approved_commits"] == [operator_commit]
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["history"][0]["commit"] == operator_commit
+    proof = receipt["mirrored_ephemeral_workspace_proof"]
+    assert proof["mutation_changes"] == ["identity_changed"]
+    assert proof["mirrored_protected_paths"] == [POLICY_PATH]
+
+
 def test_disposed_workspace_approval_rejects_selective_protected_deletion(
     tmp_path: Path,
 ) -> None:

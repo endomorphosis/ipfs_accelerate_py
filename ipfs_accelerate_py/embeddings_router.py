@@ -136,7 +136,30 @@ class EmbeddingsRouterError(RuntimeError):
     """Raised when a provider violates the embeddings router contract."""
 
 
+class UsageCapacityError(EmbeddingsRouterError):
+    """Raised when usage-aware admission denies capacity before or during dispatch."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_codes: Sequence[str] = (),
+        next_eligible_at: Optional[str] = None,
+        admission: Optional[object] = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason_codes = tuple(reason_codes or ())
+        self.next_eligible_at = next_eligible_at
+        self.admission = admission
+
+
+# Evidence identity for AICAT-G130 / AICAT-031 embeddings usage integration.
+USAGE_ROUTING_REQUIREMENT_ID = "requirement:embeddings-router-usage-routing.v1"
+EMBEDDING_USAGE_OPERATION = "embedding.generate"
+
+
 _LAST_EMBEDDING_TRACE = threading.local()
+_LAST_USAGE_ADMISSION = threading.local()
 _EMBEDDING_PROGRESS_LOCK = threading.Lock()
 _LAST_EMBEDDING_PROGRESS: Dict[str, object] = {
     "stage": "",
@@ -155,6 +178,20 @@ def get_last_embedding_trace() -> Dict[str, object]:
     """Return a copy of the most recent embedding-call trace for this thread."""
 
     payload = getattr(_LAST_EMBEDDING_TRACE, "payload", None)
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _set_last_usage_admission(payload: Optional[Mapping[str, object]]) -> None:
+    _LAST_USAGE_ADMISSION.payload = dict(payload) if payload is not None else None
+
+
+def get_last_usage_admission() -> Dict[str, object]:
+    """Return a copy of the most recent usage-admission result for this thread.
+
+    The payload is operational evidence only: never source text or vectors.
+    """
+
+    payload = getattr(_LAST_USAGE_ADMISSION, "payload", None)
     return dict(payload) if isinstance(payload, dict) else {}
 
 
@@ -180,6 +217,1122 @@ def get_embedding_progress() -> Dict[str, object]:
 
 def _truthy(value: Optional[str]) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# ---------------------------------------------------------------------------
+# Usage-aware admission (optional; off mode is the default legacy path)
+# ---------------------------------------------------------------------------
+
+
+def estimate_embedding_tokens(text: str) -> int:
+    """Conservative per-text token estimate for embeddings admission.
+
+    Uses the tighter of character and word heuristics so non-ASCII and dense
+    text cannot under-estimate headroom consumption.
+    """
+
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    if not text:
+        return 1
+    char_estimate = (len(text) + 3) // 4
+    word_estimate = max(1, len(text.split()))
+    byte_estimate = (len(text.encode("utf-8")) + 2) // 3
+    return max(1, char_estimate, word_estimate, byte_estimate)
+
+
+def estimate_embedding_usage(
+    texts: Sequence[str],
+    *,
+    expected_dimension: Optional[int] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+    include_concurrency: bool = True,
+    remote: bool = True,
+) -> "object":
+    """Build a conservative multi-dimension usage vector for embedding work.
+
+    Dimensions covered when applicable:
+    requests, embedding_inputs, embedding_tokens, vectors, batch_items,
+    concurrent_requests, media_bytes (input UTF-8), and cost_micros.
+    ``expected_dimension`` is recorded only as a compatibility constraint
+    elsewhere; output shape validation remains authoritative after invoke.
+    """
+
+    from .endpoint_usage.schema import UsageVector
+
+    items = list(texts)
+    if any(not isinstance(text, str) for text in items):
+        raise TypeError("texts must contain only strings")
+    if not remote or not items:
+        # Cache-only / empty: no remote charge envelope.
+        return UsageVector.of(requests=0) if not items else UsageVector()
+
+    n = len(items)
+    tokens = sum(estimate_embedding_tokens(text) for text in items)
+    media_bytes = sum(len(text.encode("utf-8")) for text in items)
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "embedding_inputs": n,
+        "embedding_tokens": tokens,
+        "vectors": n,
+        "batch_items": n,
+    }
+    if include_concurrency:
+        amounts["concurrent_requests"] = 1
+    if media_bytes > 0:
+        amounts["media_bytes"] = media_bytes
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    _ = expected_dimension  # reserved for caller-side compatibility pins
+    return UsageVector.of(**amounts)
+
+
+def settle_embedding_usage(
+    texts: Sequence[str],
+    *,
+    vectors_produced: int,
+    embedding_tokens: Optional[int] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+) -> "object":
+    """Actual remote usage for a completed physical sub-batch or single call."""
+
+    from .endpoint_usage.schema import UsageVector
+
+    items = list(texts)
+    n = max(0, int(vectors_produced))
+    if n <= 0:
+        return UsageVector()
+    tokens = (
+        int(embedding_tokens)
+        if embedding_tokens is not None
+        else sum(estimate_embedding_tokens(text) for text in items[:n])
+    )
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "embedding_inputs": n,
+        "embedding_tokens": max(0, tokens),
+        "vectors": n,
+        "batch_items": n,
+    }
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    return UsageVector.of(**amounts)
+
+
+# Ranking-input names that embed these substrings are rejected by receipt
+# digests (``token``, ``media``, ...).  Still reserve the full vector; only
+# the planning ``required`` surface is filtered for receipt safety.
+_RECEIPT_UNSAFE_DIMENSION_MARKERS = (
+    "token",
+    "media",
+    "prompt",
+    "message",
+    "payload",
+    "endpoint",
+    "credential",
+    "secret",
+    "password",
+    "authorization",
+)
+
+
+def planning_required_usage(requested: "object") -> "object":
+    """Return a receipt-safe planning vector derived from a full estimate.
+
+    Dimensions such as ``embedding_tokens`` and ``media_bytes`` remain in the
+    atomic reservation envelope but are omitted from ranking input names so
+    route receipts stay redaction-safe under the shared receipt grammar.
+    """
+
+    from .endpoint_usage.schema import UsageVector, UsageVectorEntry
+
+    if not isinstance(requested, UsageVector):
+        return UsageVector()
+    safe: List[object] = []
+    for entry in requested.entries:
+        name = str(getattr(entry.dimension, "value", entry.dimension) or "")
+        lowered = name.casefold()
+        if any(marker in lowered for marker in _RECEIPT_UNSAFE_DIMENSION_MARKERS):
+            continue
+        safe.append(entry)
+    return UsageVector(entries=tuple(safe))  # type: ignore[arg-type]
+
+
+def _normalize_usage_policy(policy: object) -> "object":
+    from .endpoint_usage.schema import RoutingMode, RoutingPolicy
+
+    if policy is None:
+        return RoutingPolicy(mode=RoutingMode.OFF)
+    if isinstance(policy, RoutingPolicy):
+        return policy
+    if isinstance(policy, Mapping):
+        return RoutingPolicy.from_dict(policy)
+    raise TypeError("usage_policy must be a RoutingPolicy, mapping, or None")
+
+
+def _usage_mode_is_off(policy: object, coordinator: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    if coordinator is None:
+        return True
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode is RoutingMode.OFF or str(mode) == RoutingMode.OFF.value
+
+
+def _usage_mode_observes_only(policy: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode in (RoutingMode.OBSERVE, RoutingMode.SHADOW) or str(mode) in {
+        RoutingMode.OBSERVE.value,
+        RoutingMode.SHADOW.value,
+    }
+
+
+def _usage_mode_enforces(policy: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode in (RoutingMode.ENFORCE, RoutingMode.ASSIST) or str(mode) in {
+        RoutingMode.ENFORCE.value,
+        RoutingMode.ASSIST.value,
+    }
+
+
+def _embedding_compatibility_labels(
+    *,
+    provider_name: str,
+    model_name: Optional[str],
+    device: Optional[str],
+    expected_dimension: Optional[int],
+    kwargs: Mapping[str, object],
+) -> Dict[str, str]:
+    labels: Dict[str, str] = {
+        "router_provider": str(provider_name or ""),
+        "input_types": "text",
+    }
+    try:
+        descriptor = get_provider_descriptor(provider_name) if provider_name else None
+    except Exception:
+        descriptor = None
+    if descriptor is not None:
+        for key in (
+            "locality",
+            "device",
+            "normalization",
+            "input_types",
+            "access_requirement",
+        ):
+            value = dict(descriptor.labels or {}).get(key)
+            if value is not None:
+                labels[key] = str(value)
+        for capability in descriptor.capabilities or ():
+            dims = getattr(capability, "embedding_dimensions", None)
+            if dims is not None:
+                labels["embedding_dimensions"] = str(dims)
+                break
+    if expected_dimension is not None:
+        labels["embedding_dimensions"] = str(int(expected_dimension))
+    if model_name:
+        labels["model_name"] = str(model_name)
+    if device:
+        labels["device"] = str(device)
+    for key in ("normalization", "input_types", "locality"):
+        if key in kwargs and kwargs[key] is not None:
+            labels[key] = str(kwargs[key])
+    return labels
+
+
+def embedding_fallback_compatible(
+    origin_labels: Mapping[str, str],
+    candidate_labels: Mapping[str, str],
+    *,
+    require_dimensions: bool = True,
+) -> bool:
+    """Return True when a fallback candidate preserves embedding contracts.
+
+    Incompatible embeddings must never substitute: dimensions, normalization,
+    input type, locality/device, and authorization/data policy must agree when
+    declared on the origin.
+    """
+
+    origin = {str(k): str(v) for k, v in origin_labels.items()}
+    candidate = {str(k): str(v) for k, v in candidate_labels.items()}
+    for key in ("input_types", "normalization", "locality", "device"):
+        if key in origin and origin[key] not in {"", "unknown", "provider-managed"}:
+            if candidate.get(key, origin[key]) != origin[key]:
+                return False
+    if require_dimensions and "embedding_dimensions" in origin:
+        if candidate.get("embedding_dimensions") != origin["embedding_dimensions"]:
+            return False
+    # Authorization / data policy: deny if candidate explicitly weaker.
+    origin_access = origin.get("access_requirement")
+    cand_access = candidate.get("access_requirement")
+    if origin_access == "required" and cand_access not in (None, "required", "optional"):
+        return False
+    origin_gov = origin.get("data.governance") or origin.get("data_governance")
+    cand_gov = candidate.get("data.governance") or candidate.get("data_governance")
+    if origin_gov and cand_gov and cand_gov != origin_gov:
+        return False
+    if cand_gov and str(cand_gov).casefold() in {"deny", "forbidden", "blocked"}:
+        return False
+    return True
+
+
+def _build_embedding_static_candidate(
+    *,
+    provider_name: str,
+    model_name: Optional[str],
+    device: Optional[str],
+    scope_id: str,
+    expected_dimension: Optional[int],
+    kwargs: Mapping[str, object],
+    score: int = 10,
+    authorized: bool = True,
+) -> "object":
+    from .endpoint_usage.identity import stable_id
+    from .endpoint_usage.resolution import StaticCandidate
+
+    labels = _embedding_compatibility_labels(
+        provider_name=provider_name,
+        model_name=model_name,
+        device=device,
+        expected_dimension=expected_dimension,
+        kwargs=kwargs,
+    )
+    provider_id = stable_id("provider", "embeddings", provider_name)
+    model_id = stable_id("model", "embeddings", provider_name, model_name or "default")
+    deployment_id = stable_id(
+        "deployment", "embeddings", provider_name, device or "default"
+    )
+    binding_id = stable_id(
+        "binding", "embeddings", provider_name, model_name or "default", scope_id
+    )
+    return StaticCandidate(
+        binding_id=binding_id,
+        provider_id=provider_id,
+        model_id=model_id,
+        deployment_id=deployment_id,
+        scope_id=scope_id,
+        catalog_score=score,
+        locality=labels.get("locality"),
+        authorized=authorized,
+        healthy=True,
+        routable=True,
+        configured=True,
+        labels=labels,
+    )
+
+
+def _filter_compatible_candidates(
+    candidates: Sequence[object],
+    *,
+    origin_labels: Mapping[str, str],
+) -> List[object]:
+    kept: List[object] = []
+    for cand in candidates:
+        labels = dict(getattr(cand, "labels", None) or {})
+        if embedding_fallback_compatible(origin_labels, labels):
+            kept.append(cand)
+    return kept
+
+
+def _admission_result_to_trace(result: object) -> Dict[str, object]:
+    """Reduce an admission result to a redacted operational trace (no vectors/text)."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output
+
+    selected = getattr(result, "selected", None)
+    receipt = getattr(result, "receipt", None)
+    payload: Dict[str, object] = {
+        "success": bool(getattr(result, "success", False)),
+        "final_status": str(getattr(result, "final_status", "") or ""),
+        "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
+        "next_eligible_at": getattr(result, "next_eligible_at", None),
+        "attempt_count": len(getattr(result, "attempts", ()) or ()),
+        "selected_binding_id": getattr(selected, "binding_id", None) if selected else None,
+        "selected_scope_id": getattr(selected, "scope_id", None) if selected else None,
+        "reservation_id": getattr(selected, "reservation_id", None) if selected else None,
+        "receipt_id": getattr(receipt, "receipt_id", None) if receipt else None,
+        "usage_revision": getattr(selected, "usage_revision", None) if selected else None,
+        "catalog_revision": getattr(selected, "catalog_revision", None)
+        if selected
+        else None,
+        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+    }
+    if receipt is not None:
+        try:
+            receipt_dict = receipt.to_dict()
+            assert_no_prompt_media_or_output(receipt_dict)
+            payload["receipt"] = receipt_dict
+        except Exception:
+            payload["receipt"] = {"receipt_id": payload.get("receipt_id")}
+    assert_no_prompt_media_or_output(payload)
+    return payload
+
+
+def _parse_provider_observation(
+    *,
+    scope_id: str,
+    request_id: str,
+    observation: object,
+    settled: object,
+) -> Optional[object]:
+    """Parse optional provider observation; never retain source text or vectors."""
+
+    if observation is None:
+        return None
+    from .endpoint_usage.schema import (
+        ConfidenceLevel,
+        LimitSource,
+        Provenance,
+        ProviderUsageObservation,
+        UsageVector,
+    )
+
+    if isinstance(observation, ProviderUsageObservation):
+        return observation
+    if not isinstance(observation, Mapping):
+        return None
+    # Prefer adapter when family/headers/body present; otherwise construct lightly.
+    try:
+        from .endpoint_usage.adapters import parse_provider_observation
+
+        if any(
+            key in observation
+            for key in ("headers", "body", "family", "http_status", "usage")
+        ):
+            payload = dict(observation)
+            payload.setdefault("scope_id", scope_id)
+            payload.setdefault("request_id", request_id)
+            return parse_provider_observation(payload)
+    except Exception:
+        logger.debug("embeddings usage observation adapter failed", exc_info=True)
+
+    usage = observation.get("usage")
+    if usage is None:
+        usage = settled if isinstance(settled, UsageVector) else UsageVector()
+    elif not isinstance(usage, UsageVector):
+        try:
+            usage = UsageVector.from_dict(usage)
+        except Exception:
+            usage = settled if isinstance(settled, UsageVector) else UsageVector()
+    try:
+        return ProviderUsageObservation(
+            scope_id=scope_id,
+            request_id=request_id,
+            usage=usage,
+            http_status=observation.get("http_status"),
+            confidence=ConfidenceLevel.HIGH
+            if observation.get("http_status") == 200
+            else ConfidenceLevel.MEDIUM,
+            provenance=Provenance(source=LimitSource.RESPONSE_BODY),
+            reason_codes=tuple(observation.get("reason_codes") or ()),
+            retry_after_ms=observation.get("retry_after_ms"),
+            limits=tuple(observation.get("limits") or ()),
+        )
+    except Exception:
+        logger.debug("embeddings usage observation construct failed", exc_info=True)
+        return None
+
+
+def _resolve_usage_pin(
+    *,
+    pin: object,
+    provider: Optional[str],
+    allow_fallback_with_pin: bool,
+) -> object:
+    from .endpoint_usage.identity import stable_id
+    from .endpoint_usage.routing import RoutePin
+
+    if pin is not None:
+        if isinstance(pin, RoutePin):
+            return pin
+        if isinstance(pin, Mapping):
+            return RoutePin(
+                provider_id=pin.get("provider_id"),
+                model_id=pin.get("model_id"),
+                deployment_id=pin.get("deployment_id"),
+                binding_id=pin.get("binding_id"),
+                allow_fallback_with_pin=bool(
+                    pin.get("allow_fallback_with_pin", allow_fallback_with_pin)
+                ),
+            )
+        raise TypeError("usage_pin must be a RoutePin, mapping, or None")
+    # Explicit provider selection is an exact pin by default (no fallback).
+    if provider:
+        return RoutePin(
+            provider_id=stable_id("provider", "embeddings", provider),
+            allow_fallback_with_pin=allow_fallback_with_pin,
+        )
+    return RoutePin()
+
+
+def _embed_texts_with_usage_admission(
+    inputs: List[str],
+    *,
+    model_name: Optional[str],
+    device: Optional[str],
+    provider: Optional[str],
+    provider_instance: Optional["EmbeddingsProvider"],
+    deps: "RouterDeps",
+    kwargs: Dict[str, object],
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_candidates: Optional[Sequence[object]],
+    usage_pin: object,
+    usage_request: object,
+    usage_request_id: Optional[str],
+    usage_idempotency_key: Optional[str],
+    usage_catalog_revision: Optional[str],
+    usage_provider_by_binding: Optional[Mapping[str, "EmbeddingsProvider"]],
+    usage_observation: object,
+    usage_expected_dimension: Optional[int],
+    usage_cost_micros: Optional[int],
+    usage_cost_currency: Optional[str],
+    usage_cancel_event: Optional[threading.Event],
+    started: float,
+) -> List[List[float]]:
+    """Reserve, dispatch, settle one physical embeddings unit under admission."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.resolution import StaticCandidate, UsageRoutingRequest
+    from .endpoint_usage.routing import (
+        ErrorSafetyClass,
+        InvokeOutcome,
+        UsageRouteAdmission,
+        classify_invoke_error,
+        meta_from_static,
+    )
+    from .endpoint_usage.schema import (
+        FallbackClass,
+        RoutingMode,
+        RoutingPolicy,
+        UsageVector,
+    )
+
+    policy = usage_policy
+    if not isinstance(policy, RoutingPolicy):
+        policy = _normalize_usage_policy(policy)
+
+    # Cache lookup first: full cache hits create no remote charge.
+    resolved_for_cache = provider_instance
+    cache_provider_name = _provider_name(
+        resolved_for_cache, requested=provider
+    ) if resolved_for_cache is not None else str(provider or "")
+    if resolved_for_cache is None and provider:
+        try:
+            resolved_for_cache = get_embeddings_provider(provider, deps=deps)
+            cache_provider_name = _provider_name(
+                resolved_for_cache, requested=provider
+            )
+        except Exception:
+            resolved_for_cache = None
+
+    cache_enabled = _response_cache_enabled()
+    cached_vectors: List[Optional[List[float]]] = [None] * len(inputs)
+    missing_indices: List[int] = []
+    if cache_enabled and cache_provider_name:
+        for index, text in enumerate(inputs):
+            try:
+                cache_key = _response_cache_key(
+                    provider=cache_provider_name,
+                    model_name=model_name,
+                    device=device,
+                    text=text,
+                    kwargs=dict(kwargs),
+                )
+                getter = getattr(deps, "get_cached_or_remote", None)
+                cached = (
+                    getter(cache_key)
+                    if callable(getter)
+                    else deps.get_cached(cache_key)
+                )
+                cached_vectors[index] = _normalize_embedding_vectors(
+                    [cached],
+                    expected_count=1,
+                )[0]
+            except Exception:
+                missing_indices.append(index)
+    else:
+        missing_indices = list(range(len(inputs)))
+
+    cache_hits = len(inputs) - len(missing_indices)
+    if not missing_indices:
+        result = _normalize_embedding_vectors(
+            cached_vectors, expected_count=len(inputs)
+        )
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "cache_hit",
+                "reason_codes": ["cache_hit", "no_remote_charge"],
+                "attempt_count": 0,
+                "cache_hits": cache_hits,
+                "cache_misses": 0,
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": False,
+            }
+        )
+        assert_no_prompt_media_or_output(get_last_usage_admission())
+        _set_last_embedding_trace(
+            status="ok",
+            provider_requested=str(provider or ""),
+            provider_used=cache_provider_name,
+            model_name=str(model_name or ""),
+            device=str(device or ""),
+            input_count=len(inputs),
+            output_count=len(result),
+            dimension=len(result[0]) if result else 0,
+            cache_hits=cache_hits,
+            cache_misses=0,
+            fallback_used=False,
+            usage_mode=str(getattr(policy.mode, "value", policy.mode)),
+            remote_charged=False,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
+        return result
+
+    missing_texts = [inputs[index] for index in missing_indices]
+    if usage_cancel_event is not None and usage_cancel_event.is_set():
+        raise UsageCapacityError(
+            "embeddings usage admission cancelled before dispatch",
+            reason_codes=("cancelled_before_dispatch",),
+        )
+
+    requested = estimate_embedding_usage(
+        missing_texts,
+        expected_dimension=usage_expected_dimension,
+        cost_micros=usage_cost_micros,
+        cost_currency=usage_cost_currency,
+        remote=True,
+    )
+    request_id = usage_request_id or stable_id(
+        "ereq", "embeddings", str(time.time_ns()), str(len(missing_texts))
+    )
+    idempotency_key = usage_idempotency_key or stable_id(
+        "eidem", request_id, str(len(missing_texts))
+    )
+    catalog_revision = usage_catalog_revision or stable_id(
+        "cat", "embeddings_router", USAGE_ROUTING_REQUIREMENT_ID
+    )
+
+    pin = _resolve_usage_pin(
+        pin=usage_pin,
+        provider=provider,
+        allow_fallback_with_pin=False,
+    )
+
+    # Build candidates: caller-supplied or a single binding for the resolved provider.
+    candidates: List[object]
+    if usage_candidates is not None:
+        candidates = list(usage_candidates)
+    else:
+        # Resolve a concrete provider for single-endpoint enforce.
+        backend = provider_instance or get_embeddings_provider(provider, deps=deps)
+        provider_used = _provider_name(backend, requested=provider)
+        scope_id = stable_id(
+            "scope", "embeddings", provider_used, model_name or "default"
+        )
+        # Prefer an explicit scope from usage_request when present.
+        ureq_probe = usage_request
+        if isinstance(ureq_probe, Mapping):
+            preferred_scope = ureq_probe.get("preferred_scope_id")
+        else:
+            preferred_scope = getattr(ureq_probe, "preferred_scope_id", None)
+        if preferred_scope:
+            scope_id = str(preferred_scope)
+        candidates = [
+            _build_embedding_static_candidate(
+                provider_name=provider_used,
+                model_name=model_name,
+                device=device,
+                scope_id=scope_id,
+                expected_dimension=usage_expected_dimension,
+                kwargs=kwargs,
+            )
+        ]
+        usage_provider_by_binding = {
+            candidates[0].binding_id: backend,  # type: ignore[attr-defined]
+            **dict(usage_provider_by_binding or {}),
+        }
+
+    if not candidates:
+        raise UsageCapacityError(
+            "no embeddings usage candidates",
+            reason_codes=("no_candidates",),
+        )
+
+    origin_labels: Dict[str, str] = {}
+    first = candidates[0]
+    origin_labels = dict(getattr(first, "labels", None) or {})
+    if usage_expected_dimension is not None:
+        origin_labels["embedding_dimensions"] = str(int(usage_expected_dimension))
+    # Drop incompatible candidates before admission (never substitute).
+    candidates = _filter_compatible_candidates(
+        candidates, origin_labels=origin_labels
+    ) or list(candidates[:1])
+
+    meta_by_binding = {
+        cand.binding_id: meta_from_static(cand)  # type: ignore[attr-defined]
+        for cand in candidates
+        if isinstance(cand, StaticCandidate)
+    }
+
+    # Planning/ranking required vector must be receipt-safe; full ``requested``
+    # still closes the race with embedding_tokens / media_bytes reservations.
+    # Do not promote media_bytes onto UsageRoutingRequest.media_bytes unless the
+    # caller set it — missing media headroom would hard-deny under DENY policy.
+    planning_required = planning_required_usage(requested)
+
+    ureq = usage_request
+    if ureq is None:
+        ureq = UsageRoutingRequest(
+            required=planning_required,
+            require_snapshot=True,
+        )
+    elif isinstance(ureq, Mapping):
+        ureq = UsageRoutingRequest.from_dict(ureq)
+    elif not isinstance(ureq, UsageRoutingRequest):
+        raise TypeError("usage_request must be UsageRoutingRequest, mapping, or None")
+    # Always re-bind required to the receipt-safe projection of the estimate
+    # (or of the caller-supplied required when already set).
+    source_required = ureq.required if ureq.required.entries else requested
+    safe_required = planning_required_usage(source_required)
+    if not safe_required.entries:
+        safe_required = planning_required
+    ureq = UsageRoutingRequest(
+        required=safe_required,
+        unknown_limit_policy=ureq.unknown_limit_policy,
+        stale_snapshot_policy=ureq.stale_snapshot_policy,
+        preferred_binding_id=ureq.preferred_binding_id,
+        preferred_provider_id=ureq.preferred_provider_id,
+        preferred_scope_id=ureq.preferred_scope_id,
+        affinity_binding_id=ureq.affinity_binding_id,
+        media_bytes=ureq.media_bytes,
+        images=ureq.images,
+        audio_seconds=ureq.audio_seconds,
+        max_cost_micros=ureq.max_cost_micros,
+        cost_currency=ureq.cost_currency,
+        deadline_at=ureq.deadline_at,
+        now=ureq.now,
+        health_by_binding=ureq.health_by_binding,
+        circuit_open_by_binding=ureq.circuit_open_by_binding,
+        latency_ms_by_binding=ureq.latency_ms_by_binding,
+        queue_delay_ms_by_binding=ureq.queue_delay_ms_by_binding,
+        quality_preference_by_binding=ureq.quality_preference_by_binding,
+        locality_by_binding=ureq.locality_by_binding,
+        require_snapshot=ureq.require_snapshot,
+        reason_codes=ureq.reason_codes,
+    )
+
+    provider_map: Dict[str, EmbeddingsProvider] = dict(usage_provider_by_binding or {})
+    result_holder: Dict[str, object] = {}
+    fallback_used = False
+    used_model_name = model_name
+    provider_used_name = cache_provider_name
+    invoke_error_holder: Dict[str, BaseException] = {}
+
+    def _cache_vectors(
+        source_texts: Sequence[str],
+        vectors: Sequence[Sequence[float]],
+        *,
+        cache_provider: str,
+        cache_model_name: Optional[str],
+    ) -> None:
+        if not cache_enabled:
+            return
+        for text, vector in zip(source_texts, vectors):
+            try:
+                cache_key = _response_cache_key(
+                    provider=cache_provider,
+                    model_name=cache_model_name,
+                    device=device,
+                    text=text,
+                    kwargs=dict(kwargs),
+                )
+                value = [float(item) for item in vector]
+                setter = getattr(deps, "set_cached_and_remote", None)
+                if callable(setter):
+                    setter(cache_key, value)
+                else:
+                    deps.set_cached(cache_key, value)
+            except Exception:
+                continue
+
+    def _generate_with_backend(
+        active_backend: EmbeddingsProvider,
+        source_texts: Sequence[str],
+    ) -> List[List[float]]:
+        nonlocal fallback_used, used_model_name, provider_used_name
+
+        def _generate_for_model(active_model_name: Optional[str]) -> List[List[float]]:
+            raw = active_backend.embed_texts(
+                source_texts,
+                model_name=active_model_name,
+                device=device,
+                **kwargs,
+            )
+            # Finite-vector / output-shape validation remains authoritative.
+            return _normalize_embedding_vectors(
+                raw,
+                expected_count=len(source_texts),
+            )
+
+        provider_used_name = _provider_name(active_backend, requested=provider)
+        try:
+            used_model_name = model_name
+            return _generate_for_model(model_name)
+        except Exception as initial_error:
+            if not (
+                _is_hf_inference_provider_name(provider_used_name)
+                and _is_hf_embedding_compatibility_error(initial_error)
+            ):
+                raise
+            attempted = {
+                value
+                for value in (
+                    str(model_name or "").strip(),
+                    _coalesce_env(
+                        "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_MODEL",
+                        "IPFS_DATASETS_PY_HF_EMBEDDINGS_MODEL",
+                    ),
+                )
+                if value
+            }
+            for fallback_model in _hf_embeddings_fallback_models(kwargs=dict(kwargs)):
+                if fallback_model in attempted:
+                    continue
+                attempted.add(fallback_model)
+                try:
+                    vectors = _generate_for_model(fallback_model)
+                except Exception:
+                    continue
+                used_model_name = fallback_model
+                fallback_used = True
+                return vectors
+            raise initial_error
+
+    def invoke(attempt: object) -> InvokeOutcome:
+        if usage_cancel_event is not None and usage_cancel_event.is_set():
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.CLIENT,
+                reason_codes=("cancelled_before_dispatch",),
+                side_effecting=False,
+            )
+        binding_id = getattr(attempt, "binding_id", None)
+        scope_id = getattr(attempt, "scope_id", None) or ""
+        active_backend: Optional[EmbeddingsProvider] = None
+        if binding_id and binding_id in provider_map:
+            active_backend = provider_map[binding_id]
+        else:
+            labels = {}
+            for cand in candidates:
+                if getattr(cand, "binding_id", None) == binding_id:
+                    labels = dict(getattr(cand, "labels", None) or {})
+                    break
+            # Compatibility gate at invoke boundary.
+            if labels and not embedding_fallback_compatible(origin_labels, labels):
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.SEMANTIC,
+                    reason_codes=("incompatible_embedding_candidate",),
+                    side_effecting=False,
+                )
+            router_name = labels.get("router_provider") or provider
+            try:
+                active_backend = provider_instance or get_embeddings_provider(
+                    router_name, deps=deps
+                )
+            except Exception as exc:
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.TRANSIENT,
+                    reason_codes=("provider_resolve_failed", type(exc).__name__),
+                    side_effecting=False,
+                )
+        assert active_backend is not None
+        try:
+            generated = _generate_with_backend(active_backend, missing_texts)
+        except EmbeddingsRouterError as exc:
+            invoke_error_holder["error"] = exc
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.SEMANTIC,
+                reason_codes=("output_validation_failed", type(exc).__name__),
+                side_effecting=False,
+            )
+        except Exception as exc:
+            invoke_error_holder["error"] = exc
+            error_class = classify_invoke_error(
+                reason_codes=(type(exc).__name__,),
+            )
+            # Prefer capacity classification for quota-shaped messages.
+            message = str(exc).casefold()
+            if any(
+                token in message
+                for token in ("rate limit", "429", "quota", "capacity", "503")
+            ):
+                error_class = ErrorSafetyClass.CAPACITY
+            return InvokeOutcome(
+                success=False,
+                error_class=error_class,
+                reason_codes=("provider_error", type(exc).__name__),
+                side_effecting=False,
+            )
+
+        # Optional dimension pin after generation still authoritative via normalize.
+        if usage_expected_dimension is not None and generated:
+            if len(generated[0]) != int(usage_expected_dimension):
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.SEMANTIC,
+                    reason_codes=("dimension_mismatch",),
+                    side_effecting=False,
+                )
+
+        settled = settle_embedding_usage(
+            missing_texts,
+            vectors_produced=len(generated),
+            cost_micros=usage_cost_micros,
+            cost_currency=usage_cost_currency,
+        )
+        obs = _parse_provider_observation(
+            scope_id=str(scope_id),
+            request_id=request_id,
+            observation=usage_observation,
+            settled=settled,
+        )
+        result_holder["generated"] = generated
+        result_holder["provider_used"] = _provider_name(
+            active_backend, requested=provider
+        )
+        result_holder["settled"] = settled
+        return InvokeOutcome(
+            success=True,
+            observation=obs,
+            settled=settled,
+            error_class=ErrorSafetyClass.SUCCESS,
+            reason_codes=("embedded",),
+        )
+
+    admission = UsageRouteAdmission(
+        usage_coordinator,  # type: ignore[arg-type]
+        owner_id="embeddings_router",
+        jitter_max_ms=0,
+    )
+    # Explicit pins default to no fallback unless the pin allows it.
+    effective_policy = policy
+    if getattr(pin, "is_exact", False) and not getattr(
+        pin, "allow_fallback_with_pin", False
+    ):
+        if policy.fallback is not FallbackClass.NONE:
+            effective_policy = RoutingPolicy(
+                mode=policy.mode,
+                fallback=FallbackClass.NONE,
+                max_attempts=1,
+                deadline_ms=policy.deadline_ms,
+                allow_wait=policy.allow_wait,
+                max_wait_ms=policy.max_wait_ms,
+                prefer_local=policy.prefer_local,
+                cost_ceiling_micros=policy.cost_ceiling_micros,
+                cost_currency=policy.cost_currency,
+            )
+
+    result = admission.admit(
+        catalog_revision=catalog_revision,
+        candidates=candidates,  # type: ignore[arg-type]
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+        operation=EMBEDDING_USAGE_OPERATION,
+        requested=requested if isinstance(requested, UsageVector) else UsageVector(),
+        policy=effective_policy,
+        request=ureq,
+        pin=pin,  # type: ignore[arg-type]
+        meta_by_binding=meta_by_binding,
+        invoke=invoke,
+        caller_id="embeddings_router",
+    )
+    _set_last_usage_admission(_admission_result_to_trace(result))
+
+    if not result.success or "generated" not in result_holder:
+        # Preserve the original provider exception for post-dispatch failures so
+        # callers (and partial-batch accounting) see the real error type.
+        original = invoke_error_holder.get("error")
+        capacity_like = any(
+            code
+            in {
+                "no_eligible_candidates",
+                "all_candidates_denied",
+                "capacity",
+                "deadline_or_attempt_bound",
+                "pin_rejected",
+            }
+            or "capacity" in code
+            or "headroom" in code
+            for code in (result.reason_codes or ())
+        )
+        if original is not None and not capacity_like:
+            raise original
+        raise UsageCapacityError(
+            "embeddings usage admission failed: %s"
+            % (",".join(result.reason_codes) or result.final_status),
+            reason_codes=result.reason_codes,
+            next_eligible_at=result.next_eligible_at,
+            admission=result,
+        )
+
+    generated = result_holder["generated"]  # type: ignore[assignment]
+    assert isinstance(generated, list)
+    provider_used_name = str(result_holder.get("provider_used") or provider_used_name)
+    for index, vector in zip(missing_indices, generated):
+        cached_vectors[index] = vector
+    _cache_vectors(
+        missing_texts,
+        generated,
+        cache_provider=provider_used_name,
+        cache_model_name=used_model_name,
+    )
+    try:
+        final = _normalize_embedding_vectors(
+            cached_vectors, expected_count=len(inputs)
+        )
+    except EmbeddingsRouterError:
+        # Stale cache dimension conflict: recompute full batch under same reservation
+        # is not possible (already settled). Re-run without cache for correctness.
+        if cache_hits <= 0:
+            raise
+        final = _generate_with_backend(
+            provider_map.get(
+                getattr(result.selected, "binding_id", ""),  # type: ignore[arg-type]
+            )
+            or provider_instance
+            or get_embeddings_provider(provider, deps=deps),
+            inputs,
+        )
+        # Note: this secondary remote work is a rare cache-coherence path;
+        # settle was already exact for the primary miss batch.
+        cache_hits = 0
+        _cache_vectors(
+            inputs,
+            final,
+            cache_provider=provider_used_name,
+            cache_model_name=used_model_name,
+        )
+
+    dimension = len(final[0]) if final else 0
+    _set_last_embedding_trace(
+        status="ok",
+        provider_requested=str(provider or ""),
+        provider_used=provider_used_name,
+        model_name=str(model_name or ""),
+        device=str(device or ""),
+        input_count=len(inputs),
+        output_count=len(final),
+        dimension=dimension,
+        cache_hits=cache_hits,
+        cache_misses=len(missing_indices),
+        fallback_used=fallback_used
+        or bool(
+            result.selected
+            and result.attempts
+            and len(result.attempts) > 1
+        ),
+        usage_mode=str(getattr(policy.mode, "value", policy.mode)),
+        remote_charged=True,
+        reservation_id=getattr(result.selected, "reservation_id", None)
+        if result.selected
+        else None,
+        receipt_id=getattr(result.receipt, "receipt_id", None)
+        if result.receipt
+        else None,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+    )
+    return final
+
+
+def _record_usage_observe_shadow(
+    *,
+    inputs: Sequence[str],
+    remote_count: int,
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_scope_id: Optional[str],
+    usage_request_id: Optional[str],
+    usage_expected_dimension: Optional[int],
+    usage_cost_micros: Optional[int],
+    usage_cost_currency: Optional[str],
+    success: bool,
+    provider_used: str,
+) -> None:
+    """Observe/shadow diagnostics: estimate only; never change selection or charge."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.schema import RoutingMode, UsageEventKind
+
+    policy = usage_policy
+    mode = getattr(policy, "mode", RoutingMode.OBSERVE)
+    remote_texts = list(inputs)[: max(0, int(remote_count))]
+    estimate = estimate_embedding_usage(
+        remote_texts if remote_count else [],
+        expected_dimension=usage_expected_dimension,
+        cost_micros=usage_cost_micros,
+        cost_currency=usage_cost_currency,
+        remote=remote_count > 0,
+    )
+    payload: Dict[str, object] = {
+        "success": success,
+        "final_status": "observed" if success else "observe_error",
+        "reason_codes": [
+            "usage_observe" if mode is RoutingMode.OBSERVE or str(mode) == "observe" else "usage_shadow",
+            "no_selection_change",
+        ],
+        "attempt_count": 0,
+        "estimate_entries": len(getattr(estimate, "entries", ()) or ()),
+        "remote_inputs": int(remote_count),
+        "provider_used": str(provider_used or ""),
+        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+        "remote_charged": False,
+        "mode": str(getattr(mode, "value", mode)),
+    }
+    if remote_count <= 0:
+        payload["reason_codes"] = list(payload["reason_codes"]) + [
+            "cache_hit",
+            "no_remote_charge",
+        ]
+    # Shadow may consult snapshots when a scope is known, still without reserving.
+    if usage_scope_id and usage_coordinator is not None:
+        try:
+            snap = usage_coordinator.snapshot(usage_scope_id)  # type: ignore[attr-defined]
+            payload["usage_revision"] = getattr(snap, "usage_revision", None)
+            payload["scope_id"] = usage_scope_id
+        except Exception:
+            payload["reason_codes"] = list(payload["reason_codes"]) + [
+                "snapshot_unavailable"
+            ]
+        # Optional diagnostic observation event (does not charge).
+        if success and remote_count > 0 and str(getattr(mode, "value", mode)) == "shadow":
+            try:
+                from .endpoint_usage.schema import UsageVector as _UsageVector
+
+                usage_coordinator.append_observation(  # type: ignore[attr-defined]
+                    usage_scope_id,
+                    kind=UsageEventKind.OBSERVATION_SUCCESS,
+                    units=_UsageVector(),
+                    request_id=usage_request_id
+                    or stable_id("ereq", "shadow", usage_scope_id),
+                    reason_codes=("shadow_observe",),
+                )
+            except Exception:
+                logger.debug("shadow observation append failed", exc_info=True)
+    _ = estimate  # estimate retained for future shadow diffs; never charged here
+    assert_no_prompt_media_or_output(payload)
+    _set_last_usage_admission(payload)
 
 
 def _cache_enabled() -> bool:
@@ -2225,9 +3378,31 @@ def embed_texts(
     provider: Optional[str] = None,
     provider_instance: Optional[EmbeddingsProvider] = None,
     deps: Optional[RouterDeps] = None,
+    usage_coordinator: Optional[object] = None,
+    usage_policy: Optional[object] = None,
+    usage_candidates: Optional[Sequence[object]] = None,
+    usage_pin: Optional[object] = None,
+    usage_request: Optional[object] = None,
+    usage_request_id: Optional[str] = None,
+    usage_idempotency_key: Optional[str] = None,
+    usage_catalog_revision: Optional[str] = None,
+    usage_provider_by_binding: Optional[Mapping[str, EmbeddingsProvider]] = None,
+    usage_observation: Optional[object] = None,
+    usage_expected_dimension: Optional[int] = None,
+    usage_cost_micros: Optional[int] = None,
+    usage_cost_currency: Optional[str] = None,
+    usage_cancel_event: Optional[threading.Event] = None,
+    usage_scope_id: Optional[str] = None,
     **kwargs: object,
 ) -> List[List[float]]:
-    """Generate validated embeddings while preserving input order."""
+    """Generate validated embeddings while preserving input order.
+
+    Optional usage-aware admission (AICAT-031) is inactive unless a
+    ``usage_coordinator`` is supplied with a non-``off`` ``usage_policy``.
+    Off mode and a missing coordinator preserve legacy selection and errors
+    exactly. Enforce/assist reserve before remote dispatch; observe/shadow
+    never change the selected provider; cache hits create no remote charge.
+    """
 
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
@@ -2249,7 +3424,42 @@ def embed_texts(
             fallback_used=False,
             elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
         )
+        _set_last_usage_admission(None)
         return []
+
+    policy = _normalize_usage_policy(usage_policy)
+    # Prefer preferred_scope_id from usage_request when usage_scope_id omitted.
+    if usage_scope_id is None and usage_request is not None:
+        if isinstance(usage_request, Mapping):
+            usage_scope_id = usage_request.get("preferred_scope_id")  # type: ignore[assignment]
+        else:
+            usage_scope_id = getattr(usage_request, "preferred_scope_id", None)
+
+    if usage_coordinator is not None and _usage_mode_enforces(policy):
+        return _embed_texts_with_usage_admission(
+            inputs,
+            model_name=model_name,
+            device=device,
+            provider=provider,
+            provider_instance=provider_instance,
+            deps=resolved_deps,
+            kwargs=dict(kwargs),
+            usage_coordinator=usage_coordinator,
+            usage_policy=policy,
+            usage_candidates=usage_candidates,
+            usage_pin=usage_pin,
+            usage_request=usage_request,
+            usage_request_id=usage_request_id,
+            usage_idempotency_key=usage_idempotency_key,
+            usage_catalog_revision=usage_catalog_revision,
+            usage_provider_by_binding=usage_provider_by_binding,
+            usage_observation=usage_observation,
+            usage_expected_dimension=usage_expected_dimension,
+            usage_cost_micros=usage_cost_micros,
+            usage_cost_currency=usage_cost_currency,
+            usage_cancel_event=usage_cancel_event,
+            started=started,
+        )
 
     try:
         backend = provider_instance or get_embeddings_provider(
@@ -2521,6 +3731,33 @@ def embed_texts(
         fallback_used=fallback_used,
         elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
     )
+    # Observe/shadow: diagnostics only; selection and settlement unchanged.
+    if usage_coordinator is not None and _usage_mode_observes_only(policy):
+        _record_usage_observe_shadow(
+            inputs=inputs,
+            remote_count=len(missing_indices),
+            usage_coordinator=usage_coordinator,
+            usage_policy=policy,
+            usage_scope_id=usage_scope_id,
+            usage_request_id=usage_request_id,
+            usage_expected_dimension=usage_expected_dimension,
+            usage_cost_micros=usage_cost_micros,
+            usage_cost_currency=usage_cost_currency,
+            success=True,
+            provider_used=provider_used,
+        )
+    elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "off",
+                "reason_codes": ["usage_routing_off"],
+                "attempt_count": 0,
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": None,
+                "mode": "off",
+            }
+        )
     return result
 
 
@@ -2562,9 +3799,29 @@ def embed_texts_batched(
     deps: Optional[RouterDeps] = None,
     max_workers: Optional[int] = None,
     progress_callback: Optional[Callable[[Dict[str, object]], object]] = None,
+    usage_coordinator: Optional[object] = None,
+    usage_policy: Optional[object] = None,
+    usage_candidates: Optional[Sequence[object]] = None,
+    usage_pin: Optional[object] = None,
+    usage_request: Optional[object] = None,
+    usage_request_id: Optional[str] = None,
+    usage_idempotency_key: Optional[str] = None,
+    usage_catalog_revision: Optional[str] = None,
+    usage_provider_by_binding: Optional[Mapping[str, EmbeddingsProvider]] = None,
+    usage_observation: Optional[object] = None,
+    usage_expected_dimension: Optional[int] = None,
+    usage_cost_micros: Optional[int] = None,
+    usage_cost_currency: Optional[str] = None,
+    usage_cancel_event: Optional[threading.Event] = None,
+    usage_scope_id: Optional[str] = None,
     **kwargs: object,
 ) -> List[List[float]]:
-    """Embed a bounded, ordered batch while reusing one provider instance."""
+    """Embed a bounded, ordered batch while reusing one provider instance.
+
+    Logical batch splitting occurs only under the caller-supplied
+    ``batch_size`` (and provider worker policy). Each physical sub-batch
+    reserves and settles exactly once when usage admission is active.
+    """
 
     if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
         raise ValueError("batch_size must be a positive integer")
@@ -2618,19 +3875,43 @@ def embed_texts_batched(
 
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
-    backend = provider_instance or get_embeddings_provider(
-        provider,
-        deps=resolved_deps,
-    )
+    # Physical sub-batches under enforce still resolve the provider once when
+    # candidates/provider_instance are not supplied per binding.
+    policy = _normalize_usage_policy(usage_policy)
+    backend: Optional[EmbeddingsProvider]
+    if usage_coordinator is not None and _usage_mode_enforces(policy) and (
+        usage_candidates is not None or usage_provider_by_binding
+    ):
+        backend = provider_instance
+    else:
+        backend = provider_instance or get_embeddings_provider(
+            provider,
+            deps=resolved_deps,
+        )
     ranges = list(range(0, len(items), batch_size))
     workers = _embedding_batch_worker_count(
         size=len(ranges),
         max_workers=max_workers,
         device=device,
     )
+    from .endpoint_usage.identity import stable_id as _stable_id
+
+    base_request_id = usage_request_id or _stable_id(
+        "ereq", "embeddings_batch", str(time.time_ns()), str(len(items))
+    )
+    base_idem = usage_idempotency_key or _stable_id("eidem", base_request_id)
+    # Collect per-sub-batch admission traces for partial-completion evidence.
+    batch_admissions: List[Dict[str, object]] = []
+    batch_admissions_lock = threading.Lock()
 
     def _embed_batch(start: int) -> tuple[List[List[float]], Dict[str, object]]:
+        if usage_cancel_event is not None and usage_cancel_event.is_set():
+            raise UsageCapacityError(
+                "embeddings batch cancelled before sub-batch dispatch",
+                reason_codes=("cancelled_before_dispatch",),
+            )
         batch = items[start : start + batch_size]
+        # Distinct request/idempotency per physical sub-batch so each settles once.
         vectors = embed_texts(
             batch,
             model_name=model_name,
@@ -2638,8 +3919,27 @@ def embed_texts_batched(
             provider=provider,
             provider_instance=backend,
             deps=resolved_deps,
+            usage_coordinator=usage_coordinator,
+            usage_policy=usage_policy,
+            usage_candidates=usage_candidates,
+            usage_pin=usage_pin,
+            usage_request=usage_request,
+            usage_request_id="%s#batch%d" % (base_request_id, start),
+            usage_idempotency_key="%s#batch%d" % (base_idem, start),
+            usage_catalog_revision=usage_catalog_revision,
+            usage_provider_by_binding=usage_provider_by_binding,
+            usage_observation=usage_observation,
+            usage_expected_dimension=usage_expected_dimension,
+            usage_cost_micros=usage_cost_micros,
+            usage_cost_currency=usage_cost_currency,
+            usage_cancel_event=usage_cancel_event,
+            usage_scope_id=usage_scope_id,
             **kwargs,
         )
+        admission_trace = get_last_usage_admission()
+        if admission_trace:
+            with batch_admissions_lock:
+                batch_admissions.append(dict(admission_trace))
         return vectors, get_last_embedding_trace()
 
     batch_results: Dict[int, List[List[float]]] = {}
@@ -2682,10 +3982,41 @@ def embed_texts_batched(
                     )
     except Exception as exc:
         _report(stage="error", error_type=type(exc).__name__)
+        provider_used_on_error = next(
+            (
+                str(trace.get("provider_used") or "")
+                for trace in traces
+                if trace.get("provider_used")
+            ),
+            str(provider or "")
+            if backend is None
+            else _provider_name(backend, requested=provider),
+        )
+        # Completed physical sub-batches already settled exactly once; preserve
+        # that evidence on partial failure / cancel / timeout.
+        _set_last_usage_admission(
+            {
+                "success": False,
+                "final_status": "partial_batch_error",
+                "reason_codes": [
+                    "partial_completion_preserved",
+                    type(exc).__name__,
+                ],
+                "attempt_count": len(batch_admissions),
+                "completed_sub_batches": len(traces),
+                "completed_items": completed_items,
+                "sub_batch_receipt_ids": [
+                    item.get("receipt_id")
+                    for item in batch_admissions
+                    if item.get("receipt_id")
+                ],
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+            }
+        )
         _set_last_embedding_trace(
             status="error",
             provider_requested=str(provider or ""),
-            provider_used=_provider_name(backend, requested=provider),
+            provider_used=provider_used_on_error,
             model_name=str(model_name or ""),
             device=str(device or ""),
             input_count=len(items),
@@ -2713,7 +4044,9 @@ def embed_texts_batched(
             for trace in traces
             if trace.get("provider_used")
         ),
-        _provider_name(backend, requested=provider),
+        str(provider or "")
+        if backend is None
+        else _provider_name(backend, requested=provider),
     )
     _report(
         stage="done",
@@ -2721,6 +4054,25 @@ def embed_texts_batched(
         completed_batches=total_batches,
         dimension=dimension,
     )
+    if batch_admissions:
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "batch_committed",
+                "reason_codes": ["physical_sub_batches_settled_once"],
+                "attempt_count": len(batch_admissions),
+                "completed_sub_batches": total_batches,
+                "sub_batch_receipt_ids": [
+                    item.get("receipt_id")
+                    for item in batch_admissions
+                    if item.get("receipt_id")
+                ],
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": any(
+                    item.get("remote_charged") for item in batch_admissions
+                ),
+            }
+        )
     _set_last_embedding_trace(
         status="ok",
         provider_requested=str(provider or ""),
@@ -2744,6 +4096,7 @@ def clear_embeddings_router_caches() -> None:
     _resolve_provider_cached.cache_clear()
     _discover_hf_models_for_pipeline.cache_clear()
     _set_last_embedding_trace()
+    _set_last_usage_admission(None)
     _reset_embedding_progress(
         stage="",
         total_items=0,

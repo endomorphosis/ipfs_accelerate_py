@@ -26,7 +26,10 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          # arm/v7 is intentionally omitted: many modern deps (libcst, pyarrow)
+          # lack prebuilt wheels and fail source builds without a full Rust/C++
+          # toolchain. Ship amd64 + arm64 only.
+          platforms: linux/amd64,linux/arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -56,7 +59,7 @@ jobs:
         with:
           context: .
           file: ./install/Dockerfile.cache
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

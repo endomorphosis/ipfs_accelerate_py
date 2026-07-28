@@ -1971,6 +1971,11 @@ class RescuePlanner:
     ) -> str:
         # These imports are intentionally deferred until every safety gate has
         # passed, preserving import-time isolation from providers and models.
+        # ASI-168: supply usage envelope + consume receipt when usage mode is
+        # active; off mode preserves the prior adapter path and never loads
+        # the migration stack.
+        import os
+
         from ..planning.task_proposal_router import _call_text_provider
         from ..todo_daemon.llm import LlmRouterInvocation
 
@@ -1988,17 +1993,74 @@ class RescuePlanner:
             max_prompt_chars=len(prompt),
             reject_effective_provider_name="local_hf",
         )
-        response, _ = _call_text_provider(
-            prompt,
-            invocation,
-            scheduler=self.provider_batch_scheduler,
-            route=DEFAULT_RESCUE_ROUTE,
-            operation="rescue_plan.v1",
-            context_limit=prompt_token_limit,
-            response_contract=RESCUE_PLAN_RESPONSE_NAME,
-            provenance={"proposal_only": True},
+
+        # Migration is owned here with usage_migrate=False on the shared
+        # helper so side-effecting work is never double-wrapped/retried.
+        mode_raw = str(
+            os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
+        ).strip().casefold()
+        if mode_raw in {"", "off"}:
+            response, _ = _call_text_provider(
+                prompt,
+                invocation,
+                scheduler=self.provider_batch_scheduler,
+                route=DEFAULT_RESCUE_ROUTE,
+                operation="rescue_plan.v1",
+                context_limit=prompt_token_limit,
+                response_contract=RESCUE_PLAN_RESPONSE_NAME,
+                provenance={"proposal_only": True},
+                usage_migrate=False,
+            )
+            return response
+
+        from ..provider_usage_migration import (
+            ConsumerId,
+            build_consumer_call_context,
+            dispatch_migrated_provider_call,
+            resolve_usage_mode,
+            retain_last_call_result,
         )
-        return response
+
+        mode = resolve_usage_mode(mode_raw)
+        provider_id = str(
+            invocation.provider or self.policy.provider or "llm_router:auto"
+        )
+
+        def _invoke() -> str:
+            response, _ = _call_text_provider(
+                prompt,
+                invocation,
+                scheduler=self.provider_batch_scheduler,
+                route=DEFAULT_RESCUE_ROUTE,
+                operation="rescue_plan.v1",
+                context_limit=prompt_token_limit,
+                response_contract=RESCUE_PLAN_RESPONSE_NAME,
+                provenance={"proposal_only": True},
+                usage_migrate=False,
+            )
+            return response
+
+        context = build_consumer_call_context(
+            consumer_id=ConsumerId.RESCUE_PLANNER,
+            provider_id=provider_id,
+            stage="rescue_planning",
+            task_id="rescue_plan",
+            goal_id="goal:rescue-planner",
+            objective_id="rescue_planner",
+            estimated_output_tokens=max(0, int(output_tokens or 0)),
+            estimated_input_tokens=max(0, int(prompt_token_limit or 0)),
+            metadata={
+                "route": DEFAULT_RESCUE_ROUTE,
+                "proposal_only": True,
+            },
+        )
+        migrated = dispatch_migrated_provider_call(
+            context=context,
+            invoke=_invoke,
+            mode=mode,
+        )
+        retain_last_call_result(ConsumerId.RESCUE_PLANNER, migrated)
+        return migrated.text
 
     def _record_failure(
         self,
