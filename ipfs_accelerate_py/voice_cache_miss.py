@@ -36,6 +36,32 @@ _SECRET_KEY_MARKERS = (
     "signature",
     "token",
 )
+_PRIVATE_TEXT_KEYS = frozenset(
+    {
+        "input",
+        "input_audio",
+        "output_audio",
+        "prompt",
+        "response_text",
+        "spoken_text",
+        "transcript",
+    }
+)
+_SYNTHESIS_IDENTITY_FIELDS = frozenset(
+    {
+        "channels",
+        "codec",
+        "generation_settings_sha256",
+        "identity_sha256",
+        "locale",
+        "model",
+        "provider",
+        "provider_version",
+        "reference_audio_sha256",
+        "sample_rate_hz",
+        "voice",
+    }
+)
 
 
 class VoiceCacheMissEventError(ValueError):
@@ -81,6 +107,10 @@ def _redacted_json(value: Any, *, path: str = "value") -> Any:
                 raise VoiceCacheMissEventError(
                     f"{path}.{name} must not contain credentials"
                 )
+            if name.casefold() in _PRIVATE_TEXT_KEYS:
+                raise VoiceCacheMissEventError(
+                    f"{path}.{name} must not contain private turn content"
+                )
             result[name] = _redacted_json(item, path=f"{path}.{name}")
         return result
     if isinstance(value, Sequence) and not isinstance(value, str):
@@ -94,6 +124,49 @@ def _redacted_json(value: Any, *, path: str = "value") -> Any:
     raise VoiceCacheMissEventError(
         f"{path} must contain only deterministic JSON values"
     )
+
+
+def _safe_synthesis_identity(value: Any) -> Mapping[str, Any]:
+    """Retain routing identity while hashing free-form generation settings."""
+
+    if not isinstance(value, Mapping) or not value:
+        raise VoiceCacheMissEventError(
+            "synthesis_identity must be a non-empty mapping"
+        )
+    safe = _redacted_json(value, path="synthesis_identity")
+    if not isinstance(safe, Mapping):
+        raise VoiceCacheMissEventError("synthesis_identity must be a mapping")
+    already_safe = (
+        "identity_sha256" in safe
+        and set(safe).issubset(_SYNTHESIS_IDENTITY_FIELDS)
+    )
+    selected = {
+        str(key): item
+        for key, item in safe.items()
+        if str(key) in _SYNTHESIS_IDENTITY_FIELDS and item not in (None, "")
+    }
+    settings = safe.get("generation_settings")
+    if settings not in (None, {}, []):
+        selected["generation_settings_sha256"] = sha256(
+            _canonical_bytes(settings)
+        ).hexdigest()
+    # Bind omitted/extension fields without placing their possibly free-form
+    # values in the event payload.
+    identity_digest = safe.get("identity_sha256") if already_safe else None
+    selected["identity_sha256"] = _digest(
+        identity_digest or sha256(_canonical_bytes(safe)).hexdigest(),
+        field_name="synthesis_identity.identity_sha256",
+    )
+    if "generation_settings_sha256" in selected:
+        selected["generation_settings_sha256"] = _digest(
+            selected["generation_settings_sha256"],
+            field_name="synthesis_identity.generation_settings_sha256",
+        )
+    if not any(key in selected for key in ("provider", "model", "voice")):
+        raise VoiceCacheMissEventError(
+            "synthesis_identity requires provider, model, or voice"
+        )
+    return selected
 
 
 def _trace_mapping(trace: Any) -> Mapping[str, Any]:
@@ -110,11 +183,16 @@ def _trace_mapping(trace: Any) -> Mapping[str, Any]:
 def _safe_trace_receipt(trace: Mapping[str, Any]) -> dict[str, Any]:
     details = trace.get("details")
     details = details if isinstance(details, Mapping) else {}
-    selected = {
-        str(key): _redacted_json(value, path=f"trace.details.{key}")
-        for key, value in details.items()
-        if str(key) in _ALLOWED_TRACE_DETAIL_KEYS
-    }
+    selected: dict[str, Any] = {}
+    for key, value in details.items():
+        name = str(key)
+        if name not in _ALLOWED_TRACE_DETAIL_KEYS:
+            continue
+        selected[name] = (
+            dict(_safe_synthesis_identity(value))
+            if name == "synthesis_identity"
+            else _redacted_json(value, path=f"trace.details.{name}")
+        )
     return {
         "details": selected,
         "provider": _text(trace.get("provider"), field_name="trace.provider", required=False)
@@ -152,13 +230,7 @@ class VoiceCacheMissEvent:
         audio_digest = _digest(
             self.output_audio_sha256, field_name="output_audio_sha256"
         )
-        identity = _redacted_json(
-            self.synthesis_identity, path="synthesis_identity"
-        )
-        if not isinstance(identity, Mapping) or not identity:
-            raise VoiceCacheMissEventError(
-                "synthesis_identity must be a non-empty mapping"
-            )
+        identity = _safe_synthesis_identity(self.synthesis_identity)
         miss_reason = _text(
             self.resolver_miss_reason, field_name="resolver_miss_reason"
         )
@@ -226,7 +298,7 @@ class VoiceCacheMissEvent:
         return self.validation_passed and bool(self.validation_receipt_id)
 
     def identity_dict(self) -> dict[str, Any]:
-        """Fields that make repeat misses idempotent across request IDs."""
+        """Fields that make repeat validation attempts one semantic event."""
 
         return {
             "audio_format": self.audio_format,
@@ -239,8 +311,6 @@ class VoiceCacheMissEvent:
             "schema_version": self.schema_version,
             "synthesis_identity": dict(self.synthesis_identity),
             "template_id": self.template_id,
-            "validation_passed": self.validation_passed,
-            "validation_receipt_id": self.validation_receipt_id,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -254,6 +324,8 @@ class VoiceCacheMissEvent:
                 "stage_receipts": [
                     dict(receipt) for receipt in self.stage_receipts
                 ],
+                "validation_passed": self.validation_passed,
+                "validation_receipt_id": self.validation_receipt_id,
             }
         )
         return payload
@@ -277,7 +349,7 @@ def build_voice_cache_miss_event(
     miss_trace: Mapping[str, Any] | None = None
     live_trace: Mapping[str, Any] | None = None
     safe_receipts: list[dict[str, Any]] = []
-    for raw_trace in traces:
+    for trace_index, raw_trace in enumerate(traces):
         trace = _trace_mapping(raw_trace)
         safe_receipts.append(_safe_trace_receipt(trace))
         details = trace.get("details")
@@ -289,10 +361,13 @@ def build_voice_cache_miss_event(
             and str(details.get("resolver_reason") or "").strip()
         ):
             miss_trace = trace
+            miss_trace_index = trace_index
         elif (
             str(trace.get("stage") or "") == "synthesis"
             and str(trace.get("status") or "") == "succeeded"
             and str(trace.get("provider") or "") != "precomputed"
+            and miss_trace is not None
+            and trace_index > miss_trace_index
         ):
             live_trace = trace
 
@@ -319,8 +394,13 @@ def build_voice_cache_miss_event(
         )
     output_digest = str(getattr(provenance, "output_audio_sha256", "") or "")
     audio = getattr(result, "audio", None)
-    if not output_digest and isinstance(audio, bytes):
-        output_digest = sha256(audio).hexdigest()
+    if isinstance(audio, bytes):
+        actual_output_digest = sha256(audio).hexdigest()
+        if output_digest and output_digest != actual_output_digest:
+            raise VoiceCacheMissEventError(
+                "voice result audio does not match provenance digest"
+            )
+        output_digest = actual_output_digest
     metadata_value = getattr(provenance, "metadata", {}) or {}
     intent = (
         str(metadata_value.get("intent") or "")

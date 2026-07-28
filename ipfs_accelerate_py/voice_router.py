@@ -2072,6 +2072,35 @@ class VoiceTurnResult:
             "synthesis": self.provenance.tts_provider,
         }
 
+    def validated_cache_miss_event(
+        self,
+        *,
+        validation_receipt_id: str,
+        response_id: str = "",
+        metadata: Optional[Mapping[str, object]] = None,
+    ) -> Optional["VoiceCacheMissEvent"]:
+        """Emit the deterministic event for a validated live-TTS cache miss.
+
+        Cache hits and text-only turns return ``None``. The validation receipt
+        is mandatory so callers cannot accidentally make unvalidated audio
+        eligible for a response-DAG append.
+        """
+
+        receipt_id = str(validation_receipt_id or "").strip()
+        if not receipt_id:
+            raise ValueError("validation_receipt_id must be non-empty")
+        # Imported here because the dependency-light event module is imported
+        # at the end of this module to avoid a router/result import cycle.
+        from .voice_cache_miss import build_voice_cache_miss_event
+
+        return build_voice_cache_miss_event(
+            self,
+            response_id=response_id,
+            validation_receipt_id=receipt_id,
+            validation_passed=True,
+            metadata=dict(metadata or {}),
+        )
+
     def to_dict(self, *, include_audio: bool = False) -> Dict[str, object]:
         payload: Dict[str, object] = {
             "contract_version": VOICE_TURN_CONTRACT_VERSION,
