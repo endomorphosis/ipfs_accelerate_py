@@ -386,7 +386,7 @@ Normative:
 
 ## CBP-120 Supervisor self-properties (lease, merge, DAG, freshness)
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: self-properties
