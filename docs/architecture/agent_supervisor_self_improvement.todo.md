@@ -4579,3 +4579,139 @@ planner, and refill behavior defaults to shadow mode.
 - Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery, docs/architecture/agent_supervisor_self_improvement.todo.md
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-164-reconciliation-8cc53e572c00.md
 - Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v2-recovered/state/discovery/2026-07-27-asi-164-reconciliation-8cc53e572c00.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## ASI-165 Define hierarchical supervisor usage envelopes and accounting bridge
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Blocked reason: awaiting_external_usage_contracts_AICAT-027_AICAT-029
+- Priority: P0
+- Track: supervisor-usage-accounting
+- Depends on: ASI-094, ASI-112, ASI-114
+- Goal id: ASI-G510
+- Outputs: ipfs_accelerate_py/agent_supervisor/provider_usage.py, ipfs_accelerate_py/agent_supervisor/supervisor_token_ledger.py, test/api/test_agent_supervisor_provider_usage.py, test/api/test_agent_supervisor_token_ledger.py
+- Validation: python -m pytest test/api/test_agent_supervisor_provider_usage.py test/api/test_agent_supervisor_token_ledger.py test/api/test_agent_supervisor_efficiency_metrics.py -q
+- Board namespace: agent-supervisor-self-improvement-v5
+- Bundle: agent-supervisor/self-improvement-v5/usage/contracts
+- Parallel lane: supervisor-usage-contracts
+- Resource class: cpu-small
+- Predicted files: ipfs_accelerate_py/agent_supervisor/provider_usage.py, ipfs_accelerate_py/agent_supervisor/supervisor_token_ledger.py, test/api/test_agent_supervisor_provider_usage.py, test/api/test_agent_supervisor_token_ledger.py
+- Conflict policy: Own provider-free supervisor envelope, lineage, and attribution adapters. Consume the canonical endpoint_usage contracts after AICAT-027 and AICAT-029 pass current-tree validation; do not fork their identities, units, ledger, coordinator, or route policy and do not edit schedulers, provider call sites, controls, MCP, or routers.
+- Preconditions: Keep this task externally blocked until AICAT-025, AICAT-027, and AICAT-029 are merged and their focused suites pass on the ASI merge target. Then remove only this task's Blocked reason and set Status to todo through the protected taskboard control path. Map SupervisorEfficiencyReceipt, SupervisorTokenLedger, ResourcePolicy/LeaseBudget, provider capacity, stage/task/attempt identities, and terminal accepted-work attribution before adding fields.
+- Effects: Add immutable SupervisorUsageEnvelope, SupervisorUsageScope, SupervisorUsageBudget, SupervisorUsageAttribution, and supervisor-to-endpoint request/receipt bridge contracts with nested deployment/run/goal/task/attempt/stage/lane/request lineage.
+- Acceptance: A child budget can only lower its parent across every typed endpoint usage dimension/window and cost currency. Identities bind repository/state/tree/policy, supervisor run, goal/objective, task, attempt, stage, lane, request, catalog revision, usage revision, endpoint scope, caller, deadline, idempotency, lease, and fence without prompts, source, media, model output, credentials, or raw endpoints. Reject missing/foreign/stale ancestry, widened children, duplicate attempts, negative/overflowing units, mixed currency, unknown fields, and unbounded nesting. Adapt supervisor_token_ledger and efficiency metrics to consume reconciled endpoint events exactly once while preserving failed/rejected/abandoned work attribution and accepted-criterion accounting; they cannot independently authorize usage, rewrite provider settlement, or treat usage as correctness/completion evidence. Cold import and schema discovery remain provider/network/process/database/secret-store free.
+
+## ASI-166 Add one reservation-aware supervisor provider execution gateway
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-usage-execution
+- Depends on: ASI-144, ASI-156, ASI-165
+- Goal id: ASI-G510
+- Outputs: ipfs_accelerate_py/agent_supervisor/provider_execution.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py, test/api/test_agent_supervisor_provider_execution.py, test/api/test_agent_supervisor_todo_llm.py
+- Validation: python -m pytest test/api/test_agent_supervisor_provider_execution.py test/api/test_agent_supervisor_todo_llm.py test/api/test_agent_supervisor_prompt_goal_planner.py test/api/test_agent_supervisor_rescue_planner.py -q
+- Board namespace: agent-supervisor-self-improvement-v5
+- Bundle: agent-supervisor/self-improvement-v5/usage/execution
+- Parallel lane: supervisor-provider-execution
+- Resource class: provider-simulated
+- Predicted files: ipfs_accelerate_py/agent_supervisor/provider_execution.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py, test/api/test_agent_supervisor_provider_execution.py, test/api/test_agent_supervisor_todo_llm.py
+- Conflict policy: Own the shared provider execution service and isolated todo_daemon LLM adapter. Do not migrate every consumer, edit endpoint_usage internals, modality routers, resource/batch schedulers, supervisor controls, or task completion logic in this lane.
+- Preconditions: ASI-165 exposes stable supervisor envelopes and the merged AICAT usage coordinator/routing protocol is available. Inventory the isolated child-process request, timeout, trace, provider verification, environment, cancellation, and return paths before changing its wire envelope.
+- Effects: Add ProviderExecutionRequest/Result and a gateway that derives a conservative estimate, requests an exact endpoint route/reservation, invokes through the canonical router or approved typed adapter, normalizes provider observation, settles/reconciles, and returns a redacted endpoint plus supervisor attribution receipt across process boundaries.
+- Acceptance: Every request binds supervisor scope/envelope lineage, exact attempt/idempotency, catalog/usage revisions, endpoint binding, deadline, cancellation, lease/fence, and expected provider side-effect boundary. The gateway atomically reserve-invokes-settles and links each retry/fallback to a new attempt; exact replay cannot reinvoke or recharge a terminal request. Pre-dispatch cancellation releases; post-dispatch timeout/cancel conservatively settles; process crash/restart reclaims or reconciles through the store; cache/batch/single-flight outcome metadata prevents duplicate remote charge. Enforce mode fails closed on unknown/stale coordination unless a reviewed degraded budget permits local/deterministic fallback. The todo_daemon child uses a bounded versioned JSON envelope and result file/pipe, propagates receipt IDs without prompt/provider payload leakage, preserves current provider verification and timeouts, and remains behaviorally compatible in off mode.
+
+## ASI-167 Project endpoint usage into fair resource and batch admission
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-usage-scheduling
+- Depends on: ASI-112, ASI-117, ASI-165, ASI-166
+- Goal id: ASI-G520
+- Outputs: ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, test/api/test_agent_supervisor_usage_scheduler.py, test/api/test_agent_supervisor_provider_batch_scheduler.py
+- Validation: python -m pytest test/api/test_agent_supervisor_usage_scheduler.py test/api/test_agent_supervisor_resource_scheduler.py test/api/test_agent_supervisor_provider_batch_scheduler.py test/api/test_agent_supervisor_stage_scheduler_v2.py -q
+- Board namespace: agent-supervisor-self-improvement-v5
+- Bundle: agent-supervisor/self-improvement-v5/usage/scheduling
+- Parallel lane: endpoint-usage-scheduler
+- Resource class: cpu-medium
+- Predicted files: ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, test/api/test_agent_supervisor_usage_scheduler.py, test/api/test_agent_supervisor_provider_batch_scheduler.py
+- Allow concurrent with: ASI-168, ASI-169
+- Conflict policy: Own ResourceScheduler and ProviderBatchScheduler usage-aware admission and focused tests. Consume the shared gateway and endpoint snapshot through injected protocols; do not edit provider consumers, control surfaces, endpoint_usage storage/routing, modality routers, or rollout docs.
+- Preconditions: The supervisor gateway is stable; map ProviderCapacity/ProviderBatchCapacity compatibility callers, stage pools, resource leases, capacity suppliers, queue priorities, fairness, batching, single-flight, cancellation, retry-after, event wakeups, and distributed lane fencing.
+- Effects: Project exact endpoint scope/revision/freshness/headroom/reset/circuit state into compatibility capacity records and add hierarchical budget, atomic batch reservation, weighted fairness, deadline-aware wait/reroute/backpressure, reset event wakeup, and herd control.
+- Acceptance: Effective admission is the conservative intersection of supervisor ancestor budgets, exact endpoint multi-window limits and active reservations, concurrency/context, provider health/circuit/retry-after, deadline, host CPU/RAM/GPU/disk/process constraints, and distributed lease. Unknown/stale fields follow explicit mode policy and cannot become unlimited through legacy -1 projections. Physical batches reserve once, shared overhead settles once, members receive exact attribution, and member cancellation/deadline cannot kill or charge siblings incorrectly. Weighted fair queues and per-tenant/goal/task/lane reserves prevent starvation and one scope consuming an entire shared account window. Next-eligible reset/capacity events wake bounded jittered work through existing event cursors; single-flight refresh prevents herds. The scheduler chooses an eligible policy route, bounded wait, authorized deterministic/local fallback, or typed usage_capacity_unavailable with backpressure; it never weakens authority/completion rules. Off mode preserves existing ordering, batch behavior, and capacity semantics.
+
+## ASI-168 Migrate and prove every supervisor provider consumer
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-usage-migration
+- Depends on: ASI-137, ASI-144, ASI-156, ASI-166
+- Goal id: ASI-G520
+- Outputs: ipfs_accelerate_py/agent_supervisor/provider_usage_migration.py, ipfs_accelerate_py/agent_supervisor/task_proposal_router.py, ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py, ipfs_accelerate_py/agent_supervisor/rescue_planner.py, ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py, ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py, test/api/test_agent_supervisor_provider_usage_migration.py
+- Validation: python -m pytest test/api/test_agent_supervisor_provider_usage_migration.py test/api/test_agent_supervisor_task_proposal_router.py test/api/test_agent_supervisor_prompt_goal_planner.py test/api/test_agent_supervisor_rescue_planner.py test/api/test_agent_supervisor_leanstral_proof_provider.py test/api/test_agent_supervisor_leanstral_goal_development.py -q
+- Board namespace: agent-supervisor-self-improvement-v5
+- Bundle: agent-supervisor/self-improvement-v5/usage/migration
+- Parallel lane: supervisor-provider-migration
+- Resource class: cpu-large
+- Predicted files: ipfs_accelerate_py/agent_supervisor/provider_usage_migration.py, ipfs_accelerate_py/agent_supervisor/task_proposal_router.py, ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py, ipfs_accelerate_py/agent_supervisor/rescue_planner.py, ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py, ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py, test/api/test_agent_supervisor_provider_usage_migration.py
+- Allow concurrent with: ASI-167, ASI-169
+- Conflict policy: Own the generated callsite inventory/coverage gate and migrate provider consumers without changing their planning, proof, rescue, authority, acceptance, or output semantics. Re-read each shared file and preserve concurrent user/provider work; do not edit schedulers, controls, endpoint_usage internals, routers, taskboards, or objective heaps.
+- Preconditions: The common gateway and child-process adapter are stable. Generate an AST/import/runtime inventory of direct llm_router, ipfs_datasets router, backend-manager, local model/prover, provider batch, Codex/Copilot/Grok/Goose/other CLI agent, and subprocess provider call paths, including dynamically imported and test-only compatibility surfaces.
+- Effects: Route planning, proposal/refinement, prompt goal generation, rescue planning, proof/model assistance, analysis/refill, validation assistance, implementation-agent endpoints, and CLI-backed provider calls through the gateway or a typed contract-equivalent adapter, and add a CI coverage manifest that rejects new bypasses.
+- Acceptance: Every in-scope provider call supplies run/goal/task/attempt/stage/lane/request envelope, deadline, budget, idempotency, and exact policy; consumes the returned selection/usage receipt; and retains current deterministic fallback and proof/authority boundaries. Child processes and CLI agents expose structured usage/reset metadata when available and otherwise return a typed non-meterable result that enforce mode admits only under a conservative reviewed ceiling. No migration gives model output completion/authorization authority, changes prompts/source/output contracts, retries side-effecting agent work, or routes data to a forbidden endpoint. Generated AST plus runtime fixtures fail for unregistered direct imports/calls, wrapper aliases, subprocess bypass, missing attribution, or receipt drops while allowlisting provider-free discovery. Off mode and existing focused suites remain compatible.
+
+## ASI-169 Add usage-governance controls and event-derived metrics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: supervisor-usage-controls
+- Depends on: ASI-114, ASI-115, ASI-123, ASI-165, ASI-166
+- Goal id: ASI-G530
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/agent_supervisor/scheduler_metrics.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/test_agent_supervisor_usage_controls.py, test/api/test_agent_supervisor_usage_control_conformance.py
+- Validation: python -m pytest test/api/test_agent_supervisor_usage_controls.py test/api/test_agent_supervisor_usage_control_conformance.py test/api/test_agent_supervisor_control_catalog.py test/api/test_agent_supervisor_control_conformance_v2.py test/api/test_agent_supervisor_scheduler_metrics.py -q
+- Board namespace: agent-supervisor-self-improvement-v5
+- Bundle: agent-supervisor/self-improvement-v5/usage/controls
+- Parallel lane: supervisor-usage-controls
+- Resource class: mcp-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/agent_supervisor/scheduler_metrics.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/test_agent_supervisor_usage_controls.py, test/api/test_agent_supervisor_usage_control_conformance.py
+- Allow concurrent with: ASI-167, ASI-168
+- Conflict policy: Extend the existing operation catalog and shared control service first, then keep CLI and MCP as thin adapters. Consume ledger events through read-only projections; do not create a second counter store, edit provider consumers/schedulers/routers, or let control results affect completion evidence.
+- Preconditions: Supervisor usage contracts and execution receipts are stable; map current capability/status/metrics/event/receipt/profile operations, authorization, target/root descriptors, pagination/cursors, dry-run, idempotency, expected effects, lease/fence, redaction, and lazy MCP discovery.
+- Effects: Add bounded usage status/health, hierarchical budget, endpoint headroom, reservation, receipt, route-preview, blocked-work/next-eligible, and adapter capability queries plus authorized policy/budget/correction/reset operations and event-derived metrics.
+- Acceptance: Python, CLI, and MCP discover and return schema/result/error-equivalent operations bound to supervisor, catalog, usage, and policy revisions. Read/query/preview is lazy, bounded, paginated/cursor-safe, redacted, and side-effect free; it cannot reserve, refresh, probe, invoke, or mutate. Budget/policy/correction/reset requires exact target, distinct authority, expected revision/effects, idempotency, lease/fence, audit, and bounds; callers cannot raise a parent budget or mutate provider truth through model/peer data. Default status aggregates credential/account/tenant detail. Metrics derive from authoritative endpoint events and expose estimate error, headroom bands, denial, wait/reroute, fairness/starvation, reset/herd, fallback, settlement/correction, and ledger health with bounded provider/deployment/stage/state/reason labels and no request, credential, tenant, prompt, media, output, model alias, or endpoint URL cardinality. Usage controls and metrics remain operational evidence only.
+
+## ASI-170 Gate endpoint-aware supervisor rollout with paired E2E and chaos evidence
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-usage-rollout
+- Depends on: ASI-167, ASI-168, ASI-169
+- Goal id: ASI-G530
+- Outputs: ipfs_accelerate_py/agent_supervisor/supervisor_usage_rollout.py, test/api/test_agent_supervisor_usage_e2e.py, test/api/test_agent_supervisor_usage_chaos.py, test/api/test_agent_supervisor_usage_rollout.py, docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md
+- Validation: python -m pytest test/api/test_agent_supervisor_provider_usage.py test/api/test_agent_supervisor_provider_execution.py test/api/test_agent_supervisor_usage_scheduler.py test/api/test_agent_supervisor_provider_usage_migration.py test/api/test_agent_supervisor_usage_controls.py test/api/test_agent_supervisor_usage_control_conformance.py test/api/test_agent_supervisor_usage_e2e.py test/api/test_agent_supervisor_usage_chaos.py test/api/test_agent_supervisor_usage_rollout.py -q
+- Board namespace: agent-supervisor-self-improvement-v5
+- Bundle: agent-supervisor/self-improvement-v5/usage/rollout
+- Parallel lane: supervisor-usage-rollout
+- Resource class: test-large
+- Predicted files: ipfs_accelerate_py/agent_supervisor/supervisor_usage_rollout.py, test/api/test_agent_supervisor_usage_e2e.py, test/api/test_agent_supervisor_usage_chaos.py, test/api/test_agent_supervisor_usage_rollout.py, docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md
+- Conflict policy: Own one frozen paired/adversarial/chaos population, rollout decision, and final operator guidance. Do not narrow fixtures, hard gates, resource accounting, stage coverage, or failure boundaries to obtain promotion; preserve unrelated architecture/provider guidance.
+- Preconditions: Scheduling, callsite adoption, and controls are complete. Freeze supervisor run/goal/task/attempt/stage/lane/request populations across planning, analysis, proof, rescue, validation assistance, implementation-agent endpoints, batch/single-flight, local fallback, multiple endpoints sharing one credential quota, and one endpoint with isolated credentials.
+- Effects: Add deterministic E2E and chaos harnesses, paired legacy-versus-usage-aware reports, off/observe/shadow/assist/enforce promotion and rollback, measured operating profiles, environment-gated tiny live smoke, threat model, metrics/receipt guidance, incident runbook, and distributed coordination policy.
+- Acceptance: Inject concurrent reservation races, estimate under/over actual, 429/503/billing exhaustion, malformed metadata, reset/clock skew/jitter, cache/batch/stream partials, retry/fallback, cancel/timeout before and after dispatch, child/process/supervisor crash, replay, stale lease/fence, ledger corruption/migration/outage, coordinator partition/split brain, endpoint loss/recovery, callsite bypass, unfair queue pressure, and reset herds. Require exact endpoint plus task/stage attribution, no hard-limit or ancestor-budget overshoot, no double/missing charge, no credential/account/tenant scope merge, bounded wait and no starvation/herd, no prompt/media/output/credential/private-URL leak, no authority/completion escape, and deterministic recovery or typed backpressure/quarantine. Off mode matches prior behavior; observe/shadow cannot alter execution; assist requires operator authority; enforce/automatic endpoint fallback requires a later fresh passing paired report with reviewed cost/latency/quality limits; distributed enforcement fails closed without a strong fenced coordinator; any safety, binding, parity, fairness, quality, cost, latency, or compatibility regression immediately returns the affected feature to shadow/off while retaining observed usage for diagnosis.

@@ -13,6 +13,11 @@ process exit are proposal evidence rather than completion evidence; goals close
 only when current-tree implementation and validation receipts cover their
 acceptance criteria.
 
+The independent `AICAT-G100` tree adds endpoint-scoped usage accounting and
+optional usage-aware routing. It composes the completed catalog foundation but
+has a separately closed producer and child population, so it does not
+retroactively narrow, expand, or reopen `AICAT-G000`.
+
 Program invariants:
 
 - Routers retain ownership of invocation, batching, streaming, fallback, and
@@ -191,3 +196,114 @@ Program invariants:
 - Refinement: Close with a generated drift matrix and documentation derived from the stable interfaces rather than implementation history.
 - Embedding query: AI catalog conformance compatibility documentation migration live smoke rollout rollback router MCP
 - AST query: tests provider registry model manager mcp server mcplusplus docs
+
+## AICAT-G100 Endpoint usage accounting and policy-bounded routing
+
+- Status: active
+- Parent:
+- Depends on:
+- Fib priority: 1
+- Track: endpoint-usage-routing
+- Priority: P0
+- Bundle: ai-catalog/usage-routing/root
+- Goal: Track configured and provider-observed usage and limits at the exact non-secret endpoint, credential/account, operation, and model scope; expose headroom through ModelManager; and optionally let each canonical modality router reserve capacity and select a policy-permitted alternate binding without creating another invocation stack.
+- Closed producer population: AICAT-025, AICAT-026, AICAT-027, AICAT-028, AICAT-029, AICAT-030, AICAT-031, AICAT-032, AICAT-033, AICAT-034, AICAT-035
+- Direct children: AICAT-G110, AICAT-G120, AICAT-G130, AICAT-G140
+- Evidence: endpoint_usage.schema.ENDPOINT_USAGE_CONTRACT_REQUIREMENT_ID, endpoint_usage.ledger.ATOMIC_USAGE_LEDGER_REQUIREMENT_ID, endpoint_usage.routing.USAGE_AWARE_RESOLUTION_REQUIREMENT_ID, endpoint_usage.routing.USAGE_RESERVATION_ROUTING_REQUIREMENT_ID, endpoint_usage.rollout.USAGE_ROUTING_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: Exact provider/deployment/credential/account/operation scopes cannot merge accidentally; typed multi-dimensional and multi-window limits distinguish unknown from unlimited; every invocation is atomically estimated, reserved, observed, and reconciled exactly once; static catalog and dynamic usage revisions remain separate; ModelManager plans but never invokes; the four routers preserve explicit pins and capability/policy boundaries; and off/observe/shadow/assist/enforce rollout fails closed or rolls back on overshoot, double charge, scope contamination, secret exposure, or compatibility drift.
+- Evidence source policy: A provider name, endpoint string, configured maximum, response usage object, rate-limit header, local counter, dashboard, model recommendation, successful fallback, or task status is non-authoritative. Evidence is a fresh typed contract, scope, provider-observation, ledger transaction, reservation, settlement, routing, conformance, and rollout receipt bound to the exact catalog revision, usage revision, request identity, endpoint scope, policy, clock, and current repository tree.
+- Outputs: docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md, ipfs_accelerate_py/endpoint_usage, ipfs_accelerate_py/model_manager.py, ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/embeddings_router.py, ipfs_accelerate_py/multimodal_router.py, ipfs_accelerate_py/voice_router.py, ipfs_accelerate_py/mcp_server
+- Validation: python -m pytest test/test_endpoint_usage_schema.py test/test_endpoint_usage_adapters.py test/test_endpoint_usage_ledger.py test/test_endpoint_usage_routing.py test/test_model_manager_usage_routing.py test/test_llm_router_usage_routing.py test/test_embeddings_router_usage_routing.py test/test_multimodal_router_usage_routing.py test/test_voice_router_usage_routing.py test/test_endpoint_usage_controls.py test/test_endpoint_usage_conformance.py test/test_endpoint_usage_rollout.py -q
+- Acceptance: Every remote invocation is attributable to one exact non-secret endpoint scope or a typed unknown-scope result; concurrent reservations cannot exceed effective hard limits; provider observations reconcile estimates exactly once; ModelManager and all routers agree on catalog identity, usage revision, hard exclusions, selected binding, and fallback boundary; disabled mode preserves legacy behavior; explicit provider/model/deployment pins and authorization, data, cost, locality, media, deadline, and capability constraints cannot be weakened; controls are redacted and authorized; and the complete offline adversarial population has zero overshoot, double charge, cross-scope merge, secret leak, or silent fallback.
+- Gap task: Close the highest-risk contract, adapter, reservation, reconciliation, selection, router, control, fault, or rollout residual without moving invocation into ModelManager.
+- Refinement: Land scope contracts first; adapters and the ledger in independent lanes; ModelManager planning before shared admission; four router-owned integrations in parallel; and controls/conformance last.
+- Embedding query: API endpoint usage quota rate limit request token cost reset reservation ModelManager router fallback
+- AST query: EndpointUsageScope UsageLimit UsageLedger UsageCoordinator UsageAwareResolution ModelManager generate_text generate_embeddings multimodal voice
+
+## AICAT-G110 Canonical usage scopes, provider observations, and atomic ledger
+
+- Status: active
+- Parent: AICAT-G100
+- Depends on:
+- Fib priority: 2
+- Track: endpoint-usage-contracts
+- Priority: P0
+- Bundle: ai-catalog/usage-routing/contracts
+- Goal: Define bounded provider-neutral endpoint usage contracts, normalize trustworthy metadata from configured policies and exact invocation responses, and maintain a crash-safe append-only ledger with atomic reserve, settle, release, correction, and reset semantics.
+- Producing tasks: AICAT-025, AICAT-026, AICAT-027
+- Evidence: endpoint_usage.schema.ENDPOINT_USAGE_CONTRACT_REQUIREMENT_ID, endpoint_usage.adapters.PROVIDER_USAGE_ADAPTER_REQUIREMENT_ID, endpoint_usage.ledger.ATOMIC_USAGE_LEDGER_REQUIREMENT_ID
+- Evidence criteria: Scope identities bind provider, deployment, secret-free endpoint, keyed credential/account pseudonym, operation, and model only where the provider limit requires it; request/token/embedding/media/audio/concurrency/cost dimensions and fixed/sliding/token-bucket/concurrent/billing windows remain typed; configured and provider-observed limits carry bounded provenance and freshness; reservations use idempotency, TTL, lease/fence, and compare-and-set; corrections append rather than rewrite; and crash/replay/expiry cannot over-admit or double charge.
+- Evidence source policy: A parsed header/body, request success, process exit, configured value, local estimate, mutable total, or event count is non-authoritative. Evidence is a fresh canonical scope/limit/event identity plus a transactional ledger receipt that independently replays the exact estimate, reservation, provider observation, settlement, correction, reset, and active-window population.
+- Outputs: ipfs_accelerate_py/endpoint_usage/schema.py, ipfs_accelerate_py/endpoint_usage/identity.py, ipfs_accelerate_py/endpoint_usage/adapters.py, ipfs_accelerate_py/endpoint_usage/ledger.py, ipfs_accelerate_py/endpoint_usage/store.py
+- Validation: python -m pytest test/test_endpoint_usage_schema.py test/test_endpoint_usage_adapters.py test/test_endpoint_usage_ledger.py -q
+- Acceptance: Unknown is never serialized as unlimited; unrelated credentials/accounts/endpoints cannot share counters; raw credentials, bearer URLs, prompts, media, output, and raw headers never persist; malformed, overflowing, conflicting, stale, skewed, or scope-mismatched observations fail closed; concurrent reservations honor every overlapping hard dimension; cancellation before and after dispatch, streaming, batching, retry, refund, correction, reset, process crash, store migration, and expired leases reconcile deterministically; and import plus schema inspection has no provider, network, process, secret-store, or database side effect.
+- Gap task: Repair the smallest identity, unit, window, parser, provenance, transaction, replay, expiry, correction, redaction, or migration failure.
+- Refinement: Freeze immutable contracts before adapters and implement adapters independently of the store; use a fake clock and in-memory store before the durable backend.
+- Embedding query: endpoint credential account scope usage unit rate limit reset provider header response reservation ledger reconciliation
+- AST query: EndpointUsageScope UsageDimension UsageLimit ProviderUsageObservation UsageEvent UsageReservation UsageLedgerStore
+
+## AICAT-G120 Usage-aware ModelManager planning and atomic route admission
+
+- Status: active
+- Parent: AICAT-G100
+- Depends on: AICAT-G110
+- Fib priority: 3
+- Track: endpoint-usage-resolution
+- Priority: P0
+- Bundle: ai-catalog/usage-routing/resolution
+- Goal: Overlay fresh usage state on one immutable catalog snapshot, expose side-effect-free usage/headroom queries through ModelManager, and provide one deterministic hard-filter, ranking, reservation, retry, and fallback coordinator for router-owned invocation.
+- Producing tasks: AICAT-028, AICAT-029
+- Evidence: endpoint_usage.routing.USAGE_AWARE_RESOLUTION_REQUIREMENT_ID, endpoint_usage.routing.USAGE_RESERVATION_ROUTING_REQUIREMENT_ID
+- Evidence criteria: Catalog and usage revisions are separate and jointly bound in decisions; ModelManager returns candidates and reasons without reserving or invoking; authorization/capability/explicit-pin/data/cost/locality/media/deadline and hard-limit gates precede scoring; unlike dimensions remain a headroom vector; the router closes the selection race with atomic reservation; retries and fallback use distinct linked attempts and only policy-safe boundaries; and typed no-capacity results include bounded next-eligible time.
+- Evidence source policy: Candidate order, a score, observed headroom, successful reservation, fallback success, health, latency, or cost alone is non-authoritative. Evidence is a fresh resolution and route receipt over the complete candidate population, catalog/usage revisions, hard exclusions, score inputs, reservation CAS, attempt chain, exact policy, and settlement.
+- Outputs: ipfs_accelerate_py/endpoint_usage/coordinator.py, ipfs_accelerate_py/endpoint_usage/routing.py, ipfs_accelerate_py/model_manager.py
+- Validation: python -m pytest test/test_endpoint_usage_routing.py test/test_model_manager_usage_routing.py -q
+- Acceptance: Usage snapshot, limits, headroom, and resolve-for-routing queries are bounded and side-effect free; static record CIDs never change with usage; hard gates cannot be offset by score; unknown/stale state follows explicit policy; exact pins default to no fallback; allowed same-deployment/provider/model/equivalent-model/cross-provider boundaries are distinguishable; compare-and-set races retry without over-admission; deadline-aware wait/reroute is bounded; circuit breaking and jitter prevent retry storms; and disabling the usage service preserves existing ModelManager resolution exactly.
+- Gap task: Close the smallest dynamic-overlay, revision, query, hard-filter, scoring, CAS, retry, fallback, deadline, circuit-breaker, or compatibility residual.
+- Refinement: Add read-only ModelManager projection before admission; keep ranking pure and make reservation the sole race-closing side effect.
+- Embedding query: ModelManager usage snapshot headroom resolve route candidate hard filter ranking reservation fallback next eligible
+- AST query: ModelManager UsageSnapshot UsageAwareResolution RoutingPolicy UsageCoordinator RouteAttempt UsageRoutingReceipt
+
+## AICAT-G130 Modality-preserving usage-aware router invocation
+
+- Status: active
+- Parent: AICAT-G100
+- Depends on: AICAT-G120
+- Fib priority: 5
+- Track: endpoint-usage-routers
+- Priority: P0
+- Bundle: ai-catalog/usage-routing/routers
+- Goal: Integrate the common usage coordinator independently into LLM, embeddings, multimodal, and voice invocation while preserving each router's public APIs, caches, provider semantics, modality contracts, and explicit fallback boundaries.
+- Producing tasks: AICAT-030, AICAT-031, AICAT-032, AICAT-033
+- Evidence: llm_router.USAGE_ROUTING_REQUIREMENT_ID, embeddings_router.USAGE_ROUTING_REQUIREMENT_ID, multimodal_router.USAGE_ROUTING_REQUIREMENT_ID, voice_router.USAGE_ROUTING_REQUIREMENT_ID
+- Evidence criteria: Each router derives a conservative modality-specific estimate, reserves the selected exact binding, parses bound provider observations, reconciles success/failure/cancel/timeout/stream/batch outcomes, and links retry/fallback attempts; response-cache hits do not fabricate remote usage; and fallback preserves all caller-visible capability and policy constraints.
+- Evidence source policy: A generated response, non-error status, usage body, cache hit, alternate provider, or matching output shape is non-authoritative. Evidence is a current-route contract receipt that replays the estimate, candidate constraints, reservation, invocation boundary, observation, settlement, and output-contract validation for the exact modality fixture.
+- Outputs: ipfs_accelerate_py/llm_router.py, ipfs_accelerate_py/embeddings_router.py, ipfs_accelerate_py/multimodal_router.py, ipfs_accelerate_py/voice_router.py
+- Validation: python -m pytest test/test_llm_router_usage_routing.py test/test_embeddings_router_usage_routing.py test/test_multimodal_router_usage_routing.py test/test_voice_router_usage_routing.py test/test_ai_router_usage_contract.py -q
+- Acceptance: LLM token/tool/stream limits, embedding input/token/vector/batch limits, multimodal image/pixel/byte/token limits, and voice duration/character/byte/stream limits are enforced in their native units; semantic/client errors do not trigger unsafe fallback; embedding dimensions/normalization, multimodal MIME/safety/data policy, and voice language/voice/codec/sample rate remain compatible; cache, batch, single-flight, retry, cancellation, and timeout accounting is exact; explicit pins remain pinned by default; and off mode is behaviorally identical to the pre-integration router paths.
+- Gap task: Close the smallest modality estimate, provider-observation, reservation, settlement, cache, batch, stream, retry, fallback, output-contract, or compatibility failure.
+- Refinement: Use one router-owned file lane per modality against the stable common coordinator, followed by a cross-router parity fixture.
+- Embedding query: llm embedding multimodal voice usage-aware router token vector image audio reservation fallback cache stream batch
+- AST query: generate_text generate_embeddings generate_multimodal transcribe synthesize UsageCoordinator UsageEstimate UsageRoutingReceipt
+
+## AICAT-G140 Authorized controls, observability, conformance, and rollout
+
+- Status: active
+- Parent: AICAT-G100
+- Depends on: AICAT-G120, AICAT-G130
+- Fib priority: 8
+- Track: endpoint-usage-rollout
+- Priority: P0
+- Bundle: ai-catalog/usage-routing/rollout
+- Goal: Expose equivalent bounded usage controls and metrics, prove endpoint/account isolation and cross-router conformance under faults, and gate off/observe/shadow/assist/enforce promotion with immediate compatibility rollback.
+- Producing tasks: AICAT-034, AICAT-035
+- Evidence: endpoint_usage.controls.USAGE_CONTROL_CONFORMANCE_REQUIREMENT_ID, endpoint_usage.rollout.USAGE_ROUTING_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: Python, CLI, MCP, and MCP++ read/preview results agree and mutations share existing authorization/idempotency/fencing rules; metrics derive from ledger events with bounded labels; one frozen offline population covers every unit/window/scope/router and fault boundary; and promotion requires zero overshoot, double charge, cross-scope merge, secret leak, silent pin violation, or side-effecting discovery.
+- Evidence source policy: A dashboard, status response, metric total, documented command, happy-path smoke, successful alternate route, or aggregate success percentage is non-authoritative. Evidence is a fresh transport-conformance plus complete paired/adversarial/fault/rollout receipt over exact scopes, endpoints, catalog and usage revisions, policies, attempts, effects, controls, and rollback outcome.
+- Outputs: ipfs_accelerate_py/endpoint_usage/controls.py, ipfs_accelerate_py/endpoint_usage/observability.py, ipfs_accelerate_py/mcp_server/tools/ai_router_tools, test/test_endpoint_usage_conformance.py, test/test_endpoint_usage_rollout.py, docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md, docs/architecture/AI_SERVICE_CATALOG.md, docs/LLM_ROUTER.md
+- Validation: python -m pytest test/test_endpoint_usage_controls.py test/test_endpoint_usage_conformance.py test/test_endpoint_usage_faults.py test/test_endpoint_usage_rollout.py -q
+- Acceptance: Usage status, limits, headroom, reservations, receipts, route preview, and adapter capability discovery are bounded, redacted, side-effect free, and transport-equivalent; correction/import/reset require explicit administrative authority, expected revision, lease/fence, idempotency, and audit; metrics expose bounded denial/reset/reroute/reconciliation/store health without request, credential, tenant, alias, or URL cardinality; deterministic tests cover clocks, crashes, races, malformed provider data, outage, and distributed partitions; live smokes are environment-gated and budget-capped; and any safety, parity, binding, or compatibility regression restores legacy selection while retaining observed usage for diagnosis.
+- Gap task: Add the smallest missing control, authority, redaction, metric, conformance fixture, provider fault, rollout threshold, documentation, or rollback safeguard.
+- Refinement: Land read-only controls and event-derived metrics before privileged mutations; keep one frozen conformance/rollout owner so the tested population cannot be narrowed.
+- Embedding query: usage control CLI MCP status limits headroom reservation metrics conformance fault rollout rollback
+- AST query: UsageControlService UsageObservability model_catalog_usage route_preview endpoint_usage_rollout
