@@ -4626,7 +4626,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-167 Project endpoint usage into fair resource and batch admission
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
