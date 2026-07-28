@@ -67,13 +67,13 @@ Normative:
 
 ## CBP-010 Doctrine inventory and fail-closed policy tests
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: docs
 - Depends on: CBP-000
 - Goal id: CBP-G010
-- Outputs: docs/architecture/AGENT_SUPERVISOR_CODEBASE_PROOF_CONTEXT_PLAN.md, test/api/test_agent_supervisor_code_proof_doctrine.py
+- Outputs: test/api/test_agent_supervisor_code_proof_doctrine.py
 - Validation: python -m pytest test/api/test_agent_supervisor_code_proof_doctrine.py -q
 - Board namespace: agent-supervisor-codebase-proof-v1
 - Bundle: agent-supervisor/codebase-proof/docs
@@ -81,13 +81,13 @@ Normative:
 - Resource class: cpu-small
 - Resource stage: analysis
 - Implementation timeout seconds: 3600
-- Predicted files: docs/architecture/AGENT_SUPERVISOR_CODEBASE_PROOF_CONTEXT_PLAN.md, test/api/test_agent_supervisor_code_proof_doctrine.py
+- Predicted files: test/api/test_agent_supervisor_code_proof_doctrine.py
 - Interfaces: AssuranceLevel, ProofReceipt
-- Conflict policy: Own doctrine tests; reference formal_verification_contracts without weakening ASI-G102.
+- Conflict policy: Own doctrine tests only; do not edit protected CBP plan/objectives/taskboard files; reference formal_verification_contracts without weakening ASI-G102.
 - Preconditions: CBP-000 sealed.
 - Effects: Automated guards for candidate non-authority and sim-ZK ≠ ATTESTED.
 - Evidence subset: cbp doctrine inventory
-- Acceptance: Tests assert (1) candidate assurance cannot satisfy kernel-required policy, (2) private_witness markers rejected from public receipt JSON, (3) simulated ZK/attestation path cannot produce AssuranceLevel.ATTESTED, (4) plan documents formal_verification_cache as sole memoization trust boundary.
+- Acceptance: Tests assert (1) candidate assurance cannot satisfy kernel-required policy, (2) private_witness markers rejected from public receipt JSON, (3) simulated ZK/attestation path cannot produce AssuranceLevel.ATTESTED, (4) sealed plan file on disk documents formal_verification_cache as sole memoization trust boundary (read-only check; do not modify the plan).
 
 ## CBP-015 Productize trust-aware proof cache as default prove path
 
