@@ -1684,7 +1684,7 @@ def validate_completion_evidence(
             # Local import preserves the contract module's independence while
             # ensuring API callers cannot bypass the objective source policy
             # by skipping the markdown tracker.
-            from objective_graph import completion_evidence_source_decision
+            from .objective_graph import completion_evidence_source_decision
 
             source_policy = completion_evidence_source_decision(
                 evidence,

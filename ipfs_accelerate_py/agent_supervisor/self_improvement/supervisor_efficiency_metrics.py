@@ -471,6 +471,54 @@ def _canonical_sha256(value: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _typed_completion_quorum_payload(
+    quorum: Mapping[str, Any],
+    *,
+    analyzer_version: str,
+    member_binding: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Preserve eligibility facts proved by ``ExhaustionQuorumResult``.
+
+    Typed quorum members exist only after ``evaluate_exhaustion_quorum`` has
+    accepted a healthy, exhaustive, terminally exhausted receipt.  The typed
+    projection predates the stricter completion gate and does not serialize
+    those derived booleans.  Reattach them only at the explicitly typed
+    boundary so raw mappings must continue to provide their own exact facts.
+    """
+
+    members_value = quorum.get("members")
+    members = (
+        members_value
+        if isinstance(members_value, (list, tuple))
+        else ()
+    )
+    projected_members: list[dict[str, Any]] = []
+    for member in members:
+        if not isinstance(member, Mapping):
+            continue
+        binding = (
+            dict(member_binding)
+            if member_binding is not None
+            else dict(member.get("binding"))
+            if isinstance(member.get("binding"), Mapping)
+            else {}
+        )
+        projected_members.append(
+            {
+                **member,
+                "binding": binding,
+                "passed": True,
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+            }
+        )
+    return {**quorum, "members": projected_members}
+
+
 def _coerce_records(
     values: Any,
     expected_type: type,
@@ -3438,11 +3486,22 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             analyzer_version = str(
                 binding_value.get("analyzer_version") or ""
             ).strip()
+        if (
+            typed_health
+            and evaluated_quorum
+            and quorum_value.get("satisfied") is True
+        ):
+            health_value = {
+                **health_value,
+                "analyzer_version": analyzer_version,
+                "exhaustive": True,
+            }
         health_complete = (
             str(health_value.get("status") or "").strip().lower()
             == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
+            and health_value.get("exhaustive") is True
             and bool(analyzer_version)
         )
         if not health_complete:
@@ -3485,6 +3544,12 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             if isinstance(members_value, (list, tuple))
             else ()
         )
+        if evaluated_quorum:
+            quorum_value = _typed_completion_quorum_payload(
+                quorum_value,
+                analyzer_version=analyzer_version,
+            )
+            members = quorum_value["members"]
         evaluated_members_complete = bool(
             evaluated_quorum
             and quorum_value.get("satisfied") is True
@@ -4410,6 +4475,7 @@ class RequiredContextPromotionReport(CanonicalContract):
             == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
+            and health_value.get("exhaustive") is True
             and bool(analyzer_version)
         )
         if not health_complete:
@@ -5490,6 +5556,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
             == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
+            and health_value.get("exhaustive") is True
             and bool(analyzer_version)
         )
         if not health_complete:
@@ -6608,6 +6675,7 @@ def evaluate_token_efficiency_completion(
             **health_value,
             "analyzer_version": analyzer_version,
             "binding": health_binding,
+            "exhaustive": quorum_value.get("satisfied") is True,
         }
     expected_binding = {
         "repository_id": repository_id,
@@ -6625,6 +6693,7 @@ def evaluate_token_efficiency_completion(
         normalized(health_value.get("status")) == "healthy"
         and health_value.get("healthy") is True
         and health_value.get("safe_for_completion_reasoning") is True
+        and health_value.get("exhaustive") is True
         and bool(analyzer_version)
         and bool(expected_binding["configuration_revision"])
         and all(
@@ -6650,22 +6719,15 @@ def evaluate_token_efficiency_completion(
             **quorum_binding,
             "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
         }
-        members = [
+        quorum_value = _typed_completion_quorum_payload(
             {
-                **member,
+                **quorum_value,
                 "binding": quorum_binding,
-                "scan_mode": "exhaustive",
-                "healthy": True,
-                "safe_for_completion_reasoning": True,
-            }
-            for member in members
-            if isinstance(member, Mapping)
-        ]
-        quorum_value = {
-            **quorum_value,
-            "binding": quorum_binding,
-            "members": members,
-        }
+            },
+            analyzer_version=analyzer_version,
+            member_binding=quorum_binding,
+        )
+        members = quorum_value["members"]
 
     def independent_field(name: str) -> bool:
         values = [
@@ -6683,7 +6745,13 @@ def evaluate_token_efficiency_completion(
         isinstance(member, Mapping)
         and member.get("healthy") is True
         and member.get("safe_for_completion_reasoning") is True
-        and normalized(member.get("scan_mode")) == "exhaustive"
+        and (
+            normalized(member.get("scan_mode")) == "exhaustive"
+            or (
+                typed_quorum
+                and normalized(member.get("scan_mode")) == "audit"
+            )
+        )
         and isinstance(member.get("binding"), Mapping)
         and all(
             member["binding"].get(name) == expected
@@ -8097,4 +8165,3 @@ __all__ = [
     "PairedSupervisorEfficiencyCase",
     "PairedSupervisorEfficiencyReport",
 ]
-

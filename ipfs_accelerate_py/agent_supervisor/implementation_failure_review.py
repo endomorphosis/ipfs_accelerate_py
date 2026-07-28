@@ -19,7 +19,7 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from .formal_verification_contracts import canonical_json, content_identity
+from .proof.formal_verification_contracts import canonical_json, content_identity
 
 
 FAILURE_REVIEW_SCHEMA = (
