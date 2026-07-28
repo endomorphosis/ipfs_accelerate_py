@@ -21,6 +21,15 @@ from types import MappingProxyType
 from typing import Any
 
 from ....agent_supervisor.control.control_contracts import (
+    SUPERVISOR_USAGE_ADMIN_AUTHORITY,
+    SUPERVISOR_USAGE_BUDGET_AUTHORITY,
+    SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID,
+    SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION,
+    SUPERVISOR_USAGE_CORRECTION_AUTHORITY,
+    SUPERVISOR_USAGE_POLICY_AUTHORITY,
+    SUPERVISOR_USAGE_READ_AUTHORITY,
+    SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY,
+    SUPERVISOR_USAGE_RESET_AUTHORITY,
     ControlContractError,
     ControlDiscoveryManifest,
     ControlSurface,
@@ -29,14 +38,18 @@ from ....agent_supervisor.control.control_contracts import (
     OperationResult,
     OperationRequest,
     PROMPT_CONTROL_OPERATIONS,
+    SupervisorUsageControlOperation,
     decode_operation_request,
+    discover_usage_control_catalog,
     get_operation_catalog,
     operation_request_json_schema,
     operation_result_json_schema,
+    usage_control_operations,
 )
 from ....agent_supervisor.control.control_plane import (
     DIRECT_CONTROL_SERVICE_DISPATCHER_ID,
     ControlSurfacePublication,
+    ProviderUsageControl,
     SupervisorControlService,
     control_operation_behavior_id,
     validate_control_surface_publication,
@@ -56,6 +69,7 @@ ServiceFactory = Callable[[OperationRequest], SupervisorControlService]
 _configuration_lock = RLock()
 _configured_service: SupervisorControlService | None = None
 _configured_factory: ServiceFactory | None = None
+_configured_usage_control: ProviderUsageControl | None = None
 _service_resolution_count = 0
 
 
@@ -67,6 +81,7 @@ def configure_agent_supervisor_control(
     *,
     service: SupervisorControlService | None = None,
     service_factory: ServiceFactory | None = None,
+    usage_control: ProviderUsageControl | None = None,
 ) -> None:
     """Configure the service used by later tool invocations.
 
@@ -81,10 +96,40 @@ def configure_agent_supervisor_control(
         raise TypeError("service must be a SupervisorControlService")
     if service_factory is not None and not callable(service_factory):
         raise TypeError("service_factory must be callable")
-    global _configured_service, _configured_factory
+    if usage_control is not None and not isinstance(
+        usage_control, ProviderUsageControl
+    ):
+        raise TypeError("usage_control must be a ProviderUsageControl")
+    global _configured_service, _configured_factory, _configured_usage_control
     with _configuration_lock:
         _configured_service = service
         _configured_factory = service_factory
+        if service is None and service_factory is None and usage_control is None:
+            _configured_usage_control = None
+        elif usage_control is not None:
+            _configured_usage_control = usage_control
+
+
+def set_provider_usage_control_service(service: ProviderUsageControl | None) -> None:
+    """Inject the process-local ProviderUsageControl for MCP usage tools."""
+
+    global _configured_usage_control
+    if service is not None and not isinstance(service, ProviderUsageControl):
+        raise TypeError("service must be a ProviderUsageControl")
+    with _configuration_lock:
+        _configured_usage_control = service
+
+
+def get_provider_usage_control_service() -> ProviderUsageControl | None:
+    """Return the injected usage-governance service, if any."""
+
+    with _configuration_lock:
+        if _configured_usage_control is not None:
+            return _configured_usage_control
+        service = _configured_service
+    if service is not None:
+        return service.usage_control
+    return None
 
 
 def _environment_allowlist(name: str) -> tuple[str, ...]:
@@ -425,6 +470,107 @@ def _tool_description(operation: Operation) -> str:
     return base
 
 
+def _usage_authorities_for_mcp(
+    *,
+    authorities: list[str] | None = None,
+    read_detail: bool = False,
+    admin: bool = False,
+    budget: bool = False,
+    policy: bool = False,
+    correction: bool = False,
+    reset: bool = False,
+) -> list[str]:
+    if authorities is not None:
+        return [str(item) for item in authorities if isinstance(item, str) and item]
+    granted = [SUPERVISOR_USAGE_READ_AUTHORITY]
+    if read_detail:
+        granted.append(SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY)
+    if admin:
+        granted.append(SUPERVISOR_USAGE_ADMIN_AUTHORITY)
+    if budget:
+        granted.append(SUPERVISOR_USAGE_BUDGET_AUTHORITY)
+    if policy:
+        granted.append(SUPERVISOR_USAGE_POLICY_AUTHORITY)
+    if correction:
+        granted.append(SUPERVISOR_USAGE_CORRECTION_AUTHORITY)
+    if reset:
+        granted.append(SUPERVISOR_USAGE_RESET_AUTHORITY)
+    return granted
+
+
+async def agent_supervisor_usage(
+    operation: str,
+    *,
+    target_id: str | None = None,
+    authorities: list[str] | None = None,
+    read_detail: bool = False,
+    admin: bool = False,
+    budget: bool = False,
+    policy: bool = False,
+    correction: bool = False,
+    reset: bool = False,
+    limit: int = 50,
+    cursor: str | None = None,
+    parameters: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Bounded usage-governance adapter shared with Python and CLI.
+
+    Read/query/preview is lazy, redacted, and side-effect free. Mutations require
+    distinct authority, expected revision/effects, lease/fence, and idempotency.
+    """
+
+    controller = get_provider_usage_control_service()
+    if controller is None:
+        return {
+            "status": "error",
+            "success": False,
+            "tool_schema_version": SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION,
+            "requirement_id": SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID,
+            "error": {
+                "code": "usage_unavailable",
+                "detail": "ProviderUsageControl is not configured.",
+            },
+            "error_code": "usage_unavailable",
+            "error_type": "usage_unavailable",
+            "reason_codes": ["usage_unavailable"],
+            "completion_authoritative": False,
+            "operational_evidence_only": True,
+        }
+    op = str(operation or "").strip()
+    if op in {"discover", "usage_discover"}:
+        record = dict(controller.discover())
+        record["success"] = True
+        record["status"] = "success"
+        return record
+    granted = _usage_authorities_for_mcp(
+        authorities=authorities,
+        read_detail=read_detail,
+        admin=admin,
+        budget=budget,
+        policy=policy,
+        correction=correction,
+        reset=reset,
+    )
+    kwargs: dict[str, Any] = dict(parameters or {})
+    if target_id:
+        kwargs.setdefault("target_id", target_id)
+    if limit is not None:
+        kwargs.setdefault("limit", limit)
+    if cursor is not None:
+        kwargs.setdefault("cursor", cursor)
+    return controller.execute(op, authorities=granted, **kwargs)
+
+
+def usage_mcp_discovery_manifest() -> dict[str, Any]:
+    """Static MCP discovery for usage-governance operations."""
+
+    catalog = dict(discover_usage_control_catalog())
+    catalog["surface"] = "mcp"
+    catalog["tool"] = "agent_supervisor_usage"
+    catalog["operations"] = list(usage_control_operations())
+    return catalog
+
+
 def register_native_agent_supervisor_tools(manager: Any) -> None:
     """Register all closed-vocabulary operations without resolving a service."""
 
@@ -467,6 +613,68 @@ def register_native_agent_supervisor_tools(manager: Any) -> None:
         manager.register_tool(**definition)
 
 
+def register_native_agent_supervisor_usage_tools(manager: Any) -> None:
+    """Register the usage-governance MCP tool without widening Operation tools.
+
+    Kept separate from :func:`register_native_agent_supervisor_tools` so the
+    closed Operation catalog tool population remains exact for control-plane
+    conformance.
+    """
+
+    manager.register_tool(
+        category=AGENT_SUPERVISOR_MCP_CATEGORY,
+        name="agent_supervisor_usage",
+        func=agent_supervisor_usage,
+        description=(
+            "Execute a bounded supervisor usage-governance operation. "
+            "Read/query/preview is side-effect free; mutations require "
+            "distinct authority, expected revision, lease, fence, and "
+            "idempotency. Results are operational evidence only."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": [
+                        "discover",
+                        *list(usage_control_operations()),
+                    ],
+                },
+                "target_id": {"type": "string"},
+                "authorities": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "read_detail": {"type": "boolean", "default": False},
+                "admin": {"type": "boolean", "default": False},
+                "budget": {"type": "boolean", "default": False},
+                "policy": {"type": "boolean", "default": False},
+                "correction": {"type": "boolean", "default": False},
+                "reset": {"type": "boolean", "default": False},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 50,
+                },
+                "cursor": {"type": "string"},
+                "parameters": {"type": "object"},
+            },
+            "required": ["operation"],
+            "additionalProperties": False,
+            "x-agent-supervisor-usage-contract": {
+                "requirement_id": SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID,
+                "tool_schema_version": SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION,
+                "operations": list(usage_control_operations()),
+                "completion_authoritative": False,
+            },
+        },
+        runtime="fastapi",
+        tags=["policy-controlled", "usage-governance", "operational-evidence"],
+    )
+
+
 # Stable generation-2 spellings are aliases, not wrappers.  Keeping the
 # callable objects identical preserves the reviewed discovery and publication
 # behavior (including their operation/schema identities) while retaining the
@@ -486,11 +694,16 @@ __all__ = [
     "agent_supervisor_v2_discovery_manifest",
     "agent_supervisor_service_resolution_count",
     "agent_supervisor_control",
+    "agent_supervisor_usage",
     "configure_agent_supervisor_control",
     "execute_agent_supervisor_operation",
+    "get_provider_usage_control_service",
     "mcp_control_surface_publication",
     "mcp_v2_control_surface_publication",
     "register_native_agent_supervisor_tools",
+    "register_native_agent_supervisor_usage_tools",
+    "set_provider_usage_control_service",
+    "usage_mcp_discovery_manifest",
     "validate_agent_supervisor_mcp_catalog",
     *[tool.__name__ for tool in AGENT_SUPERVISOR_OPERATION_TOOLS.values()],
 ]

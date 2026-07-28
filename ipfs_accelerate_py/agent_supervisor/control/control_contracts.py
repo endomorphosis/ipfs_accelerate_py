@@ -8155,6 +8155,367 @@ def operation_authority(operation: Operation | str) -> OperationAuthority:
     return _operation(operation).authority
 
 
+# ---------------------------------------------------------------------------
+# ASI-169 supervisor usage-governance control contracts
+# ---------------------------------------------------------------------------
+#
+# Usage controls are a discoverable, transport-neutral surface bound to the
+# shared supervisor control revisions.  They deliberately do not widen the
+# closed Operation catalog; Python, CLI, and MCP adapters project the same
+# schema/result/error vocabulary through ProviderUsageControl.
+
+SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID: Final[str] = (
+    "requirement:supervisor-usage-control-conformance.v1"
+)
+SUPERVISOR_USAGE_CONTROL_GOAL_ID: Final[str] = "ASI-G530"
+SUPERVISOR_USAGE_CONTROL_SCHEMA_VERSION: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/usage-control@1"
+)
+SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/usage-control-tool@1"
+)
+SUPERVISOR_USAGE_CONTROL_CATALOG_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/usage-control-catalog@1"
+)
+SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID: Final[str] = (
+    "requirement:supervisor-usage-metrics.v1"
+)
+SUPERVISOR_USAGE_METRICS_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/usage-governance-metrics@1"
+)
+SUPERVISOR_USAGE_METRICS_SCHEMA_VERSION: Final[int] = 1
+
+# Distinct authorities — read/detail/admin never share a token.
+SUPERVISOR_USAGE_READ_AUTHORITY: Final[str] = "agent_supervisor.usage/read"
+SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY: Final[str] = (
+    "agent_supervisor.usage/read_detail"
+)
+SUPERVISOR_USAGE_ADMIN_AUTHORITY: Final[str] = "agent_supervisor.usage/admin"
+SUPERVISOR_USAGE_BUDGET_AUTHORITY: Final[str] = "agent_supervisor.usage/budget"
+SUPERVISOR_USAGE_POLICY_AUTHORITY: Final[str] = "agent_supervisor.usage/policy"
+SUPERVISOR_USAGE_CORRECTION_AUTHORITY: Final[str] = (
+    "agent_supervisor.usage/correction"
+)
+SUPERVISOR_USAGE_RESET_AUTHORITY: Final[str] = "agent_supervisor.usage/reset"
+
+MAX_USAGE_CONTROL_PAGE_SIZE: Final[int] = 100
+MAX_USAGE_CONTROL_RECEIPTS: Final[int] = 256
+MAX_USAGE_CONTROL_AUDIT: Final[int] = 512
+MAX_USAGE_CONTROL_FILTERS: Final[int] = 256
+MAX_USAGE_CONTROL_REASON_CODES: Final[int] = 32
+MAX_USAGE_CONTROL_STRING: Final[int] = 256
+MAX_USAGE_CONTROL_IDEMPOTENCY_KEY: Final[int] = 128
+MAX_USAGE_CONTROL_EXPECTED_EFFECTS: Final[int] = 32
+MAX_USAGE_CONTROL_BUDGET_LIMITS: Final[int] = 64
+
+USAGE_HEADROOM_BANDS: Final[tuple[str, ...]] = (
+    "unknown",
+    "exhausted",
+    "critical",
+    "low",
+    "medium",
+    "high",
+    "unlimited",
+)
+
+SUPERVISOR_USAGE_REASON_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "ok",
+        "unauthorized",
+        "read_denied",
+        "detail_denied",
+        "admin_denied",
+        "budget_authority_denied",
+        "policy_authority_denied",
+        "correction_authority_denied",
+        "reset_authority_denied",
+        "invalid_request",
+        "invalid_filter",
+        "invalid_cursor",
+        "cursor_revision_mismatch",
+        "stale_snapshot",
+        "stale_fence",
+        "revision_mismatch",
+        "idempotency_conflict",
+        "idempotency_replay",
+        "expected_effects_exceeded",
+        "lease_required",
+        "fence_required",
+        "mutation_denied_model_output",
+        "mutation_denied_remote_peer",
+        "parent_budget_raise_denied",
+        "scope_not_found",
+        "usage_unavailable",
+        "limit_exhausted",
+        "cooling_down",
+        "store_unhealthy",
+        "budget_rejected",
+        "policy_rejected",
+        "correction_rejected",
+        "reset_rejected",
+        "side_effect_forbidden",
+        "unbounded_page",
+        "completion_not_authoritative",
+    }
+)
+
+# Forbidden high-cardinality metric labels (shared with scheduler projection).
+SUPERVISOR_USAGE_FORBIDDEN_METRIC_LABELS: Final[frozenset[str]] = frozenset(
+    {
+        "request",
+        "request_id",
+        "credential",
+        "credential_id",
+        "credential_pseudonym",
+        "tenant",
+        "tenant_id",
+        "alias",
+        "model",
+        "model_id",
+        "model_string",
+        "model_alias",
+        "endpoint",
+        "endpoint_uri",
+        "endpoint_url",
+        "url",
+        "account",
+        "account_pseudonym",
+        "user",
+        "session",
+        "prompt",
+        "media",
+        "output",
+    }
+)
+
+
+class SupervisorUsageAuthority(str, Enum):
+    """Distinct usage-governance authorities."""
+
+    READ = SUPERVISOR_USAGE_READ_AUTHORITY
+    READ_DETAIL = SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY
+    ADMIN = SUPERVISOR_USAGE_ADMIN_AUTHORITY
+    BUDGET = SUPERVISOR_USAGE_BUDGET_AUTHORITY
+    POLICY = SUPERVISOR_USAGE_POLICY_AUTHORITY
+    CORRECTION = SUPERVISOR_USAGE_CORRECTION_AUTHORITY
+    RESET = SUPERVISOR_USAGE_RESET_AUTHORITY
+
+
+class SupervisorUsageControlOperation(str, Enum):
+    """Closed usage-governance operations (not Operation catalog members)."""
+
+    STATUS = "usage_status"
+    HEALTH = "usage_health"
+    BUDGETS = "usage_budgets"
+    HEADROOM = "usage_headroom"
+    RESERVATIONS = "usage_reservations"
+    RECEIPTS = "usage_receipts"
+    ROUTE_PREVIEW = "usage_route_preview"
+    BLOCKED_WORK = "usage_blocked_work"
+    NEXT_ELIGIBLE = "usage_next_eligible"
+    ADAPTER_CAPABILITIES = "usage_adapter_capabilities"
+    SET_BUDGET = "usage_set_budget"
+    SET_POLICY = "usage_set_policy"
+    CORRECT = "usage_correct"
+    RESET = "usage_reset"
+
+
+USAGE_CONTROL_READ_OPERATIONS: Final[frozenset[SupervisorUsageControlOperation]] = (
+    frozenset(
+        {
+            SupervisorUsageControlOperation.STATUS,
+            SupervisorUsageControlOperation.HEALTH,
+            SupervisorUsageControlOperation.BUDGETS,
+            SupervisorUsageControlOperation.HEADROOM,
+            SupervisorUsageControlOperation.RESERVATIONS,
+            SupervisorUsageControlOperation.RECEIPTS,
+            SupervisorUsageControlOperation.ROUTE_PREVIEW,
+            SupervisorUsageControlOperation.BLOCKED_WORK,
+            SupervisorUsageControlOperation.NEXT_ELIGIBLE,
+            SupervisorUsageControlOperation.ADAPTER_CAPABILITIES,
+        }
+    )
+)
+USAGE_CONTROL_MUTATION_OPERATIONS: Final[
+    frozenset[SupervisorUsageControlOperation]
+] = frozenset(
+    {
+        SupervisorUsageControlOperation.SET_BUDGET,
+        SupervisorUsageControlOperation.SET_POLICY,
+        SupervisorUsageControlOperation.CORRECT,
+        SupervisorUsageControlOperation.RESET,
+    }
+)
+USAGE_CONTROL_PREVIEW_OPERATIONS: Final[
+    frozenset[SupervisorUsageControlOperation]
+] = frozenset({SupervisorUsageControlOperation.ROUTE_PREVIEW})
+
+# Mutation operations require a distinct authority (not just generic admin).
+USAGE_CONTROL_MUTATION_AUTHORITIES: Final[
+    Mapping[SupervisorUsageControlOperation, str]
+] = MappingProxyType(
+    {
+        SupervisorUsageControlOperation.SET_BUDGET: SUPERVISOR_USAGE_BUDGET_AUTHORITY,
+        SupervisorUsageControlOperation.SET_POLICY: SUPERVISOR_USAGE_POLICY_AUTHORITY,
+        SupervisorUsageControlOperation.CORRECT: SUPERVISOR_USAGE_CORRECTION_AUTHORITY,
+        SupervisorUsageControlOperation.RESET: SUPERVISOR_USAGE_RESET_AUTHORITY,
+    }
+)
+
+
+def usage_control_authorities() -> dict[str, str]:
+    """Stable authority vocabulary for Python / CLI / MCP parity."""
+
+    return {
+        "read": SUPERVISOR_USAGE_READ_AUTHORITY,
+        "read_detail": SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY,
+        "admin": SUPERVISOR_USAGE_ADMIN_AUTHORITY,
+        "budget": SUPERVISOR_USAGE_BUDGET_AUTHORITY,
+        "policy": SUPERVISOR_USAGE_POLICY_AUTHORITY,
+        "correction": SUPERVISOR_USAGE_CORRECTION_AUTHORITY,
+        "reset": SUPERVISOR_USAGE_RESET_AUTHORITY,
+    }
+
+
+def usage_control_reason_codes() -> tuple[str, ...]:
+    return tuple(sorted(SUPERVISOR_USAGE_REASON_CODES))
+
+
+def usage_control_operations() -> tuple[str, ...]:
+    return tuple(
+        sorted(item.value for item in SupervisorUsageControlOperation)
+    )
+
+
+def usage_control_mutation_operations() -> tuple[str, ...]:
+    return tuple(sorted(item.value for item in USAGE_CONTROL_MUTATION_OPERATIONS))
+
+
+def usage_control_read_operations() -> tuple[str, ...]:
+    return tuple(sorted(item.value for item in USAGE_CONTROL_READ_OPERATIONS))
+
+
+def discover_usage_control_catalog() -> dict[str, Any]:
+    """Side-effect-free discovery of the usage-governance operation surface.
+
+    Returns schema/result/error-equivalent operation descriptors bound to the
+    supervisor usage control requirement and catalog revision identity.  Does
+    not reserve, refresh, probe, invoke, or mutate.
+    """
+
+    operations: list[dict[str, Any]] = []
+    for operation in sorted(
+        SupervisorUsageControlOperation, key=lambda item: item.value
+    ):
+        mutating = operation in USAGE_CONTROL_MUTATION_OPERATIONS
+        preview = operation in USAGE_CONTROL_PREVIEW_OPERATIONS
+        authority = (
+            USAGE_CONTROL_MUTATION_AUTHORITIES[operation]
+            if mutating
+            else SUPERVISOR_USAGE_READ_AUTHORITY
+        )
+        operations.append(
+            {
+                "operation": operation.value,
+                "authority": authority,
+                "mutating": mutating,
+                "preview": preview,
+                "side_effect_free": not mutating,
+                "requires_idempotency": mutating,
+                "requires_lease": mutating,
+                "requires_fence": mutating,
+                "requires_expected_revision": mutating,
+                "requires_expected_effects": mutating,
+                "pagination": operation
+                in {
+                    SupervisorUsageControlOperation.STATUS,
+                    SupervisorUsageControlOperation.BUDGETS,
+                    SupervisorUsageControlOperation.RESERVATIONS,
+                    SupervisorUsageControlOperation.RECEIPTS,
+                    SupervisorUsageControlOperation.BLOCKED_WORK,
+                    SupervisorUsageControlOperation.ADAPTER_CAPABILITIES,
+                },
+                "default_redacts_credential_account_tenant": True,
+                "completion_authoritative": False,
+            }
+        )
+    payload = {
+        "schema": SUPERVISOR_USAGE_CONTROL_CATALOG_SCHEMA,
+        "schema_version": SUPERVISOR_USAGE_CONTROL_SCHEMA_VERSION,
+        "tool_schema_version": SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION,
+        "requirement_id": SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID,
+        "goal_id": SUPERVISOR_USAGE_CONTROL_GOAL_ID,
+        "control_catalog_version": CONTROL_CATALOG_VERSION,
+        "operations": operations,
+        "authorities": usage_control_authorities(),
+        "reason_codes": list(usage_control_reason_codes()),
+        "headroom_bands": list(USAGE_HEADROOM_BANDS),
+        "forbidden_metric_labels": sorted(SUPERVISOR_USAGE_FORBIDDEN_METRIC_LABELS),
+        "completion_authoritative": False,
+        "operational_evidence_only": True,
+    }
+    return MappingProxyType(payload)  # type: ignore[return-value]
+
+
+def usage_headroom_band(
+    available: Any = None,
+    ceiling: Any = None,
+    *,
+    state: str | None = None,
+) -> str:
+    """Map typed headroom into a low-cardinality band label."""
+
+    if state in {"exhausted"}:
+        return "exhausted"
+    if state in {"unknown", None} and available is None and ceiling is None:
+        return "unknown"
+    if state == "unknown":
+        return "unknown"
+
+    def _kind_value(quantity: Any) -> tuple[str, int | None]:
+        if quantity is None:
+            return "unknown", None
+        if isinstance(quantity, Mapping):
+            kind = str(quantity.get("kind") or "unknown")
+            value = quantity.get("value")
+            try:
+                return kind, (None if value is None else int(value))
+            except (TypeError, ValueError):
+                return kind, None
+        kind_attr = getattr(quantity, "kind", None)
+        kind = (
+            kind_attr.value
+            if hasattr(kind_attr, "value")
+            else str(kind_attr or "unknown")
+        )
+        value = getattr(quantity, "value", None)
+        try:
+            return kind, (None if value is None else int(value))
+        except (TypeError, ValueError):
+            return kind, None
+
+    avail_kind, avail_value = _kind_value(available)
+    ceil_kind, ceil_value = _kind_value(ceiling)
+    if ceil_kind == "unlimited":
+        return "unlimited"
+    if ceil_kind == "unknown" or avail_kind == "unknown":
+        return "unknown"
+    if avail_kind == "unlimited":
+        return "unlimited"
+    if ceil_value is None or ceil_value <= 0:
+        return "exhausted"
+    if avail_value is None or avail_value <= 0:
+        return "exhausted"
+    ratio = avail_value / float(ceil_value)
+    if ratio < 0.10:
+        return "critical"
+    if ratio < 0.25:
+        return "low"
+    if ratio < 0.50:
+        return "medium"
+    return "high"
+
+
 ControlLimits = ControlBounds
 RequestBounds = ControlBounds
 OperationName = Operation
@@ -8349,6 +8710,7 @@ __all__ = [
     "canonical_control_json_bytes",
     "decode_operation_request",
     "discover_control_catalog",
+    "discover_usage_control_catalog",
     "evaluate_unified_control_completion",
     "get_operation_catalog",
     "negotiate_catalog_version",
@@ -8357,4 +8719,35 @@ __all__ = [
     "operation_request_json_schema",
     "operation_result_json_schema",
     "replay_event_page",
+    "SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID",
+    "SUPERVISOR_USAGE_CONTROL_GOAL_ID",
+    "SUPERVISOR_USAGE_CONTROL_SCHEMA_VERSION",
+    "SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION",
+    "SUPERVISOR_USAGE_CONTROL_CATALOG_SCHEMA",
+    "SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID",
+    "SUPERVISOR_USAGE_METRICS_SCHEMA",
+    "SUPERVISOR_USAGE_METRICS_SCHEMA_VERSION",
+    "SUPERVISOR_USAGE_READ_AUTHORITY",
+    "SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY",
+    "SUPERVISOR_USAGE_ADMIN_AUTHORITY",
+    "SUPERVISOR_USAGE_BUDGET_AUTHORITY",
+    "SUPERVISOR_USAGE_POLICY_AUTHORITY",
+    "SUPERVISOR_USAGE_CORRECTION_AUTHORITY",
+    "SUPERVISOR_USAGE_RESET_AUTHORITY",
+    "SUPERVISOR_USAGE_REASON_CODES",
+    "SUPERVISOR_USAGE_FORBIDDEN_METRIC_LABELS",
+    "USAGE_HEADROOM_BANDS",
+    "USAGE_CONTROL_READ_OPERATIONS",
+    "USAGE_CONTROL_MUTATION_OPERATIONS",
+    "USAGE_CONTROL_PREVIEW_OPERATIONS",
+    "USAGE_CONTROL_MUTATION_AUTHORITIES",
+    "MAX_USAGE_CONTROL_PAGE_SIZE",
+    "SupervisorUsageAuthority",
+    "SupervisorUsageControlOperation",
+    "usage_control_authorities",
+    "usage_control_reason_codes",
+    "usage_control_operations",
+    "usage_control_mutation_operations",
+    "usage_control_read_operations",
+    "usage_headroom_band",
 ]
