@@ -70,7 +70,7 @@ Program invariants:
 
 ## GOOSE-003 Add the pinned Goose lazy installer
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -95,7 +95,7 @@ Program invariants:
 
 ## GOOSE-004 Implement the canonical Goose adapter and structured parsers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
