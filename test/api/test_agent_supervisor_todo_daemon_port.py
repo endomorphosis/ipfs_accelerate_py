@@ -1169,6 +1169,12 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         raising=False,
     )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_REASONING_EFFORT_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MAX_THREADS_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MAX_DEPTH_ENV, raising=False)
     monkeypatch.setattr(implementation_daemon_module, "_grok_cli_available", lambda: False)
     monkeypatch.setattr(
         implementation_daemon_module, "_goose_meta_spark_available", lambda: False
@@ -1396,6 +1402,16 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         raising=False,
     )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_REASONING_EFFORT_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MAX_THREADS_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MAX_DEPTH_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._COPILOT_MODEL_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._COPILOT_EFFORT_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._COPILOT_CONTEXT_TIER_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._COPILOT_MAX_CONTINUES_ENV, raising=False)
     monkeypatch.setattr(implementation_daemon_module, "_grok_cli_available", lambda: False)
     monkeypatch.setattr(
         implementation_daemon_module, "_goose_meta_spark_available", lambda: False
