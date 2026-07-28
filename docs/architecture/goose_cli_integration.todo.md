@@ -805,3 +805,32 @@ Program invariants:
 - Candidate kind: evidence_cluster
 - Todo vector key: cdb2db6fd509d081
 - Acceptance: Objective scan filed this gap for GOOSE-G040. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-020-objective-gap-2d0e6814ca6b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, test/test_goose_cli_endpoint.py), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/goose_endpoint/ipfs_accelerate_py/76d9951bfacf; implement a complete, cohesive change that fully advances the packet goals (GOOSE-G040) and covers all the shared packet evidence in one comprehensive pass. Land the provider-neutral endpoint factory before Goose endpoint wiring, and land one-shot execution before ACP persistence.
+
+## GOOSE-021 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 92bfb9a195f14afbbe19e66fc25d8b1c14550de8
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/state/discovery, docs/architecture/goose_cli_integration.todo.md
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/state/discovery/2026-07-28-goose-021-reconciliation-92bfb9a195f1.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/state/discovery/2026-07-28-goose-021-reconciliation-92bfb9a195f1.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## GOOSE-022 Resolve implementation retry-budget failure for GOOSE-011
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Priority: P0
+- Track: ops
+- Depends on: GOOSE-010
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_implementation_progress.py
+- Validation: python -m pytest test/api/test_agent_supervisor_implementation_progress.py test/api/test_agent_supervisor_implementation_failure_review.py::test_implementation_prompt_policy_appendix_includes_admission_budgets test/api/test_agent_supervisor_decision_runtime_e2e.py -q
+- Acceptance: Implementation retry-budget guardrail repair for GOOSE-011. The repaired ASREF restart exposed that ASI-171 retained its progress-checkpoint setup call while the corresponding bounded helper family was absent; the setup-only failures made no provider call and no useful worktree mutation. Commit 8b8d16c8a restores that contract and the declared validation passes 18 tests. Consume this completed repair receipt to release GOOSE-011 from strategy blocked_tasks without editing lane state or discarding worktree content.

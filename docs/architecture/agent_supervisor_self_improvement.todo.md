@@ -4749,3 +4749,16 @@ planner, and refill behavior defaults to shadow mode.
 - Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_decision_runtime_e2e.py
 - Validation: python -m pytest test/api/test_agent_supervisor_implementation_failure_review.py::test_implementation_prompt_policy_appendix_includes_admission_budgets test/api/test_agent_supervisor_decision_runtime_e2e.py -q
 - Acceptance: Implementation retry-budget guardrail repair for ASI-165. The ASREF cutover retained proposal-envelope callers and tests while dropping their constants, authority binding, and bounded artifact policy, causing three sub-second infrastructure failures across parallel lanes without useful provider work. Commit d2b840305 restores the cohesive fail-closed envelope contract and its moved-module test path; the declared validation passes 13 tests. Consume this completed repair receipt to release ASI-165 from strategy blocked_tasks without editing lane state or discarding worktree content.
+
+## ASI-173 Resolve implementation retry-budget failure for ASI-165 after checkpoint cutover
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Priority: P0
+- Track: ops
+- Depends on: ASI-172
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_implementation_progress.py
+- Validation: python -m pytest test/api/test_agent_supervisor_implementation_progress.py test/api/test_agent_supervisor_implementation_failure_review.py::test_implementation_prompt_policy_appendix_includes_admission_budgets test/api/test_agent_supervisor_decision_runtime_e2e.py -q
+- Acceptance: Implementation retry-budget guardrail repair for ASI-165. The first repaired restart exposed a second ASREF merge omission: ASI-171 retained its call to the progress-checkpoint setup while the timeout policy, bounded checkpoint methods, environment binding, and progress observer were absent. Those setup-only failures made no provider call and no useful worktree mutation. Commit 8b8d16c8a restores the cohesive progress-aware checkpoint contract and the declared validation passes 18 tests. Consume this new completed repair receipt to release ASI-165 from strategy blocked_tasks without editing lane state or discarding worktree content.
