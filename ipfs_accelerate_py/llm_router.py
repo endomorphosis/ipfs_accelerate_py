@@ -90,6 +90,7 @@ Additional optional providers (opt-in by selecting provider):
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -123,6 +124,8 @@ from typing import (
     TypedDict,
     runtime_checkable,
 )
+
+logger = logging.getLogger(__name__)
 
 from .common.meta_model_api import (
     META_MODEL_API_BASE_URL,
@@ -162,6 +165,25 @@ class LLMRouterError(RuntimeError):
     """
 
 
+class UsageCapacityError(LLMRouterError):
+    """Raised when usage-aware admission denies capacity before or during dispatch."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_codes: Sequence[str] = (),
+        next_eligible_at: Optional[str] = None,
+        admission: Optional[object] = None,
+        pre_dispatch: bool = True,
+    ) -> None:
+        super().__init__(message)
+        self.reason_codes = tuple(reason_codes or ())
+        self.next_eligible_at = next_eligible_at
+        self.admission = admission
+        self.pre_dispatch = bool(pre_dispatch)
+
+
 class PinnedSymaiCompletionError(LLMRouterError):
     """Secret-safe failure raised for a rejected pinned SyMAI completion."""
 
@@ -178,6 +200,13 @@ class PinnedSymaiCompletionError(LLMRouterError):
             "pinned SyMAI completion failed: " + safe_failure_class
         )
 
+
+# Evidence identity for AICAT-G130 / AICAT-030 llm usage integration.
+USAGE_ROUTING_REQUIREMENT_ID = "requirement:llm-router-usage-routing.v1"
+LLM_USAGE_OPERATION = "text.generate"
+LLM_CHAT_USAGE_OPERATION = "text.chat"
+_DEFAULT_LLM_OUTPUT_TOKEN_ESTIMATE = 256
+_DEFAULT_LLM_TOOL_TOKEN_OVERHEAD = 64
 
 _P2P_TASK_PREFIX = "p2p://"
 _HF_ARCH_ROUTER_MODEL_ID = "katanemo/Arch-Router-1.5B"
@@ -200,6 +229,7 @@ _XAI_API_PROVIDER_ALIASES = {
     "grok-api",
 }
 _LAST_GENERATION_TRACE = threading.local()
+_LAST_USAGE_ADMISSION = threading.local()
 _PINNED_SYMAI_LEANSTRAL_ALIAS = "Leanstral-119B"
 _PINNED_SYMAI_LEANSTRAL_INNER_PROVIDER = "leanstral_local"
 _PINNED_SYMAI_LEANSTRAL_MODEL = (
@@ -7853,6 +7883,1263 @@ def get_last_generation_trace() -> dict[str, str]:
     return dict(payload) if isinstance(payload, dict) else {}
 
 
+def _set_last_usage_admission(payload: Optional[Mapping[str, object]]) -> None:
+    _LAST_USAGE_ADMISSION.payload = dict(payload) if payload is not None else None
+
+
+def get_last_usage_admission() -> Dict[str, object]:
+    """Return a copy of the most recent usage-admission result for this thread.
+
+    The payload is operational evidence only: never prompts, messages, tool
+    arguments/results, generated text, credentials, or raw endpoints.
+    """
+
+    payload = getattr(_LAST_USAGE_ADMISSION, "payload", None)
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+# ---------------------------------------------------------------------------
+# Usage-aware admission (optional; off mode is the default legacy path)
+# ---------------------------------------------------------------------------
+
+
+def estimate_llm_tokens(text: str) -> int:
+    """Conservative token estimate for LLM admission.
+
+    Uses the tighter of character, word, and UTF-8 byte heuristics so dense or
+    non-ASCII text cannot under-estimate headroom consumption.
+    """
+
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    if not text:
+        return 1
+    char_estimate = (len(text) + 3) // 4
+    word_estimate = max(1, len(text.split()))
+    byte_estimate = (len(text.encode("utf-8")) + 2) // 3
+    return max(1, char_estimate, word_estimate, byte_estimate)
+
+
+def _coerce_positive_int(value: object, *, default: int) -> int:
+    try:
+        if value is None or isinstance(value, bool):
+            return max(1, int(default))
+        return max(1, int(value))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return max(1, int(default))
+
+
+def _estimate_output_tokens_from_kwargs(kwargs: Mapping[str, object]) -> int:
+    for key in ("max_tokens", "max_new_tokens", "max_completion_tokens", "max_length"):
+        if key in kwargs and kwargs[key] is not None:
+            return _coerce_positive_int(
+                kwargs[key], default=_DEFAULT_LLM_OUTPUT_TOKEN_ESTIMATE
+            )
+    return _DEFAULT_LLM_OUTPUT_TOKEN_ESTIMATE
+
+
+def _estimate_tool_token_overhead(kwargs: Mapping[str, object]) -> int:
+    tools = kwargs.get("tools") or kwargs.get("functions") or kwargs.get("tool_schemas")
+    if tools is None:
+        if _kwargs_are_side_effecting(kwargs):
+            return _DEFAULT_LLM_TOOL_TOKEN_OVERHEAD
+        return 0
+    try:
+        if isinstance(tools, (str, bytes)):
+            return max(_DEFAULT_LLM_TOOL_TOKEN_OVERHEAD, estimate_llm_tokens(str(tools)))
+        if isinstance(tools, Mapping):
+            return max(
+                _DEFAULT_LLM_TOOL_TOKEN_OVERHEAD,
+                estimate_llm_tokens(json.dumps(tools, sort_keys=True, default=str)),
+            )
+        if isinstance(tools, Sequence):
+            count = len(list(tools))
+            return max(_DEFAULT_LLM_TOOL_TOKEN_OVERHEAD, count * 32)
+    except Exception:
+        return _DEFAULT_LLM_TOOL_TOKEN_OVERHEAD
+    return _DEFAULT_LLM_TOOL_TOKEN_OVERHEAD
+
+
+def estimate_llm_usage(
+    prompt: str,
+    *,
+    messages: Optional[Sequence[Mapping[str, object]]] = None,
+    max_output_tokens: Optional[int] = None,
+    tool_overhead_tokens: Optional[int] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+    include_concurrency: bool = True,
+    streaming: bool = False,
+    batch_items: int = 1,
+    remote: bool = True,
+    kwargs: Optional[Mapping[str, object]] = None,
+) -> "object":
+    """Build a conservative multi-dimension usage vector for LLM work.
+
+    Dimensions covered when applicable: requests, input_tokens, output_tokens,
+    total_tokens, concurrent_requests, concurrent_streams, batch_items,
+    media_bytes (prompt UTF-8), and cost_micros.  Cache-only / non-remote work
+    returns an empty vector (no remote charge envelope).
+    """
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not remote:
+        return UsageVector()
+
+    call_kwargs: Mapping[str, object] = kwargs or {}
+    parts: List[str] = []
+    if isinstance(prompt, str) and prompt:
+        parts.append(prompt)
+    if messages:
+        for message in messages:
+            if not isinstance(message, Mapping):
+                continue
+            content = message.get("content")
+            if isinstance(content, str) and content:
+                parts.append(content)
+            elif content is not None and not isinstance(content, str):
+                try:
+                    parts.append(json.dumps(content, sort_keys=True, default=str))
+                except Exception:
+                    parts.append(str(content))
+    joined = "\n".join(parts) if parts else (prompt if isinstance(prompt, str) else "")
+    input_tokens = estimate_llm_tokens(joined) if joined else 1
+    tool_tokens = (
+        int(tool_overhead_tokens)
+        if tool_overhead_tokens is not None
+        else _estimate_tool_token_overhead(call_kwargs)
+    )
+    input_tokens = max(1, input_tokens + max(0, tool_tokens))
+    output_tokens = (
+        max(1, int(max_output_tokens))
+        if max_output_tokens is not None
+        else _estimate_output_tokens_from_kwargs(call_kwargs)
+    )
+    total_tokens = input_tokens + output_tokens
+    media_bytes = len(joined.encode("utf-8")) if joined else 0
+    items = max(1, int(batch_items))
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "batch_items": items,
+    }
+    if include_concurrency:
+        amounts["concurrent_requests"] = 1
+        if streaming:
+            amounts["concurrent_streams"] = 1
+    if media_bytes > 0:
+        amounts["media_bytes"] = media_bytes
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    return UsageVector.of(**amounts)
+
+
+def settle_llm_usage(
+    *,
+    prompt: str = "",
+    completion: str = "",
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+    total_tokens: Optional[int] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+    streaming: bool = False,
+    batch_items: int = 1,
+    dispatched: bool = True,
+) -> "object":
+    """Actual remote usage for a completed single or batch LLM unit.
+
+    When *dispatched* is False (cancel/timeout before dispatch), returns an
+    empty vector so capacity is fully released.
+    """
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not dispatched:
+        return UsageVector()
+
+    in_tok = (
+        int(input_tokens)
+        if input_tokens is not None
+        else (estimate_llm_tokens(prompt) if prompt else 0)
+    )
+    out_tok = (
+        int(output_tokens)
+        if output_tokens is not None
+        else (estimate_llm_tokens(completion) if completion else 0)
+    )
+    total = int(total_tokens) if total_tokens is not None else (in_tok + out_tok)
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "input_tokens": max(0, in_tok),
+        "output_tokens": max(0, out_tok),
+        "total_tokens": max(0, total),
+        "batch_items": max(1, int(batch_items)),
+    }
+    if streaming:
+        # Streams already hold concurrent_streams via reservation; final settle
+        # charges the request/token envelope only.
+        pass
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    return UsageVector.of(**amounts)
+
+
+def settle_llm_stream_usage(
+    coordinator: object,
+    reservation_id: str,
+    cumulative: "object",
+) -> "object":
+    """Monotonic stream settlement against an open reservation.
+
+    Cumulative amounts must not decrease; the coordinator enforces the bound.
+    """
+
+    if coordinator is None:
+        raise TypeError("coordinator is required")
+    if not reservation_id or not isinstance(reservation_id, str):
+        raise TypeError("reservation_id must be non-empty text")
+    settle = getattr(coordinator, "settle_stream", None)
+    if not callable(settle):
+        raise TypeError("coordinator must provide settle_stream")
+    return settle(reservation_id, cumulative)
+
+
+# Ranking-input names that embed these substrings are rejected by receipt
+# digests.  Still reserve the full vector; only the planning ``required``
+# surface is filtered for receipt safety.
+_LLM_RECEIPT_UNSAFE_DIMENSION_MARKERS = (
+    "token",
+    "media",
+    "prompt",
+    "message",
+    "payload",
+    "endpoint",
+    "credential",
+    "secret",
+    "password",
+    "authorization",
+    "character",
+)
+
+
+def planning_required_usage(requested: "object") -> "object":
+    """Return a receipt-safe planning vector derived from a full estimate.
+
+    Token and media dimensions remain in the atomic reservation envelope but
+    are omitted from ranking input names so route receipts stay redaction-safe.
+    """
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not isinstance(requested, UsageVector):
+        return UsageVector()
+    safe: List[object] = []
+    for entry in requested.entries:
+        name = str(getattr(entry.dimension, "value", entry.dimension) or "")
+        lowered = name.casefold()
+        if any(marker in lowered for marker in _LLM_RECEIPT_UNSAFE_DIMENSION_MARKERS):
+            continue
+        safe.append(entry)
+    return UsageVector(entries=tuple(safe))  # type: ignore[arg-type]
+
+
+def _normalize_usage_policy(policy: object) -> "object":
+    from .endpoint_usage.schema import RoutingMode, RoutingPolicy
+
+    if policy is None:
+        return RoutingPolicy(mode=RoutingMode.OFF)
+    if isinstance(policy, RoutingPolicy):
+        return policy
+    if isinstance(policy, Mapping):
+        return RoutingPolicy.from_dict(policy)
+    raise TypeError("usage_policy must be a RoutingPolicy, mapping, or None")
+
+
+def _usage_mode_is_off(policy: object, coordinator: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    if coordinator is None:
+        return True
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode is RoutingMode.OFF or str(mode) == RoutingMode.OFF.value
+
+
+def _usage_mode_observes_only(policy: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode in (RoutingMode.OBSERVE, RoutingMode.SHADOW) or str(mode) in {
+        RoutingMode.OBSERVE.value,
+        RoutingMode.SHADOW.value,
+    }
+
+
+def _usage_mode_enforces(policy: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode in (RoutingMode.ENFORCE, RoutingMode.ASSIST) or str(mode) in {
+        RoutingMode.ENFORCE.value,
+        RoutingMode.ASSIST.value,
+    }
+
+
+def _llm_provider_display_name(
+    backend: Optional[object],
+    *,
+    requested: Optional[str] = None,
+) -> str:
+    if backend is not None:
+        name = getattr(backend, "router_provider_name", None)
+        if isinstance(name, str) and name.strip():
+            return _canonicalize_provider(name) or name.strip()
+    if requested:
+        return _canonicalize_provider(requested) or str(requested).strip()
+    return ""
+
+
+def _llm_compatibility_labels(
+    *,
+    provider_name: str,
+    model_name: Optional[str],
+    kwargs: Mapping[str, object],
+) -> Dict[str, str]:
+    labels: Dict[str, str] = {
+        "router_provider": str(provider_name or ""),
+        "modality": "text",
+        "operation": LLM_USAGE_OPERATION,
+    }
+    if model_name:
+        labels["model_name"] = str(model_name)
+    for key in ("locality", "device", "access_requirement", "data.governance"):
+        if key in kwargs and kwargs[key] is not None:
+            labels[key] = str(kwargs[key])
+    if _kwargs_are_side_effecting(kwargs):
+        labels["side_effecting"] = "true"
+        labels["tools"] = "required"
+    return labels
+
+
+def llm_fallback_compatible(
+    origin_labels: Mapping[str, str],
+    candidate_labels: Mapping[str, str],
+) -> bool:
+    """Return True when a fallback candidate preserves LLM contracts.
+
+    Side-effecting / tool sessions never silently switch endpoints.  Locality,
+    device, and data-governance labels must agree when declared on the origin.
+    """
+
+    origin = {str(k): str(v) for k, v in origin_labels.items()}
+    candidate = {str(k): str(v) for k, v in candidate_labels.items()}
+    if origin.get("side_effecting") == "true":
+        # Tool/agent work is pinned: only the exact binding is compatible.
+        if origin.get("router_provider") and candidate.get("router_provider"):
+            if candidate.get("router_provider") != origin.get("router_provider"):
+                return False
+        if origin.get("model_name") and candidate.get("model_name"):
+            if candidate.get("model_name") != origin.get("model_name"):
+                return False
+    for key in ("locality", "device", "modality", "operation"):
+        if key in origin and origin[key] not in {"", "unknown", "provider-managed"}:
+            if candidate.get(key, origin[key]) != origin[key]:
+                return False
+    origin_access = origin.get("access_requirement")
+    cand_access = candidate.get("access_requirement")
+    if origin_access == "required" and cand_access not in (None, "required", "optional"):
+        return False
+    origin_gov = origin.get("data.governance") or origin.get("data_governance")
+    cand_gov = candidate.get("data.governance") or candidate.get("data_governance")
+    if origin_gov and cand_gov and cand_gov != origin_gov:
+        return False
+    if cand_gov and str(cand_gov).casefold() in {"deny", "forbidden", "blocked"}:
+        return False
+    return True
+
+
+def _build_llm_static_candidate(
+    *,
+    provider_name: str,
+    model_name: Optional[str],
+    scope_id: str,
+    kwargs: Mapping[str, object],
+    score: int = 10,
+    authorized: bool = True,
+    operation: str = LLM_USAGE_OPERATION,
+) -> "object":
+    from .endpoint_usage.identity import stable_id
+    from .endpoint_usage.resolution import StaticCandidate
+
+    labels = _llm_compatibility_labels(
+        provider_name=provider_name,
+        model_name=model_name,
+        kwargs=kwargs,
+    )
+    labels["operation"] = operation
+    provider_id = stable_id("provider", "llm", provider_name)
+    model_id = stable_id("model", "llm", provider_name, model_name or "default")
+    deployment_id = stable_id("deployment", "llm", provider_name, "default")
+    binding_id = stable_id(
+        "binding", "llm", provider_name, model_name or "default", scope_id
+    )
+    return StaticCandidate(
+        binding_id=binding_id,
+        provider_id=provider_id,
+        model_id=model_id,
+        deployment_id=deployment_id,
+        scope_id=scope_id,
+        catalog_score=score,
+        locality=labels.get("locality"),
+        authorized=authorized,
+        healthy=True,
+        routable=True,
+        configured=True,
+        labels=labels,
+    )
+
+
+def _filter_llm_compatible_candidates(
+    candidates: Sequence[object],
+    *,
+    origin_labels: Mapping[str, str],
+) -> List[object]:
+    kept: List[object] = []
+    for cand in candidates:
+        labels = dict(getattr(cand, "labels", None) or {})
+        if llm_fallback_compatible(origin_labels, labels):
+            kept.append(cand)
+    return kept
+
+
+def _admission_result_to_trace(result: object) -> Dict[str, object]:
+    """Reduce an admission result to a redacted operational trace."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output
+
+    selected = getattr(result, "selected", None)
+    receipt = getattr(result, "receipt", None)
+    payload: Dict[str, object] = {
+        "success": bool(getattr(result, "success", False)),
+        "final_status": str(getattr(result, "final_status", "") or ""),
+        "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
+        "next_eligible_at": getattr(result, "next_eligible_at", None),
+        "attempt_count": len(getattr(result, "attempts", ()) or ()),
+        "selected_binding_id": getattr(selected, "binding_id", None) if selected else None,
+        "selected_scope_id": getattr(selected, "scope_id", None) if selected else None,
+        "reservation_id": getattr(selected, "reservation_id", None) if selected else None,
+        "receipt_id": getattr(receipt, "receipt_id", None) if receipt else None,
+        "usage_revision": getattr(selected, "usage_revision", None) if selected else None,
+        "catalog_revision": getattr(selected, "catalog_revision", None)
+        if selected
+        else None,
+        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+        "remote_charged": bool(getattr(result, "success", False)),
+    }
+    if receipt is not None:
+        try:
+            receipt_dict = receipt.to_dict()
+            assert_no_prompt_media_or_output(receipt_dict)
+            payload["receipt"] = receipt_dict
+        except Exception:
+            payload["receipt"] = {"receipt_id": payload.get("receipt_id")}
+    assert_no_prompt_media_or_output(payload)
+    return payload
+
+
+def _parse_llm_provider_observation(
+    *,
+    scope_id: str,
+    request_id: str,
+    observation: object,
+    settled: object,
+) -> Optional[object]:
+    """Parse optional provider observation; never retain prompt/completion text."""
+
+    if observation is None:
+        return None
+    from .endpoint_usage.schema import (
+        ConfidenceLevel,
+        LimitSource,
+        Provenance,
+        ProviderUsageObservation,
+        UsageVector,
+    )
+
+    if isinstance(observation, ProviderUsageObservation):
+        return observation
+    if not isinstance(observation, Mapping):
+        return None
+    try:
+        from .endpoint_usage.adapters import parse_provider_observation
+
+        if any(
+            key in observation
+            for key in ("headers", "body", "family", "http_status", "usage")
+        ):
+            payload = dict(observation)
+            payload.setdefault("scope_id", scope_id)
+            payload.setdefault("request_id", request_id)
+            return parse_provider_observation(payload)
+    except Exception:
+        logger.debug("llm usage observation adapter failed", exc_info=True)
+
+    usage = observation.get("usage")
+    if usage is None:
+        usage = settled if isinstance(settled, UsageVector) else UsageVector()
+    elif not isinstance(usage, UsageVector):
+        try:
+            usage = UsageVector.from_dict(usage)
+        except Exception:
+            usage = settled if isinstance(settled, UsageVector) else UsageVector()
+    try:
+        return ProviderUsageObservation(
+            scope_id=scope_id,
+            request_id=request_id,
+            usage=usage,
+            http_status=observation.get("http_status"),
+            confidence=ConfidenceLevel.HIGH
+            if observation.get("http_status") == 200
+            else ConfidenceLevel.MEDIUM,
+            provenance=Provenance(source=LimitSource.RESPONSE_BODY),
+            reason_codes=tuple(observation.get("reason_codes") or ()),
+            retry_after_ms=observation.get("retry_after_ms"),
+            limits=tuple(observation.get("limits") or ()),
+        )
+    except Exception:
+        logger.debug("llm usage observation construct failed", exc_info=True)
+        return None
+
+
+def _resolve_llm_usage_pin(
+    *,
+    pin: object,
+    provider: Optional[str],
+    model_name: Optional[str] = None,
+    allow_fallback_with_pin: bool = False,
+) -> object:
+    from .endpoint_usage.identity import stable_id
+    from .endpoint_usage.routing import RoutePin
+
+    if pin is not None:
+        if isinstance(pin, RoutePin):
+            return pin
+        if isinstance(pin, Mapping):
+            return RoutePin(
+                provider_id=pin.get("provider_id"),
+                model_id=pin.get("model_id"),
+                deployment_id=pin.get("deployment_id"),
+                binding_id=pin.get("binding_id"),
+                allow_fallback_with_pin=bool(
+                    pin.get("allow_fallback_with_pin", allow_fallback_with_pin)
+                ),
+            )
+        raise TypeError("usage_pin must be a RoutePin, mapping, or None")
+    # Explicit provider selection is an exact pin by default (no fallback).
+    if provider:
+        provider_id = stable_id("provider", "llm", _canonicalize_provider(provider) or provider)
+        model_id = None
+        if model_name:
+            model_id = stable_id(
+                "model",
+                "llm",
+                _canonicalize_provider(provider) or provider,
+                model_name,
+            )
+        return RoutePin(
+            provider_id=provider_id,
+            model_id=model_id,
+            allow_fallback_with_pin=allow_fallback_with_pin,
+        )
+    return RoutePin()
+
+
+def _canonical_reason_code(value: object, *, default: str = "provider_error") -> str:
+    """Map free-form labels onto receipt-safe snake_case reason codes."""
+
+    text = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().casefold())
+    text = text.strip("_")
+    if not text or not text[0].isalpha():
+        return default
+    return text[:64]
+
+
+def _classify_llm_invoke_exception(exc: BaseException) -> "object":
+    from .endpoint_usage.routing import ErrorSafetyClass, classify_invoke_error
+
+    if bool(getattr(exc, "side_effects_started", False)):
+        return ErrorSafetyClass.SIDE_EFFECT
+    message = str(exc).casefold()
+    reason_codes: List[str] = [
+        _canonical_reason_code(type(exc).__name__, default="provider_error")
+    ]
+    http_status: Optional[int] = None
+    for attr in ("status_code", "status", "http_status", "code"):
+        raw = getattr(exc, attr, None)
+        if isinstance(raw, int):
+            http_status = raw
+            break
+    if any(
+        token in message
+        for token in (
+            "context length",
+            "context_length",
+            "context window",
+            "maximum context",
+            "too many tokens",
+            "prompt is too long",
+            "invalid_request",
+            "invalid request",
+        )
+    ):
+        return classify_invoke_error(
+            http_status=http_status,
+            reason_codes=("context_overflow", "semantic_error"),
+            semantic=True,
+        )
+    if any(
+        token in message
+        for token in (
+            "tool side effect",
+            "side_effect",
+            "side-effect",
+            "already mutated",
+        )
+    ):
+        return ErrorSafetyClass.SIDE_EFFECT
+    if any(
+        token in message
+        for token in (
+            "rate limit",
+            "429",
+            "quota",
+            "capacity",
+            "503",
+            "usage limit",
+            "usage_limit",
+            "retry-after",
+            "retry after",
+        )
+    ):
+        return classify_invoke_error(
+            http_status=http_status or 429,
+            reason_codes=("rate_limited", "capacity_unavailable"),
+        )
+    if any(
+        token in message
+        for token in ("timeout", "timed out", "deadline exceeded")
+    ):
+        return classify_invoke_error(
+            http_status=http_status or 408,
+            reason_codes=("timeout",),
+        )
+    if isinstance(exc, (ValueError, TypeError)):
+        return ErrorSafetyClass.CLIENT
+    return classify_invoke_error(
+        http_status=http_status,
+        reason_codes=tuple(reason_codes),
+    )
+
+
+def _record_usage_observe_shadow(
+    *,
+    prompt: str,
+    remote: bool,
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_scope_id: Optional[str],
+    usage_request_id: Optional[str],
+    usage_cost_micros: Optional[int],
+    usage_cost_currency: Optional[str],
+    success: bool,
+    provider_used: str,
+    streaming: bool = False,
+    kwargs: Optional[Mapping[str, object]] = None,
+) -> None:
+    """Observe/shadow diagnostics: estimate only; never change selection or charge."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.schema import RoutingMode, UsageEventKind
+
+    policy = usage_policy
+    mode = getattr(policy, "mode", RoutingMode.OBSERVE)
+    estimate = estimate_llm_usage(
+        prompt if remote else "",
+        cost_micros=usage_cost_micros,
+        cost_currency=usage_cost_currency,
+        remote=remote,
+        streaming=streaming,
+        kwargs=kwargs or {},
+    )
+    payload: Dict[str, object] = {
+        "success": success,
+        "final_status": "observed" if success else "observe_error",
+        "reason_codes": [
+            "usage_observe"
+            if mode is RoutingMode.OBSERVE or str(mode) == "observe"
+            else "usage_shadow",
+            "no_selection_change",
+        ],
+        "attempt_count": 0,
+        "estimate_entries": len(getattr(estimate, "entries", ()) or ()),
+        "provider_used": str(provider_used or ""),
+        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+        "remote_charged": False,
+        "mode": str(getattr(mode, "value", mode)),
+    }
+    if not remote:
+        payload["reason_codes"] = list(payload["reason_codes"]) + [
+            "cache_hit",
+            "no_remote_charge",
+        ]
+    if usage_scope_id and usage_coordinator is not None:
+        try:
+            snap = usage_coordinator.snapshot(usage_scope_id)  # type: ignore[attr-defined]
+            payload["usage_revision"] = getattr(snap, "usage_revision", None)
+            payload["scope_id"] = usage_scope_id
+        except Exception:
+            payload["reason_codes"] = list(payload["reason_codes"]) + [
+                "snapshot_unavailable"
+            ]
+        if success and remote and str(getattr(mode, "value", mode)) == "shadow":
+            try:
+                from .endpoint_usage.schema import UsageVector as _UsageVector
+
+                usage_coordinator.append_observation(  # type: ignore[attr-defined]
+                    usage_scope_id,
+                    kind=UsageEventKind.OBSERVATION_SUCCESS,
+                    units=_UsageVector(),
+                    request_id=usage_request_id
+                    or stable_id("lreq", "shadow", usage_scope_id),
+                    reason_codes=("shadow_observe",),
+                )
+            except Exception:
+                logger.debug("shadow observation append failed", exc_info=True)
+    _ = estimate
+    assert_no_prompt_media_or_output(payload)
+    _set_last_usage_admission(payload)
+
+
+def _generate_text_with_usage_admission(
+    prompt: str,
+    *,
+    model_name: Optional[str],
+    provider: Optional[str],
+    provider_instance: Optional[LLMProvider],
+    deps: RouterDeps,
+    allow_local_fallback: bool,
+    kwargs: Dict[str, object],
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_candidates: Optional[Sequence[object]],
+    usage_pin: object,
+    usage_request: object,
+    usage_request_id: Optional[str],
+    usage_idempotency_key: Optional[str],
+    usage_catalog_revision: Optional[str],
+    usage_provider_by_binding: Optional[Mapping[str, LLMProvider]],
+    usage_observation: object,
+    usage_cost_micros: Optional[int],
+    usage_cost_currency: Optional[str],
+    usage_cancel_event: Optional[threading.Event],
+    usage_operation: str,
+    usage_streaming: bool,
+    usage_messages: Optional[Sequence[Mapping[str, object]]],
+    usage_batch_items: int,
+    started: float,
+) -> str:
+    """Reserve, dispatch, settle one physical LLM unit under admission."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.resolution import StaticCandidate, UsageRoutingRequest
+    from .endpoint_usage.routing import (
+        ErrorSafetyClass,
+        InvokeOutcome,
+        UsageRouteAdmission,
+        meta_from_static,
+    )
+    from .endpoint_usage.schema import (
+        FallbackClass,
+        RoutingPolicy,
+        UsageVector,
+    )
+
+    policy = usage_policy
+    if not isinstance(policy, RoutingPolicy):
+        policy = _normalize_usage_policy(policy)
+
+    effective_provider_name = _effective_llm_provider_name(provider)
+    side_effecting_request = _kwargs_are_side_effecting(kwargs)
+    response_cache_ok = (
+        _response_cache_enabled()
+        and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
+        and not side_effecting_request
+    )
+
+    # Cache lookup first: full cache hits create no remote charge.
+    if response_cache_ok:
+        try:
+            cache_key = _response_cache_key(
+                provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs)
+            )
+            getter = getattr(deps, "get_cached_or_remote", None)
+            cached = getter(cache_key) if callable(getter) else deps.get_cached(cache_key)
+            if isinstance(cached, str):
+                _set_last_usage_admission(
+                    {
+                        "success": True,
+                        "final_status": "cache_hit",
+                        "reason_codes": ["cache_hit", "no_remote_charge"],
+                        "attempt_count": 0,
+                        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                        "remote_charged": False,
+                    }
+                )
+                assert_no_prompt_media_or_output(get_last_usage_admission())
+                _set_last_generation_trace(
+                    provider_name=effective_provider_name,
+                    model_name=model_name,
+                )
+                return cached
+        except Exception:
+            pass
+
+    if usage_cancel_event is not None and usage_cancel_event.is_set():
+        raise UsageCapacityError(
+            "llm usage admission cancelled before dispatch",
+            reason_codes=("cancelled_before_dispatch",),
+            pre_dispatch=True,
+        )
+
+    requested = estimate_llm_usage(
+        prompt,
+        messages=usage_messages,
+        cost_micros=usage_cost_micros,
+        cost_currency=usage_cost_currency,
+        streaming=usage_streaming,
+        batch_items=usage_batch_items,
+        remote=True,
+        kwargs=kwargs,
+    )
+    request_id = usage_request_id or stable_id(
+        "lreq", "llm", str(time.time_ns()), str(len(prompt))
+    )
+    idempotency_key = usage_idempotency_key or stable_id("lidem", request_id)
+    catalog_revision = usage_catalog_revision or stable_id(
+        "cat", "llm_router", USAGE_ROUTING_REQUIREMENT_ID
+    )
+
+    pin = _resolve_llm_usage_pin(
+        pin=usage_pin,
+        provider=provider,
+        model_name=model_name,
+        allow_fallback_with_pin=False,
+    )
+
+    candidates: List[object]
+    provider_map: Dict[str, LLMProvider] = dict(usage_provider_by_binding or {})
+    if usage_candidates is not None:
+        candidates = list(usage_candidates)
+    else:
+        backend = provider_instance or get_llm_provider(provider, deps=deps)
+        provider_used = _llm_provider_display_name(backend, requested=provider)
+        scope_id = stable_id(
+            "scope", "llm", provider_used, model_name or "default"
+        )
+        ureq_probe = usage_request
+        if isinstance(ureq_probe, Mapping):
+            preferred_scope = ureq_probe.get("preferred_scope_id")
+        else:
+            preferred_scope = getattr(ureq_probe, "preferred_scope_id", None)
+        if preferred_scope:
+            scope_id = str(preferred_scope)
+        cand = _build_llm_static_candidate(
+            provider_name=provider_used or effective_provider_name or "unknown",
+            model_name=model_name,
+            scope_id=scope_id,
+            kwargs=kwargs,
+            operation=usage_operation,
+        )
+        candidates = [cand]
+        provider_map = {
+            cand.binding_id: backend,  # type: ignore[attr-defined]
+            **provider_map,
+        }
+
+    if not candidates:
+        raise UsageCapacityError(
+            "no llm usage candidates",
+            reason_codes=("no_candidates",),
+            pre_dispatch=True,
+        )
+
+    origin_labels: Dict[str, str] = dict(
+        getattr(candidates[0], "labels", None) or {}
+    )
+    origin_labels.update(
+        _llm_compatibility_labels(
+            provider_name=str(origin_labels.get("router_provider") or provider or ""),
+            model_name=model_name,
+            kwargs=kwargs,
+        )
+    )
+    if side_effecting_request:
+        # Side-effecting work must never fallback across providers.
+        candidates = candidates[:1]
+    else:
+        filtered = _filter_llm_compatible_candidates(
+            candidates, origin_labels=origin_labels
+        )
+        candidates = filtered or list(candidates[:1])
+
+    meta_by_binding = {
+        cand.binding_id: meta_from_static(cand)  # type: ignore[attr-defined]
+        for cand in candidates
+        if isinstance(cand, StaticCandidate)
+    }
+
+    planning_required = planning_required_usage(requested)
+    ureq = usage_request
+    if ureq is None:
+        ureq = UsageRoutingRequest(
+            required=planning_required,
+            require_snapshot=True,
+        )
+    elif isinstance(ureq, Mapping):
+        ureq = UsageRoutingRequest.from_dict(ureq)
+    elif not isinstance(ureq, UsageRoutingRequest):
+        raise TypeError("usage_request must be UsageRoutingRequest, mapping, or None")
+    source_required = ureq.required if ureq.required.entries else requested
+    safe_required = planning_required_usage(source_required)
+    if not safe_required.entries:
+        safe_required = planning_required
+    ureq = UsageRoutingRequest(
+        required=safe_required,
+        unknown_limit_policy=ureq.unknown_limit_policy,
+        stale_snapshot_policy=ureq.stale_snapshot_policy,
+        preferred_binding_id=ureq.preferred_binding_id,
+        preferred_provider_id=ureq.preferred_provider_id,
+        preferred_scope_id=ureq.preferred_scope_id,
+        affinity_binding_id=ureq.affinity_binding_id,
+        media_bytes=ureq.media_bytes,
+        images=ureq.images,
+        audio_seconds=ureq.audio_seconds,
+        max_cost_micros=ureq.max_cost_micros,
+        cost_currency=ureq.cost_currency,
+        deadline_at=ureq.deadline_at,
+        now=ureq.now,
+        health_by_binding=ureq.health_by_binding,
+        circuit_open_by_binding=ureq.circuit_open_by_binding,
+        latency_ms_by_binding=ureq.latency_ms_by_binding,
+        queue_delay_ms_by_binding=ureq.queue_delay_ms_by_binding,
+        quality_preference_by_binding=ureq.quality_preference_by_binding,
+        locality_by_binding=ureq.locality_by_binding,
+        require_snapshot=ureq.require_snapshot,
+        reason_codes=ureq.reason_codes,
+    )
+
+    result_holder: Dict[str, object] = {}
+    invoke_error_holder: Dict[str, BaseException] = {}
+    dispatched_holder: Dict[str, bool] = {"dispatched": False}
+
+    def _cache_result(value: str, *, used_model_name: Optional[str]) -> None:
+        if not response_cache_ok:
+            return
+        try:
+            cache_key = _response_cache_key(
+                provider=provider,
+                model_name=used_model_name,
+                prompt=prompt,
+                kwargs=dict(kwargs),
+            )
+            setter = getattr(deps, "set_cached_and_remote", None)
+            if callable(setter):
+                setter(cache_key, str(value))
+            else:
+                deps.set_cached(cache_key, str(value))
+        except Exception:
+            pass
+
+    def invoke(attempt: object) -> InvokeOutcome:
+        if usage_cancel_event is not None and usage_cancel_event.is_set():
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.CLIENT,
+                reason_codes=("cancelled_before_dispatch",),
+                side_effecting=False,
+            )
+        binding_id = getattr(attempt, "binding_id", None)
+        scope_id = getattr(attempt, "scope_id", None) or ""
+        active_backend: Optional[LLMProvider] = None
+        if binding_id and binding_id in provider_map:
+            active_backend = provider_map[binding_id]
+        else:
+            labels: Dict[str, str] = {}
+            for cand in candidates:
+                if getattr(cand, "binding_id", None) == binding_id:
+                    labels = dict(getattr(cand, "labels", None) or {})
+                    break
+            if labels and not llm_fallback_compatible(origin_labels, labels):
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.SEMANTIC,
+                    reason_codes=("incompatible_llm_candidate",),
+                    side_effecting=False,
+                )
+            router_name = labels.get("router_provider") or provider
+            try:
+                active_backend = provider_instance or get_llm_provider(
+                    router_name, deps=deps
+                )
+            except Exception as exc:
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.TRANSIENT,
+                    reason_codes=("provider_resolve_failed", type(exc).__name__),
+                    side_effecting=False,
+                )
+        assert active_backend is not None
+
+        call_kwargs = dict(kwargs)
+        if side_effecting_request:
+            call_kwargs["disable_model_retry"] = True
+        provider_name_for_call = _llm_provider_display_name(
+            active_backend, requested=provider
+        )
+        try:
+            dispatched_holder["dispatched"] = True
+            generated = _generate_with_provider_fallbacks(
+                provider_name_for_call,
+                active_backend,
+                prompt,
+                model_name=model_name,
+                kwargs=call_kwargs,
+            )
+        except Exception as exc:
+            invoke_error_holder["error"] = exc
+            error_class = _classify_llm_invoke_exception(exc)
+            side_effect = (
+                error_class is ErrorSafetyClass.SIDE_EFFECT
+                or bool(getattr(exc, "side_effects_started", False))
+                or side_effecting_request
+            )
+            # Post-dispatch failures conservatively settle token/request dims.
+            conservative = settle_llm_usage(
+                prompt=prompt,
+                completion="",
+                input_tokens=estimate_llm_tokens(prompt) if prompt else 1,
+                output_tokens=0,
+                batch_items=usage_batch_items,
+                streaming=usage_streaming,
+                dispatched=True,
+                cost_micros=usage_cost_micros,
+                cost_currency=usage_cost_currency,
+            )
+            obs = _parse_llm_provider_observation(
+                scope_id=str(scope_id),
+                request_id=request_id,
+                observation=usage_observation,
+                settled=conservative,
+            )
+            return InvokeOutcome(
+                success=False,
+                observation=obs,
+                settled=conservative,
+                error_class=error_class,  # type: ignore[arg-type]
+                reason_codes=(
+                    "provider_error",
+                    _canonical_reason_code(type(exc).__name__),
+                ),
+                side_effecting=side_effect,
+            )
+
+        settled = settle_llm_usage(
+            prompt=prompt,
+            completion=str(generated or ""),
+            batch_items=usage_batch_items,
+            streaming=usage_streaming,
+            dispatched=True,
+            cost_micros=usage_cost_micros,
+            cost_currency=usage_cost_currency,
+        )
+        # Prefer structured usage from observation when supplied.
+        if isinstance(usage_observation, Mapping):
+            raw_usage = usage_observation.get("usage")
+            if isinstance(raw_usage, Mapping):
+                try:
+                    from .endpoint_usage.schema import UsageVector as _UV
+
+                    if "entries" in raw_usage:
+                        settled = _UV.from_dict(raw_usage)
+                    else:
+                        amounts = {
+                            key: int(value)
+                            for key, value in raw_usage.items()
+                            if isinstance(value, (int, float)) and not isinstance(value, bool)
+                        }
+                        if amounts:
+                            settled = _UV.of(**amounts)
+                except Exception:
+                    pass
+            for key, attr in (
+                ("input_tokens", "input_tokens"),
+                ("output_tokens", "output_tokens"),
+                ("total_tokens", "total_tokens"),
+                ("prompt_tokens", "input_tokens"),
+                ("completion_tokens", "output_tokens"),
+            ):
+                if key in usage_observation and usage_observation[key] is not None:
+                    try:
+                        override = {
+                            "prompt": prompt,
+                            "completion": str(generated or ""),
+                            "batch_items": usage_batch_items,
+                            "streaming": usage_streaming,
+                            "dispatched": True,
+                            "cost_micros": usage_cost_micros,
+                            "cost_currency": usage_cost_currency,
+                            attr: int(usage_observation[key]),  # type: ignore[arg-type]
+                        }
+                        settled = settle_llm_usage(**override)  # type: ignore[arg-type]
+                    except Exception:
+                        pass
+
+        obs = _parse_llm_provider_observation(
+            scope_id=str(scope_id),
+            request_id=request_id,
+            observation=usage_observation,
+            settled=settled,
+        )
+        result_holder["generated"] = str(generated)
+        result_holder["provider_used"] = provider_name_for_call
+        result_holder["settled"] = settled
+        result_holder["used_model_name"] = model_name
+        route_trace: dict[str, object] = {}
+        route_trace_getter = getattr(active_backend, "get_last_generation_trace", None)
+        if callable(route_trace_getter):
+            try:
+                candidate_trace = route_trace_getter()
+            except Exception:
+                candidate_trace = {}
+            if isinstance(candidate_trace, dict):
+                route_trace = candidate_trace
+        result_holder["route_trace"] = route_trace
+        return InvokeOutcome(
+            success=True,
+            observation=obs,
+            settled=settled,
+            error_class=ErrorSafetyClass.SUCCESS,
+            reason_codes=("generated",),
+        )
+
+    admission = UsageRouteAdmission(
+        usage_coordinator,  # type: ignore[arg-type]
+        owner_id="llm_router",
+        jitter_max_ms=0,
+    )
+    effective_policy = policy
+    if getattr(pin, "is_exact", False) and not getattr(
+        pin, "allow_fallback_with_pin", False
+    ):
+        if policy.fallback is not FallbackClass.NONE:
+            effective_policy = RoutingPolicy(
+                mode=policy.mode,
+                fallback=FallbackClass.NONE,
+                max_attempts=1,
+                deadline_ms=policy.deadline_ms,
+                allow_wait=policy.allow_wait,
+                max_wait_ms=policy.max_wait_ms,
+                prefer_local=policy.prefer_local,
+                cost_ceiling_micros=policy.cost_ceiling_micros,
+                cost_currency=policy.cost_currency,
+            )
+    if side_effecting_request and effective_policy.fallback is not FallbackClass.NONE:
+        effective_policy = RoutingPolicy(
+            mode=effective_policy.mode,
+            fallback=FallbackClass.NONE,
+            max_attempts=1,
+            deadline_ms=effective_policy.deadline_ms,
+            allow_wait=effective_policy.allow_wait,
+            max_wait_ms=effective_policy.max_wait_ms,
+            prefer_local=effective_policy.prefer_local,
+            cost_ceiling_micros=effective_policy.cost_ceiling_micros,
+            cost_currency=effective_policy.cost_currency,
+        )
+
+    result = admission.admit(
+        catalog_revision=catalog_revision,
+        candidates=candidates,  # type: ignore[arg-type]
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+        operation=usage_operation,
+        requested=requested if isinstance(requested, UsageVector) else UsageVector(),
+        policy=effective_policy,
+        request=ureq,
+        pin=pin,  # type: ignore[arg-type]
+        meta_by_binding=meta_by_binding,
+        invoke=invoke,
+        caller_id="llm_router",
+    )
+    trace = _admission_result_to_trace(result)
+    if not result.success and not dispatched_holder.get("dispatched"):
+        trace["pre_dispatch"] = True
+        trace["remote_charged"] = False
+    elif not result.success and dispatched_holder.get("dispatched"):
+        trace["pre_dispatch"] = False
+        trace["remote_charged"] = True
+        trace["reason_codes"] = list(trace.get("reason_codes") or []) + [
+            "post_dispatch_settled"
+        ]
+    _set_last_usage_admission(trace)
+
+    if not result.success or "generated" not in result_holder:
+        original = invoke_error_holder.get("error")
+        capacity_like = any(
+            code
+            in {
+                "no_eligible_candidates",
+                "all_candidates_denied",
+                "capacity",
+                "deadline_or_attempt_bound",
+                "pin_rejected",
+            }
+            or "capacity" in code
+            or "headroom" in code
+            for code in (result.reason_codes or ())
+        )
+        if original is not None and not capacity_like:
+            raise original
+        raise UsageCapacityError(
+            "llm usage admission failed: %s"
+            % (",".join(result.reason_codes) or result.final_status),
+            reason_codes=result.reason_codes,
+            next_eligible_at=result.next_eligible_at,
+            admission=result,
+            pre_dispatch=not bool(dispatched_holder.get("dispatched")),
+        )
+
+    generated = str(result_holder["generated"])
+    provider_used = str(result_holder.get("provider_used") or effective_provider_name)
+    used_model_name = result_holder.get("used_model_name")
+    used_model = (
+        str(used_model_name) if isinstance(used_model_name, str) else model_name
+    )
+    route_trace = result_holder.get("route_trace")
+    _set_last_generation_trace(
+        provider_name=provider_used,
+        model_name=used_model,
+        route_trace=route_trace if isinstance(route_trace, dict) else None,
+    )
+    _cache_result(generated, used_model_name=used_model)
+    _ = (allow_local_fallback, started)
+    return generated
+
+
 def _iter_unpinned_optional_providers() -> list[tuple[str, LLMProvider]]:
     providers: list[tuple[str, LLMProvider]] = []
     names = list(_UNPINNED_OPTIONAL_PROVIDER_ORDER)
@@ -7930,13 +9217,79 @@ def generate_text(
     provider_instance: Optional[LLMProvider] = None,
     deps: Optional[RouterDeps] = None,
     allow_local_fallback: bool = True,
+    usage_coordinator: Optional[object] = None,
+    usage_policy: Optional[object] = None,
+    usage_candidates: Optional[Sequence[object]] = None,
+    usage_pin: Optional[object] = None,
+    usage_request: Optional[object] = None,
+    usage_request_id: Optional[str] = None,
+    usage_idempotency_key: Optional[str] = None,
+    usage_catalog_revision: Optional[str] = None,
+    usage_provider_by_binding: Optional[Mapping[str, LLMProvider]] = None,
+    usage_observation: Optional[object] = None,
+    usage_cost_micros: Optional[int] = None,
+    usage_cost_currency: Optional[str] = None,
+    usage_cancel_event: Optional[threading.Event] = None,
+    usage_scope_id: Optional[str] = None,
+    usage_operation: Optional[str] = None,
+    usage_streaming: bool = False,
+    usage_messages: Optional[Sequence[Mapping[str, object]]] = None,
+    usage_batch_items: int = 1,
     **kwargs: object,
 ) -> str:
-    """Generate text from an LLM."""
+    """Generate text from an LLM.
 
+    Optional usage-aware admission (AICAT-030) is inactive unless a
+    ``usage_coordinator`` is supplied with a non-``off`` ``usage_policy``.
+    Off mode and a missing coordinator preserve legacy selection and errors
+    exactly. Enforce/assist reserve before remote dispatch; observe/shadow
+    never change the selected provider; cache hits create no remote charge.
+    """
+
+    started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
     effective_provider_name = _effective_llm_provider_name(provider)
     _clear_last_generation_trace()
+    _set_last_usage_admission(None)
+
+    policy = _normalize_usage_policy(usage_policy)
+    if usage_scope_id is None and usage_request is not None:
+        if isinstance(usage_request, Mapping):
+            usage_scope_id = usage_request.get("preferred_scope_id")  # type: ignore[assignment]
+        else:
+            usage_scope_id = getattr(usage_request, "preferred_scope_id", None)
+
+    operation = str(usage_operation or LLM_USAGE_OPERATION)
+
+    if usage_coordinator is not None and _usage_mode_enforces(policy):
+        return _generate_text_with_usage_admission(
+            str(prompt or ""),
+            model_name=model_name,
+            provider=provider,
+            provider_instance=provider_instance,
+            deps=resolved_deps,
+            allow_local_fallback=allow_local_fallback,
+            kwargs=dict(kwargs),
+            usage_coordinator=usage_coordinator,
+            usage_policy=policy,
+            usage_candidates=usage_candidates,
+            usage_pin=usage_pin,
+            usage_request=usage_request,
+            usage_request_id=usage_request_id,
+            usage_idempotency_key=usage_idempotency_key,
+            usage_catalog_revision=usage_catalog_revision,
+            usage_provider_by_binding=usage_provider_by_binding,
+            usage_observation=usage_observation,
+            usage_cost_micros=usage_cost_micros,
+            usage_cost_currency=usage_cost_currency,
+            usage_cancel_event=usage_cancel_event,
+            usage_operation=operation,
+            usage_streaming=bool(usage_streaming),
+            usage_messages=usage_messages,
+            usage_batch_items=max(1, int(usage_batch_items or 1)),
+            started=started,
+        )
+
     side_effecting_request = _kwargs_are_side_effecting(kwargs)
     # The pinned SyMAI engine owns its cache together with the four inner-route
     # receipt fields. A text-only router cache cannot reproduce those fields.
@@ -7946,6 +9299,7 @@ def generate_text(
         and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
         and not side_effecting_request
     )
+    remote_dispatched = False
     if response_cache_ok:
         try:
             cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
@@ -7956,6 +9310,32 @@ def generate_text(
                     provider_name=effective_provider_name,
                     model_name=model_name,
                 )
+                if usage_coordinator is not None and _usage_mode_observes_only(policy):
+                    _record_usage_observe_shadow(
+                        prompt=str(prompt or ""),
+                        remote=False,
+                        usage_coordinator=usage_coordinator,
+                        usage_policy=policy,
+                        usage_scope_id=usage_scope_id,
+                        usage_request_id=usage_request_id,
+                        usage_cost_micros=usage_cost_micros,
+                        usage_cost_currency=usage_cost_currency,
+                        success=True,
+                        provider_used=effective_provider_name,
+                        streaming=bool(usage_streaming),
+                        kwargs=kwargs,
+                    )
+                elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
+                    _set_last_usage_admission(
+                        {
+                            "success": True,
+                            "final_status": "cache_hit",
+                            "reason_codes": ["cache_hit", "no_remote_charge"],
+                            "mode": "off",
+                            "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                            "remote_charged": False,
+                        }
+                    )
                 return cached
         except Exception:
             pass
@@ -7984,7 +9364,9 @@ def generate_text(
     if side_effecting_request:
         call_kwargs["disable_model_retry"] = True
 
+    provider_used_name = _llm_provider_display_name(backend, requested=provider) or effective_provider_name
     try:
+        remote_dispatched = True
         result = _generate_with_provider_fallbacks(
             effective_provider_name,
             backend,
@@ -8009,12 +9391,53 @@ def generate_text(
             route_trace=route_trace,
         )
         _cache_result(str(result), used_model_name=model_name)
+        if usage_coordinator is not None and _usage_mode_observes_only(policy):
+            _record_usage_observe_shadow(
+                prompt=str(prompt or ""),
+                remote=True,
+                usage_coordinator=usage_coordinator,
+                usage_policy=policy,
+                usage_scope_id=usage_scope_id,
+                usage_request_id=usage_request_id,
+                usage_cost_micros=usage_cost_micros,
+                usage_cost_currency=usage_cost_currency,
+                success=True,
+                provider_used=provider_used_name,
+                streaming=bool(usage_streaming),
+                kwargs=kwargs,
+            )
+        elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
+            _set_last_usage_admission(
+                {
+                    "success": True,
+                    "final_status": "off",
+                    "reason_codes": ["mode_off"],
+                    "mode": "off",
+                    "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                    "remote_charged": False,
+                }
+            )
         return result
     except Exception as primary_error:
         # Agent / side-effecting requests never switch providers or fall back.
         if side_effecting_request or bool(
             getattr(primary_error, "side_effects_started", False)
         ):
+            if usage_coordinator is not None and _usage_mode_observes_only(policy):
+                _record_usage_observe_shadow(
+                    prompt=str(prompt or ""),
+                    remote=remote_dispatched,
+                    usage_coordinator=usage_coordinator,
+                    usage_policy=policy,
+                    usage_scope_id=usage_scope_id,
+                    usage_request_id=usage_request_id,
+                    usage_cost_micros=usage_cost_micros,
+                    usage_cost_currency=usage_cost_currency,
+                    success=False,
+                    provider_used=provider_used_name,
+                    streaming=bool(usage_streaming),
+                    kwargs=kwargs,
+                )
             raise
         pinned_provider = _canonicalize_provider(provider)
         pinned_optional = bool(
@@ -8041,6 +9464,34 @@ def generate_text(
                         model_name=model_name,
                     )
                     _cache_result(str(result), used_model_name=model_name)
+                    if usage_coordinator is not None and _usage_mode_observes_only(policy):
+                        _record_usage_observe_shadow(
+                            prompt=str(prompt or ""),
+                            remote=True,
+                            usage_coordinator=usage_coordinator,
+                            usage_policy=policy,
+                            usage_scope_id=usage_scope_id,
+                            usage_request_id=usage_request_id,
+                            usage_cost_micros=usage_cost_micros,
+                            usage_cost_currency=usage_cost_currency,
+                            success=True,
+                            provider_used=fallback_name,
+                            streaming=bool(usage_streaming),
+                            kwargs=kwargs,
+                        )
+                    elif usage_coordinator is None or _usage_mode_is_off(
+                        policy, usage_coordinator
+                    ):
+                        _set_last_usage_admission(
+                            {
+                                "success": True,
+                                "final_status": "off",
+                                "reason_codes": ["mode_off"],
+                                "mode": "off",
+                                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                                "remote_charged": False,
+                            }
+                        )
                     return result
                 except Exception:
                     pass
@@ -8085,6 +9536,21 @@ def generate_text(
                         )
                         _cache_result(str(result), used_model_name=None)
                         return result
+        if usage_coordinator is not None and _usage_mode_observes_only(policy):
+            _record_usage_observe_shadow(
+                prompt=str(prompt or ""),
+                remote=remote_dispatched,
+                usage_coordinator=usage_coordinator,
+                usage_policy=policy,
+                usage_scope_id=usage_scope_id,
+                usage_request_id=usage_request_id,
+                usage_cost_micros=usage_cost_micros,
+                usage_cost_currency=usage_cost_currency,
+                success=False,
+                provider_used=provider_used_name,
+                streaming=bool(usage_streaming),
+                kwargs=kwargs,
+            )
         raise
 
 
@@ -8166,6 +9632,22 @@ def generate_text_batch(
     timeout_s: float = 90.0,
     max_route_attempts: int = 3,
     queue_path: Optional[str] = None,
+    usage_coordinator: Optional[object] = None,
+    usage_policy: Optional[object] = None,
+    usage_candidates: Optional[Sequence[object]] = None,
+    usage_pin: Optional[object] = None,
+    usage_request: Optional[object] = None,
+    usage_request_id: Optional[str] = None,
+    usage_idempotency_key: Optional[str] = None,
+    usage_catalog_revision: Optional[str] = None,
+    usage_provider_by_binding: Optional[Mapping[str, LLMProvider]] = None,
+    usage_observation: Optional[object] = None,
+    usage_cost_micros: Optional[int] = None,
+    usage_cost_currency: Optional[str] = None,
+    usage_cancel_event: Optional[threading.Event] = None,
+    usage_scope_id: Optional[str] = None,
+    usage_operation: Optional[str] = None,
+    usage_streaming: bool = False,
     **kwargs: object,
 ) -> list[str]:
     """Generate a prompt batch while preserving input order.
@@ -8173,10 +9655,23 @@ def generate_text_batch(
     Set ``use_mesh=True`` to submit the batch as ``llm.generate`` tasks so P2P
     workers can run prompts concurrently. For local in-process providers,
     ``max_workers`` controls thread-level concurrency.
+
+    When usage admission is active, each physical unit (native provider batch
+    or per-prompt call) reserves and settles exactly once. Shared single-flight
+    subscribers do not double-charge provider work.
     """
 
     prompt_list = [str(prompt or "") for prompt in list(prompts or [])]
     if not prompt_list:
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "empty_batch",
+                "reason_codes": ["empty_batch", "no_remote_charge"],
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": False,
+            }
+        )
         return []
     if use_mesh:
         try:
@@ -8195,6 +9690,126 @@ def generate_text_batch(
                 raise
 
     resolved_deps = deps or get_default_router_deps()
+    policy = _normalize_usage_policy(usage_policy)
+    enforce_usage = usage_coordinator is not None and _usage_mode_enforces(policy)
+
+    from .endpoint_usage.identity import stable_id as _stable_id
+
+    base_request_id = usage_request_id or _stable_id(
+        "lreq", "llm_batch", str(time.time_ns()), str(len(prompt_list))
+    )
+    base_idem = usage_idempotency_key or _stable_id("lidem", base_request_id)
+
+    # Under enforce, each physical per-prompt unit reserves and settles once
+    # with a distinct request/idempotency key (no double-charge on retries).
+    if enforce_usage:
+        if usage_cancel_event is not None and usage_cancel_event.is_set():
+            raise UsageCapacityError(
+                "llm batch cancelled before dispatch",
+                reason_codes=("cancelled_before_dispatch",),
+                pre_dispatch=True,
+            )
+        backend = provider_instance
+        if backend is None and not (usage_candidates or usage_provider_by_binding):
+            backend = get_llm_provider(provider, deps=resolved_deps)
+        batch_admissions: List[Dict[str, object]] = []
+        batch_admissions_lock = threading.Lock()
+        results: list[Optional[str]] = [None] * len(prompt_list)
+        completed = 0
+        try:
+            workers = _batch_worker_count(
+                size=len(prompt_list),
+                max_workers=max_workers,
+                provider=provider,
+                side_effecting=_kwargs_are_side_effecting(kwargs),
+            )
+
+            def _one(index: int, prompt: str) -> tuple[int, str]:
+                if usage_cancel_event is not None and usage_cancel_event.is_set():
+                    raise UsageCapacityError(
+                        "llm batch cancelled before item dispatch",
+                        reason_codes=("cancelled_before_dispatch",),
+                        pre_dispatch=True,
+                    )
+                value = str(
+                    generate_text(
+                        prompt,
+                        model_name=model_name,
+                        provider=provider,
+                        provider_instance=backend,
+                        deps=resolved_deps,
+                        allow_local_fallback=allow_local_fallback,
+                        usage_coordinator=usage_coordinator,
+                        usage_policy=usage_policy,
+                        usage_candidates=usage_candidates,
+                        usage_pin=usage_pin,
+                        usage_request=usage_request,
+                        usage_request_id="%s#item%d" % (base_request_id, index),
+                        usage_idempotency_key="%s#item%d" % (base_idem, index),
+                        usage_catalog_revision=usage_catalog_revision,
+                        usage_provider_by_binding=usage_provider_by_binding,
+                        usage_observation=usage_observation,
+                        usage_cost_micros=usage_cost_micros,
+                        usage_cost_currency=usage_cost_currency,
+                        usage_cancel_event=usage_cancel_event,
+                        usage_scope_id=usage_scope_id,
+                        usage_operation=usage_operation,
+                        usage_streaming=usage_streaming,
+                        usage_batch_items=1,
+                        **kwargs,
+                    )
+                )
+                admission_trace = get_last_usage_admission()
+                if admission_trace:
+                    with batch_admissions_lock:
+                        batch_admissions.append(dict(admission_trace))
+                return index, value
+
+            if workers <= 1:
+                for index, prompt in enumerate(prompt_list):
+                    idx, value = _one(index, prompt)
+                    results[idx] = value
+                    completed += 1
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = {
+                        executor.submit(_one, index, prompt): index
+                        for index, prompt in enumerate(prompt_list)
+                    }
+                    for future in as_completed(futures):
+                        idx, value = future.result()
+                        results[idx] = value
+                        completed += 1
+        except Exception as exc:
+            _set_last_usage_admission(
+                {
+                    "success": False,
+                    "final_status": "partial_batch_error",
+                    "reason_codes": [
+                        "partial_completion_preserved",
+                        type(exc).__name__,
+                    ],
+                    "attempt_count": len(batch_admissions),
+                    "completed_items": completed,
+                    "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                }
+            )
+            raise
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "batch_committed",
+                "reason_codes": ["physical_items_settled_once"],
+                "attempt_count": len(batch_admissions),
+                "completed_items": len(prompt_list),
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": any(
+                    item.get("remote_charged") for item in batch_admissions
+                ),
+            }
+        )
+        return [str(item or "") for item in results]
+
     backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
     text_batch = getattr(backend, "generate_text_batch", None)
     if callable(text_batch):
@@ -8354,6 +9969,7 @@ def clear_llm_router_caches() -> None:
     _resolve_provider_cached.cache_clear()
     _discover_hf_models_for_pipeline.cache_clear()
     _clear_last_generation_trace()
+    _set_last_usage_admission(None)
 
 
 def _messages_to_prompt(messages: Sequence[ChatMessage]) -> str:
@@ -8414,6 +10030,21 @@ def chat_completions_create(
     provider: Optional[str] = None,
     provider_instance: Optional[LLMProvider] = None,
     deps: Optional[RouterDeps] = None,
+    usage_coordinator: Optional[object] = None,
+    usage_policy: Optional[object] = None,
+    usage_candidates: Optional[Sequence[object]] = None,
+    usage_pin: Optional[object] = None,
+    usage_request: Optional[object] = None,
+    usage_request_id: Optional[str] = None,
+    usage_idempotency_key: Optional[str] = None,
+    usage_catalog_revision: Optional[str] = None,
+    usage_provider_by_binding: Optional[Mapping[str, LLMProvider]] = None,
+    usage_observation: Optional[object] = None,
+    usage_cost_micros: Optional[int] = None,
+    usage_cost_currency: Optional[str] = None,
+    usage_cancel_event: Optional[threading.Event] = None,
+    usage_scope_id: Optional[str] = None,
+    usage_streaming: bool = False,
     **kwargs: object,
 ) -> OpenAICompatResponse:
     """OpenAI-compatible chat completions API via the router.
@@ -8424,19 +10055,104 @@ def chat_completions_create(
 
     Notes:
     - Not all providers support logprobs; when unavailable, `top_logprobs` is empty.
+    - Usage admission (when enabled) preserves this OpenAI-compatible contract.
     """
 
     resolved_deps = deps or get_default_router_deps()
+    policy = _normalize_usage_policy(usage_policy)
+    message_list = list(messages or [])
+    prompt = _messages_to_prompt(message_list)
+
+    # When enforce is active, route through generate_text so reservation,
+    # observation, and settlement share the LLM admission path while the
+    # OpenAI-compatible response envelope stays unchanged.
+    if usage_coordinator is not None and _usage_mode_enforces(policy):
+        text = generate_text(
+            prompt,
+            model_name=model,
+            provider=provider,
+            provider_instance=provider_instance,
+            deps=resolved_deps,
+            allow_local_fallback=True,
+            usage_coordinator=usage_coordinator,
+            usage_policy=usage_policy,
+            usage_candidates=usage_candidates,
+            usage_pin=usage_pin,
+            usage_request=usage_request,
+            usage_request_id=usage_request_id,
+            usage_idempotency_key=usage_idempotency_key,
+            usage_catalog_revision=usage_catalog_revision,
+            usage_provider_by_binding=usage_provider_by_binding,
+            usage_observation=usage_observation,
+            usage_cost_micros=usage_cost_micros,
+            usage_cost_currency=usage_cost_currency,
+            usage_cancel_event=usage_cancel_event,
+            usage_scope_id=usage_scope_id,
+            usage_operation=LLM_CHAT_USAGE_OPERATION,
+            usage_streaming=usage_streaming,
+            usage_messages=message_list,  # type: ignore[arg-type]
+            **kwargs,
+        )
+        return OpenAICompatResponse(
+            choices=[
+                OpenAICompatChoice(
+                    message=OpenAICompatMessage(content=str(text).strip()),
+                    logprobs=OpenAICompatLogProbs(
+                        content=[OpenAICompatLogProbsContentItem(top_logprobs=[])]
+                    ),
+                )
+            ]
+        )
+
     backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
 
     # Prefer native chat completions when the provider supports it.
     if isinstance(backend, OpenAIChatCompletionsProvider):
         data = backend.chat_completions(messages, model_name=model, **kwargs)
-        return _parse_openai_compat_response(data)
+        response = _parse_openai_compat_response(data)
+        if usage_coordinator is not None and _usage_mode_observes_only(policy):
+            _record_usage_observe_shadow(
+                prompt=prompt,
+                remote=True,
+                usage_coordinator=usage_coordinator,
+                usage_policy=policy,
+                usage_scope_id=usage_scope_id,
+                usage_request_id=usage_request_id,
+                usage_cost_micros=usage_cost_micros,
+                usage_cost_currency=usage_cost_currency,
+                success=True,
+                provider_used=_llm_provider_display_name(backend, requested=provider),
+                streaming=bool(usage_streaming),
+                kwargs=kwargs,
+            )
+        return response
 
     # Fallback: flatten messages into a single prompt.
-    prompt = _messages_to_prompt(messages)
-    text = backend.generate(prompt, model_name=model, **kwargs)
+    text = generate_text(
+        prompt,
+        model_name=model,
+        provider=provider,
+        provider_instance=backend,
+        deps=resolved_deps,
+        usage_coordinator=usage_coordinator,
+        usage_policy=usage_policy,
+        usage_candidates=usage_candidates,
+        usage_pin=usage_pin,
+        usage_request=usage_request,
+        usage_request_id=usage_request_id,
+        usage_idempotency_key=usage_idempotency_key,
+        usage_catalog_revision=usage_catalog_revision,
+        usage_provider_by_binding=usage_provider_by_binding,
+        usage_observation=usage_observation,
+        usage_cost_micros=usage_cost_micros,
+        usage_cost_currency=usage_cost_currency,
+        usage_cancel_event=usage_cancel_event,
+        usage_scope_id=usage_scope_id,
+        usage_operation=LLM_CHAT_USAGE_OPERATION,
+        usage_streaming=usage_streaming,
+        usage_messages=message_list,  # type: ignore[arg-type]
+        **kwargs,
+    )
     return OpenAICompatResponse(
         choices=[
             OpenAICompatChoice(
