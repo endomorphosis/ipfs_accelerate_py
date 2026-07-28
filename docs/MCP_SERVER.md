@@ -131,6 +131,22 @@ python -m pytest \
   test/test_ai_catalog_conformance.py -q
 ```
 
+Usage control tools (`model_catalog_usage`, `model_catalog_usage_metrics`,
+`route_preview`) share reason codes and authorities with the Python control
+service and MCP++ `ai.usage.v1` IDL. Offline parity and rollout proofs:
+
+```bash
+python -m pytest \
+  test/test_endpoint_usage_controls.py \
+  test/test_endpoint_usage_conformance.py \
+  test/test_endpoint_usage_faults.py \
+  test/test_endpoint_usage_rollout.py -q
+```
+
+Read/preview paths are side-effect free and never reserve capacity. Admin
+mutations require `ai.usage/admin`, expected revision, lease/fence, and
+idempotency. Distributed admission without a fenced coordinator fails closed.
+
 Roll out read-only catalog tools first and compare their stable IDs/revisions
 with Python and legacy views. Then enable refresh for named sources, run
 per-modality live canaries, publish MCP++ advertisements, and finally promote

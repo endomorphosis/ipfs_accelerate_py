@@ -21,8 +21,9 @@ context of earlier implementations and are not normative API references.
   canonical service identities, resolution, source precedence, security,
   migration, and rollout.
 - [Endpoint usage-aware routing plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md):
-  planned endpoint/account limit accounting, atomic reservations,
-  ModelManager planning, router fallback, and supervisor capacity governance.
+  endpoint/account limit accounting, atomic reservations, ModelManager
+  planning, router fallback, supervisor capacity governance, offline
+  conformance/fault matrix, and staged rollout modes.
 
 ## User guides
 
@@ -94,7 +95,7 @@ planned work. Use the current guides and source code for present behavior.
 | Run inference | [Quick start](guides/QUICKSTART.md) |
 | Start MCP | [MCP setup](guides/MCP_SETUP_GUIDE.md) |
 | Discover or resolve AI services | [AI Service Catalog](architecture/AI_SERVICE_CATALOG.md) |
-| Plan endpoint usage limits and intelligent fallback | [Endpoint usage-aware routing](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md) |
+| Plan or verify endpoint usage limits and intelligent fallback | [Endpoint usage-aware routing](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md) |
 | Use catalog or router tools over MCP | [MCP server AI tools](MCP_SERVER.md) |
 | Migrate legacy model or MCP APIs | [Catalog migration and compatibility](architecture/AI_SERVICE_CATALOG.md#migration-and-compatibility) |
 | Operate or migrate agent-supervisor workflows | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |

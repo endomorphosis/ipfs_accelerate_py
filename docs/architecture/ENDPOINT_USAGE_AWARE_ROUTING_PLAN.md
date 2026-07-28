@@ -555,6 +555,47 @@ Live provider smoke tests remain explicitly environment-gated and use tiny
 operator-approved budgets. Default tests are offline and use injected
 transports.
 
+### Offline release gate (AICAT-035)
+
+The frozen offline population and staged rollout proofs live in:
+
+```bash
+python -m pytest \
+  test/test_endpoint_usage_schema.py \
+  test/test_endpoint_usage_adapters.py \
+  test/test_endpoint_usage_ledger.py \
+  test/test_endpoint_usage_routing.py \
+  test/test_model_manager_usage_routing.py \
+  test/test_llm_router_usage_routing.py \
+  test/test_embeddings_router_usage_routing.py \
+  test/test_multimodal_router_usage_routing.py \
+  test/test_voice_router_usage_routing.py \
+  test/test_ai_router_usage_contract.py \
+  test/test_endpoint_usage_controls.py \
+  test/test_endpoint_usage_conformance.py \
+  test/test_endpoint_usage_faults.py \
+  test/test_endpoint_usage_rollout.py -q
+```
+
+| Suite | Covers |
+| --- | --- |
+| `test_endpoint_usage_conformance.py` | Fixed/sliding/token-bucket/concurrent/billing windows; shared vs isolated credentials; multi-surface identity/revision agreement (Python, ModelManager, routers, MCP, MCP++); side-effect-free import/query/preview; zero overshoot and no double charge |
+| `test_endpoint_usage_faults.py` | 429/503/billing/malformed observations; cancel/timeout before and after dispatch; partial stream and batch split; single-flight; retry/fallback; correction/reset; durable crash recovery; migration/outage; partition; clock jump; reservation race; fail-closed distributed admission |
+| `test_endpoint_usage_rollout.py` | Modes `off`/`observe`/`shadow`/`assist`/`enforce`; observe/shadow non-selection; automatic fallback paired gate; pin isolation; rollback preserving ledger; opt-in live budget caps |
+| `test_ai_router_usage_contract.py` | Cross-router requirement IDs, mode helpers, estimates, hard gates, fallback boundaries, ModelManager facades |
+
+Opt-in live usage smokes (never default CI):
+
+```bash
+IPFS_ACCELERATE_PY_ENDPOINT_USAGE_LIVE=1 \
+IPFS_ACCELERATE_PY_ENDPOINT_USAGE_LIVE_BUDGET_MICROS=5000 \
+python -m pytest test/test_endpoint_usage_rollout.py -k opt_in_live -q
+```
+
+Rollback returns selection to legacy/`off` behavior while preserving the usage
+ledger and receipts for diagnosis. Distributed enforcement without a strong
+fenced coordinator fails closed.
+
 ## Taskboard attachment
 
 The implementation is attached to the existing AI Service Catalog board as
@@ -570,7 +611,7 @@ The implementation is attached to the existing AI Service Catalog board as
 8. multimodal router integration;
 9. voice router integration;
 10. controls and observability; and
-11. conformance, fault injection, documentation, and rollout.
+11. conformance, fault injection, documentation, and rollout (`AICAT-035`).
 
 The supervisor-specific integration and its live execution prerequisite are
 attached to the existing self-improvement board as `ASI-165` through
