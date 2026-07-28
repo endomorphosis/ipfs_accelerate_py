@@ -1,5 +1,8 @@
 # agent_supervisor.runtime
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/runtime/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/runtime/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Multi-lane runtime: multi-supervisor runners, bundle supervisor entry, artifact store, event log, resource/provider schedulers, temporal monitors, and scheduler metrics.

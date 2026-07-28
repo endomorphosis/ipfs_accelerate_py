@@ -1,5 +1,8 @@
 # agent_supervisor.todo_daemon
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/todo_daemon/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/todo_daemon/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Executable implementation and supervisor process loops: worktree management, git helpers, proposal/validation engine pieces, and CLI entrypoints that drain Markdown boards.

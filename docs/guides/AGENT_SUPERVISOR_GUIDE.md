@@ -10,11 +10,21 @@ completion, mutation, merge, and automatic self-improvement remain subject to
 repository and state allowlists, identity and policy bindings, deterministic
 validation, fresh evidence, leases, fencing, and authorization.
 
-For the design rationale and rollout invariants, see the
-[Agent Supervisor philosophy](../architecture/AGENT_SUPERVISOR_PHILOSOPHY.md),
-[Architecture](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md),
-[documentation hub](../architecture/agent_supervisor/README.md), and
-[Self-Improvement Plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md).
+## Related documentation
+
+| Need | Document |
+| --- | --- |
+| Design pillars | [Philosophy](../architecture/AGENT_SUPERVISOR_PHILOSOPHY.md) |
+| Extend / place code | [Developer guide](../architecture/agent_supervisor/DEVELOPER_GUIDE.md) |
+| Package ownership | [Package map](../architecture/agent_supervisor/PACKAGE_MAP.md) |
+| Deep contracts | [Architecture](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) |
+| Doc hub | [agent_supervisor/](../architecture/agent_supervisor/README.md) |
+| Code-tree entry | [Package README](../../ipfs_accelerate_py/agent_supervisor/README.md) |
+| Self-improvement program | [Self-Improvement Plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md) |
+
+This guide is the **operator / integration** surface (install, discover,
+authorize, profiles, recovery). Prefer the developer guide when changing
+package layout or implementing new domain features.
 
 ## Installation and entry points
 

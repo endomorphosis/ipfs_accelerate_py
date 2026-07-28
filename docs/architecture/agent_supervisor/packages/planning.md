@@ -1,5 +1,8 @@
 # agent_supervisor.planning
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/planning/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/planning/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Adaptive and formal planning (non-daemon): plan compile/validate/conformance, adaptive planner/refiner, formal replanner, proof-carrying planner orchestration, and planning metrics.

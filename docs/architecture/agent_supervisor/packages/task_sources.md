@@ -1,5 +1,8 @@
 # agent_supervisor.task_sources
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/task_sources/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/task_sources/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Durable task projections and storage: Markdown and DuckDB task sources, taskboard store, persistent queues, task identity, dataset store, and todo vector indexes.

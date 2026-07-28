@@ -1,5 +1,8 @@
 # agent_supervisor.rescue
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/rescue/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/rescue/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Rescue and recovery: planners, orchestrators, diagnostics, watchdog hooks, and recovery paths when lanes stall or fail policy.

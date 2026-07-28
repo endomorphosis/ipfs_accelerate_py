@@ -1,55 +1,51 @@
 # agent_supervisor.merge
 
-Merge queue, train, resolver, checkout lock, and lane lease surfaces
-(`ASREF-G070` / bundle `asref/merge`).
+**Layer:** Ops · **DAG role:** see [PACKAGE_MAP](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
 
 ## Purpose
 
-`merge` owns git checkout locking, merge queue/train/checkpoint, conflict
-repair, leased lanes, and the merge resolver console entry point.
+Landing completed work: merge queue/train/resolver, checkout locks, leases, and git hygiene helpers.
 
-This package scaffold was introduced by the ASREF-017 validation
-retry-budget repair after ASREF-011 exhausted three attempts with **no
-repository changes** (`declared validation plan requires changed paths`).
+## Who should import this package
 
-## Public modules (move_map ownership)
+| | |
+| --- | --- |
+| **This package may import** | `core`, `control`, runtime-safe helpers |
+| **Typical dependents** | todo_daemon, runtime, rescue |
 
-| Source (flat) | Target |
-|---|---|
-| `checkout_lock.py` | `merge/checkout_lock.py` |
-| `git_gc.py` | `merge/git_gc.py` |
-| `lease_coordination.py` | `merge/lease_coordination.py` |
-| `leased_lane.py` | `merge/leased_lane.py` |
-| `merge_checkpoint.py` | `merge/merge_checkpoint.py` |
-| `merge_conflict_repair.py` | `merge/merge_conflict_repair.py` |
-| `merge_queue.py` | `merge/merge_queue.py` |
-| `merge_resolver.py` | `merge/merge_resolver.py` |
-| `merge_train.py` | `merge/merge_train.py` |
+## Modules
 
-Inventory source: `docs/architecture/asref/move_map.json`.
+| Module | Path |
+| --- | --- |
+| `checkout_lock` | `merge/checkout_lock.py` |
+| `git_gc` | `merge/git_gc.py` |
+| `lease_coordination` | `merge/lease_coordination.py` |
+| `leased_lane` | `merge/leased_lane.py` |
+| `merge_checkpoint` | `merge/merge_checkpoint.py` |
+| `merge_conflict_repair` | `merge/merge_conflict_repair.py` |
+| `merge_queue` | `merge/merge_queue.py` |
+| `merge_resolver` | `merge/merge_resolver.py` |
+| `merge_train` | `merge/merge_train.py` |
 
-## Entry points (post-move)
+## Preferred imports
 
-| Console script | Target |
-|---|---|
-| `ipfs-accelerate-agent-merge-resolver` | `merge.merge_resolver:main` |
+```python
+from ipfs_accelerate_py.agent_supervisor.merge.<module> import ...
+```
 
-## Forbidden dependencies
+Relative imports stay package-local (`from .<module> import ...`).
 
-`merge` **must not** import `todo_daemon`, `self_improvement`, or optional
-integration surfaces.
+## Extending
 
-## Import policy
+1. Add modules here only if this package **owns** the concern ([placement table](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)).
+2. Update this README module table in the same change.
+3. Prefer semantic public names; do not encode board prefixes into APIs.
+4. Add focused tests under `test/api/` (or package-local tests).
+5. Keep the dependency DAG acyclic.
 
-After each module moves into `merge/`, update all callers in the same
-change. Do not leave thin re-export stubs at former flat paths. Prefer::
+## See also
 
-    from ipfs_accelerate_py.agent_supervisor.merge.<module> import ...
-
-## Status
-
-- Package scaffold (`__init__.py`, this README): present
-- Dual-copied this batch: `merge_resolver.py`, `checkout_lock.py`, `merge_checkpoint.py`, `git_gc.py`, `merge_conflict_repair.py`
-- Remaining owned modules: see `objectives/ASREF_G070_CHILD_GOALS.md` (proposal-gate size batches)
-- Flat dual-copies remain until ASREF-G090 cutover; prefer `agent_supervisor.merge.<module>` for landed modules
-- Entry-point retargets: when task Outputs include `pyproject.toml` / `setup.py` and target modules are landed
+- [Developer guide](../../../docs/architecture/agent_supervisor/DEVELOPER_GUIDE.md)
+- [Package map](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
+- [Semantic package page](../../../docs/architecture/agent_supervisor/packages/merge.md)
+- [Architecture](../../../docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)

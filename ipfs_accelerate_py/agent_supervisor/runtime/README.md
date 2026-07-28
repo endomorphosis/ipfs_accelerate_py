@@ -1,55 +1,50 @@
 # agent_supervisor.runtime
 
-Multi-supervisor runtime, artifact store, event log, and schedulers
-(`ASREF-G070` / bundle `asref/runtime`).
+**Layer:** Ops · **DAG role:** see [PACKAGE_MAP](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
 
 ## Purpose
 
-`runtime` owns durable event/CAS surfaces, artifact query entry points,
-provider/resource schedulers, multi-supervisor runners, and temporal
-monitoring used by control and implementation lanes.
+Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resource/batch schedulers.
 
-This package scaffold was introduced by the ASREF-017 validation
-retry-budget repair after ASREF-011 exhausted three attempts with **no
-repository changes** (`declared validation plan requires changed paths`).
+## Who should import this package
 
-## Public modules (move_map ownership)
+| | |
+| --- | --- |
+| **This package may import** | `core`, `control`, merge/rescue coordination surfaces |
+| **Typical dependents** | todo_daemon, ops scripts |
 
-| Source (flat) | Target |
-|---|---|
-| `artifact_store.py` | `runtime/artifact_store.py` |
-| `event_log.py` | `runtime/event_log.py` |
-| `multi_supervisor_runner.py` | `runtime/multi_supervisor_runner.py` |
-| `provider_batch_scheduler.py` | `runtime/provider_batch_scheduler.py` |
-| `resource_scheduler.py` | `runtime/resource_scheduler.py` |
-| `runtime_cas.py` | `runtime/runtime_cas.py` |
-| `runtime_temporal_monitor.py` | `runtime/runtime_temporal_monitor.py` |
-| `scheduler_metrics.py` | `runtime/scheduler_metrics.py` |
+## Modules
 
-Inventory source: `docs/architecture/asref/move_map.json`.
+| Module | Path |
+| --- | --- |
+| `artifact_store` | `runtime/artifact_store.py` |
+| `event_log` | `runtime/event_log.py` |
+| `multi_supervisor_runner` | `runtime/multi_supervisor_runner.py` |
+| `provider_batch_scheduler` | `runtime/provider_batch_scheduler.py` |
+| `resource_scheduler` | `runtime/resource_scheduler.py` |
+| `runtime_cas` | `runtime/runtime_cas.py` |
+| `runtime_temporal_monitor` | `runtime/runtime_temporal_monitor.py` |
+| `scheduler_metrics` | `runtime/scheduler_metrics.py` |
 
-## Entry points (post-move)
+## Preferred imports
 
-| Console script | Target |
-|---|---|
-| `ipfs-accelerate-agent-artifact-query` | `runtime.artifact_store:main` |
+```python
+from ipfs_accelerate_py.agent_supervisor.runtime.<module> import ...
+```
 
-## Forbidden dependencies
+Relative imports stay package-local (`from .<module> import ...`).
 
-`runtime` **must not** import `todo_daemon`, `self_improvement`, or optional
-integration surfaces.
+## Extending
 
-## Import policy
+1. Add modules here only if this package **owns** the concern ([placement table](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)).
+2. Update this README module table in the same change.
+3. Prefer semantic public names; do not encode board prefixes into APIs.
+4. Add focused tests under `test/api/` (or package-local tests).
+5. Keep the dependency DAG acyclic.
 
-After each module moves into `runtime/`, update all callers in the same
-change. Do not leave thin re-export stubs at former flat paths. Prefer::
+## See also
 
-    from ipfs_accelerate_py.agent_supervisor.runtime.<module> import ...
-
-## Status
-
-- Package scaffold (`__init__.py`, this README): present
-- Dual-copied this batch: `multi_supervisor_runner.py`
-- Remaining owned modules: see `objectives/ASREF_G070_CHILD_GOALS.md` (proposal-gate size batches)
-- Flat dual-copies remain until ASREF-G090 cutover; prefer `agent_supervisor.runtime.<module>` for landed modules
-- Entry-point retargets: when task Outputs include `pyproject.toml` / `setup.py` and target modules are landed
+- [Developer guide](../../../docs/architecture/agent_supervisor/DEVELOPER_GUIDE.md)
+- [Package map](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
+- [Semantic package page](../../../docs/architecture/agent_supervisor/packages/runtime.md)
+- [Architecture](../../../docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)

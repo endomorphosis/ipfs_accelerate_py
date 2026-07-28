@@ -1,5 +1,8 @@
 # agent_supervisor.context
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/context/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/context/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Context compilation and decision runtime: obligation-first capsules, decision contracts/context, IR constraint compilation hooks, and runtime CAS for decision artifacts.

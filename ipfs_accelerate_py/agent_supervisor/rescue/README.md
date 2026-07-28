@@ -1,47 +1,48 @@
 # agent_supervisor.rescue
 
-Rescue orchestration, recovery diagnostics, and supervisor watchdog
-surfaces (`ASREF-G070` / bundle `asref/rescue`).
+**Layer:** Ops · **DAG role:** see [PACKAGE_MAP](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
 
 ## Purpose
 
-`rescue` owns failure policy, rescue planning/orchestration, recovery
-diagnostics, and supervisor recovery/watchdog loops used when
-implementation lanes stall or providers fail.
+Failure recovery: rescue planners/orchestrators, failure policy, and watchdog/recovery hooks.
 
-This package scaffold was introduced by the ASREF-017 validation
-retry-budget repair after ASREF-011 exhausted three attempts with **no
-repository changes** (`declared validation plan requires changed paths`).
+## Who should import this package
 
-## Public modules (move_map ownership)
+| | |
+| --- | --- |
+| **This package may import** | `core`, `control`, merge/runtime hooks carefully |
+| **Typical dependents** | todo_daemon, runtime |
 
-| Source (flat) | Target |
-|---|---|
-| `codex_failure_policy.py` | `rescue/codex_failure_policy.py` |
-| `recovery_diagnostics.py` | `rescue/recovery_diagnostics.py` |
-| `rescue_orchestrator.py` | `rescue/rescue_orchestrator.py` |
-| `rescue_planner.py` | `rescue/rescue_planner.py` |
-| `supervisor_recovery.py` | `rescue/supervisor_recovery.py` |
-| `supervisor_watchdog.py` | `rescue/supervisor_watchdog.py` |
+## Modules
 
-Inventory source: `docs/architecture/asref/move_map.json`.
+| Module | Path |
+| --- | --- |
+| `codex_failure_policy` | `rescue/codex_failure_policy.py` |
+| `recovery_diagnostics` | `rescue/recovery_diagnostics.py` |
+| `rescue_orchestrator` | `rescue/rescue_orchestrator.py` |
+| `rescue_planner` | `rescue/rescue_planner.py` |
+| `supervisor_recovery` | `rescue/supervisor_recovery.py` |
+| `supervisor_watchdog` | `rescue/supervisor_watchdog.py` |
 
-## Forbidden dependencies
+## Preferred imports
 
-`rescue` **must not** import `todo_daemon`, `self_improvement`, or optional
-integration surfaces.
+```python
+from ipfs_accelerate_py.agent_supervisor.rescue.<module> import ...
+```
 
-## Import policy
+Relative imports stay package-local (`from .<module> import ...`).
 
-After each module moves into `rescue/`, update all callers in the same
-change. Do not leave thin re-export stubs at former flat paths. Prefer::
+## Extending
 
-    from ipfs_accelerate_py.agent_supervisor.rescue.<module> import ...
+1. Add modules here only if this package **owns** the concern ([placement table](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)).
+2. Update this README module table in the same change.
+3. Prefer semantic public names; do not encode board prefixes into APIs.
+4. Add focused tests under `test/api/` (or package-local tests).
+5. Keep the dependency DAG acyclic.
 
-## Status
+## See also
 
-- Package scaffold (`__init__.py`, this README): present
-- Dual-copied this batch: `rescue_orchestrator.py`, `codex_failure_policy.py`
-- Remaining owned modules: see `objectives/ASREF_G070_CHILD_GOALS.md` (proposal-gate size batches)
-- Flat dual-copies remain until ASREF-G090 cutover; prefer `agent_supervisor.rescue.<module>` for landed modules
-- Entry-point retargets: when task Outputs include `pyproject.toml` / `setup.py` and target modules are landed
+- [Developer guide](../../../docs/architecture/agent_supervisor/DEVELOPER_GUIDE.md)
+- [Package map](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
+- [Semantic package page](../../../docs/architecture/agent_supervisor/packages/rescue.md)
+- [Architecture](../../../docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)

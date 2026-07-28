@@ -1,5 +1,8 @@
 # agent_supervisor.integrations
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/integrations/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/integrations/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Optional adapters: LLM merge resolver fallback, Goose/Meta Spark runners, datasets analysis/logic providers, and other provider-backed bridges.

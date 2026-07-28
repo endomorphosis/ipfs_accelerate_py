@@ -1,5 +1,8 @@
 # agent_supervisor.objectives
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/objectives/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/objectives/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Objective heap lifecycle: parsing, tracking, daemon/CLI bridge, janitor, goal completion/coverage/quality, backlog refinery, and objective graph scanning.

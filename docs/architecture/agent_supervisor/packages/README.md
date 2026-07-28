@@ -1,27 +1,42 @@
-# Domain package README index
+# Domain package reference
 
-Semantic package documentation for `ipfs_accelerate_py.agent_supervisor`.
-These pages are the **product** descriptions of each domain package.
-On a domain-layout tree they mirror (and should eventually replace ticket-centric)
-READMEs under `ipfs_accelerate_py/agent_supervisor/<package>/README.md`.
+Semantic descriptions of each `ipfs_accelerate_py.agent_supervisor` domain
+package. Use these pages together with:
 
-See also: [Package map](../PACKAGE_MAP.md) · [Philosophy](../../AGENT_SUPERVISOR_PHILOSOPHY.md) · [Programs](../PROGRAMS.md).
+- [Package map](../PACKAGE_MAP.md) (DAG & placement)
+- [Developer guide](../DEVELOPER_GUIDE.md) (how to extend)
+- Code-tree `ipfs_accelerate_py/agent_supervisor/<package>/README.md` (module tables)
 
-| Package | Doc |
-| --- | --- |
-| `core/` | [core.md](core.md) |
-| `control/` | [control.md](control.md) |
-| `task_sources/` | [task_sources.md](task_sources.md) |
-| `context/` | [context.md](context.md) |
-| `prompt/` | [prompt.md](prompt.md) |
-| `analysis/` | [analysis.md](analysis.md) |
-| `proof/` | [proof.md](proof.md) |
-| `objectives/` | [objectives.md](objectives.md) |
-| `planning/` | [planning.md](planning.md) |
-| `validation/` | [validation.md](validation.md) |
-| `merge/` | [merge.md](merge.md) |
-| `rescue/` | [rescue.md](rescue.md) |
-| `runtime/` | [runtime.md](runtime.md) |
-| `self_improvement/` | [self_improvement.md](self_improvement.md) |
-| `integrations/` | [integrations.md](integrations.md) |
-| `todo_daemon/` | [todo_daemon.md](todo_daemon.md) |
+These pages describe **product ownership**. Board tickets that funded a module
+are historical; they do not rename the package.
+
+| Package | Layer | Doc |
+| --- | --- | --- |
+| `core/` | Foundation | [core.md](core.md) |
+| `control/` | Foundation | [control.md](control.md) |
+| `task_sources/` | Foundation | [task_sources.md](task_sources.md) |
+| `context/` | Foundation | [context.md](context.md) |
+| `prompt/` | Mid | [prompt.md](prompt.md) |
+| `analysis/` | Mid | [analysis.md](analysis.md) |
+| `proof/` | Mid | [proof.md](proof.md) |
+| `objectives/` | Mid | [objectives.md](objectives.md) |
+| `planning/` | Mid | [planning.md](planning.md) |
+| `validation/` | Mid | [validation.md](validation.md) |
+| `merge/` | Ops | [merge.md](merge.md) |
+| `rescue/` | Ops | [rescue.md](rescue.md) |
+| `runtime/` | Ops | [runtime.md](runtime.md) |
+| `self_improvement/` | Ops | [self_improvement.md](self_improvement.md) |
+| `integrations/` | Edge | [integrations.md](integrations.md) |
+| `todo_daemon/` | Edge | [todo_daemon.md](todo_daemon.md) |
+
+## Reading a package page
+
+Each page should answer:
+
+1. **Purpose** — what problem this package owns  
+2. **Key modules** — primary entrypoints  
+3. **Dependencies** — what it may import / who may import it  
+4. **Extension tips** — where new code goes  
+
+If a semantic page lags the code-tree README, trust the code-tree module list
+and file a doc update in the same change that moves modules.

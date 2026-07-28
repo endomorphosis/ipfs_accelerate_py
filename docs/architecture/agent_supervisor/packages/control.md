@@ -1,5 +1,8 @@
 # agent_supervisor.control
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/control/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/control/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Transport-neutral control plane: closed operation vocabulary, request/result contracts, capability reports, control service, CLI registration, lifecycle orchestration, execution permits, and authorization policy.

@@ -1,9 +1,14 @@
 # Agent Supervisor package map
 
-This map describes the **domain package layout** for
-`ipfs_accelerate_py.agent_supervisor` as landed on current `main` (domain layout
-program). Feature branches may still carry a transitional flat tree; treat this
-map as the target and merge destination.
+Ownership map for `ipfs_accelerate_py.agent_supervisor` on current `main`.
+
+**Audience:** developers placing code and reviewers checking the dependency DAG.
+
+Related: [Developer guide](DEVELOPER_GUIDE.md) · [Doc hub](README.md) ·
+[Package README](../../../ipfs_accelerate_py/agent_supervisor/README.md) ·
+[Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md).
+
+---
 
 ## Dependency DAG (allowed direction)
 
@@ -19,32 +24,91 @@ merge, rescue, runtime, self_improvement
 todo_daemon (implementation), integrations
 ```
 
-**Forbidden:** `core` importing `todo_daemon`; proof/runtime cycles;
-reintroducing long-lived flat re-export stubs at retired paths.
+### Rules
+
+| Rule | Detail |
+| --- | --- |
+| Acyclic | No package cycles |
+| Bottom-up only | Higher layers may import lower; not the reverse |
+| No daemon in core | `core` must not import `todo_daemon`, `runtime`, `merge`, `rescue` |
+| No long-lived flat stubs | Do not reintroduce retired root-level re-export modules |
+| Domain imports | `from ipfs_accelerate_py.agent_supervisor.<pkg>.<mod> import …` |
+
+---
 
 ## Domain packages
 
-| Package | Purpose | Typical contents |
-| --- | --- | --- |
-| `core/` | Shared foundation: identity, conflict graph, wrappers, external completion | Bottom of the DAG |
-| `control/` | Transport-neutral control plane, CLI/MCP contracts, lifecycle, permits | `SupervisorControlService`, operations catalog |
-| `task_sources/` | Markdown/DuckDB task sources, taskboards, queues, indexes | Board parse, queues |
-| `context/` | Context compiler/contracts, decision runtime | Obligation-first capsules |
-| `prompt/` | Prompt workflow, scanning, plan admission | Bootstrap / rescue prompts |
-| `analysis/` | Analysis pipeline, AST, cache, retrieval, consensus | Integrated analysis |
-| `proof/` | Formal verification, provers, attestation, proof cache | Codebase-proof, kernels |
-| `objectives/` | Objective heap parse, daemon, tracker, janitor, goal quality | Intent reconciliation |
-| `planning/` | Adaptive and formal plan compile/validate (non-daemon) | Plan IR, conformance |
-| `validation/` | Proposal validation, validation scheduler/runtime/commands | Pre-merge gates |
-| `merge/` | Merge queue/train/resolver, checkout locks, leases, git hygiene | Lane merge |
-| `rescue/` | Rescue planner/orchestrator, recovery, watchdog hooks | Failure recovery |
-| `runtime/` | Multi-supervisor runners, event log, CAS, schedulers | Lane orchestration |
-| `self_improvement/` | Epoch contracts, refill, v2 efficiency/token models | Self-improvement program |
-| `integrations/` | LLM merge fallback, goose/meta adapters, dataset providers | Optional providers |
-| `todo_daemon/` | Executable implementation/supervisor daemons and git worktree helpers | Drain boards |
+| Package | Purpose | Typical contents | Layer |
+| --- | --- | --- | --- |
+| `core/` | Shared foundation | Conflict graph, wrappers, external completion | Foundation |
+| `control/` | Transport-neutral control plane | Ops catalog, service, CLI, permits, authz | Foundation |
+| `task_sources/` | Task projection & storage | Markdown/DuckDB boards, queues, indexes | Foundation |
+| `context/` | Decision context | Compiler, contracts, decision runtime | Foundation |
+| `prompt/` | Prompt workflows | Scanner, plan admission, bootstrap/rescue | Mid |
+| `analysis/` | Code analysis pipeline | AST, cache, retrieval, consensus | Mid |
+| `proof/` | Formal assurance | Provers, attestation, proof cache | Mid |
+| `objectives/` | Intent lifecycle | Heap, tracker, backlog, goal quality | Mid |
+| `planning/` | Plan compile/validate | Adaptive + formal planning, metrics | Mid |
+| `validation/` | Pre-merge gates | Proposal validation, schedulers | Mid |
+| `merge/` | Land completed work | Queue/train/resolver, locks, leases | Ops |
+| `rescue/` | Failure recovery | Orchestrator, watchdog hooks | Ops |
+| `runtime/` | Multi-lane execution | Runners, event log, CAS, schedulers | Ops |
+| `self_improvement/` | Meta-improvement | Epochs, refill, v2 contracts | Ops |
+| `integrations/` | Optional bridges | LLM merge fallback, Goose, datasets | Edge |
+| `todo_daemon/` | Executable daemons | Implementation/supervisor loops, git helpers | Edge |
 
-Root `__init__.py` re-exports only intentional public symbols. Prefer **domain
-imports** for new code:
+Semantic pages: [packages/README.md](packages/README.md).  
+Code-tree READMEs: `ipfs_accelerate_py/agent_supervisor/<package>/README.md`.
+
+---
+
+## Where new work goes
+
+| If you are adding… | Put it in… |
+| --- | --- |
+| A control operation or CLI binding | `control/` |
+| A taskboard parser or queue backend | `task_sources/` |
+| A prover, attestation, or proof-cache API | `proof/` |
+| Context capsule / decision-core fields | `context/` |
+| Formal plan IR / conformance | `planning/` |
+| Proposal or validation policy | `validation/` |
+| Merge/lease/checkout behavior | `merge/` |
+| Multi-lane runner / event log | `runtime/` |
+| Implementation daemon behavior | `todo_daemon/` |
+| Optional external tool bridge | `integrations/` |
+| Self-improvement epoch logic | `self_improvement/` |
+| A new *program* (board + objectives only) | `docs/architecture/` boards; **code still in domain packages** |
+
+---
+
+## Public API stability
+
+### Control surface
+
+- **v1 compatibility:** existing operation names, request/result records, CLI/MCP tool names.
+- **v2 stable exports:** `AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` (aliases:
+  `AGENT_SUPERVISOR_V2_STABLE_EXPORTS`, `V2_STABLE_EXPORTS`). Closed set — review
+  before expanding.
+- Import success is **not** a capability signal; run discovery then capability probes.
+
+### Domain layout inventories (semantic)
+
+Prefer product-role names:
+
+| Constant family | Role |
+| --- | --- |
+| `AGENT_SUPERVISOR_DOMAIN_PACKAGES` | Full package list |
+| `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` | Stem → package (landed) |
+| `AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE` | Stem → package (planned / scan only) |
+| `AGENT_SUPERVISOR_*_PACKAGES` | Packages by role (`CORE_`, `CONTROL_`, …) |
+| `AGENT_SUPERVISOR_*_STEMS` | Stem inventories |
+| `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` / `_OPERATIONS_…` | Layout evidence clusters |
+| `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES` | Goal-id string → packages |
+| `AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_*` | Cutover identity |
+
+Board-prefix spellings (`AGENT_SUPERVISOR_G020_*`,
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_*`, `AGENT_SUPERVISOR_LANDED_MODULE_OWNERS`)
+are **deprecated aliases**. Board IDs remain string **values** for scanners.
 
 ```python
 # Preferred
@@ -56,33 +120,33 @@ from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
 # from ipfs_accelerate_py.agent_supervisor.control_plane import ...
 ```
 
-## Where new work goes
+---
 
-| If you are adding… | Put it in… |
+## Import style
+
+| Pattern | When |
 | --- | --- |
-| A new control operation or CLI binding | `control/` |
-| A new taskboard parser or queue backend | `task_sources/` |
-| A prover, attestation, or proof-cache API | `proof/` |
-| Context capsule / decision-core fields | `context/` |
-| Implementation daemon behavior | `todo_daemon/` (and runners in `runtime/` if multi-lane) |
-| Self-improvement epoch logic | `self_improvement/` |
-| A new *program* (board + objectives only) | `docs/architecture/` boards + bundles; code still lands in domain packages |
+| `from ipfs_accelerate_py.agent_supervisor.<pkg>.<mod> import X` | Default for app & library code |
+| `from .<mod> import X` | Inside the same domain package |
+| Package-root re-export | Only for reviewed public control/layout symbols |
 
-## Public API stability
+Historical flat stems may resolve via package-root aliasing for compatibility;
+do not add new callers on those paths.
 
-- **v1 compatibility surface:** existing operation names, request/result records, CLI/MCP tool names.
-- **v2 stable exports:** package-root manifests (`AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` (alias `AGENT_SUPERVISOR_V2_STABLE_EXPORTS`) and related layout constants) for generation-2 contracts.
-- **Domain layout constants (semantic):** package-root names prefer product roles, not board prefixes:
-  - `AGENT_SUPERVISOR_DOMAIN_PACKAGES`, `AGENT_SUPERVISOR_CORE_PACKAGES`, `AGENT_SUPERVISOR_CONTROL_PACKAGES`, …
-  - `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` / `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS`
-  - `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES`, `AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_*`
-  - Board-prefix spellings (`AGENT_SUPERVISOR_G020_*`, `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_*`) remain as **deprecated aliases**.
-  - Board IDs (`ASREF-G0xx`, `ASREF-0xx`) stay as **string values** for scanners and receipts.
-- Import success is **not** a capability signal; run discovery then capability probes.
+---
 
-Per-package semantic READMEs (purpose, modules, dependency rules):
-[packages/README.md](packages/README.md).
+## Historical layout cutover
 
-Details: [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md),
-[Philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md),
-[Contributor guide](FOR_CONTRIBUTORS.md).
+Domain-layout program evidence tables (ASREF-G0xx package goals) live in
+[LAYOUT_CUTOVER_EVIDENCE.md](LAYOUT_CUTOVER_EVIDENCE.md). That document is
+**historical / scanner-oriented**, not the day-to-day developer map.
+
+---
+
+## Related
+
+- [Developer guide](DEVELOPER_GUIDE.md)
+- [Philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md)
+- [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md)
+- [Contributor guide](FOR_CONTRIBUTORS.md)
+- [Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md)

@@ -1,5 +1,8 @@
 # agent_supervisor.core
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/core/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/core/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Shared foundation utilities at the bottom of the package dependency DAG: conflict graphs, external completion receipts, program behavior helpers, submodule degradation, and wrapper utilities.

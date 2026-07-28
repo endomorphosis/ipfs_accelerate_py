@@ -1,5 +1,8 @@
 # agent_supervisor.self_improvement
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/self_improvement/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/self_improvement/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Bounded self-improvement epochs: completion evaluation, successor refill, v2 efficiency/token/state models, and rollout helpers for the self-improvement program.

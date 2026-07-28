@@ -9,11 +9,19 @@ The package is intentionally broader than an LLM wrapper. Models propose plans
 and edits, but deterministic parsers, policy checks, validation commands, Git
 operations, leases, and evidence receipts decide whether work may advance.
 
-**Start here for product vocabulary:**
-[Design philosophy](AGENT_SUPERVISOR_PHILOSOPHY.md) ·
-[Doc hub](agent_supervisor/README.md) ·
-[Package map](agent_supervisor/PACKAGE_MAP.md) ·
-[Operator guide](../guides/AGENT_SUPERVISOR_GUIDE.md)
+## How to read this document
+
+| Goal | Section / sibling doc |
+| --- | --- |
+| Product vocabulary & pillars | [Design philosophy](AGENT_SUPERVISOR_PHILOSOPHY.md) |
+| Extend the code (placement, imports, tests) | [Developer guide](agent_supervisor/DEVELOPER_GUIDE.md) |
+| Package ownership DAG | [Package map](agent_supervisor/PACKAGE_MAP.md) |
+| Run / CLI / MCP / recovery | [Operator guide](../guides/AGENT_SUPERVISOR_GUIDE.md) |
+| Doc hub | [agent_supervisor/](agent_supervisor/README.md) |
+| Stable public control surface | [Stable control surface](#stable-control-surface-and-operating-model) |
+| Subsystems | [Subsystem boundaries](#subsystem-boundaries) |
+| Theory (feedback controller, leases, evidence) | [The theory behind the design](#the-theory-behind-the-design) |
+| Module inventory | [Appendix: complete module map](#appendix-complete-module-map) |
 
 This architecture document is the **implementation map**. Prefer domain package
 paths on current `main` (`agent_supervisor.proof.…`). Flat module filenames

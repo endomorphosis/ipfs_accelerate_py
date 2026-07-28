@@ -1,5 +1,8 @@
 # agent_supervisor.merge
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/merge/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/merge/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Merge train, queue, checkpoints, conflict repair, checkout locks, leases, and git hygiene used by multi-lane work.

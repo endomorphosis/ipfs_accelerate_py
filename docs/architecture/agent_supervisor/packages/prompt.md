@@ -1,5 +1,8 @@
 # agent_supervisor.prompt
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/prompt/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/prompt/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Prompt workflow: directory scanning, goal planning from prompts, plan admission, bootstrap/rescue rollout and benchmarks.

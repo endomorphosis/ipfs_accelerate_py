@@ -3,6 +3,10 @@
 Short, fail-closed guidance for implementation agents. Prefer this over dumping
 entire objective heaps into context.
 
+**Human developers:** start with the
+[Developer guide](DEVELOPER_GUIDE.md) and
+[package README](../../../ipfs_accelerate_py/agent_supervisor/README.md).
+
 ## Hard invariants
 
 1. **Model output is a proposal** — never mark complete without validation and
@@ -57,11 +61,13 @@ If the task is about proof-carrying code change:
 | Need | Read / use |
 | --- | --- |
 | Mental model | [Philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md) |
+| How to extend the code | [Developer guide](DEVELOPER_GUIDE.md) |
 | Package placement | [Package map](PACKAGE_MAP.md) |
 | Board prefix meaning | [Programs](PROGRAMS.md) |
 | Operator commands | [Guide](../../guides/AGENT_SUPERVISOR_GUIDE.md) |
 | Deep contracts | [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md) |
 | Control operations | `control` package + discovery manifests |
+| Doc hub | [README.md](README.md) |
 
 ## Done means
 

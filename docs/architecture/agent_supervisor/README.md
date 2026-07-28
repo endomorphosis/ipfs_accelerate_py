@@ -1,64 +1,107 @@
 # Agent Supervisor documentation hub
 
-This hub is the product-facing entry point for `ipfs_accelerate_py.agent_supervisor`.
+Product documentation for `ipfs_accelerate_py.agent_supervisor` — the control
+plane for **objective-driven, evidence-bounded software work**.
 
-The supervisor is a **proof- and policy-bounded control plane** for objective-driven
-software work. Models propose plans and edits; deterministic validation, leases,
-allowlists, and typed evidence decide whether work may advance.
+Models propose plans and edits; deterministic validation, leases, allowlists,
+and typed evidence decide whether work may advance.
 
-## Read by audience
+## Start here by role
 
-| Audience | Start here | Then |
+| Audience | Start | Then |
 | --- | --- | --- |
-| New reader / design | [Design philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md) | [Package map](PACKAGE_MAP.md) |
-| Operator / user | [Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md) | Philosophy (mental model) |
-| Contributor | [Contributor guide](FOR_CONTRIBUTORS.md) | [Package map](PACKAGE_MAP.md), domain package READMEs |
-| Implementation agent | [Agent capsule](FOR_AGENTS.md) | Philosophy fail-closed sections |
-| Deep implementation | [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md) | Domain package READMEs under the code tree |
-| Program / board audit | [Program glossary](PROGRAMS.md) | Sealed boards under `docs/architecture/*.{todo,objectives}.md` |
+| **Developer (new)** | [Developer guide](DEVELOPER_GUIDE.md) | [Package map](PACKAGE_MAP.md) · [Philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md) |
+| **Architect / deep dive** | [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md) | Subsystem sections · package READMEs |
+| **Operator / SRE** | [Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md) | Profiles, recovery, rollout |
+| **Contributor (PR)** | [Contributor guide](FOR_CONTRIBUTORS.md) | Developer guide · package map |
+| **Implementation agent** | [Agent capsule](FOR_AGENTS.md) | Philosophy fail-closed sections |
+| **Program / board audit** | [Program glossary](PROGRAMS.md) | [programs/](programs/README.md) · sealed boards |
+
+**Code-tree entry:**
+[`ipfs_accelerate_py/agent_supervisor/README.md`](../../../ipfs_accelerate_py/agent_supervisor/README.md)
+
+## Architecture overview (one screen)
+
+```text
+Objectives ──► Taskboard ──► Lane (worktree + agent)
+                                 │
+                    validation · evidence · leases
+                                 │
+                    merge train · rescue · event log
+```
+
+| Layer | Responsibility | Primary packages |
+| --- | --- | --- |
+| Intent | Durable goals & evidence expectations | `objectives/` |
+| Projection | Schedulable tasks & queues | `task_sources/` |
+| Control | Transport-neutral ops & policy | `control/` |
+| Assurance | Plans, proofs, analysis | `planning/`, `proof/`, `analysis/` |
+| Execution | Daemons, multi-lane runtime | `todo_daemon/`, `runtime/` |
+| Landing | Merge, recovery | `merge/`, `rescue/` |
+| Learning | Self-improvement epochs | `self_improvement/` |
+
+Dependency DAG and placement rules: [PACKAGE_MAP.md](PACKAGE_MAP.md).
 
 ## Two namespaces (important)
 
 | Namespace | Meaning | Examples |
 | --- | --- | --- |
-| **Product / domain** | What the system *is* and how to use it | `proof/`, control plane, codebase-proof pipeline |
-| **Program / board** | How work was *scheduled and evidenced* | task headers like `## <PREFIX>-###` on boards |
+| **Product / domain** | What the system *is* | `proof/`, control plane, codebase-proof pipeline |
+| **Program / board** | How work was *scheduled and evidenced* | `## ASI-170`, `## ASREF-G020` |
 
-Primary documentation teaches the **product** namespace. Board IDs stay in taskboards,
-objective heaps, and optional “Program evidence” footers—not in API names or intro prose.
+Primary documentation teaches the **product** namespace. Board IDs stay on
+taskboards, objective heaps, and optional evidence footers—not in public API
+names or intro prose.
 
-## Package layout (domain map)
+## Documentation map
 
-On current `main`, code lives in domain packages (not a flat module warehouse):
+### Core product docs
 
-- `core/`, `control/`, `task_sources/`, `context/`, `prompt/`
-- `analysis/`, `proof/`, `objectives/`, `planning/`
-- `validation/`, `merge/`, `rescue/`, `runtime/`
-- `self_improvement/`, `integrations/`, `todo_daemon/`
+| Doc | Purpose |
+| --- | --- |
+| [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Extend, import, test, place code |
+| [PACKAGE_MAP.md](PACKAGE_MAP.md) | Domain packages & DAG |
+| [Philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md) | Design pillars & authority ladder |
+| [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md) | Implementation map & contracts |
+| [Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md) | Discover, authorize, run, recover |
+| Package README | Developer entry in the code tree |
 
-See [PACKAGE_MAP.md](PACKAGE_MAP.md) and the code tree README at
-`ipfs_accelerate_py/agent_supervisor/README.md` (when present on your branch).
+### Reference
+
+| Doc | Purpose |
+| --- | --- |
+| [packages/](packages/README.md) | Per-package semantic pages |
+| Domain `*/README.md` under the code tree | Module tables & import examples |
+| [PROGRAMS.md](PROGRAMS.md) | Board prefix → product name |
+| [programs/](programs/README.md) | Program indexes |
+| [LAYOUT_CUTOVER_EVIDENCE.md](LAYOUT_CUTOVER_EVIDENCE.md) | Historical domain-layout cutover only |
+| [NESTED_PACKAGES.md](../../NESTED_PACKAGES.md) | Nested trees & submodule policy |
+
+### Long-form plans (program-owned)
+
+Under `docs/architecture/` — module refactor, self-improvement, codebase-proof,
+formal planning, prompt/usage rollouts, etc. Open these when you **own** that
+program’s work; they are often protected during implementation lanes.
+
+## Domain packages
+
+On current `main`, code lives under domain packages:
+
+- **Foundation:** `core`, `control`, `task_sources`, `context`, `prompt`
+- **Assurance:** `analysis`, `proof`, `objectives`, `planning`, `validation`
+- **Operations:** `merge`, `rescue`, `runtime`, `self_improvement`
+- **Edges:** `todo_daemon`, `integrations`
+
+See [PACKAGE_MAP.md](PACKAGE_MAP.md) and [packages/README.md](packages/README.md).
 
 ## Programs layered on the control plane
 
-Self-improvement, codebase-proof, domain layout, AI service catalog, and related
-efforts are **programs** that use the supervisor—they are not alternate supervisors.
-Map board prefixes to semantic names in [PROGRAMS.md](PROGRAMS.md).
-
-## Programs
-
-Semantic index of long-running boards (not package trees):
-
-- [programs/README.md](programs/README.md)
-
-## Domain package reference pages
-
-Per-package semantic READMEs (purpose, modules, dependency rules):
-
-- [packages/README.md](packages/README.md)
+Self-improvement, codebase-proof, domain layout, AI service catalog, Goose, and
+related efforts are **programs** that use the supervisor—they are not alternate
+supervisors. Map board prefixes in [PROGRAMS.md](PROGRAMS.md).
 
 ## Inventory
 
-
-Machine-generated prefix inventories used during the semantic refresh live under
-[`_inventory/`](_inventory/).
+Machine-generated prefix inventories used during the semantic documentation
+refresh live under [`_inventory/`](_inventory/). Treat them as tooling output,
+not product narrative.

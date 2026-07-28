@@ -1,5 +1,8 @@
 # agent_supervisor.proof
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/proof/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/proof/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Formal verification and codebase-proof surfaces: proof cache, provers, obligations, queries, re-proof, attestation, property catalog, and related assurance modules.

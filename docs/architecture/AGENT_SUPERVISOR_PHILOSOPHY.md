@@ -152,8 +152,12 @@ domain-layout tree.
 
 | Need | Document |
 | --- | --- |
+| Build / extend the code | [Developer guide](agent_supervisor/DEVELOPER_GUIDE.md) |
+| Package ownership | [Package map](agent_supervisor/PACKAGE_MAP.md) |
 | Run the supervisor | [Operator guide](../guides/AGENT_SUPERVISOR_GUIDE.md) |
-| Extend packages | [Contributor guide](agent_supervisor/FOR_CONTRIBUTORS.md) |
+| Extend packages (PR checklist) | [Contributor guide](agent_supervisor/FOR_CONTRIBUTORS.md) |
 | Agent invariants | [Agent capsule](agent_supervisor/FOR_AGENTS.md) |
 | Detailed module map | [Architecture](AGENT_SUPERVISOR_ARCHITECTURE.md) |
+| Doc hub | [agent_supervisor/](agent_supervisor/README.md) |
 | Board prefix glossary | [Programs](agent_supervisor/PROGRAMS.md) |
+| Package entry README | [`agent_supervisor/README.md`](../../ipfs_accelerate_py/agent_supervisor/README.md) |

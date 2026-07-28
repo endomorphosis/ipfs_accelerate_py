@@ -1,5 +1,8 @@
 # agent_supervisor.analysis
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/analysis/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/analysis/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Repository analysis pipeline: AST indexes, analysis cache, retrieval, consensus, transport, and integrated analysis orchestration.

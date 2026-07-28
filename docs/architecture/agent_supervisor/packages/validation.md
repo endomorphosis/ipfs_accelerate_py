@@ -1,5 +1,8 @@
 # agent_supervisor.validation
 
+**Code:** `ipfs_accelerate_py/agent_supervisor/validation/` · [code README](../../../../ipfs_accelerate_py/agent_supervisor/validation/README.md) · [Developer guide](../DEVELOPER_GUIDE.md) · [Package map](../PACKAGE_MAP.md)
+
+
 ## Purpose
 
 Proposal validation and validation runtime: command selection, schedulers, scope adjudication hooks, and pre-merge validation policy.

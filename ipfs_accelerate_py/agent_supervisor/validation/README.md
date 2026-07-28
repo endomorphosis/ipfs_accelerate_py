@@ -1,46 +1,47 @@
 # agent_supervisor.validation
 
-Proposal validation, scope adjudication, and validation scheduling
-(`ASREF-G070` / bundle `asref/validation`).
+**Layer:** Mid · **DAG role:** see [PACKAGE_MAP](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
 
 ## Purpose
 
-`validation` owns pre-merge proposal gates, scope adjudication, validation
-command construction, runtime execution, and scheduler surfaces used by the
-implementation daemon and merge pipeline.
+Pre-merge and proposal validation: schedulers, runtimes, commands, and scope adjudication gates.
 
-This package scaffold was introduced by the ASREF-017 validation
-retry-budget repair after ASREF-011 exhausted three attempts with **no
-repository changes** (`declared validation plan requires changed paths`).
+## Who should import this package
 
-## Public modules (move_map ownership)
+| | |
+| --- | --- |
+| **This package may import** | `core`, `control`, planning/proposal contracts |
+| **Typical dependents** | todo_daemon, merge, control mutations |
 
-| Source (flat) | Target |
-|---|---|
-| `proposal_validation.py` | `validation/proposal_validation.py` |
-| `scope_adjudication.py` | `validation/scope_adjudication.py` |
-| `validation_commands.py` | `validation/validation_commands.py` |
-| `validation_runtime.py` | `validation/validation_runtime.py` |
-| `validation_scheduler.py` | `validation/validation_scheduler.py` |
+## Modules
 
-Inventory source: `docs/architecture/asref/move_map.json`.
+| Module | Path |
+| --- | --- |
+| `proposal_validation` | `validation/proposal_validation.py` |
+| `scope_adjudication` | `validation/scope_adjudication.py` |
+| `validation_commands` | `validation/validation_commands.py` |
+| `validation_runtime` | `validation/validation_runtime.py` |
+| `validation_scheduler` | `validation/validation_scheduler.py` |
 
-## Forbidden dependencies
+## Preferred imports
 
-`validation` **must not** import `todo_daemon`, `runtime`, `merge`, `rescue`,
-`self_improvement`, or optional integration surfaces.
+```python
+from ipfs_accelerate_py.agent_supervisor.validation.<module> import ...
+```
 
-## Import policy
+Relative imports stay package-local (`from .<module> import ...`).
 
-After each module moves into `validation/`, update all callers in the same
-change. Do not leave thin re-export stubs at former flat paths. Prefer::
+## Extending
 
-    from ipfs_accelerate_py.agent_supervisor.validation.<module> import ...
+1. Add modules here only if this package **owns** the concern ([placement table](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)).
+2. Update this README module table in the same change.
+3. Prefer semantic public names; do not encode board prefixes into APIs.
+4. Add focused tests under `test/api/` (or package-local tests).
+5. Keep the dependency DAG acyclic.
 
-## Status
+## See also
 
-- Package scaffold (`__init__.py`, this README): present
-- Dual-copied this batch: `proposal_validation.py`
-- Remaining owned modules: see `objectives/ASREF_G070_CHILD_GOALS.md` (proposal-gate size batches)
-- Flat dual-copies remain until ASREF-G090 cutover; prefer `agent_supervisor.validation.<module>` for landed modules
-- Entry-point retargets: when task Outputs include `pyproject.toml` / `setup.py` and target modules are landed
+- [Developer guide](../../../docs/architecture/agent_supervisor/DEVELOPER_GUIDE.md)
+- [Package map](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
+- [Semantic package page](../../../docs/architecture/agent_supervisor/packages/validation.md)
+- [Architecture](../../../docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
