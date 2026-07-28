@@ -32,13 +32,23 @@ from .formal_planning_contracts import (
     PlanConformanceLevel,
     PlanEvent,
 )
-from .formal_verification_contracts import canonical_json, content_identity
+from .formal_verification_contracts import (
+    AssuranceLevel,
+    ProofReceipt,
+    assurance_satisfies,
+    canonical_json,
+    content_identity,
+    derive_assurance,
+)
 from .goal_completion import GoalState, normalize_goal_state
 
 
 FORMAL_PLAN_CONFORMANCE_VERSION: Final = 1
 FORMAL_PLAN_CONFORMANCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-conformance@1"
+)
+REQUIRES_PROOF_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/formal-plan-requires-proof-admission@1"
 )
 CONFORMANCE_BINDING_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-conformance-binding@1"
@@ -2156,6 +2166,487 @@ verify_post_merge_completion_admission = (
 )
 
 
+@dataclass(frozen=True)
+class RequiresProofCheck:
+    """One requires_proof(property_id, assurance) admission decision."""
+
+    property_id: str
+    required_assurance: AssuranceLevel
+    admitted: bool
+    reason_codes: tuple[str, ...] = ()
+    precondition_id: str = ""
+    task_id: str = ""
+    receipt_id: str = ""
+    derived_assurance: AssuranceLevel = AssuranceLevel.UNVERIFIED
+    cache_status: str = ""
+    from_cache: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "property_id", _text(self.property_id, field_name="property_id")
+        )
+        object.__setattr__(
+            self,
+            "precondition_id",
+            _text(self.precondition_id, field_name="precondition_id"),
+        )
+        object.__setattr__(self, "task_id", _text(self.task_id, field_name="task_id"))
+        object.__setattr__(
+            self, "receipt_id", _text(self.receipt_id, field_name="receipt_id")
+        )
+        object.__setattr__(
+            self, "cache_status", _text(self.cache_status, field_name="cache_status")
+        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
+        if not isinstance(self.admitted, bool):
+            raise ConformanceValidationError("admitted must be boolean")
+        if not isinstance(self.from_cache, bool):
+            raise ConformanceValidationError("from_cache must be boolean")
+        required = self.required_assurance
+        if not isinstance(required, AssuranceLevel):
+            required = AssuranceLevel(str(required))
+        object.__setattr__(self, "required_assurance", required)
+        derived = self.derived_assurance
+        if not isinstance(derived, AssuranceLevel):
+            derived = AssuranceLevel(str(derived))
+        object.__setattr__(self, "derived_assurance", derived)
+        if self.admitted and self.reason_codes:
+            raise ConformanceValidationError(
+                "admitted requires_proof check cannot contain rejection reasons"
+            )
+        if not self.admitted and not self.reason_codes:
+            raise ConformanceValidationError(
+                "rejected requires_proof check requires a reason"
+            )
+
+    @property
+    def check_id(self) -> str:
+        return content_identity(self.to_dict(include_id=False))
+
+    def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
+        payload = {
+            "property_id": self.property_id,
+            "required_assurance": self.required_assurance.value,
+            "admitted": self.admitted,
+            "reason_codes": list(self.reason_codes),
+            "precondition_id": self.precondition_id,
+            "task_id": self.task_id,
+            "receipt_id": self.receipt_id,
+            "derived_assurance": self.derived_assurance.value,
+            "cache_status": self.cache_status,
+            "from_cache": self.from_cache,
+        }
+        if include_id:
+            payload["check_id"] = self.check_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RequiresProofCheck":
+        if not isinstance(payload, Mapping):
+            raise ConformanceValidationError("requires_proof check must be a mapping")
+        result = cls(
+            property_id=str(payload.get("property_id") or ""),
+            required_assurance=AssuranceLevel(
+                str(
+                    payload.get("required_assurance")
+                    or AssuranceLevel.KERNEL_VERIFIED.value
+                )
+            ),
+            admitted=bool(payload.get("admitted", False)),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+            precondition_id=str(payload.get("precondition_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
+            receipt_id=str(payload.get("receipt_id") or ""),
+            derived_assurance=AssuranceLevel(
+                str(
+                    payload.get("derived_assurance")
+                    or AssuranceLevel.UNVERIFIED.value
+                )
+            ),
+            cache_status=str(payload.get("cache_status") or ""),
+            from_cache=bool(payload.get("from_cache", False)),
+        )
+        claimed = str(payload.get("check_id") or "")
+        if claimed and claimed != result.check_id:
+            raise ConformanceValidationError(
+                "requires_proof check identity mismatch"
+            )
+        return result
+
+
+@dataclass(frozen=True)
+class RequiresProofAdmissionResult:
+    """Plan-level admission over every requires_proof precondition.
+
+    Fail-closed: missing cache-backed receipts, insufficient re-derived
+    assurance, and candidate-only evidence never admit work.
+    """
+
+    admitted: bool
+    plan_id: str = ""
+    repository_tree_id: str = ""
+    checks: tuple[RequiresProofCheck, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.admitted, bool):
+            raise ConformanceValidationError("admitted must be boolean")
+        object.__setattr__(self, "plan_id", _text(self.plan_id, field_name="plan_id"))
+        object.__setattr__(
+            self,
+            "repository_tree_id",
+            _text(self.repository_tree_id, field_name="repository_tree_id"),
+        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
+        checks = tuple(
+            item
+            if isinstance(item, RequiresProofCheck)
+            else RequiresProofCheck.from_dict(item)
+            for item in self.checks
+        )
+        object.__setattr__(self, "checks", checks)
+        if self.admitted and self.reason_codes:
+            raise ConformanceValidationError(
+                "admitted requires_proof result cannot contain rejection reasons"
+            )
+        if self.admitted and any(not item.admitted for item in checks):
+            raise ConformanceValidationError(
+                "admitted requires_proof result cannot include failed checks"
+            )
+        if not self.admitted and not self.reason_codes and checks:
+            # Aggregate reasons from checks when the caller omitted them.
+            aggregated = tuple(
+                dict.fromkeys(
+                    code
+                    for item in checks
+                    for code in item.reason_codes
+                )
+            )
+            if aggregated:
+                object.__setattr__(self, "reason_codes", aggregated)
+        if not self.admitted and not self.reason_codes and checks:
+            raise ConformanceValidationError(
+                "rejected requires_proof result requires a reason"
+            )
+
+    @property
+    def admission_id(self) -> str:
+        return content_identity(self.to_dict(include_id=False))
+
+    def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": REQUIRES_PROOF_ADMISSION_SCHEMA,
+            "admitted": self.admitted,
+            "plan_id": self.plan_id,
+            "repository_tree_id": self.repository_tree_id,
+            "checks": [item.to_dict() for item in self.checks],
+            "reason_codes": list(self.reason_codes),
+        }
+        if include_id:
+            payload["admission_id"] = self.admission_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RequiresProofAdmissionResult":
+        if not isinstance(payload, Mapping):
+            raise ConformanceValidationError(
+                "requires_proof admission must be a mapping"
+            )
+        schema = str(payload.get("schema") or REQUIRES_PROOF_ADMISSION_SCHEMA)
+        if schema != REQUIRES_PROOF_ADMISSION_SCHEMA:
+            raise ConformanceValidationError(
+                f"unsupported requires_proof admission schema: {schema}"
+            )
+        result = cls(
+            admitted=bool(payload.get("admitted", False)),
+            plan_id=str(payload.get("plan_id") or ""),
+            repository_tree_id=str(payload.get("repository_tree_id") or ""),
+            checks=tuple(payload.get("checks") or ()),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+        )
+        claimed = str(payload.get("admission_id") or "")
+        if claimed and claimed != result.admission_id:
+            raise ConformanceValidationError(
+                "requires_proof admission identity mismatch"
+            )
+        return result
+
+
+def _coerce_assurance_level(value: Any, *, default: AssuranceLevel) -> AssuranceLevel:
+    if value in (None, ""):
+        return default
+    if isinstance(value, AssuranceLevel):
+        return value
+    return AssuranceLevel(str(value))
+
+
+def _requires_proof_bindings_from_plan(
+    plan: FormalWorkPlan,
+) -> tuple[dict[str, str], ...]:
+    from .formal_plan_compiler import requires_proof_precondition_bindings
+
+    return requires_proof_precondition_bindings(plan)
+
+
+def _lookup_requires_proof_receipt(
+    *,
+    property_id: str,
+    precondition_id: str,
+    required_assurance: AssuranceLevel,
+    proof_cache: Any,
+    cache_keys: Mapping[str, Any],
+    receipts: Mapping[str, Any],
+) -> tuple[ProofReceipt | None, str, bool, tuple[str, ...]]:
+    """Return (receipt, cache_status, from_cache, reason_codes)."""
+
+    for key in (precondition_id, property_id):
+        if not key:
+            continue
+        if key in receipts:
+            raw = receipts[key]
+            try:
+                receipt = (
+                    raw
+                    if isinstance(raw, ProofReceipt)
+                    else ProofReceipt.from_dict(raw)
+                )
+            except (TypeError, ValueError) as exc:
+                raise ConformanceValidationError(
+                    f"invalid proof receipt for {key}: {exc}"
+                ) from exc
+            return receipt, "direct", False, ()
+
+    cache_key = None
+    for key in (precondition_id, property_id):
+        if key and key in cache_keys:
+            cache_key = cache_keys[key]
+            break
+    if proof_cache is None or cache_key is None:
+        return None, "miss", False, ("proof_receipt_missing",)
+
+    from .formal_verification_cache import CacheLookupStatus
+
+    try:
+        lookup = proof_cache.lookup(
+            cache_key, required_assurance=required_assurance
+        )
+    except (TypeError, ValueError) as exc:
+        raise ConformanceValidationError(
+            f"invalid proof-cache lookup for {property_id}: {exc}"
+        ) from exc
+
+    status = getattr(lookup, "status", None)
+    status_value = (
+        status.value if isinstance(status, CacheLookupStatus) else str(status or "")
+    )
+    if status is CacheLookupStatus.HIT or status_value == "hit":
+        receipt = getattr(lookup, "receipt", None) or getattr(
+            lookup, "kernel_receipt", None
+        )
+        if receipt is None:
+            return None, status_value or "hit", True, ("proof_receipt_missing",)
+        if not isinstance(receipt, ProofReceipt):
+            try:
+                receipt = ProofReceipt.from_dict(receipt)
+            except (TypeError, ValueError) as exc:
+                raise ConformanceValidationError(
+                    f"invalid cached proof receipt for {property_id}: {exc}"
+                ) from exc
+        return receipt, status_value or "hit", True, ()
+
+    reason_codes = tuple(getattr(lookup, "reason_codes", ()) or ())
+    kernel = getattr(lookup, "kernel_receipt", None)
+    if kernel is not None:
+        if not isinstance(kernel, ProofReceipt):
+            try:
+                kernel = ProofReceipt.from_dict(kernel)
+            except (TypeError, ValueError):
+                kernel = None
+        if kernel is not None:
+            return (
+                kernel,
+                status_value or "rejected",
+                True,
+                reason_codes or ("proof_receipt_rejected",),
+            )
+    if status is CacheLookupStatus.MISS or status_value == "miss":
+        return None, "miss", False, ("proof_receipt_missing",)
+    return (
+        None,
+        status_value or "rejected",
+        False,
+        reason_codes or ("proof_receipt_missing",),
+    )
+
+
+def evaluate_requires_proof_preconditions(
+    plan: FormalWorkPlan | Mapping[str, Any] | None = None,
+    *,
+    proof_cache: Any = None,
+    cache_keys: Mapping[str, Any] | None = None,
+    receipts: Mapping[str, Any] | None = None,
+    catalog: Any = None,
+    bindings: Sequence[Mapping[str, Any]] | None = None,
+) -> RequiresProofAdmissionResult:
+    """Admit work only when every requires_proof precondition is cache-satisfied.
+
+    Acceptance rules (CBP-090):
+    - missing receipt fails admission
+    - cache hit with re-derived assurance that satisfies the declared level admits
+    - candidate-only evidence never admits
+
+    ``cache_keys`` and ``receipts`` may be keyed by ``property_id`` or
+    ``precondition_id``.  When both are supplied, direct receipts are consulted
+    first (useful for candidate-only negative tests that cannot be stored as
+    authoritative cache entries).
+    """
+
+    typed_plan: FormalWorkPlan | None = None
+    plan_id = ""
+    repository_tree_id = ""
+    if plan is not None:
+        if isinstance(plan, FormalWorkPlan):
+            typed_plan = plan
+        else:
+            typed_plan = FormalWorkPlan.from_dict(plan)
+        plan_id = typed_plan.plan_id
+        repository_tree_id = typed_plan.repository_tree_id
+
+    if bindings is None:
+        if typed_plan is None:
+            binding_rows: tuple[dict[str, str], ...] = ()
+        else:
+            binding_rows = _requires_proof_bindings_from_plan(typed_plan)
+    else:
+        binding_rows = tuple(dict(item) for item in bindings)
+
+    if catalog is None:
+        from .code_property_catalog import DEFAULT_CODE_PROPERTY_CATALOG
+
+        catalog = DEFAULT_CODE_PROPERTY_CATALOG
+
+    key_map = dict(cache_keys or {})
+    receipt_map = dict(receipts or {})
+    checks: list[RequiresProofCheck] = []
+    aggregate_reasons: list[str] = []
+
+    for row in binding_rows:
+        property_id = str(
+            row.get("property_id") or row.get("property") or ""
+        ).strip()
+        precondition_id = str(row.get("precondition_id") or "").strip()
+        task_id = str(row.get("task_id") or "").strip()
+        required = _coerce_assurance_level(
+            row.get("assurance") or row.get("required_assurance"),
+            default=AssuranceLevel.KERNEL_VERIFIED,
+        )
+        if not property_id:
+            check = RequiresProofCheck(
+                property_id="",
+                required_assurance=required,
+                admitted=False,
+                reason_codes=("requires_proof_property_missing",),
+                precondition_id=precondition_id,
+                task_id=task_id,
+                cache_status="invalid",
+            )
+            checks.append(check)
+            aggregate_reasons.extend(check.reason_codes)
+            continue
+
+        prop = catalog.get(property_id) if catalog is not None else None
+        if catalog is not None and prop is None:
+            check = RequiresProofCheck(
+                property_id=property_id,
+                required_assurance=required,
+                admitted=False,
+                reason_codes=("unknown_property_id",),
+                precondition_id=precondition_id,
+                task_id=task_id,
+                cache_status="invalid",
+            )
+            checks.append(check)
+            aggregate_reasons.extend(check.reason_codes)
+            continue
+
+        receipt, cache_status, from_cache, lookup_reasons = (
+            _lookup_requires_proof_receipt(
+                property_id=property_id,
+                precondition_id=precondition_id,
+                required_assurance=required,
+                proof_cache=proof_cache,
+                cache_keys=key_map,
+                receipts=receipt_map,
+            )
+        )
+        if receipt is None:
+            reasons = tuple(lookup_reasons) or ("proof_receipt_missing",)
+            check = RequiresProofCheck(
+                property_id=property_id,
+                required_assurance=required,
+                admitted=False,
+                reason_codes=reasons,
+                precondition_id=precondition_id,
+                task_id=task_id,
+                cache_status=cache_status,
+                from_cache=from_cache,
+            )
+            checks.append(check)
+            aggregate_reasons.extend(check.reason_codes)
+            continue
+
+        # Always re-derive assurance from typed evidence; never trust claimed levels.
+        derived = derive_assurance(
+            receipt.evidence,
+            obligation_id=receipt.obligation_id,
+            kernel_id=receipt.kernel_id,
+            freshness=receipt.freshness,
+        )
+
+        reasons: list[str] = []
+        if not assurance_satisfies(derived, required):
+            if derived is AssuranceLevel.CANDIDATE:
+                reasons.append("candidate_only")
+            else:
+                reasons.append("required_assurance_not_satisfied")
+        if lookup_reasons and not assurance_satisfies(derived, required):
+            for code in lookup_reasons:
+                if code not in reasons and code != "proof_receipt_missing":
+                    reasons.append(code)
+
+        admitted = not reasons
+        check = RequiresProofCheck(
+            property_id=property_id,
+            required_assurance=required,
+            admitted=admitted,
+            reason_codes=tuple(dict.fromkeys(reasons)),
+            precondition_id=precondition_id,
+            task_id=task_id,
+            receipt_id=receipt.receipt_id,
+            derived_assurance=derived,
+            cache_status=cache_status,
+            from_cache=from_cache,
+        )
+        checks.append(check)
+        if not admitted:
+            aggregate_reasons.extend(check.reason_codes)
+
+    # Plans with no requires_proof preconditions admit vacuously.
+    admitted = not any(not item.admitted for item in checks)
+    return RequiresProofAdmissionResult(
+        admitted=admitted,
+        plan_id=plan_id,
+        repository_tree_id=repository_tree_id,
+        checks=tuple(checks),
+        reason_codes=tuple(dict.fromkeys(aggregate_reasons)),
+    )
+
+
+# Compatibility aliases used by callers/tests.
+evaluate_requires_proof_admission = evaluate_requires_proof_preconditions
+RequiresProofAdmissionGate = RequiresProofAdmissionResult
+
+
 def evaluate_completion_admission(
     *,
     proposal_validation: Any = None,
@@ -3818,6 +4309,10 @@ __all__ = [
     "PlanConformanceResult",
     "PostMergeCompletionAdmissionGate",
     "PostMergeCompletionGate",
+    "REQUIRES_PROOF_ADMISSION_SCHEMA",
+    "RequiresProofAdmissionGate",
+    "RequiresProofAdmissionResult",
+    "RequiresProofCheck",
     "TransitionDisposition",
     "TransitionFinding",
     "bind_goal_completion",
@@ -3828,6 +4323,8 @@ __all__ = [
     "evaluate_completion_evidence",
     "evaluate_completion_admission",
     "evaluate_post_merge_completion_admission",
+    "evaluate_requires_proof_admission",
+    "evaluate_requires_proof_preconditions",
     "evaluate_transitive_impact_admission_closure",
     "evaluate_formal_goal_completion",
     "evaluate_goal_completion",
