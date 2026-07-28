@@ -5,11 +5,15 @@ The package root re-exports a reviewed public API only; prefer domain package
 imports for new code (see README.md). Retired flat module paths must not be
 reintroduced as long-lived shims.
 
-Cutover goal ASREF-G090 (packet tasks ASREF-012 / ASREF-013 / ASREF-014)
-publishes this intentional public surface and package map. Parent evidence
-terms are package goals ASREF-G020 through ASREF-G080 (see
-AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE). Task ASREF-014 closes the evidence
-cluster for ASREF-G060, ASREF-G070, and ASREF-G080.
+Cutover goal ASREF-G090 (packet tasks ASREF-012 / ASREF-013 / ASREF-014;
+packet ``goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f``) publishes this
+intentional public surface and package map. Parent evidence terms are package
+goals ASREF-G020 through ASREF-G080 (see AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE).
+
+- Task ASREF-013 closes the evidence cluster for ASREF-G020, ASREF-G030,
+  ASREF-G040, and ASREF-G050 (see AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050).
+- Task ASREF-014 closes the evidence cluster for ASREF-G060, ASREF-G070, and
+  ASREF-G080 (see AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080).
 """
 
 from types import MappingProxyType as _MappingProxyType
@@ -19,20 +23,32 @@ import os as _os
 import sys as _sys
 
 # ASREF-G090 cutover identity. Objective scanners and discovery manifests may
-# bind this constant to the package-root public API without scraping markdown.
+# bind these constants to the package-root public API without scraping markdown.
 AGENT_SUPERVISOR_CUTOVER_GOAL_ID = "ASREF-G090"
-AGENT_SUPERVISOR_CUTOVER_TASK_ID = "ASREF-014"
+# Active packet-member task for this cutover evidence_cluster (G020–G050).
+AGENT_SUPERVISOR_CUTOVER_TASK_ID = "ASREF-013"
 AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET = (
     "goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f"
 )
 # Full goal-packet task set for cutover (shared evidence under ASREF-G090).
 AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS = (
     "ASREF-012",  # G020–G080 public API / hygiene / cutover
-    "ASREF-013",  # G020–G050 evidence cluster
-    "ASREF-014",  # G060–G080 evidence cluster (this task)
+    "ASREF-013",  # G020–G050 evidence cluster (this task)
+    "ASREF-014",  # G060–G080 evidence cluster
 )
-# ASREF-014 evidence cluster: exact parent package goals still nominated for
-# cutover proof after G020–G050 coverage. Keep literal ASREF-G0xx tokens.
+# Alias used by earlier ASREF-013 cutover docs / scanners.
+AGENT_SUPERVISOR_CUTOVER_TASK_IDS = AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS
+
+# ASREF-013 evidence cluster: exact parent package goals for this task.
+# Keep literal ASREF-G0xx tokens for objective evidence scans.
+AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050 = (
+    "ASREF-G020",  # core package submodule
+    "ASREF-G030",  # control package submodule
+    "ASREF-G040",  # task_sources package submodule
+    "ASREF-G050",  # context and prompt package submodules
+)
+# ASREF-014 evidence cluster: exact parent package goals for analysis/ops/
+# daemon packages. Keep literal ASREF-G0xx tokens.
 AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080 = (
     "ASREF-G060",  # analysis and proof package submodules
     "ASREF-G070",  # objectives planning validation merge rescue runtime packages
@@ -73,7 +89,16 @@ AGENT_SUPERVISOR_DOMAIN_PACKAGES = (
     "todo_daemon",  # ASREF-G080
 )
 
-# Package sets per parent evidence goal (ASREF-G090 / ASREF-014 cluster).
+# Package sets per parent evidence goal (ASREF-G090 cutover clusters).
+# ASREF-013 cluster (G020–G050)
+AGENT_SUPERVISOR_G020_PACKAGES = ("core",)
+AGENT_SUPERVISOR_G030_PACKAGES = ("control",)
+AGENT_SUPERVISOR_G040_PACKAGES = ("task_sources",)
+AGENT_SUPERVISOR_G050_PACKAGES = (
+    "context",
+    "prompt",
+)
+# ASREF-014 cluster (G060–G080)
 AGENT_SUPERVISOR_G060_PACKAGES = (
     "analysis",
     "proof",
@@ -93,15 +118,17 @@ AGENT_SUPERVISOR_G080_PACKAGES = (
 )
 AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES = _MappingProxyType(
     {
-        "ASREF-G020": ("core",),
-        "ASREF-G030": ("control",),
-        "ASREF-G040": ("task_sources",),
-        "ASREF-G050": ("context", "prompt"),
+        "ASREF-G020": AGENT_SUPERVISOR_G020_PACKAGES,
+        "ASREF-G030": AGENT_SUPERVISOR_G030_PACKAGES,
+        "ASREF-G040": AGENT_SUPERVISOR_G040_PACKAGES,
+        "ASREF-G050": AGENT_SUPERVISOR_G050_PACKAGES,
         "ASREF-G060": AGENT_SUPERVISOR_G060_PACKAGES,
         "ASREF-G070": AGENT_SUPERVISOR_G070_PACKAGES,
         "ASREF-G080": AGENT_SUPERVISOR_G080_PACKAGES,
     }
 )
+# Alias for scanners / docs that used the ASREF-013 name.
+AGENT_SUPERVISOR_PACKAGE_GOAL_OWNERS = AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES
 
 # Dual-copied stems that already live under a domain package. Public and lazy
 # package-root exports resolve these via the package path, not the retired flat
@@ -149,10 +176,24 @@ AGENT_SUPERVISOR_LANDED_MODULE_OWNERS = {
 
 # Flat package-root modules still awaiting domain-package moves. Sourced from
 # docs/architecture/asref/move_map.json. This map is cutover *evidence* for
-# ASREF-G060 / ASREF-G070 / ASREF-G080 — it does **not** register import aliases
-# (packages may not exist yet). Child move tasks land modules under the owner
-# package; cutover owns the final no-old-import gate after each land.
+# ASREF-G050 / ASREF-G060 / ASREF-G070 / ASREF-G080 — it does **not** register
+# import aliases (packages may not exist yet). Child move tasks land modules
+# under the owner package; cutover owns the final no-old-import gate after each
+# land.
 AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS = {
+    # --- ASREF-G050 context ---
+    "context_compiler": "context",
+    "context_contracts": "context",
+    "decision_context": "context",
+    "decision_contracts": "context",
+    "decision_runtime": "context",
+    "decision_runtime_benchmark": "context",
+    "decision_runtime_rollout": "context",
+    # --- ASREF-G050 prompt ---
+    "prompt_directory_scanner": "prompt",
+    "prompt_goal_planner": "prompt",
+    "prompt_plan_admission": "prompt",
+    "prompt_workflow": "prompt",
     # --- ASREF-G060 analysis ---
     "analysis_ast_index": "analysis",
     "analysis_cache": "analysis",
@@ -264,6 +305,65 @@ AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS = {
     "implementation_daemon_runner": "todo_daemon",
     "implementation_supervisor_runner": "todo_daemon",
 }
+
+# ASREF-G020 / ASREF-G030 / ASREF-G040 landed stems (subset of owners map).
+# Used by cutover gates and README so the ASREF-013 evidence cluster does not
+# depend on scraping markdown for the first four package goals.
+AGENT_SUPERVISOR_G020_CORE_STEMS = (
+    "conflict_graph",
+    "external_completion",
+    "program_behavior",
+    "submodule_degradation",
+    "wrapper_utils",
+)
+AGENT_SUPERVISOR_G030_CONTROL_STEMS = (
+    "authorization_logic",
+    "control_cli",
+    "control_contracts",
+    "control_plane",
+    "execution_permit",
+    "lifecycle_orchestrator",
+)
+AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS = (
+    "dataset_store",
+    "duckdb_state",
+    "duckdb_task_source",
+    "markdown_task_source",
+    "persistent_task_queue",
+    "task_identity",
+    "task_source",
+    "taskboard_store",
+    "todo_vector_index",
+)
+
+# ASREF-G050 modules still flat at package root until context/ and prompt/
+# move batches land. Not public API; listed so cutover and scanners share one
+# inventory with the README package-goal evidence table.
+AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES = _MappingProxyType(
+    {
+        "context": (
+            "context_compiler",
+            "context_contracts",
+            "decision_context",
+            "decision_contracts",
+            "decision_runtime",
+            "decision_runtime_benchmark",
+            "decision_runtime_rollout",
+        ),
+        "prompt": (
+            "prompt_directory_scanner",
+            "prompt_goal_planner",
+            "prompt_plan_admission",
+            "prompt_workflow",
+        ),
+    }
+)
+# Flat stems only (for rg recipes / no-old-import prep after G050 lands).
+AGENT_SUPERVISOR_G050_PLANNED_STEMS = tuple(
+    stem
+    for stems in AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES.values()
+    for stem in stems
+)
 
 # Landed stems under ASREF-G070 packages (subset of LANDED_MODULE_OWNERS).
 AGENT_SUPERVISOR_G070_LANDED_STEMS = tuple(
@@ -3254,8 +3354,19 @@ __all__.extend(
         "AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET",
         "AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS",
         "AGENT_SUPERVISOR_CUTOVER_TASK_ID",
+        "AGENT_SUPERVISOR_CUTOVER_TASK_IDS",
         "AGENT_SUPERVISOR_DOMAIN_PACKAGES",
+        "AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050",
         "AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080",
+        "AGENT_SUPERVISOR_G020_CORE_STEMS",
+        "AGENT_SUPERVISOR_G020_PACKAGES",
+        "AGENT_SUPERVISOR_G030_CONTROL_STEMS",
+        "AGENT_SUPERVISOR_G030_PACKAGES",
+        "AGENT_SUPERVISOR_G040_PACKAGES",
+        "AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS",
+        "AGENT_SUPERVISOR_G050_PACKAGES",
+        "AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES",
+        "AGENT_SUPERVISOR_G050_PLANNED_STEMS",
         "AGENT_SUPERVISOR_G060_PACKAGES",
         "AGENT_SUPERVISOR_G070_LANDED_STEMS",
         "AGENT_SUPERVISOR_G070_PACKAGES",
@@ -3263,6 +3374,7 @@ __all__.extend(
         "AGENT_SUPERVISOR_G080_TODO_DAEMON_STEMS",
         "AGENT_SUPERVISOR_LANDED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE",
+        "AGENT_SUPERVISOR_PACKAGE_GOAL_OWNERS",
         "AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES",
         "AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_V2_EXPORT_MODULES",
