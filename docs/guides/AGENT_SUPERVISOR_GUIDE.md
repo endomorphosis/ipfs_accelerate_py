@@ -871,6 +871,87 @@ assert python_result.to_dict() == cli_result.to_dict() == mcp_result.to_dict()
 assert api.rollback().decision.effective_mode.value == "shadow"
 ```
 
+### Endpoint-aware supervisor usage rollout
+
+Supervisor provider work uses hierarchical usage envelopes and one
+reservation-aware gateway. Modes are `off`, `observe`, `shadow`, `assist`, and
+`enforce` (see also the shared endpoint routing plan). Default runtime mode is
+`off` via `IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE`.
+
+| Mode | Operator meaning |
+| --- | --- |
+| `off` | Prior scheduler/provider behavior; no reservation |
+| `observe` | Meter and attribute only; never change selection |
+| `shadow` | Compute usage decisions beside legacy execution |
+| `assist` | Operator-authorized suggestions only |
+| `enforce` | Budgets, endpoint limits, fair wait/backpressure bind |
+
+`supervisor_usage_rollout.py` freezes one E2E stage/topology/consumer population
+and one chaos population (reservation races, estimate under/over actual,
+429/503/billing, malformed metadata, clock skew/jitter, cache/batch/stream
+partials, retry/fallback, cancel/timeout before and after dispatch, crash/replay,
+stale lease/fence, ledger corruption/migration/outage, coordinator
+partition/split-brain, endpoint loss/recovery, callsite bypass, unfair queue
+pressure, and reset herds). Promotion requires exact endpoint plus task/stage
+attribution, no hard-limit or ancestor-budget overshoot, no double/missing
+charge, no credential/account/tenant scope merge, bounded wait without
+starvation/herd, redacted receipts, and no authority/completion escape.
+
+Enforce is a two-observation mode. Keep the complete qualifying paired report,
+then collect a later distinct current-root report. Policy must approve
+`behavior:supervisor-endpoint-usage-aware@1` and `enforce`. Assist additionally
+requires operator authority. Distributed enforcement without a strong fenced
+coordinator fails closed. Any safety, binding, parity, fairness, quality, cost,
+latency, or compatibility regression returns the affected feature to
+`shadow`/`off` while retaining observed usage for diagnosis.
+
+```python
+from ipfs_accelerate_py.agent_supervisor.supervisor_usage_rollout import (
+    SupervisorUsageRolloutEvaluation,
+    build_default_binding,
+    build_default_policy,
+    build_paired_report,
+    evaluate_supervisor_usage_rollout,
+)
+
+qualification = SupervisorUsageRolloutEvaluation(
+    "evaluation:qualification@1",
+    "2026-07-28T12:00:00Z",
+    build_paired_report(observation_label="qualification"),
+)
+current = SupervisorUsageRolloutEvaluation(
+    "evaluation:current@1",
+    "2026-07-29T12:00:00Z",
+    build_paired_report(observation_label="current"),
+)
+binding = build_default_binding()
+policy = build_default_policy(approve_enforce=True, approve_assist=True)
+
+assert qualification.report.passed
+decision = evaluate_supervisor_usage_rollout(
+    qualification,
+    binding=binding,
+    policy=policy,
+    desired_mode="enforce",
+    current_evaluation=current,
+    operator_authority_granted=True,
+)
+assert decision.effective_mode.value == "enforce"
+assert not decision.authoritative
+assert not decision.completion_authoritative
+```
+
+Threat model and incident notes:
+
+- Treat ledger/coordinator outage in `enforce` as fail-closed remote admission
+  unless a reviewed degraded local budget is present.
+- On partition or split-brain, refuse distributed grants; preserve local
+  observations for later reconciliation.
+- On hygiene, overshoot, double-charge, starvation, or authority escape in the
+  paired population, roll the feature back to `shadow`/`off` immediately.
+- Metrics and controls are projections of ledger events; they are not a second
+  ledger or a completion proof.
+
 Workflow bootstrap through the shared service (preview and mutation remain
 separate authority boundaries):
 
@@ -1391,6 +1472,23 @@ python -m pytest \
   test/api/test_agent_supervisor_control_conformance_v2.py \
   test/api/test_agent_supervisor_self_improvement_v2_rollout.py -q
 ```
+
+Run the endpoint-aware supervisor usage, controls, paired E2E, chaos, and
+rollout gate:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_provider_usage.py \
+  test/api/test_agent_supervisor_provider_execution.py \
+  test/api/test_agent_supervisor_usage_scheduler.py \
+  test/api/test_agent_supervisor_provider_usage_migration.py \
+  test/api/test_agent_supervisor_usage_controls.py \
+  test/api/test_agent_supervisor_usage_control_conformance.py \
+  test/api/test_agent_supervisor_usage_e2e.py \
+  test/api/test_agent_supervisor_usage_chaos.py \
+  test/api/test_agent_supervisor_usage_rollout.py -q
+```
+
 
 The public API test includes the qualifying fresh-interpreter check. Running
 the same imports in a warm application is not evidence that package import,

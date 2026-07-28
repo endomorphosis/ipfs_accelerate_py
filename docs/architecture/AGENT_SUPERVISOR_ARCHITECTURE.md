@@ -35,6 +35,7 @@ architecture:
 | Proof-carrying execution | `proof_carrying_planner` | Compile, verify, implement, scope-check, merge, monitor, and repair nodes run as a durable DAG with paired JSON/DuckDB state. The workflow is replayable and only completes when required assurance is present. |
 | Rollout measurement and gates | `formal_planning_metrics`, `formal_planning_rollout` | Cold/warm/parallel benchmark samples measure context reduction, defect detection, proof support, counterexample quality, cache reuse, queue latency, CPU, memory, and throughput before promotion. |
 | Prompt bootstrap and rescue gate | `prompt_workflow`, `prompt_workflow_benchmark`, `prompt_workflow_rollout` | Frozen prompt/repository fixtures prove Markdown/DuckDB/both and Python/CLI/script/MCP parity; adversarial and chaos populations reject scope/secret/identity/SQL/process/policy/authority/completion escapes; off/shadow/assist/automatic promotion requires a later fresh-root evaluation with immediate rollback. |
+| Endpoint-aware supervisor usage | `provider_usage`, `provider_execution`, `resource_scheduler`, `provider_usage_migration`, `supervisor_usage_rollout` | Nested budgets and one reservation-aware gateway meter every provider stage; fair admission and complete callsite coverage bind endpoint headroom; off/observe/shadow/assist/enforce promotion requires paired E2E/chaos evidence with fail-closed distributed enforcement and immediate shadow/off rollback. |
 
 Program/board evidence tags that historically labeled these capabilities are
 listed in [Appendix: historical program evidence tags](#appendix-historical-program-evidence-tags).
@@ -491,6 +492,32 @@ affected behavior to `shadow`. `PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID`
 identifies the evidence. The report is never a mutation permit or completion
 receipt. A separate fresh-root evaluation is required before automatic
 promotion.
+
+#### Endpoint-aware supervisor usage rollout
+
+`provider_usage.py`, `provider_execution.py`, `resource_scheduler.py`,
+`provider_usage_migration.py`, and `supervisor_usage_rollout.py` own the
+**endpoint-aware supervisor usage path**. Hierarchical envelopes bind
+run/goal/task/attempt/stage/lane/request identity and child budgets that can
+only lower parents. Every chargeable provider attempt flows through the
+reservation-aware gateway, which estimates, reserves, invokes, observes, and
+settles exactly once. Scheduler and batch admission project endpoint headroom
+and reset state; the closed consumer population (task proposal, prompt goal
+planning, rescue, Leanstral proof, Leanstral goal development) must use the
+gateway or a typed equivalent adapter.
+
+`SupervisorUsageRolloutMode` is `off`, `observe`, `shadow`, `assist`, or
+`enforce`. Observe and shadow never alter execution selection. Assist requires
+operator authority. Enforce requires a later distinct paired E2E/chaos report
+that passes exact attribution, zero hard-limit and ancestor-budget overshoot,
+zero double/missing charge, no scope merge, bounded wait without starvation or
+reset herds, redaction hygiene, and no authority/completion escape. Reviewed
+cost, latency, and quality limits are part of the gate. Distributed enforcement
+without a strong fenced coordinator fails closed. Any safety, binding, parity,
+fairness, quality, cost, latency, or compatibility regression returns only the
+affected behavior to `shadow`/`off` while retaining observed ledger usage.
+`SUPERVISOR_USAGE_ROLLOUT_REQUIREMENT_ID` identifies the evidence; the decision
+is never a mutation permit or completion receipt.
 
 ### Metrics, failure recovery, and self-refill epochs
 
@@ -1424,6 +1451,8 @@ many modules intentionally participate in more than one group.
 **Execution, scheduling, and coordination:** `bundle_supervisor.py`,
 `multi_supervisor_runner.py`, `implementation_daemon_runner.py`,
 `implementation_supervisor_runner.py`, `resource_scheduler.py`,
+`provider_usage.py`, `provider_execution.py`, `provider_batch_scheduler.py`,
+`provider_usage_migration.py`, `supervisor_usage_rollout.py`,
 `lease_coordination.py`, `leased_lane.py`, `checkout_lock.py`,
 `wrapper_utils.py`, `analyzer_health.py`, `supervisor_watchdog.py`,
 `runtime_temporal_monitor.py`, `scheduler_metrics.py`.
@@ -1474,6 +1503,7 @@ should prefer the semantic names above.
 | ASI-G112 / ASI-G113 | Paired-efficiency requirement terms | `PairedRolloutRequirementEvidence` |
 | ASI-G114 | Import-isolation preflight | `PAIRED_ROLLOUT_STABLE_EXPORTS` cold validation |
 | ASI-159 / ASI-G470 | Prompt bootstrap and rescue rollout | `prompt_workflow_*` |
+| ASI-165–ASI-170 / ASI-G500–ASI-G530 | Endpoint-aware supervisor usage and rollout | `provider_usage`, `provider_execution`, `resource_scheduler`, `provider_usage_migration`, `supervisor_usage_rollout` |
 
 Board prefix glossary: [PROGRAMS.md](agent_supervisor/PROGRAMS.md).
 
