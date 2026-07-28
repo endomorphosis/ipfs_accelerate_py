@@ -1,0 +1,49 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.codebase_proof.scheduler_config@1",
+  "taskboard_path": "docs/architecture/agent_supervisor_codebase_proof.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_codebase_proof.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_CODEBASE_PROOF_CONTEXT_PLAN.md",
+  "task_prefix": "## CBP-",
+  "board_namespace": "agent-supervisor-codebase-proof-v1",
+  "merge_target_branch": "main",
+  "max_lanes": 3,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 300,
+  "check_interval_seconds": 60,
+  "stale_seconds": 1800,
+  "max_restarts": 3,
+  "max_task_attempts": 5,
+  "implementation_timeout_seconds": 7200,
+  "worktree_submodule_paths": [],
+  "proof_cache": {
+    "enabled": true,
+    "module": "ipfs_accelerate_py.agent_supervisor.formal_verification_cache",
+    "prefer_cache_before_provider": true,
+    "single_flight": true,
+    "rederive_assurance_on_hit": true,
+    "allow_simulated_zk_attested": false,
+    "notes": "TrustAwareProofCache is memoization only; never an assurance upgrade."
+  },
+  "provider": {
+    "provider_id": "leanstral-local",
+    "base_url": "http://127.0.0.1:8080",
+    "health_path": "/health",
+    "models_path": "/v1/models",
+    "props_path": "/props",
+    "slots_path": "/slots",
+    "model_id": "Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4",
+    "max_concurrency": 1,
+    "timeout_seconds": 5
+  },
+  "resource_hints": {
+    "cbp-proof-cache": "cpu-medium",
+    "cbp-obligations": "cpu-medium",
+    "cbp-reproof": "cpu-proof-solver",
+    "cbp-queries": "cpu-medium",
+    "cbp-context": "cpu-medium",
+    "cbp-materialize": "cpu-medium",
+    "cbp-srt": "cpu-medium",
+    "cbp-zk": "cpu-proof-solver",
+    "cbp-docs": "cpu-small"
+  }
+}
