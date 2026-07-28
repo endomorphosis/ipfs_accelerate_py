@@ -21,6 +21,7 @@ from types import MappingProxyType as _MappingProxyType
 import importlib as _importlib
 import os as _os
 import sys as _sys
+from pathlib import Path
 
 # ASREF-G090 cutover identity. Objective scanners and discovery manifests may
 # bind these constants to the package-root public API without scraping markdown.
@@ -265,7 +266,6 @@ AGENT_SUPERVISOR_LANDED_MODULE_OWNERS = {
     "scheduler_metrics": "runtime",
     "scope_adjudication": "validation",
     "security_constraint_adapter": "proof",
-    "self_improvement": "self_improvement",
     "self_improvement_completion": "self_improvement",
     "self_improvement_rollout": "self_improvement",
     "self_improvement_v2": "self_improvement",
@@ -556,6 +556,10 @@ class _LandedModuleAliasFinder:
         if not rest or "." in rest:
             return None
         if rest not in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+            return None
+        # Never alias a real domain package directory.
+        pkg_dir = Path(__file__).resolve().parent / rest
+        if pkg_dir.is_dir() and (pkg_dir / "__init__.py").is_file():
             return None
         if fullname in _sys.modules:
             return _importlib.util.find_spec(fullname)

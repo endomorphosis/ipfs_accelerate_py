@@ -47,7 +47,7 @@ from ..core.external_completion import (
     ExternalCompletionEvaluation,
     evaluate_external_completion_authority,
 )
-from objective_graph import (
+from .objective_graph import (
     DEFAULT_EMBEDDING_MIN_SCORE,
     OPAQUE_EVIDENCE_REQUIREMENT_PATTERN,
     ObjectiveFinding,

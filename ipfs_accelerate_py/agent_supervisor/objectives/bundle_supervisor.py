@@ -37,7 +37,7 @@ from ..merge.lease_coordination import (
     WorkerCapabilityReceipt,
     WorkerEnvironmentReceipt,
 )
-from objective_graph import (
+from .objective_graph import (
     DEFAULT_TASK_PREFIX,
     build_bundle_task_payloads,
     repo_relative_path,
