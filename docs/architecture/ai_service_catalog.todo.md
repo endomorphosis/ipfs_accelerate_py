@@ -763,7 +763,7 @@ Program invariants:
 
 ## AICAT-032 Integrate usage-aware admission into multimodal_router
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -813,7 +813,7 @@ Program invariants:
 
 ## AICAT-034 Expose authorized usage controls, receipts, and observability
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
