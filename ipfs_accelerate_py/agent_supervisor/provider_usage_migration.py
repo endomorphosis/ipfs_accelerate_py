@@ -37,6 +37,7 @@ from .provider_execution import (
     ProviderExecutionPhase,
     ProviderExecutionRequest,
     ProviderExecutionResult,
+    SideEffectBoundary,
     build_execution_request,
     new_attempt_idempotency_key,
 )
@@ -933,18 +934,28 @@ def dispatch_migrated_provider_call(
     lineage = build_request_lineage_envelope(context)
     envelope = request_leaf_envelope(lineage)
     bridge = build_bridge_request(context, envelope)
+    # Map legacy migration side_effect labels onto ProviderExecutionRequest fields.
+    side_effect_raw = str(context.side_effect or "generate_text").strip().lower()
+    if side_effect_raw in {"none", "read_only", "readonly"}:
+        side_effect_boundary = SideEffectBoundary.READ_ONLY
+    elif side_effect_raw in {"idempotent", "cache", "lookup"}:
+        side_effect_boundary = SideEffectBoundary.IDEMPOTENT
+    else:
+        # generate_text / agent / tool / mutate → side-effecting by default
+        side_effect_boundary = SideEffectBoundary.SIDE_EFFECTING
     request = build_execution_request(
         bridge=bridge,
         envelope=envelope,
         provider_id=context.provider_id,
         modality=context.modality,
-        side_effect=context.side_effect,
-        expected_output_kind=context.expected_output_kind,
+        side_effect_boundary=side_effect_boundary,
+        operation=side_effect_raw or "text.generate",
         cancelled=cancelled,
         metadata={
             **dict(context.metadata),
             "consumer_id": context.consumer_id.value,
             "migration_requirement": COMPLETE_PROVIDER_CALLSITE_REQUIREMENT_ID,
+            "expected_output_kind": context.expected_output_kind,
         },
     )
 

@@ -263,9 +263,22 @@ def test_consume_usage_receipt_rejects_drop_and_authority() -> None:
         ProviderExecutionResult,
     )
 
+    from ipfs_accelerate_py.agent_supervisor.provider_usage import (
+        SupervisorUsageFinalStatus,
+    )
+
     dropped = ProviderExecutionResult(
         phase=ProviderExecutionPhase.SETTLED,
+        final_status=SupervisorUsageFinalStatus.COMMITTED,
         granted=True,
+        reservation_id="res:test",
+        usage_revision="usage:1",
+        catalog_revision="catalog:1",
+        provider_id="provider:x",
+        redacted_endpoint="endpoint:redacted",
+        attempt_key="attempt:1",
+        request_key="request:1",
+        request_id=context.request_id,
         receipt=None,
     )
     with pytest.raises(ProviderUsageMigrationError, match="dropped"):
