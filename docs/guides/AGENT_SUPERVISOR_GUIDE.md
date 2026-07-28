@@ -176,10 +176,33 @@ prover integrations stay lazy until a configured operation invokes them.
 ### Generation-2 stable discovery
 
 Generation 2 publishes only the reviewed provider-free names in
-`AGENT_SUPERVISOR_V2_STABLE_EXPORTS`. `V2_STABLE_EXPORTS` is its compatibility
-alias, `AGENT_SUPERVISOR_V2_EXPORT_MODULES` maps every name to its owner module,
+`AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` (also `AGENT_SUPERVISOR_V2_STABLE_EXPORTS` / `V2_STABLE_EXPORTS`), `AGENT_SUPERVISOR_V2_EXPORT_MODULES` maps every name to its owner module,
 and `AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION` is `2`. Do not discover v2 by
 walking package modules or treating a private implementation symbol as stable.
+
+### Domain layout constants (semantic names)
+
+Package-root layout inventories use **product package names**, not board
+prefixes. Prefer:
+
+| Prefer | Role |
+| --- | --- |
+| `AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` | Reviewed package-root public symbol set (alias: `…_V2_STABLE_EXPORTS`) |
+| `AGENT_SUPERVISOR_DOMAIN_PACKAGES` | Full domain package list |
+| `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` | Landed module stem → domain package |
+| `AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE` | Planned module stem → domain package (scan evidence only) |
+| `AGENT_SUPERVISOR_CORE_PACKAGES` / `_CONTROL_` / `_TASK_SOURCES_` / … | Packages by product role |
+| `AGENT_SUPERVISOR_CORE_STEMS` / `_CONTROL_STEMS` / `_TASK_SOURCES_STEMS` | Landed stem inventories |
+| `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` | Foundation layout evidence cluster |
+| `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS` | Operations layout evidence cluster |
+| `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES` | Board goal-id string → packages map |
+| `AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_*` | Domain-layout cutover identity |
+
+Deprecated aliases (`AGENT_SUPERVISOR_G020_PACKAGES`,
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`, `AGENT_SUPERVISOR_CUTOVER_*`,
+`AGENT_SUPERVISOR_LANDED_MODULE_OWNERS`, `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE`, …)
+still resolve to the same objects. Board identifiers remain string *values*
+(for example `"ASREF-G020"`) for objective scanners.
 
 ```python
 from ipfs_accelerate_py.agent_supervisor import (

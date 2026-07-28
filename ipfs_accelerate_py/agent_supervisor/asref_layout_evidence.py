@@ -492,11 +492,11 @@ def _check_g090(repo_root: Path) -> list[AsrefEvidenceCheck]:
     try:
         from ipfs_accelerate_py.agent_supervisor import (  # noqa: WPS433
             AGENT_SUPERVISOR_DOMAIN_PACKAGES,
-            AGENT_SUPERVISOR_LANDED_MODULE_OWNERS,
+            AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE,
         )
 
         domain = tuple(AGENT_SUPERVISOR_DOMAIN_PACKAGES)
-        owners = dict(AGENT_SUPERVISOR_LANDED_MODULE_OWNERS)
+        owners = dict(AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE)
         missing_domain = [p for p in ASREF_DOMAIN_PACKAGES if p not in domain]
         checks.append(
             AsrefEvidenceCheck(
@@ -516,7 +516,7 @@ def _check_g090(repo_root: Path) -> list[AsrefEvidenceCheck]:
                 goal_id=ASREF_G090,
                 check_id="landed_module_owners_nonempty",
                 ok=bool(owners),
-                detail=f"AGENT_SUPERVISOR_LANDED_MODULE_OWNERS has {len(owners)} stems",
+                detail=f"AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE has {len(owners)} stems",
                 paths=("ipfs_accelerate_py/agent_supervisor/__init__.py",),
             )
         )

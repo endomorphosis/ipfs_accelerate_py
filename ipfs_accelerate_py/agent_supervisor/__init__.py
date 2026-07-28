@@ -1,19 +1,30 @@
 """Autonomous agent supervisor helpers for objective-driven todo execution.
 
-Package layout (ASREF): domain subpackages under this root own landed modules.
+Package layout: domain subpackages under this root own landed modules.
 The package root re-exports a reviewed public API only; prefer domain package
 imports for new code (see README.md). Retired flat module paths must not be
 reintroduced as long-lived shims.
 
-Cutover goal ASREF-G090 (packet tasks ASREF-012 / ASREF-013 / ASREF-014;
-packet ``goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f``) publishes this
-intentional public surface and package map. Parent evidence terms are package
-goals ASREF-G020 through ASREF-G080 (see AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE).
+**Semantic layout constants** name packages by product role (core, control,
+task_sources, …). Board identifiers (``ASREF-G0xx``, ``ASREF-0xx``) remain as
+string *values* for objective scanners and historical receipts, not as public
+Python names.
 
-- Task ASREF-013 closes the evidence cluster for ASREF-G020, ASREF-G030,
-  ASREF-G040, and ASREF-G050 (see AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050).
-- Task ASREF-014 closes the evidence cluster for ASREF-G060, ASREF-G070, and
-  ASREF-G080 (see AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080).
+Domain-layout cutover goal ``ASREF-G090`` (packet tasks ``ASREF-012`` /
+``ASREF-013`` / ``ASREF-014``; packet
+``goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f``) publishes this
+intentional public surface and package map. Parent evidence terms are the
+domain-layout package goals (see
+:data:`AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS`).
+
+- Foundation cluster (core / control / task_sources / context+prompt):
+  :data:`AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS`.
+- Operations cluster (analysis+proof / objectives…self_improvement /
+  todo_daemon+integrations):
+  :data:`AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS`.
+
+Deprecated ``AGENT_SUPERVISOR_G0xx_*`` and ``AGENT_SUPERVISOR_EVIDENCE_CLUSTER_*``
+spellings remain as aliases of the semantic names.
 """
 
 from types import MappingProxyType as _MappingProxyType
@@ -23,88 +34,85 @@ import os as _os
 import sys as _sys
 from pathlib import Path
 
-# ASREF-G090 cutover identity. Objective scanners and discovery manifests may
-# bind these constants to the package-root public API without scraping markdown.
-AGENT_SUPERVISOR_CUTOVER_GOAL_ID = "ASREF-G090"
-# Active packet-member task for this cutover evidence_cluster (G020–G050).
-AGENT_SUPERVISOR_CUTOVER_TASK_ID = "ASREF-013"
-AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET = (
+# ---------------------------------------------------------------------------
+# Domain-layout cutover identity (semantic names; board IDs as string values)
+# ---------------------------------------------------------------------------
+# Objective scanners and discovery manifests may bind these constants to the
+# package-root public API without scraping markdown. Wire-frozen board strings
+# (ASREF-G090 / ASREF-0xx) stay as *values* for historical receipts.
+
+AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_ID = "ASREF-G090"
+# Active packet-member task for the foundation layout evidence cluster.
+AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_ID = "ASREF-013"
+AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_PACKET = (
     "goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f"
 )
-# Full goal-packet task set for cutover (shared evidence under ASREF-G090).
-AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS = (
-    "ASREF-012",  # G020–G080 public API / hygiene / cutover
-    "ASREF-013",  # G020–G050 evidence cluster (this task)
-    "ASREF-014",  # G060–G080 evidence cluster
+# Full goal-packet task set for domain-layout cutover.
+AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_PACKET_TASK_IDS = (
+    "ASREF-012",  # public API / hygiene / cutover
+    "ASREF-013",  # foundation layout evidence cluster
+    "ASREF-014",  # operations layout evidence cluster
 )
-# Alias used by earlier ASREF-013 cutover docs / scanners.
-AGENT_SUPERVISOR_CUTOVER_TASK_IDS = AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS
-
-# ASREF-013 evidence cluster: exact parent package goals for this task.
-# Keep literal ASREF-G0xx tokens for objective evidence scans.
-AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050 = (
-    "ASREF-G020",  # core package submodule
-    "ASREF-G030",  # control package submodule
-    "ASREF-G040",  # task_sources package submodule
-    "ASREF-G050",  # context and prompt package submodules
-)
-# ASREF-014 evidence cluster: exact parent package goals for analysis/ops/
-# daemon packages. Keep literal ASREF-G0xx tokens.
-AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080 = (
-    "ASREF-G060",  # analysis and proof package submodules
-    "ASREF-G070",  # objectives planning validation merge rescue runtime packages
-    "ASREF-G080",  # todo_daemon re-packaging and integrations package
+AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_IDS = (
+    AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_PACKET_TASK_IDS
 )
 
-# Package goals that form ASREF-G090 evidence (exact goal-id terms). Keep the
-# literal ASREF-G0xx tokens for objective evidence scans and cutover receipts.
-AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE = (
-    "ASREF-G020",  # core package submodule
-    "ASREF-G030",  # control package submodule
-    "ASREF-G040",  # task_sources package submodule
-    "ASREF-G050",  # context and prompt package submodules
-    "ASREF-G060",  # analysis and proof package submodules
-    "ASREF-G070",  # objectives planning validation merge rescue runtime packages
-    "ASREF-G080",  # todo_daemon re-packaging and integrations package
+# Foundation layout goals: core, control, task_sources, context+prompt.
+# Literal ASREF-G0xx tokens preserved for objective evidence scans.
+AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS = (
+    "ASREF-G020",  # core
+    "ASREF-G030",  # control
+    "ASREF-G040",  # task_sources
+    "ASREF-G050",  # context + prompt
+)
+# Operations layout goals: analysis+proof, ops packages, daemon+integrations.
+AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS = (
+    "ASREF-G060",  # analysis + proof
+    "ASREF-G070",  # objectives…self_improvement
+    "ASREF-G080",  # todo_daemon + integrations
+)
+# All domain-layout package goals that form the cutover evidence set.
+AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS = (
+    *AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS,
+    *AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS,
 )
 
-# Domain packages under this root (ASREF layout). Prefer package imports for
-# landed modules; do not add long-lived re-export stubs at retired flat paths.
-# Order matches the package dependency DAG (bottom-up) and README package map.
+# Domain packages under this root. Prefer package imports for landed modules;
+# do not add long-lived re-export stubs at retired flat paths. Order matches
+# the package dependency DAG (bottom-up) and README package map.
 AGENT_SUPERVISOR_DOMAIN_PACKAGES = (
-    "core",  # ASREF-G020
-    "control",  # ASREF-G030
-    "task_sources",  # ASREF-G040
-    "context",  # ASREF-G050
-    "analysis",  # ASREF-G060
-    "proof",  # ASREF-G060
-    "objectives",  # ASREF-G070
-    "planning",  # ASREF-G070
-    "prompt",  # ASREF-G050
-    "validation",  # ASREF-G070
-    "merge",  # ASREF-G070
-    "rescue",  # ASREF-G070
-    "runtime",  # ASREF-G070
-    "self_improvement",  # ASREF-G070
-    "integrations",  # ASREF-G080
-    "todo_daemon",  # ASREF-G080
+    "core",
+    "control",
+    "task_sources",
+    "context",
+    "analysis",
+    "proof",
+    "objectives",
+    "planning",
+    "prompt",
+    "validation",
+    "merge",
+    "rescue",
+    "runtime",
+    "self_improvement",
+    "integrations",
+    "todo_daemon",
 )
 
-# Package sets per parent evidence goal (ASREF-G090 cutover clusters).
-# ASREF-013 cluster (G020–G050)
-AGENT_SUPERVISOR_G020_PACKAGES = ("core",)
-AGENT_SUPERVISOR_G030_PACKAGES = ("control",)
-AGENT_SUPERVISOR_G040_PACKAGES = ("task_sources",)
-AGENT_SUPERVISOR_G050_PACKAGES = (
+# Package sets by product role (foundation cluster).
+AGENT_SUPERVISOR_CORE_PACKAGES = ("core",)
+AGENT_SUPERVISOR_CONTROL_PACKAGES = ("control",)
+AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES = ("task_sources",)
+AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES = (
     "context",
     "prompt",
 )
-# ASREF-014 cluster (G060–G080)
-AGENT_SUPERVISOR_G060_PACKAGES = (
+# Package sets by product role (operations cluster).
+AGENT_SUPERVISOR_ANALYSIS_PROOF_PACKAGES = (
     "analysis",
     "proof",
 )
-AGENT_SUPERVISOR_G070_PACKAGES = (
+AGENT_SUPERVISOR_OPERATIONS_PACKAGES = (
     "objectives",
     "planning",
     "validation",
@@ -113,30 +121,60 @@ AGENT_SUPERVISOR_G070_PACKAGES = (
     "runtime",
     "self_improvement",
 )
-AGENT_SUPERVISOR_G080_PACKAGES = (
+AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES = (
     "todo_daemon",
     "integrations",
 )
-AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES = _MappingProxyType(
+
+# Map board goal-id strings → domain package tuples (wire keys frozen).
+AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES = _MappingProxyType(
     {
-        "ASREF-G020": AGENT_SUPERVISOR_G020_PACKAGES,
-        "ASREF-G030": AGENT_SUPERVISOR_G030_PACKAGES,
-        "ASREF-G040": AGENT_SUPERVISOR_G040_PACKAGES,
-        "ASREF-G050": AGENT_SUPERVISOR_G050_PACKAGES,
-        "ASREF-G060": AGENT_SUPERVISOR_G060_PACKAGES,
-        "ASREF-G070": AGENT_SUPERVISOR_G070_PACKAGES,
-        "ASREF-G080": AGENT_SUPERVISOR_G080_PACKAGES,
+        "ASREF-G020": AGENT_SUPERVISOR_CORE_PACKAGES,
+        "ASREF-G030": AGENT_SUPERVISOR_CONTROL_PACKAGES,
+        "ASREF-G040": AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES,
+        "ASREF-G050": AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES,
+        "ASREF-G060": AGENT_SUPERVISOR_ANALYSIS_PROOF_PACKAGES,
+        "ASREF-G070": AGENT_SUPERVISOR_OPERATIONS_PACKAGES,
+        "ASREF-G080": AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES,
     }
 )
-# Alias for scanners / docs that used the ASREF-013 name.
-AGENT_SUPERVISOR_PACKAGE_GOAL_OWNERS = AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES
+
+# ---------------------------------------------------------------------------
+# Deprecated board-prefix aliases (prefer semantic names above)
+# ---------------------------------------------------------------------------
+AGENT_SUPERVISOR_CUTOVER_GOAL_ID = AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_ID
+AGENT_SUPERVISOR_CUTOVER_TASK_ID = AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_ID
+AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET = (
+    AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_PACKET
+)
+AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS = (
+    AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_PACKET_TASK_IDS
+)
+AGENT_SUPERVISOR_CUTOVER_TASK_IDS = AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_IDS
+AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050 = (
+    AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS
+)
+AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080 = (
+    AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS
+)
+AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE = AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS
+AGENT_SUPERVISOR_G020_PACKAGES = AGENT_SUPERVISOR_CORE_PACKAGES
+AGENT_SUPERVISOR_G030_PACKAGES = AGENT_SUPERVISOR_CONTROL_PACKAGES
+AGENT_SUPERVISOR_G040_PACKAGES = AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES
+AGENT_SUPERVISOR_G050_PACKAGES = AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES
+AGENT_SUPERVISOR_G060_PACKAGES = AGENT_SUPERVISOR_ANALYSIS_PROOF_PACKAGES
+AGENT_SUPERVISOR_G070_PACKAGES = AGENT_SUPERVISOR_OPERATIONS_PACKAGES
+AGENT_SUPERVISOR_G080_PACKAGES = AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES
+AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES = (
+    AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES
+)
+AGENT_SUPERVISOR_PACKAGE_GOAL_OWNERS = AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES
 
 # Dual-copied stems that already live under a domain package. Public and lazy
 # package-root exports resolve these via the package path, not the retired flat
-# module path. Owners: ASREF-G020 (core), ASREF-G030 (control), ASREF-G040
-# (task_sources), ASREF-G070 (objectives/planning/validation/merge/rescue/
-# runtime/self_improvement).
-AGENT_SUPERVISOR_LANDED_MODULE_OWNERS = {
+# module path. Owners: core, control, task_sources, and operations packages
+# (objectives/planning/validation/merge/rescue/runtime/self_improvement).
+AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "adaptive_goal_refiner": "objectives",
     "adaptive_planner": "planning",
     "analysis_ast_index": "analysis",
@@ -297,7 +335,11 @@ AGENT_SUPERVISOR_LANDED_MODULE_OWNERS = {
 # import aliases (packages may not exist yet). Child move tasks land modules
 # under the owner package; cutover owns the final no-old-import gate after each
 # land.
-AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS = {
+
+# Deprecated alias (prefer AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE).
+AGENT_SUPERVISOR_LANDED_MODULE_OWNERS = AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE
+
+AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE = {
     # --- ASREF-G050 context ---
     "context_compiler": "context",
     "context_contracts": "context",
@@ -423,17 +465,20 @@ AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS = {
     "implementation_supervisor_runner": "todo_daemon",
 }
 
-# ASREF-G020 / ASREF-G030 / ASREF-G040 landed stems (subset of owners map).
-# Used by cutover gates and README so the ASREF-013 evidence cluster does not
-# depend on scraping markdown for the first four package goals.
-AGENT_SUPERVISOR_G020_CORE_STEMS = (
+# Landed stems by product package (subset of owners map). Used by cutover
+# gates and README so foundation layout evidence does not scrape markdown.
+
+# Deprecated alias (prefer AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE).
+AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS = AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE
+
+AGENT_SUPERVISOR_CORE_STEMS = (
     "conflict_graph",
     "external_completion",
     "program_behavior",
     "submodule_degradation",
     "wrapper_utils",
 )
-AGENT_SUPERVISOR_G030_CONTROL_STEMS = (
+AGENT_SUPERVISOR_CONTROL_STEMS = (
     "authorization_logic",
     "control_cli",
     "control_contracts",
@@ -441,7 +486,7 @@ AGENT_SUPERVISOR_G030_CONTROL_STEMS = (
     "execution_permit",
     "lifecycle_orchestrator",
 )
-AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS = (
+AGENT_SUPERVISOR_TASK_SOURCES_STEMS = (
     "dataset_store",
     "duckdb_state",
     "duckdb_task_source",
@@ -453,10 +498,8 @@ AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS = (
     "todo_vector_index",
 )
 
-# ASREF-G050 modules still flat at package root until context/ and prompt/
-# move batches land. Not public API; listed so cutover and scanners share one
-# inventory with the README package-goal evidence table.
-AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES = _MappingProxyType(
+# Modules still listed for context/prompt inventory sharing (cutover scanners).
+AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES = _MappingProxyType(
     {
         "context": (
             "context_compiler",
@@ -475,26 +518,36 @@ AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES = _MappingProxyType(
         ),
     }
 )
-# Flat stems only (for rg recipes / no-old-import prep after G050 lands).
-AGENT_SUPERVISOR_G050_PLANNED_STEMS = tuple(
+AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_STEMS = tuple(
     stem
-    for stems in AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES.values()
+    for stems in AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES.values()
     for stem in stems
 )
 
-# Landed stems under ASREF-G070 packages (subset of LANDED_MODULE_OWNERS).
-AGENT_SUPERVISOR_G070_LANDED_STEMS = tuple(
+# Landed stems under operations packages (subset of LANDED_MODULE_TO_PACKAGE).
+AGENT_SUPERVISOR_OPERATIONS_LANDED_STEMS = tuple(
     sorted(
         stem
-        for stem, owner in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS.items()
-        if owner in AGENT_SUPERVISOR_G070_PACKAGES
+        for stem, owner in AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE.items()
+        if owner in AGENT_SUPERVISOR_OPERATIONS_PACKAGES
     )
 )
-# Canonical G080 daemon modules already package-native under todo_daemon/.
-AGENT_SUPERVISOR_G080_TODO_DAEMON_STEMS = (
+# Canonical todo_daemon modules already package-native under todo_daemon/.
+AGENT_SUPERVISOR_TODO_DAEMON_STEMS = (
     "implementation_daemon",
     "implementation_supervisor",
 )
+
+# Deprecated board-prefix aliases for stem inventories.
+AGENT_SUPERVISOR_G020_CORE_STEMS = AGENT_SUPERVISOR_CORE_STEMS
+AGENT_SUPERVISOR_G030_CONTROL_STEMS = AGENT_SUPERVISOR_CONTROL_STEMS
+AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS = AGENT_SUPERVISOR_TASK_SOURCES_STEMS
+AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES = (
+    AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES
+)
+AGENT_SUPERVISOR_G050_PLANNED_STEMS = AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_STEMS
+AGENT_SUPERVISOR_G070_LANDED_STEMS = AGENT_SUPERVISOR_OPERATIONS_LANDED_STEMS
+AGENT_SUPERVISOR_G080_TODO_DAEMON_STEMS = AGENT_SUPERVISOR_TODO_DAEMON_STEMS
 
 _ORIGINAL_IMPORTLIB_RELOAD = _importlib.reload
 
@@ -532,7 +585,7 @@ def _load_landed_module(stem: str):
     flat re-export stub file.
     """
 
-    owner = AGENT_SUPERVISOR_LANDED_MODULE_OWNERS.get(stem)
+    owner = AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE.get(stem)
     if owner is None:
         raise KeyError(stem)
     alias_name = f"{__name__}.{stem}"
@@ -555,7 +608,7 @@ class _LandedModuleAliasFinder:
         rest = fullname[len(prefix) :]
         if not rest or "." in rest:
             return None
-        if rest not in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+        if rest not in AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE:
             return None
         # Never alias a real domain package directory.
         pkg_dir = Path(__file__).resolve().parent / rest
@@ -3454,6 +3507,8 @@ AGENT_SUPERVISOR_V2_EXPORT_MODULES = _MappingProxyType(
 AGENT_SUPERVISOR_V2_STABLE_EXPORTS = tuple(
     AGENT_SUPERVISOR_V2_EXPORT_MODULES
 )
+# Semantic alias: reviewed package-root public API symbol set.
+AGENT_SUPERVISOR_PUBLIC_API_EXPORTS = AGENT_SUPERVISOR_V2_STABLE_EXPORTS
 # Concise compatibility spelling for clients which negotiated generation 2.
 V2_STABLE_EXPORTS = AGENT_SUPERVISOR_V2_STABLE_EXPORTS
 
@@ -3471,12 +3526,42 @@ agent_supervisor_v2_control_surface_publication = control_service_publication
 __all__.extend(
     name
     for name in (
+        # Semantic domain-layout exports (preferred)
+        "AGENT_SUPERVISOR_ANALYSIS_PROOF_PACKAGES",
+        "AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES",
+        "AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES",
+        "AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_STEMS",
+        "AGENT_SUPERVISOR_CONTROL_PACKAGES",
+        "AGENT_SUPERVISOR_CONTROL_STEMS",
+        "AGENT_SUPERVISOR_CORE_PACKAGES",
+        "AGENT_SUPERVISOR_CORE_STEMS",
+        "AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_ID",
+        "AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_PACKET",
+        "AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_PACKET_TASK_IDS",
+        "AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_ID",
+        "AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_IDS",
+        "AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS",
+        "AGENT_SUPERVISOR_DOMAIN_PACKAGES",
+        "AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS",
+        "AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES",
+        "AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE",
+        "AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES",
+        "AGENT_SUPERVISOR_OPERATIONS_LANDED_STEMS",
+        "AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS",
+        "AGENT_SUPERVISOR_OPERATIONS_PACKAGES",
+        "AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE",
+        "AGENT_SUPERVISOR_PUBLIC_API_EXPORTS",
+        "AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES",
+        "AGENT_SUPERVISOR_TASK_SOURCES_STEMS",
+        "AGENT_SUPERVISOR_TODO_DAEMON_STEMS",
+        # Deprecated board-prefix / older spellings (compatibility)
+        "AGENT_SUPERVISOR_LANDED_MODULE_OWNERS",
+        "AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_CUTOVER_GOAL_ID",
         "AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET",
         "AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS",
         "AGENT_SUPERVISOR_CUTOVER_TASK_ID",
         "AGENT_SUPERVISOR_CUTOVER_TASK_IDS",
-        "AGENT_SUPERVISOR_DOMAIN_PACKAGES",
         "AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050",
         "AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080",
         "AGENT_SUPERVISOR_G020_CORE_STEMS",
@@ -3493,17 +3578,15 @@ __all__.extend(
         "AGENT_SUPERVISOR_G070_PACKAGES",
         "AGENT_SUPERVISOR_G080_PACKAGES",
         "AGENT_SUPERVISOR_G080_TODO_DAEMON_STEMS",
-        "AGENT_SUPERVISOR_LANDED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE",
         "AGENT_SUPERVISOR_PACKAGE_GOAL_OWNERS",
         "AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES",
-        "AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_V2_EXPORT_MODULES",
         "AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION",
         "AGENT_SUPERVISOR_V2_STABLE_EXPORTS",
         "V2_LAZY_PUBLIC_API_REQUIREMENT_ID",
         "V2_STABLE_EXPORTS",
-        *AGENT_SUPERVISOR_V2_STABLE_EXPORTS,
+        *AGENT_SUPERVISOR_PUBLIC_API_EXPORTS,
     )
     if name not in __all__
 )
@@ -3775,7 +3858,7 @@ _LAZY_PROVIDER_EXPORT_ALIASES = {
 
 def __getattr__(name: str):
     # Domain-packaged modules that previously lived as flat submodules.
-    if name in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+    if name in AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE:
         module = _load_landed_module(name)
         globals()[name] = module
         return module
@@ -3792,7 +3875,7 @@ def __getattr__(name: str):
             from importlib import import_module
 
             # Prefer domain owner when the historical flat module has landed.
-            if module_name in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+            if module_name in AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE:
                 module = _load_landed_module(module_name)
             else:
                 module = import_module(f".{module_name}", __name__)
@@ -3803,7 +3886,7 @@ def __getattr__(name: str):
         if name in export_names:
             from importlib import import_module
 
-            if module_name in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS:
+            if module_name in AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE:
                 module = _load_landed_module(module_name)
             else:
                 module = import_module(f".{module_name}", __name__)
