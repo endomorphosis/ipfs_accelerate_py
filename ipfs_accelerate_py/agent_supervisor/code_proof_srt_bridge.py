@@ -108,10 +108,15 @@ SRT_BRIDGE_POLICY_ID: Final = "policy:srt-bridge-non-semantic@1"
 SRT_BRIDGE_TOOLCHAIN_ID: Final = "toolchain:srt-structural@1"
 
 # Authority doctrine: structural gates and bridge projections never replace
-# semantic-roundtrip e2e loss or PLAT2 holdout promotion.
+# semantic-roundtrip e2e loss or SRT holdout promotion.
+# Preferred semantic name; wire value remains plat2_holdout_promotion_gate
+# for content-addressed / historical gate identity.
+SRT_HOLDOUT_PROMOTION_GATE: Final = "plat2_holdout_promotion_gate"
+PLAT2_HOLDOUT_PROMOTION_GATE: Final = SRT_HOLDOUT_PROMOTION_GATE  # deprecated alias
+
 PROMOTION_AUTHORITIES: Final[tuple[str, ...]] = (
     "semantic_roundtrip_e2e_loss",
-    "plat2_holdout_promotion_gate",
+    SRT_HOLDOUT_PROMOTION_GATE,
 )
 STRUCTURAL_SEMANTIC_AUTHORITY: Final = False
 
@@ -660,8 +665,8 @@ class ResidualCatalogEntry:
 
 
 @dataclass(frozen=True)
-class PlatResidualCatalog:
-    """Content-addressed PLAT residual catalog (handles only)."""
+class SrtResidualCatalog:
+    """Content-addressed SRT residual catalog (handles only)."""
 
     entries: tuple[ResidualCatalogEntry, ...]
     catalog_id: str = ""
@@ -710,7 +715,7 @@ class PlatResidualCatalog:
         )
         if not isinstance(self.metadata, Mapping):
             raise CodeProofSrtBridgeError("metadata must be a mapping")
-        reject_gold_ir_bodies(self.metadata, where="PlatResidualCatalog.metadata")
+        reject_gold_ir_bodies(self.metadata, where="SrtResidualCatalog.metadata")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
         derived = content_identity(self._identity_payload())
         claimed = _norm_text(self.catalog_id, field_name="catalog_id")
@@ -748,10 +753,10 @@ class PlatResidualCatalog:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "PlatResidualCatalog":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SrtResidualCatalog":
         if not isinstance(payload, Mapping):
             raise CodeProofSrtBridgeError("residual catalog must be a mapping")
-        reject_gold_ir_bodies(payload, where="PlatResidualCatalog")
+        reject_gold_ir_bodies(payload, where="SrtResidualCatalog")
         raw_entries = payload.get("entries") or ()
         entries = tuple(
             ResidualCatalogEntry.from_dict(item)
@@ -777,14 +782,14 @@ class PlatResidualCatalog:
         )
 
 
-def build_plat_residual_catalog(
+def build_srt_residual_catalog(
     entries: Sequence[ResidualCatalogEntry | Mapping[str, Any]],
     *,
     repository_tree_id: str = "",
     repository_id: str = "",
     plateau_packet_id: str = "",
     metadata: Mapping[str, Any] | None = None,
-) -> PlatResidualCatalog:
+) -> SrtResidualCatalog:
     """Build a PLAT residual catalog from entry mappings or objects."""
 
     normalized: list[ResidualCatalogEntry] = []
@@ -797,7 +802,7 @@ def build_plat_residual_catalog(
             raise CodeProofSrtBridgeError(
                 "entries must be ResidualCatalogEntry or mappings"
             )
-    return PlatResidualCatalog(
+    return SrtResidualCatalog(
         entries=tuple(normalized),
         repository_tree_id=repository_tree_id,
         repository_id=repository_id,
@@ -807,13 +812,13 @@ def build_plat_residual_catalog(
 
 
 # ---------------------------------------------------------------------------
-# PLAT2 holdout registry (separate from PLAT residual catalog)
+# SRT holdout registry (separate from residual catalog)
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class Plat2HoldoutArtifact:
-    """One preregistered PLAT2 holdout artifact (handles only)."""
+class SrtHoldoutArtifact:
+    """One preregistered SRT holdout artifact (handles only)."""
 
     artifact_id: str
     holdout_split: str
@@ -823,7 +828,7 @@ class Plat2HoldoutArtifact:
     repository_tree_id: str = ""
     preregistered: bool = True
     queryable: bool = True
-    promotion_gate: str = "plat2_holdout_promotion_gate"
+    promotion_gate: str = SRT_HOLDOUT_PROMOTION_GATE
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -859,11 +864,11 @@ class Plat2HoldoutArtifact:
             self,
             "promotion_gate",
             _norm_text(self.promotion_gate, field_name="promotion_gate")
-            or "plat2_holdout_promotion_gate",
+            or SRT_HOLDOUT_PROMOTION_GATE,
         )
         if not isinstance(self.metadata, Mapping):
             raise CodeProofSrtBridgeError("metadata must be a mapping")
-        reject_gold_ir_bodies(self.metadata, where="Plat2HoldoutArtifact.metadata")
+        reject_gold_ir_bodies(self.metadata, where="SrtHoldoutArtifact.metadata")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
     def to_dict(self) -> dict[str, Any]:
@@ -881,10 +886,10 @@ class Plat2HoldoutArtifact:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "Plat2HoldoutArtifact":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SrtHoldoutArtifact":
         if not isinstance(payload, Mapping):
             raise CodeProofSrtBridgeError("holdout artifact must be a mapping")
-        reject_gold_ir_bodies(payload, where="Plat2HoldoutArtifact")
+        reject_gold_ir_bodies(payload, where="SrtHoldoutArtifact")
         return cls(
             artifact_id=str(
                 payload.get("artifact_id")
@@ -906,21 +911,21 @@ class Plat2HoldoutArtifact:
             preregistered=bool(payload.get("preregistered", True)),
             queryable=bool(payload.get("queryable", True)),
             promotion_gate=str(
-                payload.get("promotion_gate") or "plat2_holdout_promotion_gate"
+                payload.get("promotion_gate") or SRT_HOLDOUT_PROMOTION_GATE
             ),
             metadata=dict(payload.get("metadata") or {}),
         )
 
 
 @dataclass
-class Plat2HoldoutRegistry:
-    """In-memory preregistered PLAT2 holdout registry (separate from PLAT).
+class SrtHoldoutRegistry:
+    """In-memory preregistered SRT holdout registry (separate from residual catalog).
 
     Holdout artifacts are queryable by artifact id, split, residual, or
     property.  Registration is additive and fail-closed on gold bodies.
     """
 
-    _artifacts: MutableMapping[str, Plat2HoldoutArtifact] = field(
+    _artifacts: MutableMapping[str, SrtHoldoutArtifact] = field(
         default_factory=dict
     )
 
@@ -929,17 +934,17 @@ class Plat2HoldoutRegistry:
         return PLAT2_HOLDOUT_REGISTRY_INTERFACE
 
     def register(
-        self, artifact: Plat2HoldoutArtifact | Mapping[str, Any]
-    ) -> Plat2HoldoutArtifact:
+        self, artifact: SrtHoldoutArtifact | Mapping[str, Any]
+    ) -> SrtHoldoutArtifact:
         if isinstance(artifact, Mapping):
-            artifact = Plat2HoldoutArtifact.from_dict(artifact)
-        if not isinstance(artifact, Plat2HoldoutArtifact):
+            artifact = SrtHoldoutArtifact.from_dict(artifact)
+        if not isinstance(artifact, SrtHoldoutArtifact):
             raise CodeProofSrtBridgeError(
-                "artifact must be Plat2HoldoutArtifact or mapping"
+                "artifact must be SrtHoldoutArtifact or mapping"
             )
         if not artifact.preregistered:
             raise CodeProofSrtBridgeError(
-                "PLAT2 holdout artifacts must be preregistered before query"
+                "SRT holdout artifacts must be preregistered before query"
             )
         existing = self._artifacts.get(artifact.artifact_id)
         if existing is not None and existing.to_dict() != artifact.to_dict():
@@ -950,14 +955,14 @@ class Plat2HoldoutRegistry:
         self._artifacts[artifact.artifact_id] = artifact
         return artifact
 
-    def get(self, artifact_id: str) -> Plat2HoldoutArtifact | None:
+    def get(self, artifact_id: str) -> SrtHoldoutArtifact | None:
         return self._artifacts.get(str(artifact_id or "").strip())
 
-    def require(self, artifact_id: str) -> Plat2HoldoutArtifact:
+    def require(self, artifact_id: str) -> SrtHoldoutArtifact:
         found = self.get(artifact_id)
         if found is None:
             raise CodeProofSrtBridgeError(
-                f"unknown PLAT2 holdout artifact: {artifact_id!r}"
+                f"unknown SRT holdout artifact: {artifact_id!r}"
             )
         return found
 
@@ -969,10 +974,10 @@ class Plat2HoldoutRegistry:
         residual_ref_id: str = "",
         property_id: str = "",
         queryable_only: bool = True,
-    ) -> tuple[Plat2HoldoutArtifact, ...]:
-        """Query preregistered holdout artifacts (never mixes PLAT training)."""
+    ) -> tuple[SrtHoldoutArtifact, ...]:
+        """Query preregistered holdout artifacts (never mixes training residuals)."""
 
-        results: list[Plat2HoldoutArtifact] = []
+        results: list[SrtHoldoutArtifact] = []
         for artifact in self._artifacts.values():
             if queryable_only and not artifact.queryable:
                 continue
@@ -1805,8 +1810,8 @@ class SrtBridgeProjection:
         }
 
 
-def project_plat_residual_catalog(
-    catalog: PlatResidualCatalog | Mapping[str, Any],
+def project_srt_residual_catalog(
+    catalog: SrtResidualCatalog | Mapping[str, Any],
     *,
     include_counterexamples: bool = True,
     include_capsules: bool = True,
@@ -1816,10 +1821,10 @@ def project_plat_residual_catalog(
     """Project an entire PLAT residual catalog into CBP claim/CE/capsule/packet."""
 
     if isinstance(catalog, Mapping):
-        catalog = PlatResidualCatalog.from_dict(catalog)
-    if not isinstance(catalog, PlatResidualCatalog):
+        catalog = SrtResidualCatalog.from_dict(catalog)
+    if not isinstance(catalog, SrtResidualCatalog):
         raise CodeProofSrtBridgeError(
-            "catalog must be PlatResidualCatalog or mapping"
+            "catalog must be SrtResidualCatalog or mapping"
         )
 
     claims: list[CodeClaimRecord] = []
@@ -1966,14 +1971,14 @@ def project_plateau_packet_bundle(
                 )
             )
 
-    catalog = build_plat_residual_catalog(
+    catalog = build_srt_residual_catalog(
         entries,
         repository_tree_id=tree,
         repository_id=str(plateau.get("repository_id") or ""),
         plateau_packet_id=plateau_id,
         metadata={"source": PLATEAU_CODEX_PACKET_INTERFACE},
     )
-    projection = project_plat_residual_catalog(
+    projection = project_srt_residual_catalog(
         catalog,
         structural_admission=structural_admission,
     )
@@ -2032,6 +2037,16 @@ def method_roles_manifest() -> dict[str, Any]:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Compatibility aliases (board-prefix spellings; prefer Srt* names)
+# ---------------------------------------------------------------------------
+PlatResidualCatalog = SrtResidualCatalog
+Plat2HoldoutArtifact = SrtHoldoutArtifact
+Plat2HoldoutRegistry = SrtHoldoutRegistry
+build_plat_residual_catalog = build_srt_residual_catalog
+project_plat_residual_catalog = project_srt_residual_catalog
+
 __all__ = [
     "CODE_PROOF_SRT_BRIDGE_INTERFACE",
     "CODE_PROOF_SRT_BRIDGE_VERSION",
@@ -2050,9 +2065,9 @@ __all__ = [
     "StructuralAdmissionDisposition",
     "StructuralAdmission",
     "ResidualCatalogEntry",
-    "PlatResidualCatalog",
-    "Plat2HoldoutArtifact",
-    "Plat2HoldoutRegistry",
+    "SrtResidualCatalog",
+    "SrtHoldoutArtifact",
+    "SrtHoldoutRegistry",
     "SrtCacheKeyHandles",
     "SrtGraphProjection",
     "SrtBridgeProjection",
@@ -2072,4 +2087,11 @@ __all__ = [
     "project_plateau_codex_packet",
     "project_plat_residual_catalog",
     "project_plateau_packet_bundle",
+    "PlatResidualCatalog",
+    "Plat2HoldoutArtifact",
+    "Plat2HoldoutRegistry",
+    "build_srt_residual_catalog",
+    "project_srt_residual_catalog",
+    "SRT_HOLDOUT_PROMOTION_GATE",
+    "PLAT2_HOLDOUT_PROMOTION_GATE"
 ]

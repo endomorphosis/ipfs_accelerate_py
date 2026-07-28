@@ -91,12 +91,12 @@ CBP_PUBLIC_BINDING_DIGEST_KEYS = (
     "policy_digest",
     "kernel_receipt_digest",
 )
-CBP_REQUIRED_PUBLIC_BINDING_KEYS = (
+CODE_PROOF_REQUIRED_PUBLIC_BINDING_KEYS = (
     CBP_PUBLIC_BINDING_IDENTITY_KEYS + CBP_PUBLIC_BINDING_DIGEST_KEYS
 )
 
 # Reviewed disposition for the core codebase-proof program (CBP-G200).
-CORE_CBP_ZK_USE_CASE_ID = "cbp-core-codebase-proof"
+CORE_CODE_PROOF_ZK_USE_CASE_ID = "cbp-core-codebase-proof"
 ZK_BACKEND_FAMILIES_REQUIRING_DECISION = frozenset(
     {
         "groth16",
@@ -769,16 +769,16 @@ class ReceiptAttestationStatement(CanonicalContract):
                 "managed attestation statements must pin backend policy, backend, "
                 "circuit, public-input schema, and verification-key versions"
             )
-        cbp_fields = (
+        code_proof_fields = (
             "property_id",
             "repository_id",
             "toolchain_id",
             "kernel_receipt_id",
         )
-        cbp_populated = tuple(bool(getattr(self, name)) for name in cbp_fields)
-        if any(cbp_populated) and not all(cbp_populated):
+        code_proof_populated = tuple(bool(getattr(self, name)) for name in code_proof_fields)
+        if any(code_proof_populated) and not all(code_proof_populated):
             raise AttestationValidationError(
-                "CBP attestation public bindings require property, repository, "
+                "Code-proof attestation public bindings require property, repository, "
                 "toolchain, and kernel-receipt identities together"
             )
 
@@ -789,8 +789,8 @@ class ReceiptAttestationStatement(CanonicalContract):
         return bool(self.backend_policy_id)
 
     @property
-    def has_cbp_public_bindings(self) -> bool:
-        """Whether property/repository/toolchain/kernel-receipt bindings are set."""
+    def has_code_proof_public_bindings(self) -> bool:
+        """Whether property/repository/toolchain/kernel-receipt bindings are set (code-proof)."""
 
         return bool(
             self.property_id
@@ -823,10 +823,10 @@ class ReceiptAttestationStatement(CanonicalContract):
         return self.public_input_digest
 
     @property
-    def cbp_public_bindings(self) -> Dict[str, str]:
-        """Return the CBP-required public identity and digest map, or empty."""
+    def code_proof_public_bindings(self) -> Dict[str, str]:
+        """Return the code-proof-required public identity and digest map, or empty."""
 
-        if not self.has_cbp_public_bindings:
+        if not self.has_code_proof_public_bindings:
             return {}
         identities = {
             "property_id": self.property_id,
@@ -873,28 +873,41 @@ class ReceiptAttestationStatement(CanonicalContract):
                     "verification_key_version": self.verification_key_version,
                 }
             )
-        if self.has_cbp_public_bindings:
-            result.update(self.cbp_public_bindings)
+        if self.has_code_proof_public_bindings:
+            result.update(self.code_proof_public_bindings)
         return result
 
-    def require_cbp_public_bindings(self) -> Dict[str, str]:
-        """Fail closed unless CBP public identity bindings are complete."""
+    def require_code_proof_public_bindings(self) -> Dict[str, str]:
+        """Fail closed unless code-proof public identity bindings are complete."""
 
-        bindings = self.cbp_public_bindings
+        bindings = self.code_proof_public_bindings
         if not bindings:
             raise AttestationValidationError(
-                "CBP attestation requires public inputs that bind property, "
+                "Code-proof attestation requires public inputs that bind property, "
                 "repository/tree, obligation, toolchain, policy, and "
                 "kernel-receipt digests"
             )
         missing = [
-            key for key in CBP_REQUIRED_PUBLIC_BINDING_KEYS if not bindings.get(key)
+            key for key in CODE_PROOF_REQUIRED_PUBLIC_BINDING_KEYS if not bindings.get(key)
         ]
         if missing:
             raise AttestationValidationError(
-                "CBP attestation public bindings missing: %s" % ", ".join(missing)
+                "Code-proof attestation public bindings missing: %s" % ", ".join(missing)
             )
         return dict(bindings)
+
+
+    # Deprecated board-prefix spellings (prefer code_proof_*).
+    @property
+    def has_cbp_public_bindings(self) -> bool:
+        return self.has_code_proof_public_bindings
+
+    @property
+    def cbp_public_bindings(self) -> Dict[str, str]:
+        return self.code_proof_public_bindings
+
+    def require_cbp_public_bindings(self) -> Dict[str, str]:
+        return self.require_code_proof_public_bindings()
 
     def matches_backend_policy(self, policy: AttestationBackendPolicy) -> bool:
         """Return whether every managed public binding matches ``policy``."""
@@ -938,9 +951,13 @@ class ReceiptAttestationStatement(CanonicalContract):
         verification_key_id: str,
         backend_policy: AttestationBackendPolicy | None = None,
         property_id: str = "",
-        require_cbp_bindings: bool = False,
+        require_code_proof_bindings: bool = False,
+        require_cbp_bindings: bool | None = None,
     ) -> "ReceiptAttestationStatement":
         """Build a public statement after enforcing receipt eligibility."""
+
+        if require_cbp_bindings is not None:
+            require_code_proof_bindings = bool(require_cbp_bindings)
 
         if not isinstance(receipt, ProofReceipt):
             raise AttestationValidationError(
@@ -971,17 +988,17 @@ class ReceiptAttestationStatement(CanonicalContract):
             ),
             field_name="property_id",
         )
-        # Populate CBP identity slots whenever the receipt already carries them
-        # and a property id is available; partial CBP sets are rejected above.
-        cbp_ready = bool(
+        # Populate code-proof identity slots whenever the receipt already carries them
+        # and a property id is available; partial binding sets are rejected above.
+        code_proof_ready = bool(
             resolved_property
             and receipt.repository_id
             and receipt.toolchain_id
             and receipt.kernel_receipt_id
         )
-        if require_cbp_bindings and not cbp_ready:
+        if require_code_proof_bindings and not code_proof_ready:
             raise AttestationValidationError(
-                "CBP attestation requires property_id plus repository, toolchain, "
+                "Code-proof attestation requires property_id plus repository, toolchain, "
                 "and kernel_receipt_id on the kernel-verified receipt"
             )
         return cls(
@@ -1005,10 +1022,10 @@ class ReceiptAttestationStatement(CanonicalContract):
             verification_key_version=(
                 policy.verification_key_version if policy is not None else ""
             ),
-            property_id=resolved_property if cbp_ready else "",
-            repository_id=receipt.repository_id if cbp_ready else "",
-            toolchain_id=receipt.toolchain_id if cbp_ready else "",
-            kernel_receipt_id=receipt.kernel_receipt_id if cbp_ready else "",
+            property_id=resolved_property if code_proof_ready else "",
+            repository_id=receipt.repository_id if code_proof_ready else "",
+            toolchain_id=receipt.toolchain_id if code_proof_ready else "",
+            kernel_receipt_id=receipt.kernel_receipt_id if code_proof_ready else "",
         )
 
     @classmethod
@@ -1742,14 +1759,14 @@ class PersistedAttestationRecord(CanonicalContract):
             verification_key_id=health.policy.verification_key_id,
             backend_policy=health.policy,
             property_id=statement.property_id,
-            require_cbp_bindings=statement.has_cbp_public_bindings,
+            require_code_proof_bindings=statement.has_code_proof_public_bindings,
         )
         if statement != expected:
             raise AttestationValidationError(
                 "attestation statement does not bind the immutable proof receipt"
             )
-        if statement.has_cbp_public_bindings:
-            statement.require_cbp_public_bindings()
+        if statement.has_code_proof_public_bindings:
+            statement.require_code_proof_public_bindings()
         if not health.policy.key_is_current_at(self.created_at):
             raise AttestationValidationError(
                 "attestation was created with an expired verification key"
@@ -1996,9 +2013,13 @@ def build_receipt_attestation_statement(
     verification_key_id: str | None = None,
     backend_policy: AttestationBackendPolicy | None = None,
     property_id: str = "",
-    require_cbp_bindings: bool = False,
+    require_code_proof_bindings: bool = False,
+    require_cbp_bindings: bool | None = None,
 ) -> ReceiptAttestationStatement:
     """Prepare the canonical public statement for an eligible receipt."""
+
+    if require_cbp_bindings is not None:
+        require_code_proof_bindings = bool(require_cbp_bindings)
 
     if backend_policy is not None:
         policy = _backend_policy(backend_policy)
@@ -2018,7 +2039,7 @@ def build_receipt_attestation_statement(
         verification_key_id=verification_key_id,
         backend_policy=backend_policy,
         property_id=property_id,
-        require_cbp_bindings=require_cbp_bindings,
+        require_code_proof_bindings=require_code_proof_bindings,
     )
 
 
@@ -2030,10 +2051,14 @@ def prepare_receipt_attestation(
     verification_key_id: str | None = None,
     backend_policy: AttestationBackendPolicy | None = None,
     property_id: str = "",
-    require_cbp_bindings: bool = False,
+    require_code_proof_bindings: bool = False,
+    require_cbp_bindings: bool | None = None,
     witness: PrivateAttestationWitness,
 ) -> ReceiptAttestationRequest:
     """Create an ephemeral proving request after the kernel receipt gate."""
+
+    if require_cbp_bindings is not None:
+        require_code_proof_bindings = bool(require_cbp_bindings)
 
     statement = build_receipt_attestation_statement(
         receipt,
@@ -2042,7 +2067,7 @@ def prepare_receipt_attestation(
         verification_key_id=verification_key_id,
         backend_policy=backend_policy,
         property_id=property_id,
-        require_cbp_bindings=require_cbp_bindings,
+        require_code_proof_bindings=require_code_proof_bindings,
     )
     return ReceiptAttestationRequest(statement=statement, _witness=witness)
 
@@ -2611,8 +2636,8 @@ class ZkUseCaseDecisionRecord(CanonicalContract):
 
 # Terminal reviewed decision for the core CBP program: no qualifying
 # private-witness / cross-trust-boundary need, and core CBP continues without ZK.
-CORE_CBP_ZK_USE_CASE_DECISION = ZkUseCaseDecisionRecord(
-    use_case_id=CORE_CBP_ZK_USE_CASE_ID,
+CORE_CODE_PROOF_ZK_USE_CASE_DECISION = ZkUseCaseDecisionRecord(
+    use_case_id=CORE_CODE_PROOF_ZK_USE_CASE_ID,
     disposition=ZkUseCaseDisposition.NOT_APPLICABLE,
     blocks_core_cbp=False,
     reviewed_by="cbp-architecture-review",
@@ -2701,13 +2726,13 @@ def require_zk_backend_selection_authorized(
     return checked
 
 
-def core_cbp_zk_use_case_decision() -> ZkUseCaseDecisionRecord:
-    """Return the immutable reviewed decision for the core CBP program."""
+def core_code_proof_zk_use_case_decision() -> ZkUseCaseDecisionRecord:
+    """Return the immutable reviewed decision for the core codebase-proof program."""
 
-    return CORE_CBP_ZK_USE_CASE_DECISION
+    return CORE_CODE_PROOF_ZK_USE_CASE_DECISION
 
 
-def build_cbp_public_bindings(
+def build_code_proof_public_bindings(
     receipt: ProofReceipt,
     *,
     property_id: str,
@@ -2716,7 +2741,7 @@ def build_cbp_public_bindings(
     verification_key_id: str,
     backend_policy: AttestationBackendPolicy | None = None,
 ) -> Dict[str, str]:
-    """Build CBP public inputs that bind property through kernel-receipt digests."""
+    """Build code-proof public inputs that bind property through kernel-receipt digests."""
 
     statement = build_receipt_attestation_statement(
         receipt,
@@ -2725,9 +2750,9 @@ def build_cbp_public_bindings(
         verification_key_id=verification_key_id,
         backend_policy=backend_policy,
         property_id=property_id,
-        require_cbp_bindings=True,
+        require_code_proof_bindings=True,
     )
-    return statement.require_cbp_public_bindings()
+    return statement.require_code_proof_public_bindings()
 
 
 def reject_private_witness_from_public_payload(value: Any) -> None:
@@ -2824,6 +2849,41 @@ def simulated_attestation_cannot_satisfy_attested(
     return checked.authoritative_assurance is AssuranceLevel.ATTESTED
 
 
+# ---------------------------------------------------------------------------
+# Compatibility aliases (board-prefix spellings; prefer code_proof_* names)
+# ---------------------------------------------------------------------------
+CBP_REQUIRED_PUBLIC_BINDING_KEYS = CODE_PROOF_REQUIRED_PUBLIC_BINDING_KEYS
+CORE_CBP_ZK_USE_CASE_ID = CORE_CODE_PROOF_ZK_USE_CASE_ID
+CORE_CBP_ZK_USE_CASE_DECISION = CORE_CODE_PROOF_ZK_USE_CASE_DECISION
+
+
+def core_cbp_zk_use_case_decision() -> ZkUseCaseDecisionRecord:
+    """Deprecated alias of :func:`core_code_proof_zk_use_case_decision`."""
+
+    return core_code_proof_zk_use_case_decision()
+
+
+def build_cbp_public_bindings(
+    receipt: ProofReceipt,
+    *,
+    property_id: str,
+    circuit_id: str,
+    backend_id: str,
+    verification_key_id: str,
+    backend_policy: AttestationBackendPolicy | None = None,
+) -> Dict[str, str]:
+    """Deprecated alias of :func:`build_code_proof_public_bindings`."""
+
+    return build_code_proof_public_bindings(
+        receipt,
+        property_id=property_id,
+        circuit_id=circuit_id,
+        backend_id=backend_id,
+        verification_key_id=verification_key_id,
+        backend_policy=backend_policy,
+    )
+
+
 __all__ = [
     "ATTESTATION_BACKEND_HEALTH_SCHEMA",
     "ATTESTATION_BACKEND_POLICY_SCHEMA",
@@ -2831,9 +2891,9 @@ __all__ = [
     "CBP_ATTESTATION_PUBLIC_BINDINGS_SCHEMA",
     "CBP_PUBLIC_BINDING_DIGEST_KEYS",
     "CBP_PUBLIC_BINDING_IDENTITY_KEYS",
-    "CBP_REQUIRED_PUBLIC_BINDING_KEYS",
-    "CORE_CBP_ZK_USE_CASE_DECISION",
-    "CORE_CBP_ZK_USE_CASE_ID",
+    "CODE_PROOF_REQUIRED_PUBLIC_BINDING_KEYS",
+    "CORE_CODE_PROOF_ZK_USE_CASE_DECISION",
+    "CORE_CODE_PROOF_ZK_USE_CASE_ID",
     "PROOF_ATTESTATION_CONTRACT_VERSION",
     "PROOF_ATTESTATION_ENVELOPE_SCHEMA",
     "PROOF_ATTESTATION_RECORD_SCHEMA",
@@ -2898,11 +2958,11 @@ __all__ = [
     "REQUIRED_BACKEND_TEST_CASES",
     "attestation_satisfies_gate",
     "bind_attestation_record",
-    "build_cbp_public_bindings",
+    "build_code_proof_public_bindings",
     "build_persisted_attestation_record",
     "build_receipt_attestation_statement",
     "build_attestation_statement",
-    "core_cbp_zk_use_case_decision",
+    "core_code_proof_zk_use_case_decision",
     "create_attestation_envelope",
     "evaluate_backend_health",
     "execute_cryptographic_attestation",
@@ -2924,4 +2984,9 @@ __all__ = [
     "PersistedAttestationRecord",
     "StoredProofAttestation",
     "verify_attestation_record",
+    "build_cbp_public_bindings",
+    "core_cbp_zk_use_case_decision",
+    "CBP_REQUIRED_PUBLIC_BINDING_KEYS",
+    "CORE_CBP_ZK_USE_CASE_DECISION",
+    "CORE_CBP_ZK_USE_CASE_ID",
 ]

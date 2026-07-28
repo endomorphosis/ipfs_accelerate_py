@@ -383,7 +383,10 @@ def test_public_inputs_bind_property_repo_tree_obligation_toolchain_policy_kerne
     assert public["property_digest"]
     assert statement.require_cbp_public_bindings() == statement.cbp_public_bindings
 
-    with pytest.raises(AttestationValidationError, match="CBP attestation requires"):
+    with pytest.raises(
+        AttestationValidationError,
+        match="(CBP|Code-proof) attestation requires",
+    ):
         build_receipt_attestation_statement(
             _receipt(kernel_receipt_id=""),
             backend_policy=_policy(),

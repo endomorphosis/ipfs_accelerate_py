@@ -58,7 +58,7 @@ that witness. Therefore a real ZK backend is **not warranted** for core CBP.
   approved decision is reviewed later for a distinct use case id.
 
 Machine-readable constant: `CORE_CBP_ZK_USE_CASE_DECISION` /
-`core_cbp_zk_use_case_decision()`.
+`core_code_proof_zk_use_case_decision()` (alias: `core_cbp_zk_use_case_decision()`).
 
 ## Trust boundary
 
@@ -73,14 +73,14 @@ root. Simulated paths cannot promote into that boundary as `ATTESTED`.
 | --- | --- |
 | Simulated ZKP / attestation ≠ `ATTESTED` | Envelope mode `simulated` → non-authoritative; `authoritative_assurance` is `UNVERIFIED` |
 | Real path only over kernel receipts | `ProofReceipt.require_kernel_verified()` before statement build |
-| Public inputs bind CBP identities | property, repository/tree, obligation, toolchain, policy, kernel-receipt **ids and digests** via `require_cbp_public_bindings` / `build_cbp_public_bindings` |
+| Public inputs bind code-proof identities | property, repository/tree, obligation, toolchain, policy, kernel-receipt **ids and digests** via `require_code_proof_public_bindings` / `build_code_proof_public_bindings` (aliases: `require_cbp_*` / `build_cbp_*`) |
 | Private witnesses stay private | `PrivateAttestationWitness`; `reject_private_witness_from_public_payload`; cache entry helper |
 | Re-verify, fail closed on drift | `reproduce_attestation_verification` / `PersistedAttestationRecord.is_current_at` |
 | No simulated fallback after crypto failure | `execute_cryptographic_attestation` raises or returns rejected/error only |
 
 ## Public-input binding (CBP)
 
-When a CBP-grade attestation statement is built (`require_cbp_bindings=True` or
+When a code-proof-grade attestation statement is built (`require_code_proof_bindings=True` or
 full identity slots populated), public inputs **must** include:
 
 **Identities:** `property_id`, `repository_id`, `repository_tree_id`,

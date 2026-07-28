@@ -3,7 +3,8 @@
 **Interface:** `CodeProofSrtBridge@1`
 **Module:** `ipfs_accelerate_py.agent_supervisor.code_proof_srt_bridge`
 **Related:** `CodeEditPacket@1`, `StructuralAdmission@1`, `PlateauCodexPacket@1`,
-`PlatResidualCatalog@1`, `Plat2HoldoutRegistry@1`
+`SrtResidualCatalog` / `SrtHoldoutRegistry` (wire interfaces remain
+`PlatResidualCatalog@1`, `Plat2HoldoutRegistry@1` for content identity)
 
 ## Purpose
 

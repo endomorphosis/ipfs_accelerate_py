@@ -13,6 +13,11 @@ context of earlier implementations and are not normative API references.
 - [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md): operate the
   stable Python, CLI, and MCP interfaces; choose a resource and rollout
   profile; migrate standalone scripts; and recover failed work.
+- [Agent Supervisor philosophy](architecture/AGENT_SUPERVISOR_PHILOSOPHY.md):
+  design pillars, authority ladder, evidence tiers, and domain package mental
+  model (product vocabulary, not taskboard IDs).
+- [Agent Supervisor doc hub](architecture/agent_supervisor/README.md):
+  audience router (operators, contributors, agents, programs).
 - [API reference](api/overview.md): current Python exports and supported entry
   points.
 - [Architecture overview](architecture/overview.md): current runtime layers
@@ -53,10 +58,16 @@ context of earlier implementations and are not normative API references.
 
 ## Agent supervisor
 
-Use the operator guide for supported entry points and day-to-day workflows,
-the architecture document for control-plane contracts and trust boundaries,
-and the self-improvement plan for the rollout roadmap and acceptance evidence.
+Start with the **doc hub** and **philosophy** for product vocabulary, then the
+operator guide for day-to-day workflows. Program boards (self-improvement,
+codebase-proof, domain layout) remain under architecture as execution records.
 
+- [Documentation hub (audience router)](architecture/agent_supervisor/README.md)
+- [Design philosophy](architecture/AGENT_SUPERVISOR_PHILOSOPHY.md)
+- [Package map (domain packages + DAG)](architecture/agent_supervisor/PACKAGE_MAP.md)
+- [Program glossary (board prefixes → semantic names)](architecture/agent_supervisor/PROGRAMS.md)
+- [Agent capsule (fail-closed invariants)](architecture/agent_supervisor/FOR_AGENTS.md)
+- [Contributor guide (extend packages)](architecture/agent_supervisor/FOR_CONTRIBUTORS.md)
 - [Operator guide, profiles, and migration](guides/AGENT_SUPERVISOR_GUIDE.md)
 - [Architecture, contracts, and assurance model](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
 - [Endpoint usage-aware routing and supervisor capacity plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md)
@@ -102,6 +113,9 @@ planned work. Use the current guides and source code for present behavior.
 | Use catalog or router tools over MCP | [MCP server AI tools](MCP_SERVER.md) |
 | Migrate legacy model or MCP APIs | [Catalog migration and compatibility](architecture/AI_SERVICE_CATALOG.md#migration-and-compatibility) |
 | Operate or migrate agent-supervisor workflows | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
+| Learn supervisor design philosophy (product vocabulary) | [Agent Supervisor philosophy](architecture/AGENT_SUPERVISOR_PHILOSOPHY.md) |
+| Orient as an implementation agent | [Agent capsule](architecture/agent_supervisor/FOR_AGENTS.md) |
+| Extend supervisor packages as a contributor | [Contributor guide](architecture/agent_supervisor/FOR_CONTRIBUTORS.md) |
 | Understand supervisor services, contracts, and trust boundaries | [Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) |
 | Create or steer a codebase-aware supervisor plan | [Plan creation and steering](architecture/AGENT_SUPERVISOR_PLAN_CREATE_AND_STEER_PLAN.md) |
 | Follow the supervisor rollout and self-improvement roadmap | [Self-Improvement Plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md) |
