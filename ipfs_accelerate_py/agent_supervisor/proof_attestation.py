@@ -63,6 +63,52 @@ ATTESTATION_BACKEND_TEST_RESULT_SCHEMA = (
 ATTESTATION_BACKEND_HEALTH_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/attestation-backend-health@1"
 )
+CBP_ATTESTATION_PUBLIC_BINDINGS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/cbp-attestation-public-bindings@1"
+)
+ZK_USE_CASE_DECISION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/zk-use-case-decision@1"
+)
+
+# Normative public identities that a CBP-grade attestation statement must bind.
+# Digests commit to the same identities so circuit adapters may use either the
+# explicit field map or a single field hash without dropping a binding.
+CBP_PUBLIC_BINDING_IDENTITY_KEYS = (
+    "property_id",
+    "repository_id",
+    "repository_tree_id",
+    "obligation_id",
+    "toolchain_id",
+    "policy_id",
+    "kernel_receipt_id",
+)
+CBP_PUBLIC_BINDING_DIGEST_KEYS = (
+    "property_digest",
+    "repository_digest",
+    "repository_tree_digest",
+    "obligation_digest",
+    "toolchain_digest",
+    "policy_digest",
+    "kernel_receipt_digest",
+)
+CBP_REQUIRED_PUBLIC_BINDING_KEYS = (
+    CBP_PUBLIC_BINDING_IDENTITY_KEYS + CBP_PUBLIC_BINDING_DIGEST_KEYS
+)
+
+# Reviewed disposition for the core codebase-proof program (CBP-G200).
+CORE_CBP_ZK_USE_CASE_ID = "cbp-core-codebase-proof"
+ZK_BACKEND_FAMILIES_REQUIRING_DECISION = frozenset(
+    {
+        "groth16",
+        "plonk",
+        "halo2",
+        "marlin",
+        "fflonk",
+        "nova",
+        "provekit",
+        "other",
+    }
+)
 
 # Compatibility names used by callers which emphasize that this is a ZKP.
 ZKP_RECEIPT_ATTESTATION_STATEMENT_SCHEMA = PROOF_ATTESTATION_STATEMENT_SCHEMA
@@ -634,6 +680,12 @@ def _backend_id_is_explicitly_simulated(backend_id: str) -> bool:
     )
 
 
+def _identity_digest(value: str) -> str:
+    """Content-address one public identity string for circuit public inputs."""
+
+    return content_identity({"identity": _text(value, field_name="identity", required=True)})
+
+
 @dataclass(frozen=True)
 class ReceiptAttestationStatement(CanonicalContract):
     """The complete public statement proven by a receipt attestation.
@@ -642,6 +694,11 @@ class ReceiptAttestationStatement(CanonicalContract):
     an opaque digest.  ``statement_id`` and ``public_inputs_digest`` commit to
     their canonical encoding for circuit adapters that require a single field.
     No witness values or witness field names are accepted by this contract.
+
+    When CBP identity bindings are populated (property, repository, tree,
+    obligation, toolchain, policy, kernel-receipt), both the explicit ids and
+    their digests enter :attr:`public_inputs` so third-party verifiers can
+    re-check every binding without private witness material.
     """
 
     SCHEMA: ClassVar[str] = PROOF_ATTESTATION_STATEMENT_SCHEMA
@@ -660,6 +717,10 @@ class ReceiptAttestationStatement(CanonicalContract):
     public_input_schema_id: str = ""
     public_input_schema_version: str = ""
     verification_key_version: str = ""
+    property_id: str = ""
+    repository_id: str = ""
+    toolchain_id: str = ""
+    kernel_receipt_id: str = ""
 
     def __post_init__(self) -> None:
         for name in (
@@ -691,11 +752,34 @@ class ReceiptAttestationStatement(CanonicalContract):
                 name,
                 _text(getattr(self, name), field_name=name),
             )
+        for name in (
+            "property_id",
+            "repository_id",
+            "toolchain_id",
+            "kernel_receipt_id",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(getattr(self, name), field_name=name),
+            )
         populated = tuple(bool(getattr(self, name)) for name in binding_fields)
         if any(populated) and not all(populated):
             raise AttestationValidationError(
                 "managed attestation statements must pin backend policy, backend, "
                 "circuit, public-input schema, and verification-key versions"
+            )
+        cbp_fields = (
+            "property_id",
+            "repository_id",
+            "toolchain_id",
+            "kernel_receipt_id",
+        )
+        cbp_populated = tuple(bool(getattr(self, name)) for name in cbp_fields)
+        if any(cbp_populated) and not all(cbp_populated):
+            raise AttestationValidationError(
+                "CBP attestation public bindings require property, repository, "
+                "toolchain, and kernel-receipt identities together"
             )
 
     @property
@@ -703,6 +787,20 @@ class ReceiptAttestationStatement(CanonicalContract):
         """Whether this statement is bound to a version-pinned backend policy."""
 
         return bool(self.backend_policy_id)
+
+    @property
+    def has_cbp_public_bindings(self) -> bool:
+        """Whether property/repository/toolchain/kernel-receipt bindings are set."""
+
+        return bool(
+            self.property_id
+            and self.repository_id
+            and self.toolchain_id
+            and self.kernel_receipt_id
+            and self.repository_tree_id
+            and self.obligation_id
+            and self.policy_id
+        )
 
     @property
     def tree_id(self) -> str:
@@ -723,6 +821,32 @@ class ReceiptAttestationStatement(CanonicalContract):
         """Compatibility plural spelling for :attr:`public_input_digest`."""
 
         return self.public_input_digest
+
+    @property
+    def cbp_public_bindings(self) -> Dict[str, str]:
+        """Return the CBP-required public identity and digest map, or empty."""
+
+        if not self.has_cbp_public_bindings:
+            return {}
+        identities = {
+            "property_id": self.property_id,
+            "repository_id": self.repository_id,
+            "repository_tree_id": self.repository_tree_id,
+            "obligation_id": self.obligation_id,
+            "toolchain_id": self.toolchain_id,
+            "policy_id": self.policy_id,
+            "kernel_receipt_id": self.kernel_receipt_id,
+        }
+        digests = {
+            "property_digest": _identity_digest(self.property_id),
+            "repository_digest": _identity_digest(self.repository_id),
+            "repository_tree_digest": _identity_digest(self.repository_tree_id),
+            "obligation_digest": _identity_digest(self.obligation_id),
+            "toolchain_digest": _identity_digest(self.toolchain_id),
+            "policy_digest": _identity_digest(self.policy_id),
+            "kernel_receipt_digest": _identity_digest(self.kernel_receipt_id),
+        }
+        return {**identities, **digests}
 
     @property
     def public_inputs(self) -> Dict[str, str]:
@@ -749,7 +873,28 @@ class ReceiptAttestationStatement(CanonicalContract):
                     "verification_key_version": self.verification_key_version,
                 }
             )
+        if self.has_cbp_public_bindings:
+            result.update(self.cbp_public_bindings)
         return result
+
+    def require_cbp_public_bindings(self) -> Dict[str, str]:
+        """Fail closed unless CBP public identity bindings are complete."""
+
+        bindings = self.cbp_public_bindings
+        if not bindings:
+            raise AttestationValidationError(
+                "CBP attestation requires public inputs that bind property, "
+                "repository/tree, obligation, toolchain, policy, and "
+                "kernel-receipt digests"
+            )
+        missing = [
+            key for key in CBP_REQUIRED_PUBLIC_BINDING_KEYS if not bindings.get(key)
+        ]
+        if missing:
+            raise AttestationValidationError(
+                "CBP attestation public bindings missing: %s" % ", ".join(missing)
+            )
+        return dict(bindings)
 
     def matches_backend_policy(self, policy: AttestationBackendPolicy) -> bool:
         """Return whether every managed public binding matches ``policy``."""
@@ -792,6 +937,8 @@ class ReceiptAttestationStatement(CanonicalContract):
         backend_id: str,
         verification_key_id: str,
         backend_policy: AttestationBackendPolicy | None = None,
+        property_id: str = "",
+        require_cbp_bindings: bool = False,
     ) -> "ReceiptAttestationStatement":
         """Build a public statement after enforcing receipt eligibility."""
 
@@ -815,6 +962,28 @@ class ReceiptAttestationStatement(CanonicalContract):
                     "statement backend, circuit, and verification key must match "
                     "the pinned backend policy"
                 )
+        resolved_property = _text(
+            property_id
+            or (
+                receipt.metadata.get("property_id", "")
+                if isinstance(receipt.metadata, Mapping)
+                else ""
+            ),
+            field_name="property_id",
+        )
+        # Populate CBP identity slots whenever the receipt already carries them
+        # and a property id is available; partial CBP sets are rejected above.
+        cbp_ready = bool(
+            resolved_property
+            and receipt.repository_id
+            and receipt.toolchain_id
+            and receipt.kernel_receipt_id
+        )
+        if require_cbp_bindings and not cbp_ready:
+            raise AttestationValidationError(
+                "CBP attestation requires property_id plus repository, toolchain, "
+                "and kernel_receipt_id on the kernel-verified receipt"
+            )
         return cls(
             repository_tree_id=receipt.repository_tree_id,
             obligation_id=receipt.obligation_id,
@@ -836,6 +1005,10 @@ class ReceiptAttestationStatement(CanonicalContract):
             verification_key_version=(
                 policy.verification_key_version if policy is not None else ""
             ),
+            property_id=resolved_property if cbp_ready else "",
+            repository_id=receipt.repository_id if cbp_ready else "",
+            toolchain_id=receipt.toolchain_id if cbp_ready else "",
+            kernel_receipt_id=receipt.kernel_receipt_id if cbp_ready else "",
         )
 
     @classmethod
@@ -864,6 +1037,10 @@ class ReceiptAttestationStatement(CanonicalContract):
             verification_key_version=payload.get(
                 "verification_key_version", ""
             ),
+            property_id=payload.get("property_id", ""),
+            repository_id=payload.get("repository_id", ""),
+            toolchain_id=payload.get("toolchain_id", ""),
+            kernel_receipt_id=payload.get("kernel_receipt_id", ""),
         )
         claimed = payload.get("statement_id") or payload.get("content_id")
         if claimed and claimed != result.statement_id:
@@ -1564,11 +1741,15 @@ class PersistedAttestationRecord(CanonicalContract):
             backend_id=health.policy.backend_id,
             verification_key_id=health.policy.verification_key_id,
             backend_policy=health.policy,
+            property_id=statement.property_id,
+            require_cbp_bindings=statement.has_cbp_public_bindings,
         )
         if statement != expected:
             raise AttestationValidationError(
                 "attestation statement does not bind the immutable proof receipt"
             )
+        if statement.has_cbp_public_bindings:
+            statement.require_cbp_public_bindings()
         if not health.policy.key_is_current_at(self.created_at):
             raise AttestationValidationError(
                 "attestation was created with an expired verification key"
@@ -1814,6 +1995,8 @@ def build_receipt_attestation_statement(
     backend_id: str | None = None,
     verification_key_id: str | None = None,
     backend_policy: AttestationBackendPolicy | None = None,
+    property_id: str = "",
+    require_cbp_bindings: bool = False,
 ) -> ReceiptAttestationStatement:
     """Prepare the canonical public statement for an eligible receipt."""
 
@@ -1834,6 +2017,8 @@ def build_receipt_attestation_statement(
         backend_id=backend_id,
         verification_key_id=verification_key_id,
         backend_policy=backend_policy,
+        property_id=property_id,
+        require_cbp_bindings=require_cbp_bindings,
     )
 
 
@@ -1844,6 +2029,8 @@ def prepare_receipt_attestation(
     backend_id: str | None = None,
     verification_key_id: str | None = None,
     backend_policy: AttestationBackendPolicy | None = None,
+    property_id: str = "",
+    require_cbp_bindings: bool = False,
     witness: PrivateAttestationWitness,
 ) -> ReceiptAttestationRequest:
     """Create an ephemeral proving request after the kernel receipt gate."""
@@ -1854,6 +2041,8 @@ def prepare_receipt_attestation(
         backend_id=backend_id,
         verification_key_id=verification_key_id,
         backend_policy=backend_policy,
+        property_id=property_id,
+        require_cbp_bindings=require_cbp_bindings,
     )
     return ReceiptAttestationRequest(statement=statement, _witness=witness)
 
@@ -2199,10 +2388,452 @@ def public_artifact_contains(
     return needle in encoded
 
 
+# ---------------------------------------------------------------------------
+# CBP-200: ZK use-case decision gate and public-binding helpers
+# ---------------------------------------------------------------------------
+
+
+class ZkUseCaseDisposition(str, Enum):
+    """Reviewed terminal disposition for a ZK / attestation use case."""
+
+    APPROVED = "approved"
+    NOT_APPLICABLE = "not_applicable"
+    PENDING_REVIEW = "pending_review"
+    REJECTED = "rejected"
+
+
+class ZkBackendFamily(str, Enum):
+    """Backend families that may not be selected without an approved decision."""
+
+    GROTH16 = "groth16"
+    PLONK = "plonk"
+    HALO2 = "halo2"
+    MARLIN = "marlin"
+    FFLONK = "fflonk"
+    NOVA = "nova"
+    PROVEKIT = "provekit"
+    OTHER = "other"
+
+
+_SAFE_PUBLIC_REDACTION_KEYS = frozenset(
+    {
+        "private_witness_redacted",
+    }
+)
+
+
+@dataclass(frozen=True)
+class ZkUseCaseDecisionRecord(CanonicalContract):
+    """Reviewed decision that authorizes (or declines) a real ZK backend.
+
+    Selecting or implementing Groth16, Plonk, or any other cryptographic
+    proving system is blocked until a record with disposition ``approved``
+    exists for that use case.  A terminal ``not_applicable`` result is valid
+    only when it does not block core CBP work (``blocks_core_cbp`` is false).
+    """
+
+    SCHEMA: ClassVar[str] = ZK_USE_CASE_DECISION_SCHEMA
+
+    use_case_id: str
+    disposition: ZkUseCaseDisposition
+    blocks_core_cbp: bool
+    reviewed_by: str
+    reviewed_at: str
+    rationale: str
+    protected_witness_summary: str
+    trust_boundary_summary: str
+    disclosure_risk_summary: str
+    replay_freshness_summary: str
+    why_signed_receipts_insufficient: str
+    qualifying_private_witness: bool
+    qualifying_cross_trust_boundary: bool
+    approved_backend_families: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "use_case_id",
+            _text(self.use_case_id, field_name="use_case_id", required=True),
+        )
+        object.__setattr__(
+            self,
+            "disposition",
+            _enum(self.disposition, ZkUseCaseDisposition, field_name="disposition"),
+        )
+        object.__setattr__(
+            self, "blocks_core_cbp", _bool(self.blocks_core_cbp, field_name="blocks_core_cbp")
+        )
+        for name in (
+            "reviewed_by",
+            "reviewed_at",
+            "rationale",
+            "protected_witness_summary",
+            "trust_boundary_summary",
+            "disclosure_risk_summary",
+            "replay_freshness_summary",
+            "why_signed_receipts_insufficient",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(getattr(self, name), field_name=name, required=True),
+            )
+        object.__setattr__(
+            self,
+            "reviewed_at",
+            _timestamp(self.reviewed_at, field_name="reviewed_at"),
+        )
+        object.__setattr__(
+            self,
+            "qualifying_private_witness",
+            _bool(
+                self.qualifying_private_witness,
+                field_name="qualifying_private_witness",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "qualifying_cross_trust_boundary",
+            _bool(
+                self.qualifying_cross_trust_boundary,
+                field_name="qualifying_cross_trust_boundary",
+            ),
+        )
+        families = tuple(
+            _text(item, field_name="approved_backend_families", required=True)
+            for item in (self.approved_backend_families or ())
+        )
+        object.__setattr__(self, "approved_backend_families", families)
+
+        if self.disposition is ZkUseCaseDisposition.NOT_APPLICABLE and self.blocks_core_cbp:
+            raise AttestationValidationError(
+                "a terminal not_applicable ZK decision cannot block core CBP"
+            )
+        if self.disposition is ZkUseCaseDisposition.APPROVED:
+            if not (
+                self.qualifying_private_witness and self.qualifying_cross_trust_boundary
+            ):
+                raise AttestationValidationError(
+                    "an approved ZK use case requires a qualifying private witness "
+                    "and a cross-trust-boundary need"
+                )
+            if not self.approved_backend_families:
+                raise AttestationValidationError(
+                    "an approved ZK use case must name at least one backend family"
+                )
+        if self.disposition is not ZkUseCaseDisposition.APPROVED and self.approved_backend_families:
+            raise AttestationValidationError(
+                "backend families may be approved only on an approved use-case decision"
+            )
+
+    @property
+    def decision_id(self) -> str:
+        return self.content_id
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.disposition in (
+            ZkUseCaseDisposition.APPROVED,
+            ZkUseCaseDisposition.NOT_APPLICABLE,
+            ZkUseCaseDisposition.REJECTED,
+        )
+
+    @property
+    def authorizes_backend_selection(self) -> bool:
+        return self.disposition is ZkUseCaseDisposition.APPROVED
+
+    def authorizes_backend_family(self, family: str | ZkBackendFamily) -> bool:
+        if not self.authorizes_backend_selection:
+            return False
+        normalized = str(getattr(family, "value", family)).strip().lower()
+        return normalized in {item.lower() for item in self.approved_backend_families}
+
+    def _payload(self) -> Dict[str, Any]:
+        return {
+            "contract_version": PROOF_ATTESTATION_CONTRACT_VERSION,
+            "use_case_id": self.use_case_id,
+            "disposition": self.disposition,
+            "blocks_core_cbp": self.blocks_core_cbp,
+            "reviewed_by": self.reviewed_by,
+            "reviewed_at": self.reviewed_at,
+            "rationale": self.rationale,
+            "protected_witness_summary": self.protected_witness_summary,
+            "trust_boundary_summary": self.trust_boundary_summary,
+            "disclosure_risk_summary": self.disclosure_risk_summary,
+            "replay_freshness_summary": self.replay_freshness_summary,
+            "why_signed_receipts_insufficient": self.why_signed_receipts_insufficient,
+            "qualifying_private_witness": self.qualifying_private_witness,
+            "qualifying_cross_trust_boundary": self.qualifying_cross_trust_boundary,
+            "approved_backend_families": self.approved_backend_families,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ZkUseCaseDecisionRecord":
+        _schema(payload, cls.SCHEMA)
+        result = cls(
+            use_case_id=payload.get("use_case_id", ""),
+            disposition=payload.get("disposition", ZkUseCaseDisposition.PENDING_REVIEW),
+            blocks_core_cbp=payload.get("blocks_core_cbp", True),
+            reviewed_by=payload.get("reviewed_by", ""),
+            reviewed_at=payload.get("reviewed_at", ""),
+            rationale=payload.get("rationale", ""),
+            protected_witness_summary=payload.get("protected_witness_summary", ""),
+            trust_boundary_summary=payload.get("trust_boundary_summary", ""),
+            disclosure_risk_summary=payload.get("disclosure_risk_summary", ""),
+            replay_freshness_summary=payload.get("replay_freshness_summary", ""),
+            why_signed_receipts_insufficient=payload.get(
+                "why_signed_receipts_insufficient", ""
+            ),
+            qualifying_private_witness=payload.get(
+                "qualifying_private_witness", False
+            ),
+            qualifying_cross_trust_boundary=payload.get(
+                "qualifying_cross_trust_boundary", False
+            ),
+            approved_backend_families=tuple(
+                payload.get("approved_backend_families") or ()
+            ),
+        )
+        claimed = payload.get("decision_id") or payload.get("content_id")
+        if claimed and claimed != result.decision_id:
+            raise AttestationValidationError(
+                "ZK use-case decision identity does not match payload"
+            )
+        return result
+
+    def to_public_artifact(self) -> Dict[str, Any]:
+        return {**self.to_dict(), "decision_id": self.decision_id}
+
+    to_cache_record = to_public_artifact
+    to_context_capsule = to_public_artifact
+    to_log_record = to_public_artifact
+
+
+# Terminal reviewed decision for the core CBP program: no qualifying
+# private-witness / cross-trust-boundary need, and core CBP continues without ZK.
+CORE_CBP_ZK_USE_CASE_DECISION = ZkUseCaseDecisionRecord(
+    use_case_id=CORE_CBP_ZK_USE_CASE_ID,
+    disposition=ZkUseCaseDisposition.NOT_APPLICABLE,
+    blocks_core_cbp=False,
+    reviewed_by="cbp-architecture-review",
+    reviewed_at="2026-07-28T00:00:00Z",
+    rationale=(
+        "Core codebase-proof work proves properties of public repository trees "
+        "with kernel-checked receipts inside a single operator trust domain. "
+        "There is no qualifying private witness that must be hidden from a "
+        "third-party verifier across a trust boundary, so a real Groth16/Plonk "
+        "backend is not warranted. Kernel-verified assurance remains the "
+        "production ceiling for core CBP; ATTESTED is reserved for a later "
+        "approved cross-boundary case."
+    ),
+    protected_witness_summary=(
+        "No protected private witness is required for core CBP obligations; "
+        "premises and kernel transcripts used in ordinary development stay "
+        "inside the operator domain and are not disclosed to external verifiers."
+    ),
+    trust_boundary_summary=(
+        "Prover and verifier for core CBP are the same operator-controlled "
+        "supervisor/kernel path; formal_verification_cache (plus attestation "
+        "subcache) is the sole memoization trust boundary."
+    ),
+    disclosure_risk_summary=(
+        "Absent a third-party verifier, ZK does not reduce disclosure risk for "
+        "core CBP; introducing a proving system would add ceremony, key, and "
+        "circuit surface without a privacy benefit."
+    ),
+    replay_freshness_summary=(
+        "Kernel receipts already bind repository/tree, obligation, toolchain, "
+        "and policy identities with current/stale freshness; attestation "
+        "sidecars, when used later, must re-verify and expire independently."
+    ),
+    why_signed_receipts_insufficient=(
+        "Ordinary signed or kernel receipts authenticate an operator claim and "
+        "reconstruct a proof check, but they reveal the full public statement "
+        "and any attached evidence. They cannot convince a distrusting third "
+        "party that a private witness was used correctly without disclosing it; "
+        "only a real cryptographic attestation over a kernel receipt can."
+    ),
+    qualifying_private_witness=False,
+    qualifying_cross_trust_boundary=False,
+    approved_backend_families=(),
+)
+
+
+def require_zk_backend_selection_authorized(
+    decision: ZkUseCaseDecisionRecord | Mapping[str, Any],
+    *,
+    backend_family: str | ZkBackendFamily,
+) -> ZkUseCaseDecisionRecord:
+    """Fail closed unless a reviewed decision authorizes ``backend_family``.
+
+    Simulated educational backends are never authorized by this gate.  A
+    terminal ``not_applicable`` decision is accepted as a program outcome only
+    when it does not block core CBP and is never treated as authorization to
+    select Groth16, Plonk, or another production family.
+    """
+
+    checked = (
+        decision
+        if isinstance(decision, ZkUseCaseDecisionRecord)
+        else ZkUseCaseDecisionRecord.from_dict(decision)
+    )
+    family = str(getattr(backend_family, "value", backend_family)).strip().lower()
+    if not family:
+        raise AttestationValidationError("backend_family is required")
+    if family in {"sim", "simulated", "mock", "fake", "demo", "educational"}:
+        raise AttestationValidationError(
+            "simulated backends cannot be authorized for production ZK selection"
+        )
+    if checked.disposition is ZkUseCaseDisposition.NOT_APPLICABLE:
+        if checked.blocks_core_cbp:
+            raise AttestationValidationError(
+                "not_applicable ZK decisions must not block core CBP"
+            )
+        raise AttestationValidationError(
+            "ZK backend selection is not applicable for use case %s; no "
+            "production backend may be selected" % checked.use_case_id
+        )
+    if not checked.authorizes_backend_family(family):
+        raise AttestationValidationError(
+            "backend family %s is not authorized by reviewed use-case decision %s"
+            % (family, checked.use_case_id)
+        )
+    return checked
+
+
+def core_cbp_zk_use_case_decision() -> ZkUseCaseDecisionRecord:
+    """Return the immutable reviewed decision for the core CBP program."""
+
+    return CORE_CBP_ZK_USE_CASE_DECISION
+
+
+def build_cbp_public_bindings(
+    receipt: ProofReceipt,
+    *,
+    property_id: str,
+    circuit_id: str,
+    backend_id: str,
+    verification_key_id: str,
+    backend_policy: AttestationBackendPolicy | None = None,
+) -> Dict[str, str]:
+    """Build CBP public inputs that bind property through kernel-receipt digests."""
+
+    statement = build_receipt_attestation_statement(
+        receipt,
+        circuit_id=circuit_id,
+        backend_id=backend_id,
+        verification_key_id=verification_key_id,
+        backend_policy=backend_policy,
+        property_id=property_id,
+        require_cbp_bindings=True,
+    )
+    return statement.require_cbp_public_bindings()
+
+
+def reject_private_witness_from_public_payload(value: Any) -> None:
+    """Reject private witness material from public receipts and cache entries.
+
+    Safe redaction markers (``private_witness_redacted``) are allowed as boolean
+    flags that reveal no field names or values.  Live witness objects, proving
+    requests, and any recursive private-field markers fail closed.
+    """
+
+    if isinstance(value, PrivateAttestationWitness):
+        raise WitnessDisclosureError(
+            "private witness cannot enter a public receipt or attestation cache entry"
+        )
+    if isinstance(value, ReceiptAttestationRequest):
+        raise WitnessDisclosureError(
+            "attestation proving requests cannot enter public receipts or "
+            "attestation cache entries"
+        )
+    if _public_payload_has_private_witness(value):
+        raise WitnessDisclosureError(
+            "private witness markers are rejected from public receipts and "
+            "attestation cache entries"
+        )
+
+
+def _public_payload_has_private_witness(value: Any) -> bool:
+    if isinstance(value, PrivateAttestationWitness):
+        return True
+    if isinstance(value, ReceiptAttestationRequest):
+        return True
+    if isinstance(value, Mapping):
+        for raw_key, item in value.items():
+            key = str(raw_key).strip().lower().replace("-", "_")
+            if key in _SAFE_PUBLIC_REDACTION_KEYS:
+                # Only a boolean redaction flag is safe; nested secrets are not.
+                if isinstance(item, bool):
+                    continue
+                return True
+            if any(
+                key == marker
+                or key.endswith("_" + marker)
+                or marker in key
+                for marker in (
+                    "private_witness",
+                    "hidden_witness",
+                    "private_premise",
+                    "witness",
+                    "private_key",
+                    "secret",
+                )
+            ):
+                # Allow the exact safe redaction key handled above; everything
+                # else with a private marker is a disclosure.
+                if key not in _SAFE_PUBLIC_REDACTION_KEYS:
+                    return True
+            if _public_payload_has_private_witness(item):
+                return True
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(_public_payload_has_private_witness(item) for item in value)
+    return False
+
+
+def public_attestation_cache_entry(value: Any) -> Any:
+    """Project a value into a cache-safe public form, rejecting private witnesses."""
+
+    if isinstance(value, PrivateAttestationWitness):
+        raise WitnessDisclosureError(
+            "private witness cannot enter an attestation cache entry"
+        )
+    if isinstance(value, ReceiptAttestationRequest):
+        raise WitnessDisclosureError(
+            "attestation proving requests containing a witness cannot be cached"
+        )
+    public = public_attestation_artifact(value)
+    reject_private_witness_from_public_payload(public)
+    return public
+
+
+def simulated_attestation_cannot_satisfy_attested(
+    verification: AttestationVerification | Mapping[str, Any],
+) -> bool:
+    """Return True when a simulated path is correctly barred from ATTESTED."""
+
+    checked = _verification(verification)
+    if checked.simulated:
+        return (
+            checked.authoritative_assurance is not AssuranceLevel.ATTESTED
+            and not checked.authoritative
+            and not checked.satisfies_gate(AttestationGate.PRODUCTION)
+            and not checked.satisfies_gate(AttestationGate.COMPLETION)
+        )
+    return checked.authoritative_assurance is AssuranceLevel.ATTESTED
+
+
 __all__ = [
     "ATTESTATION_BACKEND_HEALTH_SCHEMA",
     "ATTESTATION_BACKEND_POLICY_SCHEMA",
     "ATTESTATION_BACKEND_TEST_RESULT_SCHEMA",
+    "CBP_ATTESTATION_PUBLIC_BINDINGS_SCHEMA",
+    "CBP_PUBLIC_BINDING_DIGEST_KEYS",
+    "CBP_PUBLIC_BINDING_IDENTITY_KEYS",
+    "CBP_REQUIRED_PUBLIC_BINDING_KEYS",
+    "CORE_CBP_ZK_USE_CASE_DECISION",
+    "CORE_CBP_ZK_USE_CASE_ID",
     "PROOF_ATTESTATION_CONTRACT_VERSION",
     "PROOF_ATTESTATION_ENVELOPE_SCHEMA",
     "PROOF_ATTESTATION_RECORD_SCHEMA",
@@ -2213,6 +2844,8 @@ __all__ = [
     "RECEIPT_ATTESTATION_RECORD_SCHEMA",
     "RECEIPT_ATTESTATION_STATEMENT_SCHEMA",
     "ATTESTATION_VERIFICATION_SCHEMA",
+    "ZK_BACKEND_FAMILIES_REQUIRING_DECISION",
+    "ZK_USE_CASE_DECISION_SCHEMA",
     "ZKP_RECEIPT_ATTESTATION_ENVELOPE_SCHEMA",
     "ZKP_RECEIPT_ATTESTATION_RECORD_SCHEMA",
     "ZKP_RECEIPT_ATTESTATION_STATEMENT_SCHEMA",
@@ -2252,6 +2885,9 @@ __all__ = [
     "ReceiptAttestationVerification",
     "ReceiptAttestationWitness",
     "WitnessDisclosureError",
+    "ZkBackendFamily",
+    "ZkUseCaseDecisionRecord",
+    "ZkUseCaseDisposition",
     "ZKPBackendMode",
     "ZKPReceiptAttestation",
     "ZKPReceiptAttestationRequest",
@@ -2262,9 +2898,11 @@ __all__ = [
     "REQUIRED_BACKEND_TEST_CASES",
     "attestation_satisfies_gate",
     "bind_attestation_record",
+    "build_cbp_public_bindings",
     "build_persisted_attestation_record",
     "build_receipt_attestation_statement",
     "build_attestation_statement",
+    "core_cbp_zk_use_case_decision",
     "create_attestation_envelope",
     "evaluate_backend_health",
     "execute_cryptographic_attestation",
@@ -2274,10 +2912,14 @@ __all__ = [
     "prepare_receipt_attestation",
     "public_artifact_contains",
     "public_attestation_artifact",
+    "public_attestation_cache_entry",
     "record_attestation_verification",
+    "reject_private_witness_from_public_payload",
     "replay_attestation_verification",
     "reproduce_attestation_verification",
+    "require_zk_backend_selection_authorized",
     "run_backend_self_tests",
+    "simulated_attestation_cannot_satisfy_attested",
     "witness_no_leak_test_result",
     "PersistedAttestationRecord",
     "StoredProofAttestation",
