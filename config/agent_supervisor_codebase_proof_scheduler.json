@@ -37,6 +37,7 @@
   },
   "resource_hints": {
     "cbp-proof-cache": "cpu-medium",
+    "cbp-evidence": "cpu-small",
     "cbp-obligations": "cpu-medium",
     "cbp-reproof": "cpu-proof-solver",
     "cbp-queries": "cpu-medium",
