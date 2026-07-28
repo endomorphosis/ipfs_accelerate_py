@@ -20,7 +20,7 @@ Program invariants:
 
 ## GOOSE-001 Define shared CLI runtime contracts and registry
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
