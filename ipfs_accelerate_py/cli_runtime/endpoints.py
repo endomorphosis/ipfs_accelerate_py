@@ -95,6 +95,16 @@ class EndpointLifecycleOp(str, Enum):
     EXECUTE = "execute"
     STREAM = "stream"
     CANCEL = "cancel"
+    # Persistent Goose ACP session lifecycle (endpoint-local).
+    ACP_START = "acp_start"
+    ACP_STOP = "acp_stop"
+    ACP_RESTART = "acp_restart"
+    SESSION_NEW = "session_new"
+    SESSION_LOAD = "session_load"
+    SESSION_CLOSE = "session_close"
+    SESSION_PROMPT = "session_prompt"
+    SESSION_CANCEL = "session_cancel"
+    ACP_DESCRIBE = "acp_describe"
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +220,12 @@ class EndpointStats:
 
 @dataclass
 class EndpointRecord:
-    """Registered endpoint: concrete adapter plus lifecycle metadata."""
+    """Registered endpoint: concrete adapter plus lifecycle metadata.
+
+    ACP client and sessions are *endpoint-local*: each endpoint owns its own
+    managed ``goose acp`` process and session map. Restart behavior is
+    explicit and never auto-replays agent work.
+    """
 
     endpoint_id: str
     tool: str
@@ -220,6 +235,9 @@ class EndpointRecord:
     active_request_id: Optional[str] = None
     cancel_requested: bool = False
     registered_at: float = field(default_factory=time.time)
+    # Optional persistent ACP client (Goose). Typed as Any to avoid import
+    # cycles; constructed lazily via CLIEndpointRegistry.acp_start.
+    acp_client: Any = field(default=None, repr=False)
 
     def describe(self, *, probe: bool = False) -> dict[str, Any]:
         """Describe this endpoint. Probing is opt-in and never done for list."""
@@ -237,6 +255,23 @@ class EndpointRecord:
                     else EndpointHealth.MISSING
                 )
         cli_path = getattr(self.adapter, "cli_path", None)
+        acp_info: Optional[dict[str, Any]] = None
+        client = self.acp_client
+        if client is not None:
+            try:
+                acp_info = {
+                    "state": getattr(
+                        getattr(client, "state", None), "value", None
+                    )
+                    or str(getattr(client, "state", None)),
+                    "ready": bool(getattr(client, "is_ready", False)),
+                    "sessions": len(client.list_sessions())
+                    if hasattr(client, "list_sessions")
+                    else 0,
+                    "restart_count": getattr(client, "restart_count", 0),
+                }
+            except Exception:  # noqa: BLE001
+                acp_info = {"state": "unknown"}
         return {
             "endpoint_id": self.endpoint_id,
             "endpoint_type": "cli",
@@ -246,6 +281,7 @@ class EndpointRecord:
             "health": self.health.value,
             "stats": self.stats.snapshot(),
             "registered_at": self.registered_at,
+            "acp": acp_info,
         }
 
 
@@ -690,7 +726,16 @@ class CLIEndpointRegistry:
 
     def clear(self) -> None:
         with self._lock:
+            records = list(self._records.values())
             self._records.clear()
+        for record in records:
+            client = getattr(record, "acp_client", None)
+            if client is not None:
+                try:
+                    client.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+                record.acp_client = None
 
     def register_adapter(
         self,
@@ -881,7 +926,20 @@ class CLIEndpointRegistry:
 
     def unregister(self, endpoint_id: str) -> bool:
         with self._lock:
-            return self._records.pop(endpoint_id, None) is not None
+            record = self._records.pop(endpoint_id, None)
+        if record is None:
+            return False
+        # Clean up endpoint-local ACP process and sessions.
+        client = getattr(record, "acp_client", None)
+        if client is not None:
+            try:
+                client.stop()
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "ACP stop on unregister failed for %s", endpoint_id
+                )
+            record.acp_client = None
+        return True
 
     def list_endpoints(self, *, probe: bool = False) -> List[Dict[str, Any]]:
         """List registered endpoints. Side-effect free when probe=False."""
@@ -1181,7 +1239,62 @@ class CLIEndpointRegistry:
         prompt: str,
         **kwargs: Any,
     ):
-        """Yield lifecycle events around a one-shot execute (no prompt echo)."""
+        """Yield lifecycle events (ACP session stream when session_id set).
+
+        When ``session_id`` is provided and the endpoint has a ready ACP
+        client, events stream from the persistent ACP transport. Otherwise
+        falls back to one-shot execute wrapping (no prompt echo).
+        """
+        session_id = kwargs.pop("session_id", None)
+        record = self.get_record(endpoint_id)
+        if (
+            session_id
+            and record is not None
+            and record.acp_client is not None
+            and getattr(record.acp_client, "is_ready", False)
+        ):
+            try:
+                for event in record.acp_client.stream_prompt(
+                    str(session_id),
+                    prompt,
+                    timeout=kwargs.get("timeout"),
+                ):
+                    # Never echo the prompt in streamed events.
+                    safe = dict(event)
+                    safe.pop("prompt", None)
+                    yield safe
+            except Exception as exc:  # noqa: BLE001
+                from .acp.goose_client import (
+                    ACPUncertainSideEffectError,
+                    FAILURE_KIND_UNCERTAIN_SIDE_EFFECT,
+                )
+
+                uncertain = isinstance(exc, ACPUncertainSideEffectError) or (
+                    getattr(exc, "uncertain_side_effects", False)
+                )
+                yield {
+                    "event": "failed",
+                    "endpoint_id": endpoint_id,
+                    "session_id": session_id,
+                    "error": (
+                        exc.record.message
+                        if isinstance(exc, CLIRuntimeError)
+                        else type(exc).__name__
+                    ),
+                    "error_code": (
+                        exc.code.value
+                        if isinstance(exc, CLIRuntimeError)
+                        else CLIRuntimeErrorCode.INTERNAL.value
+                    ),
+                    "uncertain_side_effects": uncertain,
+                    "failure_kind": (
+                        FAILURE_KIND_UNCERTAIN_SIDE_EFFECT
+                        if uncertain
+                        else None
+                    ),
+                }
+            return
+
         yield {
             "event": "started",
             "endpoint_id": endpoint_id,
@@ -1206,8 +1319,8 @@ class CLIEndpointRegistry:
                 "elapsed_time": result.get("elapsed_time"),
             }
 
-    def cancel(self, endpoint_id: str) -> dict[str, Any]:
-        """Request cancellation of an in-flight execute for *endpoint_id*."""
+    def cancel(self, endpoint_id: str, *, session_id: str | None = None) -> dict[str, Any]:
+        """Request cancellation of in-flight execute and/or ACP session work."""
         with self._lock:
             record = self._records.get(endpoint_id)
             if record is None:
@@ -1216,22 +1329,539 @@ class CLIEndpointRegistry:
                     code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
                     endpoint_id=endpoint_id,
                 )
-            if record.active_request_id is None:
-                return {
+            client = record.acp_client
+            active_id = record.active_request_id
+            if active_id is not None:
+                record.cancel_requested = True
+
+        acp_result: Optional[dict[str, Any]] = None
+        if client is not None and session_id:
+            try:
+                acp_result = client.session_cancel(session_id)
+            except Exception as exc:  # noqa: BLE001
+                acp_result = error_envelope(
+                    f"ACP session cancel failed: {type(exc).__name__}",
+                    code=CLIRuntimeErrorCode.INTERNAL,
+                    endpoint_id=endpoint_id,
+                    details={"error_type": type(exc).__name__},
+                )
+        elif client is not None and active_id is None and not session_id:
+            # Cancel all open ACP sessions' pending prompts.
+            try:
+                sessions = client.list_sessions()
+                cancelled = 0
+                for sess in sessions:
+                    sid = sess.get("session_id")
+                    if sid:
+                        out = client.session_cancel(str(sid))
+                        cancelled += int(out.get("cancelled_pending") or 0)
+                acp_result = {
                     "status": "success",
                     "success": True,
-                    "endpoint_id": endpoint_id,
-                    "cancelled": False,
-                    "message": "no active request",
+                    "cancelled_pending": cancelled,
+                    "sessions": len(sessions),
                 }
-            record.cancel_requested = True
+            except Exception as exc:  # noqa: BLE001
+                acp_result = {
+                    "status": "error",
+                    "success": False,
+                    "error": type(exc).__name__,
+                }
+
+        if active_id is None and acp_result is None:
             return {
                 "status": "success",
                 "success": True,
                 "endpoint_id": endpoint_id,
-                "cancelled": True,
-                "request_id": record.active_request_id,
+                "cancelled": False,
+                "message": "no active request",
             }
+        return {
+            "status": "success",
+            "success": True,
+            "endpoint_id": endpoint_id,
+            "cancelled": active_id is not None
+            or bool((acp_result or {}).get("cancelled_pending")),
+            "request_id": active_id,
+            "acp": acp_result,
+        }
+
+    # ------------------------------------------------------------------
+    # Persistent Goose ACP lifecycle (endpoint-local)
+    # ------------------------------------------------------------------
+
+    def _get_goose_executable(
+        self, record: EndpointRecord, *, cli_path: Optional[str] = None
+    ) -> str:
+        """Resolve an explicit goose executable for ACP (never PATH guessing)."""
+        if cli_path:
+            return str(cli_path)
+        adapter = record.adapter
+        path = getattr(adapter, "cli_path", None)
+        if path:
+            return str(path)
+        cfg = getattr(adapter, "config", None) or {}
+        if isinstance(cfg, Mapping):
+            for key in ("cli_path", "executable", "goose_path"):
+                if cfg.get(key):
+                    return str(cfg[key])
+        raise ContractValidationError(
+            "ACP requires an explicit goose executable path on the endpoint",
+            details={"endpoint_id": record.endpoint_id},
+        )
+
+    def _get_acp_state_root(
+        self,
+        record: EndpointRecord,
+        *,
+        state_root: Optional[str] = None,
+    ) -> str:
+        if state_root:
+            return str(state_root)
+        cfg = getattr(record.adapter, "config", None) or {}
+        if isinstance(cfg, Mapping):
+            for key in ("acp_state_root", "state_root", "GOOSE_PATH_ROOT", "path_root"):
+                if cfg.get(key):
+                    return str(cfg[key])
+        raise ContractValidationError(
+            "ACP requires an isolated absolute state_root (GOOSE_PATH_ROOT)",
+            details={"endpoint_id": record.endpoint_id},
+        )
+
+    def acp_start(
+        self,
+        endpoint_id: str,
+        *,
+        executable: Optional[str] = None,
+        state_root: Optional[str] = None,
+        cwd: Optional[str] = None,
+        max_restarts: int = 3,
+        restart_on_unexpected_exit: bool = True,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Start endpoint-local ``goose acp`` after validating the executable.
+
+        Does **not** enable ``goose serve`` or any network listener.
+        """
+        record = self.get_record(endpoint_id)
+        if record is None:
+            return error_envelope(
+                f"CLI endpoint '{endpoint_id}' not found",
+                code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
+                endpoint_id=endpoint_id,
+            )
+        # ACP is Goose-specific.
+        tool = (record.tool or "").lower().replace("-", "_")
+        if tool not in {"goose", "goose_cli", "block_goose", "aaif_goose"}:
+            return error_envelope(
+                "ACP sessions are only supported for goose endpoints",
+                code=CLIRuntimeErrorCode.UNSUPPORTED_CAPABILITY,
+                endpoint_id=endpoint_id,
+                tool=record.tool,
+            )
+        try:
+            from .acp.goose_client import (
+                ACPBounds,
+                ACPRestartPolicy,
+                GooseACPClient,
+            )
+
+            exe = self._get_goose_executable(record, cli_path=executable)
+            root = self._get_acp_state_root(record, state_root=state_root)
+            # Refuse serve mode configuration if smuggled in kwargs.
+            if kwargs.get("serve") or kwargs.get("dangerously_unauthenticated"):
+                return error_envelope(
+                    "goose serve / unauthenticated network mode is not supported",
+                    code=CLIRuntimeErrorCode.POLICY_DENIED,
+                    endpoint_id=endpoint_id,
+                )
+            existing = record.acp_client
+            if existing is not None and getattr(existing, "is_ready", False):
+                return {
+                    "status": "success",
+                    "success": True,
+                    "endpoint_id": endpoint_id,
+                    "already_started": True,
+                    "acp": existing.describe(),
+                }
+            if existing is not None:
+                try:
+                    existing.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+            bounds = ACPBounds(
+                max_restarts=int(kwargs.get("max_restarts", max_restarts)),
+            )
+            policy = ACPRestartPolicy(
+                enabled=bool(kwargs.get("restart_enabled", True)),
+                max_restarts=int(kwargs.get("max_restarts", max_restarts)),
+                restart_on_unexpected_exit=bool(restart_on_unexpected_exit),
+                auto_replay_agent_work=False,
+            )
+            client = GooseACPClient(
+                exe,
+                root,
+                cwd=cwd or root,
+                bounds=bounds,
+                restart_policy=policy,
+                endpoint_id=endpoint_id,
+                env=kwargs.get("env"),
+            )
+            start_result = client.start()
+            with self._lock:
+                record.acp_client = client
+                record.health = EndpointHealth.READY
+            return {
+                "status": "success",
+                "success": True,
+                "endpoint_id": endpoint_id,
+                "acp": client.describe(),
+                "start": start_result,
+                "auto_replay_agent_work": False,
+            }
+        except CLIRuntimeError as exc:
+            return error_envelope(
+                exc.record.message,
+                code=exc.code,
+                endpoint_id=endpoint_id,
+                tool=record.tool,
+                details=exc.details,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return error_envelope(
+                f"ACP start failed: {type(exc).__name__}",
+                code=CLIRuntimeErrorCode.SPAWN_FAILED,
+                endpoint_id=endpoint_id,
+                details={"error_type": type(exc).__name__},
+            )
+
+    def acp_stop(self, endpoint_id: str) -> dict[str, Any]:
+        """Stop the endpoint-local ACP process and clear sessions."""
+        record = self.get_record(endpoint_id)
+        if record is None:
+            return error_envelope(
+                f"CLI endpoint '{endpoint_id}' not found",
+                code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
+                endpoint_id=endpoint_id,
+            )
+        client = record.acp_client
+        if client is None:
+            return {
+                "status": "success",
+                "success": True,
+                "endpoint_id": endpoint_id,
+                "stopped": False,
+                "message": "no ACP client",
+            }
+        try:
+            result = client.stop()
+        except Exception as exc:  # noqa: BLE001
+            result = {
+                "status": "error",
+                "success": False,
+                "error": type(exc).__name__,
+            }
+        with self._lock:
+            record.acp_client = None
+        return {
+            "status": "success",
+            "success": True,
+            "endpoint_id": endpoint_id,
+            "stopped": True,
+            "result": result,
+        }
+
+    def acp_restart(self, endpoint_id: str, **kwargs: Any) -> dict[str, Any]:
+        """Explicit transport restart; never auto-replays agent work."""
+        record = self.get_record(endpoint_id)
+        if record is None:
+            return error_envelope(
+                f"CLI endpoint '{endpoint_id}' not found",
+                code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
+                endpoint_id=endpoint_id,
+            )
+        client = record.acp_client
+        if client is None:
+            return self.acp_start(endpoint_id, **kwargs)
+        try:
+            result = client.restart_transport(explicit=True)
+            return {
+                "status": "success",
+                "success": True,
+                "endpoint_id": endpoint_id,
+                "auto_replay_agent_work": False,
+                "result": result,
+                "acp": client.describe(),
+            }
+        except CLIRuntimeError as exc:
+            return error_envelope(
+                exc.record.message,
+                code=exc.code,
+                endpoint_id=endpoint_id,
+                details={
+                    **dict(exc.details),
+                    "auto_replay_agent_work": "false",
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            return error_envelope(
+                f"ACP restart failed: {type(exc).__name__}",
+                code=CLIRuntimeErrorCode.SPAWN_FAILED,
+                endpoint_id=endpoint_id,
+                details={"error_type": type(exc).__name__},
+            )
+
+    def acp_describe(self, endpoint_id: str) -> dict[str, Any]:
+        record = self.get_record(endpoint_id)
+        if record is None:
+            return error_envelope(
+                f"CLI endpoint '{endpoint_id}' not found",
+                code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
+                endpoint_id=endpoint_id,
+            )
+        client = record.acp_client
+        if client is None:
+            return {
+                "status": "success",
+                "success": True,
+                "endpoint_id": endpoint_id,
+                "acp": None,
+                "message": "no ACP client",
+            }
+        return {
+            "status": "success",
+            "success": True,
+            "endpoint_id": endpoint_id,
+            "acp": client.describe(),
+            "sessions": client.list_sessions(),
+        }
+
+    def session_new(
+        self,
+        endpoint_id: str,
+        *,
+        cwd: Optional[str] = None,
+        mcp_servers: Optional[Sequence[Any]] = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        record = self.get_record(endpoint_id)
+        if record is None:
+            return error_envelope(
+                f"CLI endpoint '{endpoint_id}' not found",
+                code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
+                endpoint_id=endpoint_id,
+            )
+        client = record.acp_client
+        if client is None or not getattr(client, "is_ready", False):
+            return error_envelope(
+                "ACP client is not ready; call acp_start first",
+                code=CLIRuntimeErrorCode.INVALID_STATE,
+                endpoint_id=endpoint_id,
+            )
+        try:
+            return client.session_new(
+                cwd=cwd,
+                mcp_servers=mcp_servers or (),
+                metadata=kwargs.get("metadata"),
+                timeout=kwargs.get("timeout"),
+            )
+        except CLIRuntimeError as exc:
+            return error_envelope(
+                exc.record.message,
+                code=exc.code,
+                endpoint_id=endpoint_id,
+                details=exc.details,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return error_envelope(
+                f"session_new failed: {type(exc).__name__}",
+                code=CLIRuntimeErrorCode.INTERNAL,
+                endpoint_id=endpoint_id,
+                details={"error_type": type(exc).__name__},
+            )
+
+    def session_load(
+        self,
+        endpoint_id: str,
+        session_id: str,
+        *,
+        cwd: Optional[str] = None,
+        mcp_servers: Optional[Sequence[Any]] = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        record = self.get_record(endpoint_id)
+        if record is None:
+            return error_envelope(
+                f"CLI endpoint '{endpoint_id}' not found",
+                code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
+                endpoint_id=endpoint_id,
+            )
+        client = record.acp_client
+        if client is None or not getattr(client, "is_ready", False):
+            return error_envelope(
+                "ACP client is not ready; call acp_start first",
+                code=CLIRuntimeErrorCode.INVALID_STATE,
+                endpoint_id=endpoint_id,
+            )
+        try:
+            return client.session_load(
+                session_id,
+                cwd=cwd,
+                mcp_servers=mcp_servers or (),
+                timeout=kwargs.get("timeout"),
+            )
+        except CLIRuntimeError as exc:
+            return error_envelope(
+                exc.record.message,
+                code=exc.code,
+                endpoint_id=endpoint_id,
+                details=exc.details,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return error_envelope(
+                f"session_load failed: {type(exc).__name__}",
+                code=CLIRuntimeErrorCode.INTERNAL,
+                endpoint_id=endpoint_id,
+                details={"error_type": type(exc).__name__},
+            )
+
+    def session_close(
+        self, endpoint_id: str, session_id: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        record = self.get_record(endpoint_id)
+        if record is None:
+            return error_envelope(
+                f"CLI endpoint '{endpoint_id}' not found",
+                code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
+                endpoint_id=endpoint_id,
+            )
+        client = record.acp_client
+        if client is None:
+            return error_envelope(
+                "no ACP client on endpoint",
+                code=CLIRuntimeErrorCode.INVALID_STATE,
+                endpoint_id=endpoint_id,
+            )
+        try:
+            return client.session_close(
+                session_id,
+                timeout=kwargs.get("timeout"),
+                remote=bool(kwargs.get("remote", True)),
+            )
+        except CLIRuntimeError as exc:
+            return error_envelope(
+                exc.record.message,
+                code=exc.code,
+                endpoint_id=endpoint_id,
+                details=exc.details,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return error_envelope(
+                f"session_close failed: {type(exc).__name__}",
+                code=CLIRuntimeErrorCode.INTERNAL,
+                endpoint_id=endpoint_id,
+                details={"error_type": type(exc).__name__},
+            )
+
+    def session_prompt(
+        self,
+        endpoint_id: str,
+        session_id: str,
+        prompt: str,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Send a prompt on an endpoint-local ACP session (never auto-replayed)."""
+        record = self.get_record(endpoint_id)
+        if record is None:
+            return error_envelope(
+                f"CLI endpoint '{endpoint_id}' not found",
+                code=CLIRuntimeErrorCode.PROVIDER_NOT_FOUND,
+                endpoint_id=endpoint_id,
+            )
+        client = record.acp_client
+        if client is None or not getattr(client, "is_ready", False):
+            return error_envelope(
+                "ACP client is not ready; call acp_start first",
+                code=CLIRuntimeErrorCode.INVALID_STATE,
+                endpoint_id=endpoint_id,
+            )
+        try:
+            bound = bound_prompt(prompt)
+        except CLIRuntimeError as exc:
+            return error_envelope(
+                exc.record.message,
+                code=exc.code,
+                endpoint_id=endpoint_id,
+                details=exc.details,
+            )
+        request_id = f"{endpoint_id}:acp:{time.time_ns()}"
+        with self._lock:
+            record.active_request_id = request_id
+            record.cancel_requested = False
+        start = time.time()
+        try:
+            result = client.session_prompt(
+                session_id,
+                bound,
+                timeout=kwargs.get("timeout"),
+                on_event=kwargs.get("on_event"),
+            )
+            elapsed = time.time() - start
+            record.stats.record_success(elapsed)
+            result = dict(result)
+            result["elapsed_time"] = elapsed
+            result["endpoint_id"] = endpoint_id
+            result.pop("prompt", None)
+            if isinstance(result.get("text"), str):
+                result["text"] = bound_result_text(result["text"])
+            return result
+        except CLIRuntimeError as exc:
+            elapsed = time.time() - start
+            record.stats.record_failure(elapsed)
+            from .acp.goose_client import (
+                FAILURE_KIND_UNCERTAIN_SIDE_EFFECT,
+                STATUS_UNCERTAIN_SIDE_EFFECT,
+            )
+
+            uncertain = bool(
+                getattr(exc, "uncertain_side_effects", False)
+                or (exc.details or {}).get("uncertain_side_effects")
+                or (exc.details or {}).get("failure_kind")
+                == FAILURE_KIND_UNCERTAIN_SIDE_EFFECT
+            )
+            envelope = error_envelope(
+                exc.record.message,
+                code=exc.code,
+                endpoint_id=endpoint_id,
+                details=exc.details,
+                elapsed_time=elapsed,
+                session_id=session_id,
+                side_effects_started=True if uncertain else False,
+                uncertain_side_effects=uncertain,
+                failure_kind=(
+                    FAILURE_KIND_UNCERTAIN_SIDE_EFFECT if uncertain else None
+                ),
+                cacheable=False,
+                retryable=False,
+            )
+            if uncertain:
+                envelope["status"] = STATUS_UNCERTAIN_SIDE_EFFECT
+            return envelope
+        except Exception as exc:  # noqa: BLE001
+            elapsed = time.time() - start
+            record.stats.record_failure(elapsed)
+            return error_envelope(
+                f"session_prompt failed: {type(exc).__name__}",
+                code=CLIRuntimeErrorCode.INTERNAL,
+                endpoint_id=endpoint_id,
+                details={"error_type": type(exc).__name__},
+                elapsed_time=elapsed,
+            )
+        finally:
+            with self._lock:
+                if record.active_request_id == request_id:
+                    record.active_request_id = None
+                    record.cancel_requested = False
 
     def dispatch(
         self,
@@ -1287,7 +1917,57 @@ class CLIEndpointRegistry:
                 )
             return list(self.stream(endpoint_id, prompt, **kwargs))
         if operation is EndpointLifecycleOp.CANCEL:
-            return self.cancel(endpoint_id)
+            return self.cancel(
+                endpoint_id, session_id=kwargs.get("session_id")
+            )
+        if operation is EndpointLifecycleOp.ACP_START:
+            return self.acp_start(endpoint_id, **kwargs)
+        if operation is EndpointLifecycleOp.ACP_STOP:
+            return self.acp_stop(endpoint_id)
+        if operation is EndpointLifecycleOp.ACP_RESTART:
+            return self.acp_restart(endpoint_id, **kwargs)
+        if operation is EndpointLifecycleOp.ACP_DESCRIBE:
+            return self.acp_describe(endpoint_id)
+        if operation is EndpointLifecycleOp.SESSION_NEW:
+            return self.session_new(endpoint_id, **kwargs)
+        if operation is EndpointLifecycleOp.SESSION_LOAD:
+            session_id = kwargs.pop("session_id", None)
+            if not session_id:
+                return error_envelope(
+                    "session_id is required for session_load",
+                    code=CLIRuntimeErrorCode.INVALID_CONTRACT,
+                    endpoint_id=endpoint_id,
+                )
+            return self.session_load(endpoint_id, str(session_id), **kwargs)
+        if operation is EndpointLifecycleOp.SESSION_CLOSE:
+            session_id = kwargs.pop("session_id", None)
+            if not session_id:
+                return error_envelope(
+                    "session_id is required for session_close",
+                    code=CLIRuntimeErrorCode.INVALID_CONTRACT,
+                    endpoint_id=endpoint_id,
+                )
+            return self.session_close(endpoint_id, str(session_id), **kwargs)
+        if operation is EndpointLifecycleOp.SESSION_PROMPT:
+            session_id = kwargs.pop("session_id", None)
+            if not session_id:
+                return error_envelope(
+                    "session_id is required for session_prompt",
+                    code=CLIRuntimeErrorCode.INVALID_CONTRACT,
+                    endpoint_id=endpoint_id,
+                )
+            if prompt is None:
+                return error_envelope(
+                    "prompt is required for session_prompt",
+                    code=CLIRuntimeErrorCode.INVALID_CONTRACT,
+                    endpoint_id=endpoint_id,
+                )
+            return self.session_prompt(
+                endpoint_id, str(session_id), prompt, **kwargs
+            )
+        if operation is EndpointLifecycleOp.SESSION_CANCEL:
+            session_id = kwargs.get("session_id")
+            return self.cancel(endpoint_id, session_id=session_id)
         return error_envelope(
             f"unsupported lifecycle operation: {operation}",
             code=CLIRuntimeErrorCode.UNSUPPORTED_CAPABILITY,
@@ -1381,6 +2061,20 @@ def reset_default_endpoint_registry() -> None:
     global _DEFAULT_FACTORY, _DEFAULT_REGISTRY
     with _DEFAULT_LOCK:
         if _DEFAULT_REGISTRY is not None:
+            # Stop any endpoint-local ACP clients before clearing.
+            try:
+                for record in list(
+                    getattr(_DEFAULT_REGISTRY, "_records", {}).values()
+                ):
+                    client = getattr(record, "acp_client", None)
+                    if client is not None:
+                        try:
+                            client.stop()
+                        except Exception:  # noqa: BLE001
+                            pass
+                        record.acp_client = None
+            except Exception:  # noqa: BLE001
+                pass
             _DEFAULT_REGISTRY.clear()
         _DEFAULT_FACTORY = CLIEndpointFactory()
         _DEFAULT_REGISTRY = CLIEndpointRegistry(factory=_DEFAULT_FACTORY)

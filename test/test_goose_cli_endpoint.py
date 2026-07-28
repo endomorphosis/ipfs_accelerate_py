@@ -733,3 +733,240 @@ def test_goose_tool_alias_goose_cli_registration(fake_bin: Path) -> None:
     assert result.get("tool") in {"goose", "goose_cli"}
     adapter = get_cli_endpoint("alias_ep")
     assert isinstance(adapter, GooseCLIAdapter)
+
+
+# ---------------------------------------------------------------------------
+# Persistent Goose ACP session lifecycle (GOOSE-008)
+# ---------------------------------------------------------------------------
+
+
+def _write_fake_acp_server(directory: Path, name: str = "goose") -> Path:
+    """Minimal NDJSON ACP fake for endpoint integration tests."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    path.write_text(
+        textwrap.dedent(
+            f"""\
+            #!{sys.executable}
+            import json, sys, uuid
+
+            sessions = {{}}
+
+            def send(obj):
+                sys.stdout.write(json.dumps(obj, separators=(",", ":")) + "\\n")
+                sys.stdout.flush()
+
+            def respond(msg_id, result):
+                send({{"jsonrpc": "2.0", "id": msg_id, "result": result}})
+
+            while True:
+                line = sys.stdin.readline()
+                if line == "":
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except Exception:
+                    continue
+                method = msg.get("method")
+                msg_id = msg.get("id")
+                params = msg.get("params") or {{}}
+                if method == "initialize":
+                    respond(msg_id, {{
+                        "protocolVersion": 1,
+                        "agentCapabilities": {{"loadSession": True}},
+                        "agentInfo": {{"name": "fake-acp", "version": "test"}},
+                        "authMethods": [],
+                    }})
+                elif method == "session/new":
+                    sid = "ep-" + uuid.uuid4().hex[:8]
+                    sessions[sid] = True
+                    respond(msg_id, {{"sessionId": sid}})
+                elif method == "session/load":
+                    sid = params.get("sessionId")
+                    sessions[sid] = True
+                    respond(msg_id, {{"sessionId": sid}})
+                elif method == "session/close":
+                    sessions.pop(params.get("sessionId"), None)
+                    respond(msg_id, {{}})
+                elif method == "session/cancel":
+                    pass
+                elif method == "session/prompt":
+                    sid = params.get("sessionId")
+                    send({{
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": {{
+                            "sessionId": sid,
+                            "update": {{
+                                "sessionUpdate": "agent_message_chunk",
+                                "content": {{"type": "text", "text": "acp-ok"}},
+                            }},
+                        }},
+                    }})
+                    respond(msg_id, {{"stopReason": "end_turn"}})
+                elif msg_id is not None:
+                    send({{
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "error": {{"code": -32601, "message": "unknown"}},
+                    }})
+            """
+        ),
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return path
+
+
+def test_acp_endpoint_session_lifecycle(fake_bin: Path, tmp_path: Path) -> None:
+    """Endpoint-local ACP: start, session_new, prompt, stream, cancel, stop."""
+    from ipfs_accelerate_py.cli_runtime.endpoints import EndpointLifecycleOp
+
+    exe = _write_fake_acp_server(fake_bin)
+    state_root = tmp_path / "acp-state"
+    state_root.mkdir()
+    _register_goose(
+        exe,
+        "acp_ep",
+        config={
+            "model": "m",
+            "acp_state_root": str(state_root),
+            "cli_path": str(exe),
+        },
+    )
+    registry = get_default_endpoint_registry()
+
+    # One-shot path still works independently (may fail without fake run handler,
+    # so we only assert ACP path here).
+    start = registry.acp_start(
+        "acp_ep",
+        executable=str(exe),
+        state_root=str(state_root),
+        restart_on_unexpected_exit=False,
+    )
+    assert start.get("success") is True, start
+    assert start.get("auto_replay_agent_work") is False
+    assert start["acp"]["state_root"] == str(state_root.resolve())
+
+    desc = registry.acp_describe("acp_ep")
+    assert desc["success"] is True
+    assert desc["acp"]["ready"] is True
+
+    sess = registry.session_new("acp_ep", cwd=str(state_root))
+    assert sess.get("success") is True, sess
+    sid = sess["session_id"]
+
+    secret = "ENDPOINT_ACP_SECRET_PROMPT"
+    prompt_out = registry.session_prompt("acp_ep", sid, secret)
+    assert prompt_out.get("success") is True, prompt_out
+    assert "acp-ok" in (prompt_out.get("text") or "")
+    assert secret not in str(prompt_out)
+    assert prompt_out.get("cacheable") is False
+    assert prompt_out.get("retryable") is False
+
+    events = list(registry.stream("acp_ep", "stream-secret", session_id=sid))
+    assert events[0]["event"] == "started"
+    assert any(e.get("event") == "completed" for e in events)
+    assert all("stream-secret" not in str(e) for e in events)
+
+    cancel = registry.cancel("acp_ep", session_id=sid)
+    assert cancel["status"] == "success"
+
+    # Dispatch surface
+    dispatched = registry.dispatch(
+        EndpointLifecycleOp.SESSION_CLOSE,
+        endpoint_id="acp_ep",
+        session_id=sid,
+    )
+    assert dispatched.get("closed") is True or dispatched.get("success") is True
+
+    # Explicit restart never claims auto-replay
+    restart = registry.acp_restart("acp_ep")
+    assert restart.get("success") is True, restart
+    assert restart.get("auto_replay_agent_work") is False
+
+    stop = registry.acp_stop("acp_ep")
+    assert stop.get("stopped") is True
+
+    # Endpoint describe includes acp metadata when running
+    start2 = registry.acp_start(
+        "acp_ep", executable=str(exe), state_root=str(state_root)
+    )
+    assert start2["success"]
+    listed = registry.list_endpoints(probe=False)
+    acp_rows = [r for r in listed if r["endpoint_id"] == "acp_ep"]
+    assert acp_rows
+    assert acp_rows[0].get("acp") is not None
+    registry.acp_stop("acp_ep")
+
+
+def test_acp_requires_explicit_executable_and_state_root(
+    fake_bin: Path,
+) -> None:
+    # Register without cli_path / state_root.
+    result = register_cli_endpoint(
+        tool="goose",
+        endpoint_id="acp_missing",
+        config={"model": "m"},
+        replace=True,
+    )
+    assert result["status"] == "success"
+    registry = get_default_endpoint_registry()
+    out = registry.acp_start("acp_missing")
+    assert out.get("success") is False
+    assert out.get("status") == "error"
+    # Must not start serve
+    assert "serve" not in str(out).lower() or "not supported" in str(out).lower()
+
+
+def test_acp_not_enabled_for_non_goose_tools(fake_bin: Path, tmp_path: Path) -> None:
+    # Use factory to register a non-goose tool if available; otherwise skip.
+    registry = get_default_endpoint_registry()
+    try:
+        result = registry.register_tool(
+            "claude",
+            endpoint_id="claude_no_acp",
+            cli_path="/usr/bin/true",
+            config={},
+            replace=True,
+        )
+    except Exception:
+        pytest.skip("claude adapter not constructible offline")
+        return
+    if result.get("status") != "success":
+        pytest.skip("claude registration failed offline")
+    out = registry.acp_start(
+        "claude_no_acp",
+        executable="/usr/bin/true",
+        state_root=str(tmp_path / "s"),
+    )
+    assert out.get("success") is False
+    assert out.get("error_code") in {
+        "unsupported_capability",
+        "policy_denied",
+        "invalid_state",
+    }
+
+
+def test_unregister_stops_acp_client(fake_bin: Path, tmp_path: Path) -> None:
+    exe = _write_fake_acp_server(fake_bin)
+    state_root = tmp_path / "u-state"
+    state_root.mkdir()
+    _register_goose(
+        exe,
+        "acp_unreg",
+        config={"acp_state_root": str(state_root), "cli_path": str(exe)},
+    )
+    registry = get_default_endpoint_registry()
+    start = registry.acp_start(
+        "acp_unreg", executable=str(exe), state_root=str(state_root)
+    )
+    assert start["success"]
+    record = registry.get_record("acp_unreg")
+    assert record is not None
+    assert record.acp_client is not None
+    assert registry.unregister("acp_unreg") is True
+    assert registry.get_record("acp_unreg") is None
