@@ -78,9 +78,14 @@ obligation without resolving rollout code. This obligation is validated in a
 fresh interpreter across the complete manifest and optional-provider
 inventory; a warm-process import or a partial name check is non-authoritative.
 
+Domain layout inventories at the package root use semantic product names
+(`AGENT_SUPERVISOR_DOMAIN_PACKAGES`, `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE`,
+`AGENT_SUPERVISOR_CORE_PACKAGES`, `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS`,
+…). Board-prefix constant names remain only as compatibility aliases.
+
 Generation 2 has a separate reviewed publication boundary.
-`AGENT_SUPERVISOR_V2_STABLE_EXPORTS` (also available as the
-`V2_STABLE_EXPORTS` compatibility alias) is the immutable package-root
+`AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` (also `AGENT_SUPERVISOR_V2_STABLE_EXPORTS` /
+`V2_STABLE_EXPORTS` compatibility aliases) is the immutable package-root
 manifest; `AGENT_SUPERVISOR_V2_EXPORT_MODULES` records the provider-free owner
 module for every member. `AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION` is `2`.
 Only names in that manifest are public v2 contracts or control entry points.

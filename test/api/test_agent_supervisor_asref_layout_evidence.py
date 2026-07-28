@@ -92,7 +92,7 @@ def test_asref_g090_public_api_and_entry_points() -> None:
     for name in ASREF_DOMAIN_PACKAGES:
         assert name in domain
 
-    owners = dict(package.AGENT_SUPERVISOR_LANDED_MODULE_OWNERS)
+    owners = dict(package.AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE)
     assert owners["objective_daemon"] == "objectives"
     assert owners["backlog_refinery"] == "objectives"
     assert owners["merge_resolver"] == "merge"
@@ -264,3 +264,26 @@ def test_asref_module_refactor_supervisor_preflight_runs() -> None:
     assert payload["inventory_present"] is True
     assert set(payload["protected_paths"]) == set(ASREF_PROTECTED_PATHS)
     assert payload["default_implementation_provider"] == "grok"
+
+
+def test_semantic_layout_export_aliases() -> None:
+    """Semantic layout names are canonical; board-prefix spellings are aliases."""
+
+    from ipfs_accelerate_py import agent_supervisor as package
+
+    assert package.AGENT_SUPERVISOR_CORE_PACKAGES == ("core",)
+    assert package.AGENT_SUPERVISOR_G020_PACKAGES is package.AGENT_SUPERVISOR_CORE_PACKAGES
+    assert (
+        package.AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050
+        is package.AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS
+    )
+    assert (
+        package.AGENT_SUPERVISOR_LANDED_MODULE_OWNERS
+        is package.AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE
+    )
+    assert (
+        package.AGENT_SUPERVISOR_PUBLIC_API_EXPORTS
+        is package.AGENT_SUPERVISOR_V2_STABLE_EXPORTS
+    )
+    assert package.AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_ID == "ASREF-G090"
+    assert "core" in package.AGENT_SUPERVISOR_DOMAIN_PACKAGES

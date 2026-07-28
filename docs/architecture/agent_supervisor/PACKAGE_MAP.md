@@ -71,7 +71,7 @@ from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
 ## Public API stability
 
 - **v1 compatibility surface:** existing operation names, request/result records, CLI/MCP tool names.
-- **v2 stable exports:** package-root manifests (`AGENT_SUPERVISOR_V2_STABLE_EXPORTS` and related) for generation-2 contracts.
+- **v2 stable exports:** package-root manifests (`AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` (alias `AGENT_SUPERVISOR_V2_STABLE_EXPORTS`) and related layout constants) for generation-2 contracts.
 - **Domain layout constants (semantic):** package-root names prefer product roles, not board prefixes:
   - `AGENT_SUPERVISOR_DOMAIN_PACKAGES`, `AGENT_SUPERVISOR_CORE_PACKAGES`, `AGENT_SUPERVISOR_CONTROL_PACKAGES`, …
   - `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` / `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS`

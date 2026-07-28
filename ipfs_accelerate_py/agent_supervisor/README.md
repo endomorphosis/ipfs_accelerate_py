@@ -61,12 +61,12 @@ from ipfs_accelerate_py.agent_supervisor import (
     OperationRequest,
     OperationResult,
     SupervisorControlService,
-    # Generation-2 stable control surface
-    AGENT_SUPERVISOR_V2_STABLE_EXPORTS,
+    # Reviewed public API symbol set (alias: AGENT_SUPERVISOR_V2_STABLE_EXPORTS)
+    AGENT_SUPERVISOR_PUBLIC_API_EXPORTS,
     # Domain layout (semantic names — prefer these)
     AGENT_SUPERVISOR_DOMAIN_PACKAGES,
-    AGENT_SUPERVISOR_LANDED_MODULE_OWNERS,
-    AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS,
+    AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE,
+    AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE,
     AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS,
     AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS,
     AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS,
@@ -88,6 +88,11 @@ from ipfs_accelerate_py.agent_supervisor import (
 )
 ```
 
+Deprecated board-prefix aliases (`AGENT_SUPERVISOR_G020_PACKAGES`,
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`, `AGENT_SUPERVISOR_CUTOVER_*`,
+`AGENT_SUPERVISOR_LANDED_MODULE_OWNERS`, …) still resolve to the same objects.
+Prefer the semantic names above in new code and docs.
+
 Root `__init__.py` rules:
 
 1. **Eager** exports are provider-free control contracts/services plus a
@@ -95,18 +100,18 @@ Root `__init__.py` rules:
 2. **Lazy** exports (via `__getattr__`) keep optional providers, rollout
    modules, and heavy runners off the cold-import path.
 3. Landed dual-copied modules resolve through their **domain package** path
-   (see `AGENT_SUPERVISOR_LANDED_MODULE_OWNERS`). Do not reintroduce thin
+   (see `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE`). Do not reintroduce thin
    re-export stubs at former flat paths.
 4. Prefer domain imports for new callers even when a root re-export exists.
 5. Layout constants (`AGENT_SUPERVISOR_DOMAIN_PACKAGES`,
-   `AGENT_SUPERVISOR_LANDED_MODULE_OWNERS`,
-   `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`,
+   `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE`,
+   `AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE`,
    `AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS`,
    `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES`,
    `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS`,
    `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS`) are intentional public
    symbols for discovery, cutover gates, and objective evidence scans.
-6. `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` is **documentation and scan
+6. `AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE` is **documentation and scan
    evidence only** — it does not install import aliases until packages exist.
 
 ## Package map
@@ -163,7 +168,7 @@ and import style. Runtime mirrors in `__init__.py`:
 | **ASREF-G030** | `asref/control` | `control/` | Package + README landed; control contracts/plane from package path; conformance suite |
 | **ASREF-G040** | `asref/task-sources` | `task_sources/` | Package + README landed; `AGENT_SUPERVISOR_TASK_SOURCES_STEMS`; markdown/DuckDB under package |
 | **ASREF-G050** | `asref/context` (+ prompt) | `context/`, `prompt/` (planned) | Named in domain map + `AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES`; flat until move tasks land |
-| **ASREF-G060** | `asref/analysis` (+ proof) | `analysis/`, `proof/` (planned) | Named in domain map + `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` analysis/proof stems; flat modules remain until move tasks land |
+| **ASREF-G060** | `asref/analysis` (+ proof) | `analysis/`, `proof/` (planned) | Named in domain map + `AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE` analysis/proof stems; flat modules remain until move tasks land |
 | **ASREF-G070** | `asref/objectives` (+ siblings) | `objectives/`, `planning/`, `validation/`, `merge/`, `rescue/`, `runtime/`, `self_improvement/` | Package READMEs + landed module owners; objective graph / proposal validation import package paths |
 | **ASREF-G080** | `asref/todo-daemon` (+ integrations) | `todo_daemon/`, `integrations/` (planned) | Daemon imports already package-native; integrations flat until move (planned owners listed) |
 
@@ -350,7 +355,7 @@ surfaces with READMEs and import updates.
 
 **Planned modules** (still flat at package root until move tasks land;
 `AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES` /
-`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`):
+`AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE`):
 
 | Stem | Planned owner | Role |
 |---|---|---|
@@ -418,7 +423,7 @@ pipeline/cache/AST/retrieval and formal verification/prover modules.
 | `leanstral_proof_provider`, `kernel_verification` | `proof` | Leanstral / kernel lanes |
 
 Full planned stem → owner map: every `analysis` / `proof` entry in
-`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` (from
+`AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE` (from
 `docs/architecture/asref/move_map.json`).
 
 **Preferred future imports (after package land):**
@@ -488,7 +493,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
 ```
 
 **Remaining flat under G070** (still package-root files; planned owners listed
-in `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`): e.g. `goal_completion`,
+in `AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE`): e.g. `goal_completion`,
 `bundle_supervisor`, `adaptive_planner`, `formal_plan_*`, `merge_queue`,
 `merge_train`, `artifact_store`, `self_improvement_v2`, …
 Child move tasks land those stems; cutover documents the target owners.
@@ -540,7 +545,7 @@ Planned internal subpackages (from the program plan; land via
 Root-level `implementation_daemon_runner` /
 `implementation_supervisor_runner` remain flat until the implementation
 subpackage move; both are planned owners under `todo_daemon` in
-`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`.
+`AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE`.
 
 ### integrations (planned package)
 
@@ -630,7 +635,7 @@ code, tests, scripts, and entry points:
 | `multi_supervisor_runner` | `runtime` | ASREF-G070 |
 | `self_improvement_completion` | `self_improvement` | ASREF-G070 |
 
-Runtime constant: `AGENT_SUPERVISOR_LANDED_MODULE_OWNERS` mirrors this table.
+Runtime constant: `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` mirrors this table.
 Package-root resolution aliases retired flat submodule names to the owner
 package without leaving long-lived stub **files** at the flat path.
 
@@ -780,7 +785,7 @@ python -m pytest test/api/test_agent_supervisor_implementation_protected_paths.p
 | **ASREF-G030** control package + conformance suite | present (package path re-exports; cutover gate) |
 | **ASREF-G040** task_sources package + stem inventory | present (package on disk; dual-projection modules under package) |
 | **ASREF-G050** context/prompt planned inventory | present (`AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES`; flat until move) |
-| **ASREF-G060** analysis/proof map + planned owners | present (`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`) |
+| **ASREF-G060** analysis/proof map + planned owners | present (`AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE`) |
 | **ASREF-G070** seven packages + landed stems + preferred imports | present (packages on disk; landed owners wired) |
 | **ASREF-G080** todo_daemon package-native + integrations planned | present (daemon imports; integrations planned owners) |
 | Domain package READMEs for landed packages | present for core/control/task_sources/objectives/planning/validation/merge/rescue/runtime/self_improvement |

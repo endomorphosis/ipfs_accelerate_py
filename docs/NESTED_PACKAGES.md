@@ -197,7 +197,7 @@ ASREF-013 cutover witness for **ASREF-G020** / **ASREF-G030** / **ASREF-G040** /
 ASREF-014 cutover witness for **ASREF-G060** / **ASREF-G070** / **ASREF-G080**
 lives in `ipfs_accelerate_py/agent_supervisor/README.md` and
 `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS` /
-`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` in the package `__init__.py`.
+`AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE` in the package `__init__.py`.
 
 ## See also
 

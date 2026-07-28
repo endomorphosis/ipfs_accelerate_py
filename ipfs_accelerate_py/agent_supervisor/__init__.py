@@ -524,7 +524,7 @@ AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_STEMS = tuple(
     for stem in stems
 )
 
-# Landed stems under operations packages (subset of LANDED_MODULE_OWNERS).
+# Landed stems under operations packages (subset of LANDED_MODULE_TO_PACKAGE).
 AGENT_SUPERVISOR_OPERATIONS_LANDED_STEMS = tuple(
     sorted(
         stem
@@ -3550,10 +3550,11 @@ __all__.extend(
         "AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS",
         "AGENT_SUPERVISOR_OPERATIONS_PACKAGES",
         "AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE",
+        "AGENT_SUPERVISOR_PUBLIC_API_EXPORTS",
         "AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES",
         "AGENT_SUPERVISOR_TASK_SOURCES_STEMS",
         "AGENT_SUPERVISOR_TODO_DAEMON_STEMS",
-        # Deprecated board-prefix aliases (compatibility)
+        # Deprecated board-prefix / older spellings (compatibility)
         "AGENT_SUPERVISOR_LANDED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_CUTOVER_GOAL_ID",
@@ -3582,11 +3583,10 @@ __all__.extend(
         "AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES",
         "AGENT_SUPERVISOR_V2_EXPORT_MODULES",
         "AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION",
-        "AGENT_SUPERVISOR_PUBLIC_API_EXPORTS",
         "AGENT_SUPERVISOR_V2_STABLE_EXPORTS",
         "V2_LAZY_PUBLIC_API_REQUIREMENT_ID",
         "V2_STABLE_EXPORTS",
-        *AGENT_SUPERVISOR_V2_STABLE_EXPORTS,
+        *AGENT_SUPERVISOR_PUBLIC_API_EXPORTS,
     )
     if name not in __all__
 )
