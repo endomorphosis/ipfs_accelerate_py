@@ -461,7 +461,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-012 Close objective gap: Public API package README root hygiene and cutover
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
