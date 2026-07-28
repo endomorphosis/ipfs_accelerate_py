@@ -290,7 +290,7 @@ Normative:
 
 ## CBP-080 CodeEditPacket and supervisor materializer
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: materialize
