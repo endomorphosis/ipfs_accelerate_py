@@ -74,7 +74,7 @@ jobs:
           CACHE_P2P_SHARED_SECRET: ci-local-secret
         shell: bash
         run: |
-          python tools/github_p2p_cache_smoke.py \
+          python scripts/utils/github_p2p_cache_smoke.py \
             --read \
             --local-two-node \
             --synthetic \
