@@ -23,6 +23,9 @@ context of earlier implementations and are not normative API references.
 - [Endpoint usage-aware routing plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md):
   planned endpoint/account limit accounting, atomic reservations,
   ModelManager planning, router fallback, and supervisor capacity governance.
+- [Codebase-aware plan creation and steering plan](architecture/AGENT_SUPERVISOR_PLAN_CREATE_AND_STEER_PLAN.md):
+  planned create/steer tools, registry-backed code and logic queries,
+  revision-safe taskboard deltas, and parallel schedulability contracts.
 
 ## User guides
 
@@ -57,6 +60,7 @@ and the self-improvement plan for the rollout roadmap and acceptance evidence.
 - [Operator guide, profiles, and migration](guides/AGENT_SUPERVISOR_GUIDE.md)
 - [Architecture, contracts, and assurance model](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
 - [Endpoint usage-aware routing and supervisor capacity plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md)
+- [Codebase-aware plan creation and steering](architecture/AGENT_SUPERVISOR_PLAN_CREATE_AND_STEER_PLAN.md)
 - [Self-improvement rollout plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md)
 - [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
 - [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)
@@ -99,6 +103,7 @@ planned work. Use the current guides and source code for present behavior.
 | Migrate legacy model or MCP APIs | [Catalog migration and compatibility](architecture/AI_SERVICE_CATALOG.md#migration-and-compatibility) |
 | Operate or migrate agent-supervisor workflows | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
 | Understand supervisor services, contracts, and trust boundaries | [Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) |
+| Create or steer a codebase-aware supervisor plan | [Plan creation and steering](architecture/AGENT_SUPERVISOR_PLAN_CREATE_AND_STEER_PLAN.md) |
 | Follow the supervisor rollout and self-improvement roadmap | [Self-Improvement Plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md) |
 | Understand assurance and provers | [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md) |
 | Run tests | [Testing](development/testing.md) |
