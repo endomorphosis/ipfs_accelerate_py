@@ -36,7 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.cache_coordinator import (
     namespace_metadata,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.runtime_cas import RuntimeCAS
-from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_v2_contracts import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts import (
     ResultBinding,
     SemanticDependencyIdentity,
 )

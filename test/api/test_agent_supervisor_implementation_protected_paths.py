@@ -618,9 +618,16 @@ def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
     daemon = _daemon(tmp_path)
     daemon.worktree_root = tmp_path / "worktrees"
     workspace = daemon.worktree_root / "attempt"
+    workspace.mkdir(parents=True)
+    # Ephemeral workspaces must have a stable Git HEAD for protected-path fences.
+    _git(workspace, "init")
+    _git(workspace, "config", "user.email", "test@example.com")
+    _git(workspace, "config", "user.name", "test")
     workspace_protected = workspace / POLICY_PATH
     workspace_protected.parent.mkdir(parents=True)
     workspace_protected.write_text("unchanged\n", encoding="utf-8")
+    _git(workspace, "add", POLICY_PATH)
+    _git(workspace, "commit", "-m", "seed protected path")
     daemon._require_implementation_protected_snapshot(
         task=_task(outputs=["src/example.py"]),
         attempt=1,

@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_token_ledger import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_token_ledger import (
     ACCEPTED_CRITERION_TOKEN_GOAL_ID,
     ACCEPTED_CRITERION_TOKEN_REQUIREMENT_ID,
     CacheDecision,
@@ -23,10 +23,10 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.super
     adapt_efficiency_receipt,
     calibrate_fallback_tokenizer,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_efficiency_metrics import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_efficiency_metrics import (
     build_efficiency_baseline_fixtures,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_v2_contracts import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts import (
     AuthorityClass,
     ResultBinding,
     SemanticDependencyIdentity,

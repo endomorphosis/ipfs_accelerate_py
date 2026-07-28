@@ -26,7 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     read_jsonl_event_sources,
     rotate_event_log_if_needed,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_v2_contracts import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts import (
     MAX_PROJECTION_BYTES,
     MAX_RECEIPT_BYTES,
 )

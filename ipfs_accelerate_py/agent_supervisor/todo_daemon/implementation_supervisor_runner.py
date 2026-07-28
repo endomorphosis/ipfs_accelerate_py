@@ -2235,7 +2235,7 @@ def build_portal_implementation_supervisor_from_args(
 ) -> tuple[object, ImplementationSupervisorRunContext]:
     """Build a ``PortalImplementationSupervisor`` and context from parsed args."""
 
-    from implementation_supervisor import (
+    from .implementation_supervisor import (
         PortalImplementationSupervisor,
         supervisor_config_from_args,
     )
@@ -2363,7 +2363,7 @@ def run_configured_portal_implementation_supervisor(
 ) -> Any:
     """Parse, build, and run a configured portal implementation supervisor."""
 
-    from implementation_supervisor import parse_args
+    from .implementation_supervisor import parse_args
 
     parsed = parse_args(list(argv))
     configure_supervisor_logging(parsed)

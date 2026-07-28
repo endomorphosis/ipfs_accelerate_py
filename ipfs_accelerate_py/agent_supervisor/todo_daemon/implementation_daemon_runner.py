@@ -1059,7 +1059,7 @@ def configure_daemon_logging(
 def apply_merge_resolver_environment(parsed: argparse.Namespace) -> None:
     """Apply parsed LLM merge-resolver settings to the shared daemon environment."""
 
-    from implementation_daemon import (
+    from .implementation_daemon import (
         LLM_MERGE_RESOLVER_COMMAND_ENV,
         LLM_MERGE_RESOLVER_TIMEOUT_ENV,
     )
@@ -1083,7 +1083,7 @@ def build_portal_implementation_daemon_from_args(
 ) -> tuple[object, ImplementationDaemonRunContext]:
     """Build a ``PortalImplementationDaemon`` from parsed CLI args and local defaults."""
 
-    from implementation_daemon import (
+    from .implementation_daemon import (
         DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
         PortalImplementationDaemon,
     )
@@ -1239,7 +1239,7 @@ def run_configured_portal_implementation_daemon(
 ) -> None:
     """Parse, build, and run a configured portal implementation daemon."""
 
-    from implementation_daemon import parse_args
+    from .implementation_daemon import parse_args
 
     parsed = parse_args(list(argv))
     configure_daemon_logging(parsed)

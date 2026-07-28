@@ -37,7 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     ExhaustionBinding,
     evaluate_exhaustion_quorum,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_efficiency_metrics import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_efficiency_metrics import (
     DELTA_RETRY_CONTEXT_EVIDENCE_ID,
     DELTA_RETRY_PROMOTION_REPORT_SCHEMA,
     EFFICIENCY_CONTRACT_VERSION,

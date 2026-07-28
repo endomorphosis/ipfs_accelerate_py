@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_v2_contracts import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts import (
     CONTRACT_VERSION,
     MAX_PAYLOAD_DEPTH,
     MAX_RECEIPT_BYTES,

@@ -21,7 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_v2_ro
     recompute_v2_rollout_evaluation,
     verify_v2_rollout_report,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement.supervisor_v2_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_benchmark import (
     V2BenchmarkArm,
     V2FixtureKind,
     build_frozen_v2_paired_corpus,
