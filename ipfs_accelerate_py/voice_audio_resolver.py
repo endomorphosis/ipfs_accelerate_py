@@ -434,6 +434,14 @@ class PrecomputedVoiceAudioResolver:
                 # Refuse to index rows whose declared text hash does not match
                 # the spoken text — exact resolver integrity gate.
                 continue
+            metadata = (
+                dict(row["metadata"])
+                if isinstance(row.get("metadata"), Mapping)
+                else {}
+            )
+            for key in ("segment_kind", "slot_name", "slot_value"):
+                if row.get(key) is not None:
+                    metadata[key] = row.get(key)
             artifact = PrecomputedAudioArtifact(
                 audio_id=str(row.get("audio_id") or content_sha),
                 spoken_text=spoken,
@@ -451,11 +459,7 @@ class PrecomputedVoiceAudioResolver:
                 ),
                 template_id=str(row["template_id"]) if row.get("template_id") else None,
                 response_id=str(row["response_id"]) if row.get("response_id") else None,
-                metadata={
-                    "segment_kind": row.get("segment_kind"),
-                    "slot_name": row.get("slot_name"),
-                    "slot_value": row.get("slot_value"),
-                },
+                metadata=metadata,
             )
             resolver.index_artifact(artifact)
         return resolver

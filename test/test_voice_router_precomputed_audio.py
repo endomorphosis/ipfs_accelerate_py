@@ -399,6 +399,41 @@ def test_exact_audio_resolver_requires_full_synthesis_identity() -> None:
     assert miss.audio is None
 
 
+def test_exact_audio_resolver_preserves_dataset_row_metadata_for_byte_fetcher() -> None:
+    """Canonical dataset rows carry audio paths through to resolver fetchers."""
+
+    bundle = _fixture_bundle()
+    row = dict(bundle["audio_rows"][0])
+    row["metadata"] = {
+        "dataset_audio_path": "audio/abby-tts/audio-food.wav",
+        "bucket_audio_paths": ["hf-bucket/audio-food.wav"],
+        "bucket_mapping_statuses": ["selected_for_response"],
+    }
+    observed: dict[str, Any] = {}
+
+    def fetcher(artifact: Any) -> bytes:
+        observed["metadata"] = dict(artifact.metadata)
+        return PRECOMPUTED_AUDIO_BYTES
+
+    resolver = PrecomputedVoiceAudioResolver.from_audio_rows(
+        [row],
+        byte_fetcher=fetcher,
+        default_identity={
+            "provider_version": SYNTHESIS.provider_version,
+            "generation_settings": dict(SYNTHESIS.generation_settings),
+        },
+    )
+
+    hit = resolver.resolve(SPOKEN_PHONE_A, SYNTHESIS, template_id=TEMPLATE_ID)
+    assert hit.hit
+    assert hit.reason == REASON_EXACT_MATCH
+    assert hit.audio == PRECOMPUTED_AUDIO_BYTES
+    assert hit.artifact is not None
+    assert hit.artifact.metadata["dataset_audio_path"] == "audio/abby-tts/audio-food.wav"
+    assert hit.artifact.metadata["bucket_audio_paths"] == ["hf-bucket/audio-food.wav"]
+    assert observed["metadata"]["dataset_audio_path"] == "audio/abby-tts/audio-food.wav"
+
+
 def test_stale_slot_regression_test_invalidates_phone_change() -> None:
     """stale-slot regression test: phone change invalidates precomputed audio.
 

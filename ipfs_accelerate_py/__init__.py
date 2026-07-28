@@ -15,6 +15,18 @@ import os
 import sys
 from pathlib import Path
 
+from .hf_space_inference import (
+    BatchProcessor,
+    BatchState,
+    EndpointContract,
+    HFBucketBackend,
+    HFSpaceClient,
+    LocalFileSystemBackend,
+    OutputBackend,
+    SpaceRuntimeInfo,
+    normalize_api_name,
+)
+
 SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
 
 # Import original components
@@ -205,7 +217,16 @@ export = {
     "webnn_webgpu_available": webnn_webgpu_available,
     "ModelManager": ModelManager,
     "get_default_model_manager": get_default_model_manager,
-    "model_manager_available": model_manager_available
+    "model_manager_available": model_manager_available,
+    "EndpointContract": EndpointContract,
+    "SpaceRuntimeInfo": SpaceRuntimeInfo,
+    "OutputBackend": OutputBackend,
+    "LocalFileSystemBackend": LocalFileSystemBackend,
+    "HFBucketBackend": HFBucketBackend,
+    "HFSpaceClient": HFSpaceClient,
+    "BatchState": BatchState,
+    "BatchProcessor": BatchProcessor,
+    "normalize_api_name": normalize_api_name,
 }
 
 if not SKIP_CORE:
@@ -603,7 +624,10 @@ __all__ = [
     'install_depends', 'worker', 'ipfs_multiformats_py',
     'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
-    'model_manager_available', 'cli_main', 'get_system_logs', 'SystemLogs',
+    'model_manager_available', 'SpaceRuntimeInfo', 'EndpointContract',
+    'OutputBackend', 'LocalFileSystemBackend', 'HFBucketBackend',
+    'HFSpaceClient', 'BatchState', 'BatchProcessor', 'normalize_api_name',
+    'cli_main', 'get_system_logs', 'SystemLogs',
     'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
     'FibonacciHeap', 'calculate_hamming_distance',
     'IPFSKitStorage', 'get_storage', 'reset_storage', 'StorageBackendConfig',

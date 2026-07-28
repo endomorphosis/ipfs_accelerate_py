@@ -3312,6 +3312,7 @@ def _voice_turn_cache_key(
     *,
     stt_provider: Optional[object] = None,
     tts_provider: Optional[object] = None,
+    fallback_template_provider: Optional[object] = None,
 ) -> str:
     payload = {
         "pipeline": "abby-grounded-voice-v1",
@@ -3345,6 +3346,10 @@ def _voice_turn_cache_key(
         "template_provider": _collaborator_cache_identity(
             template_provider, _template_provider_name(template_provider)
         ),
+        "fallback_template_provider": _collaborator_cache_identity(
+            fallback_template_provider,
+            _template_provider_name(fallback_template_provider),
+        ),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=repr)
     return f"abby_voice_turn::{hashlib.sha256(encoded.encode('utf-8')).hexdigest()}"
@@ -3354,6 +3359,7 @@ def voice_turn_cache_key(
     request: VoiceTurnRequest,
     *,
     template_provider: Optional[VoiceTemplateProvider] = None,
+    fallback_template_provider: Optional[VoiceTemplateProvider] = None,
     stt_provider: Optional[VoiceProvider] = None,
     tts_provider: Optional[VoiceProvider] = None,
 ) -> str:
@@ -3365,6 +3371,7 @@ def voice_turn_cache_key(
         template_provider,
         stt_provider=stt_provider,
         tts_provider=tts_provider,
+        fallback_template_provider=fallback_template_provider,
     )
 
 
@@ -3638,6 +3645,7 @@ def process_voice_turn(
     *,
     stt_provider: Optional[VoiceProvider] = None,
     template_provider: Optional[VoiceTemplateProvider] = None,
+    fallback_template_provider: Optional[VoiceTemplateProvider] = None,
     tts_provider: Optional[VoiceProvider] = None,
     stt_provider_instance: Optional[VoiceProvider] = None,
     tts_provider_instance: Optional[VoiceProvider] = None,
@@ -3668,6 +3676,7 @@ def process_voice_turn(
         template_provider,
         stt_provider=primary_stt,
         tts_provider=primary_tts,
+        fallback_template_provider=fallback_template_provider,
     )
     request_id = request.request_id or cache_key.rsplit("::", 1)[-1][:24]
 
@@ -3757,6 +3766,7 @@ def process_voice_turn(
     plan: Optional[VoiceResponsePlan] = None
     grounded_slots: Tuple[GroundedSlot, ...] = ()
     template_name = _template_provider_name(template_provider)
+    active_template_name = template_name
     if transcript and template_provider is not None:
         started_at = time.perf_counter()
         try:
@@ -3819,6 +3829,54 @@ def process_voice_turn(
         if transcript and template_provider is None:
             fallback_reasons.append("template_provider_unavailable")
 
+    if transcript and plan is None and fallback_template_provider is not None:
+        fallback_template_name = _template_provider_name(fallback_template_provider)
+        started_at = time.perf_counter()
+        try:
+            raw_plan = _call_with_supported_keywords(
+                fallback_template_provider.retrieve,
+                transcript,
+                context=dict(request.context),
+                language=request.effective_language,
+                grounding=dict(request.grounding),
+                max_results=request.max_template_results,
+            )
+            if raw_plan is None:
+                raise LookupError("no fallback response template matched")
+            plan = _coerce_response_plan(raw_plan)
+            if plan.confidence < request.minimum_template_confidence:
+                raise LookupError(
+                    "fallback template confidence "
+                    f"{plan.confidence:.3f} is below "
+                    f"{request.minimum_template_confidence:.3f}"
+                )
+            active_template_name = fallback_template_name
+            fallback_reasons.append("fallback_template_provider_used")
+            traces.append(
+                VoiceStageTrace(
+                    "fallback_retrieval",
+                    "succeeded",
+                    _duration_ms(started_at),
+                    provider=fallback_template_name,
+                    details={
+                        "template_id": plan.template_id,
+                        "confidence": plan.confidence,
+                        "evidence_count": len(plan.evidence),
+                        "slotted_template": True,
+                    },
+                )
+            )
+        except Exception as error:
+            traces.append(
+                VoiceStageTrace(
+                    "fallback_retrieval",
+                    "failed",
+                    _duration_ms(started_at),
+                    provider=fallback_template_name,
+                    error=_safe_stage_error(error),
+                )
+            )
+
     response_text = request.fallback_text
     if plan is not None:
         started_at = time.perf_counter()
@@ -3833,7 +3891,7 @@ def process_voice_turn(
                     "rendering",
                     "succeeded",
                     _duration_ms(started_at),
-                    provider=template_name,
+                    provider=active_template_name,
                     details={"grounded_slot_count": len(grounded_slots)},
                 )
             )
@@ -3844,7 +3902,7 @@ def process_voice_turn(
                     "rendering",
                     "failed",
                     _duration_ms(started_at),
-                    provider=template_name,
+                    provider=active_template_name,
                     error=_safe_stage_error(error),
                 )
             )
@@ -3854,7 +3912,7 @@ def process_voice_turn(
                 "rendering",
                 "skipped",
                 0.0,
-                provider=template_name,
+                provider=active_template_name,
                 details={"reason": "grounded_template_unavailable"},
             )
         )
@@ -4027,7 +4085,7 @@ def process_voice_turn(
 
     provenance = VoiceTurnProvenance(
         stt_provider=used_stt_provider,
-        template_provider=template_name,
+        template_provider=active_template_name,
         template_id=plan.template_id if plan is not None else None,
         tts_provider=used_tts_provider,
         evidence=plan.evidence if plan is not None else (),
@@ -6421,6 +6479,15 @@ register_tts_provider = register_voice_provider
 #: Alias for :func:`clear_voice_router_caches`.
 clear_tts_router_caches = clear_voice_router_caches
 
+# Package-owned cache-miss event contracts are dependency-light and imported
+# late to avoid a circular dependency on the runtime result classes above.
+from .voice_cache_miss import (  # noqa: E402
+    VOICE_CACHE_MISS_EVENT_SCHEMA_VERSION,
+    VoiceCacheMissEvent,
+    VoiceCacheMissEventError,
+    build_voice_cache_miss_event,
+)
+
 __all__ = [
     # Core voice (TTS + STT)
     "VOICE_TURN_CONTRACT_VERSION",
@@ -6476,6 +6543,10 @@ __all__ = [
     "VoiceTurnResult",
     "voice_turn_cache_key",
     "process_voice_turn",
+    "VOICE_CACHE_MISS_EVENT_SCHEMA_VERSION",
+    "VoiceCacheMissEvent",
+    "VoiceCacheMissEventError",
+    "build_voice_cache_miss_event",
     # Exact precomputed audio runtime resolution (G019)
     "PrecomputedAudioResolution",
     "PrecomputedVoiceAudioResolver",
