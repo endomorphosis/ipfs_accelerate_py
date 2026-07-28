@@ -434,7 +434,7 @@ Normative:
 
 ## CBP-200 Attestation and real ZK policy (deferred)
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P2
 - Track: attestation-zk
