@@ -4010,6 +4010,310 @@ ImplementationEvidence = ImplementationResultEvidence
 FreshImplementationObligations = ImplementationObligationSet
 
 
+# ---------------------------------------------------------------------------
+# CBP-015: cache-first prove path over TrustAwareProofCache
+# ---------------------------------------------------------------------------
+
+from collections import Counter
+from collections.abc import Callable
+
+from .formal_verification_cache import (
+    CacheLookupStatus,
+    CacheRejectionReason,
+    FormalVerificationCache,
+    ProofCacheKey,
+    TrustAwareProofCache,
+    build_proof_cache_key,
+)
+
+
+@dataclass
+class ProofCacheMetrics:
+    """Process-local hit/miss/reject counters for the cache-first prove path."""
+
+    hits: int = 0
+    misses: int = 0
+    rejects: int = 0
+    puts: int = 0
+    put_failures: int = 0
+    single_flight_calls: int = 0
+    reject_reasons: Counter[str] = field(default_factory=Counter)
+
+    def record_reject(self, *reason_codes: str) -> None:
+        self.rejects += 1
+        for code in reason_codes:
+            if code:
+                self.reject_reasons[str(code)] += 1
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "hits": self.hits,
+            "misses": self.misses,
+            "rejects": self.rejects,
+            "puts": self.puts,
+            "put_failures": self.put_failures,
+            "single_flight_calls": self.single_flight_calls,
+            "reject_reasons": dict(sorted(self.reject_reasons.items())),
+            "hit_rate": (
+                self.hits / (self.hits + self.misses)
+                if (self.hits + self.misses)
+                else 0.0
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class CachedProveResult:
+    """Outcome of :func:`prove_code_obligation_with_cache`."""
+
+    status: str
+    from_cache: bool
+    receipt: ProofReceipt | None
+    reason_codes: tuple[str, ...] = ()
+    key_id: str = ""
+    metrics: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def authoritative(self) -> bool:
+        return self.receipt is not None and self.receipt.authoritative_assurance not in (
+            AssuranceLevel.UNVERIFIED,
+            AssuranceLevel.CANDIDATE,
+        )
+
+
+def build_code_proof_cache_key(
+    obligation: CodeProofObligation,
+    *,
+    translator_id: str = "translator:default",
+    solver_id: str = "solver:default",
+    kernel_id: str = "kernel:default",
+    toolchain_id: str = "toolchain:default",
+    theorem_registry_id: str = "registry:default",
+    policy_id: str = "policy:default",
+    resource_budget: Any = None,
+    candidate_tree: str | None = None,
+) -> ProofCacheKey:
+    """Build a :class:`ProofCacheKey` from a typed code-proof obligation.
+
+    The key binds obligation identity (which already includes template semantics),
+    premises, toolchain/policy identities, required assurance, and candidate tree.
+    """
+
+    if not isinstance(obligation, CodeProofObligation):
+        raise TypeError("obligation must be a CodeProofObligation")
+    budget = resource_budget
+    if budget is None:
+        budget = {
+            "wall_time_ms": 30_000,
+            "cpu_time_ms": 20_000,
+            "memory_bytes": 512 * 1024 * 1024,
+            "max_processes": 4,
+            "max_premises": 32,
+            "network_allowed": False,
+        }
+    if hasattr(budget, "to_dict"):
+        budget = budget.to_dict()
+    tree = candidate_tree if candidate_tree is not None else obligation.repository_tree_id
+    # Include required assurance in the obligation component so raising the
+    # bar cannot reuse a weaker cached receipt under the same key.
+    obligation_component = {
+        "obligation_id": obligation.obligation_id,
+        "repository_tree_id": obligation.repository_tree_id,
+        "ast_scope_ids": list(obligation.ast_scope_ids),
+        "premise_ids": list(obligation.premise_ids),
+        "template_id": obligation.template_id,
+        "template_version": obligation.template_version,
+        "template_semantic_hash": obligation.template_semantic_hash,
+        "required_assurance": obligation.required_assurance.value,
+        "policy_id": policy_id,
+        "toolchain_id": toolchain_id,
+    }
+    return build_proof_cache_key(
+        obligation=obligation_component,
+        premises=tuple(obligation.premise_ids),
+        translator=translator_id,
+        solver=solver_id,
+        kernel=kernel_id,
+        toolchain=toolchain_id,
+        theorem_registry=theorem_registry_id,
+        policy=policy_id,
+        resource_budget=budget,
+        candidate_tree=tree,
+    )
+
+
+def _map_binding_reason(
+    key: ProofCacheKey,
+    receipt: ProofReceipt,
+    reasons: Iterable[str],
+) -> tuple[str, ...]:
+    """Augment cache reasons with stale_tree / toolchain_drift aliases."""
+
+    codes = {str(code) for code in reasons if code}
+    if receipt.repository_tree_id and str(key.candidate_tree) not in (
+        str(receipt.repository_tree_id),
+        receipt.repository_tree_id,
+    ):
+        if str(key.candidate_tree) != str(receipt.repository_tree_id):
+            codes.add("stale_tree")
+    if receipt.toolchain_id and str(key.toolchain) != str(receipt.toolchain_id):
+        codes.add("toolchain_drift")
+    if receipt.authoritative_assurance in (
+        AssuranceLevel.UNVERIFIED,
+        AssuranceLevel.CANDIDATE,
+    ):
+        codes.add("candidate_only")
+    return tuple(sorted(codes))
+
+
+def prove_code_obligation_with_cache(
+    cache: FormalVerificationCache | TrustAwareProofCache,
+    key: ProofCacheKey,
+    *,
+    prove: Callable[[], ProofReceipt],
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    metrics: ProofCacheMetrics | None = None,
+    prefer_cache_before_provider: bool = True,
+    store_on_success: bool = True,
+) -> CachedProveResult:
+    """Lookup-before-provider prove path with single-flight and metrics.
+
+    Hits re-derive assurance inside :meth:`FormalVerificationCache.lookup`.
+    Candidate-only receipts are never stored as authoritative cache entries.
+    """
+
+    if not callable(prove):
+        raise TypeError("prove must be callable")
+    stats = metrics if metrics is not None else ProofCacheMetrics()
+
+    if prefer_cache_before_provider:
+        lookup = cache.lookup(key, required_assurance=required_assurance)
+        if lookup.status is CacheLookupStatus.HIT and lookup.receipt is not None:
+            # Re-derive is already performed; refuse candidate-only hits.
+            if lookup.receipt.authoritative_assurance in (
+                AssuranceLevel.UNVERIFIED,
+                AssuranceLevel.CANDIDATE,
+            ):
+                stats.record_reject("candidate_only")
+                return CachedProveResult(
+                    status="rejected",
+                    from_cache=True,
+                    receipt=None,
+                    reason_codes=("candidate_only",),
+                    key_id=key.key_id,
+                    metrics=stats.snapshot(),
+                )
+            stats.hits += 1
+            return CachedProveResult(
+                status="hit",
+                from_cache=True,
+                receipt=lookup.receipt,
+                reason_codes=(),
+                key_id=key.key_id,
+                metrics=stats.snapshot(),
+            )
+        if lookup.status is CacheLookupStatus.REJECTED:
+            stats.record_reject(*lookup.reason_codes)
+            # Fall through to re-prove on recoverable rejections (stale/miss-like).
+            recoverable = {
+                CacheRejectionReason.STALE_ENTRY.value,
+                CacheRejectionReason.CACHE_MISS.value,
+                CacheRejectionReason.FRESHNESS_NOT_SATISFIED.value,
+            }
+            if not set(lookup.reason_codes) & recoverable and lookup.reason_codes:
+                # Still attempt prove for insufficient assurance / poisoned after
+                # clearing is caller responsibility; treat as miss path.
+                pass
+        else:
+            stats.misses += 1
+    else:
+        stats.misses += 1
+
+    stats.single_flight_calls += 1
+
+    def _execute() -> dict[str, Any]:
+        receipt = prove()
+        if not isinstance(receipt, ProofReceipt):
+            raise TypeError("prove() must return a ProofReceipt")
+        # Single-flight outcomes must be DAG-JSON-safe public values.
+        return receipt.to_dict()
+
+    payload = cache.single_flight(key, _execute)
+    if isinstance(payload, ProofReceipt):
+        receipt = payload
+    elif isinstance(payload, Mapping):
+        receipt = ProofReceipt.from_dict(payload)
+    else:
+        raise TypeError(
+            "single_flight must return a ProofReceipt or receipt mapping"
+        )
+    if receipt.authoritative_assurance in (
+        AssuranceLevel.UNVERIFIED,
+        AssuranceLevel.CANDIDATE,
+    ):
+        reasons = _map_binding_reason(key, receipt, ("candidate_only",))
+        stats.record_reject(*reasons)
+        return CachedProveResult(
+            status="rejected",
+            from_cache=False,
+            receipt=receipt,
+            reason_codes=reasons,
+            key_id=key.key_id,
+            metrics=stats.snapshot(),
+        )
+
+    if not receipt.satisfies(required_assurance):
+        reasons = _map_binding_reason(
+            key,
+            receipt,
+            (CacheRejectionReason.INSUFFICIENT_ASSURANCE.value,),
+        )
+        stats.record_reject(*reasons)
+        return CachedProveResult(
+            status="rejected",
+            from_cache=False,
+            receipt=receipt,
+            reason_codes=reasons,
+            key_id=key.key_id,
+            metrics=stats.snapshot(),
+        )
+
+    if store_on_success:
+        stored = cache.put(key, receipt)
+        if stored.stored:
+            stats.puts += 1
+        else:
+            stats.put_failures += 1
+            reasons = _map_binding_reason(key, receipt, stored.reason_codes)
+            if "private_material" in str(stored.reason_codes) or any(
+                "private" in str(code) for code in stored.reason_codes
+            ):
+                reasons = tuple(sorted(set(reasons) | {"private_material"}))
+            stats.record_reject(*reasons)
+            return CachedProveResult(
+                status="rejected",
+                from_cache=False,
+                receipt=receipt,
+                reason_codes=reasons,
+                key_id=key.key_id,
+                metrics=stats.snapshot(),
+            )
+
+    return CachedProveResult(
+        status="proved",
+        from_cache=False,
+        receipt=receipt,
+        reason_codes=(),
+        key_id=key.key_id,
+        metrics=stats.snapshot(),
+    )
+
+
+# Compatibility spellings.
+prove_code_obligation = prove_code_obligation_with_cache
+lookup_or_prove_code_obligation = prove_code_obligation_with_cache
+
+
 __all__ = [
     "ASTProofScope",
     "CODE_OBLIGATION_CACHE_KEY_SCHEMA",
@@ -4064,7 +4368,9 @@ __all__ = [
     "ProofScopeType",
     "TypedASTProofScope",
     "build_code_proof_obligation",
+    "build_code_proof_cache_key",
     "build_obligation_cache_key",
+    "CachedProveResult",
     "code_proof_obligation_cache_identity",
     "collect_git_candidate_diff",
     "compile_candidate_diff",
@@ -4077,9 +4383,13 @@ __all__ = [
     "compile_implementation_obligations",
     "derive_fresh_implementation_obligations",
     "derive_implementation_obligations",
+    "lookup_or_prove_code_obligation",
     "materialize_code_proof_obligation",
     "obligation_cache_identity",
     "parse_unified_diff",
+    "ProofCacheMetrics",
+    "prove_code_obligation",
+    "prove_code_obligation_with_cache",
     "prove_proof_candidate_non_authority",
     "transitive_impact_blocks_proof_derivation",
     "validate_code_proof_receipt_binding",

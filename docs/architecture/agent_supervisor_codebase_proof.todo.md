@@ -91,7 +91,7 @@ Normative:
 
 ## CBP-015 Productize trust-aware proof cache as default prove path
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: proof-cache
@@ -115,7 +115,7 @@ Normative:
 
 ## CBP-020 Reviewed property catalog
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: property-catalog
