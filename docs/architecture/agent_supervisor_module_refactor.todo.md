@@ -739,7 +739,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-022 Resolve implementation retry-budget failure for ASREF-013
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -747,10 +747,10 @@ do not delete protected headers or rewrite completed history.
 - Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-022-asref-013-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-013. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-022-asref-013-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-013 from strategy blocked_tasks.
-
+- Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
 ## ASREF-023 Resolve implementation retry-budget failure for ASREF-008
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -758,10 +758,10 @@ do not delete protected headers or rewrite completed history.
 - Outputs: ipfs_accelerate_py/agent_supervisor, pyproject.toml, setup.py, scripts, test/api, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-023-asref-008-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-008. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-023-asref-008-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-008 from strategy blocked_tasks.
-
+- Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
 ## ASREF-024 Resolve implementation retry-budget failure for ASREF-012
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -769,10 +769,10 @@ do not delete protected headers or rewrite completed history.
 - Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-024-asref-012-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-012. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-024-asref-012-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-012 from strategy blocked_tasks.
-
+- Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
 ## ASREF-025 Resolve implementation retry-budget failure for ASREF-010
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -780,10 +780,10 @@ do not delete protected headers or rewrite completed history.
 - Outputs: data/agent_supervisor/bundles/asref, scripts/ops/agent_supervisor, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-025-asref-010-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-010. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-025-asref-010-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-010 from strategy blocked_tasks.
-
+- Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
 ## ASREF-026 Resolve implementation retry-budget failure for ASREF-014
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -791,3 +791,4 @@ do not delete protected headers or rewrite completed history.
 - Outputs: ipfs_accelerate_py/agent_supervisor/README.md, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/NESTED_PACKAGES.md, .gitignore, /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-026-asref-014-implementation-retry-budget.md
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ASREF-014. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/asref-v1/state/discovery/2026-07-27-asref-026-asref-014-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ASREF-014 from strategy blocked_tasks.
+- Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
