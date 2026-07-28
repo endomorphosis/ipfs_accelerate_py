@@ -120,7 +120,7 @@ Program invariants:
 
 ## GOOSE-005 Register Goose in llm_router with side-effect-aware policy
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
