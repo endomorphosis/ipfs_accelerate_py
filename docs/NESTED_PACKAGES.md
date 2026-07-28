@@ -5,15 +5,22 @@ submodules next to the installable Python package. They are intentional
 checkouts or sibling products, **not** disposable clutter.
 
 **Do not delete, force-reinit, or mass-rewrite these trees without ownership
-review.** Root-hygiene work (ASREF-006 / ASREF-G090) may document, ignore
-ephemera, or relocate *misplaced root plans/tests* only. It must not move
-`agent_supervisor` packages into nested product trees or rewrite submodule
+review.** Root-hygiene work (ASREF-006 / **ASREF-G090** cutover) may document,
+ignore ephemera, or relocate *misplaced root plans/tests* only. It must not
+move `agent_supervisor` packages into nested product trees or rewrite submodule
 history as part of package-layout moves.
+
+Cutover packet: `goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f`
+(task **ASREF-012**, goal **ASREF-G090**). Package layout evidence for parent
+cutover remains **ASREF-G020**, **ASREF-G030**, **ASREF-G040**, **ASREF-G050**,
+**ASREF-G060**, **ASREF-G070**, and **ASREF-G080** under
+`ipfs_accelerate_py/agent_supervisor/` — not under nested product trees.
 
 | Document role | Path |
 | --- | --- |
 | This inventory | `docs/NESTED_PACKAGES.md` |
-| Process-junk ignore rules | `.gitignore` (ASREF-006 section) |
+| Process-junk ignore rules | `.gitignore` (ASREF-006 / ASREF-G090 section) |
+| Agent supervisor public API map | `ipfs_accelerate_py/agent_supervisor/README.md` |
 | MCP unification plan (canonical) | `docs/architecture/MCP_SERVER_UNIFICATION_PLAN.md` |
 | Module refactor program plan | `docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md` |
 
@@ -23,10 +30,12 @@ history as part of package-layout moves.
 | --- | --- |
 | No silent deletion | Nested checkouts and submodules stay until an explicit ownership decision |
 | No agent_supervisor moves into nested products | Package layout work stays under `ipfs_accelerate_py/agent_supervisor/` |
+| Package goals stay in-tree | **ASREF-G020**–**ASREF-G080** packages (`core`, `control`, `task_sources`, `context`, `analysis`, `proof`, `objectives`, `planning`, `prompt`, `validation`, `merge`, `rescue`, `runtime`, `self_improvement`, `todo_daemon`, `integrations`) never relocate into nested products |
 | Submodule pin changes | Require review; prefer recording intended branch in `.gitmodules` |
 | Empty checkout dirs | Common when submodules are not initialized; still reserved paths |
 | Docs vs products | Architecture and operator docs live under `docs/`; nested trees keep their own READMEs |
 | Import surface | Root hygiene and nested-package docs must not break `ipfs_accelerate_py.agent_supervisor` imports |
+| Cutover owns final gate | **ASREF-G090** owns public API map, no-old-import gate, and root hygiene docs; child package goals own physical module moves |
 
 ## Nested product trees (first-party / sibling)
 
@@ -77,8 +86,9 @@ git submodule update --init ipfs_kit_py
 | `scripts/`, `deployments/`, `install/`, `examples/`, `config/` | Operational and packaging support |
 | `data/` | Mixed fixtures and local runtime data; many entries gitignored |
 | `state/` | Local/runtime state; broadly gitignored via `state/*` |
+| `ipfs_accelerate_py/agent_supervisor/` | ASREF package layout (**ASREF-G020**–**ASREF-G080**); public map in package README |
 
-## Root hygiene (ASREF-006)
+## Root hygiene (ASREF-006 / ASREF-G090)
 
 ### Process junk (ignored, not nested products)
 
@@ -96,6 +106,16 @@ artifacts. `.gitignore` excludes at least:
 **Note:** Paths that were committed before the ignore rules still appear in
 `git ls-files` until an operator (or a later cutover task with broader path
 scope) runs `git rm --cached` on them. Ignore rules prevent *new* tracking.
+Cutover acceptance for **ASREF-G090** requires these process files to be
+untracked on the merge-ready branch; when this task's edit scope is limited to
+`.gitignore` and docs, the ignore rules land here and untracking is the
+operator follow-up.
+
+Suggested untrack (outside narrow cutover path scope when needed):
+
+```bash
+git rm --cached --ignore-unmatch dashboard.out dashboard.pid err.txt
+```
 
 ### Misplaced root plans and one-offs
 
@@ -107,14 +127,18 @@ scope) runs `git rm --cached` on them. Ignore rules prevent *new* tracking.
 
 ASREF-006 **documents** and **ignores** within its allowed path set; it does
 not delete nested checkouts, untrack every historical file, or move tests when
-those paths are outside the task edit scope.
+those paths are outside the task edit scope. **ASREF-G090** cutover still
+documents the preferred end state: no root process junk tracked, root tests
+under `test/`, nested trees inventoried.
 
-### What ASREF-006 must not do
+### What root hygiene must not do
 
 - Delete nested product checkouts or submodules without ownership review
 - Move `agent_supervisor` packages into nested product trees
 - Rewrite submodule history as part of package-layout moves
-- Break `ipfs_accelerate_py.agent_supervisor` import paths (no package moves in this task)
+- Break `ipfs_accelerate_py.agent_supervisor` import paths (no package moves in hygiene-only tasks)
+- Relocate **ASREF-G020**–**ASREF-G080** domain packages outside
+  `ipfs_accelerate_py/agent_supervisor/`
 
 ## Agent supervisor refactor boundary
 
@@ -123,7 +147,9 @@ The agent-supervisor module refactor (`ASREF-*`) may:
 - document nested packages (this file);
 - ignore or remove root process junk via `.gitignore` (and later untrack steps);
 - relocate root-level plans into `docs/` (MCP unification plan lives under
-  `docs/architecture/`).
+  `docs/architecture/`);
+- publish the package public API map and cutover evidence for **ASREF-G090**
+  in `ipfs_accelerate_py/agent_supervisor/README.md` and `__init__.py`.
 
 It must **not**:
 
@@ -131,9 +157,23 @@ It must **not**:
 - move `agent_supervisor` packages into nested product trees;
 - rewrite submodule history as part of package-layout moves.
 
+### Package goals vs nested products
+
+| Goal | Packages (under `agent_supervisor/`) | Nested-product interaction |
+| --- | --- | --- |
+| **ASREF-G020** | `core/` | none — stay in primary package |
+| **ASREF-G030** | `control/` | none |
+| **ASREF-G040** | `task_sources/` | none |
+| **ASREF-G050** | `context/`, `prompt/` | none |
+| **ASREF-G060** | `analysis/`, `proof/` | none |
+| **ASREF-G070** | `objectives/`, `planning/`, `validation/`, `merge/`, `rescue/`, `runtime/`, `self_improvement/` | none |
+| **ASREF-G080** | `todo_daemon/`, `integrations/` | none |
+| **ASREF-G090** | public API, root hygiene, cutover | documents nested trees; does not absorb them |
+
 ## See also
 
 - [Agent Supervisor Module Refactor Plan](architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md) — root hygiene targets
+- [Agent supervisor package README](../ipfs_accelerate_py/agent_supervisor/README.md) — public API and package-goal evidence
 - [MCP Server Unification Master Plan](architecture/MCP_SERVER_UNIFICATION_PLAN.md) — canonical MCP runtime plan
 - [Documentation index](INDEX.md)
 - Root [README.md](../README.md) and `.gitmodules`
