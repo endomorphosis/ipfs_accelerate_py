@@ -4582,7 +4582,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-165 Define hierarchical supervisor usage envelopes and accounting bridge
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
