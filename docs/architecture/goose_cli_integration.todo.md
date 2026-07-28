@@ -145,7 +145,7 @@ Program invariants:
 
 ## GOOSE-006 Replace abstract CLI endpoint registration with a concrete factory
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
