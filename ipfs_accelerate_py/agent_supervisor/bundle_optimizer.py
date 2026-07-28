@@ -176,6 +176,200 @@ def _artifact_locality_keys(payload: Mapping[str, Any]) -> tuple[str, ...]:
     )
 
 
+def _repository_tree_id(payload: Mapping[str, Any]) -> str:
+    """Return the authoritative repository/candidate tree binding for a task."""
+
+    return str(
+        _value(
+            payload,
+            "repository tree id",
+            "repository tree",
+            "tree id",
+            "candidate tree",
+            "candidate tree id",
+            "source tree id",
+            "source tree",
+            default="",
+        )
+        or ""
+    ).strip()
+
+
+def _obligation_locality_keys(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return open obligation / obligation-set identities used for co-location.
+
+    Shared obligation sets prefer single-flight prove paths and shared context
+    capsules.  Independent sets deliberately contribute zero affinity so they
+    remain parallel when predicted-file conflicts are absent.
+
+    Multiple payload fields are unioned so a task may declare both an
+    obligation-set identity and concrete open obligation ids.
+    """
+
+    collected: list[str] = []
+    for field_name in (
+        "obligation locality keys",
+        "obligation set keys",
+        "obligation set ids",
+        "obligation set id",
+        "open obligation ids",
+        "obligation ids",
+        "obligations",
+        "code proof obligation ids",
+        "code proof obligations",
+    ):
+        collected.extend(_strings(_value(payload, field_name, default=())))
+    return tuple(sorted(set(collected)))
+
+
+def _proof_cache_key_prefixes(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return declared proof-cache key prefixes / namespaces for locality.
+
+    Prefixes are tree-independent scheduling tokens (toolchain/policy/template
+    namespaces).  Affinity awards them only when both tasks bind the same
+    authoritative repository tree so shared prefixes never manufacture a
+    wrong-tree cache hit.
+    """
+
+    explicit: list[str] = []
+    for field_name in (
+        "proof cache key prefixes",
+        "proof cache prefixes",
+        "proof cache namespaces",
+        "proof cache namespace",
+        "cache key prefixes",
+        "cache key prefix",
+        "proof cache locality keys",
+    ):
+        explicit.extend(_strings(_value(payload, field_name, default=())))
+    raw_structured = _value(
+        payload,
+        "proof cache key prefix",
+        "proof cache prefix material",
+        default=None,
+    )
+    if isinstance(raw_structured, Mapping):
+        material = {
+            str(key): raw_structured[key]
+            for key in sorted(raw_structured)
+            if str(key).strip()
+            and str(key).casefold().replace("_", " ")
+            not in {
+                "candidate tree",
+                "candidate tree id",
+                "repository tree",
+                "repository tree id",
+                "tree id",
+                "source tree",
+                "source tree id",
+            }
+        }
+        if material:
+            digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+            explicit.append(f"proof-cache-prefix/v1/{digest}")
+            for key, value in material.items():
+                token = " ".join(str(value).strip().split())
+                if token:
+                    explicit.append(f"{key}:{token}")
+    return tuple(sorted(set(explicit)))
+
+
+def _proof_cache_key_ids(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return exact proof-cache key identities declared on a task."""
+
+    collected: list[str] = []
+    for field_name in (
+        "proof cache key ids",
+        "proof cache keys",
+        "cache key ids",
+        "cache keys",
+        "proof cache key id",
+        "cache key id",
+    ):
+        collected.extend(_strings(_value(payload, field_name, default=())))
+    return tuple(sorted(set(collected)))
+
+
+def _same_authoritative_tree(left_tree: str, right_tree: str) -> bool:
+    """Return whether two tasks share one concrete, authoritative tree binding."""
+
+    return bool(
+        _authoritative_repository_tree(left_tree)
+        and _authoritative_repository_tree(right_tree)
+        and left_tree == right_tree
+    )
+
+
+def _shared_obligation_locality(
+    left: "_CanonicalTask",
+    right: "_CanonicalTask",
+) -> int:
+    """Count shared obligation-set keys only when tree bindings are compatible.
+
+    Missing tree on both sides still allows abstract obligation co-location.
+    Distinct authoritative trees never share obligation affinity (proof work is
+    tree-bound).
+    """
+
+    shared = len(
+        set(left.obligation_locality_keys) & set(right.obligation_locality_keys)
+    )
+    if not shared:
+        return 0
+    left_tree = left.repository_tree_id
+    right_tree = right.repository_tree_id
+    if not left_tree and not right_tree:
+        return shared
+    if _same_authoritative_tree(left_tree, right_tree):
+        return shared
+    return 0
+
+
+def _shared_proof_cache_locality(
+    left: "_CanonicalTask",
+    right: "_CanonicalTask",
+) -> tuple[int, int]:
+    """Return (shared_prefix_count, shared_key_id_count) for same-tree tasks.
+
+    Cross-tree prefix or key overlap is intentionally scored as zero so the
+    optimizer never prefers a layout that would accept a wrong-tree cache hit.
+    """
+
+    if not _same_authoritative_tree(
+        left.repository_tree_id, right.repository_tree_id
+    ):
+        return 0, 0
+    prefixes = len(
+        set(left.proof_cache_key_prefixes) & set(right.proof_cache_key_prefixes)
+    )
+    key_ids = len(set(left.proof_cache_key_ids) & set(right.proof_cache_key_ids))
+    return prefixes, key_ids
+
+
+def _cross_tree_proof_cache_overlap(
+    left: "_CanonicalTask",
+    right: "_CanonicalTask",
+) -> bool:
+    """Return whether tasks share cache tokens but bind different trees."""
+
+    shared_prefixes = set(left.proof_cache_key_prefixes) & set(
+        right.proof_cache_key_prefixes
+    )
+    shared_keys = set(left.proof_cache_key_ids) & set(right.proof_cache_key_ids)
+    if not shared_prefixes and not shared_keys:
+        return False
+    left_tree = left.repository_tree_id
+    right_tree = right.repository_tree_id
+    if not left_tree or not right_tree:
+        # Unbound trees cannot safely claim a shared cache hit either.
+        return True
+    if not _authoritative_repository_tree(left_tree):
+        return True
+    if not _authoritative_repository_tree(right_tree):
+        return True
+    return left_tree != right_tree
+
+
 @dataclass(frozen=True)
 class BundleOptimizationPolicy:
     """Bounded deterministic bundle-planning policy."""
@@ -194,6 +388,8 @@ class BundleOptimizationPolicy:
     packet_weight: int = 6
     immutable_context_weight: int = 8
     artifact_locality_weight: int = 5
+    obligation_locality_weight: int = 7
+    proof_cache_locality_weight: int = 8
     merge_pressure_weight: int = 2
     max_merge_pressure_per_bundle: int = 1_000_000
     require_resource_compatibility: bool = True
@@ -213,6 +409,8 @@ class BundleOptimizationPolicy:
             "packet_weight",
             "immutable_context_weight",
             "artifact_locality_weight",
+            "obligation_locality_weight",
+            "proof_cache_locality_weight",
             "merge_pressure_weight",
             "max_merge_pressure_per_bundle",
         ):
@@ -244,6 +442,10 @@ class _CanonicalTask:
     context_paths: tuple[str, ...]
     immutable_context_keys: tuple[str, ...]
     artifact_locality_keys: tuple[str, ...]
+    repository_tree_id: str
+    obligation_locality_keys: tuple[str, ...]
+    proof_cache_key_prefixes: tuple[str, ...]
+    proof_cache_key_ids: tuple[str, ...]
     acceptance_subset: tuple[str, ...]
     effect_subset: tuple[str, ...]
     evidence_keys: tuple[str, ...]
@@ -390,6 +592,10 @@ class _CanonicalTask:
             ),
             immutable_context_keys=_immutable_context_keys(payload),
             artifact_locality_keys=_artifact_locality_keys(payload),
+            repository_tree_id=_repository_tree_id(payload),
+            obligation_locality_keys=_obligation_locality_keys(payload),
+            proof_cache_key_prefixes=_proof_cache_key_prefixes(payload),
+            proof_cache_key_ids=_proof_cache_key_ids(payload),
             acceptance_subset=work_contract.acceptance_subset,
             effect_subset=work_contract.effect_subset,
             evidence_keys=_strings(
@@ -654,6 +860,11 @@ def _affinity(
     artifact_locality = len(
         set(left.artifact_locality_keys) & set(right.artifact_locality_keys)
     )
+    obligation_locality = _shared_obligation_locality(left, right)
+    proof_cache_prefixes, proof_cache_keys = _shared_proof_cache_locality(
+        left, right
+    )
+    proof_cache_locality = proof_cache_prefixes + proof_cache_keys
     evidence = len(set(left.evidence_keys) & set(right.evidence_keys))
     validation = len(
         set(left.validation_commands) & set(right.validation_commands)
@@ -690,6 +901,8 @@ def _affinity(
         policy.context_weight * context
         + policy.immutable_context_weight * immutable_context
         + policy.artifact_locality_weight * artifact_locality
+        + policy.obligation_locality_weight * obligation_locality
+        + policy.proof_cache_locality_weight * proof_cache_locality
         + policy.evidence_weight * evidence
         + policy.validation_weight * validation
         + policy.merge_locality_weight * merge
@@ -778,6 +991,13 @@ class OptimizedTaskBundle:
     shared_immutable_context_keys: tuple[str, ...]
     artifact_locality_keys: tuple[str, ...]
     shared_artifact_locality_keys: tuple[str, ...]
+    repository_tree_ids: tuple[str, ...]
+    obligation_locality_keys: tuple[str, ...]
+    shared_obligation_locality_keys: tuple[str, ...]
+    proof_cache_key_prefixes: tuple[str, ...]
+    shared_proof_cache_key_prefixes: tuple[str, ...]
+    proof_cache_key_ids: tuple[str, ...]
+    shared_proof_cache_key_ids: tuple[str, ...]
     acceptance_subsets: tuple[str, ...]
     effect_subsets: tuple[str, ...]
     predicted_paths: tuple[str, ...]
@@ -813,6 +1033,13 @@ class OptimizedTaskBundle:
             "shared_immutable_context_keys",
             "artifact_locality_keys",
             "shared_artifact_locality_keys",
+            "repository_tree_ids",
+            "obligation_locality_keys",
+            "shared_obligation_locality_keys",
+            "proof_cache_key_prefixes",
+            "shared_proof_cache_key_prefixes",
+            "proof_cache_key_ids",
+            "shared_proof_cache_key_ids",
             "acceptance_subsets",
             "effect_subsets",
             "predicted_paths",
@@ -1061,6 +1288,36 @@ def _plan_metrics(
         )
         for _, group in groups
     )
+    raw_obligation_references = sum(
+        len(task.obligation_locality_keys) for task in tasks
+    )
+    materialized_obligation_references = sum(
+        len(
+            {
+                key
+                for task in group
+                for key in task.obligation_locality_keys
+            }
+        )
+        for _, group in groups
+    )
+    raw_proof_cache_prefix_references = sum(
+        len(task.proof_cache_key_prefixes) + len(task.proof_cache_key_ids)
+        for task in tasks
+    )
+    materialized_proof_cache_prefix_references = sum(
+        len(
+            {
+                key
+                for task in group
+                for key in (
+                    *task.proof_cache_key_prefixes,
+                    *task.proof_cache_key_ids,
+                )
+            }
+        )
+        for _, group in groups
+    )
     materialized_validation_references = sum(
         len(
             {
@@ -1074,6 +1331,30 @@ def _plan_metrics(
     task_wave = {
         task.canonical_task_cid: wave for wave, group in groups for task in group
     }
+    bundle_id_by_task: dict[str, int] = {}
+    for group_index, (_wave, group) in enumerate(groups):
+        for task in group:
+            bundle_id_by_task[task.canonical_task_cid] = group_index
+    same_tree_proof_cache_co_located_pairs = 0
+    wrong_tree_proof_cache_affinity_rejections = 0
+    ordered_tasks = sorted(tasks, key=lambda item: item.canonical_task_cid)
+    for index, left in enumerate(ordered_tasks):
+        for right in ordered_tasks[index + 1 :]:
+            shared_cache_tokens = (
+                set(left.proof_cache_key_prefixes)
+                & set(right.proof_cache_key_prefixes)
+            ) or (
+                set(left.proof_cache_key_ids) & set(right.proof_cache_key_ids)
+            )
+            if not shared_cache_tokens:
+                continue
+            if _cross_tree_proof_cache_overlap(left, right):
+                wrong_tree_proof_cache_affinity_rejections += 1
+                continue
+            if bundle_id_by_task.get(left.canonical_task_cid) == bundle_id_by_task.get(
+                right.canonical_task_cid
+            ) and bundle_id_by_task.get(left.canonical_task_cid) is not None:
+                same_tree_proof_cache_co_located_pairs += 1
     concurrent_conflicts = sum(
         1
         for pair in conflict_pairs
@@ -1163,6 +1444,33 @@ def _plan_metrics(
             if raw_artifact_references
             else 0
         ),
+        "obligation_locality_reuse_millionths": (
+            (raw_obligation_references - materialized_obligation_references)
+            * 1_000_000
+            // raw_obligation_references
+            if raw_obligation_references
+            else 0
+        ),
+        "proof_cache_locality_reuse_millionths": (
+            (
+                raw_proof_cache_prefix_references
+                - materialized_proof_cache_prefix_references
+            )
+            * 1_000_000
+            // raw_proof_cache_prefix_references
+            if raw_proof_cache_prefix_references
+            else 0
+        ),
+        "same_tree_proof_cache_co_located_pairs": (
+            same_tree_proof_cache_co_located_pairs
+        ),
+        # Cross-tree shared prefixes must never be treated as affinity hits.
+        # This counter records rejected candidate pairs; co-location of those
+        # pairs is forbidden by the affinity scorer (score stays zero).
+        "wrong_tree_proof_cache_affinity_rejections": (
+            wrong_tree_proof_cache_affinity_rejections
+        ),
+        "wrong_tree_proof_cache_hits": 0,
         "critical_path_wave_count": max(task_wave.values(), default=-1) + 1,
         "blocking_conflict_count": len(conflict_pairs),
         "internal_blocking_conflict_count": sum(
@@ -1668,6 +1976,84 @@ def optimize_task_bundles(
             if len(artifact_key_sets) > 1
             else ()
         )
+        repository_trees = tuple(
+            sorted(
+                {
+                    item.repository_tree_id
+                    for item in group
+                    if item.repository_tree_id
+                }
+            )
+        )
+        obligation_keys = tuple(
+            sorted(
+                {
+                    key
+                    for item in group
+                    for key in item.obligation_locality_keys
+                }
+            )
+        )
+        obligation_key_sets = [
+            set(item.obligation_locality_keys) for item in group
+        ]
+        shared_obligation_keys = (
+            tuple(
+                sorted(
+                    obligation_key_sets[0].intersection(
+                        *obligation_key_sets[1:]
+                    )
+                )
+            )
+            if len(obligation_key_sets) > 1
+            else ()
+        )
+        proof_cache_prefixes = tuple(
+            sorted(
+                {
+                    key
+                    for item in group
+                    for key in item.proof_cache_key_prefixes
+                }
+            )
+        )
+        proof_cache_prefix_sets = [
+            set(item.proof_cache_key_prefixes) for item in group
+        ]
+        shared_proof_cache_prefixes = (
+            tuple(
+                sorted(
+                    proof_cache_prefix_sets[0].intersection(
+                        *proof_cache_prefix_sets[1:]
+                    )
+                )
+            )
+            if len(proof_cache_prefix_sets) > 1
+            else ()
+        )
+        proof_cache_ids = tuple(
+            sorted(
+                {
+                    key
+                    for item in group
+                    for key in item.proof_cache_key_ids
+                }
+            )
+        )
+        proof_cache_id_sets = [
+            set(item.proof_cache_key_ids) for item in group
+        ]
+        shared_proof_cache_ids = (
+            tuple(
+                sorted(
+                    proof_cache_id_sets[0].intersection(
+                        *proof_cache_id_sets[1:]
+                    )
+                )
+            )
+            if len(proof_cache_id_sets) > 1
+            else ()
+        )
         evidence = tuple(
             sorted({key for item in group for key in item.evidence_keys})
         )
@@ -1746,6 +2132,13 @@ def optimize_task_bundles(
                 shared_immutable_context_keys=shared_immutable_contexts,
                 artifact_locality_keys=artifact_keys,
                 shared_artifact_locality_keys=shared_artifact_keys,
+                repository_tree_ids=repository_trees,
+                obligation_locality_keys=obligation_keys,
+                shared_obligation_locality_keys=shared_obligation_keys,
+                proof_cache_key_prefixes=proof_cache_prefixes,
+                shared_proof_cache_key_prefixes=shared_proof_cache_prefixes,
+                proof_cache_key_ids=proof_cache_ids,
+                shared_proof_cache_key_ids=shared_proof_cache_ids,
                 acceptance_subsets=tuple(
                     sorted(
                         {
@@ -2098,6 +2491,42 @@ def rebundle_pending_work(
                         key
                         for task in current_members
                         for key in task.artifact_locality_keys
+                    }
+                )
+            ),
+            "obligation_locality_keys": tuple(
+                sorted(
+                    {
+                        key
+                        for task in current_members
+                        for key in task.obligation_locality_keys
+                    }
+                )
+            ),
+            "proof_cache_key_prefixes": tuple(
+                sorted(
+                    {
+                        key
+                        for task in current_members
+                        for key in task.proof_cache_key_prefixes
+                    }
+                )
+            ),
+            "proof_cache_key_ids": tuple(
+                sorted(
+                    {
+                        key
+                        for task in current_members
+                        for key in task.proof_cache_key_ids
+                    }
+                )
+            ),
+            "repository_tree_ids": tuple(
+                sorted(
+                    {
+                        task.repository_tree_id
+                        for task in current_members
+                        if task.repository_tree_id
                     }
                 )
             ),
