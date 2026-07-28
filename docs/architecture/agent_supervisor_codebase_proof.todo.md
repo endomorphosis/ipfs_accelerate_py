@@ -194,7 +194,7 @@ Normative:
 
 ## CBP-040 Query API (open / satisfied / refuted / impact / proof_delta)
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: queries
