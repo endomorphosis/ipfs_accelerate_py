@@ -10,9 +10,14 @@ import anyio
 logger = logging.getLogger(__name__)
 
 CATALOG_TOOL_SCHEMA_VERSION = "ai.catalog.mcp.v1"
+USAGE_TOOL_SCHEMA_VERSION = "ai.usage.mcp.v1"
 MAX_CATALOG_PAGE_SIZE = 1_000
 MAX_CATALOG_SOURCES = 64
+MAX_USAGE_PAGE_SIZE = 100
 _REDACTED = "[REDACTED]"
+
+# Process-local usage control service (injected by tests / runtime).
+_USAGE_CONTROL_SERVICE: Any = None
 
 
 def _load_model_tools_api() -> Dict[str, Any]:
@@ -500,6 +505,326 @@ async def model_catalog_health() -> Dict[str, Any]:
     return await _run_catalog_read(read)
 
 
+def set_usage_control_service(service: Any) -> None:
+    """Inject the process-local :class:`UsageControlService` for MCP tools."""
+
+    global _USAGE_CONTROL_SERVICE
+    _USAGE_CONTROL_SERVICE = service
+
+
+def get_usage_control_service() -> Any:
+    """Return the injected usage control service, if any."""
+
+    return _USAGE_CONTROL_SERVICE
+
+
+def _usage_service_or_error() -> Any:
+    service = _USAGE_CONTROL_SERVICE
+    if service is None:
+        return None
+    return service
+
+
+def _usage_unavailable() -> Dict[str, Any]:
+    return {
+        "status": "error",
+        "success": False,
+        "tool_schema_version": USAGE_TOOL_SCHEMA_VERSION,
+        "schema_version": "ai.endpoint_usage.control.v1",
+        "error": {
+            "code": "usage_unavailable",
+            "message": "Usage control service is not configured.",
+        },
+        "error_code": "usage_unavailable",
+        "error_type": "usage_unavailable",
+        "reason_codes": ["usage_unavailable"],
+    }
+
+
+def _usage_authorities(
+    *,
+    read: bool = True,
+    detail: bool = False,
+    admin: bool = False,
+    authorities: Optional[Sequence[str]] = None,
+) -> List[str]:
+    """Normalize authority tokens for the usage control service."""
+
+    if authorities is not None:
+        return [str(item) for item in authorities if isinstance(item, str) and item]
+    from ipfs_accelerate_py.endpoint_usage.controls import (
+        USAGE_ADMIN_AUTHORITY,
+        USAGE_READ_AUTHORITY,
+        USAGE_READ_DETAIL_AUTHORITY,
+    )
+
+    granted: List[str] = []
+    if read:
+        granted.append(USAGE_READ_AUTHORITY)
+    if detail:
+        granted.append(USAGE_READ_DETAIL_AUTHORITY)
+    if admin:
+        granted.append(USAGE_ADMIN_AUTHORITY)
+    return granted
+
+
+async def model_catalog_usage(
+    operation: str,
+    *,
+    scope_id: Optional[str] = None,
+    limit: int = 50,
+    cursor: Optional[str] = None,
+    dimension: Optional[str] = None,
+    state: Optional[str] = None,
+    expected_usage_revision: Optional[str] = None,
+    authorities: Optional[List[str]] = None,
+    read_detail: bool = False,
+    admin: bool = False,
+    idempotency_key: Optional[str] = None,
+    lease_id: Optional[str] = None,
+    fence: Optional[int] = None,
+    expected_effects: Optional[List[str]] = None,
+    actor: Optional[str] = None,
+    source: str = "operator",
+    kind: Optional[str] = None,
+    units: Optional[Dict[str, Any]] = None,
+    limits: Optional[List[Dict[str, Any]]] = None,
+    limits_update: Optional[List[Dict[str, Any]]] = None,
+    supersedes_event_id: Optional[str] = None,
+    reservation_id: Optional[str] = None,
+    reason: Optional[str] = None,
+    cooldown_until: Optional[str] = None,
+    observation_id: Optional[str] = None,
+    adapter_id: Optional[str] = None,
+    reason_codes: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Bounded usage status/limits/headroom/reservations/receipts/admin controls.
+
+    Read/query operations are side-effect free. Administrative mutations require
+    explicit admin authority, expected revision, idempotency, lease, and fence.
+    """
+
+    service = _usage_service_or_error()
+    if service is None:
+        return _usage_unavailable()
+
+    op = str(operation or "").strip().casefold()
+    granted = _usage_authorities(
+        read=True,
+        detail=bool(read_detail),
+        admin=bool(admin),
+        authorities=authorities,
+    )
+
+    def run() -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {"authorities": granted}
+        if op in {"status"}:
+            return service.status(
+                scope_id=scope_id,
+                limit=limit,
+                cursor=cursor,
+                state=state,
+                **kwargs,
+            )
+        if op in {"health"}:
+            return service.health(**kwargs)
+        if op in {"limits"}:
+            if not scope_id:
+                raise ValueError("scope_id is required")
+            return service.limits(
+                scope_id,
+                limit=limit,
+                cursor=cursor,
+                dimension=dimension,
+                expected_usage_revision=expected_usage_revision,
+                **kwargs,
+            )
+        if op in {"headroom"}:
+            if not scope_id:
+                raise ValueError("scope_id is required")
+            return service.headroom(
+                scope_id,
+                dimension=dimension,
+                expected_usage_revision=expected_usage_revision,
+                **kwargs,
+            )
+        if op in {"reservations"}:
+            if not scope_id:
+                raise ValueError("scope_id is required")
+            return service.reservations(
+                scope_id,
+                limit=limit,
+                cursor=cursor,
+                expected_usage_revision=expected_usage_revision,
+                **kwargs,
+            )
+        if op in {"receipts"}:
+            return service.receipts(
+                scope_id=scope_id,
+                limit=limit,
+                cursor=cursor,
+                **kwargs,
+            )
+        if op in {"adapter_capabilities", "adapters"}:
+            return service.adapter_capabilities(
+                adapter_id=adapter_id,
+                limit=limit,
+                cursor=cursor,
+                **kwargs,
+            )
+        if op in {"import", "import_observation"}:
+            if not scope_id:
+                raise ValueError("scope_id is required")
+            return service.import_observation(
+                scope_id,
+                expected_usage_revision=expected_usage_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                actor=actor,
+                source=source,
+                kind=kind or "observation_success",
+                units=units,
+                limits_update=limits_update,
+                cooldown_until=cooldown_until,
+                reason_codes=tuple(reason_codes or ()),
+                observation_id=observation_id,
+                reservation_id=reservation_id,
+                **kwargs,
+            )
+        if op in {"correct", "correction"}:
+            if not scope_id:
+                raise ValueError("scope_id is required")
+            return service.correct(
+                scope_id,
+                expected_usage_revision=expected_usage_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                actor=actor,
+                source=source,
+                supersedes_event_id=supersedes_event_id,
+                units=units,
+                reservation_id=reservation_id,
+                reason=reason or "correction",
+                **kwargs,
+            )
+        if op in {"override", "override_limits"}:
+            if not scope_id:
+                raise ValueError("scope_id is required")
+            return service.override_limits(
+                scope_id,
+                expected_usage_revision=expected_usage_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                actor=actor,
+                source=source,
+                limits=limits,
+                **kwargs,
+            )
+        if op in {"reset"}:
+            if not scope_id:
+                raise ValueError("scope_id is required")
+            return service.reset(
+                scope_id,
+                expected_usage_revision=expected_usage_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                actor=actor,
+                source=source,
+                reason=reason or "admin_reset",
+                **kwargs,
+            )
+        return {
+            "status": "error",
+            "success": False,
+            "tool_schema_version": USAGE_TOOL_SCHEMA_VERSION,
+            "schema_version": "ai.endpoint_usage.control.v1",
+            "error": {
+                "code": "invalid_request",
+                "message": "Unknown usage control operation.",
+            },
+            "error_code": "invalid_request",
+            "error_type": "invalid_request",
+            "reason_codes": ["invalid_request"],
+        }
+
+    try:
+        return await anyio.to_thread.run_sync(run)
+    except Exception as exc:
+        service = _USAGE_CONTROL_SERVICE
+        if service is not None and hasattr(service, "_error"):
+            return service._error(exc, authorities=granted)
+        return {
+            "status": "error",
+            "success": False,
+            "tool_schema_version": USAGE_TOOL_SCHEMA_VERSION,
+            "schema_version": "ai.endpoint_usage.control.v1",
+            "error": {
+                "code": "invalid_request",
+                "message": "Usage control request failed.",
+            },
+            "error_code": "invalid_request",
+            "error_type": "invalid_request",
+            "reason_codes": ["invalid_request"],
+        }
+
+
+async def model_catalog_usage_metrics(
+    *,
+    authorities: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Export event-derived low-cardinality usage metrics (read-only)."""
+
+    service = _usage_service_or_error()
+    if service is None:
+        return _usage_unavailable()
+    granted = _usage_authorities(read=True, authorities=authorities)
+
+    def run() -> Dict[str, Any]:
+        from ipfs_accelerate_py.endpoint_usage.controls import require_read
+
+        try:
+            require_read(granted)
+        except Exception as exc:
+            if hasattr(service, "_error"):
+                return service._error(exc, authorities=granted)
+            raise
+        obs = getattr(service, "_observability", None)
+        if obs is None:
+            return {
+                "status": "success",
+                "success": True,
+                "tool_schema_version": USAGE_TOOL_SCHEMA_VERSION,
+                "schema_version": "ai.endpoint_usage.metrics.v1",
+                "samples": [],
+                "series_count": 0,
+                "reason_codes": ["ok"],
+            }
+        payload = obs.snapshot()
+        payload.update(
+            {
+                "status": "success",
+                "success": True,
+                "tool_schema_version": USAGE_TOOL_SCHEMA_VERSION,
+            }
+        )
+        return payload
+
+    try:
+        return await anyio.to_thread.run_sync(run)
+    except Exception as exc:
+        if service is not None and hasattr(service, "_error"):
+            return service._error(exc, authorities=granted)
+        return _usage_unavailable()
+
+
 async def model_catalog_refresh(
     sources: List[str],
     authority: bool = False,
@@ -902,6 +1227,221 @@ def register_native_model_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "model-tools", "catalog", "privileged"],
+    )
+    usage_operation_enum = [
+        "status",
+        "health",
+        "limits",
+        "headroom",
+        "reservations",
+        "receipts",
+        "adapter_capabilities",
+        "import",
+        "correct",
+        "override",
+        "reset",
+    ]
+    manager.register_tool(
+        category="model_tools",
+        name="model_catalog_usage",
+        func=model_catalog_usage,
+        description=(
+            "Authorized usage controls: status, limits, headroom, reservations, "
+            "receipts, adapter capabilities, and privileged import/correct/override/reset. "
+            "Reads never reserve, probe, refresh, or invoke."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": usage_operation_enum,
+                },
+                "scope_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_USAGE_PAGE_SIZE,
+                    "default": 50,
+                },
+                "cursor": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096,
+                },
+                "dimension": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                },
+                "state": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                },
+                "expected_usage_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                },
+                "authorities": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                    },
+                },
+                "read_detail": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Grant exact account/cost/endpoint pseudonym detail.",
+                },
+                "admin": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Grant administrative mutation authority.",
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "lease_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "fence": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9223372036854775807,
+                },
+                "expected_effects": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                    },
+                },
+                "actor": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "default": "operator",
+                },
+                "kind": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                },
+                "units": {
+                    "type": "object",
+                    "maxProperties": 32,
+                    "additionalProperties": True,
+                },
+                "limits": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                        "type": "object",
+                        "maxProperties": 32,
+                        "additionalProperties": True,
+                    },
+                },
+                "limits_update": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                        "type": "object",
+                        "maxProperties": 32,
+                        "additionalProperties": True,
+                    },
+                },
+                "supersedes_event_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "reservation_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "cooldown_until": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                },
+                "observation_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "adapter_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                    },
+                },
+            },
+            "required": ["operation"],
+            "additionalProperties": False,
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "model-tools", "usage", "bounded"],
+    )
+    manager.register_tool(
+        category="model_tools",
+        name="model_catalog_usage_metrics",
+        func=model_catalog_usage_metrics,
+        description=(
+            "Export event-derived low-cardinality usage metrics without "
+            "request/credential/tenant/alias/model/URL label cardinality."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "authorities": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                    },
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "model-tools", "usage", "metrics", "read-only"],
     )
     manager.register_tool(
         category="model_tools",

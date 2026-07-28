@@ -1021,6 +1021,63 @@ def _constraint_schema() -> Dict[str, Any]:
     }
 
 
+async def route_preview(
+    *,
+    candidates: Optional[List[Dict[str, Any]]] = None,
+    scope_by_binding: Optional[Dict[str, str]] = None,
+    routing_policy: Optional[Dict[str, Any]] = None,
+    usage_request: Optional[Dict[str, Any]] = None,
+    catalog_revision: Optional[str] = None,
+    expected_usage_revision: Optional[str] = None,
+    limit: int = 50,
+    authorities: Optional[List[str]] = None,
+    read_detail: bool = False,
+) -> Dict[str, Any]:
+    """Preview usage-aware route candidates without reserving or invoking."""
+
+    def run() -> Dict[str, Any]:
+        from ipfs_accelerate_py.mcp_server.tools.model_tools.native_model_tools import (
+            get_usage_control_service,
+            _usage_authorities,
+            _usage_unavailable,
+        )
+
+        service = get_usage_control_service()
+        if service is None:
+            return _usage_unavailable()
+        granted = _usage_authorities(
+            read=True,
+            detail=bool(read_detail),
+            authorities=authorities,
+        )
+        return service.route_preview(
+            authorities=granted,
+            candidates=candidates,
+            scope_by_binding=scope_by_binding,
+            routing_policy=routing_policy,
+            usage_request=usage_request,
+            catalog_revision=catalog_revision,
+            expected_usage_revision=expected_usage_revision,
+            limit=limit,
+        )
+
+    try:
+        return await anyio.to_thread.run_sync(run)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "success": False,
+            "tool_schema_version": AI_ROUTER_TOOL_SCHEMA_VERSION,
+            "error": {
+                "code": "invalid_request",
+                "message": "Route preview failed.",
+            },
+            "error_code": "invalid_request",
+            "reason_codes": ["invalid_request"],
+            "detail": type(exc).__name__,
+        }
+
+
 def register_native_ai_router_tools(manager: Any) -> None:
     """Register canonical router tools and compatibility aliases."""
 
@@ -1156,6 +1213,90 @@ def register_native_ai_router_tools(manager: Any) -> None:
                 *extra_tags,
             ],
         )
+    manager.register_tool(
+        category="ai_router_tools",
+        name="route_preview",
+        func=route_preview,
+        description=(
+            "Preview usage-aware route candidates without reserving capacity, "
+            "probing providers, or invoking models."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "candidates": {
+                    "type": "array",
+                    "maxItems": 256,
+                    "items": {
+                        "type": "object",
+                        "maxProperties": 32,
+                        "additionalProperties": {
+                            "type": [
+                                "string",
+                                "number",
+                                "boolean",
+                                "null",
+                                "object",
+                                "array",
+                            ]
+                        },
+                    },
+                },
+                "scope_by_binding": {
+                    "type": "object",
+                    "maxProperties": 256,
+                    "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                    },
+                },
+                "routing_policy": {
+                    "type": "object",
+                    "maxProperties": 64,
+                    "additionalProperties": True,
+                },
+                "usage_request": {
+                    "type": "object",
+                    "maxProperties": 64,
+                    "additionalProperties": True,
+                },
+                "catalog_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                },
+                "expected_usage_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 50,
+                },
+                "authorities": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                    },
+                },
+                "read_detail": {
+                    "type": "boolean",
+                    "default": False,
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "ai-router", "usage", "preview", "read-only"],
+    )
 
 
 # Consistent spelling for loaders that derive registrar names from categories.
@@ -1178,6 +1319,7 @@ __all__ = [
     "generate_embeddings",
     "generate_text",
     "llm_generate",
+    "route_preview",
     "register_native_ai_router_tool",
     "register_native_ai_router_tools",
     "register_ai_router_tools",
