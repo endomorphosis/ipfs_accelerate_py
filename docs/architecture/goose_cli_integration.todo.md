@@ -834,3 +834,16 @@ Program invariants:
 - Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_implementation_progress.py
 - Validation: python -m pytest test/api/test_agent_supervisor_implementation_progress.py test/api/test_agent_supervisor_implementation_failure_review.py::test_implementation_prompt_policy_appendix_includes_admission_budgets test/api/test_agent_supervisor_decision_runtime_e2e.py -q
 - Acceptance: Implementation retry-budget guardrail repair for GOOSE-011. The repaired ASREF restart exposed that ASI-171 retained its progress-checkpoint setup call while the corresponding bounded helper family was absent; the setup-only failures made no provider call and no useful worktree mutation. Commit 8b8d16c8a restores that contract and the declared validation passes 18 tests. Consume this completed repair receipt to release GOOSE-011 from strategy blocked_tasks without editing lane state or discarding worktree content.
+
+## GOOSE-023 Resolve implementation retry-budget failure for GOOSE-011
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Priority: P0
+- Track: ops
+- Depends on: GOOSE-022
+- Outputs: ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py, ipfs_accelerate_py/llm_router.py, test/api/test_agent_supervisor_llm_grok_cli.py, test/test_llm_router_grok_cli.py
+- Validation: python -m pytest test/test_llm_router_grok_cli.py test/api/test_agent_supervisor_llm_grok_cli.py -q
+- Acceptance: Implementation retry-budget guardrail repair for GOOSE-011. The second repaired restart exposed an ASREF conflict artifact in the shared Grok agent launcher: the runner read an undefined permission_mode parser attribute, discarded its resolved model and turn budget, and omitted the non-interactive agent permission contract. Attempts failed before Grok could perform useful work. Commit 23f8504d6 restores and tests the centralized agent launch contract; the declared validation passes 11 tests. Consume this completed repair receipt to release GOOSE-011 from strategy blocked_tasks without editing lane state or discarding worktree content.
