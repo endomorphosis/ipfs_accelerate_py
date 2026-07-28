@@ -28,9 +28,9 @@ Additional optional providers (opt-in by selecting provider):
     - `ipfs_accelerate_py_COPILOT_SDK_MODEL`, `ipfs_accelerate_py_COPILOT_SDK_TIMEOUT`
 - `gemini_cli`: Gemini CLI via `npx @google/gemini-cli`
     - `ipfs_accelerate_py_GEMINI_CLI_CMD` (supports `{prompt}` placeholder)
-- `grok_cli`: xAI Grok CLI via the official `grok` binary
+- `grok_cli`: xAI Grok Build CLI via the official `grok` binary
     - `ipfs_accelerate_py_GROK_CLI_CMD` (supports `{prompt}` and `{model}` placeholders)
-    - `ipfs_accelerate_py_GROK_CLI_MODEL` (optional model; otherwise the CLI default)
+    - `ipfs_accelerate_py_GROK_CLI_MODEL` (default: grok-4.5; run `grok models`)
     - Authenticate with `grok login` or `XAI_API_KEY`
 - `gemini_py`: Python wrapper in `ipfs_accelerate_py.utils.gemini_cli.GeminiCLI`
 - `claude_code`: Claude Code CLI command
@@ -47,7 +47,7 @@ Additional optional providers (opt-in by selecting provider):
     - `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` for auth
 - `xai`: xAI Grok AI (REST API, OpenAI-compatible)
     - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
-    - `ipfs_accelerate_py_XAI_MODEL` (default model, e.g. grok-3)
+    - `ipfs_accelerate_py_XAI_MODEL` (default model: grok-4.5)
     - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
 - `meta_ai`: Meta Model API / Muse Spark (OpenAI-compatible)
     - encrypted credential `meta_ai_api_key`, `MODEL_API_KEY`,
@@ -82,6 +82,7 @@ Additional optional providers (opt-in by selecting provider):
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shlex
@@ -90,6 +91,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -149,6 +151,23 @@ class LLMRouterError(RuntimeError):
     """
 
 
+class PinnedSymaiCompletionError(LLMRouterError):
+    """Secret-safe failure raised for a rejected pinned SyMAI completion."""
+
+    OUTPUT_TOKEN_LIMIT = "output_token_limit"
+    _SAFE_FAILURE_CLASSES = frozenset({OUTPUT_TOKEN_LIMIT})
+
+    def __init__(self, safe_failure_class: str) -> None:
+        if safe_failure_class not in self._SAFE_FAILURE_CLASSES:
+            raise ValueError(
+                "unsupported pinned SyMAI completion failure class"
+            )
+        self.safe_failure_class = safe_failure_class
+        super().__init__(
+            "pinned SyMAI completion failed: " + safe_failure_class
+        )
+
+
 _P2P_TASK_PREFIX = "p2p://"
 _HF_ARCH_ROUTER_MODEL_ID = "katanemo/Arch-Router-1.5B"
 _GROK_CLI_PROVIDER_ALIASES = {
@@ -170,6 +189,137 @@ _XAI_API_PROVIDER_ALIASES = {
     "grok-api",
 }
 _LAST_GENERATION_TRACE = threading.local()
+_PINNED_SYMAI_LEANSTRAL_ALIAS = "Leanstral-119B"
+_PINNED_SYMAI_LEANSTRAL_INNER_PROVIDER = "leanstral_local"
+_PINNED_SYMAI_LEANSTRAL_MODEL = (
+    "Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4"
+)
+_PINNED_SYMAI_LEANSTRAL_ENDPOINT = "http://127.0.0.1:8080/v1"
+_SYMAI_ROUTE_BINDING_KWARG = "_symai_route_binding"
+_PINNED_SYMAI_TRACE_KEYS = frozenset(
+    {
+        "resolved_provider_name",
+        "resolved_model_name",
+        "service_endpoint",
+        "routing_backend",
+    }
+)
+_PINNED_SYMAI_ROUTE_BINDING = {
+    "resolved_provider_name": _PINNED_SYMAI_LEANSTRAL_INNER_PROVIDER,
+    "resolved_model_name": _PINNED_SYMAI_LEANSTRAL_MODEL,
+    "service_endpoint": _PINNED_SYMAI_LEANSTRAL_ENDPOINT,
+    "routing_backend": "llama.cpp",
+}
+_PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME = (
+    "semantic_roundtrip_canonical_ir_v1"
+)
+_PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME = (
+    "semantic_roundtrip_realization_v1"
+)
+_PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME = (
+    "srt023_replacement_l1_canonical_ir_v1"
+)
+_PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME = (
+    "srt023_replacement_t1_realization_v1"
+)
+_PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME = (
+    "srt023_replacement_l2_canonical_ir_v1"
+)
+_PINNED_SYMAI_REPLACEMENT_CANONICAL_SCHEMA_NAMES = frozenset(
+    {
+        _PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME,
+        _PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME,
+    }
+)
+_PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS = 3072
+_PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS = 1536
+_PINNED_SYMAI_SEMANTIC_TIMEOUT_SECONDS = 120.0
+_PINNED_SYMAI_SEMANTIC_STOP = ["<|im_end|>"]
+_PINNED_SYMAI_MAX_REQUEST_BYTES = 64 * 1024
+_PINNED_SYMAI_MAX_SCHEMA_BYTES = 64 * 1024
+_PINNED_SYMAI_MAX_VOCABULARY_ITEMS = 256
+_PINNED_SYMAI_MAX_ATOM_LENGTH = 512
+_PINNED_SYMAI_MAX_RULES = 16
+_PINNED_SYMAI_MAX_LIST_ITEMS = 8
+_PINNED_SYMAI_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "candidate_ir",
+        "normalized_predicates",
+        "quantifiers",
+        "entities",
+        "ambiguity_flags",
+        "confidence",
+        "validation_errors",
+    ],
+    "properties": {
+        "candidate_ir": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["propositions"],
+            "properties": {
+                "propositions": {
+                    "type": "array",
+                    "maxItems": 12,
+                    "items": {"type": "string", "maxLength": 80},
+                }
+            },
+        },
+        "normalized_predicates": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {"type": "string", "maxLength": 80},
+        },
+        "quantifiers": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {"type": "string", "maxLength": 80},
+        },
+        "entities": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {"type": "string", "maxLength": 80},
+        },
+        "ambiguity_flags": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {"type": "string", "maxLength": 80},
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "validation_errors": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {"type": "string", "maxLength": 80},
+        },
+    },
+}
+_PINNED_SYMAI_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "hssl_symai_semantic_evidence",
+        "strict": True,
+        "schema": _PINNED_SYMAI_RESPONSE_SCHEMA,
+    },
+}
+_PINNED_SYMAI_REALIZATION_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["text"],
+    "properties": {"text": {"type": "string"}},
+}
+_PINNED_SYMAI_REALIZATION_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "semantic_legal_realization",
+        "strict": True,
+        "schema": _PINNED_SYMAI_REALIZATION_RESPONSE_SCHEMA,
+    },
+}
+_PINNED_SYMAI_ALLOWED_RESPONSE_FORMATS = (
+    _PINNED_SYMAI_RESPONSE_FORMAT,
+    _PINNED_SYMAI_REALIZATION_RESPONSE_FORMAT,
+)
 _PROVIDER_ALIASES = {
     "gpt4": "openai",
     "gpt-4": "openai",
@@ -1547,8 +1697,9 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
                 "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
                 "IPFS_DATASETS_PY_GROK_CLI_MODEL",
                 "GROK_CLI_MODEL",
+                "IPFS_ACCELERATE_AGENT_GROK_MODEL",
             )
-            or "grok-cli-default"
+            or "grok-4.5"
         ).strip()
     if pk == "grok" or pk in _XAI_API_PROVIDER_ALIASES:
         return (
@@ -1558,7 +1709,7 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
                 "IPFS_DATASETS_PY_XAI_MODEL",
             )
             or _generic_llm_model_env()
-            or "grok-3"
+            or "grok-4.5"
         ).strip()
     if pk in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
         return normalize_meta_model_name(
@@ -5079,6 +5230,770 @@ def _get_meta_ai_provider() -> Optional[LLMProvider]:
     return _MetaAIProvider()
 
 
+class _PinnedSymaiNoRedirect(urllib.request.HTTPRedirectHandler):
+    """Reject redirects so the pinned service cannot change endpoints."""
+
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        file_pointer: object,
+        code: int,
+        message: str,
+        headers: object,
+        new_url: str,
+    ) -> None:
+        del request, file_pointer, code, message, headers, new_url
+        return None
+
+
+def _pinned_symai_urlopen(
+    request: urllib.request.Request,
+    *,
+    timeout: float,
+) -> object:
+    """Open one exact URL without ambient proxy or redirect behavior."""
+
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _PinnedSymaiNoRedirect(),
+    )
+    response = opener.open(request, timeout=timeout)
+    try:
+        final_url = response.geturl()
+    except Exception:
+        response.close()
+        raise
+    if final_url != request.full_url:
+        response.close()
+        raise RuntimeError("pinned Leanstral service changed its final URL")
+    return response
+
+
+def _bounded_json_response(
+    request: urllib.request.Request,
+    *,
+    timeout: float,
+    max_bytes: int,
+) -> dict[str, object]:
+    try:
+        with _pinned_symai_urlopen(request, timeout=timeout) as response:
+            raw = response.read(max_bytes + 1)
+    except Exception as exc:
+        raise RuntimeError(
+            f"pinned Leanstral service request failed: {type(exc).__name__}"
+        ) from exc
+    if len(raw) > max_bytes:
+        raise RuntimeError(
+            "pinned Leanstral service response exceeded byte limit"
+        )
+
+    def reject_duplicate_keys(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate JSON key: {key}")
+            value[key] = item
+        return value
+
+    def reject_nonfinite(value: str) -> object:
+        raise ValueError(f"non-finite JSON number: {value}")
+
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_nonfinite,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError(
+            "pinned Leanstral service returned invalid JSON"
+        ) from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("pinned Leanstral service returned a non-object")
+    return value
+
+
+def _served_model_ids(value: dict[str, object]) -> list[str]:
+    records = value.get("data", value.get("models"))
+    if not isinstance(records, list):
+        raise RuntimeError("pinned Leanstral service omitted its model list")
+    model_ids: list[str] = []
+    for record in records:
+        if isinstance(record, str):
+            model_id = record
+        elif isinstance(record, dict):
+            model_id = str(
+                record.get("id")
+                or record.get("model")
+                or record.get("name")
+                or ""
+            )
+        else:
+            continue
+        if model_id:
+            model_ids.append(model_id)
+    return model_ids
+
+
+def _pinned_symai_json_copy(
+    value: object,
+    *,
+    max_bytes: int,
+) -> object:
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route requires JSON-only contract values"
+        ) from exc
+    if len(encoded) > max_bytes:
+        raise RuntimeError(
+            "pinned SyMAI Leanstral schema exceeded its byte bound"
+        )
+    return json.loads(encoded.decode("utf-8"))
+
+
+def _pinned_symai_bounded_atom_enum(
+    value: object,
+    *,
+    allow_leading_empty: bool,
+) -> list[str]:
+    if not isinstance(value, list):
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip schema has an invalid enum"
+        )
+    atoms = list(value)
+    if allow_leading_empty:
+        if not atoms or atoms[0] != "":
+            raise RuntimeError(
+                "pinned SyMAI semantic-roundtrip object enum is invalid"
+            )
+        atoms = atoms[1:]
+    if len(atoms) > _PINNED_SYMAI_MAX_VOCABULARY_ITEMS:
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip vocabulary exceeded its bound"
+        )
+    if any(
+        not isinstance(atom, str)
+        or not atom
+        or len(atom) > _PINNED_SYMAI_MAX_ATOM_LENGTH
+        or atom != " ".join(atom.strip().split())
+        for atom in atoms
+    ):
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip vocabulary is invalid"
+        )
+    if len(atoms) != len(set(atoms)):
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip vocabulary contains duplicates"
+        )
+    return ([""] if allow_leading_empty else []) + atoms
+
+
+def _pinned_symai_semantic_canonical_schema(
+    schema: object,
+    *,
+    require_nonempty: bool = False,
+) -> dict[str, object]:
+    if not isinstance(schema, dict):
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip canonical schema is invalid"
+        )
+    try:
+        rules_schema = schema["properties"]["rules"]
+        rule_schema = rules_schema["items"]
+        properties = rule_schema["properties"]
+        modality = properties["modality"]["enum"]
+        actors = properties["actor"]["enum"]
+        actions = properties["action"]["enum"]
+        objects = properties["object"]["enum"]
+        conditions = properties["conditions"]["items"]["enum"]
+        exceptions = properties["exceptions"]["items"]["enum"]
+        temporal = properties["temporal"]["items"]["enum"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip canonical schema is invalid"
+        ) from exc
+
+    if modality != ["O", "P", "F"]:
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip modality enum is invalid"
+        )
+    bounded_actors = _pinned_symai_bounded_atom_enum(
+        actors,
+        allow_leading_empty=False,
+    )
+    bounded_actions = _pinned_symai_bounded_atom_enum(
+        actions,
+        allow_leading_empty=False,
+    )
+    bounded_objects = _pinned_symai_bounded_atom_enum(
+        objects,
+        allow_leading_empty=True,
+    )
+    bounded_qualifiers = _pinned_symai_bounded_atom_enum(
+        conditions,
+        allow_leading_empty=False,
+    )
+    if exceptions != bounded_qualifiers or temporal != bounded_qualifiers:
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip qualifier enums drifted"
+        )
+
+    qualifier_schema: dict[str, object] = {
+        "type": "array",
+        "maxItems": _PINNED_SYMAI_MAX_LIST_ITEMS,
+        "items": {
+            "type": "string",
+            "enum": bounded_qualifiers,
+        },
+    }
+    expected_rules: dict[str, object] = {
+        "type": "array",
+        "maxItems": _PINNED_SYMAI_MAX_RULES,
+        "items": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "modality",
+                "actor",
+                "action",
+                "object",
+                "conditions",
+                "exceptions",
+                "temporal",
+            ],
+            "properties": {
+                "modality": {
+                    "type": "string",
+                    "enum": ["O", "P", "F"],
+                },
+                "actor": {
+                    "type": "string",
+                    "enum": bounded_actors,
+                },
+                "action": {
+                    "type": "string",
+                    "enum": bounded_actions,
+                },
+                "object": {
+                    "type": "string",
+                    "enum": bounded_objects,
+                },
+                "conditions": qualifier_schema,
+                "exceptions": json.loads(
+                    json.dumps(qualifier_schema)
+                ),
+                "temporal": json.loads(
+                    json.dumps(qualifier_schema)
+                ),
+            },
+        },
+    }
+    if require_nonempty:
+        expected_rules["minItems"] = 1
+    expected: dict[str, object] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["rules"],
+        "properties": {
+            "rules": expected_rules,
+        },
+    }
+    if schema != expected:
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip canonical schema drifted"
+        )
+    return expected
+
+
+def _pinned_symai_replacement_realization_schema(
+    schema: object,
+) -> dict[str, object]:
+    """Validate the exact bounded, polarity-indexed SRT-023 T1 contract."""
+
+    if not isinstance(schema, dict):
+        raise RuntimeError(
+            "pinned SyMAI replacement realization schema is invalid"
+        )
+    try:
+        rules_schema = schema["properties"]["rules"]
+        count = rules_schema["minItems"]
+        maximum = rules_schema["maxItems"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(
+            "pinned SyMAI replacement realization schema is invalid"
+        ) from exc
+    if (
+        isinstance(count, bool)
+        or not isinstance(count, int)
+        or count < 1
+        or count > _PINNED_SYMAI_MAX_RULES
+        or maximum != count
+    ):
+        raise RuntimeError(
+            "pinned SyMAI replacement realization rule count is invalid"
+        )
+    expected = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["rules"],
+        "properties": {
+            "rules": {
+                "type": "array",
+                "minItems": count,
+                "maxItems": count,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "index",
+                        "modality",
+                        "polarity",
+                        "text",
+                    ],
+                    "properties": {
+                        "index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": count - 1,
+                        },
+                        "modality": {
+                            "type": "string",
+                            "enum": ["O", "P", "F"],
+                        },
+                        "polarity": {
+                            "type": "string",
+                            "enum": [
+                                "obligation",
+                                "permission",
+                                "prohibition",
+                            ],
+                        },
+                        "text": {
+                            "type": "string",
+                            "minLength": 1,
+                        },
+                    },
+                },
+            }
+        },
+    }
+    if schema != expected:
+        raise RuntimeError(
+            "pinned SyMAI replacement realization schema drifted"
+        )
+    return expected
+
+
+def _validate_pinned_symai_response_format(
+    response_format: object,
+) -> tuple[dict[str, object], str]:
+    normalized = _pinned_symai_json_copy(
+        response_format,
+        max_bytes=_PINNED_SYMAI_MAX_SCHEMA_BYTES,
+    )
+    if not isinstance(normalized, dict):
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route requires a supported frozen or "
+            "bounded semantic-roundtrip JSON-schema contract"
+        )
+    if any(
+        normalized == allowed
+        for allowed in _PINNED_SYMAI_ALLOWED_RESPONSE_FORMATS
+    ):
+        json_schema = normalized["json_schema"]
+        assert isinstance(json_schema, dict)
+        return normalized, str(json_schema["name"])
+    if (
+        set(normalized) != {"type", "json_schema"}
+        or normalized.get("type") != "json_schema"
+    ):
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route requires a supported frozen or "
+            "bounded semantic-roundtrip JSON-schema contract"
+        )
+    json_schema = normalized.get("json_schema")
+    if (
+        not isinstance(json_schema, dict)
+        or set(json_schema) != {"name", "strict", "schema"}
+        or json_schema.get("strict") is not True
+    ):
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route requires a strict bounded "
+            "JSON-schema contract"
+        )
+    schema_name = json_schema.get("name")
+    schema = json_schema.get("schema")
+    if schema_name == _PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME:
+        json_schema["schema"] = _pinned_symai_semantic_canonical_schema(
+            schema
+        )
+    elif schema_name in _PINNED_SYMAI_REPLACEMENT_CANONICAL_SCHEMA_NAMES:
+        json_schema["schema"] = _pinned_symai_semantic_canonical_schema(
+            schema,
+            require_nonempty=True,
+        )
+    elif schema_name == _PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME:
+        if schema != _PINNED_SYMAI_REALIZATION_RESPONSE_SCHEMA:
+            raise RuntimeError(
+                "pinned SyMAI semantic-roundtrip realization schema drifted"
+            )
+    elif schema_name == _PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME:
+        json_schema["schema"] = (
+            _pinned_symai_replacement_realization_schema(schema)
+        )
+    else:
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route requires a supported frozen or "
+            "bounded semantic-roundtrip JSON-schema contract"
+        )
+    return normalized, str(schema_name)
+
+
+def _validate_pinned_symai_generation_contract(
+    generation_options: object,
+) -> dict[str, object]:
+    if not isinstance(generation_options, dict):
+        raise RuntimeError(
+            "pinned SyMAI Leanstral generation options must be an object"
+        )
+    allowed_options = {
+        "response_format",
+        "temperature",
+        "seed",
+        "max_tokens",
+        "max_new_tokens",
+        "stop",
+        "timeout",
+        "cache_prompt",
+        "top_p",
+    }
+    if set(generation_options) - allowed_options:
+        raise RuntimeError(
+            "pinned SyMAI Leanstral generation options contain unsupported "
+            "settings"
+        )
+    response_format, schema_name = _validate_pinned_symai_response_format(
+        generation_options.get("response_format")
+    )
+    semantic_max_tokens = {
+        _PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME: (
+            _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS
+        ),
+        _PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME: (
+            _PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS
+        ),
+        _PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME: (
+            _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS
+        ),
+        _PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME: (
+            _PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS
+        ),
+        _PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME: (
+            _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS
+        ),
+    }
+    is_semantic_roundtrip = schema_name in semantic_max_tokens
+    semantic_required_options = {
+        "response_format",
+        "temperature",
+        "seed",
+        "max_tokens",
+        "stop",
+        "timeout",
+        "cache_prompt",
+    }
+    if (
+        is_semantic_roundtrip
+        and not semantic_required_options.issubset(generation_options)
+    ):
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip generation settings are "
+            "incomplete"
+        )
+
+    if (
+        "max_tokens" in generation_options
+        and "max_new_tokens" in generation_options
+    ):
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route received ambiguous token settings"
+        )
+    if is_semantic_roundtrip and "max_tokens" not in generation_options:
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip route requires max_tokens"
+        )
+    raw_max_tokens = generation_options.get(
+        "max_tokens",
+        generation_options.get("max_new_tokens", 512),
+    )
+    if isinstance(raw_max_tokens, bool) or not isinstance(
+        raw_max_tokens, int
+    ):
+        raise RuntimeError("pinned SyMAI Leanstral token bound is invalid")
+    max_tokens = raw_max_tokens
+    if is_semantic_roundtrip:
+        if max_tokens != semantic_max_tokens[schema_name]:
+            raise RuntimeError(
+                "pinned SyMAI semantic-roundtrip token setting drifted"
+            )
+    elif not 1 <= max_tokens <= 512:
+        raise RuntimeError("pinned SyMAI Leanstral token bound is invalid")
+
+    raw_temperature = generation_options.get("temperature", 0.0)
+    if isinstance(raw_temperature, bool) or not isinstance(
+        raw_temperature, (int, float)
+    ):
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route requires temperature zero"
+        )
+    temperature = float(raw_temperature)
+    if not math.isfinite(temperature) or temperature != 0.0:
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route requires temperature zero"
+        )
+
+    raw_seed = generation_options.get("seed", 0)
+    if isinstance(raw_seed, bool) or not isinstance(raw_seed, int) or raw_seed:
+        raise RuntimeError("pinned SyMAI Leanstral seed setting drifted")
+    seed = raw_seed
+
+    legacy_stop = [
+        "<|im_end|>",
+        "<|tool_call_end|>",
+        "<|im_start|>",
+    ]
+    raw_stop = generation_options.get(
+        "stop",
+        None if is_semantic_roundtrip else legacy_stop,
+    )
+    if is_semantic_roundtrip:
+        if raw_stop != _PINNED_SYMAI_SEMANTIC_STOP:
+            raise RuntimeError(
+                "pinned SyMAI semantic-roundtrip stop setting drifted"
+            )
+    elif (
+        not isinstance(raw_stop, (list, tuple))
+        or not 1 <= len(raw_stop) <= 4
+        or any(
+            not isinstance(item, str)
+            or not item
+            or len(item) > 64
+            for item in raw_stop
+        )
+    ):
+        raise RuntimeError("pinned SyMAI Leanstral stop setting is invalid")
+    stop = list(raw_stop)
+
+    raw_timeout = generation_options.get(
+        "timeout",
+        (
+            _PINNED_SYMAI_SEMANTIC_TIMEOUT_SECONDS
+            if is_semantic_roundtrip
+            else 30.0
+        ),
+    )
+    if isinstance(raw_timeout, bool) or not isinstance(
+        raw_timeout, (int, float)
+    ):
+        raise RuntimeError("pinned SyMAI Leanstral timeout is invalid")
+    timeout = float(raw_timeout)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise RuntimeError("pinned SyMAI Leanstral timeout is invalid")
+    if is_semantic_roundtrip:
+        if timeout != _PINNED_SYMAI_SEMANTIC_TIMEOUT_SECONDS:
+            raise RuntimeError(
+                "pinned SyMAI semantic-roundtrip timeout setting drifted"
+            )
+    else:
+        timeout = min(timeout, 60.0)
+
+    cache_prompt = generation_options.get("cache_prompt", False)
+    if cache_prompt is not False:
+        raise RuntimeError(
+            "pinned SyMAI Leanstral route requires prompt caching disabled"
+        )
+
+    top_p = generation_options.get("top_p")
+    if is_semantic_roundtrip and top_p is not None:
+        raise RuntimeError(
+            "pinned SyMAI semantic-roundtrip sampling settings drifted"
+        )
+    if top_p is not None:
+        if isinstance(top_p, bool) or not isinstance(top_p, (int, float)):
+            raise RuntimeError("pinned SyMAI Leanstral top_p is invalid")
+        top_p = float(top_p)
+        if not math.isfinite(top_p) or not 0 < top_p <= 1:
+            raise RuntimeError("pinned SyMAI Leanstral top_p is invalid")
+
+    normalized: dict[str, object] = {
+        "response_format": response_format,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "seed": seed,
+        "stop": stop,
+        "timeout": timeout,
+        "cache_prompt": False,
+    }
+    if top_p is not None:
+        normalized["top_p"] = top_p
+    return normalized
+
+
+def validate_pinned_symai_request_contract(
+    *,
+    model_name: object,
+    route_binding: object,
+    generation_options: object,
+) -> dict[str, object]:
+    """Validate and normalize the pinned SyMAI request without any I/O.
+
+    Capability probes can use this narrow public boundary to verify an exact
+    endpoint/model/backend binding and bounded generation schema before
+    deciding whether a live model call is admissible.
+    """
+
+    if model_name != _PINNED_SYMAI_LEANSTRAL_ALIAS:
+        raise RuntimeError(
+            "private SyMAI route binding used with the wrong model alias"
+        )
+    if (
+        not isinstance(route_binding, dict)
+        or route_binding != _PINNED_SYMAI_ROUTE_BINDING
+    ):
+        raise RuntimeError(
+            "private SyMAI route binding is incomplete or drifted"
+        )
+    return _validate_pinned_symai_generation_contract(generation_options)
+
+
+def _generate_pinned_symai_leanstral(
+    prompt: str,
+    *,
+    kwargs: dict[str, object],
+) -> tuple[str, dict[str, str]]:
+    """Use the already-running frozen Leanstral service without fallback."""
+
+    contract = _validate_pinned_symai_generation_contract(kwargs)
+    response_format = contract["response_format"]
+    timeout = float(contract["timeout"])
+    deadline = time.monotonic() + timeout
+
+    def remaining_timeout() -> float:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(
+                "pinned SyMAI Leanstral aggregate timeout expired"
+            )
+        return remaining
+
+    models_request = urllib.request.Request(
+        f"{_PINNED_SYMAI_LEANSTRAL_ENDPOINT}/models",
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    models = _bounded_json_response(
+        models_request,
+        timeout=remaining_timeout(),
+        max_bytes=1024 * 1024,
+    )
+    served_ids = _served_model_ids(models)
+    if served_ids.count(_PINNED_SYMAI_LEANSTRAL_MODEL) != 1:
+        raise RuntimeError(
+            "pinned Leanstral model is absent or ambiguous at the "
+            "frozen endpoint"
+        )
+
+    max_tokens = int(contract["max_tokens"])
+    temperature = float(contract["temperature"])
+    payload: dict[str, object] = {
+        "model": _PINNED_SYMAI_LEANSTRAL_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Return exactly one valid JSON object. Do not use "
+                    "Markdown fences or emit any text before or after the "
+                    "object."
+                ),
+            },
+            {"role": "user", "content": str(prompt)},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": False,
+        "cache_prompt": contract["cache_prompt"],
+        "response_format": response_format,
+        "seed": contract["seed"],
+        "stop": contract["stop"],
+    }
+    if contract.get("top_p") is not None:
+        payload["top_p"] = contract["top_p"]
+    encoded_payload = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    if len(encoded_payload) > _PINNED_SYMAI_MAX_REQUEST_BYTES:
+        raise RuntimeError(
+            "pinned SyMAI Leanstral request exceeded its byte bound"
+        )
+    completion_request = urllib.request.Request(
+        f"{_PINNED_SYMAI_LEANSTRAL_ENDPOINT}/chat/completions",
+        data=encoded_payload,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    completion = _bounded_json_response(
+        completion_request,
+        timeout=remaining_timeout(),
+        max_bytes=64 * 1024,
+    )
+    if str(completion.get("model") or "") != _PINNED_SYMAI_LEANSTRAL_MODEL:
+        raise RuntimeError(
+            "pinned Leanstral service returned a different model"
+        )
+    choices = completion.get("choices")
+    if not isinstance(choices, list) or len(choices) != 1:
+        raise RuntimeError(
+            "pinned Leanstral service returned invalid choices"
+        )
+    first = choices[0]
+    if (
+        isinstance(first, dict)
+        and first.get("finish_reason") == "length"
+    ):
+        raise PinnedSymaiCompletionError(
+            PinnedSymaiCompletionError.OUTPUT_TOKEN_LIMIT
+        )
+    if not isinstance(first, dict) or first.get("finish_reason") != "stop":
+        raise RuntimeError(
+            "pinned Leanstral service returned an invalid choice"
+        )
+    message = first.get("message")
+    text = (
+        message.get("content")
+        if isinstance(message, dict)
+        else first.get("text")
+    )
+    if not isinstance(text, str) or not text.strip():
+        raise RuntimeError("pinned Leanstral service returned empty text")
+    return text.strip(), dict(_PINNED_SYMAI_ROUTE_BINDING)
+
 
 def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
     enable_value = (
@@ -5164,6 +6079,13 @@ def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
     class _AccelerateLLMProvider:
         router_provider_name = "accelerate"
 
+        def __init__(self) -> None:
+            self._generation_trace = threading.local()
+
+        def get_last_generation_trace(self) -> dict[str, str]:
+            value = getattr(self._generation_trace, "payload", None)
+            return dict(value) if isinstance(value, dict) else {}
+
         def generate(
             self,
             prompt: str,
@@ -5171,17 +6093,43 @@ def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
             model_name: Optional[str] = None,
             **kwargs: object,
         ) -> str:
+            effective_model = model_name or _coalesce_env(
+                "ipfs_accelerate_py_LLM_MODEL",
+                "IPFS_ACCELERATE_PY_LLM_MODEL",
+                "IPFS_DATASETS_PY_LLM_MODEL",
+            )
+            self._generation_trace.payload = {}
+            route_binding = kwargs.pop(_SYMAI_ROUTE_BINDING_KWARG, None)
+            if route_binding is not None:
+                validate_pinned_symai_request_contract(
+                    model_name=effective_model,
+                    route_binding=route_binding,
+                    generation_options=kwargs,
+                )
+                text, trace = _generate_pinned_symai_leanstral(
+                    prompt,
+                    kwargs=dict(kwargs),
+                )
+                self._generation_trace.payload = trace
+                return text
+
             payload = {"prompt": prompt, **kwargs}
             result = manager.run_inference(
-                model_name
-                or _coalesce_env(
-                    "ipfs_accelerate_py_LLM_MODEL",
-                    "IPFS_ACCELERATE_PY_LLM_MODEL",
-                    "IPFS_DATASETS_PY_LLM_MODEL",
-                ),
+                effective_model,
                 payload,
                 task_type="text-generation",
             )
+            if isinstance(result, dict):
+                backend_name = result.get("backend")
+                resolved_model = result.get("model")
+                if isinstance(backend_name, str) and backend_name:
+                    self._generation_trace.payload[
+                        "routing_backend"
+                    ] = backend_name
+                if isinstance(resolved_model, str) and resolved_model:
+                    self._generation_trace.payload[
+                        "resolved_model_name"
+                    ] = resolved_model
             text = _extract_generated_text(result)
             if text:
                 return text
@@ -6831,11 +7779,22 @@ def _effective_llm_provider_name(explicit_provider: Optional[str]) -> str:
     return _canonicalize_provider(aliases.get(key, key))
 
 
-def _set_last_generation_trace(*, provider_name: str, model_name: Optional[str]) -> None:
-    _LAST_GENERATION_TRACE.payload = {
+def _set_last_generation_trace(
+    *,
+    provider_name: str,
+    model_name: Optional[str],
+    route_trace: Optional[dict[str, object]] = None,
+) -> None:
+    payload = {
         "effective_provider_name": str(provider_name or "").strip(),
         "effective_model_name": str(model_name or "").strip(),
     }
+    if route_trace:
+        for key in _PINNED_SYMAI_TRACE_KEYS:
+            value = route_trace.get(key)
+            if isinstance(value, str) and value.strip():
+                payload[key] = value.strip()
+    _LAST_GENERATION_TRACE.payload = payload
 
 
 def _clear_last_generation_trace() -> None:
@@ -6923,7 +7882,13 @@ def generate_text(
     resolved_deps = deps or get_default_router_deps()
     effective_provider_name = _effective_llm_provider_name(provider)
     _clear_last_generation_trace()
-    if _response_cache_enabled():
+    # The pinned SyMAI engine owns its cache together with the four inner-route
+    # receipt fields. A text-only router cache cannot reproduce those fields.
+    response_cache_ok = (
+        _response_cache_enabled()
+        and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
+    )
+    if response_cache_ok:
         try:
             cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
@@ -6940,7 +7905,7 @@ def generate_text(
     backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
 
     def _cache_result(value: str, *, used_model_name: Optional[str]) -> None:
-        if not _response_cache_enabled():
+        if not response_cache_ok:
             return
         try:
             cache_key = _response_cache_key(
@@ -6965,9 +7930,21 @@ def generate_text(
             model_name=model_name,
             kwargs=dict(kwargs),
         )
+        route_trace: dict[str, object] = {}
+        route_trace_getter = getattr(
+            backend, "get_last_generation_trace", None
+        )
+        if callable(route_trace_getter):
+            try:
+                candidate_trace = route_trace_getter()
+            except Exception:
+                candidate_trace = {}
+            if isinstance(candidate_trace, dict):
+                route_trace = candidate_trace
         _set_last_generation_trace(
             provider_name=effective_provider_name,
             model_name=model_name,
+            route_trace=route_trace,
         )
         _cache_result(str(result), used_model_name=model_name)
         return result

@@ -5,6 +5,15 @@ This script intentionally only adjusts ``sys.path`` for a source checkout and
 delegates to
 ``python -m ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow``.  It does not
 import providers, open DuckDB, or start a supervisor process on its own.
+``python -m ipfs_accelerate_py.agent_supervisor.prompt_workflow``.  It does not
+import providers, open DuckDB, mutate policy, start a supervisor process, or
+expand shell-interpolated paths on its own.
+
+Side-effect-free surfaces:
+
+- ``--help`` / empty argv discovery
+- import of this file
+- argument parsing before a control service is constructed
 """
 
 from __future__ import annotations

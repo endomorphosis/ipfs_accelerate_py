@@ -4,6 +4,11 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    checkout_repository_id,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue, MergeRequest
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverRegistry,
@@ -343,7 +348,9 @@ def test_one_conflict_fingerprint_has_one_active_resolver_attempt(tmp_path: Path
     assert registry.status(event)["state"] == "quarantined"
 
 
-def test_isolated_daemon_lanes_enqueue_into_one_repo_wide_train(tmp_path: Path) -> None:
+def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
+    tmp_path: Path,
+) -> None:
     repo = _repo(tmp_path)
     todo = repo / "tasks.md"
     todo.write_text("## REF-038 Merge train\n\n- Status: todo\n", encoding="utf-8")
@@ -362,7 +369,8 @@ def test_isolated_daemon_lanes_enqueue_into_one_repo_wide_train(tmp_path: Path) 
     lane_a = daemon("lane-a")
     lane_b = daemon("lane-b")
     assert lane_a.merge_queue.database_path == lane_b.merge_queue.database_path
-    assert lane_a.merge_queue_dir.parent == repo / ".git"
+    assert lane_a.merge_queue_dir.parent == repo / ".git" / "agent-merge-trains"
+    assert lane_a.merge_queue.target_branch == "main"
 
     task = PortalTask(
         task_id="REF-038",
@@ -385,4 +393,154 @@ def test_isolated_daemon_lanes_enqueue_into_one_repo_wide_train(tmp_path: Path) 
 
     assert result["queued"] is True
     assert request.commit_sha == commit
+    assert request.target_repository_id == lane_a.merge_target_repository_id
+    assert request.target_branch == "main"
+    assert request.has_target_binding is True
     assert lane_b.merge_queue.has_pending_for_task(identity.canonical_task_cid, commit_sha=commit)
+
+    _git(repo, "branch", "benchmark/semantic-roundtrip")
+    benchmark_state = tmp_path / "benchmark-lane"
+    benchmark_lane = PortalImplementationDaemon(
+        todo_path=todo,
+        state_path=benchmark_state / "state.json",
+        strategy_path=benchmark_state / "strategy.json",
+        events_path=benchmark_state / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        merge_target_branch="benchmark/semantic-roundtrip",
+    )
+    assert (
+        benchmark_lane.merge_queue.database_path
+        != lane_a.merge_queue.database_path
+    )
+    assert benchmark_lane.merge_queue.target_branch == (
+        "benchmark/semantic-roundtrip"
+    )
+    assert benchmark_lane.merge_queue.pending_count() == 0
+    foreign_request, _foreign_result = benchmark_lane._enqueue_merge_candidate(
+        branch_name="implementation/ref-038-benchmark",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=repo,
+        task=task,
+        attempt=1,
+    )
+
+    rejected = lane_a._merge_train_callback(foreign_request)
+
+    assert rejected["reason"] == "merge_target_binding_mismatch"
+    assert rejected["expected_target_branch"] == "main"
+    assert rejected["actual_target_branch"] == "benchmark/semantic-roundtrip"
+    assert lane_a.merge_queue.pending_count() == 1
+    assert benchmark_lane.merge_queue.pending_count() == 1
+
+
+def test_cross_lane_completion_reuses_the_bound_non_main_target(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "branch", "benchmark/semantic-roundtrip")
+    _git(repo, "branch", "implementation/ref-039")
+    producer_todo = repo / "producer-tasks.md"
+    consumer_todo = repo / "consumer-tasks.md"
+    task_text = "## REF-039 Cross-lane completion\n\n- Status: todo\n"
+    producer_todo.write_text(task_text, encoding="utf-8")
+    consumer_todo.write_text(task_text, encoding="utf-8")
+
+    def daemon(todo_path: Path, lane: str) -> PortalImplementationDaemon:
+        state_dir = tmp_path / lane
+        return PortalImplementationDaemon(
+            todo_path=todo_path,
+            state_path=state_dir / "state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## REF-",
+            merge_target_branch="benchmark/semantic-roundtrip",
+            worktree_pool_enabled=False,
+        )
+
+    producer = daemon(producer_todo, "producer")
+    consumer = daemon(consumer_todo, "consumer")
+    task = PortalTask(
+        task_id="REF-039",
+        title="Cross-lane completion",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="g9",
+    )
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, _result = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-039",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+
+    result = consumer._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["target_branch"] == "benchmark/semantic-roundtrip"
+    assert consumer.merge_queue.target_branch == "benchmark/semantic-roundtrip"
+
+
+def test_merge_train_rejects_a_mismatched_bound_queue_target(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "branch", "benchmark/semantic-roundtrip")
+    repository_id = checkout_repository_id(repo)
+    benchmark_queue = MergeQueue(
+        tmp_path / "benchmark-queue",
+        target_repository_id=repository_id,
+        target_branch="benchmark/semantic-roundtrip",
+        require_target_binding=True,
+    )
+    foreign_repo_queue = MergeQueue(
+        tmp_path / "foreign-repo-queue",
+        target_repository_id="repository:foreign",
+        target_branch="main",
+        require_target_binding=True,
+    )
+
+    with pytest.raises(ValueError, match="branch differs"):
+        MergeTrain(repo, benchmark_queue, target_branch="main")
+    with pytest.raises(ValueError, match="repository differs"):
+        MergeTrain(repo, foreign_repo_queue, target_branch="main")
+
+
+def test_bound_merge_train_receipts_are_namespaced_by_exact_target(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "branch", "Feature")
+    _git(repo, "branch", "feature")
+    repository_id = checkout_repository_id(repo)
+    queue_path = tmp_path / "shared-queue"
+    upper = MergeTrain(
+        repo,
+        MergeQueue(
+            queue_path,
+            target_repository_id=repository_id,
+            target_branch="Feature",
+            require_target_binding=True,
+        ),
+        target_branch="Feature",
+    )
+    lower = MergeTrain(
+        repo,
+        MergeQueue(
+            queue_path,
+            target_repository_id=repository_id,
+            target_branch="feature",
+            require_target_binding=True,
+        ),
+        target_branch="feature",
+    )
+
+    assert upper._dedupe_key("canonical-task", "a" * 40) != (
+        lower._dedupe_key("canonical-task", "a" * 40)
+    )

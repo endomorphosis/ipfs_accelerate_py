@@ -2949,18 +2949,6 @@ class ResourceScheduler:
             item.process_slots for item in active_items if item.stage == req.stage
         )
         if self.policy.adaptive_enabled or req.stage in self.policy.stage_concurrency_limits:
-            provider_slots = UNKNOWN_LIMIT
-            if req.provider_required and req.stage == "inference":
-                provider_slots = sum(
-                    item.available_concurrency
-                    for item in normalized
-                    if item.healthy
-                    and item.retry_after_ms == 0
-                    and (
-                        not req.provider_id
-                        or item.provider_id == req.provider_id
-                    )
-                )
             memory_slots = (
                 max(
                     0,
@@ -3003,7 +2991,13 @@ class ResourceScheduler:
                 active=stage_occupied,
                 queued=max(0, int(queue_depth)),
                 merge_age_ms=decision_signals["merge_age_ms"],
-                provider_available_slots=provider_slots,
+                # Stage occupancy includes provider-free analysis/implementation
+                # work which happens to report the ``inference`` phase.  Do
+                # not compare that aggregate with a model provider's request
+                # slots. Provider-required lanes are bounded independently by
+                # ``_provider_reasons`` and the per-provider reservations
+                # below.
+                provider_available_slots=UNKNOWN_LIMIT,
                 memory_available_slots=memory_slots,
                 gpu_memory_available_slots=gpu_slots,
                 disk_available_slots=disk_slots,
@@ -3954,6 +3948,7 @@ class ResourceScheduler:
             set(queue_counts)
             | {item.stage for item in baseline_active}
         )
+        capacity_members = (*baseline_active, *requirements)
         stage_capacities = tuple(
             self.adaptive_stage_capacity(
                 stage,
@@ -3982,7 +3977,18 @@ class ResourceScheduler:
                         for item in normalized
                         if item.healthy and item.retry_after_ms == 0
                     )
-                    if stage == "inference"
+                    if (
+                        stage == "inference"
+                        and any(
+                            item.stage == stage
+                            for item in capacity_members
+                        )
+                        and all(
+                            item.provider_required
+                            for item in capacity_members
+                            if item.stage == stage
+                        )
+                    )
                     else UNKNOWN_LIMIT
                 ),
                 artifact_pressure_percent=stage_signal(

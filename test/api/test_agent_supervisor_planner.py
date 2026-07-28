@@ -9,6 +9,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     BundleLaneSpec,
+    _execution_slice_implementation_max_timeout,
     launch_bundle_lanes,
     plan_bundle_lanes,
 )
@@ -22,6 +23,10 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
     critical_path_schedule,
     materialize_task_dependency_dag,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon,
+    PortalTask,
 )
 
 
@@ -207,7 +212,7 @@ def test_converging_dependency_dag_is_not_misclassified_as_a_cycle() -> None:
     }
 
 
-def test_terminal_duplicate_alias_does_not_block_its_live_canonical_task() -> None:
+def test_terminal_equivalent_alias_completes_its_shared_canonical_task() -> None:
     graph = materialize_task_dependency_dag(
         [
             {
@@ -225,12 +230,15 @@ def test_terminal_duplicate_alias_does_not_block_its_live_canonical_task() -> No
 
     assert graph.repair_evidence == []
     assert graph.invalid_task_cids == []
-    assert graph.nodes["cid-finding"].status == "todo"
+    # Display aliases do not create separate work identities. Once one
+    # semantically equivalent record for the shared canonical CID is terminal,
+    # another alias must not reopen or duplicate that completed work.
+    assert graph.nodes["cid-finding"].status == "completed"
     assert graph.nodes["cid-finding"].metadata["task_id_aliases"] == [
         "REF-084",
         "REF-091",
     ]
-    assert graph.schedule[0].claimable is True
+    assert graph.schedule[0].claimable is False
 
 
 def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_capacity(
@@ -241,7 +249,12 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
         {
             "bundle_key": "bundle/blocked",
             "todo_path": "blocked.md",
-            "tasks": [{"task_id": "BLOCKED"}],
+            "tasks": [
+                {
+                    "task_id": "BLOCKED",
+                    "canonical_task_cid": "cid-member-blocked",
+                }
+            ],
             "claimable": False,
             "schedule_rank": 0,
             "blocking_task_cids": ["cid-parent"],
@@ -253,7 +266,12 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
         {
             "bundle_key": "bundle/second",
             "todo_path": "second.md",
-            "tasks": [{"task_id": "SECOND"}],
+            "tasks": [
+                {
+                    "task_id": "SECOND",
+                    "canonical_task_cid": "cid-member-second",
+                }
+            ],
             "claimable": True,
             "schedule_rank": 2,
             "critical_path_length": 2,
@@ -262,7 +280,12 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
         {
             "bundle_key": "bundle/critical",
             "todo_path": "critical.md",
-            "tasks": [{"task_id": "CRITICAL"}],
+            "tasks": [
+                {
+                    "task_id": "CRITICAL",
+                    "canonical_task_cid": "cid-member-critical",
+                }
+            ],
             "claimable": True,
             "schedule_rank": 1,
             "critical_path_length": 8,
@@ -275,7 +298,7 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
         },
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 
@@ -304,18 +327,28 @@ def test_bundle_lane_planner_skips_explicitly_excluded_execution_units(
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: [
             {
                 "bundle_key": "bundle/included",
                 "todo_path": "included.md",
-                "tasks": [{"task_id": "INCLUDED"}],
+                "tasks": [
+                    {
+                        "task_id": "INCLUDED",
+                        "canonical_task_cid": "cid-member-included",
+                    }
+                ],
                 "profile_g": {"task_cid": "cid-included"},
             },
             {
                 "bundle_key": "bundle/excluded",
                 "todo_path": "excluded.md",
-                "tasks": [{"task_id": "EXCLUDED"}],
+                "tasks": [
+                    {
+                        "task_id": "EXCLUDED",
+                        "canonical_task_cid": "cid-member-excluded",
+                    }
+                ],
                 "profile_g": {"task_cid": "cid-excluded"},
             },
         ],
@@ -330,6 +363,269 @@ def test_bundle_lane_planner_skips_explicitly_excluded_execution_units(
     )
 
     assert [lane.bundle_key for lane in lanes] == ["bundle/included"]
+
+
+def test_bundle_lane_planner_preserves_task_specific_implementation_timeout(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    extended_board = tmp_path / "srt-015.todo.md"
+    ordinary_board = tmp_path / "ordinary.todo.md"
+    extended_board.write_text(
+        "## SRT-015 Canonical design\n\n"
+        "- Status: todo\n"
+        "- Implementation timeout seconds: 7200\n",
+        encoding="utf-8",
+    )
+    ordinary_board.write_text(
+        "## SRT-016 Ordinary task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "semantic-roundtrip/canonical-design": {
+                        "shard_path": extended_board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-015",
+                                "canonical_task_cid": "cid-srt-015",
+                                "canonical_task_key": "task/v1/srt-015",
+                                "implementation_timeout_seconds": "7200",
+                            }
+                        ],
+                    },
+                    "semantic-roundtrip/ordinary": {
+                        "shard_path": ordinary_board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-016",
+                                "canonical_task_cid": "cid-srt-016",
+                                "canonical_task_key": "task/v1/srt-016",
+                            }
+                        ],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        implementation_timeout=1800,
+        optimize_bundles=False,
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+    extended = by_key["semantic-roundtrip/canonical-design"]
+    ordinary = by_key["semantic-roundtrip/ordinary"]
+
+    assert (
+        extended.queue_payload["tasks"][0]["implementation_timeout_seconds"]
+        == "7200"
+    )
+    assert extended.implementation_max_timeout == 7200
+    assert ordinary.implementation_max_timeout == 1800
+    assert (
+        extended.command[extended.command.index("--implementation-timeout") + 1]
+        == "1800"
+    )
+    assert (
+        extended.command[
+            extended.command.index("--implementation-max-timeout") + 1
+        ]
+        == "7200.0"
+    )
+    assert "--implementation-max-timeout" not in ordinary.command
+
+
+def test_bundle_lane_planner_mirrors_provider_default_hard_timeout(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    provider_board = tmp_path / "provider.todo.md"
+    ordinary_board = tmp_path / "ordinary.todo.md"
+    provider_board.write_text(
+        "## SRT-018 Provider task\n\n"
+        "- Status: todo\n"
+        "- Requires provider: true\n",
+        encoding="utf-8",
+    )
+    ordinary_board.write_text(
+        "## SRT-019 Ordinary task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "semantic-roundtrip/canonical-validation": {
+                        "shard_path": provider_board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-018",
+                                "canonical_task_cid": "cid-srt-018",
+                                "canonical_task_key": "task/v1/srt-018",
+                                "requires_provider": True,
+                            }
+                        ],
+                    },
+                    "semantic-roundtrip/handoff": {
+                        "shard_path": ordinary_board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-019",
+                                "canonical_task_cid": "cid-srt-019",
+                                "canonical_task_key": "task/v1/srt-019",
+                            }
+                        ],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        implementation_timeout=1800,
+        optimize_bundles=False,
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+    provider = by_key["semantic-roundtrip/canonical-validation"]
+    ordinary = by_key["semantic-roundtrip/handoff"]
+
+    daemon = PortalImplementationDaemon(
+        todo_path=provider_board,
+        state_path=tmp_path / "daemon-state.json",
+        strategy_path=tmp_path / "daemon-strategy.json",
+        events_path=tmp_path / "daemon-events.jsonl",
+        repo_root=tmp_path,
+        implementation_timeout=1800,
+    )
+    provider_policy = daemon._implementation_timeout_policy(
+        PortalTask(
+            task_id="SRT-018",
+            title="Provider task",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="benchmark",
+            metadata={"requires provider": "true"},
+        )
+    )
+    ordinary_policy = daemon._implementation_timeout_policy(
+        PortalTask(
+            task_id="SRT-019",
+            title="Ordinary task",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="benchmark",
+        )
+    )
+
+    assert provider.queue_payload["tasks"][0]["requires_provider"] is True
+    assert provider_policy.max_timeout_seconds == 7200
+    assert provider.implementation_max_timeout == (
+        provider_policy.max_timeout_seconds
+    )
+    assert (
+        provider.command[
+            provider.command.index("--implementation-max-timeout") + 1
+        ]
+        == "7200.0"
+    )
+    assert ordinary.implementation_max_timeout == (
+        ordinary_policy.max_timeout_seconds
+    )
+    assert ordinary.implementation_max_timeout == 1800
+    assert "--implementation-max-timeout" not in ordinary.command
+
+
+def test_execution_slice_timeout_excludes_unselected_members() -> None:
+    payload = {
+        "execution_slice_task_ids": ["SRT-018"],
+        "execution_slice_task_cids": [],
+        "tasks": [
+            {
+                "task_id": "SRT-018",
+                "requires_provider": True,
+            },
+            {
+                "task_id": "SRT-026",
+                "requires_provider": True,
+                "implementation_timeout_seconds": "14400",
+                "implementation_max_timeout_seconds": "21600",
+            },
+        ],
+    }
+
+    assert (
+        _execution_slice_implementation_max_timeout(
+            payload,
+            default_timeout=1800,
+        )
+        == 7200
+    )
+    payload["execution_slice_task_ids"] = ["SRT-026"]
+    assert (
+        _execution_slice_implementation_max_timeout(
+            payload,
+            default_timeout=1800,
+        )
+        == 21600
+    )
+
+
+def test_bundle_lane_planner_rejects_invalid_task_specific_timeout(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "invalid.todo.md"
+    board.write_text("## SRT-015 Invalid timeout\n\n- Status: todo\n", encoding="utf-8")
+    index_path = tmp_path / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "semantic-roundtrip/invalid": {
+                        "shard_path": board.name,
+                        "tasks": [
+                            {
+                                "task_id": "SRT-015",
+                                "canonical_task_cid": "cid-srt-015",
+                                "canonical_task_key": "task/v1/srt-015",
+                                "implementation_timeout_seconds": "not-a-number",
+                            }
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="SRT-015: implementation_timeout_seconds must be",
+    ):
+        plan_bundle_lanes(
+            bundle_index_path=index_path,
+            repo_root=tmp_path,
+            state_root=tmp_path / "state",
+            worktree_root=tmp_path / "worktrees",
+            log_dir=tmp_path / "logs",
+            optimize_bundles=False,
+        )
 
 
 def test_bundle_index_enrichment_preserves_member_receipt_dependencies(
@@ -450,14 +746,19 @@ def test_truncated_graph_repairs_still_block_every_invalid_bundle(
 def _lane(tmp_path: Path, bundle: dict[str, object]) -> BundleLaneSpec:
     key = str(bundle["bundle_key"])
     task_id = str(bundle["tasks"][0]["task_id"])  # type: ignore[index]
+    member_task = dict(bundle["tasks"][0])  # type: ignore[index]
     payload = {
         **bundle,
+        "tasks": [member_task],
         "is_schedulable": True,
         "review_only": False,
         "execution_slice_task_ids": [task_id],
         "execution_slice_task_cids": [],
     }
     adapted = adapt_goal_bundle(payload, created_at_ms=1_783_872_000_000)
+    member_task_cid = str(adapted["canonical_task_cid"])
+    member_task["canonical_task_cid"] = member_task_cid
+    payload["execution_slice_task_cids"] = [member_task_cid]
     payload["profile_g"] = adapted
     todo_path = tmp_path / f"{key.replace('/', '-')}.md"
     todo_path.write_text(
@@ -476,6 +777,7 @@ def _lane(tmp_path: Path, bundle: dict[str, object]) -> BundleLaneSpec:
         conflict_policy="",
         command=["worker", key],
         log_path=tmp_path / "logs" / f"{key.replace('/', '-')}.log",
+        expected_task_cids_by_id={task_id: member_task_cid},
         runtime_todo_path=state_dir / "runtime.todo.md",
         source_todo_sha256=hashlib.sha256(todo_path.read_bytes()).hexdigest(),
         task_cid=str(adapted["task_cid"]),
@@ -755,7 +1057,7 @@ def test_bundle_launcher_surfaces_dependency_evidence_and_unblocks_after_success
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     coordination_path = tmp_path / "coordination.sqlite3"

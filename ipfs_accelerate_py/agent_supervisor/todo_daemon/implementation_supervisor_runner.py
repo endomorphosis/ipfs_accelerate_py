@@ -669,7 +669,7 @@ class ConfiguredSupervisorRuntime:
         effective_ensure_running = ensure_running
         if effective_ensure_running is None:
             if ensure_running_flag:
-                from supervisor_runtime import pop_bool_flag
+                from .supervisor_runtime import pop_bool_flag
 
                 effective_ensure_running = pop_bool_flag(args, ensure_running_flag)
             else:
@@ -910,7 +910,7 @@ def build_configured_supervisor_runtime(
 ) -> ConfiguredSupervisorRuntime:
     """Build reusable runtime operations bound to a project supervisor wrapper."""
 
-    from supervisor_runtime import build_supervisor_runtime_operations
+    from .supervisor_runtime import build_supervisor_runtime_operations
 
     resolved_repo_root = Path(repo_root)
     resolved_script_path = Path(script_path)
@@ -2183,7 +2183,7 @@ def build_supervisor_runtime_callbacks(
 ) -> SupervisorRuntimeCallbacks:
     """Build standard runtime repair/ensure callbacks for a supervisor wrapper."""
 
-    from supervisor_runtime import build_supervisor_runtime_operations
+    from .supervisor_runtime import build_supervisor_runtime_operations
 
     args = tuple(argv)
     operations = build_supervisor_runtime_operations(

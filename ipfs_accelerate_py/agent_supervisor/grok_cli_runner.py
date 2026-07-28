@@ -1,8 +1,9 @@
-"""Thin process entry: Grok CLI agent via llm_router.grok_cli.
+#!/usr/bin/env python3
+"""Thin process entry: Grok Build CLI agent for implementation worktrees.
 
-The implementation daemon feeds the task prompt on stdin. Grok expects
-``--prompt-file``, so this runner materializes stdin and execs the command
-built by :func:`ipfs_accelerate_py.llm_router.build_grok_cli_command`.
+Reads the implementation prompt from stdin (daemon contract), writes it to a
+temp prompt file, then execs the official ``grok`` binary with agent-capable
+flags. Command policy lives next to other CLI peers in :mod:`llm_router`.
 """
 
 from __future__ import annotations
@@ -18,6 +19,61 @@ from typing import Optional, Sequence
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
+
+
+DEFAULT_GROK_MODEL = "grok-4.5"
+# Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
+DEFAULT_GROK_MAX_TURNS = 4_294_967_295
+
+
+def _resolve_grok_bin(configured: str = "") -> str:
+    if configured.strip():
+        path = Path(configured).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    try:
+        from ipfs_accelerate_py.llm_router import _grok_cli_command
+
+        candidate = str(_grok_cli_command() or "").strip()
+        if candidate:
+            found = shutil.which(candidate) or (
+                candidate if Path(candidate).is_file() else ""
+            )
+            if found:
+                return found
+    except Exception:
+        pass
+    return shutil.which("grok") or ""
+
+
+def build_grok_agent_command(
+    *,
+    workspace: Path,
+    prompt_file: Path,
+    model: str,
+    max_turns: int,
+    permission_mode: str,
+    grok_bin: str,
+) -> list[str]:
+    """Build an agent-mode ``grok`` argv for an implementation worktree."""
+
+    cmd = [
+        grok_bin,
+        "--cwd",
+        str(workspace),
+        "--model",
+        model,
+        "--permission-mode",
+        permission_mode,
+        "--always-approve",
+        "--max-turns",
+        str(max_turns),
+        "--output-format",
+        "plain",
+        "--prompt-file",
+        str(prompt_file),
+    ]
+    return cmd
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -53,9 +109,35 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("grok CLI not found on PATH", file=sys.stderr)
         return 127
 
+    model = (
+        str(args.model).strip()
+        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MODEL", "").strip()
+        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
+        or os.environ.get("GROK_CLI_MODEL", "").strip()
+        or DEFAULT_GROK_MODEL
+    )
+    max_turns_raw = (
+        str(args.max_turns).strip()
+        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS", "").strip()
+        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MAX_TURNS", "").strip()
+        or str(DEFAULT_GROK_MAX_TURNS)
+    )
+    try:
+        max_turns = max(1, min(DEFAULT_GROK_MAX_TURNS, int(max_turns_raw)))
+    except ValueError:
+        max_turns = DEFAULT_GROK_MAX_TURNS
+    permission_mode = (
+        str(args.permission_mode).strip()
+        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE", "").strip()
+        or os.environ.get(
+            "ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", ""
+        ).strip()
+        or "bypassPermissions"
+    )
+
     prompt = sys.stdin.read()
-    if not str(prompt).strip():
-        print("implementation prompt on stdin is empty", file=sys.stderr)
+    if not prompt.strip():
+        print("empty implementation prompt on stdin", file=sys.stderr)
         return 2
 
     prompt_path = ""
@@ -93,6 +175,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 os.unlink(prompt_path)
             except OSError:
                 pass
+    return 0
 
 
 if __name__ == "__main__":

@@ -257,3 +257,114 @@ def test_cancelled_work_is_fenced_and_survives_restart(tmp_path: Path) -> None:
     assert durable.failure_reason == "base advanced while preflight was running"
     assert restarted.status()["cancelled"] == 1
     assert restarted.dequeue(consumer_id="merge-train:restart") is None
+
+
+def test_bound_main_consumer_cannot_claim_benchmark_or_legacy_request(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "shared-queue"
+    repository_id = f"repository:sha256:{'a' * 64}"
+    legacy = MergeQueue(queue_path).enqueue(
+        branch_name="implementation/legacy",
+        task_id="LEGACY-001",
+        canonical_task_id="canonical-legacy",
+        commit_sha="1" * 40,
+        priority="P0",
+    )
+    benchmark_queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="benchmark/semantic-roundtrip",
+        require_target_binding=True,
+    )
+    benchmark = benchmark_queue.enqueue(
+        branch_name="implementation/benchmark",
+        task_id="SRT-014",
+        canonical_task_id="canonical-srt-014",
+        commit_sha="2" * 40,
+        priority="P0",
+    )
+    main_queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="main",
+        require_target_binding=True,
+    )
+    main = main_queue.enqueue(
+        branch_name="implementation/main",
+        task_id="MAIN-001",
+        canonical_task_id="canonical-main",
+        commit_sha="3" * 40,
+        priority="P1",
+    )
+
+    claimed_by_main = main_queue.dequeue_many(
+        3,
+        consumer_id="merge-train:main",
+    )
+
+    assert [request.request_id for request in claimed_by_main] == [
+        main.request_id
+    ]
+    assert main_queue.pending_count() == 0
+    assert main_queue.processing_count() == 1
+    assert main_queue.active_canonical_task_ids() == {"canonical-main"}
+    assert main_queue.status()["target_branch"] == "main"
+    assert benchmark_queue.get(benchmark.request_id).status == "pending"  # type: ignore[union-attr]
+    assert benchmark_queue.get(benchmark.request_id).consumer_id == ""  # type: ignore[union-attr]
+    assert benchmark_queue.get(legacy.request_id).status == "pending"  # type: ignore[union-attr]
+    with pytest.raises(MergeQueueFenceError, match="target differs"):
+        main_queue.cancel(benchmark.request_id)
+    claimed_by_benchmark = benchmark_queue.dequeue(
+        consumer_id="merge-train:benchmark"
+    )
+    assert claimed_by_benchmark is not None
+    assert claimed_by_benchmark.request_id == benchmark.request_id
+    assert main_queue.owns_claim(claimed_by_benchmark) is False
+    with pytest.raises(MergeQueueFenceError, match="target differs"):
+        main_queue.complete(claimed_by_benchmark)
+
+    assert main_queue.recover_abandoned_train_claims() == 1
+    main_after_recovery = main_queue.get(main.request_id)
+    assert main_after_recovery is not None
+    assert main_after_recovery.status == "pending"
+    assert main_after_recovery.attempt == 2
+    benchmark_after_recovery = benchmark_queue.get(benchmark.request_id)
+    assert benchmark_after_recovery is not None
+    assert benchmark_after_recovery.status == "processing"
+    assert benchmark_after_recovery.attempt == 1
+    assert benchmark_after_recovery.consumer_id == "merge-train:benchmark"
+
+
+def test_case_distinct_git_targets_have_distinct_deduplication_keys(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "shared-queue"
+    repository_id = f"repository:sha256:{'b' * 64}"
+    upper_queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="Feature",
+        require_target_binding=True,
+    )
+    lower_queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="feature",
+        require_target_binding=True,
+    )
+    enqueue_kwargs = {
+        "branch_name": "implementation/case-sensitive",
+        "task_id": "CASE-001",
+        "canonical_task_id": "canonical-case-001",
+        "commit_sha": "4" * 40,
+    }
+
+    upper = upper_queue.enqueue(**enqueue_kwargs)
+    lower = lower_queue.enqueue(**enqueue_kwargs)
+
+    assert upper.request_id != lower.request_id
+    assert upper.target_branch == "Feature"
+    assert lower.target_branch == "feature"
+    assert upper_queue.pending_count() == 1
+    assert lower_queue.pending_count() == 1

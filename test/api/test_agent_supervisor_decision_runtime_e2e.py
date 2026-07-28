@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -25,12 +26,20 @@ from ipfs_accelerate_py.agent_supervisor.context.decision_runtime import (
     DecisionRuntimeReceipt,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
     DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
     DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
     MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES,
     MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES,
+    PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA,
+    PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
+    PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
     PortalImplementationDaemon,
     PortalTask,
+)
+from ipfs_accelerate_py.agent_supervisor.task_identity import (
+    canonical_content_cid,
+    canonical_task_identity,
 )
 from test.api.test_agent_supervisor_execution_permit import (
     NOW,
@@ -368,3 +377,181 @@ def test_daemon_does_not_expand_limits_for_an_oversized_raw_patch() -> None:
         "max_patch_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
         "max_output_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
     }
+
+
+def test_daemon_accepts_exact_declared_large_artifact_envelope(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    report = repo / "docs" / "benchmark-report.json"
+    report.parent.mkdir(parents=True)
+    repo.mkdir(exist_ok=True)
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    report.write_text(
+        '{"evidence":"' + ("x" * 2_100_000) + '"}\n',
+        encoding="utf-8",
+    )
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    relative_report = report.relative_to(repo).as_posix()
+    task = PortalTask(
+        task_id="ASI-142",
+        title="Freeze a large benchmark report",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="benchmark",
+        outputs=[relative_report],
+        validation=["python -m pytest"],
+        acceptance="Admit only the exact declared benchmark artifact.",
+        metadata={
+            PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY: json.dumps(
+                {
+                    "schema": PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
+                    "paths": [relative_report],
+                    "max_file_bytes": 3_000_000,
+                    "max_patch_bytes": 4_000_000,
+                    "max_output_bytes": 8_000_000,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        },
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline_ref,
+    )
+
+    assert result.accepted
+    assert (
+        result.policy.max_file_bytes
+        > DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+    )
+    assert (
+        result.policy.max_patch_bytes
+        > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+    )
+    assert (
+        result.policy.max_output_bytes
+        > DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES
+    )
+    assert result.policy.max_file_bytes <= 3_000_000
+    assert result.policy.max_patch_bytes <= 4_000_000
+    assert result.policy.max_output_bytes <= 8_000_000
+    assert result.policy.allowed_paths == (relative_report,)
+    assert result.policy.task_owned_paths == (relative_report,)
+    assert result.policy.allow_large_files is False
+    assert result.policy.allow_generated is False
+    assert result.policy.policy_version.endswith(
+        "+declared-artifact-envelope-v1"
+    )
+    task_context_id = canonical_task_identity(task).canonical_task_cid
+    assert result.proposal.context_id == canonical_content_cid(
+        {
+            "schema": PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA,
+            "task_context_id": task_context_id,
+            "artifact_envelope": json.loads(
+                task.metadata[PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY]
+            ),
+        }
+    )
+    assert result.proposal.context_id != task_context_id
+
+
+def test_declared_large_artifact_envelope_rejects_scope_or_global_cap_drift() -> None:
+    artifact_path = "docs/benchmark-report.json"
+    source = "x" * (
+        DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES + 1
+    )
+    entry = SimpleNamespace(
+        before_source=None,
+        after_source=source,
+        metadata={"after_size_bytes": len(source)},
+    )
+    proposal = SimpleNamespace(
+        changed_paths=(artifact_path,),
+        candidate_diff=(entry,),
+        patch_text=source,
+        to_dict=lambda: {"patch_text": source, "after_source": source},
+    )
+    defaults = {
+        "max_patch_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
+        "max_output_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
+    }
+
+    wrong_scope = PortalTask(
+        task_id="ASI-143",
+        title="Reject a detached artifact envelope",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="benchmark",
+        outputs=[artifact_path, "docs/other.json"],
+        metadata={
+            PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY: json.dumps(
+                {
+                    "schema": PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
+                    "paths": ["docs/other.json"],
+                    "max_file_bytes": 3_000_000,
+                    "max_patch_bytes": 5_000_000,
+                    "max_output_bytes": 8_000_000,
+                }
+            )
+        },
+    )
+    assert (
+        PortalImplementationDaemon._proposal_local_envelope_limits(
+            proposal,
+            task=wrong_scope,
+        )
+        == defaults
+    )
+
+    excessive_cap = PortalTask(
+        task_id="ASI-144",
+        title="Reject an unbounded artifact envelope",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="benchmark",
+        outputs=[artifact_path],
+        metadata={
+            PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY: json.dumps(
+                {
+                    "schema": PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
+                    "paths": [artifact_path],
+                    "max_file_bytes": 3_000_000,
+                    "max_patch_bytes": (
+                        MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+                        + 1
+                    ),
+                    "max_output_bytes": (
+                        MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES
+                    ),
+                }
+            )
+        },
+    )
+    assert (
+        PortalImplementationDaemon._proposal_local_envelope_limits(
+            proposal,
+            task=excessive_cap,
+        )
+        == defaults
+    )

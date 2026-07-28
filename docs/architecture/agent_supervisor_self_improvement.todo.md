@@ -4386,7 +4386,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-152 Expose prompt workflow and lifecycle rescue through CLI and Python entry points
 
-- Status: pending
+- Status: completed
 - Priority: P1
 - Track: prompt-control-surfaces
 - Depends on: ASI-151
@@ -4403,7 +4403,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-153 Expose exact prompt workflow and rescue parity through lazy MCP tools
 
-- Status: pending
+- Status: completed
 - Priority: P1
 - Track: prompt-control-surfaces
 - Depends on: ASI-151
@@ -4505,7 +4505,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-159 Gate prompt bootstrap and rescue with paired E2E, adversarial, chaos, rollout, and documentation
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Track: prompt-workflow-rollout
 - Depends on: ASI-149, ASI-152, ASI-153, ASI-158
@@ -4555,7 +4555,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-163 Resolve implementation retry-budget failure for ASI-153
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops

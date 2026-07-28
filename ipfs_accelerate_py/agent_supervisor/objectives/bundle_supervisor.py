@@ -341,7 +341,13 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
 
 @dataclass(frozen=True)
 class BundleLaneSpec:
-    """One isolated daemon/supervisor lane for an objective bundle shard."""
+    """One isolated daemon/supervisor lane for an objective bundle shard.
+
+    ``expected_task_cids_by_id`` binds the mutable display IDs used by the
+    implementation daemon to the canonical member identities admitted by the
+    bundle planner.  Local execution wrappers must carry that binding across
+    the process boundary before phase state can prove a slice complete.
+    """
 
     bundle_key: str
     parallel_lane: str
@@ -392,6 +398,7 @@ class BundleLaneSpec:
     optimization_metrics: dict[str, int] = field(default_factory=dict)
     planner_comparison: dict[str, Any] = field(default_factory=dict)
     packet_aggregates: list[dict[str, Any]] = field(default_factory=list)
+    expected_task_cids_by_id: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -1631,6 +1638,85 @@ def lane_state_prefix(bundle_key: str) -> str:
     return f"agent_{safe_bundle_key(bundle_key).replace('-', '_')}"
 
 
+def _execution_slice_task_cids_by_id(
+    payload: Mapping[str, Any],
+    execution_tasks: Sequence[Mapping[str, Any]],
+    *,
+    task_ids: Sequence[str],
+    task_cids: Sequence[str],
+) -> dict[str, str]:
+    """Return the exact display-ID to canonical-CID execution-slice binding.
+
+    Member rows are the only planner surface which contains both identities.
+    Optimizer work contracts independently bind the canonical CIDs; when those
+    contracts are present, this function cross-checks them instead of assuming
+    that two separately ordered ID/CID lists align.
+    """
+
+    selected_ids = tuple(
+        dict.fromkeys(str(task_id).strip() for task_id in task_ids if str(task_id).strip())
+    )
+    selected_cids = {
+        str(task_cid).strip()
+        for task_cid in task_cids
+        if str(task_cid).strip()
+    }
+    candidates: dict[str, str] = {}
+    for task in execution_tasks:
+        task_id = str(task.get("task_id") or "").strip()
+        task_cid = str(
+            task.get("canonical_task_cid") or task.get("task_cid") or ""
+        ).strip()
+        if not task_id or not task_cid:
+            continue
+        previous = candidates.get(task_id)
+        if previous is not None and previous != task_cid:
+            raise ValueError(
+                f"execution slice task {task_id!r} has conflicting canonical CIDs"
+            )
+        candidates[task_id] = task_cid
+
+    missing_ids = [task_id for task_id in selected_ids if task_id not in candidates]
+    if missing_ids:
+        raise ValueError(
+            "execution slice lacks canonical task identities for "
+            f"{missing_ids!r}"
+        )
+    bindings = {task_id: candidates[task_id] for task_id in selected_ids}
+    bound_cids = set(bindings.values())
+    if selected_cids and bound_cids != selected_cids:
+        raise ValueError(
+            "execution slice ID/CID projections disagree: "
+            f"bound={sorted(bound_cids)!r}, declared={sorted(selected_cids)!r}"
+        )
+
+    optimization = (
+        payload.get("bundle_optimization")
+        if isinstance(payload.get("bundle_optimization"), Mapping)
+        else {}
+    )
+    optimized_bundle = (
+        optimization.get("bundle")
+        if isinstance(optimization.get("bundle"), Mapping)
+        else {}
+    )
+    raw_contracts = payload.get("task_work_contracts")
+    if not isinstance(raw_contracts, (list, tuple)):
+        raw_contracts = optimized_bundle.get("task_work_contracts")
+    contract_cids = {
+        str(contract.get("canonical_task_cid") or "").strip()
+        for contract in (raw_contracts or ())
+        if isinstance(contract, Mapping)
+        and str(contract.get("canonical_task_cid") or "").strip()
+    }
+    if contract_cids and not bound_cids.issubset(contract_cids):
+        raise ValueError(
+            "execution slice canonical identities are not bound by its "
+            "task work contracts"
+        )
+    return bindings
+
+
 def _schedule_int(payload: dict[str, Any], key: str, default: int = 0) -> int:
     """Read integer scheduler metadata without trusting generated JSON types."""
 
@@ -2370,13 +2456,55 @@ def optimize_bundle_payloads(
     for original in payloads:
         payload = dict(original)
         tasks = _mapping_list(payload.get("tasks"))
+        has_execution_slice = (
+            "execution_slice_task_cids" in payload
+            or "execution_slice_task_ids" in payload
+        )
+        completed_cids = set(
+            _string_list(payload.get("completed_member_task_cids"))
+        )
+        completed_ids = set(
+            _string_list(payload.get("completed_member_task_ids"))
+        )
+        candidate_tasks = _execution_slice_members(payload, tasks)
         live_tasks = [
             task
-            for task in tasks
+            for task in candidate_tasks
             if str(task.get("status") or "").strip().casefold()
             not in _TERMINAL_CONFLICT_TASK_STATUSES
+            and str(
+                task.get("canonical_task_cid") or task.get("task_cid") or ""
+            )
+            not in completed_cids
+            and str(task.get("task_id") or "") not in completed_ids
         ]
+        # The dependency planner's execution slice and durable completion
+        # overlay are authoritative inputs to optimization.  Source taskboards
+        # are immutable and may still label receipt-completed members ``todo``;
+        # optimizing every raw task would otherwise resurrect completed work
+        # and admit deferred dependencies.  Normalize the slice even when
+        # optimization later passes through due to missing legacy identities.
+        if has_execution_slice or completed_cids or completed_ids:
+            payload["execution_slice_task_cids"] = [
+                str(
+                    task.get("canonical_task_cid")
+                    or task.get("task_cid")
+                    or ""
+                )
+                for task in live_tasks
+                if str(
+                    task.get("canonical_task_cid")
+                    or task.get("task_cid")
+                    or ""
+                )
+            ]
+            payload["execution_slice_task_ids"] = [
+                str(task.get("task_id") or "")
+                for task in live_tasks
+                if str(task.get("task_id") or "")
+            ]
         if not live_tasks:
+            payload["claimable"] = False
             optimized_payloads.append(payload)
             continue
         if any(
@@ -2667,6 +2795,12 @@ def plan_bundle_lanes(
                 if str(item.get("canonical_task_cid") or item.get("task_cid") or "")
             ]
         )
+        expected_task_cids_by_id = _execution_slice_task_cids_by_id(
+            payload,
+            execution_tasks,
+            task_ids=task_ids,
+            task_cids=task_cids,
+        )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
         command = implementation_supervisor_command(
@@ -2712,6 +2846,7 @@ def plan_bundle_lanes(
                 conflict_policy=str(payload.get("conflict_policy") or ""),
                 command=command,
                 log_path=log_path,
+                expected_task_cids_by_id=expected_task_cids_by_id,
                 runtime_todo_path=runtime_todo_path,
                 source_todo_sha256=source_todo_sha256,
                 source_todo=str(payload.get("source_todo") or ""),
@@ -2997,8 +3132,25 @@ def _spawn_accepted_lane(
     heartbeat_interval: float,
     capacity_millionths: int,
 ) -> tuple[subprocess.Popen[bytes], list[str], Path]:
-    """Start one already-claimed lane without opening a second claim race."""
+    """Start one already-claimed lane with its exact member identity fence."""
 
+    expected_task_ids = tuple(
+        dict.fromkeys(
+            str(task_id).strip()
+            for task_id in lane.task_ids
+            if str(task_id).strip()
+        )
+    )
+    expected_task_cids_by_id = {
+        str(task_id).strip(): str(task_cid).strip()
+        for task_id, task_cid in lane.expected_task_cids_by_id.items()
+        if str(task_id).strip() and str(task_cid).strip()
+    }
+    if set(expected_task_cids_by_id) != set(expected_task_ids):
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} lacks an exact canonical "
+            "identity for every execution-slice task"
+        )
     lane.state_dir.mkdir(parents=True, exist_ok=True)
     lane.worktree_root.mkdir(parents=True, exist_ok=True)
     lane.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3023,10 +3175,24 @@ def _spawn_accepted_lane(
         lane.llm_provider,
         "--phase-state-path",
         str(lane.state_dir / f"{lane.state_prefix}_task_state.json"),
+        "--completion-events-path",
+        str(lane.state_dir / f"{lane.state_prefix}_events.jsonl"),
     ]
-    for task_id in dict.fromkeys(str(task_id).strip() for task_id in lane.task_ids):
-        if task_id:
-            guarded_command.extend(["--expected-task-id", task_id])
+    for task_id in expected_task_ids:
+        guarded_command.extend(["--expected-task-id", task_id])
+        guarded_command.extend(
+            [
+                "--expected-task-identity-json",
+                json.dumps(
+                    {
+                        "task_id": task_id,
+                        "canonical_task_cid": expected_task_cids_by_id[task_id],
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ]
+        )
     guarded_command.extend(["--", *lane.command])
     env = os.environ.copy()
     env["PYTHONPATH"] = _bundle_lane_pythonpath(
@@ -3054,7 +3220,8 @@ def _spawn_accepted_lane(
 def _bundle_lane_pythonpath(repo_root: Path, *, existing: str = "") -> str:
     """Keep child lanes on the same agent-supervisor implementation as the parent."""
 
-    runtime_package_root = Path(__file__).resolve().parents[2]
+    # objectives/bundle_supervisor.py -> agent_supervisor -> ipfs_accelerate_py -> install/repo root
+    runtime_package_root = Path(__file__).resolve().parents[3]
     legacy_package_root = repo_root / "ipfs_datasets_py" / "ipfs_accelerate_py"
     entries = [str(runtime_package_root)]
     if legacy_package_root.exists():

@@ -47,6 +47,9 @@ _CANONICAL_METADATA_KEYS = (
 MERGE_QUEUE_THROUGHPUT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/merge-queue-throughput@1"
 )
+MERGE_TARGET_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+)
 
 
 class MergeQueueFullError(RuntimeError):
@@ -88,6 +91,29 @@ class MergeRequest:
         return self.canonical_task_key or self.canonical_task_id or self.task_id
 
     @property
+    def target_repository_id(self) -> str:
+        """Return the physical repository this request may mutate."""
+
+        return str(self.metadata.get("target_repository_id") or "").strip()
+
+    @property
+    def target_branch(self) -> str:
+        """Return the exact local branch this request may mutate."""
+
+        return str(self.metadata.get("target_branch") or "").strip()
+
+    @property
+    def has_target_binding(self) -> bool:
+        """Return whether the request carries a complete versioned binding."""
+
+        return bool(
+            self.metadata.get("target_binding_schema")
+            == MERGE_TARGET_BINDING_SCHEMA
+            and self.target_repository_id
+            and self.target_branch
+        )
+
+    @property
     def dedupe_key(self) -> str:
         """Return the stable task-and-commit idempotency key, when available."""
 
@@ -95,7 +121,15 @@ class MergeRequest:
             return ""
         identity = self.canonical_identity.strip().casefold()
         commit = self.commit_sha.strip().casefold()
-        return hashlib.sha256(f"{identity}\0{commit}".encode("utf-8")).hexdigest()
+        parts = [identity, commit]
+        if self.has_target_binding:
+            parts.extend(
+                (
+                    self.target_repository_id,
+                    self.target_branch,
+                )
+            )
+        return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -225,6 +259,9 @@ class MergeQueue:
         priority_aging_seconds: float = 300,
         max_attempts: int = 3,
         clock: Callable[[], float] | None = None,
+        target_repository_id: str = "",
+        target_branch: str = "",
+        require_target_binding: bool = False,
     ) -> None:
         self.queue_dir = Path(queue_dir)
         self.pending_dir = self.queue_dir / "pending"
@@ -254,6 +291,14 @@ class MergeQueue:
         self.priority_aging_seconds = max(0.0, float(priority_aging_seconds))
         self.max_attempts = max(1, int(max_attempts))
         self._clock = clock or time.time
+        self.target_repository_id = ""
+        self.target_branch = ""
+        self.require_target_binding = False
+        self.bind_target(
+            target_repository_id,
+            target_branch,
+            required=require_target_binding,
+        )
         for directory in (
             self.pending_dir,
             self.processing_dir,
@@ -265,6 +310,43 @@ class MergeQueue:
             directory.mkdir(parents=True, exist_ok=True)
         self._init_database()
         self._import_legacy_files()
+
+    def bind_target(
+        self,
+        target_repository_id: str,
+        target_branch: str,
+        *,
+        required: bool = True,
+    ) -> None:
+        """Bind this producer/consumer view to one repository and target ref.
+
+        Binding is process-local while every enqueued request persists the
+        versioned values. Existing unbound legacy rows remain in the database
+        but are invisible to a required bound consumer.
+        """
+
+        repository_id = str(target_repository_id or "").strip()
+        branch = str(target_branch or "").strip()
+        if bool(repository_id) != bool(branch):
+            raise ValueError(
+                "target_repository_id and target_branch must be supplied together"
+            )
+        if required and not repository_id:
+            raise ValueError("a required merge target binding must not be empty")
+        if (
+            self.target_repository_id
+            and repository_id
+            and self.target_repository_id != repository_id
+        ):
+            raise ValueError("merge queue target repository binding changed")
+        if self.target_branch and branch and self.target_branch != branch:
+            raise ValueError("merge queue target branch binding changed")
+        if repository_id:
+            self.target_repository_id = repository_id
+            self.target_branch = branch
+        self.require_target_binding = bool(
+            self.require_target_binding or required
+        )
 
     def _connect(self) -> DuckDBConnection:
         return open_duckdb_connection(self.database_path)
@@ -404,6 +486,8 @@ class MergeQueue:
         canonical_task_id: str = "",
         canonical_task_key: str = "",
         canonical_task_cid: str = "",
+        target_repository_id: str = "",
+        target_branch: str = "",
     ) -> MergeRequest:
         """Atomically enqueue or return the existing task-and-commit request."""
 
@@ -412,6 +496,48 @@ class MergeQueue:
         if not str(task_id).strip():
             raise ValueError("task_id must not be empty")
         metadata_dict = dict(metadata or {})
+        declared_repository_id = str(
+            target_repository_id
+            or metadata_dict.get("target_repository_id")
+            or ""
+        ).strip()
+        declared_branch = str(
+            target_branch or metadata_dict.get("target_branch") or ""
+        ).strip()
+        if self.target_repository_id:
+            if (
+                declared_repository_id
+                and declared_repository_id != self.target_repository_id
+            ):
+                raise ValueError(
+                    "request target repository differs from the queue binding"
+                )
+            if declared_branch and declared_branch != self.target_branch:
+                raise ValueError(
+                    "request target branch differs from the queue binding"
+                )
+            declared_repository_id = self.target_repository_id
+            declared_branch = self.target_branch
+        if bool(declared_repository_id) != bool(declared_branch):
+            raise ValueError(
+                "request target_repository_id and target_branch must be "
+                "supplied together"
+            )
+        if self.require_target_binding and not declared_repository_id:
+            raise ValueError("bound merge queue refuses an unbound request")
+        if declared_repository_id:
+            supplied_schema = str(
+                metadata_dict.get("target_binding_schema") or ""
+            ).strip()
+            if supplied_schema and supplied_schema != MERGE_TARGET_BINDING_SCHEMA:
+                raise ValueError("request merge target binding schema changed")
+            metadata_dict.update(
+                {
+                    "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+                    "target_repository_id": declared_repository_id,
+                    "target_branch": declared_branch,
+                }
+            )
         commit_sha = str(commit_sha or _first_metadata_value(metadata_dict, _COMMIT_METADATA_KEYS)).strip()
         canonical_task_key = str(
             canonical_task_key
@@ -447,10 +573,13 @@ class MergeQueue:
                     if row is not None:
                         connection.commit()
                         return self._request_from_row(row)
-                active_count = int(
-                    connection.execute(
-                        "SELECT COUNT(*) FROM merge_requests WHERE status IN ('pending','processing')"
-                    ).fetchone()[0]
+                active_rows = connection.execute(
+                    """SELECT metadata_json FROM merge_requests
+                       WHERE status IN ('pending','processing')"""
+                ).fetchall()
+                active_count = sum(
+                    self._metadata_matches_target(row["metadata_json"])
+                    for row in active_rows
                 )
                 if active_count >= self.max_queue_size:
                     connection.rollback()
@@ -471,6 +600,45 @@ class MergeQueue:
                 return self._request_from_row(row)
         receipt_path = self._write_stage_receipt(request)
         return replace(request, file_path=receipt_path)
+
+    def _metadata_matches_target(self, value: Any) -> bool:
+        """Return whether one durable row belongs to this consumer view."""
+
+        if not self.target_repository_id:
+            return not self.require_target_binding
+        try:
+            metadata = (
+                json.loads(value or "{}")
+                if not isinstance(value, Mapping)
+                else value
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if not isinstance(metadata, Mapping):
+            return False
+        return bool(
+            metadata.get("target_binding_schema")
+            == MERGE_TARGET_BINDING_SCHEMA
+            and str(metadata.get("target_repository_id") or "").strip()
+            == self.target_repository_id
+            and str(metadata.get("target_branch") or "").strip()
+            == self.target_branch
+        )
+
+    def _require_row_target(
+        self,
+        row: DuckDBRow,
+        *,
+        operation: str,
+        request_id: str,
+    ) -> None:
+        """Fence mutations attempted through a foreign bound queue view."""
+
+        if not self._metadata_matches_target(row["metadata_json"]):
+            raise MergeQueueFenceError(
+                f"{operation} rejected for request {request_id}: "
+                "request target differs from the queue binding"
+            )
 
     def dequeue(self, consumer_id: str = "") -> Optional[MergeRequest]:
         """Atomically claim the fairest pending request for one consumer."""
@@ -501,19 +669,21 @@ class MergeQueue:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                processing = int(
-                    connection.execute(
-                        "SELECT COUNT(*) FROM merge_requests WHERE status='processing'"
-                    ).fetchone()[0]
-                )
+                processing_rows = connection.execute(
+                    "SELECT metadata_json FROM merge_requests WHERE status='processing'"
+                ).fetchall()
+                if self.target_repository_id or self.require_target_binding:
+                    processing_rows = [
+                        row
+                        for row in processing_rows
+                        if self._metadata_matches_target(row["metadata_json"])
+                    ]
+                processing = len(processing_rows)
                 capacity = max(0, self.max_processing - processing)
                 claim_count = min(requested, capacity)
                 if claim_count <= 0:
                     connection.commit()
                     return ()
-                processing_rows = connection.execute(
-                    "SELECT metadata_json FROM merge_requests WHERE status='processing'"
-                ).fetchall()
                 reserved_bytes = sum(
                     self._worktree_bytes_from_metadata_json(row["metadata_json"])
                     for row in processing_rows
@@ -523,6 +693,12 @@ class MergeQueue:
                 rows = connection.execute(
                     "SELECT * FROM merge_requests WHERE status = 'pending'"
                 ).fetchall()
+                if self.target_repository_id or self.require_target_binding:
+                    rows = [
+                        row
+                        for row in rows
+                        if self._metadata_matches_target(row["metadata_json"])
+                    ]
                 if not rows:
                     connection.commit()
                     return ()
@@ -667,6 +843,7 @@ class MergeQueue:
             ).fetchone()
         return (
             row is not None
+            and self._metadata_matches_target(row["metadata_json"])
             and self._claim_matches(row, request, consumer_id=consumer_id)
         )
 
@@ -678,6 +855,11 @@ class MergeQueue:
         operation: str,
         allow_pending: bool = False,
     ) -> None:
+        self._require_row_target(
+            row,
+            operation=operation,
+            request_id=request.request_id,
+        )
         status = str(row["status"])
         if allow_pending and status == "pending" and not request.claim_token:
             return
@@ -699,6 +881,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return
+            self._require_row_target(
+                row,
+                operation="complete",
+                request_id=request.request_id,
+            )
             if str(row["status"]) == "completed":
                 connection.commit()
                 return
@@ -767,6 +954,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            self._require_row_target(
+                row,
+                operation="requeue",
+                request_id=request.request_id,
+            )
             if str(row["status"]) in {"completed", "quarantined"}:
                 connection.commit()
                 resolved = self._request_from_row(row)
@@ -829,6 +1021,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            self._require_row_target(
+                row,
+                operation="quarantine",
+                request_id=request.request_id,
+            )
             if str(row["status"]) == "quarantined":
                 connection.commit()
                 return self._stage_path(self._request_from_row(row))
@@ -889,6 +1086,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            self._require_row_target(
+                row,
+                operation="cancel",
+                request_id=request_id,
+            )
             status = str(row["status"])
             if status == "cancelled":
                 connection.commit()
@@ -961,6 +1163,11 @@ class MergeQueue:
             if row is None:
                 connection.rollback()
                 return None
+            self._require_row_target(
+                row,
+                operation="revive",
+                request_id=request_id,
+            )
             if str(row["status"]) != "quarantined":
                 connection.commit()
                 return self._request_from_row(row)
@@ -1031,12 +1238,16 @@ class MergeQueue:
         placeholders = ",".join("?" for _ in normalized)
         with self._connect() as connection:
             rows = connection.execute(
-                f"""SELECT DISTINCT canonical_task_id
+                f"""SELECT canonical_task_id, metadata_json
                     FROM merge_requests
                     WHERE status IN ({placeholders}) AND canonical_task_id != ''""",
                 normalized,
             ).fetchall()
-        return {str(row["canonical_task_id"]) for row in rows}
+        return {
+            str(row["canonical_task_id"])
+            for row in rows
+            if self._metadata_matches_target(row["metadata_json"])
+        }
 
     def pending_count(self) -> int:
         return self._count("pending")
@@ -1046,11 +1257,14 @@ class MergeQueue:
 
     def _count(self, status: str) -> int:
         with self._connect() as connection:
-            return int(
-                connection.execute(
-                    "SELECT COUNT(*) FROM merge_requests WHERE status=?", (status,)
-                ).fetchone()[0]
-            )
+            rows = connection.execute(
+                "SELECT metadata_json FROM merge_requests WHERE status=?",
+                (status,),
+            ).fetchall()
+        return sum(
+            self._metadata_matches_target(row["metadata_json"])
+            for row in rows
+        )
 
     def has_pending_for_task(
         self,
@@ -1063,10 +1277,13 @@ class MergeQueue:
         identity = str(task_id).strip().casefold()
         with self._connect() as connection:
             rows = connection.execute(
-                """SELECT task_id, canonical_task_id, canonical_task_key, commit_sha
+                """SELECT task_id, canonical_task_id, canonical_task_key,
+                          commit_sha, metadata_json
                    FROM merge_requests WHERE status IN ('pending','processing')"""
             ).fetchall()
         for row in rows:
+            if not self._metadata_matches_target(row["metadata_json"]):
+                continue
             identities = {
                 str(row["task_id"]).casefold(),
                 str(row["canonical_task_id"]).casefold(),
@@ -1096,6 +1313,8 @@ class MergeQueue:
                 "SELECT * FROM merge_requests WHERE status='processing'"
             ).fetchall()
             for row in rows:
+                if not self._metadata_matches_target(row["metadata_json"]):
+                    continue
                 reference_time = float(row["claimed_at"] or row["enqueued_at"])
                 if now - reference_time <= self.max_age_seconds:
                     continue
@@ -1155,6 +1374,8 @@ class MergeQueue:
                 "SELECT * FROM merge_requests WHERE status='processing' AND consumer_id LIKE 'merge-train:%'"
             ).fetchall()
             for row in rows:
+                if not self._metadata_matches_target(row["metadata_json"]):
+                    continue
                 attempt = int(row["attempt"])
                 failure_count = int(row["failure_count"]) + 1
                 if attempt < self.max_attempts:
@@ -1196,24 +1417,46 @@ class MergeQueue:
         """Return an authoritative stage summary suitable for daemon status."""
 
         with self._connect() as connection:
-            counts = {
-                str(row["status"]): int(row["count"])
-                for row in connection.execute(
-                    "SELECT status, COUNT(*) AS count FROM merge_requests GROUP BY status"
-                ).fetchall()
-            }
+            stage_rows = connection.execute(
+                """SELECT status, enqueued_at, finished_at, metadata_json
+                   FROM merge_requests"""
+            ).fetchall()
+            stage_rows = [
+                row
+                for row in stage_rows
+                if self._metadata_matches_target(row["metadata_json"])
+            ]
+            counts: dict[str, int] = {}
+            for row in stage_rows:
+                status = str(row["status"])
+                counts[status] = counts.get(status, 0) + 1
             timing_rows = connection.execute(
-                """SELECT enqueued_at, finished_at
+                """SELECT enqueued_at, finished_at, metadata_json
                    FROM merge_requests
                    WHERE status='completed' AND finished_at > 0
                    ORDER BY finished_at"""
             ).fetchall()
+            timing_rows = [
+                row
+                for row in timing_rows
+                if self._metadata_matches_target(row["metadata_json"])
+            ]
             processing_rows = connection.execute(
                 "SELECT metadata_json FROM merge_requests WHERE status='processing'"
             ).fetchall()
+            processing_rows = [
+                row
+                for row in processing_rows
+                if self._metadata_matches_target(row["metadata_json"])
+            ]
             pending_rows = connection.execute(
                 "SELECT metadata_json FROM merge_requests WHERE status='pending'"
             ).fetchall()
+            pending_rows = [
+                row
+                for row in pending_rows
+                if self._metadata_matches_target(row["metadata_json"])
+            ]
         completed_span = (
             max(
                 0.0,
@@ -1256,6 +1499,9 @@ class MergeQueue:
             "total": sum(counts.values()),
             "queue_dir": str(self.queue_dir),
             "database_path": str(self.database_path),
+            "target_repository_id": self.target_repository_id,
+            "target_branch": self.target_branch,
+            "target_binding_required": self.require_target_binding,
             "max_attempts": self.max_attempts,
             "max_queue_size": self.max_queue_size,
             "max_processing": self.max_processing,

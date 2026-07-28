@@ -43,6 +43,8 @@ from ..merge.checkout_lock import (
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     checkout_lock_metadata,
     checkout_mutation_lock_path,
+    checkout_repository_id,
+    merge_target_queue_dir,
     serialized_lock_update,
 )
 from ..runtime.event_log import (
@@ -77,7 +79,7 @@ from ..task_sources.taskboard_store import (
 from ..merge.git_gc import GitGarbageCollector
 from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge.merge_checkpoint import MergeCheckpoint
-from ..merge.merge_queue import MergeQueue
+from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
 from ..validation.validation_commands import (
     infer_validation_impact_paths,
     normalize_validation_command_text,
@@ -2190,10 +2192,30 @@ class PortalImplementationDaemon:
         self._last_periodic_maintenance_monotonic: float | None = None
         # Lane state directories are intentionally isolated, so the merge train
         # cannot live next to ``state_path``.  The git common directory is shared
-        # by every worktree and supervisor lane for this repository.
-        default_merge_queue_dir = checkout_mutation_lock_path(self.repo_root).parent / "agent-merge-train"
-        self.merge_queue_dir = merge_queue_dir or default_merge_queue_dir
+        # by every worktree and supervisor lane for this repository. A second
+        # namespace component binds the train to its exact destination, keeping
+        # upgraded producers invisible to old repo-wide consumers.
+        self.resolved_merge_target_branch = self._main_branch_name()
+        self.merge_target_repository_id = checkout_repository_id(self.repo_root)
+        default_merge_queue_dir = merge_target_queue_dir(
+            self.repo_root,
+            self.resolved_merge_target_branch,
+        )
+        queue_owned_dir = getattr(merge_queue, "queue_dir", None)
+        self.merge_queue_dir = Path(
+            merge_queue_dir or queue_owned_dir or default_merge_queue_dir
+        )
         self.merge_queue = merge_queue or MergeQueue(self.merge_queue_dir)
+        bind_target = getattr(self.merge_queue, "bind_target", None)
+        if not callable(bind_target):
+            raise TypeError(
+                "implementation merge queue must support durable target binding"
+            )
+        bind_target(
+            self.merge_target_repository_id,
+            self.resolved_merge_target_branch,
+            required=True,
+        )
         configured_validation_workers = (
             _env_int(VALIDATION_MAX_WORKERS_ENV, DEFAULT_VALIDATION_MAX_WORKERS)
             if validation_max_workers is None
@@ -4878,6 +4900,15 @@ class PortalImplementationDaemon:
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
             }
         )
+        provider_backoff = self._active_provider_capacity_backoff()
+        if provider_backoff:
+            result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
+            result["next_wake_after_seconds"] = provider_backoff[
+                "retry_after_seconds"
+            ]
+        else:
+            result.pop("provider_capacity_retry_at", None)
+            result.pop("next_wake_after_seconds", None)
         self._acknowledge_runtime_events()
         return result
 
@@ -5083,15 +5114,22 @@ class PortalImplementationDaemon:
             time.monotonic() - self._last_safety_reconciliation_monotonic
             >= DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
         )
-        if (
+        preflight_unchanged = (
             source_digest == self._runtime_last_source_digest
             and not forced_wake_kinds
             and not safety_reconciliation_due
-        ):
-            return self._unchanged_runtime_result(
-                source_digest=source_digest,
-                wake_kinds=wake_kinds,
+        )
+        if preflight_unchanged:
+            provider_retry_schedule = self._provider_capacity_backoff_schedule()
+            provider_retry_due = bool(
+                provider_retry_schedule
+                and not provider_retry_schedule.get("active", False)
             )
+            if not provider_retry_due:
+                return self._unchanged_runtime_result(
+                    source_digest=source_digest,
+                    wake_kinds=wake_kinds,
+                )
         self._last_safety_reconciliation_monotonic = time.monotonic()
         event_log_repair = self.ensure_event_log_file()
         state_file_repair = self.ensure_state_file()
@@ -5598,7 +5636,19 @@ class PortalImplementationDaemon:
                 self._record_event("implementation_skipped", implementation_result)
             else:
                 implementation_result = self._run_implementation(selected, state)
-        if state_written or implementation_result is not None:
+        provider_backoff_result = bool(
+            implementation_result
+            and implementation_result.get("reason") == "provider_capacity_backoff"
+        )
+        provider_capacity_deferral_result = bool(
+            implementation_result
+            and implementation_result.get("deferred", False)
+            and implementation_result.get("reason")
+            in {"provider_capacity_exhausted", "provider_capacity_backoff"}
+        )
+        if state_written or (
+            implementation_result is not None and not provider_backoff_result
+        ):
             self._record_event(
                 "daemon_pass",
                 {
@@ -5615,6 +5665,22 @@ class PortalImplementationDaemon:
                     "attempt_limited_task_ids": [
                         item["task_id"] for item in attempt_limited_tasks
                     ],
+                    "execution_slice_task_statuses": {
+                        task.task_id: str(
+                            state.task_statuses.get(task.task_id) or ""
+                        )
+                        for task in execution_tasks
+                    },
+                    "execution_slice_task_cids_by_id": {
+                        task.task_id: str(
+                            (
+                                state.task_identities.get(task.task_id)
+                                or {}
+                            ).get("canonical_task_cid")
+                            or ""
+                        )
+                        for task in execution_tasks
+                    },
                     "retry_budget_reset_task_ids": [
                         item["source_task_id"] for item in retry_budget_resets
                     ],
@@ -5675,13 +5741,20 @@ class PortalImplementationDaemon:
             "canonical_task_count": len(aliases_by_cid),
             "merge_train_progress": merge_train_progress,
             "protected_path_reconciliation": protected_path_reconciliation,
-            "unchanged": not state_written and implementation_result is None,
+            "unchanged": not state_written
+            and (implementation_result is None or provider_backoff_result),
             "state_written": state_written,
             "write_count": int(state_written),
             "projection_delta": projection_delta,
             "wake_kinds": sorted(wake_kinds),
             "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
+        provider_backoff = self._active_provider_capacity_backoff()
+        if provider_backoff:
+            result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
+            result["next_wake_after_seconds"] = provider_backoff[
+                "retry_after_seconds"
+            ]
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
             result["task_source_identity"] = task_source_identity
@@ -5690,7 +5763,9 @@ class PortalImplementationDaemon:
         # execution state after the board projection above was selected. Do
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
-        if state_written and implementation_result is None:
+        if state_written and (
+            implementation_result is None or provider_capacity_deferral_result
+        ):
             checkpoint_result = self._save_runtime_checkpoint(
                 source_digest=final_source_digest,
                 sources=final_sources,
@@ -5700,7 +5775,9 @@ class PortalImplementationDaemon:
             result["delta_checkpoint"] = checkpoint_result
             result["write_count"] += int(checkpoint_result["write_count"])
         self._runtime_last_source_digest = (
-            final_source_digest if implementation_result is None else ""
+            final_source_digest
+            if implementation_result is None or provider_capacity_deferral_result
+            else ""
         )
         self._runtime_last_result = self._runtime_result_projection(result)
         self._acknowledge_runtime_events()
@@ -5776,36 +5853,45 @@ class PortalImplementationDaemon:
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
 
-    def _active_provider_capacity_backoff(self) -> dict[str, Any]:
+    def _provider_capacity_backoff_schedule(self) -> dict[str, Any]:
+        """Return the latest invocation-bound provider retry schedule, if any.
+
+        Includes expired schedules (``active`` false) so ``run_once`` can wake
+        when a prior capacity latch becomes due without waiting on other events.
+        Provider labels isolate codex/goose/grok latches from each other.
+        """
+
         now = datetime.now(timezone.utc)
         current_labels = self._current_implementation_provider_labels()
         for event in reversed(self._iter_events()):
             event_type = str(event.get("type") or "")
             if event_type == "implementation_provider_exhausted":
                 retry_at = parse_timestamp(str(event.get("retry_at") or ""))
-                if retry_at is None or retry_at <= now:
+                if retry_at is None:
                     return {}
                 exhausted = {
                     str(item).strip().lower()
                     for item in list(event.get("providers") or [])
                     if str(item).strip()
                 }
-                # A codex quota latch must not block goose+Meta Spark (and vice
-                # versa). Only honor backoff when the exhausted providers
-                # overlap the runner we would actually launch.
+                # A codex quota latch must not block goose/grok (and vice versa).
                 if exhausted and not (exhausted & current_labels):
                     continue
                 return {
-                    "active": True,
+                    "active": retry_at > now,
                     "retry_at": retry_at.isoformat(),
                     "retry_after_seconds": max(
                         0.0, (retry_at - now).total_seconds()
                     ),
                     "providers": list(event.get("providers") or []),
                 }
-            if event_type == "implementation_finished" and int(event.get("returncode") or 0) == 0:
+            if event_type in {"implementation_started", "implementation_finished"}:
                 return {}
         return {}
+
+    def _active_provider_capacity_backoff(self) -> dict[str, Any]:
+        schedule = self._provider_capacity_backoff_schedule()
+        return schedule if schedule.get("active", False) else {}
 
     def _record_provider_capacity_deferral(
         self,
@@ -5835,6 +5921,7 @@ class PortalImplementationDaemon:
         state.last_implementation_branch = branch_name
         self._restore_task_attempt(state, task, max(0, attempt - 1))
         self._mark_implementation_finished(state, finished_at=finished_at)
+        state.selection_idle_reason = "provider_capacity_backoff"
         state.save(self.state_path)
         result = {
             "task_id": task.task_id,
@@ -7476,7 +7563,10 @@ class PortalImplementationDaemon:
             )
         )
         metadata = {
-            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@1",
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@2",
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": self.merge_target_repository_id,
+            "target_branch": self.resolved_merge_target_branch,
             "baseline_ref": baseline_ref,
             "implementation_commit": implementation_commit,
             "candidate_tree": candidate_tree,
@@ -7611,6 +7701,8 @@ class PortalImplementationDaemon:
             commit_sha=implementation_commit,
             canonical_task_id=identity.canonical_task_cid,
             canonical_task_key=identity.canonical_task_key,
+            target_repository_id=self.merge_target_repository_id,
+            target_branch=self.resolved_merge_target_branch,
         )
         result = {
             "attempted": False,
@@ -7623,6 +7715,8 @@ class PortalImplementationDaemon:
             "canonical_task_key": identity.canonical_task_key,
             "canonical_task_cid": identity.canonical_task_cid,
             "queue_dir": str(self.merge_queue_dir),
+            "target_repository_id": self.merge_target_repository_id,
+            "target_branch": self.resolved_merge_target_branch,
         }
         self._record_event(
             "merge_candidate_enqueued",
@@ -7730,6 +7824,37 @@ class PortalImplementationDaemon:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        actual_repository_id = str(
+            getattr(request, "target_repository_id", "")
+            or metadata.get("target_repository_id")
+            or ""
+        ).strip()
+        actual_branch = str(
+            getattr(request, "target_branch", "")
+            or metadata.get("target_branch")
+            or ""
+        ).strip()
+        actual_schema = str(
+            metadata.get("target_binding_schema") or ""
+        ).strip()
+        if (
+            actual_schema != MERGE_TARGET_BINDING_SCHEMA
+            or actual_repository_id != self.merge_target_repository_id
+            or actual_branch != self.resolved_merge_target_branch
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "merge_target_binding_mismatch",
+                "expected_target_repository_id": (
+                    self.merge_target_repository_id
+                ),
+                "expected_target_branch": self.resolved_merge_target_branch,
+                "actual_target_repository_id": actual_repository_id,
+                "actual_target_branch": actual_branch,
+                "actual_target_binding_schema": actual_schema,
+            }
         task = self._portal_task_from_merge_request(request)
         branch_name = str(request.branch_name or "")
         implementation_commit = str(
@@ -7949,6 +8074,7 @@ class PortalImplementationDaemon:
                         task_header_prefix=str(metadata.get("task_header_prefix") or self.task_header_prefix),
                         implement=False,
                         worktree_root=self.worktree_root,
+                        merge_target_branch=self.resolved_merge_target_branch,
                         worktree_submodule_paths=self.worktree_submodule_paths,
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,
@@ -8126,7 +8252,7 @@ class PortalImplementationDaemon:
         train = MergeTrain(
             repo_root=self.repo_root,
             queue=self.merge_queue,
-            target_branch=self._main_branch_name(),
+            target_branch=self.resolved_merge_target_branch,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
             merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
@@ -17977,21 +18103,28 @@ class PortalImplementationDaemon:
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
             or "auto"
         )
-        goose_meta_ready = _goose_meta_spark_available()
         grok_ready = _grok_cli_available()
+        goose_meta_ready = _goose_meta_spark_available()
+        prefer_grok = provider in {
+            "auto",
+            "grok",
+            "grok_cli",
+            "grok-cli",
+            "grok_build",
+            "grok-build",
+            "xai_cli",
+            "xai-cli",
+        }
         force_grok = provider in {
             "grok",
             "grok_cli",
             "grok-cli",
-            "xai_cli",
-            "xai-cli",
             "grok_build",
             "grok-build",
-            "grok_build_cli",
-            "grok-build-cli",
+            "xai_cli",
+            "xai-cli",
         }
         prefer_goose_meta = provider in {
-            "auto",
             "goose",
             "goose_meta",
             "goose-meta",
@@ -18015,24 +18148,34 @@ class PortalImplementationDaemon:
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
+        # Prefer only when the binary is actually resolvable so an auth-only
+        # readiness signal does not block auto-fallback to codex/copilot.
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
                     "Implementation provider "
-                    f"{provider!r} requires the grok CLI and auth "
-                    "(grok login / XAI_API_KEY)"
+                    f"{provider!r} requires the Grok Build CLI (`grok`) with "
+                    "login/auth (or XAI_API_KEY)"
                 )
             return _grok_cli_command(workspace_path=workspace_path)
-
-        if force_goose_meta or (
-            prefer_goose_meta and goose_meta_ready and not force_codex and not force_grok
+        if (
+            prefer_grok
+            and grok_ready
+            and _grok_binary()
+            and not force_codex
+            and not force_goose_meta
         ):
+            return _grok_cli_command(workspace_path=workspace_path)
+
+        if force_goose_meta:
             if not goose_meta_ready:
                 raise RuntimeError(
                     "Implementation provider "
                     f"{provider!r} requires goose CLI and a Meta Spark key "
                     "(meta_ai_api_key / MODEL_API_KEY)"
                 )
+            return _goose_meta_spark_command(workspace_path=workspace_path)
+        if prefer_goose_meta and goose_meta_ready and _goose_binary() and not force_codex:
             return _goose_meta_spark_command(workspace_path=workspace_path)
 
         codex = shutil.which("codex")
@@ -18071,9 +18214,9 @@ class PortalImplementationDaemon:
         if goose_meta_ready:
             return _goose_meta_spark_command(workspace_path=workspace_path)
         raise RuntimeError(
-            "No implementation command configured. Install grok (authenticated), "
-            "goose (with Meta Spark credentials), codex, or copilot, or set "
-            "IMPLEMENTATION_DAEMON_COMMAND / IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER."
+            "No implementation command configured. Install the Grok Build CLI "
+            "(`grok` with auth), goose (with Meta Spark credentials), codex, or "
+            "copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
         )
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:

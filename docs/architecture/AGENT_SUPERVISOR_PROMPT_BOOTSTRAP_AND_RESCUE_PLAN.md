@@ -660,6 +660,165 @@ Promotion requires a later evaluation on a fresh repository root. Task
 completion, a successful demo, model confidence, process liveness, or a
 passing happy-path test is insufficient.
 
+## Paired gate, metrics, and operator controls (ASI-159)
+
+The closed gate owner modules are:
+
+- `prompt_workflow_benchmark.py` — frozen producer receipts, gate recompute;
+- `prompt_workflow_rollout.py` — off/shadow/assist/automatic decision and
+  Python/CLI/MCP public control facade.
+
+Requirement IDs:
+
+- benchmark: `asi-159:prompt-workflow-paired-adversarial-chaos-gate`
+- rollout: `asi-159:prompt-workflow-bootstrap-rescue-rollout`
+- behavior: `behavior:prompt-workflow-bootstrap-rescue@1`
+
+### DuckDB schema and migration
+
+Versioned schema `agent_supervisor_workflow/v1` (application-enforced FKs):
+
+```text
+workflow_metadata(key, value, value_json)
+artifacts(cid, media_type, byte_length, digest, storage_uri, provenance_json)
+goals(goal_cid, goal_alias, parent_goal_cid, ordinal, title, body_json)
+tasks(task_cid, task_alias, goal_cid, ordinal, status, revision, body_json)
+task_dependencies(task_cid, dependency_task_cid, kind)
+task_outputs(task_cid, ordinal, path, effect_json)
+task_validations(task_cid, ordinal, argv_json, policy_json)
+task_acceptance(task_cid, ordinal, criterion, evidence_policy_json)
+task_events(event_cid, sequence, task_cid, event_type, body_json)
+materialization_receipts(receipt_cid, plan_root_cid, revision, body_json)
+```
+
+Migration policy: preview the schema delta, capture a backup identity, apply
+one fenced writer transaction, and retain a compatibility matrix. Crash during
+migration must leave either the prior revision or a quarantined install, never
+a half-applied dual projection. Dual Markdown/DuckDB materialization requires
+exact admitted task CID and edge parity before either projection is declared
+ready.
+
+### Lifecycle and recovery runbook
+
+1. **Preview** a prompt+directory request (`workflow_preview`); store only the
+   prompt CID and redacted metadata.
+2. **Materialize** an admitted preview to Markdown, DuckDB, or both under a
+   normal control-plane permit (`workflow_materialize`).
+3. **Start** the supervisor profile with expected effects and a health window
+   (`start`). On partial start, resume from the durable materialization root.
+4. **Restart** as one fenced lifecycle transaction that binds the old run,
+   termination proof, preserved configuration, and new run health.
+5. **Diagnose** incidents into a content-addressed `SupervisorIncident`.
+6. **Recover** through the deterministic ladder (observe → repair → retry →
+   worktree rescue → validation/merge replay → quarantine → conditional
+   refill). Emit `ProgrammaticRecoveryExhaustionReceipt` before any model
+   fallback.
+7. **Rescue-preview** may optionally call `llm_router` for a closed
+   `RescuePlan/v1`. Reject shell, patches, new paths, policy edits, and
+   completion claims.
+8. **Rescue** executes only independently admitted catalog operations, one
+   permit and post-effect receipt at a time.
+
+Crash injection covers every materialize/lifecycle/rescue
+intent → effect → receipt boundary. Each fault must resume, compensate, or
+quarantine with bounded retries, model calls, storage, and processes.
+
+### Threat model (operator summary)
+
+| Class | Required fail-closed outcome |
+| --- | --- |
+| Prompt/repository injection | Reject; no scope or policy widening |
+| Path/symlink/output escape | Reject before scan or materialize |
+| Secret/credential leakage | Fail closed; zero secret bytes in receipts |
+| Forged/stale CID, schema downgrade, cross-repo replay | Reject |
+| SQL injection / extension load / corrupt DB | Fail closed or quarantine |
+| PID reuse / process escape / split brain | Quarantine or fenced stop |
+| Policy/authorization/permit/completion forgery | Deny |
+| Shell rescue proposal / authority self-grant | Quarantine proposal |
+| Optional dependency loss | Explicit local degrade or fail closed |
+
+### Receipts and metrics
+
+Every gate report recomputes from producer receipts only:
+
+- admitted task CIDs, ready sets, accepted effects, terminal outcomes;
+- task-source, planning-mode, and transport parity flags;
+- adversarial fixture and chaos boundary coverage;
+- model calls, provider tokens, retries, storage bytes, process counts;
+- secret hygiene, lazy discovery, and deterministic degraded-local flags.
+
+A serialized report never grants authority. Restoration always replays the
+complete source population.
+
+### Operator rescue guidance
+
+```python
+from ipfs_accelerate_py.agent_supervisor.prompt_workflow_benchmark import (
+    build_frozen_prompt_workflow_benchmark,
+    recompute_prompt_workflow_gate,
+)
+from ipfs_accelerate_py.agent_supervisor.prompt_workflow_rollout import (
+    PromptWorkflowControlRequest,
+    PromptWorkflowPublicAPI,
+    PromptWorkflowRolloutEvaluation,
+    build_default_prompt_workflow_binding,
+    build_default_prompt_workflow_policy,
+    evaluate_prompt_workflow_rollout,
+)
+
+qualification = PromptWorkflowRolloutEvaluation(
+    "evaluation:qualification@1",
+    "2026-01-01T00:00:00Z",
+    build_frozen_prompt_workflow_benchmark(observation_label="qualification"),
+)
+current = PromptWorkflowRolloutEvaluation(
+    "evaluation:current@1",
+    "2026-01-02T00:00:00Z",
+    build_frozen_prompt_workflow_benchmark(observation_label="current"),
+)
+binding = build_default_prompt_workflow_binding()
+policy = build_default_prompt_workflow_policy(approve_automatic=True)
+
+# Never promote automatic on the qualification root alone.
+decision = evaluate_prompt_workflow_rollout(
+    qualification,
+    binding=binding,
+    policy=policy,
+    desired_mode="automatic",
+    current_evaluation=current,
+)
+
+api = PromptWorkflowPublicAPI(
+    qualification,
+    binding=binding,
+    policy=policy,
+    current_evaluation=current,
+)
+request = PromptWorkflowControlRequest(action="automatic")
+assert api.python(request).to_dict() == api.cli(request.to_dict()).to_dict()
+assert api.mcp(request.to_dict()).decision.effective_mode.value == (
+    decision.effective_mode.value
+)
+# Immediate operator rollback of the affected behavior only.
+assert api.rollback().decision.effective_mode.value == "shadow"
+```
+
+CLI-shaped actions and MCP request objects share the same vocabulary: `off`,
+`shadow`, `assist`, `automatic`, `status`, `explanation`, and `rollback`.
+Live workflow mutations still require the shared control-plane permit, lease,
+fence, expected effects, and post-effect health window.
+
+Validation gate:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_prompt_workflow_e2e.py \
+  test/api/test_agent_supervisor_prompt_workflow_adversarial.py \
+  test/api/test_agent_supervisor_prompt_workflow_chaos.py \
+  test/api/test_agent_supervisor_prompt_workflow_rollout.py \
+  test/api/test_agent_supervisor_prompt_workflow_public_api.py -q
+```
+
 ## Delivery goal graph
 
 The executable ASI-G400 tree is appended to:

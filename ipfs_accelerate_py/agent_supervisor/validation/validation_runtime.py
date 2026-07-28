@@ -772,12 +772,37 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "dynamic shell evaluation is not permitted for validation"
         )
+    # A reviewed command may prepend workspace-local import roots with an
+    # assignment such as ``PYTHONPATH=src:. python -m pytest``.  Bash applies
+    # that assignment to the shell function itself, which would otherwise
+    # replace the approved site-packages roots supplied by
+    # ``build_validation_environment``.  Capture those roots before executing
+    # the reviewed text and append them inside every guarded Python launcher.
+    # This retains the command's intentional workspace imports while keeping
+    # the pinned pytest/runtime packages available.
     guarded = (
         f"readonly {_CHILD_PYTHON_ENV}; "
-        f'python() {{ "${{{_CHILD_PYTHON_ENV}}}" "$@"; }}; '
-        f'python3() {{ "${{{_CHILD_PYTHON_ENV}}}" "$@"; }}; '
-        f'pytest() {{ "${{{_CHILD_PYTHON_ENV}}}" -m pytest "$@"; }}; '
-        "readonly -f python python3 pytest; "
+        '_IPFS_ACCELERATE_APPROVED_PYTHONPATH="${PYTHONPATH-}"; '
+        "readonly _IPFS_ACCELERATE_APPROVED_PYTHONPATH; "
+        "_ipfs_accelerate_validation_python() { "
+        'local requested="${PYTHONPATH-}"; '
+        'local approved="${_IPFS_ACCELERATE_APPROVED_PYTHONPATH}"; '
+        'if [[ -n "$approved" && "$requested" != "$approved" ]]; then '
+        'if [[ -n "$requested" ]]; then '
+        'PYTHONPATH="$requested:$approved" '
+        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        "else "
+        'PYTHONPATH="$approved" '
+        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        "fi; "
+        "else "
+        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        "fi; "
+        "}; "
+        'python() { _ipfs_accelerate_validation_python "$@"; }; '
+        'python3() { _ipfs_accelerate_validation_python "$@"; }; '
+        'pytest() { _ipfs_accelerate_validation_python -m pytest "$@"; }; '
+        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
         f"{text}"
     )
     return ["/bin/bash", "--noprofile", "--norc", "-c", guarded]

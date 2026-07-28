@@ -50,8 +50,11 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     reconciliation_guardrail_records,
     record_reconciliation_guardrail_findings,
 )
-from ipfs_accelerate_py.agent_supervisor.merge import merge_resolver
-from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor import merge_resolver
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    MERGE_TARGET_BINDING_SCHEMA,
+    MergeQueue,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     ConfiguredMergeResolverRunner,
     MergeResolverNamespaceSpec,
@@ -75,7 +78,7 @@ from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     run_configured_task_proposal_router_cli,
     standard_task_proposal_requested_outputs,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner
+from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     ConfiguredMultiSupervisorCliRunner,
     ConfiguredMultiSupervisorLauncher,
@@ -125,7 +128,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_r
     build_namespace_objective_refill_defaults_factory,
     build_objective_refill_defaults_from_paths,
 )
-from ipfs_accelerate_py.agent_supervisor.merge import git_gc as git_gc_module
+from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.merge.git_gc import GitGarbageCollector
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
@@ -2732,7 +2735,7 @@ def test_build_repo_task_proposal_router_runner_uses_repo_runtime_bootstrap(tmp_
         return RuntimeCallbacks()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.core.wrapper_utils.build_repo_runtime_environment_callbacks",
+        "ipfs_accelerate_py.agent_supervisor.wrapper_utils.build_repo_runtime_environment_callbacks",
         fake_build_repo_runtime_environment_callbacks,
     )
 
@@ -4778,6 +4781,9 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
         priority="P0",
         attempt=2,
         metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
             "task": {
                 "task_id": "REF-040",
                 "title": "Recover merge handoff",
@@ -4866,6 +4872,9 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
         priority="P0",
         attempt=1,
         metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
             "task": {
                 "task_id": "REF-041",
                 "title": "Accept resolver merge",
@@ -4944,6 +4953,9 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
         priority="P0",
         attempt=1,
         metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
             "changed_submodule_paths": ["libs/child"],
             "task": {
                 "task_id": "REF-042",
@@ -6669,7 +6681,8 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
         "-c",
     ]
     assert captured["args"][0][4].endswith(
-        f"readonly -f python python3 pytest; {task.validation[0]}"
+        "readonly -f _ipfs_accelerate_validation_python "
+        f"python python3 pytest; {task.validation[0]}"
     )
     assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
     assert captured["kwargs"]["timeout"] == 1
@@ -7379,6 +7392,62 @@ def test_bundle_runtime_taskboard_rejects_source_digest_change_after_planning(
     assert not lane.runtime_todo_path.exists()
 
 
+def test_bundle_runtime_taskboard_preserves_atomic_semicolon_validations(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shard_path = repo / "atomic.todo.md"
+    validation_commands = [
+        "python -m pytest tests/test_compile.py",
+        "python -m pytest tests/test_manifest.py",
+        "python -m pytest tests/test_roundtrip.py",
+    ]
+    shard_path.write_text(
+        """# Reviewed bundle input
+
+## ACCEL-001 Validate one implementation atomically
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: benchmark
+- Validation: """
+        + "; ".join(validation_commands)
+        + "\n",
+        encoding="utf-8",
+    )
+    index_path = repo / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "objective/benchmark/atomic-validation": {
+                        "shard_path": "atomic.todo.md",
+                        "tasks": [{"task_id": "ACCEL-001"}],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    lane = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "runtime",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="## ACCEL-",
+    )[0]
+
+    materialize_bundle_lane_taskboard(lane, repo_root=repo)
+
+    assert lane.runtime_todo_path is not None
+    assert lane.runtime_todo_path.read_bytes() == shard_path.read_bytes()
+    [runtime_task] = parse_task_file(lane.runtime_todo_path, "## ACCEL-")
+    assert runtime_task.validation == validation_commands
+
+
 def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7473,6 +7542,77 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
     ]
     assert any(event["type"] == "implementation_provider_exhausted" for event in events)
     assert not any(event["type"] == "implementation_finished" for event in events)
+
+
+def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Wait for provider capacity
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: result.txt
+- Validation:
+- Acceptance: Provider capacity permits the implementation agent to run.
+""",
+        encoding="utf-8",
+    )
+    quota_script = repo / "quota.sh"
+    quota_script.write_text(
+        "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS",
+        "600",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="bash quota.sh",
+    )
+
+    first = daemon.run_once()
+    first_retry_at = first["implementation_result"]["retry_at"]
+    state_after_failure = state_path.read_bytes()
+    events_after_failure = events_path.read_bytes()
+
+    second = daemon.run_once()
+
+    assert second["implementation_result"] is None
+    assert second["provider_capacity_retry_at"] == first_retry_at
+    assert 0 < second["next_wake_after_seconds"] <= 600
+    assert second["unchanged"] is True
+    assert second["write_count"] == 0
+    assert state_path.read_bytes() == state_after_failure
+    assert events_path.read_bytes() == events_after_failure
+
+    third = daemon.run_once()
+
+    assert third["unchanged"] is True
+    assert third["implementation_result"] is None
+    assert third["provider_capacity_retry_at"] == first_retry_at
+    assert 0 < third["next_wake_after_seconds"] <= second["next_wake_after_seconds"]
+    assert state_path.read_bytes() == state_after_failure
+    assert events_path.read_bytes() == events_after_failure
 
 
 def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tmp_path):
@@ -10531,6 +10671,7 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
 
 def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
+    repo.mkdir()
     worktree_path = repo / "worktrees" / "accel-999-attempt-1"
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -10562,6 +10703,7 @@ def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(
 
 def test_implementation_daemon_recognizes_shared_checkout_runner_without_worktree_path(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
+    repo.mkdir()
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=repo / "state" / "task_state.json",
@@ -11377,7 +11519,7 @@ def test_implementation_supervisor_runs_codebase_scan_after_objective_refill_tim
     tmp_path,
     monkeypatch,
 ):
-    from ipfs_accelerate_py.agent_supervisor.objectives import objective_daemon
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11465,7 +11607,7 @@ def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
     tmp_path,
     monkeypatch,
 ):
-    from ipfs_accelerate_py.agent_supervisor.objectives import objective_daemon
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11527,7 +11669,7 @@ def test_completion_reconciliation_runs_when_refill_is_skipped_by_threshold(
     tmp_path,
     monkeypatch,
 ):
-    from ipfs_accelerate_py.agent_supervisor.objectives import objective_daemon
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11681,7 +11823,7 @@ def test_completion_artifact_refresh_wraps_launch_failure(tmp_path, monkeypatch)
 
 
 def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, monkeypatch):
-    from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery
+    from ipfs_accelerate_py.agent_supervisor import backlog_refinery
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -11733,7 +11875,7 @@ def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, mo
 
 
 def test_implementation_supervisor_records_codebase_refill_timeout(tmp_path, monkeypatch):
-    from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery
+    from ipfs_accelerate_py.agent_supervisor import backlog_refinery
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12044,7 +12186,7 @@ def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
 
     payload = run_objective_daemon(args)
 
-    assert payload["schema"] == "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon"
+    assert payload["schema"] == "ipfs_accelerate_py.agent_supervisor.objective_daemon"
     assert payload["generated_count"] == 1
     assert payload["task_ids"] == ["ACCEL-001"]
     assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
@@ -12056,7 +12198,7 @@ def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
     todo_index = bundle_dir / "todo_vector_index.json"
     assert todo_index.exists()
     index_payload = json.loads(todo_index.read_text(encoding="utf-8"))
-    assert index_payload["schema"] == "ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index"
+    assert index_payload["schema"] == "ipfs_accelerate_py.agent_supervisor.todo_vector_index"
     assert index_payload["task_count"] == 1
     assert index_payload["records"][0]["goal_id"] == "VAIOS-G010"
     assert index_payload["records"][0]["merge_key"]
@@ -13303,7 +13445,7 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
             max_input_tokens=2_000,
             reserved_output_tokens=300,
             reserved_tool_tokens=100,
-            max_items=32,
+            max_items=64,
         ),
         implementation_context_tokenizer=lambda text: max(
             1, len(text.encode("utf-8")) // 16
@@ -15273,6 +15415,7 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
                             {
                                 "task_id": task_id,
                                 "canonical_task_cid": identity.canonical_task_cid,
+                                "canonical_task_key": identity.canonical_task_key,
                             }
                             for task_id, identity in expected_identities.items()
                         ],
@@ -15321,7 +15464,7 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     launched = launch_bundle_lanes(
@@ -15488,7 +15631,7 @@ def test_legacy_aggregate_member_ids_release_downstream_lane(
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     launched = launch_bundle_lanes(

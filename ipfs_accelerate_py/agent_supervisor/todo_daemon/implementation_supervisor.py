@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import shlex
 import signal
@@ -243,10 +244,12 @@ class PortalSupervisorConfig:
     llm_merge_resolver_command: str = ""
     llm_merge_resolver_timeout_seconds: float | None = None
     implementation_timeout: float = 1800.0
+    implementation_max_timeout: float | None = None
     implementation_log_stall_seconds: float = 300.0
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
     merge_target_branch: str = ""
+    merge_queue_dir: Path | None = None
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
     implementation_protected_paths: tuple[str, ...] = field(default_factory=tuple)
     worktree_reconciliation_enabled: bool = True
@@ -494,10 +497,28 @@ class PortalImplementationSupervisor:
     def _supervisor_maintenance_timeout_seconds(self) -> float:
         return max(
             float(self.config.stale_seconds),
-            float(self.config.implementation_timeout),
+            self._implementation_watchdog_timeout_seconds(),
             float(self.config.check_interval) * 4.0,
             300.0,
         )
+
+    def _implementation_watchdog_timeout_seconds(self) -> float:
+        """Return the lane envelope without weakening per-task idle limits."""
+
+        configured = float(self.config.implementation_timeout)
+        maximum = self.config.implementation_max_timeout
+        if maximum is None:
+            return configured
+        if (
+            isinstance(maximum, bool)
+            or not isinstance(maximum, (int, float))
+            or not math.isfinite(float(maximum))
+            or float(maximum) <= 0
+        ):
+            raise ValueError(
+                "implementation_max_timeout must be finite and positive"
+            )
+        return max(configured, float(maximum))
 
     def _watchdog_startup_grace_seconds(self) -> float:
         configured = self.config.watchdog_startup_grace_seconds
@@ -1870,7 +1891,7 @@ class PortalImplementationSupervisor:
         watchdog_stale_after_seconds = max(
             0.0,
             float(self.config.stale_seconds),
-            float(self.config.implementation_timeout)
+            self._implementation_watchdog_timeout_seconds()
             + max(30.0, float(self.config.check_interval) * 2.0),
         )
         spec = ManagedDaemonSpec(
@@ -3685,6 +3706,8 @@ class PortalImplementationSupervisor:
             max_task_attempts=self.config.max_task_attempts,
             use_ephemeral_worktree=False,
             worktree_root=self.config.worktree_root,
+            merge_target_branch=self.config.merge_target_branch,
+            merge_queue_dir=self.config.merge_queue_dir,
             worktree_submodule_paths=self.config.worktree_submodule_paths,
             objective_path=self.config.objective_path,
             objective_bundle_dir=self.config.objective_bundle_dir,
@@ -6581,7 +6604,10 @@ class PortalImplementationSupervisor:
         if finished_at is not None and finished_at >= started_at:
             return False
         grace_seconds = max(30.0, float(self.config.check_interval) * 2.0)
-        max_age_seconds = max(float(self.config.stale_seconds), float(self.config.implementation_timeout))
+        max_age_seconds = max(
+            float(self.config.stale_seconds),
+            self._implementation_watchdog_timeout_seconds(),
+        )
         return max(0.0, now_ts - started_at.timestamp()) <= max_age_seconds + grace_seconds
 
     def _implementation_log_stall_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
@@ -6959,6 +6985,14 @@ class PortalImplementationSupervisor:
             command.extend(["--generated-status-path", str(path)])
         for relative in self.config.implementation_protected_paths:
             command.extend(["--implementation-protected-path", relative])
+        if self.config.merge_target_branch:
+            command.extend(
+                ["--merge-target-branch", self.config.merge_target_branch]
+            )
+        if self.config.merge_queue_dir is not None:
+            command.extend(
+                ["--merge-queue-dir", str(self.config.merge_queue_dir)]
+            )
         if self.config.implement:
             command.append("--implement")
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
@@ -6977,8 +7011,6 @@ class PortalImplementationSupervisor:
                 command.append("--no-ephemeral-worktree")
             if self.config.worktree_root is not None:
                 command.extend(["--worktree-root", str(self.config.worktree_root)])
-            if self.config.merge_target_branch:
-                command.extend(["--merge-target-branch", self.config.merge_target_branch])
             for relative in self.config.worktree_submodule_paths:
                 command.extend(["--worktree-submodule-path", relative])
             if self.config.objective_path is not None:
@@ -7287,6 +7319,20 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_cids
         ):
             return False
+        expected_merge_targets = (
+            {self.config.merge_target_branch}
+            if self.config.merge_target_branch
+            else set()
+        )
+        if option_values("--merge-target-branch") != expected_merge_targets:
+            return False
+        expected_merge_queue_dirs = (
+            {str(self.config.merge_queue_dir)}
+            if self.config.merge_queue_dir is not None
+            else set()
+        )
+        if option_values("--merge-queue-dir") != expected_merge_queue_dirs:
+            return False
         return True
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
@@ -7408,6 +7454,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument(
+        "--implementation-max-timeout",
+        type=float,
+        default=None,
+        help=(
+            "Maximum task-specific implementation hard timeout in this lane. "
+            "This extends only the parent watchdog; --implementation-timeout "
+            "remains the daemon's ordinary and no-progress policy."
+        ),
+    )
+    parser.add_argument(
         "--implementation-log-stall-seconds",
         type=float,
         default=300.0,
@@ -7430,6 +7486,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Branch that receives isolated implementation merges. Defaults to main/master, then the "
             "current branch. A configured branch must exist."
+        ),
+    )
+    parser.add_argument(
+        "--merge-queue-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit merge-queue namespace propagated to every managed "
+            "daemon. Requests are still bound to the repository and target."
         ),
     )
     parser.add_argument(
@@ -8008,10 +8073,12 @@ def supervisor_config_from_args(
         llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,
+        implementation_max_timeout=args.implementation_max_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
+        merge_queue_dir=args.merge_queue_dir,
         worktree_submodule_paths=normalize_relative_path_list(resolved_worktree_submodule_paths),
         implementation_protected_paths=normalize_implementation_protected_paths(
             resolved_implementation_protected_paths,

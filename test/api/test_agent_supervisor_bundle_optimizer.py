@@ -1239,6 +1239,53 @@ def test_bundle_supervisor_projects_optimizer_slices_and_comparison():
     )
 
 
+def test_bundle_supervisor_optimizer_cannot_resurrect_completed_members():
+    completed = _task("SUPERVISOR-COMPLETED")
+    ready = _task(
+        "SUPERVISOR-READY",
+        outputs=["src/supervisor-ready.py"],
+        predicted_paths=["src/supervisor-ready.py"],
+    )
+    completed_cid = str(completed["canonical_task_cid"])
+    ready_cid = str(ready["canonical_task_cid"])
+    source = {
+        "bundle_key": "objective/completion-overlay",
+        "parallel_lane": "completion-overlay",
+        # Source taskboards remain immutable and can therefore still say
+        # ``todo`` after a durable completion receipt was published.
+        "tasks": [completed, ready],
+        "completed_member_task_cids": [completed_cid],
+        "completed_member_task_ids": [completed["task_id"]],
+        "ready_member_task_cids": [ready_cid],
+        "ready_member_task_ids": [ready["task_id"]],
+        "execution_slice_task_cids": [ready_cid],
+        "execution_slice_task_ids": [ready["task_id"]],
+        "claimable": True,
+    }
+
+    [optimized] = optimize_bundle_payloads([source])
+
+    assert optimized["completed_member_task_cids"] == [completed_cid]
+    assert optimized["completed_member_task_ids"] == [completed["task_id"]]
+    assert optimized["execution_slice_task_cids"] == [ready_cid]
+    assert optimized["execution_slice_task_ids"] == [ready["task_id"]]
+    assert completed_cid not in optimized["execution_slice_task_cids"]
+
+    completed_only = {
+        **source,
+        "ready_member_task_cids": [],
+        "ready_member_task_ids": [],
+        "execution_slice_task_cids": [],
+        "execution_slice_task_ids": [],
+    }
+    [drained] = optimize_bundle_payloads([completed_only])
+
+    assert drained["completed_member_task_cids"] == [completed_cid]
+    assert drained["completed_member_task_ids"] == [completed["task_id"]]
+    assert drained["execution_slice_task_cids"] == []
+    assert drained["execution_slice_task_ids"] == []
+
+
 def test_split_optimizer_slices_receive_distinct_execution_identities():
     first = _task("SLICE-A", provider_id="provider-a")
     second = _task(
