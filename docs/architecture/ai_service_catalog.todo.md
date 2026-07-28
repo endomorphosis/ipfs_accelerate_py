@@ -585,3 +585,278 @@ Program invariants:
 - Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery, docs/architecture/ai_service_catalog.todo.md
 - Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-024-reconciliation-c60e09639133.md
 - Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by unsupported_status. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/ai-service-catalog-v2/state/discovery/2026-07-27-aicat-024-reconciliation-c60e09639133.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## AICAT-025 Define endpoint-scoped usage, limit, event, and receipt contracts
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-contracts
+- Depends on: AICAT-001, AICAT-010
+- Goal id: AICAT-G110
+- Outputs: ipfs_accelerate_py/endpoint_usage/__init__.py, ipfs_accelerate_py/endpoint_usage/schema.py, ipfs_accelerate_py/endpoint_usage/identity.py, test/test_endpoint_usage_schema.py
+- Validation: python -m pytest test/test_endpoint_usage_schema.py test/test_ai_service_catalog_schema.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/contracts
+- Parallel lane: endpoint-usage-schema
+- Resource class: cpu-small
+- Token class: large
+- Estimated tokens: 18000
+- Predicted files: ipfs_accelerate_py/endpoint_usage/__init__.py, ipfs_accelerate_py/endpoint_usage/schema.py, ipfs_accelerate_py/endpoint_usage/identity.py, test/test_endpoint_usage_schema.py
+- Allow concurrent with:
+- Conflict policy: Own only the new provider-free endpoint_usage contracts and focused tests. Reuse catalog provider, model, deployment, operation, and binding identities without modifying routers, ModelManager, persistence, MCP, or supervisor code.
+- Preconditions: Read docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md and map existing catalog identities, DeploymentDescriptor endpoint normalization, ResourceScheduler ProviderCapacity, ProviderBatchCapacity, supervisor token attribution, and router request/response shapes before freezing fields.
+- Effects: Add immutable bounded EndpointUsageScope, UsageDimension, UsageVector, UsageLimit, LimitWindow, ProviderUsageObservation, UsageEstimate, UsageEvent, UsageReservation, UsageSnapshot, RoutingPolicy, UsageAwareResolution, UsageRoutingReceipt, and typed error/reason contracts with deterministic secret-free identities.
+- Acceptance: Scope identity binds provider, deployment or secret-free endpoint fingerprint, protocol, operation, optional provider-scoped model/account/project/region, and a keyed local credential-configuration pseudonym without raw credentials or URLs. Keep requests, batch items, input/output/total tokens, embedding inputs/tokens/vectors, images/pixels/media bytes, audio seconds/characters, concurrent requests/streams, and currency-tagged cost micros typed. Model fixed, sliding, token-bucket, concurrent, billing, and lifetime windows with anchors, resets, refill, burst, reserve, freshness, source, confidence, and provenance. Unknown is distinct from unlimited. Canonical serialization is bounded, deterministic, round-trippable, collision-tested, and rejects unknown fields, negative/overflowing values, invalid unit/window combinations, credential-shaped strings, bearer URLs, prompts, media, output, and excessive nesting. Cold import has no network, provider, process, secret-store, model-load, or database side effect.
+
+## AICAT-026 Normalize configured and provider-observed usage metadata
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-adapters
+- Depends on: AICAT-025
+- Goal id: AICAT-G110
+- Outputs: ipfs_accelerate_py/endpoint_usage/adapters.py, ipfs_accelerate_py/endpoint_usage/provider_registry.py, test/test_endpoint_usage_adapters.py
+- Validation: python -m pytest test/test_endpoint_usage_adapters.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/adapters
+- Parallel lane: provider-usage-adapters
+- Resource class: cpu-small
+- Token class: large
+- Estimated tokens: 19000
+- Predicted files: ipfs_accelerate_py/endpoint_usage/adapters.py, ipfs_accelerate_py/endpoint_usage/provider_registry.py, test/test_endpoint_usage_adapters.py
+- Allow concurrent with: AICAT-027
+- Conflict policy: Own provider-neutral adapter registration and deterministic fixtures only. Do not make network probes, edit routers, persist raw provider payloads, or infer invocation authority from remote catalog data.
+- Preconditions: AICAT-025 contracts pass; inventory current Codex/Copilot/Grok/Gemini/Goose/Mistral CLI metadata, OpenAI-compatible/xAI/OpenRouter/Anthropic headers and bodies, Hugging Face Inference/TEI/TGI errors, backend-manager deployment telemetry, and local transformer/llama.cpp/vLLM capacity signals.
+- Effects: Add bounded registered adapters that normalize configured limits plus metadata from the exact local response, stream trailer, structured CLI output, or provider error into typed observations.
+- Acceptance: Parse request IDs, usage bodies, rate-limit headers, Retry-After, reset timestamps, HTTP 429/503, billing exhaustion, subscription usage limits, local concurrency/memory ceilings, and structured CLI reset metadata without storing raw payloads. Correctly distinguish account/project/credential, endpoint, operation, model, and concurrent scopes; preserve unknown fields only as bounded reason codes; bind settlement observations to the exact request and endpoint scope; clamp count/string/depth/time bounds; validate clock skew and contradictory resets; reject negative, overflowing, stale, conflicting, credential-bearing, or scope-mismatched input; never raise a policy ceiling from an untrusted observation; and still retain a valid restrictive cooldown when unrelated parsing fails. Tests are offline and cover OpenAI-compatible, Anthropic-style, Hugging Face, CLI, local, custom, malformed, adversarial, and unknown-provider fixtures.
+
+## AICAT-027 Build an atomic durable usage ledger and reservation coordinator
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-ledger
+- Depends on: AICAT-025
+- Goal id: AICAT-G110
+- Outputs: ipfs_accelerate_py/endpoint_usage/store.py, ipfs_accelerate_py/endpoint_usage/ledger.py, ipfs_accelerate_py/endpoint_usage/coordinator.py, test/test_endpoint_usage_ledger.py
+- Validation: python -m pytest test/test_endpoint_usage_ledger.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/ledger
+- Parallel lane: endpoint-usage-ledger
+- Resource class: persistence-medium
+- Token class: large
+- Estimated tokens: 22000
+- Predicted files: ipfs_accelerate_py/endpoint_usage/store.py, ipfs_accelerate_py/endpoint_usage/ledger.py, ipfs_accelerate_py/endpoint_usage/coordinator.py, test/test_endpoint_usage_ledger.py
+- Allow concurrent with: AICAT-026
+- Conflict policy: Own usage persistence, materialized windows, and atomic reservation mechanics. Keep IPFS/content addressing as audit and recovery evidence rather than the real-time consistency authority; do not edit ModelManager, routers, supervisor schedulers, or public transports.
+- Preconditions: AICAT-025 identities and transactions are stable; map current DuckDB/artifact/event/lease patterns but define a store protocol so deterministic tests do not require DuckDB.
+- Effects: Add in-memory/fake-clock and durable local transactional UsageLedgerStore backends plus a coordinator supporting append, snapshot, atomic multi-dimension reserve, incremental settle, commit, release, correction, refund, reset, expiry reclamation, checkpoint, compaction, migration, and read-only recovery.
+- Acceptance: One compare-and-set transaction checks caller budget, configured/provider limits, all overlapping windows, active reservations, and lease/fence before granting capacity. Reservation IDs bind request/attempt/idempotency/scope/estimate/revision/TTL/owner. Replay returns the same decision; a new attempt gets a distinct reservation. Cancellation before dispatch releases all usage; cancellation/timeout after dispatch conservatively settles provider-chargeable dimensions; streams settle monotonically; batches charge shared overhead and each member exactly once; corrections append and reference prior events; expired/crashed owners cannot leak or double-release capacity; reset and clock changes are deterministic; compaction preserves replay; corruption, schema drift, split writers, stale fences, store exhaustion, and migration fail closed. Distributed use requires a strongly consistent fenced backend or explicit conservative per-node partitions; eventual IPFS replication alone cannot authorize admission.
+
+## AICAT-028 Add usage snapshots and usage-aware resolution to ModelManager
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-resolution
+- Depends on: AICAT-009, AICAT-019, AICAT-027
+- Goal id: AICAT-G120
+- Outputs: ipfs_accelerate_py/model_manager.py, ipfs_accelerate_py/endpoint_usage/resolution.py, test/test_model_manager_usage_routing.py
+- Validation: python -m pytest test/test_model_manager_usage_routing.py test/test_model_manager_catalog.py test/test_ai_catalog_observability.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/model-manager
+- Parallel lane: model-manager-usage
+- Resource class: cpu-small
+- Token class: large
+- Estimated tokens: 18000
+- Predicted files: ipfs_accelerate_py/model_manager.py, ipfs_accelerate_py/endpoint_usage/resolution.py, test/test_model_manager_usage_routing.py
+- Allow concurrent with:
+- Conflict policy: Extend the canonical ModelManager information/selection facade and keep invocation absent. Dynamic usage has its own injected service, snapshot, cache, and revision and must not mutate static catalog records, record CIDs, or existing resolution behavior.
+- Preconditions: The atomic ledger supplies immutable bounded snapshots; map ModelManager dependency injection, catalog snapshot pagination, resolution receipts, legacy CRUD compatibility, and cold-import constraints.
+- Effects: Add optional usage_snapshot, list_usage_limits, get_endpoint_headroom, and resolve_for_routing facades returning UsageAwareResolution over one catalog and usage revision.
+- Acceptance: Read and preview methods are bounded, filtered, paginated where applicable, side-effect free, and never reserve, refresh, probe, instantiate a provider, or expose a credential/raw endpoint. Static resolver results and catalog CIDs remain unchanged. Usage-aware resolution hard-filters operation/modality/capability, authorization/policy, explicit provider/model/deployment pins, context/media, device/locality/data governance, cost/deadline, endpoint state, freshness, and required usage vector before any soft score. Candidate explanations expose bounded reason codes, tightest dimensions, headroom vector, reset horizon, circuit/health/latency inputs, and next eligible time. Unlike units are never summed into one token score. Missing service preserves existing APIs exactly; unknown/stale state follows explicit policy; concurrent snapshot changes are visible through revision mismatch rather than silently mixed.
+
+## AICAT-029 Implement shared route admission, ranking, fallback, and receipts
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-routing
+- Depends on: AICAT-026, AICAT-027, AICAT-028
+- Goal id: AICAT-G120
+- Outputs: ipfs_accelerate_py/endpoint_usage/routing.py, ipfs_accelerate_py/endpoint_usage/receipts.py, test/test_endpoint_usage_routing.py
+- Validation: python -m pytest test/test_endpoint_usage_routing.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/admission
+- Parallel lane: usage-route-admission
+- Resource class: cpu-medium
+- Token class: large
+- Estimated tokens: 22000
+- Predicted files: ipfs_accelerate_py/endpoint_usage/routing.py, ipfs_accelerate_py/endpoint_usage/receipts.py, test/test_endpoint_usage_routing.py
+- Allow concurrent with:
+- Conflict policy: Own the provider-neutral pure ranking and atomic admission protocol. Do not invoke a provider or edit modality routers, ModelManager, supervisor code, MCP, or documentation in this lane.
+- Preconditions: ModelManager returns statically eligible candidates against one catalog revision; adapters and the coordinator expose stable observations, snapshots, and reservations.
+- Effects: Add a deterministic route planner and router-facing attempt protocol for estimate, hard filtering, ranking, reserve, refresh-on-CAS-loss, invoke callback, observe, settle, retry/fallback, cooldown, circuit breaking, and final receipt.
+- Acceptance: Hard limits and capability, authorization, exact-pin, safety/data, locality/device, cost, media, context, and deadline constraints cannot be offset by score. Ranking uses explicit affinity/stickiness, projected tightest-dimension saturation, reset horizon, health/circuit, latency/queue, cost, locality, and optional policy quality. The router closes the selection race with atomic reservation and tries the next eligible candidate only after a typed denial. Fallback classes none, same_deployment, same_provider, same_model, equivalent_model, and cross_provider are distinguishable; exact pins default to none; each retry/fallback has a new linked attempt/reservation; unsafe semantic/client/side-effecting errors never fallback; wait versus reroute honors one deadline and maximum attempt bound; jitter/single-flight/circuit breakers prevent herds. Receipts bind catalog/usage revisions, candidates, hard reasons, score inputs, selection, reservation, observation, settlement, and chain without prompts, media, output, credentials, raw headers, or endpoints.
+
+## AICAT-030 Integrate usage-aware admission into llm_router
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-routers
+- Depends on: AICAT-003, AICAT-029
+- Goal id: AICAT-G130
+- Outputs: ipfs_accelerate_py/llm_router.py, test/test_llm_router_usage_routing.py
+- Validation: python -m pytest test/test_llm_router_usage_routing.py test/test_llm_router_integration.py test/test_llm_router_catalog_discovery.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/routers/llm
+- Parallel lane: llm-router-usage
+- Resource class: provider-simulated
+- Token class: large
+- Estimated tokens: 24000
+- Predicted files: ipfs_accelerate_py/llm_router.py, test/test_llm_router_usage_routing.py
+- Allow concurrent with: AICAT-031, AICAT-032, AICAT-033, AICAT-034
+- Conflict policy: Own only llm_router usage integration and focused tests. Re-read the latest shared router before editing; preserve provider construction, public names/signatures, response caches, batching, streaming, tools, sessions, existing fallback, and all unrelated provider work.
+- Preconditions: The common routing protocol is stable; inventory every HTTP, local, CLI, streaming, batch, chat, tool, cache, and error return path including existing Codex reset/quota and Grok usage metadata.
+- Effects: Add optional coordinator/policy injection, conservative input/output/tool/cache token and request/cost estimates, exact binding reservation, provider observation adapters, settlement, and policy-bounded endpoint fallback to LLM generation paths.
+- Acceptance: Off mode is behaviorally identical to existing selection and errors. Observe/shadow never changes the selected provider. Enforce reserves request, token, concurrency/stream, and cost dimensions before dispatch; streaming settles monotonic deltas; batch and single-flight subscribers charge provider work once; cache hits create no remote usage; context/client/semantic/tool-side-effect errors do not cause unsafe retry; structured provider/CLI 429, quota, Retry-After, reset, and usage metadata update the exact scope; cancellation and timeout distinguish pre/post-dispatch; explicit provider/model/deployment/session constraints stay pinned unless an explicit fallback policy permits a compatible boundary; output and OpenAI-compatible contracts remain unchanged; and receipts never contain prompts, messages, tool arguments/results, generated text, credentials, or raw endpoints.
+
+## AICAT-031 Integrate usage-aware admission into embeddings_router
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-routers
+- Depends on: AICAT-004, AICAT-029
+- Goal id: AICAT-G130
+- Outputs: ipfs_accelerate_py/embeddings_router.py, test/test_embeddings_router_usage_routing.py
+- Validation: python -m pytest test/test_embeddings_router_usage_routing.py test/test_embeddings_router_contract.py test/test_embeddings_router_catalog_discovery.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/routers/embeddings
+- Parallel lane: embeddings-router-usage
+- Resource class: provider-simulated
+- Token class: large
+- Estimated tokens: 21000
+- Predicted files: ipfs_accelerate_py/embeddings_router.py, test/test_embeddings_router_usage_routing.py
+- Allow concurrent with: AICAT-030, AICAT-032, AICAT-033, AICAT-034
+- Conflict policy: Own only embeddings_router usage integration and focused tests. Preserve provider construction, device behavior, batching, normalization, dimensions, caches, public contracts, and unrelated current changes.
+- Preconditions: The common routing protocol is stable; map single and batch generation, input token estimation, remote/local/backend-manager adapters, progress/cancellation, cache, fallback, and output validation.
+- Effects: Add optional usage-aware estimates, reservation, observation, settlement, safe batch splitting, and compatible endpoint fallback for embeddings.
+- Acceptance: Reserve requests, embedding inputs, estimated tokens, vectors, batch items, dimensions/bytes where bounded, concurrency, and cost before dispatch. Logical batch splitting occurs only under caller/provider policy; every physical sub-batch and member settles exactly once; cancellation/timeout and partial completion preserve completed member usage; cache hits create no remote charge. Fallback preserves requested model compatibility, input type, dimensions, normalization, locality/device, authorization, and data policy; incompatible embeddings never substitute. Explicit pins default to no fallback, off mode remains identical, provider metadata updates only the exact scope, finite-vector/output-shape validation remains authoritative, and receipts contain no source text or vectors.
+
+## AICAT-032 Integrate usage-aware admission into multimodal_router
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-routers
+- Depends on: AICAT-005, AICAT-029
+- Goal id: AICAT-G130
+- Outputs: ipfs_accelerate_py/multimodal_router.py, test/test_multimodal_router_usage_routing.py
+- Validation: python -m pytest test/test_multimodal_router_usage_routing.py test/test_multimodal_router.py test/test_multimodal_router_catalog_discovery.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/routers/multimodal
+- Parallel lane: multimodal-router-usage
+- Resource class: provider-simulated
+- Token class: large
+- Estimated tokens: 21000
+- Predicted files: ipfs_accelerate_py/multimodal_router.py, test/test_multimodal_router_usage_routing.py
+- Allow concurrent with: AICAT-030, AICAT-031, AICAT-033, AICAT-034
+- Conflict policy: Own only multimodal_router usage integration and focused tests. Preserve media validation/fetch boundaries, provider construction, backend-manager/local behavior, caches, public contracts, and unrelated current changes.
+- Preconditions: The common routing protocol is stable; map every multimodal operation, image/media normalization, size/dimension/token estimate, remote/local path, cache, cancellation, provider error, and output contract.
+- Effects: Add optional usage-aware estimates, reservation, provider observation, settlement, and compatible endpoint fallback for multimodal invocation.
+- Acceptance: Reserve requests, images, pixels, media bytes, estimated input/output tokens, concurrency, and cost as applicable before dispatch. Media remains referenced and never enters the ledger/receipt. Fallback preserves operation, model compatibility, MIME, item count, dimensions, safety/data governance, locality/device, authorization, and output contract; it cannot use a route that requires a forbidden remote upload. Cache, cancellation, timeout, retry, and partial provider outcomes settle exactly once. Explicit pins default to no fallback, off mode is unchanged, provider metadata updates only the exact scope, and adversarial size/MIME/SSRF-shaped inputs fail before reservation or invocation as required by existing policy.
+
+## AICAT-033 Integrate usage-aware admission into voice_router
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-routers
+- Depends on: AICAT-006, AICAT-029
+- Goal id: AICAT-G130
+- Outputs: ipfs_accelerate_py/voice_router.py, test/test_voice_router_usage_routing.py
+- Validation: python -m pytest test/test_voice_router_usage_routing.py test/test_voice_router.py test/test_voice_router_catalog_discovery.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/routers/voice
+- Parallel lane: voice-router-usage
+- Resource class: provider-simulated
+- Token class: large
+- Estimated tokens: 21000
+- Predicted files: ipfs_accelerate_py/voice_router.py, test/test_voice_router_usage_routing.py
+- Allow concurrent with: AICAT-030, AICAT-031, AICAT-032, AICAT-034
+- Conflict policy: Own only voice_router usage integration and focused tests. Preserve transcription/synthesis APIs, capability descriptors, provider construction, caches, local/device behavior, media validation, and unrelated current changes.
+- Preconditions: The common routing protocol is stable; map STT/TTS, batch/stream, duration/character/token/byte estimation, Abby and other remote providers, local pipelines, cache, cancellation, progress, and output validation.
+- Effects: Add optional usage-aware estimates, reservation, incremental/final observation, settlement, and compatible endpoint fallback for transcription and synthesis.
+- Acceptance: Reserve requests, audio seconds, synthesis characters/tokens, media bytes, concurrent requests/streams, and cost as applicable. Streaming settles monotonic partial usage; cancellation and timeout distinguish pre/post-dispatch; cache and single-flight work charge remote use once. Fallback preserves operation, language, voice, model compatibility, codec, sample rate/channels, locality/device, data-retention, authorization, and output contract. Explicit pins default to no fallback, off mode is unchanged, provider metadata updates only the exact scope, and receipts contain no transcript, synthesis text, audio, voice sample, credential, or raw endpoint.
+
+## AICAT-034 Expose authorized usage controls, receipts, and observability
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: endpoint-usage-controls
+- Depends on: AICAT-013, AICAT-016, AICAT-027, AICAT-029
+- Goal id: AICAT-G140
+- Outputs: ipfs_accelerate_py/endpoint_usage/controls.py, ipfs_accelerate_py/endpoint_usage/observability.py, ipfs_accelerate_py/mcp_server/tools/model_tools/native_model_tools.py, ipfs_accelerate_py/mcp_server/tools/ai_router_tools, ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py, test/test_endpoint_usage_controls.py
+- Validation: python -m pytest test/test_endpoint_usage_controls.py test/mcp_server/test_ai_catalog_tools.py test/mcp_server/test_ai_router_text_embedding_tools.py test/mcp_server/test_ai_router_vision_voice_tools.py test/test_mcplusplus_ai_catalog_idl.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/controls
+- Parallel lane: endpoint-usage-controls
+- Resource class: mcp-integration
+- Token class: large
+- Estimated tokens: 22000
+- Predicted files: ipfs_accelerate_py/endpoint_usage/controls.py, ipfs_accelerate_py/endpoint_usage/observability.py, ipfs_accelerate_py/mcp_server/tools/model_tools/native_model_tools.py, ipfs_accelerate_py/mcp_server/tools/ai_router_tools/__init__.py, ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py, test/test_endpoint_usage_controls.py
+- Allow concurrent with: AICAT-030, AICAT-031, AICAT-032, AICAT-033
+- Conflict policy: Own shared usage service and transport adapters, not router invocation internals. Re-read MCP/MCP++ changes before editing; keep public schemas bounded and preserve current catalog/router tool names and authorization.
+- Preconditions: Read-only ModelManager usage queries and the route protocol are stable; map the existing control catalog, MCP authority model, event cursors, pagination, ai.catalog.v1 IDL, receipt redaction, and metrics conventions.
+- Effects: Add equivalent bounded Python, CLI-compatible service, MCP, and MCP++ operations for usage status/health, limits/headroom, active reservations, recent receipts, route preview, adapter capabilities, reconciliation import, correction, override, and reset plus event-derived low-cardinality metrics.
+- Acceptance: Read/query/preview is side-effect free and never reserves, probes, refreshes, or invokes. Results bind catalog and usage revisions, support bounded filtering/pagination/cursors, and default to aggregate state. Exact account/cost/endpoint pseudonyms require explicit read authority. Provider import, correction, override, and reset require separate administrative capability, expected revision, idempotency, lease/fence, bounded expected effects, and audit; model output or remote peer data cannot mutate. Python/MCP/MCP++ schemas and reason codes agree. Metrics derive from ledger events and cover reservations, denials, expiry, estimate error, headroom bands, resets, stale/unknown state, waits/reroutes/fallbacks, reconciliation, and store health with bounded provider/deployment/state/reason labels and without request, credential, tenant, alias, model string, or endpoint URL cardinality.
+
+## AICAT-035 Prove usage-routing conformance, faults, security, and staged rollout
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: endpoint-usage-rollout
+- Depends on: AICAT-030, AICAT-031, AICAT-032, AICAT-033, AICAT-034
+- Goal id: AICAT-G140
+- Outputs: test/test_ai_router_usage_contract.py, test/test_endpoint_usage_conformance.py, test/test_endpoint_usage_faults.py, test/test_endpoint_usage_rollout.py, docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md, docs/architecture/AI_SERVICE_CATALOG.md, docs/LLM_ROUTER.md, docs/MCP_SERVER.md, docs/INDEX.md
+- Validation: python -m pytest test/test_endpoint_usage_schema.py test/test_endpoint_usage_adapters.py test/test_endpoint_usage_ledger.py test/test_endpoint_usage_routing.py test/test_model_manager_usage_routing.py test/test_llm_router_usage_routing.py test/test_embeddings_router_usage_routing.py test/test_multimodal_router_usage_routing.py test/test_voice_router_usage_routing.py test/test_ai_router_usage_contract.py test/test_endpoint_usage_controls.py test/test_endpoint_usage_conformance.py test/test_endpoint_usage_faults.py test/test_endpoint_usage_rollout.py -q
+- Board namespace: ai-service-catalog-v1
+- Bundle: ai-catalog/usage-routing/rollout
+- Parallel lane: endpoint-usage-rollout
+- Resource class: test-large
+- Token class: large
+- Estimated tokens: 26000
+- Predicted files: test/test_ai_router_usage_contract.py, test/test_endpoint_usage_conformance.py, test/test_endpoint_usage_faults.py, test/test_endpoint_usage_rollout.py, docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md, docs/architecture/AI_SERVICE_CATALOG.md, docs/LLM_ROUTER.md, docs/MCP_SERVER.md, docs/INDEX.md
+- Allow concurrent with:
+- Conflict policy: Own the frozen cross-router/provider/fault population, final documentation, and rollout decision. Do not narrow fixtures or thresholds to obtain promotion; preserve unrelated provider guidance and existing compatibility suites.
+- Preconditions: All four router integrations and controls are complete; freeze provider/credential/endpoint/model/operation/unit/window/fallback combinations plus adversarial and failure boundaries before evaluating rollout.
+- Effects: Add generated cross-surface conformance, property/race/fake-clock tests, fault injection, security fixtures, environment-gated live smokes, operator runbook, migration, off/observe/shadow/assist/enforce gates, and immediate compatibility rollback.
+- Acceptance: The frozen offline population covers fixed/sliding/token-bucket/concurrent/billing windows; shared credential quotas and isolated credentials; success, 429/503, billing exhaustion, malformed metadata, timeout/cancel before and after dispatch, partial stream, batch split, cache/single-flight, retry/fallback, correction/reset, process crash, store migration/outage, coordinator partition, clock jump/skew, and reservation race. Python, ModelManager, all routers, MCP, and MCP++ agree on identities, revisions, hard reasons, fallback boundary, and settlement. Require zero hard-limit overshoot, duplicate charge, cross-scope contamination, credential/prompt/media/output/private-URL leak, explicit-pin violation, authority bypass, or side-effecting import/discovery/query/preview. Existing router behavior is byte/exception compatible in off mode; observe/shadow do not alter selection; automatic fallback requires a later passing paired gate; distributed enforcement fails closed without a strong fenced coordinator; live smokes are opt-in and budget capped; and any safety, parity, binding, quality, cost, latency, or compatibility regression restores legacy selection while preserving observed usage for diagnosis.

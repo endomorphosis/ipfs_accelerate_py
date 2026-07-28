@@ -20,6 +20,9 @@ context of earlier implementations and are not normative API references.
 - [AI Service Catalog architecture](architecture/AI_SERVICE_CATALOG.md):
   canonical service identities, resolution, source precedence, security,
   migration, and rollout.
+- [Endpoint usage-aware routing plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md):
+  planned endpoint/account limit accounting, atomic reservations,
+  ModelManager planning, router fallback, and supervisor capacity governance.
 
 ## User guides
 
@@ -38,6 +41,7 @@ context of earlier implementations and are not normative API references.
 - [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md)
 - [Contributing](../CONTRIBUTING.md)
 - [AI Service Catalog](architecture/AI_SERVICE_CATALOG.md)
+- [Endpoint usage-aware routing plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md)
 - [LLM router](LLM_ROUTER.md)
 - [MCP server AI catalog and router tools](MCP_SERVER.md)
 - [IPFS backend router](IPFS_BACKEND_ROUTER.md)
@@ -52,6 +56,7 @@ and the self-improvement plan for the rollout roadmap and acceptance evidence.
 
 - [Operator guide, profiles, and migration](guides/AGENT_SUPERVISOR_GUIDE.md)
 - [Architecture, contracts, and assurance model](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
+- [Endpoint usage-aware routing and supervisor capacity plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md)
 - [Self-improvement rollout plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md)
 - [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
 - [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)
@@ -89,6 +94,7 @@ planned work. Use the current guides and source code for present behavior.
 | Run inference | [Quick start](guides/QUICKSTART.md) |
 | Start MCP | [MCP setup](guides/MCP_SETUP_GUIDE.md) |
 | Discover or resolve AI services | [AI Service Catalog](architecture/AI_SERVICE_CATALOG.md) |
+| Plan endpoint usage limits and intelligent fallback | [Endpoint usage-aware routing](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md) |
 | Use catalog or router tools over MCP | [MCP server AI tools](MCP_SERVER.md) |
 | Migrate legacy model or MCP APIs | [Catalog migration and compatibility](architecture/AI_SERVICE_CATALOG.md#migration-and-compatibility) |
 | Operate or migrate agent-supervisor workflows | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
@@ -99,5 +105,5 @@ planned work. Use the current guides and source code for present behavior.
 | Audit documentation drift | [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md) |
 | Troubleshoot | [FAQ](guides/troubleshooting/faq.md) |
 
-**Documentation baseline:** 2026-07-27. Update this page when a maintained
+**Documentation baseline:** 2026-07-28. Update this page when a maintained
 entry point or canonical architecture document changes.

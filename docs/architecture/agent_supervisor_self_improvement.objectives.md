@@ -20,6 +20,12 @@ the existing control and proof-directed runtime contracts, but its producer
 and child populations are separately closed so it does not retroactively
 narrow or expand any earlier completion population.
 
+The independent `ASI-G500` tree defines endpoint-aware usage governance for
+every supervisor provider-consuming stage. It consumes the shared AI catalog
+usage contracts and existing v2 scheduling/accounting controls, but its
+producer and child populations are separately closed so it does not
+retroactively narrow, expand, or reopen any earlier completion population.
+
 Child-goal evidence entries are stable opaque receipt requirement IDs. The
 current scanner must treat them as missing until a qualifying source emits the
 exact ID; their presence in this objective heap is never evidence. ASI-003
@@ -1859,3 +1865,92 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep one closed benchmark and rollout owner so populations, metrics, promotion, documentation, and rollback cannot be independently narrowed.
 - Embedding query: prompt workflow end to end Markdown DuckDB Python CLI MCP chaos fault injection adversarial recovery rollout rollback
 - AST query: PromptWorkflowBenchmark PromptWorkflowRolloutDecision PromptSupervisorService TaskSource RescueOrchestrator
+
+## ASI-G500 Endpoint-aware provider usage governance
+
+- Status: active
+- Parent:
+- Depends on:
+- Fib priority: 1
+- Track: supervisor-usage-governance
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v5/usage/root
+- Goal: Attribute every supervisor provider invocation to an exact endpoint usage scope, enforce nested run/goal/task/attempt/stage/lane/request budgets through atomic shared reservations, and fairly reroute, defer, degrade, or backpressure work without exceeding endpoint, account, cost, or concurrency limits.
+- Closed producer population: ASI-165, ASI-166, ASI-167, ASI-168, ASI-169, ASI-170
+- Direct children: ASI-G510, ASI-G520, ASI-G530
+- Evidence: provider_usage.SUPERVISOR_USAGE_ENVELOPE_REQUIREMENT_ID, provider_execution.RESERVATION_AWARE_PROVIDER_EXECUTION_REQUIREMENT_ID, resource_scheduler.ENDPOINT_USAGE_ADMISSION_REQUIREMENT_ID, provider_usage_migration.COMPLETE_PROVIDER_CALLSITE_REQUIREMENT_ID, supervisor_usage_rollout.SUPERVISOR_USAGE_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: Every provider call carries current supervisor run/goal/task/attempt/stage/lane/request identity and a child budget that cannot raise its parent; the shared endpoint coordinator atomically reserves and reconciles usage exactly once; token/cost efficiency metrics consume rather than duplicate provider settlement; scheduler and batch admission use exact headroom/reset state; all direct/child/CLI/model/prover provider paths use the gateway or a proven equivalent adapter; fairness and deadlines bound waiting/reroute; and off/observe/shadow/assist/enforce rollout has zero overshoot, double charge, starvation, retry herd, authority escape, or false completion.
+- Evidence source policy: A token count, cost total, ProviderCapacity value, configured budget, successful provider call, scheduler decision, task status, dashboard, or taskboard row is non-authoritative. Evidence is a fresh hierarchical budget, gateway, reservation, settlement, attribution, scheduler, callsite-coverage, transport-conformance, and paired rollout receipt bound to the exact repository tree, supervisor state/policy, catalog and usage revisions, endpoint scope, request/attempt, lease/fence, clock, and terminal outcome population.
+- Outputs: docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md, ipfs_accelerate_py/agent_supervisor/provider_usage.py, ipfs_accelerate_py/agent_supervisor/provider_execution.py, ipfs_accelerate_py/agent_supervisor/supervisor_token_ledger.py, ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py
+- Validation: python -m pytest test/api/test_agent_supervisor_provider_usage.py test/api/test_agent_supervisor_provider_execution.py test/api/test_agent_supervisor_usage_scheduler.py test/api/test_agent_supervisor_provider_usage_migration.py test/api/test_agent_supervisor_usage_controls.py test/api/test_agent_supervisor_usage_e2e.py test/api/test_agent_supervisor_usage_chaos.py test/api/test_agent_supervisor_usage_rollout.py -q
+- Acceptance: Every provider-consuming stage is metered or returns a typed non-meterable reason accepted only under explicit policy; nested budgets and endpoint limits cannot be exceeded under concurrency; estimates and provider observations reconcile exactly once; cache/batch/single-flight/retry/cancel/timeout/crash behavior cannot duplicate or erase usage; the supervisor chooses an eligible policy-permitted endpoint, waits within deadline, uses an authorized deterministic/local fallback, or applies typed backpressure; reset events wake work without polling/herds; tenant/goal/task/lane fairness prevents starvation; controls are redacted and transport-equivalent; usage cannot prove correctness, authority, or completion; and disabling the feature preserves the prior scheduler/provider behavior.
+- Gap task: Close the highest-risk budget, gateway, settlement, scheduler, batch, callsite, fairness, control, fault, or rollout residual without creating a second usage ledger or provider router.
+- Refinement: Land provider-free supervisor contracts and attribution first; add one execution gateway; adapt resource and batch schedulers independently; migrate all call sites; and close with controls plus one frozen E2E/chaos rollout population.
+- Embedding query: agent supervisor endpoint API usage limit quota token cost budget reservation scheduler reroute backpressure
+- AST query: SupervisorUsageEnvelope ProviderExecutionGateway SupervisorTokenLedger ResourceScheduler ProviderBatchScheduler call_llm_router
+
+## ASI-G510 Hierarchical budgets, accounting bridge, and provider execution
+
+- Status: active
+- Parent: ASI-G500
+- Depends on:
+- Fib priority: 2
+- Track: supervisor-usage-accounting
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v5/usage/execution
+- Goal: Define immutable nested supervisor usage envelopes and route every shared provider invocation through one reservation-aware gateway that joins endpoint settlement to stage/task/accepted-work attribution without double accounting.
+- Producing tasks: ASI-165, ASI-166
+- Evidence: provider_usage.SUPERVISOR_USAGE_ENVELOPE_REQUIREMENT_ID, provider_execution.RESERVATION_AWARE_PROVIDER_EXECUTION_REQUIREMENT_ID
+- Evidence criteria: Run/goal/task/attempt/stage/lane/request scopes are canonical and a child budget can only lower its parent; request/attempt/idempotency/lease/fence/deadline/catalog/usage identities propagate through process boundaries; the gateway estimates, reserves, invokes, observes, reconciles, and emits a bounded receipt; token/cost metrics consume endpoint events exactly once; and cancellation, timeout, crash, retry, cache, batch, and missing telemetry follow explicit conservative policy.
+- Evidence source policy: An input token estimate, provider-native usage object, process return code, trace event, reservation ID, task association, or aggregate cost is non-authoritative. Evidence is a fresh envelope plus gateway receipt that independently joins the exact request, endpoint scope, reservation transaction, invocation boundary, observation, settlement, stage/task attribution, and parent/child budget lineage.
+- Outputs: ipfs_accelerate_py/agent_supervisor/provider_usage.py, ipfs_accelerate_py/agent_supervisor/provider_execution.py, ipfs_accelerate_py/agent_supervisor/supervisor_token_ledger.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py
+- Validation: python -m pytest test/api/test_agent_supervisor_provider_usage.py test/api/test_agent_supervisor_provider_execution.py test/api/test_agent_supervisor_token_ledger.py -q
+- Acceptance: Equivalent scopes and envelopes have stable secret-free identities; invalid ancestry, widened child budgets, missing attempt/idempotency, stale leases/fences/revisions, negative/overflowing units, and prompts/media/output/credentials are rejected; the common LLM child path carries and returns usage receipts without leaking provider data; every remote attempt settles exactly once even across process death/replay; failed and abandoned work remains charged where the provider may charge it; accepted-work efficiency retains exact attribution but does not become the limit source; and unavailable usage coordination in enforce mode fails closed unless a reviewed degraded ceiling exists.
+- Gap task: Repair the smallest envelope, lineage, gateway, process propagation, estimate, reservation, observation, settlement, attribution, replay, redaction, or degraded-mode failure.
+- Refinement: Keep contracts/provider usage attribution standalone, then integrate the existing isolated LLM process adapter through one gateway rather than patching every consumer independently.
+- Embedding query: supervisor usage envelope nested budget provider execution gateway token ledger endpoint reservation settlement
+- AST query: SupervisorUsageEnvelope SupervisorUsageReceipt ProviderExecutionRequest ProviderExecutionGateway call_llm_router SupervisorTokenLedger
+
+## ASI-G520 Endpoint-aware fair scheduling and complete callsite adoption
+
+- Status: active
+- Parent: ASI-G500
+- Depends on: ASI-G510
+- Fib priority: 3
+- Track: supervisor-usage-scheduling
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v5/usage/scheduling
+- Goal: Project exact endpoint headroom into resource and batch admission, apply fair deadline-aware wait/reroute/backpressure, and prove every supervisor provider/model/prover/CLI consumer adopts the shared gateway or a contract-equivalent adapter.
+- Producing tasks: ASI-167, ASI-168
+- Evidence: resource_scheduler.ENDPOINT_USAGE_ADMISSION_REQUIREMENT_ID, provider_usage_migration.COMPLETE_PROVIDER_CALLSITE_REQUIREMENT_ID
+- Evidence criteria: ProviderCapacity compatibility projections retain exact scope/revision/freshness/reset reasons; physical batches reserve once and member settlements partition exactly; queued work is fairly admitted across tenant/goal/task/lane; reset/capacity events wake a bounded jittered population; deadline/policy determine wait, reroute, deterministic fallback, or typed no-capacity; and a generated callsite inventory plus runtime fixture prevents direct provider bypass.
+- Evidence source policy: Available concurrency, quota_remaining, queue length, provider choice, retry-after, wakeup event, source search, or successful provider call is non-authoritative. Evidence is a fresh scheduler/batch/callsite-coverage receipt that binds exact endpoint snapshots, reservations, queue population, fairness/deadline policy, selected action, migrated source/runtime path, and settlement.
+- Outputs: ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_usage_migration.py, ipfs_accelerate_py/agent_supervisor/task_proposal_router.py, ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py, ipfs_accelerate_py/agent_supervisor/rescue_planner.py, ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py, ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py
+- Validation: python -m pytest test/api/test_agent_supervisor_usage_scheduler.py test/api/test_agent_supervisor_provider_batch_scheduler.py test/api/test_agent_supervisor_provider_usage_migration.py -q
+- Acceptance: Admission takes the conservative intersection of parent budget, endpoint limits/windows, active reservations, concurrency, context, health, circuit, retry-after, deadline, host resources, and distributed lease; unknown/stale capacity follows explicit policy; weighted fairness and per-scope reserve prevent one tenant/goal/lane from exhausting a shared window; reset release uses jitter/single-flight and cannot herd; batches preserve per-member cancel/deadline/identity and no double overhead; provider/model fallback never changes authority or completion semantics; generated AST/import/runtime coverage finds all direct llm_router, ipfs_datasets router, local model/prover, backend-manager, and CLI-agent call paths; and off mode retains existing scheduler ordering/capacity behavior.
+- Gap task: Close the smallest capacity projection, batch lease, fairness, deadline, reset event, reroute, fallback, callsite inventory, direct-call bypass, or compatibility residual.
+- Refinement: Adapt resource/batch admission against the stable gateway, then migrate consumers with a generated denylist/allowlist coverage test so new bypasses fail CI.
+- Embedding query: provider capacity usage scheduler batch fair queue reset wakeup reroute deadline callsite migration bypass
+- AST query: ProviderCapacity ProviderBatchCapacity ResourceScheduler ProviderBatchScheduler ProviderExecutionGateway generate_text call_llm_router
+
+## ASI-G530 Authorized usage controls, chaos evidence, and rollout
+
+- Status: active
+- Parent: ASI-G500
+- Depends on: ASI-G510, ASI-G520
+- Fib priority: 5
+- Track: supervisor-usage-rollout
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement-v5/usage/rollout
+- Goal: Expose one bounded usage-governance service through Python, CLI, and MCP, derive operator metrics from authoritative endpoint events, and gate supervisor off/observe/shadow/assist/enforce behavior with paired concurrency, fairness, crash, partition, and rollback evidence.
+- Producing tasks: ASI-169, ASI-170
+- Evidence: provider_usage_controls.SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID, supervisor_usage_rollout.SUPERVISOR_USAGE_ROLLOUT_REQUIREMENT_ID
+- Evidence criteria: Status/headroom/budget/reservation/receipt/route-preview operations are schema- and result-equivalent across transports; mutations retain existing control authority/idempotency/fencing rules; metrics cannot become an alternate ledger or completion proof; one frozen population covers every provider-consuming stage, shared/isolated endpoint topology, and lifecycle fault; and promotion requires zero overshoot, double charge, starvation, retry herd, bypass, secret leak, false completion, or compatibility regression.
+- Evidence source policy: A CLI/MCP result, dashboard, task throughput, task status, successful recovery, aggregate metric, provider uptime, or selected happy path is non-authoritative. Evidence is a fresh cross-transport conformance plus complete paired/adversarial/chaos receipt over the exact supervisor task/stage/lane population, endpoint topology, reservations, failures, controls, effects, terminal outcomes, and rollback decision.
+- Outputs: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, ipfs_accelerate_py/agent_supervisor/scheduler_metrics.py, ipfs_accelerate_py/agent_supervisor/supervisor_usage_rollout.py, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/guides/AGENT_SUPERVISOR_GUIDE.md
+- Validation: python -m pytest test/api/test_agent_supervisor_usage_controls.py test/api/test_agent_supervisor_usage_control_conformance.py test/api/test_agent_supervisor_usage_e2e.py test/api/test_agent_supervisor_usage_chaos.py test/api/test_agent_supervisor_usage_rollout.py -q
+- Acceptance: Python/CLI/MCP discovery and read/preview are lazy, bounded, redacted, revision-bound, and side-effect free; budget/policy/correction/reset mutations require exact target, authority, expected revision/effects, lease/fence, and idempotency; metrics have bounded endpoint/state/reason labels and expose estimate error, denial, wait/reroute, fairness, reset, reconciliation, and store health without credentials/prompts/media/output; the frozen offline population injects reservation races, child/process crash, retry, cancel, timeout, batch/stream partials, clock skew/reset, ledger outage, stale lease, coordinator partition, provider exhaustion/recovery, and all stage callsite bypasses; off mode is compatible; observe/shadow cannot alter execution; automatic use requires a later passing paired report; and any safety/binding/parity/fairness/quality/cost/latency regression returns the affected feature to shadow/off without erasing observed usage.
+- Gap task: Add the smallest missing operation, authority/redaction rule, metric, transport fixture, stage/topology case, chaos boundary, promotion threshold, runbook step, or rollback trigger.
+- Refinement: Extend the shared control catalog/service before transports and keep one frozen E2E/chaos/rollout owner so fixtures, metrics, and thresholds cannot be independently narrowed.
+- Embedding query: supervisor usage controls Python CLI MCP metrics chaos endpoint quota rollout rollback
+- AST query: SupervisorControlService OperationCatalog ProviderUsageControl scheduler_metrics SupervisorUsageRolloutDecision
