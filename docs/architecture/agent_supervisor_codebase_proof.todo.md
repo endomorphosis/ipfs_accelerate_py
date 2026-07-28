@@ -314,7 +314,7 @@ Normative:
 
 ## CBP-090 Formal-plan require_proof preconditions
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: formal-plan
