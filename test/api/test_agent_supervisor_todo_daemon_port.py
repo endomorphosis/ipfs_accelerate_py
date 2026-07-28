@@ -13078,6 +13078,69 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert '"embedding"' not in prompt
 
 
+def test_implementation_context_accepts_external_todo_vector_index(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "src" / "bridge.py"
+    source.parent.mkdir()
+    source.write_text("def route():\n    return None\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Close scheduler gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G021
+- Missing evidence: scheduler policy
+- Merge key: bridge-runtime
+- Acceptance: Add scheduler policy proof.
+""",
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "shared-runtime" / "todo_vector_index.json"
+    write_todo_vector_index(
+        repo_root=repo,
+        todo_path=todo_path,
+        index_path=index_path,
+        task_header_prefix="## ACCEL-",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {"last_objective_todo_vector_index_path": str(index_path)}
+        ),
+        encoding="utf-8",
+    )
+    task = parse_task_file(todo_path, task_header_prefix="## ACCEL-")[0]
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=strategy_path,
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon._compile_implementation_context(task, attempt=1)
+
+    todo_vector_references = [
+        reference
+        for reference in result.capsule.evidence
+        if reference.kind == "todo-vector-context"
+    ]
+    assert todo_vector_references
+    assert all(reference.path == "" for reference in todo_vector_references)
+    assert "Compact todo vector context:" in todo_vector_references[0].summary
+
+
 def test_implementation_prompt_can_disable_unavailable_subagents(monkeypatch, tmp_path):
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS", "1")
     task = PortalTask(

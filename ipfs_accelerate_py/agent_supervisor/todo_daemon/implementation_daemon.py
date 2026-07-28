@@ -19555,6 +19555,22 @@ class PortalImplementationDaemon:
         except ValueError:
             return str(path)
 
+    def _repository_context_path(self, path: Path) -> str:
+        """Return a repository-relative context path or no path binding.
+
+        Runtime artifacts such as shared todo-vector indexes may intentionally
+        live outside the repository.  Their text can still be included in a
+        bounded context reference, but the typed ``path`` field must never
+        claim that an absolute host path is repository-relative.
+        """
+
+        if not path.is_absolute():
+            return path.as_posix()
+        try:
+            return path.relative_to(self.repo_root).as_posix()
+        except ValueError:
+            return ""
+
     def _compact_value_list(self, value: Any, *, limit: int = 8) -> list[str]:
         if isinstance(value, list):
             items = [str(item).strip() for item in value if str(item).strip()]
@@ -20633,7 +20649,7 @@ class PortalImplementationDaemon:
                 else None
             )
             artifact_path = (
-                self._display_context_path(index_path)
+                self._repository_context_path(index_path)
                 if isinstance(index_path, Path)
                 else ""
             )
