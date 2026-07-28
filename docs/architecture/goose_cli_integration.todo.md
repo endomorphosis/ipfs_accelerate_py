@@ -195,7 +195,7 @@ Program invariants:
 
 ## GOOSE-008 Add persistent Goose ACP streaming and session lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -245,7 +245,7 @@ Program invariants:
 
 ## GOOSE-010 Add the compatibility facade and consolidate stale CLI wrappers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
