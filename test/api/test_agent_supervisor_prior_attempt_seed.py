@@ -175,3 +175,70 @@ def test_daemon_configured_merge_target_used_for_seed_baseline(
     )
     assert daemon._main_branch_name() == target
     assert daemon.resolved_merge_target_branch == target
+
+
+def test_consume_merge_rejects_queue_target_mismatch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    daemon = _daemon(tmp_path)
+    daemon.resolved_merge_target_branch = "feature/logic-intent-legal-gate"
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/logic-intent-legal-gate")
+
+    class _Queue:
+        target_branch = "main"
+        max_attempts = 3
+
+    daemon.merge_queue = _Queue()  # type: ignore[assignment]
+    try:
+        daemon._consume_one_merge_candidate()
+    except RuntimeError as error:
+        assert "differs from daemon merge target" in str(error)
+    else:
+        raise AssertionError("mismatched merge queue target must fail closed")
+
+
+def test_record_prior_attempt_seed_failure_writes_guidance(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalTask,
+    )
+
+    task = PortalTask(
+        task_id="LIG-016",
+        title="t",
+        status="pending",
+        completion="manual",
+        priority="P0",
+        track="gate",
+        outputs=["tests/fixtures/logic/admissibility"],
+        canonical_task_cid="cid-lig-016",
+    )
+    daemon._record_prior_attempt_seed_failure(
+        task=task,
+        attempt=2,
+        seed_plan={
+            "reuse_prior_attempt": True,
+            "prior_commit": "abc123",
+            "prior_branch": "implementation/lig-016-attempt-1",
+            "seed_ref": "abc123",
+        },
+        seed_apply={"applied": False, "reason": "prior_seed_apply_failed"},
+        worktree_path=worktree,
+        branch_name="implementation/lig-016-attempt-2",
+    )
+    key = daemon._canonical_ref(task)
+    assert key in daemon._implementation_seed_failure_guidance
+    assert "abc123" in daemon._implementation_seed_failure_guidance[key]
+    guide = (
+        worktree
+        / "docs"
+        / "agent-supervisor"
+        / "rescue"
+        / "lig-016-attempt-2-seed-recovery.md"
+    )
+    assert guide.is_file()
+    assert "compactly" in guide.read_text(encoding="utf-8")

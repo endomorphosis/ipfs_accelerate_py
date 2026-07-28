@@ -2199,6 +2199,7 @@ class PortalImplementationDaemon:
         ] = {}
         self._implementation_diagnostic_repeats: dict[str, int] = {}
         self._implementation_retry_not_before: dict[str, float] = {}
+        self._implementation_seed_failure_guidance: dict[str, str] = {}
         self._implementation_scope_adjudications: dict[str, Any] = {}
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
@@ -4521,7 +4522,13 @@ class PortalImplementationDaemon:
         tasks: Sequence[PortalTask],
         resolved_statuses: dict[str, str],
     ) -> set[str]:
-        status_rank = {"ready": 0, "waiting": 1, "blocked": 2, "completed": 3}
+        status_rank = {
+            "ready": 0,
+            "waiting": 1,
+            "merge-queued": 1,
+            "blocked": 2,
+            "completed": 3,
+        }
         representative: dict[str, PortalTask] = {}
         for task in tasks:
             key = task.canonical_task_cid or task.canonical_task_key or task.task_id
@@ -5340,13 +5347,15 @@ class PortalImplementationDaemon:
                 resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in shared_active_merge_task_ids:
-                resolved_statuses[task.task_id] = "waiting"
+                # Pending/processing on the merge train for this target.
+                resolved_statuses[task.task_id] = "merge-queued"
                 continue
             if task.task_id in transient_merge_deferral_task_ids:
                 resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in queued_merge_task_ids:
-                resolved_statuses[task.task_id] = "waiting"
+                # Validated and enqueued; not board-complete until integrated.
+                resolved_statuses[task.task_id] = "merge-queued"
                 continue
             if task.task_id in quarantined_merge_task_ids:
                 resolved_statuses[task.task_id] = "blocked"
@@ -5459,7 +5468,11 @@ class PortalImplementationDaemon:
         state.assumed_completed_task_ids = sorted(self.assumed_completed_task_ids)
         state.eligible_ready_task_ids = list(selection_scope["eligible_ready_task_ids"])
         state.strict_deprioritized_ready_task_ids = list(selection_scope["strict_deprioritized_ready_task_ids"])
-        state.waiting_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "waiting"]
+        state.waiting_task_ids = [
+            task.task_id
+            for task in tasks
+            if resolved_statuses[task.task_id] in {"waiting", "merge-queued"}
+        ]
         state.blocked_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "blocked"]
         state.ready_count = len(state.ready_task_ids)
         state.selectable_ready_count = len(state.selectable_ready_task_ids)
@@ -8252,10 +8265,19 @@ class PortalImplementationDaemon:
 
         from ..merge_train import MergeTrain
 
+        target_branch = self.resolved_merge_target_branch or self._main_branch_name()
+        queue_branch = str(getattr(self.merge_queue, "target_branch", "") or "").strip()
+        if queue_branch and queue_branch != target_branch:
+            raise RuntimeError(
+                "merge queue target branch "
+                f"{queue_branch!r} differs from daemon merge target "
+                f"{target_branch!r}; multi-lane shards must share one "
+                "--merge-target-branch"
+            )
         train = MergeTrain(
             repo_root=self.repo_root,
             queue=self.merge_queue,
-            target_branch=self.resolved_merge_target_branch,
+            target_branch=target_branch,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
             merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
@@ -8468,6 +8490,18 @@ class PortalImplementationDaemon:
                         "branch": branch_name,
                         **dict(seed_apply),
                     },
+                )
+            elif seed_plan.get("reuse_prior_attempt"):
+                # Hard conflict / apply failure: keep clean baseline but leave
+                # durable guidance for this attempt's prompt and a short
+                # backoff so we do not thrash identical seed failures.
+                self._record_prior_attempt_seed_failure(
+                    task=task,
+                    attempt=attempt,
+                    seed_plan=seed_plan,
+                    seed_apply=seed_apply,
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
                 )
             if lifecycle_record is not None:
                 lifecycle_record = self._sync_worktree_lifecycle_workspace(
@@ -9807,6 +9841,66 @@ class PortalImplementationDaemon:
             "merge_stderr": (merge.stderr or "")[-500:],
             "checkout_stderr": (checkout.stderr or "")[-500:],
         }
+
+    def _record_prior_attempt_seed_failure(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        seed_plan: Mapping[str, Any],
+        seed_apply: Mapping[str, Any],
+        worktree_path: Path,
+        branch_name: str,
+    ) -> None:
+        """Record durable guidance when a prior attempt cannot be reseeded."""
+
+        key = self._canonical_ref(task)
+        prior_commit = str(
+            seed_plan.get("prior_commit") or seed_apply.get("seed_ref") or ""
+        ).strip()
+        prior_branch = str(seed_plan.get("prior_branch") or "").strip()
+        reason = str(seed_apply.get("reason") or "prior_seed_apply_failed")
+        guidance = (
+            f"Prior attempt seed apply failed ({reason}). "
+            "Continue from the clean merge-target baseline, then recover "
+            "preserved work from "
+            f"commit {prior_commit or '(unknown)'} "
+            f"{('branch ' + prior_branch) if prior_branch else ''} "
+            "or rewrite compactly inside declared Outputs; do not re-dump "
+            "oversized fixtures."
+        ).strip()
+        self._implementation_seed_failure_guidance[key] = guidance
+        guide_path = ""
+        if worktree_path.exists():
+            try:
+                guide_dir = (
+                    worktree_path / "docs" / "agent-supervisor" / "rescue"
+                )
+                guide_dir.mkdir(parents=True, exist_ok=True)
+                safe_task = re.sub(
+                    r"[^a-z0-9._-]+", "-", task.task_id.lower()
+                ).strip("-") or "task"
+                guide_file = (
+                    guide_dir
+                    / f"{safe_task}-attempt-{int(attempt)}-seed-recovery.md"
+                )
+                guide_file.write_text(guidance + "\n", encoding="utf-8")
+                guide_path = str(guide_file.relative_to(worktree_path))
+            except OSError:
+                guide_path = ""
+        self._record_event(
+            "implementation_prior_attempt_seed_failed",
+            {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "guidance": guidance,
+                "guidance_path": guide_path,
+                "seed_plan": dict(seed_plan),
+                "seed_apply": dict(seed_apply),
+            },
+        )
 
     @staticmethod
     def _board_completion_decision(
@@ -20967,6 +21061,17 @@ class PortalImplementationDaemon:
                     "## Prior failure review (deterministic)\n"
                     f"{addendum}\n"
                 )
+            seed_guidance = str(
+                self._implementation_seed_failure_guidance.get(key) or ""
+            ).strip()
+            if seed_guidance:
+                rendered = (
+                    f"{rendered.rstrip()}\n\n"
+                    "## Prior attempt seed recovery\n"
+                    f"{seed_guidance}\n"
+                )
+                # One-shot: do not keep replaying after the attempt starts.
+                self._implementation_seed_failure_guidance.pop(key, None)
         policy = str(self._implementation_prompt_policy_appendix(task) or "").strip()
         if policy:
             rendered = f"{rendered.rstrip()}\n\n{policy}\n"
