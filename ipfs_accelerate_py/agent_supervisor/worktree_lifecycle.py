@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .checkout_lock import git_common_dir, serialized_lock_update
-from .proof.formal_verification_contracts import content_identity
+from .formal_verification_contracts import content_identity
 
 
 WORKTREE_LIFECYCLE_SCHEMA = (
