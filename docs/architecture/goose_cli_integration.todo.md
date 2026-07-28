@@ -295,7 +295,7 @@ Program invariants:
 
 ## GOOSE-012 Publish operator documentation and controlled rollout guidance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
