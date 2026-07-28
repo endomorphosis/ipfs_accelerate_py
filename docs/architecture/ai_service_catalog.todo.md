@@ -713,7 +713,7 @@ Program invariants:
 
 ## AICAT-030 Integrate usage-aware admission into llm_router
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
