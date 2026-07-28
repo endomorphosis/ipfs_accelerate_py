@@ -738,7 +738,7 @@ Program invariants:
 
 ## AICAT-031 Integrate usage-aware admission into embeddings_router
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
