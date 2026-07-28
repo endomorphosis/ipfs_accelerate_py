@@ -688,7 +688,7 @@ Program invariants:
 
 ## AICAT-029 Implement shared route admission, ranking, fallback, and receipts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
