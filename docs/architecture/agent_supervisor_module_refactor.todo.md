@@ -201,7 +201,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-008 Close objective gap: Clear agent_supervisor package layout and monorepo root hygiene
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
