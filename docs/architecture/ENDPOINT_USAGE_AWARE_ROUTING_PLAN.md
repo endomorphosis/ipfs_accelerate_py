@@ -627,6 +627,64 @@ attached to the existing self-improvement board as `ASI-165` through
 7. fenced cross-lane worktree ownership and cleanup safety, implemented first
    as the prerequisite that unblocks `AICAT-025`.
 
+### Supervisor usage rollout gate (ASI-170)
+
+`ipfs_accelerate_py.agent_supervisor.supervisor_usage_rollout` owns the frozen
+paired E2E/chaos population and staged promotion decision for endpoint-aware
+supervisor execution. Modes are `off`, `observe`, `shadow`, `assist`, and
+`enforce` (aligned with shared endpoint routing, not the prompt-workflow
+`automatic` vocabulary).
+
+| Mode | Behavior |
+| --- | --- |
+| `off` | Legacy provider path; no reservation; selection matches prior behavior |
+| `observe` | Collect estimates/observations; never alter selection or admission |
+| `shadow` | Compute reservations and candidate decisions beside legacy execution |
+| `assist` | Operator-authorized suggestions only; requires explicit operator authority |
+| `enforce` | Hierarchical budgets, fair admission, and endpoint limits bind execution |
+
+Promotion rules:
+
+- `observe`/`shadow` cannot alter execution selection.
+- `assist` requires policy approval **and** operator authority.
+- `enforce` (and automatic endpoint fallback classes) require a later, distinct,
+  currently rooted paired report that passes safety, attribution, fairness,
+  cost, latency, and quality limits.
+- Distributed enforcement without a strong fenced coordinator fails closed
+  (effective mode `off` while retaining observed ledger state).
+- Any safety, binding, parity, fairness, quality, cost, latency, or
+  compatibility regression returns only the affected behavior to `shadow`/`off`
+  and retains observed usage for diagnosis.
+
+Offline verification:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_provider_usage.py \
+  test/api/test_agent_supervisor_provider_execution.py \
+  test/api/test_agent_supervisor_usage_scheduler.py \
+  test/api/test_agent_supervisor_provider_usage_migration.py \
+  test/api/test_agent_supervisor_usage_controls.py \
+  test/api/test_agent_supervisor_usage_control_conformance.py \
+  test/api/test_agent_supervisor_usage_e2e.py \
+  test/api/test_agent_supervisor_usage_chaos.py \
+  test/api/test_agent_supervisor_usage_rollout.py -q
+```
+
+| Suite | Covers |
+| --- | --- |
+| `test_agent_supervisor_usage_e2e.py` | Frozen stage/topology/consumer population; exact endpoint+task/stage attribution; off/observe/shadow non-selection; local fallback and single-flight |
+| `test_agent_supervisor_usage_chaos.py` | Reservation races, estimate under/over, 429/503/billing, malformed metadata, clock skew/jitter, cache/batch/stream partials, retry/fallback, cancel/timeout, crash/replay, stale lease, ledger outage, partition/split-brain, endpoint loss/recovery, callsite bypass, unfair queue, reset herds |
+| `test_agent_supervisor_usage_rollout.py` | Mode vocabulary; assist authority; enforce two-observation gate; binding/population/metric regression rollback; distributed fail-closed; opt-in live budget cap |
+
+Opt-in live smoke (never default CI):
+
+```bash
+IPFS_ACCELERATE_SUPERVISOR_USAGE_LIVE=1 \
+IPFS_ACCELERATE_SUPERVISOR_USAGE_LIVE_BUDGET_MICROS=5000 \
+python -m pytest test/api/test_agent_supervisor_usage_rollout.py -k opt_in_live -q
+```
+
 The new objective trees are independent successors. They consume the completed
 catalog and supervisor foundations without retroactively changing the closed
 producer populations of earlier objective generations.
