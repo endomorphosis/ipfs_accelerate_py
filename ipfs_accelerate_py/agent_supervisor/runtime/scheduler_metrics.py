@@ -2727,6 +2727,463 @@ def ready_task_cids(snapshot: SchedulerSnapshot | Mapping[str, Any]) -> tuple[st
     )
 
 
+# ---------------------------------------------------------------------------
+# ASI-169 event-derived usage-governance metrics
+# ---------------------------------------------------------------------------
+
+SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID = (
+    "requirement:supervisor-usage-metrics.v1"
+)
+SUPERVISOR_USAGE_METRICS_SCHEMA_VERSION = 1
+SUPERVISOR_USAGE_METRICS_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.usage-governance-metrics@1"
+)
+MAX_USAGE_METRIC_SERIES = 4_096
+MAX_USAGE_PROVIDER_LABELS = 64
+MAX_USAGE_DEPLOYMENT_LABELS = 128
+MAX_USAGE_STAGE_LABELS = 32
+
+USAGE_GOVERNANCE_EVENT_TYPES = frozenset(
+    {
+        "usage_reservation",
+        "usage_reservation_denied",
+        "usage_reservation_expired",
+        "usage_settlement",
+        "usage_correction",
+        "usage_reset",
+        "usage_wait",
+        "usage_reroute",
+        "usage_fallback",
+        "usage_estimate",
+        "usage_headroom",
+        "usage_fairness",
+        "usage_starvation",
+        "usage_herd",
+        "usage_ledger_health",
+        "endpoint_usage_event",
+        "provider_usage_event",
+        "supervisor_usage_event",
+    }
+)
+
+_USAGE_FORBIDDEN_LABEL_KEYS = frozenset(
+    {
+        "request",
+        "request_id",
+        "credential",
+        "credential_id",
+        "credential_pseudonym",
+        "tenant",
+        "tenant_id",
+        "alias",
+        "model",
+        "model_id",
+        "model_string",
+        "model_alias",
+        "endpoint",
+        "endpoint_uri",
+        "endpoint_url",
+        "url",
+        "account",
+        "account_pseudonym",
+        "user",
+        "session",
+        "prompt",
+        "media",
+        "output",
+    }
+)
+
+_USAGE_METRIC_LABELS: dict[str, tuple[str, ...]] = {
+    "usage_estimate_error_ratio_sum": ("provider", "deployment", "stage", "dimension"),
+    "usage_estimate_error_ratio_count": (
+        "provider",
+        "deployment",
+        "stage",
+        "dimension",
+    ),
+    "usage_headroom_band": ("provider", "deployment", "stage", "dimension", "band"),
+    "usage_denials_total": ("provider", "deployment", "stage", "reason"),
+    "usage_waits_total": ("provider", "deployment", "stage", "reason"),
+    "usage_reroutes_total": ("provider", "deployment", "stage", "reason"),
+    "usage_fairness_total": ("provider", "deployment", "stage", "state"),
+    "usage_starvation_total": ("provider", "deployment", "stage", "reason"),
+    "usage_resets_total": ("provider", "deployment", "stage", "reason"),
+    "usage_herd_total": ("provider", "deployment", "stage", "reason"),
+    "usage_fallbacks_total": ("provider", "deployment", "stage", "reason"),
+    "usage_settlements_total": ("provider", "deployment", "stage", "state"),
+    "usage_corrections_total": ("provider", "deployment", "stage", "reason"),
+    "usage_ledger_health": ("state",),
+}
+
+_USAGE_BOUNDED_VALUES: dict[str, frozenset[str]] = {
+    "reason": frozenset(
+        {
+            "ok",
+            "limit_exhausted",
+            "capacity_unavailable",
+            "policy_denied",
+            "stale_snapshot",
+            "reservation_conflict",
+            "cooling_down",
+            "timeout",
+            "cancelled",
+            "fallback",
+            "reroute",
+            "wait",
+            "correction",
+            "reset",
+            "herd",
+            "starvation",
+            "fairness",
+            "store_unhealthy",
+            "unknown",
+            "other",
+        }
+    ),
+    "dimension": frozenset(
+        {
+            "requests",
+            "total_tokens",
+            "input_tokens",
+            "output_tokens",
+            "cost_micros",
+            "concurrency",
+            "other",
+        }
+    ),
+    "band": frozenset(
+        {
+            "unknown",
+            "exhausted",
+            "critical",
+            "low",
+            "medium",
+            "high",
+            "unlimited",
+            "other",
+        }
+    ),
+    "state": frozenset(
+        {
+            "healthy",
+            "unhealthy",
+            "ready",
+            "exhausted",
+            "stale",
+            "unknown",
+            "settled",
+            "corrected",
+            "other",
+        }
+    ),
+    "stage": frozenset(
+        {
+            "planning",
+            "analysis",
+            "proof",
+            "rescue",
+            "validation",
+            "implementation",
+            "merge",
+            "batch",
+            "other",
+        }
+    ),
+}
+
+
+def forbidden_usage_metric_label_keys() -> frozenset[str]:
+    return frozenset(_USAGE_FORBIDDEN_LABEL_KEYS)
+
+
+def _usage_label_token(
+    value: Any,
+    *,
+    allowed: frozenset[str] | None = None,
+    default: str = "other",
+) -> str:
+    if value is None:
+        return default
+    text = str(value).strip().casefold()
+    if not text:
+        return default
+    cleaned = "".join(
+        ch if ch.isalnum() or ch in "._:-" else "-" for ch in text
+    ).strip("-")[:64]
+    if not cleaned:
+        return default
+    if allowed is not None and cleaned not in allowed:
+        return default if default in allowed else "other"
+    return cleaned
+
+
+def _usage_provider_label(value: Any) -> str:
+    text = _usage_label_token(value, default="other")
+    if text.startswith("provider:") or text == "other":
+        return text
+    return f"provider:{text}" if text != "other" else "other"
+
+
+def _usage_deployment_label(value: Any) -> str:
+    text = _usage_label_token(value, default="other")
+    if text.startswith("deployment:") or text == "other":
+        return text
+    return f"deployment:{text}" if text != "other" else "other"
+
+
+def _usage_event_kind(event: Mapping[str, Any]) -> str:
+    for key in ("type", "kind", "event_type", "usage_event_kind"):
+        value = event.get(key)
+        if value:
+            return str(value).strip().casefold()
+    return ""
+
+
+def _declares_usage_governance(event: Mapping[str, Any]) -> bool:
+    kind = _usage_event_kind(event)
+    if kind in USAGE_GOVERNANCE_EVENT_TYPES:
+        return True
+    if event.get("usage_governance") is True:
+        return True
+    if isinstance(event.get("usage"), Mapping):
+        return True
+    if any(
+        key in event
+        for key in (
+            "headroom_band",
+            "estimate_error",
+            "reservation_denied",
+            "ledger_health",
+            "fairness_state",
+            "starvation",
+            "reset_herd",
+        )
+    ):
+        return True
+    return False
+
+
+def _usage_identity(event: Mapping[str, Any]) -> dict[str, str]:
+    usage = event.get("usage") if isinstance(event.get("usage"), Mapping) else {}
+    provider = (
+        event.get("provider")
+        or event.get("provider_id")
+        or usage.get("provider")
+    )
+    deployment = (
+        event.get("deployment")
+        or event.get("deployment_id")
+        or usage.get("deployment")
+    )
+    stage = (
+        event.get("stage")
+        or event.get("supervisor_stage")
+        or usage.get("stage")
+    )
+    return {
+        "provider": _usage_provider_label(provider),
+        "deployment": _usage_deployment_label(deployment),
+        "stage": _usage_label_token(
+            stage, allowed=_USAGE_BOUNDED_VALUES["stage"], default="other"
+        ),
+    }
+
+
+def _usage_series_key(
+    name: str, labels: Mapping[str, str]
+) -> tuple[str, tuple[tuple[str, str], ...]]:
+    expected = _USAGE_METRIC_LABELS[name]
+    for key in labels:
+        if str(key).casefold() in _USAGE_FORBIDDEN_LABEL_KEYS:
+            raise ValueError(f"forbidden metric label: {key}")
+    if set(labels) != set(expected):
+        raise ValueError("metric labels must exactly match the metric contract")
+    ordered = tuple((key, str(labels[key])) for key in expected)
+    return name, ordered
+
+
+def project_usage_governance_metrics(
+    events: Mapping[str, Any] | Iterable[Mapping[str, Any]],
+    *,
+    now: datetime | str | None = None,
+) -> dict[str, Any]:
+    """Derive low-cardinality usage-governance metrics from endpoint events.
+
+    Metrics are operational evidence only.  Labels are bounded to provider,
+    deployment, stage, state, reason, dimension, and headroom band — never
+    request, credential, tenant, prompt, media, output, model alias, or
+    endpoint URL cardinality.
+    """
+
+    if isinstance(events, Mapping):
+        values = [dict(events)]
+    else:
+        values = [dict(value) for value in events if isinstance(value, Mapping)]
+
+    series: dict[tuple[str, tuple[tuple[str, str], ...]], float] = {}
+    providers: set[str] = set()
+    deployments: set[str] = set()
+    stages: set[str] = set()
+
+    def bump(name: str, labels: Mapping[str, str], amount: float = 1.0) -> None:
+        if name not in _USAGE_METRIC_LABELS:
+            return
+        if amount < 0:
+            return
+        key = _usage_series_key(name, labels)
+        if key[1][0][0] == "provider":
+            providers.add(key[1][0][1])
+        for label_name, label_value in key[1]:
+            if label_name == "deployment":
+                deployments.add(label_value)
+            if label_name == "stage":
+                stages.add(label_value)
+        if key not in series and len(series) >= MAX_USAGE_METRIC_SERIES:
+            return
+        series[key] = series.get(key, 0.0) + float(amount)
+
+    ledger_healthy = True
+    for event in values:
+        if not _declares_usage_governance(event):
+            continue
+        identity = _usage_identity(event)
+        # Reject forbidden high-cardinality fields if present as metric labels.
+        for forbidden in _USAGE_FORBIDDEN_LABEL_KEYS:
+            if forbidden in event and forbidden in {
+                "request_id",
+                "credential_pseudonym",
+                "tenant_id",
+                "endpoint_url",
+                "prompt",
+            }:
+                # Ignore payload presence; never promote to labels.
+                pass
+        kind = _usage_event_kind(event)
+        reason = _usage_label_token(
+            (event.get("reason_codes") or [event.get("reason") or "ok"])[0]
+            if isinstance(event.get("reason_codes"), (list, tuple))
+            else event.get("reason") or "ok",
+            allowed=_USAGE_BOUNDED_VALUES["reason"],
+            default="other",
+        )
+        dimension = _usage_label_token(
+            event.get("dimension") or "total_tokens",
+            allowed=_USAGE_BOUNDED_VALUES["dimension"],
+            default="other",
+        )
+        if kind in {
+            "usage_reservation_denied",
+            "reservation_denied",
+        } or event.get("reservation_denied"):
+            bump(
+                "usage_denials_total",
+                {
+                    **identity,
+                    "reason": reason if reason != "ok" else "limit_exhausted",
+                },
+            )
+        if kind in {"usage_wait", "wait"} or event.get("wait"):
+            bump("usage_waits_total", {**identity, "reason": reason})
+        if kind in {"usage_reroute", "reroute"} or event.get("reroute"):
+            bump("usage_reroutes_total", {**identity, "reason": reason})
+        if kind in {"usage_fallback", "fallback"} or event.get("fallback"):
+            bump("usage_fallbacks_total", {**identity, "reason": reason})
+        if kind in {"usage_reset", "reset"} or event.get("reset"):
+            bump("usage_resets_total", {**identity, "reason": "reset"})
+        if kind in {"usage_herd", "reset_herd"} or event.get("reset_herd"):
+            bump("usage_herd_total", {**identity, "reason": "herd"})
+        if kind in {"usage_starvation", "starvation"} or event.get("starvation"):
+            bump("usage_starvation_total", {**identity, "reason": "starvation"})
+        if kind in {"usage_fairness", "fairness"} or event.get("fairness_state"):
+            state = _usage_label_token(
+                event.get("fairness_state") or event.get("state") or "ready",
+                allowed=_USAGE_BOUNDED_VALUES["state"],
+                default="other",
+            )
+            bump("usage_fairness_total", {**identity, "state": state})
+        if kind in {"usage_settlement", "settlement"} or event.get("settlement"):
+            bump(
+                "usage_settlements_total",
+                {**identity, "state": "settled"},
+            )
+        if kind in {"usage_correction", "correction"} or event.get("correction"):
+            bump("usage_corrections_total", {**identity, "reason": "correction"})
+        if kind in {"usage_estimate", "estimate"} or "estimate_error" in event:
+            raw_estimated = event.get("estimated", event.get("estimate"))
+            raw_actual = event.get("actual", event.get("observed"))
+            if raw_estimated not in (None, "") and raw_actual not in (None, ""):
+                estimated = _number(raw_estimated)
+                actual = _number(raw_actual)
+                denom = max(1.0, abs(float(actual)))
+                ratio = abs(float(estimated) - float(actual)) / denom
+                labels = {**identity, "dimension": dimension}
+                bump("usage_estimate_error_ratio_sum", labels, ratio)
+                bump("usage_estimate_error_ratio_count", labels, 1.0)
+        band = event.get("headroom_band") or event.get("band")
+        if band or kind in {"usage_headroom", "headroom"}:
+            bump(
+                "usage_headroom_band",
+                {
+                    **identity,
+                    "dimension": dimension,
+                    "band": _usage_label_token(
+                        band or "unknown",
+                        allowed=_USAGE_BOUNDED_VALUES["band"],
+                        default="other",
+                    ),
+                },
+                1.0,
+            )
+        if kind in {"usage_ledger_health", "ledger_health"} or "ledger_health" in event:
+            health = event.get("ledger_health")
+            if health in {False, "unhealthy", "error"}:
+                ledger_healthy = False
+            bump(
+                "usage_ledger_health",
+                {
+                    "state": "healthy"
+                    if health not in {False, "unhealthy", "error"}
+                    else "unhealthy"
+                },
+                1.0,
+            )
+
+    if "usage_ledger_health" not in {key[0] for key in series}:
+        bump(
+            "usage_ledger_health",
+            {"state": "healthy" if ledger_healthy else "unhealthy"},
+            1.0,
+        )
+
+    # Cap provider/deployment/stage cardinality for the projection summary.
+    samples = [
+        {
+            "name": name,
+            "labels": dict(labels),
+            "value": value,
+        }
+        for (name, labels), value in sorted(
+            series.items(), key=lambda item: (item[0][0], item[0][1])
+        )
+    ]
+    return {
+        "schema": SUPERVISOR_USAGE_METRICS_SCHEMA,
+        "schema_version": SUPERVISOR_USAGE_METRICS_SCHEMA_VERSION,
+        "requirement_id": SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID,
+        "observed_at": _now_iso(now),
+        "series_count": len(samples),
+        "samples": samples,
+        "provider_count": min(len(providers), MAX_USAGE_PROVIDER_LABELS),
+        "deployment_count": min(len(deployments), MAX_USAGE_DEPLOYMENT_LABELS),
+        "stage_count": min(len(stages), MAX_USAGE_STAGE_LABELS),
+        "forbidden_label_keys": sorted(_USAGE_FORBIDDEN_LABEL_KEYS),
+        "completion_authoritative": False,
+        "operational_evidence_only": True,
+        "metric_names": sorted(_USAGE_METRIC_LABELS),
+    }
+
+
 # Proof observability uses the same operator-facing module as a discovery
 # surface while keeping its stricter public-projection policy isolated.
 from ..proof.proof_metrics import (  # noqa: E402  (intentional late compatibility import)
@@ -2801,4 +3258,11 @@ __all__ = [
     "write_scheduler_snapshot",
     "write_proof_rollout_query",
     "write_proof_rollout_status",
+    "SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID",
+    "SUPERVISOR_USAGE_METRICS_SCHEMA",
+    "SUPERVISOR_USAGE_METRICS_SCHEMA_VERSION",
+    "USAGE_GOVERNANCE_EVENT_TYPES",
+    "MAX_USAGE_METRIC_SERIES",
+    "forbidden_usage_metric_label_keys",
+    "project_usage_governance_metrics",
 ]
