@@ -588,10 +588,11 @@ Program invariants:
 
 ## AICAT-025 Define endpoint-scoped usage, limit, event, and receipt contracts
 
-- Status: todo
+- Status: blocked
 - Completion: manual
 - Is schedulable: true
 - Review only: false
+- Blocked reason: awaiting_external_supervisor_worktree_fencing_ASI-171
 - Priority: P0
 - Track: endpoint-usage-contracts
 - Depends on: AICAT-001, AICAT-010
@@ -607,7 +608,7 @@ Program invariants:
 - Predicted files: ipfs_accelerate_py/endpoint_usage/__init__.py, ipfs_accelerate_py/endpoint_usage/schema.py, ipfs_accelerate_py/endpoint_usage/identity.py, test/test_endpoint_usage_schema.py
 - Allow concurrent with:
 - Conflict policy: Own only the new provider-free endpoint_usage contracts and focused tests. Reuse catalog provider, model, deployment, operation, and binding identities without modifying routers, ModelManager, persistence, MCP, or supervisor code.
-- Preconditions: Read docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md and map existing catalog identities, DeploymentDescriptor endpoint normalization, ResourceScheduler ProviderCapacity, ProviderBatchCapacity, supervisor token attribution, and router request/response shapes before freezing fields.
+- Preconditions: Keep this task externally blocked until ASI-171 proves fenced cross-lane worktree ownership and cleanup safety on the current merge target. Then remove only this task's Blocked reason and set Status to todo through the protected taskboard control path. Read docs/architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md and map existing catalog identities, DeploymentDescriptor endpoint normalization, ResourceScheduler ProviderCapacity, ProviderBatchCapacity, supervisor token attribution, and router request/response shapes before freezing fields.
 - Effects: Add immutable bounded EndpointUsageScope, UsageDimension, UsageVector, UsageLimit, LimitWindow, ProviderUsageObservation, UsageEstimate, UsageEvent, UsageReservation, UsageSnapshot, RoutingPolicy, UsageAwareResolution, UsageRoutingReceipt, and typed error/reason contracts with deterministic secret-free identities.
 - Acceptance: Scope identity binds provider, deployment or secret-free endpoint fingerprint, protocol, operation, optional provider-scoped model/account/project/region, and a keyed local credential-configuration pseudonym without raw credentials or URLs. Keep requests, batch items, input/output/total tokens, embedding inputs/tokens/vectors, images/pixels/media bytes, audio seconds/characters, concurrent requests/streams, and currency-tagged cost micros typed. Model fixed, sliding, token-bucket, concurrent, billing, and lifetime windows with anchors, resets, refill, burst, reserve, freshness, source, confidence, and provenance. Unknown is distinct from unlimited. Canonical serialization is bounded, deterministic, round-trippable, collision-tested, and rejects unknown fields, negative/overflowing values, invalid unit/window combinations, credential-shaped strings, bearer URLs, prompts, media, output, and excessive nesting. Cold import has no network, provider, process, secret-store, model-load, or database side effect.
 

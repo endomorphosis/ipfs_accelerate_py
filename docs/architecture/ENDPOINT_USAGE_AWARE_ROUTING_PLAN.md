@@ -402,6 +402,42 @@ and single-flight refresh limit contention.
 Usage receipts are operational evidence only. They cannot prove task
 correctness, validation, authorization, or objective completion.
 
+## Supervisor execution prerequisite: cross-lane worktree ownership
+
+The usage program must not spend provider capacity through an implementation
+worker whose checkout can be removed by another supervisor lane. A live
+six-lane rehearsal on 2026-07-28 reproduced a startup race: a worker created
+and entered a task worktree whose branch still pointed at the merge target,
+while another lane classified that same checkout as already merged before
+process discovery became visible and removed it. The worker remained alive in
+an unlinked directory, subsequent validation could not produce changes, and
+protected-path identity monitoring correctly failed closed even though the
+protected file hashes were unchanged.
+
+Treat a managed worktree as a fenced lifecycle resource rather than inferring
+ownership from branch ancestry or a momentary process scan:
+
+- acquire the global task-attempt claim and a monotonic workspace fence before
+  publishing or creating a cleanup-visible worktree;
+- persist `preparing`, `active`, `settling`, and `terminal` lifecycle states
+  with task CID, attempt, lane, owner PID plus process-birth identity, lease,
+  workspace, branch, and merge-target binding;
+- require cleanup/reconciliation to acquire a compare-and-delete fence and
+  skip every nonterminal or unexpired claimed workspace, including the window
+  between `git worktree add` and child-process discovery;
+- let only the fenced owner transition the workspace to terminal, and preserve
+  conservative startup grace for partial creation, daemon restart, PID reuse,
+  and temporarily unavailable process inspection;
+- distinguish a setup/reconciliation race from an implementation failure so it
+  cannot consume a task retry or make a remote model call; and
+- prove the behavior with deterministic barrier-controlled multi-lane tests
+  covering cleanup during preparation, active execution, settlement, restart,
+  stale-lease reclamation, and legitimate merged-worktree disposal.
+
+`AICAT-025` remains externally blocked until `ASI-171` lands this prerequisite.
+This prevents further guaranteed-failure implementation attempts while leaving
+the endpoint-usage design and downstream dependency graph intact.
+
 ## Persistence and coordination
 
 Define a `UsageLedgerStore` protocol with:
@@ -536,15 +572,18 @@ The implementation is attached to the existing AI Service Catalog board as
 10. controls and observability; and
 11. conformance, fault injection, documentation, and rollout.
 
-The supervisor-specific integration is attached to the existing
-self-improvement board as `ASI-165` through `ASI-170`:
+The supervisor-specific integration and its live execution prerequisite are
+attached to the existing self-improvement board as `ASI-165` through
+`ASI-171`:
 
 1. hierarchical supervisor usage contracts and accounting bridge;
 2. one reservation-aware provider execution gateway;
 3. endpoint-aware resource/batch admission and fair backpressure;
 4. migration of every supervisor provider consumer;
-5. Python/CLI/MCP controls and metrics; and
-6. paired E2E, chaos, rollout, and operator guidance.
+5. Python/CLI/MCP controls and metrics;
+6. paired E2E, chaos, rollout, and operator guidance; and
+7. fenced cross-lane worktree ownership and cleanup safety, implemented first
+   as the prerequisite that unblocks `AICAT-025`.
 
 The new objective trees are independent successors. They consume the completed
 catalog and supervisor foundations without retroactively changing the closed
