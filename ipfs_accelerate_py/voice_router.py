@@ -51,6 +51,7 @@ import logging
 import math
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -61,6 +62,7 @@ from typing import (
     Callable,
     Dict,
     Iterable,
+    List,
     Mapping,
     Optional,
     Protocol,
@@ -101,6 +103,78 @@ logger = logging.getLogger(__name__)
 VOICE_TURN_CONTRACT_VERSION = "1.0"
 VOICE_STAGE_STATUSES = frozenset({"succeeded", "failed", "skipped"})
 VOICE_TURN_STATUSES = frozenset({"completed", "degraded", "text_only", "failed"})
+
+# Evidence identity for AICAT-G130 / AICAT-033 voice usage integration.
+USAGE_ROUTING_REQUIREMENT_ID = "requirement:voice-router-usage-routing.v1"
+VOICE_TTS_USAGE_OPERATION = "audio.synthesize"
+VOICE_STT_USAGE_OPERATION = "audio.transcribe"
+
+_LAST_USAGE_ADMISSION = threading.local()
+_LAST_VOICE_USAGE_TRACE = threading.local()
+
+# Ranking-input names that embed these substrings are rejected by receipt
+# digests. Full reservation envelopes still include tokens/media_bytes.
+_RECEIPT_UNSAFE_DIMENSION_MARKERS = (
+    "token",
+    "media",
+    "prompt",
+    "message",
+    "payload",
+    "endpoint",
+    "credential",
+    "secret",
+    "password",
+    "authorization",
+    "transcript",
+    "synthesis",
+    "voice_sample",
+)
+
+
+class VoiceRouterError(RuntimeError):
+    """Raised when a provider violates the voice router contract."""
+
+
+class UsageCapacityError(VoiceRouterError):
+    """Raised when usage-aware admission denies capacity before or during dispatch."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_codes: Sequence[str] = (),
+        next_eligible_at: Optional[str] = None,
+        admission: Optional[object] = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason_codes = tuple(reason_codes or ())
+        self.next_eligible_at = next_eligible_at
+        self.admission = admission
+
+
+def _set_last_usage_admission(payload: Optional[Mapping[str, object]]) -> None:
+    _LAST_USAGE_ADMISSION.payload = dict(payload) if payload is not None else None
+
+
+def get_last_usage_admission() -> Dict[str, object]:
+    """Return a copy of the most recent usage-admission result for this thread.
+
+    Operational evidence only: never transcript, synthesis text, audio, or credentials.
+    """
+
+    payload = getattr(_LAST_USAGE_ADMISSION, "payload", None)
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _set_last_voice_usage_trace(**values: object) -> None:
+    _LAST_VOICE_USAGE_TRACE.payload = dict(values)
+
+
+def get_last_voice_usage_trace() -> Dict[str, object]:
+    """Return a copy of the most recent voice usage trace for this thread."""
+
+    payload = getattr(_LAST_VOICE_USAGE_TRACE, "payload", None)
+    return dict(payload) if isinstance(payload, dict) else {}
 
 
 def _truthy(value: Optional[str]) -> bool:
@@ -3970,6 +4044,2038 @@ def process_voice_turn(
 # Public API
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Usage-aware admission (optional; off mode is the default legacy path)
+# ---------------------------------------------------------------------------
+
+
+def estimate_synthesis_tokens(text: str) -> int:
+    """Conservative synthesis token estimate for TTS admission."""
+
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    if not text:
+        return 1
+    char_estimate = (len(text) + 3) // 4
+    word_estimate = max(1, len(text.split()))
+    byte_estimate = (len(text.encode("utf-8")) + 2) // 3
+    return max(1, char_estimate, word_estimate, byte_estimate)
+
+
+def _audio_media_bytes(audio: Union[str, bytes]) -> int:
+    if isinstance(audio, bytes):
+        return len(audio)
+    if isinstance(audio, str) and os.path.isfile(audio):
+        try:
+            return int(os.path.getsize(audio))
+        except OSError:
+            return max(1, len(audio.encode("utf-8")))
+    if isinstance(audio, str):
+        return max(1, len(audio.encode("utf-8")))
+    raise TypeError("audio must be bytes or a filesystem path string")
+
+
+def _parse_wav_duration_seconds(payload: bytes) -> Optional[float]:
+    """Best-effort WAV duration from a RIFF header (no full decode)."""
+
+    if len(payload) < 44 or payload[0:4] != b"RIFF" or payload[8:12] != b"WAVE":
+        return None
+    # Scan for fmt and data chunks.
+    offset = 12
+    sample_rate = 0
+    channels = 0
+    bits_per_sample = 0
+    data_size = 0
+    while offset + 8 <= len(payload):
+        chunk_id = payload[offset : offset + 4]
+        chunk_size = int.from_bytes(payload[offset + 4 : offset + 8], "little")
+        data_start = offset + 8
+        data_end = data_start + chunk_size
+        if chunk_id == b"fmt " and chunk_size >= 16 and data_end <= len(payload):
+            channels = int.from_bytes(payload[data_start + 2 : data_start + 4], "little")
+            sample_rate = int.from_bytes(payload[data_start + 4 : data_start + 8], "little")
+            bits_per_sample = int.from_bytes(
+                payload[data_start + 14 : data_start + 16], "little"
+            )
+        elif chunk_id == b"data":
+            data_size = chunk_size
+            break
+        # Chunks are word-aligned.
+        offset = data_end + (chunk_size % 2)
+        if chunk_size <= 0:
+            break
+    if sample_rate > 0 and channels > 0 and bits_per_sample > 0 and data_size > 0:
+        bytes_per_second = sample_rate * channels * max(1, bits_per_sample // 8)
+        if bytes_per_second > 0:
+            return float(data_size) / float(bytes_per_second)
+    return None
+
+
+def estimate_audio_seconds(
+    audio: Union[str, bytes],
+    *,
+    sample_rate: Optional[int] = None,
+    channels: Optional[int] = None,
+    declared_seconds: Optional[Union[int, float]] = None,
+) -> int:
+    """Conservative audio duration estimate (ceil seconds, minimum 1 when non-empty)."""
+
+    if declared_seconds is not None:
+        try:
+            value = float(declared_seconds)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("declared_seconds must be numeric") from exc
+        if value <= 0:
+            return 1
+        return max(1, int(math.ceil(value)))
+
+    media_bytes = _audio_media_bytes(audio)
+    if media_bytes <= 0:
+        return 1
+
+    payload: Optional[bytes] = None
+    if isinstance(audio, bytes):
+        payload = audio
+    elif isinstance(audio, str) and os.path.isfile(audio):
+        try:
+            with open(audio, "rb") as handle:
+                payload = handle.read(min(media_bytes, 1024 * 1024))
+        except OSError:
+            payload = None
+
+    if payload:
+        wav_seconds = _parse_wav_duration_seconds(payload)
+        if wav_seconds is not None and wav_seconds > 0:
+            return max(1, int(math.ceil(wav_seconds)))
+
+    rate = int(sample_rate) if sample_rate else 16_000
+    ch = int(channels) if channels else 1
+    if rate > 0 and ch > 0:
+        # Assume 16-bit PCM when rate/channels are known; over-estimates
+        # compressed audio slightly, which is fail-closed for admission.
+        bytes_per_second = max(1, rate * ch * 2)
+        return max(1, int(math.ceil(media_bytes / float(bytes_per_second))))
+
+    # Compressed-audio fallback (~32 kbps) — over-estimate duration.
+    return max(1, int(math.ceil(media_bytes / 4000.0)))
+
+
+def estimate_synthesis_usage(
+    text: str,
+    *,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+    include_concurrency: bool = True,
+    streaming: bool = False,
+    remote: bool = True,
+) -> "object":
+    """Build a conservative multi-dimension usage vector for TTS work.
+
+    Dimensions: requests, characters, input_tokens (synthesis tokens),
+    media_bytes (UTF-8 text), concurrent_requests, concurrent_streams, cost.
+    """
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    if not remote:
+        return UsageVector()
+    if not text:
+        return UsageVector.of(requests=1)
+
+    characters = len(text)
+    tokens = estimate_synthesis_tokens(text)
+    media_bytes = len(text.encode("utf-8"))
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "characters": characters,
+        "input_tokens": tokens,
+        "media_bytes": media_bytes,
+    }
+    if include_concurrency:
+        amounts["concurrent_requests"] = 1
+        if streaming:
+            amounts["concurrent_streams"] = 1
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    return UsageVector.of(**amounts)
+
+
+def estimate_transcription_usage(
+    audio: Union[str, bytes],
+    *,
+    sample_rate: Optional[int] = None,
+    channels: Optional[int] = None,
+    declared_seconds: Optional[Union[int, float]] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+    include_concurrency: bool = True,
+    streaming: bool = False,
+    remote: bool = True,
+) -> "object":
+    """Build a conservative multi-dimension usage vector for STT work.
+
+    Dimensions: requests, audio_seconds, media_bytes, concurrent_requests,
+    concurrent_streams, and cost as applicable.
+    """
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not remote:
+        return UsageVector()
+    media_bytes = _audio_media_bytes(audio)
+    audio_seconds = estimate_audio_seconds(
+        audio,
+        sample_rate=sample_rate,
+        channels=channels,
+        declared_seconds=declared_seconds,
+    )
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "audio_seconds": audio_seconds,
+        "media_bytes": max(0, media_bytes),
+    }
+    if include_concurrency:
+        amounts["concurrent_requests"] = 1
+        if streaming:
+            amounts["concurrent_streams"] = 1
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    return UsageVector.of(**amounts)
+
+
+def settle_synthesis_usage(
+    text: str,
+    *,
+    audio_bytes: Optional[bytes] = None,
+    characters: Optional[int] = None,
+    tokens: Optional[int] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+) -> "object":
+    """Actual remote usage for a completed synthesis call."""
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    char_count = int(characters) if characters is not None else len(text)
+    token_count = (
+        int(tokens) if tokens is not None else estimate_synthesis_tokens(text)
+    )
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "characters": max(0, char_count),
+        "input_tokens": max(0, token_count),
+    }
+    if audio_bytes is not None:
+        amounts["media_bytes"] = len(audio_bytes)
+    else:
+        amounts["media_bytes"] = len(text.encode("utf-8"))
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    return UsageVector.of(**amounts)
+
+
+def settle_transcription_usage(
+    audio: Union[str, bytes],
+    *,
+    audio_seconds: Optional[int] = None,
+    sample_rate: Optional[int] = None,
+    channels: Optional[int] = None,
+    declared_seconds: Optional[Union[int, float]] = None,
+    cost_micros: Optional[int] = None,
+    cost_currency: Optional[str] = None,
+) -> "object":
+    """Actual remote usage for a completed transcription call."""
+
+    from .endpoint_usage.schema import UsageVector
+
+    seconds = (
+        int(audio_seconds)
+        if audio_seconds is not None
+        else estimate_audio_seconds(
+            audio,
+            sample_rate=sample_rate,
+            channels=channels,
+            declared_seconds=declared_seconds,
+        )
+    )
+    amounts: Dict[str, int] = {
+        "requests": 1,
+        "audio_seconds": max(0, seconds),
+        "media_bytes": _audio_media_bytes(audio),
+    }
+    if cost_micros is not None:
+        amounts["cost_micros"] = int(cost_micros)
+        return UsageVector.of(currency=cost_currency or "USD", **amounts)
+    return UsageVector.of(**amounts)
+
+
+def planning_required_usage(requested: "object") -> "object":
+    """Return a receipt-safe planning vector derived from a full estimate.
+
+    Token and media dimensions remain in the atomic reservation envelope but
+    are omitted from ranking input names so route receipts stay redaction-safe.
+    """
+
+    from .endpoint_usage.schema import UsageVector
+
+    if not isinstance(requested, UsageVector):
+        return UsageVector()
+    safe: List[object] = []
+    for entry in requested.entries:
+        name = str(getattr(entry.dimension, "value", entry.dimension) or "")
+        lowered = name.casefold()
+        if any(marker in lowered for marker in _RECEIPT_UNSAFE_DIMENSION_MARKERS):
+            continue
+        safe.append(entry)
+    return UsageVector(entries=tuple(safe))  # type: ignore[arg-type]
+
+
+def apply_voice_stream_settlements(
+    coordinator: object,
+    reservation_id: str,
+    partials: Sequence[object],
+) -> List[object]:
+    """Apply monotonic cumulative stream settlements for a held reservation.
+
+    Each partial must be a :class:`UsageVector` or mapping accepted by
+    ``UsageCoordinator.settle_stream``. Amounts must not decrease.
+    """
+
+    if not reservation_id:
+        raise ValueError("reservation_id is required")
+    settle = getattr(coordinator, "settle_stream", None)
+    if not callable(settle):
+        raise TypeError("coordinator must provide settle_stream")
+    results: List[object] = []
+    for partial in partials:
+        results.append(settle(reservation_id, partial))
+    return results
+
+
+def _normalize_usage_policy(policy: object) -> "object":
+    from .endpoint_usage.schema import RoutingMode, RoutingPolicy
+
+    if policy is None:
+        return RoutingPolicy(mode=RoutingMode.OFF)
+    if isinstance(policy, RoutingPolicy):
+        return policy
+    if isinstance(policy, Mapping):
+        return RoutingPolicy.from_dict(policy)
+    raise TypeError("usage_policy must be a RoutingPolicy, mapping, or None")
+
+
+def _usage_mode_is_off(policy: object, coordinator: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    if coordinator is None:
+        return True
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode is RoutingMode.OFF or str(mode) == RoutingMode.OFF.value
+
+
+def _usage_mode_observes_only(policy: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode in (RoutingMode.OBSERVE, RoutingMode.SHADOW) or str(mode) in {
+        RoutingMode.OBSERVE.value,
+        RoutingMode.SHADOW.value,
+    }
+
+
+def _usage_mode_enforces(policy: object) -> bool:
+    from .endpoint_usage.schema import RoutingMode
+
+    mode = getattr(policy, "mode", RoutingMode.OFF)
+    return mode in (RoutingMode.ENFORCE, RoutingMode.ASSIST) or str(mode) in {
+        RoutingMode.ENFORCE.value,
+        RoutingMode.ASSIST.value,
+    }
+
+
+def _voice_compatibility_labels(
+    *,
+    provider_name: str,
+    operation: str,
+    model_name: Optional[str],
+    device: Optional[str],
+    voice: Optional[str] = None,
+    language: Optional[str] = None,
+    output_format: Optional[str] = None,
+    sample_rate: Optional[int] = None,
+    channels: Optional[int] = None,
+    kwargs: Optional[Mapping[str, object]] = None,
+) -> Dict[str, str]:
+    labels: Dict[str, str] = {
+        "router_provider": str(provider_name or ""),
+        "operation": str(operation or ""),
+    }
+    kwargs = dict(kwargs or {})
+    try:
+        descriptor = get_provider_descriptor(provider_name) if provider_name else None
+    except Exception:
+        descriptor = None
+    if descriptor is not None:
+        for key in (
+            "locality",
+            "device",
+            "access_requirement",
+            "languages",
+            "voices",
+            "data.governance",
+            "data_retention",
+        ):
+            value = dict(descriptor.labels or {}).get(key)
+            if value is not None:
+                labels[key] = str(value)
+        meta = _BUILTIN_VOICE_CATALOG.get(str(provider_name or "").strip().lower())
+        if meta is not None:
+            labels.setdefault("locality", meta.locality)
+            labels.setdefault("device", meta.device)
+            if meta.languages:
+                labels.setdefault("languages", meta.languages)
+            if meta.voices:
+                labels.setdefault("voices", meta.voices)
+            if meta.sample_rates_hz:
+                labels.setdefault(
+                    "sample_rates_hz",
+                    ",".join(str(rate) for rate in meta.sample_rates_hz),
+                )
+    if model_name:
+        labels["model_name"] = str(model_name)
+    if device:
+        labels["device"] = str(device)
+    if voice:
+        labels["voice"] = str(voice)
+    if language:
+        labels["language"] = str(language)
+    if output_format:
+        codec = str(output_format).strip().lower().lstrip(".")
+        labels["codec"] = codec
+        labels["output_format"] = codec
+    if sample_rate is not None:
+        labels["sample_rate"] = str(int(sample_rate))
+    if channels is not None:
+        labels["channels"] = str(int(channels))
+    for key in (
+        "locality",
+        "device",
+        "codec",
+        "output_format",
+        "sample_rate",
+        "channels",
+        "language",
+        "voice",
+        "data_retention",
+        "data.governance",
+        "access_requirement",
+    ):
+        if key in kwargs and kwargs[key] is not None:
+            labels[key] = str(kwargs[key])
+    return labels
+
+
+def voice_fallback_compatible(
+    origin_labels: Mapping[str, str],
+    candidate_labels: Mapping[str, str],
+) -> bool:
+    """Return True when a fallback candidate preserves voice contracts.
+
+    Fallback must preserve operation, language, voice, model compatibility,
+    codec, sample rate/channels, locality/device, data-retention, authorization,
+    and output contract when declared on the origin.
+    """
+
+    origin = {str(k): str(v) for k, v in origin_labels.items()}
+    candidate = {str(k): str(v) for k, v in candidate_labels.items()}
+
+    for key in (
+        "operation",
+        "language",
+        "voice",
+        "codec",
+        "output_format",
+        "sample_rate",
+        "channels",
+        "locality",
+        "device",
+        "model_name",
+    ):
+        if key in origin and origin[key] not in {"", "unknown", "provider-defined", "provider-managed"}:
+            if candidate.get(key, origin[key]) != origin[key]:
+                return False
+
+    origin_access = origin.get("access_requirement")
+    cand_access = candidate.get("access_requirement")
+    if origin_access == "required" and cand_access not in (None, "required", "optional"):
+        return False
+
+    origin_gov = origin.get("data.governance") or origin.get("data_governance")
+    cand_gov = candidate.get("data.governance") or candidate.get("data_governance")
+    if origin_gov and cand_gov and cand_gov != origin_gov:
+        return False
+    if cand_gov and str(cand_gov).casefold() in {"deny", "forbidden", "blocked"}:
+        return False
+
+    origin_retention = origin.get("data_retention")
+    cand_retention = candidate.get("data_retention")
+    if origin_retention and cand_retention and cand_retention != origin_retention:
+        return False
+
+    # Sample-rate set compatibility when origin declares a concrete set.
+    origin_rates = origin.get("sample_rates_hz")
+    cand_rates = candidate.get("sample_rates_hz")
+    if origin_rates and cand_rates:
+        origin_set = {part.strip() for part in origin_rates.split(",") if part.strip()}
+        cand_set = {part.strip() for part in cand_rates.split(",") if part.strip()}
+        if origin_set and cand_set and origin_set.isdisjoint(cand_set):
+            return False
+
+    return True
+
+
+def _build_voice_static_candidate(
+    *,
+    provider_name: str,
+    operation: str,
+    model_name: Optional[str],
+    device: Optional[str],
+    scope_id: str,
+    voice: Optional[str] = None,
+    language: Optional[str] = None,
+    output_format: Optional[str] = None,
+    sample_rate: Optional[int] = None,
+    channels: Optional[int] = None,
+    kwargs: Optional[Mapping[str, object]] = None,
+    score: int = 10,
+    authorized: bool = True,
+) -> "object":
+    from .endpoint_usage.identity import stable_id
+    from .endpoint_usage.resolution import StaticCandidate
+
+    labels = _voice_compatibility_labels(
+        provider_name=provider_name,
+        operation=operation,
+        model_name=model_name,
+        device=device,
+        voice=voice,
+        language=language,
+        output_format=output_format,
+        sample_rate=sample_rate,
+        channels=channels,
+        kwargs=kwargs,
+    )
+    provider_id = stable_id("provider", "voice", provider_name)
+    model_id = stable_id("model", "voice", provider_name, model_name or "default")
+    deployment_id = stable_id(
+        "deployment", "voice", provider_name, device or "default"
+    )
+    binding_id = stable_id(
+        "binding", "voice", provider_name, operation, model_name or "default", scope_id
+    )
+    return StaticCandidate(
+        binding_id=binding_id,
+        provider_id=provider_id,
+        model_id=model_id,
+        deployment_id=deployment_id,
+        scope_id=scope_id,
+        catalog_score=score,
+        locality=labels.get("locality"),
+        authorized=authorized,
+        healthy=True,
+        routable=True,
+        configured=True,
+        labels=labels,
+    )
+
+
+def _filter_compatible_voice_candidates(
+    candidates: Sequence[object],
+    *,
+    origin_labels: Mapping[str, str],
+) -> List[object]:
+    kept: List[object] = []
+    for cand in candidates:
+        labels = dict(getattr(cand, "labels", None) or {})
+        if voice_fallback_compatible(origin_labels, labels):
+            kept.append(cand)
+    return kept
+
+
+def _admission_result_to_trace(result: object) -> Dict[str, object]:
+    """Reduce an admission result to a redacted operational trace."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output
+
+    selected = getattr(result, "selected", None)
+    receipt = getattr(result, "receipt", None)
+    payload: Dict[str, object] = {
+        "success": bool(getattr(result, "success", False)),
+        "final_status": str(getattr(result, "final_status", "") or ""),
+        "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
+        "next_eligible_at": getattr(result, "next_eligible_at", None),
+        "attempt_count": len(getattr(result, "attempts", ()) or ()),
+        "selected_binding_id": getattr(selected, "binding_id", None) if selected else None,
+        "selected_scope_id": getattr(selected, "scope_id", None) if selected else None,
+        "reservation_id": getattr(selected, "reservation_id", None) if selected else None,
+        "receipt_id": getattr(receipt, "receipt_id", None) if receipt else None,
+        "usage_revision": getattr(selected, "usage_revision", None) if selected else None,
+        "catalog_revision": getattr(selected, "catalog_revision", None)
+        if selected
+        else None,
+        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+    }
+    if receipt is not None:
+        try:
+            receipt_dict = receipt.to_dict()
+            assert_no_prompt_media_or_output(receipt_dict)
+            payload["receipt"] = receipt_dict
+        except Exception:
+            payload["receipt"] = {"receipt_id": payload.get("receipt_id")}
+    assert_no_prompt_media_or_output(payload)
+    return payload
+
+
+def _parse_provider_observation(
+    *,
+    scope_id: str,
+    request_id: str,
+    observation: object,
+    settled: object,
+) -> Optional[object]:
+    """Parse optional provider observation; never retain audio/text/credentials."""
+
+    if observation is None:
+        return None
+    from .endpoint_usage.schema import (
+        ConfidenceLevel,
+        LimitSource,
+        Provenance,
+        ProviderUsageObservation,
+        UsageVector,
+    )
+
+    if isinstance(observation, ProviderUsageObservation):
+        # Guard: observation must target the exact reserved scope.
+        obs_scope = getattr(observation, "scope_id", None)
+        if obs_scope and str(obs_scope) != str(scope_id):
+            logger.debug(
+                "voice usage observation scope mismatch; ignoring (exact-scope only)"
+            )
+            return None
+        return observation
+    if not isinstance(observation, Mapping):
+        return None
+    # Provider metadata updates apply only to the exact reserved scope.
+    obs_scope = observation.get("scope_id")
+    if obs_scope is not None and str(obs_scope) != str(scope_id):
+        logger.debug(
+            "voice usage observation scope mismatch; ignoring (exact-scope only)"
+        )
+        return None
+    try:
+        from .endpoint_usage.adapters import parse_provider_observation
+
+        if any(
+            key in observation
+            for key in ("headers", "body", "family", "http_status", "usage")
+        ):
+            payload = dict(observation)
+            payload["scope_id"] = scope_id
+            payload.setdefault("request_id", request_id)
+            # Never feed raw transcript/synthesis/audio into adapters.
+            for forbidden in (
+                "transcript",
+                "text",
+                "audio",
+                "audio_bytes",
+                "voice_sample",
+                "synthesis_text",
+            ):
+                payload.pop(forbidden, None)
+            return parse_provider_observation(payload)
+    except Exception:
+        logger.debug("voice usage observation adapter failed", exc_info=True)
+
+    usage = observation.get("usage")
+    if usage is None:
+        usage = settled if isinstance(settled, UsageVector) else UsageVector()
+    elif not isinstance(usage, UsageVector):
+        try:
+            usage = UsageVector.from_dict(usage)
+        except Exception:
+            usage = settled if isinstance(settled, UsageVector) else UsageVector()
+    try:
+        return ProviderUsageObservation(
+            scope_id=scope_id,
+            request_id=request_id,
+            usage=usage,
+            http_status=observation.get("http_status"),
+            confidence=ConfidenceLevel.HIGH
+            if observation.get("http_status") == 200
+            else ConfidenceLevel.MEDIUM,
+            provenance=Provenance(source=LimitSource.RESPONSE_BODY),
+            reason_codes=tuple(observation.get("reason_codes") or ()),
+            retry_after_ms=observation.get("retry_after_ms"),
+            limits=tuple(observation.get("limits") or ()),
+        )
+    except Exception:
+        logger.debug("voice usage observation construct failed", exc_info=True)
+        return None
+
+
+def _resolve_usage_pin(
+    *,
+    pin: object,
+    provider: Optional[str],
+    allow_fallback_with_pin: bool,
+) -> object:
+    from .endpoint_usage.identity import stable_id
+    from .endpoint_usage.routing import RoutePin
+
+    if pin is not None:
+        if isinstance(pin, RoutePin):
+            return pin
+        if isinstance(pin, Mapping):
+            return RoutePin(
+                provider_id=pin.get("provider_id"),
+                model_id=pin.get("model_id"),
+                deployment_id=pin.get("deployment_id"),
+                binding_id=pin.get("binding_id"),
+                allow_fallback_with_pin=bool(
+                    pin.get("allow_fallback_with_pin", allow_fallback_with_pin)
+                ),
+            )
+        raise TypeError("usage_pin must be a RoutePin, mapping, or None")
+    # Explicit provider selection is an exact pin by default (no fallback).
+    if provider:
+        return RoutePin(
+            provider_id=stable_id("provider", "voice", provider),
+            allow_fallback_with_pin=allow_fallback_with_pin,
+        )
+    return RoutePin()
+
+
+def _bind_usage_routing_request(
+    *,
+    usage_request: object,
+    requested: object,
+) -> object:
+    from .endpoint_usage.resolution import UsageRoutingRequest
+    from .endpoint_usage.schema import UsageVector
+
+    planning_required = planning_required_usage(requested)
+    ureq = usage_request
+    if ureq is None:
+        return UsageRoutingRequest(
+            required=planning_required,
+            require_snapshot=True,
+        )
+    if isinstance(ureq, Mapping):
+        ureq = UsageRoutingRequest.from_dict(ureq)
+    elif not isinstance(ureq, UsageRoutingRequest):
+        raise TypeError("usage_request must be UsageRoutingRequest, mapping, or None")
+    source_required = ureq.required if ureq.required.entries else requested
+    safe_required = planning_required_usage(source_required)
+    if not safe_required.entries:
+        safe_required = planning_required
+    if not isinstance(safe_required, UsageVector):
+        safe_required = planning_required
+    return UsageRoutingRequest(
+        required=safe_required,
+        unknown_limit_policy=ureq.unknown_limit_policy,
+        stale_snapshot_policy=ureq.stale_snapshot_policy,
+        preferred_binding_id=ureq.preferred_binding_id,
+        preferred_provider_id=ureq.preferred_provider_id,
+        preferred_scope_id=ureq.preferred_scope_id,
+        affinity_binding_id=ureq.affinity_binding_id,
+        media_bytes=ureq.media_bytes,
+        images=ureq.images,
+        audio_seconds=ureq.audio_seconds,
+        max_cost_micros=ureq.max_cost_micros,
+        cost_currency=ureq.cost_currency,
+        deadline_at=ureq.deadline_at,
+        now=ureq.now,
+        health_by_binding=ureq.health_by_binding,
+        circuit_open_by_binding=ureq.circuit_open_by_binding,
+        latency_ms_by_binding=ureq.latency_ms_by_binding,
+        queue_delay_ms_by_binding=ureq.queue_delay_ms_by_binding,
+        quality_preference_by_binding=ureq.quality_preference_by_binding,
+        locality_by_binding=ureq.locality_by_binding,
+        require_snapshot=ureq.require_snapshot,
+        reason_codes=ureq.reason_codes,
+    )
+
+
+def _effective_policy_for_pin(policy: object, pin: object) -> object:
+    from .endpoint_usage.schema import FallbackClass, RoutingPolicy
+
+    if not isinstance(policy, RoutingPolicy):
+        policy = _normalize_usage_policy(policy)
+    if getattr(pin, "is_exact", False) and not getattr(
+        pin, "allow_fallback_with_pin", False
+    ):
+        if policy.fallback is not FallbackClass.NONE:
+            return RoutingPolicy(
+                mode=policy.mode,
+                fallback=FallbackClass.NONE,
+                max_attempts=1,
+                deadline_ms=policy.deadline_ms,
+                allow_wait=policy.allow_wait,
+                max_wait_ms=policy.max_wait_ms,
+                prefer_local=policy.prefer_local,
+                cost_ceiling_micros=policy.cost_ceiling_micros,
+                cost_currency=policy.cost_currency,
+            )
+    return policy
+
+
+def _tts_cache_lookup(
+    *,
+    deps: RouterDeps,
+    provider_identity: Optional[str],
+    model_name: Optional[str],
+    text: str,
+    voice: Optional[str],
+    device: Optional[str],
+    output_format: Optional[str],
+    kwargs: Mapping[str, object],
+    output_path: Optional[str],
+) -> Optional[Union[bytes, str]]:
+    if not _response_cache_enabled():
+        return None
+    cache_key = _tts_response_cache_key(
+        provider=provider_identity,
+        model_name=model_name,
+        text=text,
+        voice=voice,
+        device=device,
+        output_format=output_format,
+        kwargs=dict(kwargs),
+    )
+    try:
+        getter = getattr(deps, "get_cached_or_remote", None)
+        cached = getter(cache_key) if callable(getter) else deps.get_cached(cache_key)
+        if isinstance(cached, bytes) and cached:
+            if output_path:
+                with open(output_path, "wb") as fh:
+                    fh.write(cached)
+                return output_path
+            return cached
+    except Exception:
+        return None
+    return None
+
+
+def _tts_cache_store(
+    *,
+    deps: RouterDeps,
+    provider_identity: Optional[str],
+    model_name: Optional[str],
+    text: str,
+    voice: Optional[str],
+    device: Optional[str],
+    output_format: Optional[str],
+    kwargs: Mapping[str, object],
+    audio_bytes: bytes,
+) -> None:
+    if not _response_cache_enabled():
+        return
+    try:
+        ck = _tts_response_cache_key(
+            provider=provider_identity,
+            model_name=model_name,
+            text=text,
+            voice=voice,
+            device=device,
+            output_format=output_format,
+            kwargs=dict(kwargs),
+        )
+        setter = getattr(deps, "set_cached_and_remote", None)
+        if callable(setter):
+            setter(ck, audio_bytes)
+        else:
+            deps.set_cached(ck, audio_bytes)
+    except Exception:
+        pass
+
+
+def _stt_cache_lookup(
+    *,
+    deps: RouterDeps,
+    provider_identity: Optional[str],
+    model_name: Optional[str],
+    audio: Union[str, bytes],
+    language: Optional[str],
+    device: Optional[str],
+    kwargs: Mapping[str, object],
+) -> Optional[str]:
+    if not _response_cache_enabled():
+        return None
+    cache_key = _stt_response_cache_key(
+        provider=provider_identity,
+        model_name=model_name,
+        audio=audio,
+        language=language,
+        device=device,
+        kwargs=dict(kwargs),
+    )
+    try:
+        getter = getattr(deps, "get_cached_or_remote", None)
+        cached = getter(cache_key) if callable(getter) else deps.get_cached(cache_key)
+        if isinstance(cached, str) and cached:
+            return cached
+    except Exception:
+        return None
+    return None
+
+
+def _stt_cache_store(
+    *,
+    deps: RouterDeps,
+    provider_identity: Optional[str],
+    model_name: Optional[str],
+    audio: Union[str, bytes],
+    language: Optional[str],
+    device: Optional[str],
+    kwargs: Mapping[str, object],
+    transcription: str,
+) -> None:
+    if not _response_cache_enabled():
+        return
+    try:
+        ck = _stt_response_cache_key(
+            provider=provider_identity,
+            model_name=model_name,
+            audio=audio,
+            language=language,
+            device=device,
+            kwargs=dict(kwargs),
+        )
+        setter = getattr(deps, "set_cached_and_remote", None)
+        if callable(setter):
+            setter(ck, transcription)
+        else:
+            deps.set_cached(ck, transcription)
+    except Exception:
+        pass
+
+
+def _write_output_path(audio_bytes: bytes, output_path: Optional[str]) -> Union[bytes, str]:
+    if output_path:
+        with open(output_path, "wb") as fh:
+            fh.write(audio_bytes)
+        return output_path
+    return audio_bytes
+
+
+def _legacy_text_to_speech(
+    text: str,
+    *,
+    voice: Optional[str],
+    model_name: Optional[str],
+    device: Optional[str],
+    output_format: Optional[str],
+    output_path: Optional[str],
+    provider: Optional[str],
+    provider_instance: Optional[VoiceProvider],
+    deps: RouterDeps,
+    kwargs: Dict[str, object],
+) -> Union[bytes, str]:
+    cached = _tts_cache_lookup(
+        deps=deps,
+        provider_identity=_provider_instance_cache_identity(provider_instance, provider),
+        model_name=model_name,
+        text=text,
+        voice=voice,
+        device=device,
+        output_format=output_format,
+        kwargs=kwargs,
+        output_path=output_path,
+    )
+    if cached is not None:
+        return cached
+
+    backend = provider_instance or get_voice_provider(provider, deps=deps)
+    try:
+        audio_bytes = backend.synthesize(
+            text,
+            voice=voice,
+            model_name=model_name,
+            device=device,
+            output_format=output_format,
+            **kwargs,
+        )
+        if not isinstance(audio_bytes, bytes):
+            _close_awaitable_result(audio_bytes)
+            raise RuntimeError(
+                f"Voice provider synthesize() returned {type(audio_bytes).__name__}, expected bytes"
+            )
+        _tts_cache_store(
+            deps=deps,
+            provider_identity=_provider_instance_cache_identity(
+                provider_instance, provider
+            ),
+            model_name=model_name,
+            text=text,
+            voice=voice,
+            device=device,
+            output_format=output_format,
+            kwargs=kwargs,
+            audio_bytes=audio_bytes,
+        )
+        return _write_output_path(audio_bytes, output_path)
+    except Exception as primary_error:
+        logger.debug("Primary voice TTS provider failed: %s", primary_error)
+        if provider is None:
+            hf_provider = _get_huggingface_provider()
+            if hf_provider is not None and backend is not hf_provider:
+                audio_bytes = hf_provider.synthesize(
+                    text,
+                    voice=voice,
+                    model_name=model_name,
+                    device=device,
+                    output_format=output_format,
+                    **kwargs,
+                )
+                return _write_output_path(audio_bytes, output_path)
+        raise
+
+
+def _legacy_speech_to_text(
+    audio: Union[str, bytes],
+    *,
+    model_name: Optional[str],
+    language: Optional[str],
+    device: Optional[str],
+    provider: Optional[str],
+    provider_instance: Optional[VoiceProvider],
+    deps: RouterDeps,
+    kwargs: Dict[str, object],
+) -> str:
+    cached = _stt_cache_lookup(
+        deps=deps,
+        provider_identity=_provider_instance_cache_identity(provider_instance, provider),
+        model_name=model_name,
+        audio=audio,
+        language=language,
+        device=device,
+        kwargs=kwargs,
+    )
+    if cached is not None:
+        return cached
+
+    if provider is None and provider_instance is None:
+        for name in ["openai", "assemblyai", "huggingface", "backend_manager"]:
+            try:
+                candidate = _builtin_provider_by_name(name, deps=deps)
+                if candidate is None:
+                    continue
+                if isinstance(candidate, VoiceProvider):
+                    backend: VoiceProvider = candidate
+                    break
+            except Exception:
+                continue
+        else:
+            backend = get_voice_provider(provider, deps=deps)
+    else:
+        backend = provider_instance or get_voice_provider(provider, deps=deps)
+
+    try:
+        transcription = backend.transcribe(
+            audio,
+            model_name=model_name,
+            language=language,
+            device=device,
+            **kwargs,
+        )
+        if not isinstance(transcription, str):
+            _close_awaitable_result(transcription)
+            raise RuntimeError(
+                f"Voice provider transcribe() returned {type(transcription).__name__}, expected str"
+            )
+        _stt_cache_store(
+            deps=deps,
+            provider_identity=_provider_instance_cache_identity(
+                provider_instance, provider
+            ),
+            model_name=model_name,
+            audio=audio,
+            language=language,
+            device=device,
+            kwargs=kwargs,
+            transcription=transcription,
+        )
+        return transcription
+    except Exception as primary_error:
+        logger.debug("Primary voice STT provider failed: %s", primary_error)
+        if provider is None:
+            hf_provider = _get_huggingface_provider()
+            if hf_provider is not None and backend is not hf_provider:
+                return hf_provider.transcribe(
+                    audio,
+                    model_name=model_name,
+                    language=language,
+                    device=device,
+                    **kwargs,
+                )
+        raise
+
+
+def _record_voice_usage_observe_shadow(
+    *,
+    operation: str,
+    estimate: object,
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_scope_id: Optional[str],
+    usage_request_id: Optional[str],
+    success: bool,
+    provider_used: str,
+    remote_charged: bool,
+) -> None:
+    """Observe/shadow diagnostics: estimate only; never change selection or charge."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.schema import RoutingMode, UsageEventKind
+
+    policy = usage_policy
+    mode = getattr(policy, "mode", RoutingMode.OBSERVE)
+    payload: Dict[str, object] = {
+        "success": success,
+        "final_status": "observed" if success else "observe_error",
+        "reason_codes": [
+            "usage_observe"
+            if mode is RoutingMode.OBSERVE or str(mode) == "observe"
+            else "usage_shadow",
+            "no_selection_change",
+        ],
+        "attempt_count": 0,
+        "estimate_entries": len(getattr(estimate, "entries", ()) or ()),
+        "provider_used": str(provider_used or ""),
+        "operation": operation,
+        "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+        "remote_charged": False,
+        "mode": str(getattr(mode, "value", mode)),
+    }
+    if not remote_charged:
+        payload["reason_codes"] = list(payload["reason_codes"]) + [
+            "cache_hit" if success else "no_remote",
+            "no_remote_charge",
+        ]
+    if usage_scope_id and usage_coordinator is not None:
+        try:
+            snap = usage_coordinator.snapshot(usage_scope_id)  # type: ignore[attr-defined]
+            payload["usage_revision"] = getattr(snap, "usage_revision", None)
+            payload["scope_id"] = usage_scope_id
+        except Exception:
+            payload["reason_codes"] = list(payload["reason_codes"]) + [
+                "snapshot_unavailable"
+            ]
+        if (
+            success
+            and remote_charged
+            and str(getattr(mode, "value", mode)) == "shadow"
+        ):
+            try:
+                from .endpoint_usage.schema import UsageVector as _UsageVector
+
+                usage_coordinator.append_observation(  # type: ignore[attr-defined]
+                    usage_scope_id,
+                    kind=UsageEventKind.OBSERVATION_SUCCESS,
+                    units=_UsageVector(),
+                    request_id=usage_request_id
+                    or stable_id("vreq", "shadow", usage_scope_id),
+                    reason_codes=("shadow_observe",),
+                )
+            except Exception:
+                logger.debug("shadow observation append failed", exc_info=True)
+    assert_no_prompt_media_or_output(payload)
+    _set_last_usage_admission(payload)
+
+
+def _text_to_speech_with_usage_admission(
+    text: str,
+    *,
+    voice: Optional[str],
+    model_name: Optional[str],
+    device: Optional[str],
+    output_format: Optional[str],
+    output_path: Optional[str],
+    provider: Optional[str],
+    provider_instance: Optional[VoiceProvider],
+    deps: RouterDeps,
+    kwargs: Dict[str, object],
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_candidates: Optional[Sequence[object]],
+    usage_pin: object,
+    usage_request: object,
+    usage_request_id: Optional[str],
+    usage_idempotency_key: Optional[str],
+    usage_catalog_revision: Optional[str],
+    usage_provider_by_binding: Optional[Mapping[str, VoiceProvider]],
+    usage_observation: object,
+    usage_cost_micros: Optional[int],
+    usage_cost_currency: Optional[str],
+    usage_cancel_event: Optional[threading.Event],
+    usage_timeout_seconds: Optional[float],
+    usage_stream_partials: Optional[Sequence[object]],
+    usage_streaming: bool,
+    sample_rate: Optional[int],
+    channels: Optional[int],
+    started: float,
+) -> Union[bytes, str]:
+    """Reserve, dispatch, settle one TTS unit under usage admission."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.resolution import StaticCandidate
+    from .endpoint_usage.routing import (
+        ErrorSafetyClass,
+        InvokeOutcome,
+        UsageRouteAdmission,
+        classify_invoke_error,
+        meta_from_static,
+    )
+    from .endpoint_usage.schema import FallbackClass, RoutingPolicy, UsageVector
+
+    policy = usage_policy
+    if not isinstance(policy, RoutingPolicy):
+        policy = _normalize_usage_policy(policy)
+
+    provider_identity = _provider_instance_cache_identity(provider_instance, provider)
+    cached = _tts_cache_lookup(
+        deps=deps,
+        provider_identity=provider_identity,
+        model_name=model_name,
+        text=text,
+        voice=voice,
+        device=device,
+        output_format=output_format,
+        kwargs=kwargs,
+        output_path=output_path,
+    )
+    if cached is not None:
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "cache_hit",
+                "reason_codes": ["cache_hit", "no_remote_charge"],
+                "attempt_count": 0,
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": False,
+                "operation": VOICE_TTS_USAGE_OPERATION,
+            }
+        )
+        assert_no_prompt_media_or_output(get_last_usage_admission())
+        _set_last_voice_usage_trace(
+            status="ok",
+            operation=VOICE_TTS_USAGE_OPERATION,
+            provider_requested=str(provider or ""),
+            provider_used=str(provider or ""),
+            model_name=str(model_name or ""),
+            remote_charged=False,
+            usage_mode=str(getattr(policy.mode, "value", policy.mode)),
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
+        return cached
+
+    if usage_cancel_event is not None and usage_cancel_event.is_set():
+        raise UsageCapacityError(
+            "voice TTS usage admission cancelled before dispatch",
+            reason_codes=("cancelled_before_dispatch",),
+        )
+    if usage_timeout_seconds is not None and usage_timeout_seconds <= 0:
+        raise UsageCapacityError(
+            "voice TTS usage admission timed out before dispatch",
+            reason_codes=("timeout_before_dispatch",),
+        )
+
+    requested = estimate_synthesis_usage(
+        text,
+        cost_micros=usage_cost_micros,
+        cost_currency=usage_cost_currency,
+        streaming=usage_streaming,
+        remote=True,
+    )
+    request_id = usage_request_id or stable_id(
+        "vreq", "tts", str(time.time_ns()), str(len(text))
+    )
+    idempotency_key = usage_idempotency_key or stable_id(
+        "videm", request_id, "tts"
+    )
+    catalog_revision = usage_catalog_revision or stable_id(
+        "cat", "voice_router", USAGE_ROUTING_REQUIREMENT_ID
+    )
+    pin = _resolve_usage_pin(
+        pin=usage_pin, provider=provider, allow_fallback_with_pin=False
+    )
+
+    if usage_candidates is not None:
+        candidates: List[object] = list(usage_candidates)
+    else:
+        backend = provider_instance or get_voice_provider(provider, deps=deps)
+        provider_used = _provider_display_name(backend, provider)
+        scope_id = stable_id(
+            "scope", "voice", "tts", provider_used, model_name or "default"
+        )
+        ureq_probe = usage_request
+        if isinstance(ureq_probe, Mapping):
+            preferred_scope = ureq_probe.get("preferred_scope_id")
+        else:
+            preferred_scope = getattr(ureq_probe, "preferred_scope_id", None)
+        if preferred_scope:
+            scope_id = str(preferred_scope)
+        candidates = [
+            _build_voice_static_candidate(
+                provider_name=provider_used,
+                operation=VOICE_TTS_USAGE_OPERATION,
+                model_name=model_name,
+                device=device,
+                scope_id=scope_id,
+                voice=voice,
+                output_format=output_format,
+                sample_rate=sample_rate,
+                channels=channels,
+                kwargs=kwargs,
+            )
+        ]
+        usage_provider_by_binding = {
+            candidates[0].binding_id: backend,  # type: ignore[attr-defined]
+            **dict(usage_provider_by_binding or {}),
+        }
+
+    if not candidates:
+        raise UsageCapacityError(
+            "no voice TTS usage candidates",
+            reason_codes=("no_candidates",),
+        )
+
+    origin_labels = dict(getattr(candidates[0], "labels", None) or {})
+    origin_labels.setdefault("operation", VOICE_TTS_USAGE_OPERATION)
+    if voice:
+        origin_labels.setdefault("voice", str(voice))
+    if output_format:
+        origin_labels.setdefault(
+            "codec", str(output_format).strip().lower().lstrip(".")
+        )
+    candidates = _filter_compatible_voice_candidates(
+        candidates, origin_labels=origin_labels
+    ) or list(candidates[:1])
+
+    meta_by_binding = {
+        cand.binding_id: meta_from_static(cand)  # type: ignore[attr-defined]
+        for cand in candidates
+        if isinstance(cand, StaticCandidate)
+    }
+    ureq = _bind_usage_routing_request(
+        usage_request=usage_request, requested=requested
+    )
+    provider_map: Dict[str, VoiceProvider] = dict(usage_provider_by_binding or {})
+    result_holder: Dict[str, object] = {}
+    invoke_error_holder: Dict[str, BaseException] = {}
+    dispatched_holder: Dict[str, bool] = {"dispatched": False}
+    deadline = (
+        time.perf_counter() + float(usage_timeout_seconds)
+        if usage_timeout_seconds is not None
+        else None
+    )
+
+    def invoke(attempt: object) -> InvokeOutcome:
+        if usage_cancel_event is not None and usage_cancel_event.is_set():
+            code = (
+                "cancelled_after_dispatch"
+                if dispatched_holder["dispatched"]
+                else "cancelled_before_dispatch"
+            )
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.CLIENT,
+                reason_codes=(code,),
+                side_effecting=bool(dispatched_holder["dispatched"]),
+            )
+        if deadline is not None and time.perf_counter() > deadline:
+            code = (
+                "timeout_after_dispatch"
+                if dispatched_holder["dispatched"]
+                else "timeout_before_dispatch"
+            )
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.CLIENT,
+                reason_codes=(code,),
+                side_effecting=bool(dispatched_holder["dispatched"]),
+            )
+
+        binding_id = getattr(attempt, "binding_id", None)
+        scope_id = getattr(attempt, "scope_id", None) or ""
+        reservation_id = getattr(attempt, "reservation_id", None) or ""
+        active_backend: Optional[VoiceProvider] = None
+        if binding_id and binding_id in provider_map:
+            active_backend = provider_map[binding_id]
+        else:
+            labels: Dict[str, str] = {}
+            for cand in candidates:
+                if getattr(cand, "binding_id", None) == binding_id:
+                    labels = dict(getattr(cand, "labels", None) or {})
+                    break
+            if labels and not voice_fallback_compatible(origin_labels, labels):
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.SEMANTIC,
+                    reason_codes=("incompatible_voice_candidate",),
+                    side_effecting=False,
+                )
+            router_name = labels.get("router_provider") or provider
+            try:
+                active_backend = provider_instance or get_voice_provider(
+                    router_name, deps=deps
+                )
+            except Exception as exc:
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.TRANSIENT,
+                    reason_codes=("provider_resolve_failed", type(exc).__name__),
+                    side_effecting=False,
+                )
+        assert active_backend is not None
+
+        # Stream partials (if any) settle monotonically before final commit.
+        if usage_stream_partials and reservation_id:
+            try:
+                apply_voice_stream_settlements(
+                    usage_coordinator,
+                    str(reservation_id),
+                    usage_stream_partials,
+                )
+                result_holder["stream_partials"] = len(usage_stream_partials)
+            except Exception as exc:
+                invoke_error_holder["error"] = exc
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.CLIENT,
+                    reason_codes=("non_monotonic_stream", type(exc).__name__),
+                    side_effecting=False,
+                )
+
+        dispatched_holder["dispatched"] = True
+        try:
+            audio_bytes = active_backend.synthesize(
+                text,
+                voice=voice,
+                model_name=model_name,
+                device=device,
+                output_format=output_format,
+                **kwargs,
+            )
+        except Exception as exc:
+            invoke_error_holder["error"] = exc
+            error_class = classify_invoke_error(reason_codes=(type(exc).__name__,))
+            message = str(exc).casefold()
+            if any(
+                token in message
+                for token in ("rate limit", "429", "quota", "capacity", "503")
+            ):
+                error_class = ErrorSafetyClass.CAPACITY
+            # Capacity/transient failures must remain fallback-safe; do not
+            # mark side_effecting or the admission protocol will refuse reroute.
+            return InvokeOutcome(
+                success=False,
+                error_class=error_class,
+                reason_codes=("provider_error", type(exc).__name__),
+                side_effecting=False,
+            )
+
+        if not isinstance(audio_bytes, bytes):
+            _close_awaitable_result(audio_bytes)
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.SEMANTIC,
+                reason_codes=("output_validation_failed", "non_bytes"),
+                side_effecting=False,
+            )
+
+        if deadline is not None and time.perf_counter() > deadline:
+            # Post-dispatch timeout: remote work may have completed; settle actual.
+            settled_timeout = settle_synthesis_usage(
+                text,
+                audio_bytes=audio_bytes,
+                cost_micros=usage_cost_micros,
+                cost_currency=usage_cost_currency,
+            )
+            result_holder["audio_bytes"] = audio_bytes
+            result_holder["provider_used"] = _provider_display_name(
+                active_backend, provider
+            )
+            result_holder["settled"] = settled_timeout
+            result_holder["timeout_after_dispatch"] = True
+            obs = _parse_provider_observation(
+                scope_id=str(scope_id),
+                request_id=request_id,
+                observation=usage_observation,
+                settled=settled_timeout,
+            )
+            return InvokeOutcome(
+                success=True,
+                observation=obs,
+                settled=settled_timeout,
+                error_class=ErrorSafetyClass.SUCCESS,
+                reason_codes=("synthesized", "timeout_after_dispatch"),
+            )
+
+        settled = settle_synthesis_usage(
+            text,
+            audio_bytes=audio_bytes,
+            cost_micros=usage_cost_micros,
+            cost_currency=usage_cost_currency,
+        )
+        obs = _parse_provider_observation(
+            scope_id=str(scope_id),
+            request_id=request_id,
+            observation=usage_observation,
+            settled=settled,
+        )
+        result_holder["audio_bytes"] = audio_bytes
+        result_holder["provider_used"] = _provider_display_name(
+            active_backend, provider
+        )
+        result_holder["settled"] = settled
+        return InvokeOutcome(
+            success=True,
+            observation=obs,
+            settled=settled,
+            error_class=ErrorSafetyClass.SUCCESS,
+            reason_codes=("synthesized",),
+        )
+
+    admission = UsageRouteAdmission(
+        usage_coordinator,  # type: ignore[arg-type]
+        owner_id="voice_router",
+        jitter_max_ms=0,
+    )
+    effective_policy = _effective_policy_for_pin(policy, pin)
+    result = admission.admit(
+        catalog_revision=catalog_revision,
+        candidates=candidates,  # type: ignore[arg-type]
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+        operation=VOICE_TTS_USAGE_OPERATION,
+        requested=requested if isinstance(requested, UsageVector) else UsageVector(),
+        policy=effective_policy,  # type: ignore[arg-type]
+        request=ureq,  # type: ignore[arg-type]
+        pin=pin,  # type: ignore[arg-type]
+        meta_by_binding=meta_by_binding,
+        invoke=invoke,
+        caller_id="voice_router",
+    )
+    admission_trace = _admission_result_to_trace(result)
+    if result_holder.get("stream_partials"):
+        admission_trace["stream_partials"] = result_holder["stream_partials"]
+    if result_holder.get("timeout_after_dispatch"):
+        admission_trace["reason_codes"] = list(admission_trace.get("reason_codes") or []) + [
+            "timeout_after_dispatch"
+        ]
+    _set_last_usage_admission(admission_trace)
+
+    if not result.success or "audio_bytes" not in result_holder:
+        original = invoke_error_holder.get("error")
+        capacity_like = any(
+            code
+            in {
+                "no_eligible_candidates",
+                "all_candidates_denied",
+                "capacity",
+                "deadline_or_attempt_bound",
+                "pin_rejected",
+            }
+            or "capacity" in code
+            or "headroom" in code
+            for code in (result.reason_codes or ())
+        )
+        if original is not None and not capacity_like:
+            raise original
+        raise UsageCapacityError(
+            "voice TTS usage admission failed: %s"
+            % (",".join(result.reason_codes) or result.final_status),
+            reason_codes=result.reason_codes,
+            next_eligible_at=result.next_eligible_at,
+            admission=result,
+        )
+
+    audio_bytes = result_holder["audio_bytes"]  # type: ignore[assignment]
+    assert isinstance(audio_bytes, bytes)
+    provider_used_name = str(result_holder.get("provider_used") or provider or "")
+    _tts_cache_store(
+        deps=deps,
+        provider_identity=_provider_instance_cache_identity(
+            provider_instance, provider_used_name or provider
+        ),
+        model_name=model_name,
+        text=text,
+        voice=voice,
+        device=device,
+        output_format=output_format,
+        kwargs=kwargs,
+        audio_bytes=audio_bytes,
+    )
+    _set_last_voice_usage_trace(
+        status="ok",
+        operation=VOICE_TTS_USAGE_OPERATION,
+        provider_requested=str(provider or ""),
+        provider_used=provider_used_name,
+        model_name=str(model_name or ""),
+        remote_charged=True,
+        usage_mode=str(getattr(policy.mode, "value", policy.mode)),
+        reservation_id=getattr(result.selected, "reservation_id", None)
+        if result.selected
+        else None,
+        receipt_id=getattr(result.receipt, "receipt_id", None)
+        if result.receipt
+        else None,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+    )
+    return _write_output_path(audio_bytes, output_path)
+
+
+def _speech_to_text_with_usage_admission(
+    audio: Union[str, bytes],
+    *,
+    model_name: Optional[str],
+    language: Optional[str],
+    device: Optional[str],
+    provider: Optional[str],
+    provider_instance: Optional[VoiceProvider],
+    deps: RouterDeps,
+    kwargs: Dict[str, object],
+    usage_coordinator: object,
+    usage_policy: object,
+    usage_candidates: Optional[Sequence[object]],
+    usage_pin: object,
+    usage_request: object,
+    usage_request_id: Optional[str],
+    usage_idempotency_key: Optional[str],
+    usage_catalog_revision: Optional[str],
+    usage_provider_by_binding: Optional[Mapping[str, VoiceProvider]],
+    usage_observation: object,
+    usage_cost_micros: Optional[int],
+    usage_cost_currency: Optional[str],
+    usage_cancel_event: Optional[threading.Event],
+    usage_timeout_seconds: Optional[float],
+    usage_stream_partials: Optional[Sequence[object]],
+    usage_streaming: bool,
+    sample_rate: Optional[int],
+    channels: Optional[int],
+    declared_seconds: Optional[Union[int, float]],
+    started: float,
+) -> str:
+    """Reserve, dispatch, settle one STT unit under usage admission."""
+
+    from .endpoint_usage.identity import assert_no_prompt_media_or_output, stable_id
+    from .endpoint_usage.resolution import StaticCandidate
+    from .endpoint_usage.routing import (
+        ErrorSafetyClass,
+        InvokeOutcome,
+        UsageRouteAdmission,
+        classify_invoke_error,
+        meta_from_static,
+    )
+    from .endpoint_usage.schema import FallbackClass, RoutingPolicy, UsageVector
+
+    policy = usage_policy
+    if not isinstance(policy, RoutingPolicy):
+        policy = _normalize_usage_policy(policy)
+
+    provider_identity = _provider_instance_cache_identity(provider_instance, provider)
+    cached = _stt_cache_lookup(
+        deps=deps,
+        provider_identity=provider_identity,
+        model_name=model_name,
+        audio=audio,
+        language=language,
+        device=device,
+        kwargs=kwargs,
+    )
+    if cached is not None:
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "cache_hit",
+                "reason_codes": ["cache_hit", "no_remote_charge"],
+                "attempt_count": 0,
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": False,
+                "operation": VOICE_STT_USAGE_OPERATION,
+            }
+        )
+        assert_no_prompt_media_or_output(get_last_usage_admission())
+        _set_last_voice_usage_trace(
+            status="ok",
+            operation=VOICE_STT_USAGE_OPERATION,
+            provider_requested=str(provider or ""),
+            provider_used=str(provider or ""),
+            model_name=str(model_name or ""),
+            remote_charged=False,
+            usage_mode=str(getattr(policy.mode, "value", policy.mode)),
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
+        return cached
+
+    if usage_cancel_event is not None and usage_cancel_event.is_set():
+        raise UsageCapacityError(
+            "voice STT usage admission cancelled before dispatch",
+            reason_codes=("cancelled_before_dispatch",),
+        )
+    if usage_timeout_seconds is not None and usage_timeout_seconds <= 0:
+        raise UsageCapacityError(
+            "voice STT usage admission timed out before dispatch",
+            reason_codes=("timeout_before_dispatch",),
+        )
+
+    requested = estimate_transcription_usage(
+        audio,
+        sample_rate=sample_rate,
+        channels=channels,
+        declared_seconds=declared_seconds,
+        cost_micros=usage_cost_micros,
+        cost_currency=usage_cost_currency,
+        streaming=usage_streaming,
+        remote=True,
+    )
+    request_id = usage_request_id or stable_id(
+        "vreq", "stt", str(time.time_ns()), str(_audio_media_bytes(audio))
+    )
+    idempotency_key = usage_idempotency_key or stable_id(
+        "videm", request_id, "stt"
+    )
+    catalog_revision = usage_catalog_revision or stable_id(
+        "cat", "voice_router", USAGE_ROUTING_REQUIREMENT_ID
+    )
+    pin = _resolve_usage_pin(
+        pin=usage_pin, provider=provider, allow_fallback_with_pin=False
+    )
+
+    if usage_candidates is not None:
+        candidates = list(usage_candidates)
+    else:
+        if provider is None and provider_instance is None:
+            backend = None
+            for name in ["openai", "assemblyai", "huggingface", "backend_manager"]:
+                try:
+                    candidate = _builtin_provider_by_name(name, deps=deps)
+                    if candidate is not None and isinstance(candidate, VoiceProvider):
+                        backend = candidate
+                        break
+                except Exception:
+                    continue
+            if backend is None:
+                backend = get_voice_provider(provider, deps=deps)
+        else:
+            backend = provider_instance or get_voice_provider(provider, deps=deps)
+        provider_used = _provider_display_name(backend, provider)
+        scope_id = stable_id(
+            "scope", "voice", "stt", provider_used, model_name or "default"
+        )
+        ureq_probe = usage_request
+        if isinstance(ureq_probe, Mapping):
+            preferred_scope = ureq_probe.get("preferred_scope_id")
+        else:
+            preferred_scope = getattr(ureq_probe, "preferred_scope_id", None)
+        if preferred_scope:
+            scope_id = str(preferred_scope)
+        candidates = [
+            _build_voice_static_candidate(
+                provider_name=provider_used,
+                operation=VOICE_STT_USAGE_OPERATION,
+                model_name=model_name,
+                device=device,
+                scope_id=scope_id,
+                language=language,
+                sample_rate=sample_rate,
+                channels=channels,
+                kwargs=kwargs,
+            )
+        ]
+        usage_provider_by_binding = {
+            candidates[0].binding_id: backend,  # type: ignore[attr-defined]
+            **dict(usage_provider_by_binding or {}),
+        }
+
+    if not candidates:
+        raise UsageCapacityError(
+            "no voice STT usage candidates",
+            reason_codes=("no_candidates",),
+        )
+
+    origin_labels = dict(getattr(candidates[0], "labels", None) or {})
+    origin_labels.setdefault("operation", VOICE_STT_USAGE_OPERATION)
+    if language:
+        origin_labels.setdefault("language", str(language))
+    candidates = _filter_compatible_voice_candidates(
+        candidates, origin_labels=origin_labels
+    ) or list(candidates[:1])
+
+    meta_by_binding = {
+        cand.binding_id: meta_from_static(cand)  # type: ignore[attr-defined]
+        for cand in candidates
+        if isinstance(cand, StaticCandidate)
+    }
+    ureq = _bind_usage_routing_request(
+        usage_request=usage_request, requested=requested
+    )
+    provider_map: Dict[str, VoiceProvider] = dict(usage_provider_by_binding or {})
+    result_holder: Dict[str, object] = {}
+    invoke_error_holder: Dict[str, BaseException] = {}
+    dispatched_holder: Dict[str, bool] = {"dispatched": False}
+    deadline = (
+        time.perf_counter() + float(usage_timeout_seconds)
+        if usage_timeout_seconds is not None
+        else None
+    )
+
+    def invoke(attempt: object) -> InvokeOutcome:
+        if usage_cancel_event is not None and usage_cancel_event.is_set():
+            code = (
+                "cancelled_after_dispatch"
+                if dispatched_holder["dispatched"]
+                else "cancelled_before_dispatch"
+            )
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.CLIENT,
+                reason_codes=(code,),
+                side_effecting=bool(dispatched_holder["dispatched"]),
+            )
+        if deadline is not None and time.perf_counter() > deadline:
+            code = (
+                "timeout_after_dispatch"
+                if dispatched_holder["dispatched"]
+                else "timeout_before_dispatch"
+            )
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.CLIENT,
+                reason_codes=(code,),
+                side_effecting=bool(dispatched_holder["dispatched"]),
+            )
+
+        binding_id = getattr(attempt, "binding_id", None)
+        scope_id = getattr(attempt, "scope_id", None) or ""
+        reservation_id = getattr(attempt, "reservation_id", None) or ""
+        active_backend: Optional[VoiceProvider] = None
+        if binding_id and binding_id in provider_map:
+            active_backend = provider_map[binding_id]
+        else:
+            labels = {}
+            for cand in candidates:
+                if getattr(cand, "binding_id", None) == binding_id:
+                    labels = dict(getattr(cand, "labels", None) or {})
+                    break
+            if labels and not voice_fallback_compatible(origin_labels, labels):
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.SEMANTIC,
+                    reason_codes=("incompatible_voice_candidate",),
+                    side_effecting=False,
+                )
+            router_name = labels.get("router_provider") or provider
+            try:
+                active_backend = provider_instance or get_voice_provider(
+                    router_name, deps=deps
+                )
+            except Exception as exc:
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.TRANSIENT,
+                    reason_codes=("provider_resolve_failed", type(exc).__name__),
+                    side_effecting=False,
+                )
+        assert active_backend is not None
+
+        if usage_stream_partials and reservation_id:
+            try:
+                apply_voice_stream_settlements(
+                    usage_coordinator,
+                    str(reservation_id),
+                    usage_stream_partials,
+                )
+                result_holder["stream_partials"] = len(usage_stream_partials)
+            except Exception as exc:
+                invoke_error_holder["error"] = exc
+                return InvokeOutcome(
+                    success=False,
+                    error_class=ErrorSafetyClass.CLIENT,
+                    reason_codes=("non_monotonic_stream", type(exc).__name__),
+                    side_effecting=False,
+                )
+
+        dispatched_holder["dispatched"] = True
+        try:
+            transcription = active_backend.transcribe(
+                audio,
+                model_name=model_name,
+                language=language,
+                device=device,
+                **kwargs,
+            )
+        except Exception as exc:
+            invoke_error_holder["error"] = exc
+            error_class = classify_invoke_error(reason_codes=(type(exc).__name__,))
+            message = str(exc).casefold()
+            if any(
+                token in message
+                for token in ("rate limit", "429", "quota", "capacity", "503")
+            ):
+                error_class = ErrorSafetyClass.CAPACITY
+            # Capacity/transient failures must remain fallback-safe; do not
+            # mark side_effecting or the admission protocol will refuse reroute.
+            return InvokeOutcome(
+                success=False,
+                error_class=error_class,
+                reason_codes=("provider_error", type(exc).__name__),
+                side_effecting=False,
+            )
+
+        if not isinstance(transcription, str):
+            _close_awaitable_result(transcription)
+            return InvokeOutcome(
+                success=False,
+                error_class=ErrorSafetyClass.SEMANTIC,
+                reason_codes=("output_validation_failed", "non_str"),
+                side_effecting=False,
+            )
+
+        settled = settle_transcription_usage(
+            audio,
+            sample_rate=sample_rate,
+            channels=channels,
+            declared_seconds=declared_seconds,
+            cost_micros=usage_cost_micros,
+            cost_currency=usage_cost_currency,
+        )
+        obs = _parse_provider_observation(
+            scope_id=str(scope_id),
+            request_id=request_id,
+            observation=usage_observation,
+            settled=settled,
+        )
+        # Never place transcript content into admission holders that may
+        # leak into receipts — only length metadata.
+        result_holder["transcription"] = transcription
+        result_holder["transcript_chars"] = len(transcription)
+        result_holder["provider_used"] = _provider_display_name(
+            active_backend, provider
+        )
+        result_holder["settled"] = settled
+        reason_codes = ["transcribed"]
+        if deadline is not None and time.perf_counter() > deadline:
+            reason_codes.append("timeout_after_dispatch")
+            result_holder["timeout_after_dispatch"] = True
+        return InvokeOutcome(
+            success=True,
+            observation=obs,
+            settled=settled,
+            error_class=ErrorSafetyClass.SUCCESS,
+            reason_codes=tuple(reason_codes),
+        )
+
+    admission = UsageRouteAdmission(
+        usage_coordinator,  # type: ignore[arg-type]
+        owner_id="voice_router",
+        jitter_max_ms=0,
+    )
+    effective_policy = _effective_policy_for_pin(policy, pin)
+    result = admission.admit(
+        catalog_revision=catalog_revision,
+        candidates=candidates,  # type: ignore[arg-type]
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+        operation=VOICE_STT_USAGE_OPERATION,
+        requested=requested if isinstance(requested, UsageVector) else UsageVector(),
+        policy=effective_policy,  # type: ignore[arg-type]
+        request=ureq,  # type: ignore[arg-type]
+        pin=pin,  # type: ignore[arg-type]
+        meta_by_binding=meta_by_binding,
+        invoke=invoke,
+        caller_id="voice_router",
+    )
+    admission_trace = _admission_result_to_trace(result)
+    if result_holder.get("stream_partials"):
+        admission_trace["stream_partials"] = result_holder["stream_partials"]
+    if result_holder.get("timeout_after_dispatch"):
+        admission_trace["reason_codes"] = list(
+            admission_trace.get("reason_codes") or []
+        ) + ["timeout_after_dispatch"]
+    # Explicitly ensure no transcript leaks into admission payload.
+    admission_trace.pop("transcription", None)
+    admission_trace.pop("transcript", None)
+    _set_last_usage_admission(admission_trace)
+
+    if not result.success or "transcription" not in result_holder:
+        original = invoke_error_holder.get("error")
+        capacity_like = any(
+            code
+            in {
+                "no_eligible_candidates",
+                "all_candidates_denied",
+                "capacity",
+                "deadline_or_attempt_bound",
+                "pin_rejected",
+            }
+            or "capacity" in code
+            or "headroom" in code
+            for code in (result.reason_codes or ())
+        )
+        if original is not None and not capacity_like:
+            raise original
+        raise UsageCapacityError(
+            "voice STT usage admission failed: %s"
+            % (",".join(result.reason_codes) or result.final_status),
+            reason_codes=result.reason_codes,
+            next_eligible_at=result.next_eligible_at,
+            admission=result,
+        )
+
+    transcription = result_holder["transcription"]  # type: ignore[assignment]
+    assert isinstance(transcription, str)
+    provider_used_name = str(result_holder.get("provider_used") or provider or "")
+    _stt_cache_store(
+        deps=deps,
+        provider_identity=_provider_instance_cache_identity(
+            provider_instance, provider_used_name or provider
+        ),
+        model_name=model_name,
+        audio=audio,
+        language=language,
+        device=device,
+        kwargs=kwargs,
+        transcription=transcription,
+    )
+    _set_last_voice_usage_trace(
+        status="ok",
+        operation=VOICE_STT_USAGE_OPERATION,
+        provider_requested=str(provider or ""),
+        provider_used=provider_used_name,
+        model_name=str(model_name or ""),
+        remote_charged=True,
+        usage_mode=str(getattr(policy.mode, "value", policy.mode)),
+        reservation_id=getattr(result.selected, "reservation_id", None)
+        if result.selected
+        else None,
+        receipt_id=getattr(result.receipt, "receipt_id", None)
+        if result.receipt
+        else None,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+    )
+    return transcription
+
+
 def text_to_speech(
     text: str,
     *,
@@ -3981,9 +6087,34 @@ def text_to_speech(
     provider: Optional[str] = None,
     provider_instance: Optional[VoiceProvider] = None,
     deps: Optional[RouterDeps] = None,
+    usage_coordinator: Optional[object] = None,
+    usage_policy: Optional[object] = None,
+    usage_candidates: Optional[Sequence[object]] = None,
+    usage_pin: Optional[object] = None,
+    usage_request: Optional[object] = None,
+    usage_request_id: Optional[str] = None,
+    usage_idempotency_key: Optional[str] = None,
+    usage_catalog_revision: Optional[str] = None,
+    usage_provider_by_binding: Optional[Mapping[str, VoiceProvider]] = None,
+    usage_observation: Optional[object] = None,
+    usage_cost_micros: Optional[int] = None,
+    usage_cost_currency: Optional[str] = None,
+    usage_cancel_event: Optional[threading.Event] = None,
+    usage_timeout_seconds: Optional[float] = None,
+    usage_stream_partials: Optional[Sequence[object]] = None,
+    usage_streaming: bool = False,
+    usage_scope_id: Optional[str] = None,
+    usage_sample_rate: Optional[int] = None,
+    usage_channels: Optional[int] = None,
     **kwargs: object,
 ) -> Union[bytes, str]:
     """Synthesize speech from text.
+
+    Optional usage-aware admission (AICAT-033) is inactive unless a
+    ``usage_coordinator`` is supplied with a non-``off`` ``usage_policy``.
+    Off mode and a missing coordinator preserve legacy selection exactly.
+    Enforce/assist reserve before remote dispatch; observe/shadow never change
+    the selected provider; cache hits create no remote charge.
 
     Args:
         text: Text to synthesize.
@@ -4002,88 +6133,104 @@ def text_to_speech(
     Returns:
         Raw audio bytes, or *output_path* string when output_path is given.
     """
+    started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
 
-    if _response_cache_enabled():
-        cache_key = _tts_response_cache_key(
-            provider=_provider_instance_cache_identity(provider_instance, provider),
-            model_name=model_name,
-            text=text,
-            voice=voice,
-            device=device,
-            output_format=output_format,
-            kwargs=dict(kwargs),
-        )
-        try:
-            getter = getattr(resolved_deps, "get_cached_or_remote", None)
-            cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
-            if isinstance(cached, bytes) and cached:
-                if output_path:
-                    with open(output_path, "wb") as fh:
-                        fh.write(cached)
-                    return output_path
-                return cached
-        except Exception:
-            pass
+    policy = _normalize_usage_policy(usage_policy)
+    if usage_scope_id is None and usage_request is not None:
+        if isinstance(usage_request, Mapping):
+            usage_scope_id = usage_request.get("preferred_scope_id")  # type: ignore[assignment]
+        else:
+            usage_scope_id = getattr(usage_request, "preferred_scope_id", None)
 
-    backend = provider_instance or get_voice_provider(provider, deps=resolved_deps)
-    try:
-        audio_bytes = backend.synthesize(
+    if usage_coordinator is not None and _usage_mode_enforces(policy):
+        return _text_to_speech_with_usage_admission(
             text,
             voice=voice,
             model_name=model_name,
             device=device,
             output_format=output_format,
-            **kwargs,
+            output_path=output_path,
+            provider=provider,
+            provider_instance=provider_instance,
+            deps=resolved_deps,
+            kwargs=dict(kwargs),
+            usage_coordinator=usage_coordinator,
+            usage_policy=policy,
+            usage_candidates=usage_candidates,
+            usage_pin=usage_pin,
+            usage_request=usage_request,
+            usage_request_id=usage_request_id,
+            usage_idempotency_key=usage_idempotency_key,
+            usage_catalog_revision=usage_catalog_revision,
+            usage_provider_by_binding=usage_provider_by_binding,
+            usage_observation=usage_observation,
+            usage_cost_micros=usage_cost_micros,
+            usage_cost_currency=usage_cost_currency,
+            usage_cancel_event=usage_cancel_event,
+            usage_timeout_seconds=usage_timeout_seconds,
+            usage_stream_partials=usage_stream_partials,
+            usage_streaming=bool(usage_streaming),
+            sample_rate=usage_sample_rate,
+            channels=usage_channels,
+            started=started,
         )
-        if not isinstance(audio_bytes, bytes):
-            _close_awaitable_result(audio_bytes)
-            raise RuntimeError(f"Voice provider synthesize() returned {type(audio_bytes).__name__}, expected bytes")
 
-        if _response_cache_enabled():
-            try:
-                ck = _tts_response_cache_key(
-                    provider=_provider_instance_cache_identity(provider_instance, provider),
-                    model_name=model_name,
-                    text=text,
-                    voice=voice,
-                    device=device,
-                    output_format=output_format,
-                    kwargs=dict(kwargs),
-                )
-                setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                if callable(setter):
-                    setter(ck, audio_bytes)
-                else:
-                    resolved_deps.set_cached(ck, audio_bytes)
-            except Exception:
-                pass
-
-        if output_path:
-            with open(output_path, "wb") as fh:
-                fh.write(audio_bytes)
-            return output_path
-        return audio_bytes
-
-    except Exception as primary_error:
-        logger.debug(f"Primary voice TTS provider failed: {primary_error}")
-        if provider is None:
-            hf_provider = _get_huggingface_provider()
-            if hf_provider is not None and backend is not hf_provider:
-                audio_bytes = hf_provider.synthesize(
-                    text,
-                    voice=voice,
-                    model_name=model_name,
-                    device=device,
-                    output_format=output_format,
-                    **kwargs,
-                )
-                if output_path:
-                    with open(output_path, "wb") as fh:
-                        fh.write(audio_bytes)
-                    return output_path
-                return audio_bytes
-        raise
+    result = _legacy_text_to_speech(
+        text,
+        voice=voice,
+        model_name=model_name,
+        device=device,
+        output_format=output_format,
+        output_path=output_path,
+        provider=provider,
+        provider_instance=provider_instance,
+        deps=resolved_deps,
+        kwargs=dict(kwargs),
+    )
+    provider_used = _provider_display_name(provider_instance, provider) if provider_instance else str(provider or "")
+    if usage_coordinator is not None and _usage_mode_observes_only(policy):
+        remote = not (
+            isinstance(result, bytes)
+            and False  # cache path already returned above only in enforce
+        )
+        # Observe after legacy path: if cache was hit, no remote charge.
+        # We cannot always know cache hit without re-checking; treat as remote
+        # unless result came from a zero-call path. Conservative: estimate remote.
+        estimate = estimate_synthesis_usage(
+            text,
+            cost_micros=usage_cost_micros,
+            cost_currency=usage_cost_currency,
+            streaming=usage_streaming,
+            remote=True,
+        )
+        _record_voice_usage_observe_shadow(
+            operation=VOICE_TTS_USAGE_OPERATION,
+            estimate=estimate,
+            usage_coordinator=usage_coordinator,
+            usage_policy=policy,
+            usage_scope_id=usage_scope_id,
+            usage_request_id=usage_request_id,
+            success=True,
+            provider_used=provider_used,
+            remote_charged=True,
+        )
+    elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "off",
+                "reason_codes": ["usage_routing_off"],
+                "attempt_count": 0,
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": None,
+                "mode": "off",
+                "operation": VOICE_TTS_USAGE_OPERATION,
+            }
+        )
+    return result
 
 
 def speech_to_text(
@@ -4095,9 +6242,32 @@ def speech_to_text(
     provider: Optional[str] = None,
     provider_instance: Optional[VoiceProvider] = None,
     deps: Optional[RouterDeps] = None,
+    usage_coordinator: Optional[object] = None,
+    usage_policy: Optional[object] = None,
+    usage_candidates: Optional[Sequence[object]] = None,
+    usage_pin: Optional[object] = None,
+    usage_request: Optional[object] = None,
+    usage_request_id: Optional[str] = None,
+    usage_idempotency_key: Optional[str] = None,
+    usage_catalog_revision: Optional[str] = None,
+    usage_provider_by_binding: Optional[Mapping[str, VoiceProvider]] = None,
+    usage_observation: Optional[object] = None,
+    usage_cost_micros: Optional[int] = None,
+    usage_cost_currency: Optional[str] = None,
+    usage_cancel_event: Optional[threading.Event] = None,
+    usage_timeout_seconds: Optional[float] = None,
+    usage_stream_partials: Optional[Sequence[object]] = None,
+    usage_streaming: bool = False,
+    usage_scope_id: Optional[str] = None,
+    usage_sample_rate: Optional[int] = None,
+    usage_channels: Optional[int] = None,
+    usage_audio_seconds: Optional[Union[int, float]] = None,
     **kwargs: object,
 ) -> str:
     """Transcribe speech audio to text.
+
+    Optional usage-aware admission (AICAT-033) is inactive unless a
+    ``usage_coordinator`` is supplied with a non-``off`` ``usage_policy``.
 
     Args:
         audio: Audio data as raw bytes (WAV/MP3/etc.) or a local file path string.
@@ -4112,89 +6282,99 @@ def speech_to_text(
     Returns:
         Transcription as a plain string.
     """
+    started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
 
-    if _response_cache_enabled():
-        cache_key = _stt_response_cache_key(
-            provider=_provider_instance_cache_identity(provider_instance, provider),
-            model_name=model_name,
-            audio=audio,
-            language=language,
-            device=device,
-            kwargs=dict(kwargs),
-        )
-        try:
-            getter = getattr(resolved_deps, "get_cached_or_remote", None)
-            cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
-            if isinstance(cached, str) and cached:
-                return cached
-        except Exception:
-            pass
-
-    # For STT, prefer providers that actually support transcription
-    # when no provider is explicitly selected.
-    if provider is None and provider_instance is None:
-        for name in ["openai", "assemblyai", "huggingface", "backend_manager"]:
-            try:
-                candidate = _builtin_provider_by_name(name, deps=resolved_deps)
-                if candidate is None:
-                    continue
-                # Quick capability check
-                if isinstance(candidate, VoiceProvider):
-                    backend: VoiceProvider = candidate
-                    break
-            except Exception:
-                continue
+    policy = _normalize_usage_policy(usage_policy)
+    if usage_scope_id is None and usage_request is not None:
+        if isinstance(usage_request, Mapping):
+            usage_scope_id = usage_request.get("preferred_scope_id")  # type: ignore[assignment]
         else:
-            backend = get_voice_provider(provider, deps=resolved_deps)
-    else:
-        backend = provider_instance or get_voice_provider(provider, deps=resolved_deps)
+            usage_scope_id = getattr(usage_request, "preferred_scope_id", None)
 
-    try:
-        transcription = backend.transcribe(
+    if usage_coordinator is not None and _usage_mode_enforces(policy):
+        return _speech_to_text_with_usage_admission(
             audio,
             model_name=model_name,
             language=language,
             device=device,
-            **kwargs,
+            provider=provider,
+            provider_instance=provider_instance,
+            deps=resolved_deps,
+            kwargs=dict(kwargs),
+            usage_coordinator=usage_coordinator,
+            usage_policy=policy,
+            usage_candidates=usage_candidates,
+            usage_pin=usage_pin,
+            usage_request=usage_request,
+            usage_request_id=usage_request_id,
+            usage_idempotency_key=usage_idempotency_key,
+            usage_catalog_revision=usage_catalog_revision,
+            usage_provider_by_binding=usage_provider_by_binding,
+            usage_observation=usage_observation,
+            usage_cost_micros=usage_cost_micros,
+            usage_cost_currency=usage_cost_currency,
+            usage_cancel_event=usage_cancel_event,
+            usage_timeout_seconds=usage_timeout_seconds,
+            usage_stream_partials=usage_stream_partials,
+            usage_streaming=bool(usage_streaming),
+            sample_rate=usage_sample_rate,
+            channels=usage_channels,
+            declared_seconds=usage_audio_seconds,
+            started=started,
         )
-        if not isinstance(transcription, str):
-            _close_awaitable_result(transcription)
-            raise RuntimeError(f"Voice provider transcribe() returned {type(transcription).__name__}, expected str")
 
-        if _response_cache_enabled():
-            try:
-                ck = _stt_response_cache_key(
-                    provider=_provider_instance_cache_identity(provider_instance, provider),
-                    model_name=model_name,
-                    audio=audio,
-                    language=language,
-                    device=device,
-                    kwargs=dict(kwargs),
-                )
-                setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                if callable(setter):
-                    setter(ck, transcription)
-                else:
-                    resolved_deps.set_cached(ck, transcription)
-            except Exception:
-                pass
-
-        return transcription
-
-    except Exception as primary_error:
-        logger.debug(f"Primary voice STT provider failed: {primary_error}")
-        if provider is None:
-            hf_provider = _get_huggingface_provider()
-            if hf_provider is not None and backend is not hf_provider:
-                return hf_provider.transcribe(
-                    audio,
-                    model_name=model_name,
-                    language=language,
-                    device=device,
-                    **kwargs,
-                )
-        raise
+    result = _legacy_speech_to_text(
+        audio,
+        model_name=model_name,
+        language=language,
+        device=device,
+        provider=provider,
+        provider_instance=provider_instance,
+        deps=resolved_deps,
+        kwargs=dict(kwargs),
+    )
+    provider_used = (
+        _provider_display_name(provider_instance, provider)
+        if provider_instance
+        else str(provider or "")
+    )
+    if usage_coordinator is not None and _usage_mode_observes_only(policy):
+        estimate = estimate_transcription_usage(
+            audio,
+            sample_rate=usage_sample_rate,
+            channels=usage_channels,
+            declared_seconds=usage_audio_seconds,
+            cost_micros=usage_cost_micros,
+            cost_currency=usage_cost_currency,
+            streaming=usage_streaming,
+            remote=True,
+        )
+        _record_voice_usage_observe_shadow(
+            operation=VOICE_STT_USAGE_OPERATION,
+            estimate=estimate,
+            usage_coordinator=usage_coordinator,
+            usage_policy=policy,
+            usage_scope_id=usage_scope_id,
+            usage_request_id=usage_request_id,
+            success=True,
+            provider_used=provider_used,
+            remote_charged=True,
+        )
+    elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
+        _set_last_usage_admission(
+            {
+                "success": True,
+                "final_status": "off",
+                "reason_codes": ["usage_routing_off"],
+                "attempt_count": 0,
+                "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
+                "remote_charged": None,
+                "mode": "off",
+                "operation": VOICE_STT_USAGE_OPERATION,
+            }
+        )
+    return result
 
 
 def clear_voice_router_caches() -> None:
@@ -4223,6 +6403,11 @@ __all__ = [
     "VOICE_TURN_CONTRACT_VERSION",
     "VOICE_STAGE_STATUSES",
     "VOICE_TURN_STATUSES",
+    "USAGE_ROUTING_REQUIREMENT_ID",
+    "VOICE_TTS_USAGE_OPERATION",
+    "VOICE_STT_USAGE_OPERATION",
+    "VoiceRouterError",
+    "UsageCapacityError",
     "VoiceProvider",
     "VoiceProviderCapabilities",
     "ProviderInfo",
@@ -4241,6 +6426,18 @@ __all__ = [
     "text_to_speech",
     "speech_to_text",
     "clear_voice_router_caches",
+    # Usage-aware admission (AICAT-033)
+    "estimate_synthesis_tokens",
+    "estimate_audio_seconds",
+    "estimate_synthesis_usage",
+    "estimate_transcription_usage",
+    "settle_synthesis_usage",
+    "settle_transcription_usage",
+    "planning_required_usage",
+    "apply_voice_stream_settlements",
+    "voice_fallback_compatible",
+    "get_last_usage_admission",
+    "get_last_voice_usage_trace",
     # Unified grounded Abby voice turn
     "DEFAULT_GROUNDED_FALLBACK",
     "GroundingEvidence",
