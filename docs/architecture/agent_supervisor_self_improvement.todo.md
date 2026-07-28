@@ -4649,7 +4649,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-168 Migrate and prove every supervisor provider consumer
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
