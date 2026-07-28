@@ -194,9 +194,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 ## Related program docs
 
 - Plan: `docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md`
-- Move map: `docs/architecture/asref/move_map.json`
-- Import inventory: `docs/architecture/asref/import_inventory.md`
+- Move map (ASREF-G010): `docs/architecture/asref/move_map.json`
+- Import inventory (ASREF-G010): `docs/architecture/asref/import_inventory.md`
 - Nested monorepo products: `docs/NESTED_PACKAGES.md`
+- Layout evidence module: `asref_layout_evidence.py` (ASREF-G010 / ASREF-G090 / ASREF-G100)
+- Multi-lane launch (ASREF-G100): `scripts/ops/agent_supervisor/asref_multi_lane_launch.py`
+- Supervisor launcher (ASREF-G100): `scripts/ops/asref_module_refactor_supervisor.py`
 
 ## Validation (cutover gate)
 
@@ -206,15 +209,27 @@ python -m pytest \
   test/api/test_agent_supervisor_control_conformance_v2.py \
   test/api/test_agent_supervisor_objective_graph.py \
   test/api/test_agent_supervisor_proposal_validation.py \
+  test/api/test_agent_supervisor_asref_layout_evidence.py \
   -q
 ```
 
-## Status (ASREF-007 / ASREF-G090)
+Layout evidence CLI:
 
-- Root `README.md` package map: present
+```bash
+python -m ipfs_accelerate_py.agent_supervisor.asref_layout_evidence
+python scripts/ops/agent_supervisor/asref_multi_lane_launch.py recipe
+```
+
+## Status (ASREF-007 / ASREF-G090 + ASREF-008 evidence)
+
+- Root `README.md` package map: present (**ASREF-G090**)
 - Root `__init__.py` explicit exports + package-path resolution for landed
-  modules: present
+  modules: present (**ASREF-G090**)
 - Domain package READMEs: present for landed packages listed above
+- Frozen move map + import inventory: present under `docs/architecture/asref/`
+  (**ASREF-G010**)
+- Multi-lane Grok launch recipe + protected-path wiring: present
+  (**ASREF-G100**)
 - Remaining flat modules: move under their target packages per
   `move_map.json` without reintroducing flat shims
 - Entry-point and caller rewrites: complete when each owning move task lands

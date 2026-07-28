@@ -1130,6 +1130,46 @@ def test_exact_reviewed_or_chain_is_an_allowed_validation_plan() -> None:
     assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
 
 
+def test_exact_reviewed_rg_alternation_compound_is_allowed() -> None:
+    """ASREF-008-style boards: ``rg`` regex ``|`` inside argv is not a shell pipe.
+
+    The task validation plan is already shlex-split; alternation characters in a
+    single pattern token must not yield ``command_forbidden`` when the full
+    compound is on the reviewed allowlist.
+    """
+    command = (
+        "python",
+        "-m",
+        "pytest",
+        "test/api/test_agent_supervisor_todo_daemon_port.py",
+        "test/api/test_agent_supervisor_control_conformance_v2.py",
+        "-q",
+        "--collect-only",
+        "&&",
+        "rg",
+        "-n",
+        r"agent_supervisor\.(objective_daemon|backlog_refinery|merge_resolver)\b",
+        "pyproject.toml",
+        "setup.py",
+        "||",
+        "true",
+    )
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            validation_plan=(
+                ProposalValidationStep(
+                    command=command,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+        ),
+        policy=_v2_policy(allowed_validation_commands=(command,)),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
+
+
 
 
 

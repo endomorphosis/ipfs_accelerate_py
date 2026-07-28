@@ -2731,6 +2731,27 @@ def _evaluate_fail_fast_objective_completion(
 
 
 _SHELL_META_RE = re.compile(r"(?:[;&|<>`]|[$]\(|\r|\n)")
+# Bare operator tokens (argv already shlex-split). Distinct from metacharacters
+# that appear *inside* a longer argument (e.g. ripgrep alternation ``a|b``).
+_SHELL_OPERATOR_TOKENS = frozenset(
+    {
+        ";",
+        "|",
+        "&",
+        "<",
+        ">",
+        ">>",
+        "<<",
+        "|&",
+        "&>",
+        "2>",
+        "2>&1",
+        "`",
+    }
+)
+# Subshell / control-character expansion remains forbidden even inside args of
+# reviewed compound commands, because validation may re-join argv for a shell.
+_SHELL_EXPANSION_RE = re.compile(r"(?:[`\r\n]|\$\()")
 _PRIVATE_KEY_CONTENT_RE = re.compile(
     r"(?im)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
 )
@@ -2902,15 +2923,21 @@ def _command_is_allowed(
     Task boards store validation as shell text and may include reviewed ``&&``
     / ``||`` compound commands. Exact full-command allowlist hits may use those
     separators, but every clause must still satisfy the normal executable and
-    eval guards. Prefix matches and all other shell metacharacters remain
-    forbidden.
+    eval guards.
+
+    For exact allowlisted compounds, ``|`` / ``;`` / ``&`` characters that appear
+    *inside* a longer argv token (for example a ripgrep alternation pattern) are
+    not treated as shell operators — the argv was already ``shlex``-split. Bare
+    operator tokens, shell interpreters, eval flags, and subshell/backtick
+    expansion syntax remain forbidden. Prefix matches still reject any token
+    that embeds shell metacharacters.
     """
 
     command_t = tuple(str(part) for part in command)
     prefixes_t = tuple(tuple(str(part) for part in prefix) for prefix in prefixes)
 
-    def clause_is_safe(clause: tuple[str, ...]) -> bool:
-        if not clause or any(_SHELL_META_RE.search(part) for part in clause):
+    def clause_executable_is_safe(clause: tuple[str, ...]) -> bool:
+        if not clause:
             return False
         executable = (
             clause[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
@@ -2936,6 +2963,27 @@ def _command_is_allowed(
             return False
         return True
 
+    def clause_is_safe(clause: tuple[str, ...]) -> bool:
+        if not clause or any(_SHELL_META_RE.search(part) for part in clause):
+            return False
+        return clause_executable_is_safe(clause)
+
+    def compound_clause_is_safe(clause: tuple[str, ...]) -> bool:
+        """Safety for a clause of an exact-allowlisted ``&&`` / ``||`` chain.
+
+        Allows regex/path characters such as ``|`` inside longer tokens while
+        still denying bare operators, empty clauses, shells, and eval forms.
+        """
+
+        if not clause:
+            return False
+        for part in clause:
+            if part in _SHELL_OPERATOR_TOKENS or part in {"&&", "||"}:
+                return False
+            if _SHELL_EXPANSION_RE.search(part):
+                return False
+        return clause_executable_is_safe(clause)
+
     if command_t in prefixes_t and ("&&" in command_t or "||" in command_t):
         clauses: list[tuple[str, ...]] = []
         start = 0
@@ -2943,10 +2991,10 @@ def _command_is_allowed(
             if part in {"&&", "||"}:
                 clauses.append(command_t[start:index])
                 start = index + 1
-            elif _SHELL_META_RE.search(part):
+            elif part in _SHELL_OPERATOR_TOKENS or _SHELL_EXPANSION_RE.search(part):
                 return False
         clauses.append(command_t[start:])
-        return all(clause_is_safe(clause) for clause in clauses)
+        return all(compound_clause_is_safe(clause) for clause in clauses)
 
     if not clause_is_safe(command_t):
         return False

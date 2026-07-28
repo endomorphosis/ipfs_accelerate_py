@@ -4,6 +4,16 @@
 Binds lanes to the ASREF todo/objective heap on branch
 ``refactor/agent-supervisor-layout``. Prefer running from the isolated
 worktree so concurrent main-checkout supervisors cannot thrash the board.
+
+This launcher is production evidence for **ASREF-G100** (autonomous supervisor
+execution with Grok 4.6). Related layout obligations **ASREF-G010** (frozen
+move map / inventory) and **ASREF-G090** (public API + cutover surface) are
+verified by ``ipfs_accelerate_py.agent_supervisor.asref_layout_evidence``.
+
+Operator entry points:
+
+- ``python scripts/ops/asref_module_refactor_supervisor.py preflight|launch``
+- ``python scripts/ops/agent_supervisor/asref_multi_lane_launch.py`` (ASREF-G100)
 """
 
 from __future__ import annotations
@@ -21,6 +31,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.asref_layout_evidence import (  # noqa: E402
+    ASREF_DEFAULT_IMPLEMENTATION_PROVIDER,
+    ASREF_G010,
+    ASREF_G090,
+    ASREF_G100,
+    ASREF_IMPLEMENTATION_PROVIDER_ENV,
+    ASREF_PARENT_MISSING_EVIDENCE_TERMS,
+    collect_asref_layout_evidence,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (  # noqa: E402
     ImplementationSupervisorTrackConfig,
     build_configured_multi_supervisor_cli_runner,
@@ -42,6 +61,7 @@ PLAN_RELATIVE = Path("docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
 INVENTORY_RELATIVE = Path("docs/architecture/asref/move_map.json")
 TASK_PREFIX = "ASREF-"
 TASK_HEADER_PREFIX = f"## {TASK_PREFIX}"
+# ASREF-G100: implementation workers must never edit these operator inputs.
 PROTECTED_PATHS = (
     TODO_RELATIVE.as_posix(),
     OBJECTIVE_RELATIVE.as_posix(),
@@ -51,6 +71,10 @@ DEFAULT_NAMESPACE = "asref-v1"
 DEFAULT_LANES = 4
 DEFAULT_MERGE_BRANCH = "refactor/agent-supervisor-layout"
 DEFAULT_REFILL_OPEN_TASK_THRESHOLD = 3
+# ASREF-G100 default implementation provider (Grok 4.6 when wired).
+DEFAULT_IMPLEMENTATION_PROVIDER = ASREF_DEFAULT_IMPLEMENTATION_PROVIDER
+ASREF_AUTONOMOUS_GOAL_ID = ASREF_G100
+ASREF_LAYOUT_EVIDENCE_GOALS = ASREF_PARENT_MISSING_EVIDENCE_TERMS
 
 
 def _runtime_root(namespace: str) -> Path:
@@ -140,6 +164,18 @@ def inspect_board(
     if not ready_loose:
         errors.append("no ready ASREF tasks (all open tasks blocked)")
 
+    layout = collect_asref_layout_evidence(repo_root)
+    layout_errors = [
+        f"layout evidence {check.goal_id}/{check.check_id}: {check.detail}"
+        for check in layout.checks
+        if not check.ok
+    ]
+    # Layout evidence is advisory in preflight (board may still drain);
+    # inventory file remains a hard signal for ASREF-G010 readiness.
+    inventory_present = (repo_root / INVENTORY_RELATIVE).is_file()
+    if not inventory_present:
+        errors.append(f"missing ASREF-G010 inventory: {INVENTORY_RELATIVE}")
+
     return {
         "schema": "ipfs_accelerate_py.asref.preflight.v1",
         "ok": not errors,
@@ -153,7 +189,17 @@ def inspect_board(
         "goal_count": len(goals),
         "lanes": lanes,
         "protected_paths": list(PROTECTED_PATHS),
-        "inventory_present": (repo_root / INVENTORY_RELATIVE).is_file(),
+        "inventory_present": inventory_present,
+        "asref_autonomous_goal_id": ASREF_AUTONOMOUS_GOAL_ID,
+        "asref_layout_evidence_goals": list(ASREF_LAYOUT_EVIDENCE_GOALS),
+        "asref_layout_evidence_ok": layout.ok,
+        "asref_layout_evidence_errors": layout_errors,
+        "asref_goal_status": {
+            goal_id: layout.goal_ok(goal_id)
+            for goal_id in (ASREF_G010, ASREF_G090, ASREF_G100)
+        },
+        "default_implementation_provider": DEFAULT_IMPLEMENTATION_PROVIDER,
+        "implementation_provider_env": ASREF_IMPLEMENTATION_PROVIDER_ENV,
     }
 
 
@@ -258,8 +304,9 @@ def launch(args: argparse.Namespace) -> int:
         return 2
 
     provider = str(getattr(args, "implementation_provider", "") or "").strip()
-    if provider:
-        os.environ["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"] = provider
+    if not provider:
+        provider = DEFAULT_IMPLEMENTATION_PROVIDER
+    os.environ[ASREF_IMPLEMENTATION_PROVIDER_ENV] = provider
 
     runtime_root = _runtime_root(args.namespace)
     runtime_root.mkdir(parents=True, exist_ok=True)
@@ -367,11 +414,14 @@ def _build_parser() -> argparse.ArgumentParser:
         p.add_argument(
             "--implementation-provider",
             default=os.environ.get(
-                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", ""
-            ),
+                ASREF_IMPLEMENTATION_PROVIDER_ENV,
+                DEFAULT_IMPLEMENTATION_PROVIDER,
+            )
+            or DEFAULT_IMPLEMENTATION_PROVIDER,
             help=(
                 "Set IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER for child "
-                "daemons (e.g. grok, goose, codex, auto)"
+                "daemons. ASREF-G100 defaults to grok (Grok 4.6 when wired); "
+                "also accepts goose, codex, auto."
             ),
         )
     return parser
