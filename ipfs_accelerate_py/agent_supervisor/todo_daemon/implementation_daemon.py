@@ -8446,18 +8446,36 @@ class PortalImplementationDaemon:
                         "branch": branch_name,
                     },
                 )
+            seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
             # A pooled checkout keeps a stable physical path so Git does not
             # have to relocate populated submodule worktrees.  Resolve the
             # task's provisional timestamp path before any command, state, or
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
+            seed_apply = self._apply_prior_attempt_seed(
+                worktree_path,
+                seed_plan=seed_plan,
+                baseline_ref=baseline_ref,
+            )
+            if seed_apply.get("applied"):
+                self._record_event(
+                    "implementation_prior_attempt_seeded",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                        **dict(seed_apply),
+                    },
+                )
             if lifecycle_record is not None:
                 lifecycle_record = self._sync_worktree_lifecycle_workspace(
                     lifecycle_record,
                     worktree_path,
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
+            workspace_setup["prior_attempt_seed"] = dict(seed_apply)
             command = self._build_implementation_command(worktree_path)
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
@@ -9284,9 +9302,15 @@ class PortalImplementationDaemon:
             and isinstance(no_change_guard, dict)
             and no_change_guard.get("allowed")
         )
-        if returncode == 0 and (
-            no_change_completion or merge_result.get("merged")
-        ):
+        # Board completion is intentionally stricter than validation success:
+        # merge-queued candidates remain incomplete until integrated into the
+        # configured merge target (see merge train consumer).
+        board_completion = self._board_completion_decision(
+            returncode=returncode,
+            merge_result=merge_result,
+            no_change_completion=no_change_completion,
+        )
+        if board_completion["complete"]:
             completion_tree_id = str(
                 merge_result.get("merge_commit")
                 or implementation_commit
@@ -9300,16 +9324,39 @@ class PortalImplementationDaemon:
                     "completion_authoritative": True,
                     "repository_tree_id": completion_tree_id,
                     "validation": dict(validation_result),
+                    "board_completion": dict(board_completion),
                 },
             )
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
+        elif board_completion.get("pending_merge"):
+            self._record_event(
+                "implementation_pending_merge",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "implementation_commit": implementation_commit,
+                    "branch": branch_name,
+                    "target_branch": self.resolved_merge_target_branch
+                    or self._main_branch_name(),
+                    "merge_result": {
+                        key: merge_result.get(key)
+                        for key in (
+                            "queued",
+                            "merged",
+                            "reason",
+                            "request_id",
+                            "target_branch",
+                        )
+                    },
+                    "board_status": "pending",
+                    "board_completion": dict(board_completion),
+                },
+            )
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
         # completion.  The train consumer records the terminal merge outcome.
-        terminal_outcome = bool(
-            no_change_completion or merge_result.get("merged")
-        )
+        terminal_outcome = bool(board_completion.get("complete"))
         if not merge_result.get("queued") and attempt_consumed:
             outcome_returncode = returncode
             outcome_reason = str(
@@ -9326,6 +9373,12 @@ class PortalImplementationDaemon:
                 outcome_returncode,
                 reason=outcome_reason,
             )
+        workspace_setup = self._worktree_setup_result(worktree_path)
+        # Preserve seed metadata if setup metrics were already annotated.
+        if "prior_attempt_seed" not in workspace_setup:
+            prior_seed = locals().get("seed_apply")
+            if isinstance(prior_seed, Mapping):
+                workspace_setup["prior_attempt_seed"] = dict(prior_seed)
         result = {
             "task_id": task.task_id,
             "attempt": attempt,
@@ -9340,7 +9393,8 @@ class PortalImplementationDaemon:
             "validation_result": validation_result,
             "cleanup_result": cleanup_result,
             "failed_preservation_result": failed_preservation_result,
-            "workspace_setup": self._worktree_setup_result(worktree_path),
+            "workspace_setup": workspace_setup,
+            "board_completion": dict(board_completion),
             "attempt_consumed": attempt_consumed,
         }
         if protected_path_violation:
@@ -9599,6 +9653,204 @@ class PortalImplementationDaemon:
         state.heartbeat_at = finished_at
         state.last_progress_at = finished_at
         self._clear_active_execution_state(state, clear_task=True)
+
+    def _prior_attempt_seed_plan(
+        self,
+        *,
+        state: PortalTaskState,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Choose whether to reseed a retry worktree from a prior attempt commit.
+
+        Prior failed attempts already preserve their trees via
+        ``_preserve_failed_validation_worktree``. Retries should start from that
+        commit when it is not yet on the merge target so implementers do not
+        re-discover work from git history (LIG-016 attempt-2 class failures).
+        """
+
+        target = self._main_branch_name()
+        plan: dict[str, Any] = {
+            "baseline_ref": target,
+            "seed_ref": target,
+            "reuse_prior_attempt": False,
+            "reason": "merge_target_baseline",
+            "prior_commit": "",
+            "prior_branch": "",
+        }
+        if int(attempt or 0) <= 1:
+            return plan
+        prior_commit = str(state.last_implementation_commit or "").strip()
+        prior_branch = str(state.last_implementation_branch or "").strip()
+        candidate = ""
+        if prior_commit and self._git_commit_exists_in_repo(
+            self.repo_root, prior_commit
+        ):
+            candidate = prior_commit
+            plan["prior_commit"] = prior_commit
+        elif prior_branch and self._git_ref_exists(prior_branch):
+            resolved = self._resolve_git_commit_in_repo(
+                self.repo_root, prior_branch
+            )
+            if resolved:
+                candidate = resolved
+                plan["prior_commit"] = resolved
+                plan["prior_branch"] = prior_branch
+        if not candidate:
+            plan["reason"] = "no_prior_attempt_commit"
+            return plan
+        if self._git_ref_is_ancestor(candidate, target):
+            plan["reason"] = "prior_already_on_merge_target"
+            return plan
+        plan["seed_ref"] = candidate
+        plan["reuse_prior_attempt"] = True
+        plan["reason"] = "prior_failed_attempt_commit"
+        return plan
+
+    def _apply_prior_attempt_seed(
+        self,
+        worktree_path: Path,
+        *,
+        seed_plan: Mapping[str, Any],
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Overlay a preserved prior-attempt commit onto a fresh merge-target worktree."""
+
+        if not seed_plan.get("reuse_prior_attempt"):
+            return {
+                "applied": False,
+                "reason": str(seed_plan.get("reason") or "no_reuse"),
+                "seed_ref": str(seed_plan.get("seed_ref") or ""),
+                "baseline_ref": baseline_ref,
+            }
+        seed_ref = str(seed_plan.get("seed_ref") or "").strip()
+        if not seed_ref or not worktree_path.exists():
+            return {
+                "applied": False,
+                "reason": "missing_seed_or_workspace",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+            }
+        if seed_ref == baseline_ref:
+            return {
+                "applied": False,
+                "reason": "seed_equals_baseline",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+            }
+        # Fast-forward when the preserved attempt is a descendant of the
+        # merge-target baseline (common when main/feature has not moved).
+        if baseline_ref and self._git_ref_is_ancestor_in_repo(
+            worktree_path, baseline_ref, seed_ref
+        ):
+            reset = subprocess.run(
+                ["git", "reset", "--hard", seed_ref],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if reset.returncode == 0:
+                return {
+                    "applied": True,
+                    "reason": "fast_forward_reset",
+                    "seed_ref": seed_ref,
+                    "baseline_ref": baseline_ref,
+                }
+            return {
+                "applied": False,
+                "reason": "fast_forward_reset_failed",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+                "stderr": (reset.stderr or "")[-1000:],
+            }
+        merge = subprocess.run(
+            ["git", "merge", "--no-edit", "--no-ff", seed_ref],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if merge.returncode == 0:
+            return {
+                "applied": True,
+                "reason": "merged_prior_seed",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+            }
+        subprocess.run(
+            ["git", "merge", "--abort"],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        checkout = subprocess.run(
+            ["git", "checkout", seed_ref, "--", "."],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if checkout.returncode == 0:
+            return {
+                "applied": True,
+                "reason": "checked_out_prior_tree",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+                "merge_stderr": (merge.stderr or "")[-500:],
+            }
+        return {
+            "applied": False,
+            "reason": "prior_seed_apply_failed",
+            "seed_ref": seed_ref,
+            "baseline_ref": baseline_ref,
+            "merge_stderr": (merge.stderr or "")[-500:],
+            "checkout_stderr": (checkout.stderr or "")[-500:],
+        }
+
+    @staticmethod
+    def _board_completion_decision(
+        *,
+        returncode: int,
+        merge_result: Mapping[str, Any],
+        no_change_completion: bool,
+    ) -> dict[str, Any]:
+        """Decide whether the durable board may flip to completed.
+
+        Validation success with ``merge_queued`` is intentionally *not*
+        completion: the merge train owns the terminal board update after the
+        candidate lands on the configured merge target.
+        """
+
+        merged = bool(merge_result.get("merged"))
+        queued = bool(merge_result.get("queued")) and not merged
+        if int(returncode or 0) != 0:
+            return {
+                "complete": False,
+                "pending_merge": False,
+                "reason": "implementation_or_validation_failed",
+            }
+        if merged or no_change_completion:
+            return {
+                "complete": True,
+                "pending_merge": False,
+                "reason": (
+                    "merged_into_target"
+                    if merged
+                    else "validated_no_change_completion"
+                ),
+            }
+        if queued:
+            return {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            }
+        return {
+            "complete": False,
+            "pending_merge": False,
+            "reason": "not_integrated",
+        }
 
     def _create_seeded_worktree(
         self,
