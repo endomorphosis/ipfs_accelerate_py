@@ -4695,7 +4695,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-170 Gate endpoint-aware supervisor rollout with paired E2E and chaos evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
